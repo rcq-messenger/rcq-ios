@@ -1,0 +1,54 @@
+#
+# Copyright (C) 2021 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "signal-crypto"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition = "2024"
+rust-version = "1.85"
+
+[lints]
+workspace = true
+
+[dependencies]
+libsignal-core = { workspace = true }
+libsignal-debug = { workspace = true }
+
+aes = { workspace = true, features = ["zeroize"] }
+cbc = { workspace = true, features = ["std", "zeroize"] }
+ctr = { workspace = true, features = ["zeroize"] }
+derive_more = { workspace = true }
+displaydoc = { workspace = true }
+ghash = { workspace = true, features = ["zeroize"] }
+hkdf = { workspace = true }
+hmac = { workspace = true, features = ["reset"] }
+hpke-rs = { workspace = true }
+hpke-rs-crypto = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+const-str = { workspace = true }
+criterion = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bench]]
+name = "aes_gcm"
+harness = false
+
+[[bench]]
+name = "hpke"
+harness = false

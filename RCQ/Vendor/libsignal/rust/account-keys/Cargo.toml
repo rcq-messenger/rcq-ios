@@ -1,0 +1,47 @@
+#
+# Copyright (C) 2023 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-account-keys"
+authors.workspace = true
+license.workspace = true
+version = "0.1.0"
+edition = "2024"
+description = "Operations for various account-associated keys"
+
+[lints]
+workspace = true
+
+[dependencies]
+libsignal-core = { workspace = true }
+signal-crypto = { workspace = true }
+
+argon2 = { workspace = true, features = ["zeroize"] }
+derive_more = { workspace = true, features = ["from"] }
+displaydoc = { workspace = true }
+hkdf = { workspace = true }
+partial-default = { workspace = true, features = ["derive"] }
+protobuf = { workspace = true }
+rand = { workspace = true }
+rand_core = { workspace = true, features = ["os_rng"] }
+serde = { workspace = true, optional = true, features = ["derive"] }
+sha2 = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+zerocopy = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+const-str = { workspace = true }
+criterion = { workspace = true }
+hmac = { workspace = true, features = ["reset"] }
+proptest = { workspace = true }
+
+[build-dependencies]
+protobuf-codegen = { workspace = true }
+
+[[bench]]
+name = "hash"
+harness = false

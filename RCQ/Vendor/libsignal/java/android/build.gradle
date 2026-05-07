@@ -1,0 +1,209 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'com.android.library'
+    id 'kotlin-android'
+    id 'maven-publish'
+    id 'signing'
+}
+
+base {
+    archivesName = "libsignal-android"
+}
+
+repositories {
+    google()
+    mavenCentral()
+    mavenLocal()
+}
+
+android {
+    namespace = 'org.signal.libsignal'
+
+    compileSdk 34
+    ndkVersion = '28.0.13004108'
+
+    defaultConfig {
+        minSdkVersion 23
+        targetSdkVersion 33
+        multiDexEnabled = true
+        testInstrumentationRunner "org.signal.libsignal.util.AndroidJUnitRunner"
+        // Automatically propagate matching environment variables into Java properties.
+        // See the custom AndroidJUnitRunner and TestEnvironment classes for more details.
+        testInstrumentationRunnerArguments["org.signal.libsignal.test.environment"] = collectTestEnvironment()
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        androidTest {
+            java {
+                // Also run all the Android-agnostic tests by default.
+                srcDir '../client/src/test/java'
+                srcDir '../shared/test/java'
+            }
+            kotlin {
+                srcDir '../client/src/test/java'
+                srcDir '../shared/test/java'
+            }
+            resources {
+                srcDir '../client/src/test/resources'
+            }
+        }
+    }
+
+    packagingOptions {
+        // Defer stripping to the Android app project.
+        doNotStrip '**/*.so'
+    }
+
+    publishing {
+        singleVariant('release')
+    }
+}
+
+kotlin {
+    explicitApi()
+}
+
+task dokkaHtmlJar(type: Jar) {
+    dependsOn(dokkaGeneratePublicationHtml)
+    from(dokkaGeneratePublicationHtml)
+    archiveClassifier.set("dokka")
+}
+
+task dokkaJavadocJar(type: Jar) {
+    dependsOn(dokkaGeneratePublicationJavadoc)
+    from(dokkaGeneratePublicationJavadoc)
+    archiveClassifier.set("javadoc")
+}
+
+String collectTestEnvironment() {
+    def result = []
+    System.getenv().each { k, v ->
+        if (k.startsWith("LIBSIGNAL_TESTING_")) {
+            // Limit what characters we accept in values.
+            // This is going to get mashed down to a single command-line argument.
+            // (This pattern is only meant to head off likely problems and was not specifically
+            // tested; if you need to use one of these characters, you can remove the check and see
+            // if things Just Work, or tweak our AndroidJUnitRunner to handle different delimiters
+            // or escaping.)
+            if (v.matches(".*[, \t\r\n].*")) {
+                logger.warn("warning: ignoring ${k} for running tests; it contains invalid characters")
+                return
+            }
+            result << "${k}=${v}"
+        }
+    }
+    result.join(",")
+}
+
+// We include the classes and data for rustls-platform-verifier ourselves,
+// but we want to make sure it's in sync with the Rust side.
+// So we check that there hasn't been a new release of the Android package since we made our fork.
+void checkRustlsPlatformVerifierVersion() {
+    def dependencyText = providers.exec {
+        it.workingDir = project.rootDir.parentFile
+        commandLine("bash", "java/find_cargo.sh", "metadata", "--format-version", "1")
+    }.standardOutput.asText.get()
+
+    def dependencyJson = new JsonSlurper().parseText(dependencyText)
+    def dependencyVersion = dependencyJson.packages.find { it.name == "rustls-platform-verifier-android" }.version
+    assert dependencyVersion == "0.1.1"
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    androidTestImplementation "androidx.test:runner:1.4.0"
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'com.googlecode.json-simple:json-simple:1.1'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+    androidTestImplementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0'
+    androidTestImplementation 'org.jetbrains.kotlin:kotlin-test:2.1.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.1.6'
+    api project(':client')
+}
+
+preBuild {
+    dependsOn 'collectAssets'
+    dependsOn 'makeJniLibraries'
+}
+
+String[] archsFromProperty(String prop) {
+    findProperty(prop)?.split(',')?.findAll { it != '' }?.collect { 'android-' + it }
+}
+
+task makeJniLibraries(type:Exec) {
+    group = 'Rust'
+    description = 'Build the JNI libraries for Android'
+
+    def archs = archsFromProperty('androidArchs') ?: ['android']
+    def debugLevelLogsFlag = project.hasProperty('debugLevelLogs') ? ['--debug-level-logs'] : []
+    def jniTypeTaggingFlag = project.hasProperty('jniTypeTagging') ? ['--jni-type-tagging'] : []
+    def jniCheckAnnotationsFlag = project.hasProperty('jniCheckAnnotations') ? ['--jni-check-annotations'] : []
+    def debugFlag = project.hasProperty('debugRust') ? ['--debug'] : []
+    def libsignalDebugFlag = project.hasProperty('libsignalDebug') ? ['--libsignal-debug'] : []
+    // Explicitly specify 'bash' for Windows compatibility.
+    commandLine 'bash', '../build_jni.sh', *libsignalDebugFlag, *debugLevelLogsFlag, *jniTypeTaggingFlag, *jniCheckAnnotationsFlag, *debugFlag, *archs
+    environment 'ANDROID_NDK_HOME', android.ndkDirectory
+}
+
+task collectAssets(type:Copy) {
+    from('../../acknowledgments') {
+        include 'acknowledgments-android*.md'
+        rename 'acknowledgments-android(.*)[.]md', 'libsignal$1.md'
+    }
+    into 'src/main/assets/acknowledgments'
+}
+
+// MARK: Publication
+afterEvaluate {
+    checkRustlsPlatformVerifierVersion()
+
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                artifactId = base.archivesName.get()
+                from components.release
+                artifact dokkaHtmlJar
+                artifact dokkaJavadocJar
+
+                pom {
+                    name = base.archivesName.get()
+                    packaging = 'aar'
+                    description = 'Signal Protocol cryptography library for Android'
+                    url = 'https://github.com/signalapp/libsignal'
+
+                    scm {
+                        url = 'scm:git@github.com:signalapp/libsignal.git'
+                        connection = 'scm:git@github.com:signalapp/libsignal.git'
+                        developerConnection = 'scm:git@github.com:signalapp/libsignal.git'
+                    }
+
+                    licenses {
+                        license {
+                            name = 'AGPLv3'
+                            url = 'https://www.gnu.org/licenses/agpl-3.0.txt'
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            name = 'Signal Messenger LLC'
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    setUpSigningKey(signing)
+    signing {
+        required = { isReleaseBuild() && gradle.taskGraph.hasTask(":android:publish") }
+        sign publishing.publications.mavenJava
+    }
+}

@@ -1,0 +1,4 @@
+build/**
+dist/**
+ts/Native.ts
+ts/test/canonical-backup.expected.json

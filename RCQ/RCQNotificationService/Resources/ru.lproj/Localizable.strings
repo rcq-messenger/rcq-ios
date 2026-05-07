@@ -1,0 +1,6 @@
+/* Тексты пушей, рендерятся NSE по полю `notif_kind` от бэкенда. */
+
+"push.contact_request.body" = "хочет добавить вас в контакты";
+"push.contact_response_accepted.body" = "принял вашу заявку в контакты";
+"push.trade_received.gift.body" = "прислал вам подарок";
+"push.trade_received.offer.body" = "прислал предложение обмена";

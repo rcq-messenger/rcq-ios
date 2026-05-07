@@ -1,0 +1,1250 @@
+/* Source-of-truth localization table. Keys are dotted by feature
+   (`settings.privacy.last_seen`, `chat.input.placeholder`, etc.).
+   English copy here is the development language; other lproj
+   files inherit any missing key from this file via the
+   `String.localized` extension's bundle fallback.
+
+   Convention: ALL user-visible strings should route through
+   `"key".localized`. Hardcoded English literals are tech debt —
+   migrate them as you touch each view.
+*/
+
+/* ── Settings ─────────────────────────────────────────────── */
+
+"settings.title" = "Settings";
+"settings.appearance" = "Appearance";
+"settings.appearance.theme" = "Theme";
+"settings.sound" = "Sound";
+"settings.sound.toggle" = "System sounds";
+"settings.language" = "Language";
+"settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
+
+"settings.privacy" = "Privacy";
+"settings.privacy.last_seen" = "Last seen visible to";
+"settings.privacy.gender" = "Gender";
+"settings.privacy.gender_visible" = "Gender visible to";
+"settings.privacy.group_invites" = "Group invites from";
+"settings.privacy.trade_offers" = "Trade offers from";
+"settings.privacy.gender.dont_share" = "Don't share";
+"settings.privacy.gender.male" = "Male";
+"settings.privacy.gender.female" = "Female";
+"settings.privacy.gender.other" = "Other";
+"settings.privacy.scope.everyone" = "Everyone";
+"settings.privacy.scope.contacts" = "Contacts only";
+"settings.privacy.scope.nobody" = "Nobody";
+"settings.privacy.footer" = "Last seen — who sees your online timestamp. Gender — opt-in info that respects its own visibility scope. Group invites — \"Contacts only\" lets people in your contacts add you to groups; \"Nobody\" blocks unsolicited adds entirely. Trade offers — same shape; \"Nobody\" blocks every incoming trade including gifts. Calls — \"Nobody\" hides every call button in the app; \"Contacts\" only allows calls between mutual contacts.";
+"settings.privacy.last_seen.desc" = "Who can see your online timestamp. \"Nobody\" hides it entirely.";
+"settings.privacy.gender_visible.desc" = "Who can see the Gender field on your profile and next to your nickname in lists.";
+"settings.privacy.gender_visible.desc.empty" = "Pick a gender on your profile first — there's nothing to hide otherwise.";
+"settings.privacy.group_invites.desc" = "Who can add you to groups. \"Contacts only\" — mutual friends only; \"Nobody\" blocks invites entirely.";
+"settings.privacy.trade_offers.desc" = "Who can send you trades and gifts. \"Nobody\" blocks every incoming offer, including free gifts.";
+"settings.privacy.calls.desc" = "Who can call you. \"Nobody\" hides every call button in chats and menus; \"Contacts\" allows mutual friends only.";
+"settings.privacy.footer.short" = "Last seen, gender, group invites, trade offers, calls.";
+"settings.privacy.calls" = "Calls from";
+
+"settings.inventory.public" = "Public inventory";
+"settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
+
+"settings.history" = "History";
+"settings.history.clear" = "Clear all chat history";
+"settings.history.confirm.title" = "Clear all messages?";
+"settings.history.confirm.button" = "Clear all history";
+"settings.history.confirm.message" = "This deletes every message from every conversation on this device. The other side keeps their copy.";
+
+"settings.account" = "Account";
+"settings.account.burn" = "Permanently delete account";
+"settings.account.burning" = "Deleting…";
+"settings.account.about" = "About RCQ";
+"settings.account.bug_bounty" = "Bug Bounty";
+
+"bug_bounty.title" = "Bug Bounty";
+"bug_bounty.heading" = "Find a bug — earn tokens";
+"bug_bounty.subheading" = "Validated reports are paid. This is the only channel for bugs and feature ideas.";
+"bug_bounty.section.how" = "HOW IT WORKS";
+"bug_bounty.how.b1" = "Describe the issue specifically: steps to reproduce, what you expected, what you got, your iOS version.";
+"bug_bounty.how.b2" = "We review reports manually. Validated bugs are paid in tokens per the table below.";
+"bug_bounty.how.b3" = "Duplicates of already-known bugs are not paid — be original.";
+"bug_bounty.section.tiers" = "TIERS";
+"bug_bounty.tier.critical" = "Critical (security / e2ee bypass / wallet)";
+"bug_bounty.tier.high" = "High (data leak / crash / economy)";
+"bug_bounty.tier.medium" = "Medium (UX-breaking)";
+"bug_bounty.tier.low" = "Low (visual / trivial)";
+"bug_bounty.section.submit" = "SUBMIT";
+"bug_bounty.submit.hint" = "Between 20 and 1000 characters.";
+"bug_bounty.submit.placeholder" = "What broke / how to reproduce / iOS version";
+"bug_bounty.submit.cta" = "Send";
+"bug_bounty.submit.sending" = "Sending…";
+"bug_bounty.submit.sent" = "Sent";
+"bug_bounty.disclosure" = "Security vulnerabilities with potential data leak or E2EE bypass — email legal@rcq.app with [SECURITY] in the subject, not here.";
+"bug_bounty.alert.title" = "Bug Bounty";
+"bug_bounty.error.no_identity" = "Sign in first.";
+"bug_bounty.error.generic" = "Couldn't send: %@";
+
+"contact_list.ctx.report" = "Report";
+
+"report.title" = "Report";
+"report.heading" = "Report user";
+"report.body" = "Describe what happened. A moderator will review your report and take action. We can't read messages (sealed-sender), so context matters.";
+"report.reason.label" = "REASON";
+"report.reason.placeholder" = "Spam, harassment, scam, threats…";
+"report.cta.send" = "Send report";
+"report.cta.sending" = "Sending…";
+"report.sent" = "Report sent";
+"report.alert.title" = "Report";
+"report.error.generic" = "Couldn't send: %@";
+"settings.account.footer" = "Deletes your account on the server, wipes every key and message on this device, and starts you over with a fresh UIN. Your old contacts can no longer reach you.";
+"settings.account.burn.title" = "Permanently delete this account?";
+"settings.account.burn.title_inventory" = "Permanently delete account AND inventory?";
+"settings.account.burn.confirm" = "Delete permanently";
+"settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone — they keep no link to your new identity. This cannot be undone.";
+"settings.account.burn.tally" = "%d items, %d tokens, %d gems";
+"settings.account.burn.message_inventory" = "Permanently deleting will destroy this account AND every collectible on it: %@. There's no recovery, no transfer to a new UIN — relics, founders, packs, currencies all gone. If you wanted to keep them, trade or gift them to another account first, then come back to delete.";
+
+"settings.link_web" = "Link Web";
+"settings.share.message" = "Add me on RCQ — %@ (%d)";
+"settings.link_web.footer" = "Use chat.rcq.app on a desktop browser. Generates a one-shot code you paste into the site. Send-only for now — replies still arrive on iOS.";
+
+"link_web.title" = "Link Web";
+"link_web.instructions.title" = "Connect chat.rcq.app";
+"link_web.instructions.body" = "Open chat.rcq.app in your desktop browser. Copy the code below and paste it on the site — your account connects.";
+"link_web.copy_blob" = "Copy code";
+"link_web.copied" = "Copied";
+"link_web.regenerate" = "Generate fresh code";
+"link_web.expires_in" = "Expires in %ds";
+"link_web.expired" = "Expired. Tap Generate fresh code.";
+"link_web.error.no_identity" = "No active account on this device.";
+"link_web.error.keys_missing" = "Identity keys missing from Keychain. Try restarting the app.";
+"link_web.error.encode_failed" = "Could not build the linking blob.";
+
+/* ── Common ───────────────────────────────────────────────── */
+
+"common.close" = "Close";
+"common.cancel" = "Cancel";
+"common.done" = "Done";
+"common.retry" = "Retry";
+"common.save" = "Save";
+"common.ok" = "OK";
+"common.next" = "Next";
+"common.back" = "Back";
+"common.error" = "Error";
+
+/* ── Stories ──────────────────────────────────────────────── */
+
+"story.composer.title" = "New story";
+"story.composer.post" = "Post";
+"story.composer.empty" = "Pick a photo or shoot one to share for 24h.";
+"story.composer.choose" = "Choose source";
+"story.composer.source_title" = "Source";
+"story.composer.camera" = "Camera";
+"story.composer.photo_library" = "Photo library";
+"story.composer.video_library" = "Video library";
+"story.composer.caption" = "Caption (optional)";
+"story.composer.anonymous" = "Post anonymously";
+"story.error.post_failed" = "Couldn't post the story — try again";
+"story.error.delete_failed" = "Couldn't delete the story";
+"story.viewer.anonymous_byline" = "Anonymous";
+"story.viewer.unknown" = "Story";
+"story.viewer.show_viewers" = "Show viewers";
+"story.viewer.delete" = "Delete";
+"story.viewer.delete_confirm" = "Delete this story?";
+"story.viewer.viewers_title" = "Viewers";
+"story.viewer.no_views" = "Nobody has watched this yet.";
+"story.viewer.view_count" = "%d views";
+"story.time.now" = "just now";
+"story.time.minutes_ago" = "%dm ago";
+"story.time.hours_ago" = "%dh ago";
+"common.delete" = "Delete";
+"common.copy" = "Copy";
+"common.confirm" = "Confirm";
+"common.translate" = "Translate";
+"common.send" = "Send";
+"common.search" = "Search";
+
+/* ── Status ───────────────────────────────────────────────── */
+
+"status.online" = "Online";
+"status.away" = "Away";
+"status.dnd" = "Do not disturb";
+"status.invisible" = "Invisible";
+"status.offline" = "Offline";
+
+/* ── Contact list (main screen) ───────────────────────────── */
+
+"contact_list.bar.games" = "Games";
+"contact_list.bar.qr" = "QR";
+"contact_list.bar.roulette" = "Stranger Mode";
+"contact_list.bar.nearby" = "Nearby";
+"contact_list.bar.settings" = "Settings";
+"contact_list.section.online" = "Online";
+"contact_list.section.offline" = "Offline";
+"contact_list.section.groups" = "Groups";
+"contact_list.section.favorites" = "Favorites";
+"contact_list.section.archive" = "Archive";
+"contact_list.menu.add" = "Add Contact";
+
+/* Inventory trailing-toolbar ellipsis menu */
+"inventory.menu.games" = "Games";
+"inventory.menu.trades" = "Trades";
+"inventory.menu.market" = "Market";
+
+// ── Item marketplace ──────────────────────────────────────────────
+"market.title" = "Market";
+"market.tab.browse" = "Browse";
+"market.tab.mine" = "My listings";
+"market.category.items" = "Items";
+"market.category.uins" = "UINs";
+"market.filter.all" = "All";
+"market.sort.newest" = "Newest";
+"market.sort.price_asc" = "Price ↑";
+"market.sort.price_desc" = "Price ↓";
+"market.row.payout" = "seller gets %d";
+"market.empty.browse" = "Nothing for sale right now. Check back or list your own item.";
+"market.empty.mine" = "You have no active listings. List any item from your inventory.";
+"market.status.active" = "Active";
+"market.status.sold" = "Sold";
+"market.status.cancelled" = "Cancelled";
+"market.detail.price" = "Price";
+"market.detail.essence_caption" = "ESSENCE";
+"sound.default" = "Default";
+"market.detail.seller" = "Seller: %@";
+"market.detail.payout" = "You receive";
+"market.detail.fee" = "5% market fee";
+"market.detail.buy" = "Buy";
+"market.detail.insufficient" = "Not enough tokens";
+"market.detail.cancel_listing" = "Cancel listing";
+"market.detail.cancelling" = "Cancelling…";
+"market.detail.sold" = "Listing sold";
+"market.detail.cancelled" = "Listing cancelled";
+"market.detail.sold_to" = "Bought by %@";
+"market.alert.title" = "Market";
+"market.spec.owner" = "Owner";
+"market.spec.tier" = "Tier";
+"market.spec.level" = "Level";
+"market.spec.purity" = "Purity";
+"market.spec.essence" = "Essence";
+"market.spec.value" = "Value";
+"market.spec.payout" = "You receive";
+"market.section.smileys" = "Smiley";
+"market.section.pets" = "Pet";
+"market.section.voices" = "Voice pack";
+"market.sell.title" = "Sell";
+"market.sell.body" = "Set a price in tokens. The 5% market fee comes out of the buyer's payment — you keep the rest. The listing stays up until it sells or you cancel it.";
+"market.sell.price_placeholder" = "Price in tokens";
+"market.sell.payout_hint" = "You receive after fee";
+"market.sell.cta" = "List";
+"market.sell.busy" = "Listing…";
+"market.success.listed" = "Listed";
+"market.success.bought" = "Done";
+"market.success.cancelled" = "Cancelled";
+"market.error.browse" = "Couldn't load market";
+"market.error.list" = "Couldn't list item";
+"market.error.buy" = "Couldn't buy";
+"market.error.already_listed" = "This item is already listed";
+"market.error.equipped" = "Unequip the item first";
+"market.error.too_many" = "Max %d active listings";
+"market.error.insufficient" = "Need %d tokens, have %d";
+"market.error.not_active" = "Listing is no longer active";
+"market.error.self_buy" = "You can't buy your own listing";
+"market.error.ownership_drift" = "Seller transferred this item — listing voided";
+"market.error.item_gone" = "Item no longer exists";
+"market.error.uin_gone" = "UIN no longer exists";
+"market.error.uin_not_in_inventory" = "This UIN isn't in your inventory";
+
+// ── User safety (Block / Report) — shared menu across UGC surfaces
+"settings.blocked_users" = "Blocked users";
+"blocked_users.unblock" = "Unblock";
+"blocked_users.unblock.confirm.title" = "Unblock this user?";
+"blocked_users.unblock.confirm.body" = "%@ will be able to message you, see your stories, and interact with you across the app again.";
+"blocked_users.unblock.confirm.cta" = "Unblock";
+"blocked_users.empty.title" = "No blocked users";
+"blocked_users.empty.body" = "When you block someone from a chat, profile, or audio room, they'll appear here so you can manage the list.";
+"blocked_users.footer" = "Blocked users can't message you, see your stories, or interact with you across the app. They're not notified that you've blocked them.";
+
+"safety.block" = "Block user";
+"safety.unblock" = "Unblock user";
+"safety.report" = "Report";
+"safety.block.confirm.title" = "Block this user?";
+"safety.block.confirm.body" = "%@ won't be able to message you, see your stories, or interact with you across the app. You can unblock them later from Settings.";
+"safety.unblock.confirm.title" = "Unblock this user?";
+"safety.unblock.confirm.body" = "%@ will be able to message you and interact with you again.";
+"market.uin.empty.browse" = "No UIN listings right now. Check back later or list one of your own.";
+"market.uin.empty.mine" = "You have no active UIN listings. Sell from your owned UIN inventory.";
+"market.detail.seller_gets" = "Seller receives";
+"market.detail.cancel" = "Cancel listing";
+"market.detail.seller_label" = "Seller";
+"uin.tier.common" = "Common";
+"uin.tier.mid" = "Premium";
+"uin.tier.legendary" = "Legendary";
+"inventory.menu.trades.with_count" = "Trades (%d)";
+"inventory.menu.hide" = "Hide inventory";
+"inventory.menu.show" = "Show inventory";
+"contact_list.menu.search" = "Search";
+"contact_list.menu.saved" = "Saved Messages";
+"contact_list.menu.post_story" = "Post a story";
+"contact_list.saved_messages" = "Saved Messages";
+"contact_list.status_picker" = "Status";
+"contact_list.create_first_group" = "Create your first group";
+"contact_list.pending_one" = "%d pending contact request";
+"contact_list.pending_many" = "%d pending contact requests";
+"contact_list.members_one" = "%d member";
+"contact_list.members_many" = "%d members";
+"contact_list.ctx.open_chat" = "Open chat";
+"contact_list.ctx.send_message" = "Send Message";
+"contact_list.ctx.quick_preview" = "Quick Preview";
+"contact_list.ctx.view_info" = "View Info";
+"contact_list.ctx.trade" = "Propose Trade";
+"contact_list.ctx.add_favorite" = "Add to Favorites";
+"contact_list.ctx.remove_favorite" = "Remove from Favorites";
+"contact_list.ctx.mute" = "Mute";
+"contact_list.ctx.unmute" = "Unmute";
+"contact_list.ctx.archive" = "Archive";
+"contact_list.ctx.unarchive" = "Unarchive";
+"contact_list.ctx.delete_group" = "Delete group";
+"contact_list.ctx.leave_group" = "Leave group";
+"contact_list.ctx.block" = "Block";
+"contact_list.ctx.unblock" = "Unblock";
+"contact_list.ctx.remove" = "Remove from List";
+
+/* ── Chat ─────────────────────────────────────────────────── */
+
+"chat.composer.placeholder" = "Write a message…";
+"chat.action.reply" = "Reply";
+"chat.action.forward" = "Forward";
+"chat.action.copy" = "Copy";
+"chat.action.translate" = "Translate";
+"chat.action.edit" = "Edit";
+"chat.action.delete" = "Delete";
+"chat.action.delete_for_me" = "Delete for me";
+"chat.action.delete_for_everyone" = "Delete for everyone";
+"chat.action.react" = "React";
+"chat.action.report_content" = "Report content";
+
+/* Report with evidence — long-press on a media bubble */
+"report_evidence.title" = "Report Content";
+"report_evidence.heading" = "Report this content";
+"report_evidence.body" = "By submitting this report, you authorize RCQ moderators to view this decrypted media for review. The file will be uploaded to our moderation queue and reviewed within 24 hours. False reports may result in restrictions on your account.";
+"report_evidence.reason.placeholder" = "Describe what's wrong with this content (10+ characters)…";
+"report_evidence.consent.toggle" = "I authorize RCQ moderators to review this content";
+"report_evidence.cta.send" = "Submit report";
+"report_evidence.error.no_bytes" = "Could not load the content for report. Try again after re-opening the message.";
+
+/* ── Crash mini-bar ───────────────────────────────────────── */
+
+"crash.mini.betting" = "Bet";
+"crash.mini.bet" = "%d 🪙";
+"crash.mini.bet_cta" = "Place bet";
+"crash.mini.placed" = "Placed";
+"crash.mini.cashout_cta" = "Cash out";
+"crash.mini.crashed_at" = "Crashed @ %.2f×";
+
+/* ── Auction mini-bar ─────────────────────────────────────── */
+
+"auction.mini.leading" = "Leading · %d";
+"auction.mini.outbid" = "Outbid — re-bid?";
+"auction.mini.bid_cta" = "Raise";
+"chat.menu.voice_call" = "Voice call";
+"chat.menu.video_call" = "Video call";
+"chat.menu.propose_trade" = "Propose trade";
+"chat.menu.disappearing" = "Disappearing messages";
+"chat.menu.skip_stranger" = "Skip stranger";
+"chat.menu.end_session" = "End session";
+"chat.typing" = "%@ is typing…";
+"chat.attach.title" = "Attach";
+"chat.attach.photo" = "Photo";
+"chat.attach.video" = "Video";
+"chat.attach.camera" = "Camera";
+"chat.attach.premium" = "Premium content";
+
+"chat.translate.title" = "Translation";
+"chat.translate.section.original" = "Original";
+"chat.translate.section.translated" = "Translation";
+"chat.translate.loading" = "Translating…";
+"chat.translate.empty" = "Nothing to translate.";
+"chat.translate.translated_badge" = "Translated";
+"chat.action.show_original" = "Show original";
+
+"chat.premium.compose.title" = "Premium content";
+"chat.premium.compose.body" = "Set a token price. Recipients see a blurred bubble and pay to unlock the media. You earn 95% (5% house fee).";
+"chat.premium.compose.price_placeholder" = "Price";
+"chat.premium.compose.hint" = "From 1 to 999,999 tokens.";
+"chat.premium.compose.pick_photo" = "Photo";
+"chat.premium.compose.pick_video" = "Video";
+"chat.premium.unlock_for" = "Unlock for";
+"chat.premium.preview_photo" = "Premium photo";
+"chat.premium.preview_video" = "Premium video";
+"chat.premium.confirm.title" = "Unlock for %d tokens?";
+"chat.premium.confirm.body" = "Tokens will be charged from your balance and the media key will be delivered.";
+"chat.premium.confirm.pay" = "Pay %d";
+"chat.premium.error.title" = "Couldn't unlock";
+"chat.premium.error.insufficient" = "Not enough tokens.";
+"chat.premium.error.gone" = "This content is no longer available.";
+"chat.premium.error.generic" = "Something went wrong. Try again.";
+"chat.voice.permission.title" = "Mic access required";
+"chat.voice.permission.body" = "Enable microphone access in Settings → RCQ to record voice messages.";
+"lootbox.skip_spin" = "Skip anim";
+"settings.migrate.label" = "Migrate to a fresh UIN";
+"settings.migrate.label.need_tokens" = "Need more tokens";
+"settings.migrate.busy" = "Migrating…";
+"settings.migrate.footer" = "Move your contacts, inventory and wallet onto a freshly-allocated UIN. Profile (nickname, age, gender) is copied so peers won't notice the swap. Your old UIN is preserved in your inventory — you can swap back later. Chats on this device are wiped. Costs 99 tokens.";
+"settings.migrate.confirm.title" = "Migrate to a new UIN?";
+"settings.migrate.confirm.message" = "99 tokens are spent. Contacts, items and wallet move with you. Local chats are wiped. Your old UIN is preserved in inventory — you can re-activate it later for the same 99 tokens.";
+"settings.migrate.confirm.button" = "Migrate (99)";
+"settings.migrate.alert.title" = "Migration";
+"settings.migrate.success" = "Done. New UIN: %d";
+"settings.migrate.error.insufficient" = "Not enough tokens: need %d, have %d.";
+"settings.migrate.error.cooldown" = "Too soon. Try again later.";
+"settings.migrate.error.generic" = "Couldn't migrate. Try again later.";
+"chat.video_error.title" = "Couldn't send video";
+"chat.ttl.disappearing_with" = "Disappearing · %@";
+"chat.ttl.currently" = "Currently: %@";
+"chat.deleted" = "Message deleted";
+"chat.message_fallback" = "Message";
+"chat.replying_to" = "Replying to %@";
+"chat.edit.editing" = "Editing message";
+"chat.edited_suffix" = "(edited)";
+
+"media.error.compression" = "Couldn't compress that media. Try a smaller file.";
+"media.error.encryption" = "Couldn't encrypt that media. Try again.";
+"media.error.too_large" = "This file is %@ MB — over the %@ MB limit. Try a shorter clip or lower-resolution capture.";
+"media.bubble.failed" = "Failed";
+
+"contact_list.empty.title" = "No contacts yet";
+"contact_list.empty.body" = "Add a friend by their UIN or QR code to start a conversation. Stranger Mode works without contacts.";
+"contact_list.empty.cta" = "Add a contact";
+
+"inventory.empty.cta" = "Open your first box";
+
+"chat.empty.title" = "No messages yet";
+"chat.empty.body" = "Say hi — your first message starts the thread.";
+
+"create_group.title" = "New Group";
+"create_group.name_placeholder" = "Group name";
+"create_group.members_section" = "MEMBERS (%lld)";
+"create_group.cta.create" = "Create";
+"create_group.cta.creating" = "Creating…";
+"create_group.error" = "Couldn't create: %@";
+
+"settings.notifications" = "Notifications";
+"notifs.title" = "Notifications";
+"notifs.section.requests" = "CONTACT REQUESTS";
+"notifs.contact_requests" = "Push for new contact requests";
+"notifs.contact_requests.footer" = "When someone asks to add you, your phone wakes up and shows their name. Off = silent unless the app is open.";
+"notifs.section.trades" = "TRADE OFFERS";
+"notifs.trades_from_contacts" = "From contacts";
+"notifs.trades_from_strangers" = "From everyone else";
+"notifs.trades.footer" = "Most spam comes from non-contacts — \"From everyone else\" is off by default.";
+"notifs.section.muted" = "MUTED CONTACTS";
+"notifs.muted.footer" = "Pushes from these contacts (and trade offers from them) won't wake your phone. Mute or unmute a contact from the chat list's long-press menu.";
+"notifs.unmute" = "Unmute";
+"chat.forwarded_from" = "Forwarded from %@";
+"chat.received_while_away" = "Received while you were away — %@";
+"chat.random.add_request_sent" = "Request sent";
+"chat.random.add_request" = "Add as contact";
+"chat.random.skip_left" = "%d:%02d left";
+"chat.random.stranger" = "Stranger";
+"chat.menu.search_messages" = "Search messages";
+"chat.search.placeholder" = "Search in chat";
+"chat.search.empty.idle" = "Type to search messages in this chat.";
+
+/* ── In-chat system notices (TTL toggle, call log) ────────── */
+
+"chat.system.ttl_off" = "Disappearing messages turned off";
+"chat.system.ttl_set" = "Disappearing messages: %@";
+
+"chat.call.outgoing" = "Outgoing";
+"chat.call.incoming" = "Incoming";
+"chat.call.media.video" = "video call";
+"chat.call.media.voice" = "voice call";
+"chat.call.outcome.declined" = "Declined";
+"chat.call.outcome.cancelled" = "Cancelled";
+"chat.call.outcome.missed" = "Missed";
+"chat.call.outcome.busy" = "Busy";
+"chat.call.outcome.no_answer" = "No answer";
+"chat.call.outcome.failed" = "Failed";
+"chat.call.outcome.disconnected" = "Disconnected";
+"chat.call.outcome.ended" = "Ended";
+
+"chat.random.you" = "You";
+
+"chat.preview.no_messages" = "No messages yet";
+
+/* ── Call screen ──────────────────────────────────────────── */
+
+"call.outgoing.calling" = "Calling…";
+"call.incoming.video" = "Incoming video call…";
+"call.incoming.voice" = "Incoming call…";
+"call.action.decline" = "Decline";
+"call.action.accept" = "Accept";
+
+/* ── Trade summary ────────────────────────────────────────── */
+
+"trade.summary.you_offer" = "You offer";
+"trade.summary.they_offer" = "They offer";
+"trade.summary.you_ask" = "You ask";
+"trade.summary.they_ask" = "They ask";
+
+/* ── Group info ───────────────────────────────────────────── */
+
+"group.created" = "Created %@";
+"group.no_matches" = "No matches. Try the full UIN.";
+"group.title" = "Group";
+"group.section.members" = "Members (%d)";
+"group.section.manage" = "Manage";
+"group.section.settings" = "Settings";
+"group.settings.post_policy" = "Who can post";
+"group.settings.post_policy.all" = "Everyone";
+"group.settings.post_policy.owner_only" = "Owner only";
+"group.settings.post_policy.hint" = "In owner-only mode members can read but can't post.";
+"group.settings.entry_price" = "Entry price in tokens";
+"group.settings.entry_price.hint" = "0 = free. A 5% marketplace fee is withheld from every payment; the rest goes to the owner.";
+"group.compose.broadcast_only" = "Only the owner can post";
+"group.error.join_payment" = "Couldn't pay group entry";
+"group.cta.add_member" = "Add member";
+"group.cta.delete" = "Delete group";
+"group.cta.leave" = "Leave group";
+"group.cta.delete.short" = "Delete";
+"group.cta.leave.short" = "Leave";
+"group.confirm.delete" = "Delete group for everyone?";
+"group.confirm.leave" = "Leave this group?";
+"group.role.owner" = "Owner";
+"group.role.admin" = "Admin";
+"group.member.remove" = "Remove from group";
+"group.member.action.trade" = "Propose trade";
+"group.member.action.add" = "Add as contact";
+"group.member.action.add.sent" = "Request sent";
+"group.member.action.profile" = "Open profile";
+"group.member.action.checking" = "Checking settings…";
+"group.add.title" = "Add Member";
+"group.add.placeholder" = "UIN, nickname, name…";
+"group.add.section.contacts" = "From your contacts";
+"group.add.section.others" = "Other users";
+"group.add.error.blocked" = "The group owner has blocked this user.";
+"group.add.error.generic" = "Couldn't add: %@";
+
+/* ── Share-my-RCQ card ────────────────────────────────────── */
+
+"share.title" = "Share my RCQ";
+"share.find_me" = "Find me on RCQ";
+"share.message" = "My UIN is %d — open in RCQ: rcq://add/%d";
+"share.cta.share" = "Share";
+"share.cta.copy_link" = "Copy link";
+
+/* ── Forward picker ───────────────────────────────────────── */
+
+"forward.title" = "Forward to…";
+
+/* ── Boot / connect ───────────────────────────────────────── */
+
+"boot.connecting" = "connecting…";
+
+/* ── Stranger Mode ──────────────────────────────────────────── */
+
+"random.title" = "Stranger Mode";
+"stranger.gate.age_required.title" = "Set your age first";
+"stranger.gate.age_required.body" = "Stranger Mode is for adults only. Please set your age in your profile to use this feature.";
+"stranger.gate.under_18.title" = "Stranger Mode is 18+";
+"stranger.gate.under_18.body" = "Stranger Mode is restricted to users 18 and older. Try Audio Rooms or Hood instead — they're open to everyone.";
+"stranger.gate.cta.set_age" = "Open profile";
+"random.body" = "Talk to a stranger anonymously for 5 minutes.\nNeither of you sees the other's UIN.";
+"random.queueing.title" = "Looking for a stranger…";
+"random.queueing.body" = "Stay on this screen — we'll connect you the moment somebody else is online and ready.";
+"random.cta.start" = "Start";
+"random.ended.expired" = "Your 5-minute window is up. Tap Start to meet somebody new.";
+"random.ended.peer_left" = "The stranger left the chat.";
+"random.ended.peer_skipped" = "The stranger moved on. Tap Start to find another.";
+"random.ended.peer_disconnected" = "The stranger went offline.";
+"random.ended.default" = "Chat ended.";
+
+/* ── About sheet ──────────────────────────────────────────── */
+
+"about.title" = "About RCQ";
+"about.tagline" = "Same soul, modern crypto.";
+"about.body" = "RCQ is free forever. No ads, no data collection, no phone number. If you like what we're building — buy us a coffee.";
+"about.privacy.section" = "PRIVACY";
+"about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
+"about.privacy.b2" = "Sealed sender — server can't link who messages whom.";
+"about.privacy.b3" = "Zero-knowledge backend: messages stored only as encrypted blobs, deleted on delivery.";
+"about.privacy.b4" = "No phone number, no email — UIN is the only identity.";
+"about.privacy.b5" = "History lives on your device only, encrypted at rest when locked.";
+"about.contact.section" = "CONTACT";
+"about.contact.support" = "Support";
+"about.contact.bug" = "Report a bug";
+"about.contact.website" = "Website";
+"about.contact.updates" = "Updates";
+"about.contact.faq" = "FAQ";
+
+/* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
+
+"item.purity.pristine" = "Pristine";
+"item.purity.flawless" = "Flawless";
+"item.lucky.first" = "#1 / FIRST";
+
+/* Pet names — slug-keyed */
+"item.name.pet_spark"    = "Spark";
+"item.name.pet_glitch"   = "Glitch";
+"item.name.pet_boop"     = "Boop";
+"item.name.pet_pixel"    = "Pixel";
+"item.name.pet_static"   = "Static";
+"item.name.pet_echo"     = "Echo";
+"item.name.pet_mist"     = "Mist";
+"item.name.pet_cyber"    = "Cyber";
+"item.name.pet_lune"     = "Lune";
+"item.name.pet_ping"     = "Ping";
+"item.name.forum_classics" = "Forum Classics";
+
+/* Voice packs — notification sounds */
+"item.name.voice_pack_1"  = "Voice #1";
+"item.name.voice_pack_2"  = "Voice #2";
+"item.name.voice_pack_3"  = "Voice #3";
+"item.name.voice_pack_4"  = "Voice #4";
+"item.name.voice_pack_5"  = "Voice #5";
+"item.name.voice_pack_6"  = "Voice #6";
+"item.name.voice_pack_7"  = "Voice #7";
+"item.name.voice_pack_8"  = "Voice #8";
+"item.name.voice_pack_9"  = "Voice #9";
+"item.name.voice_pack_10" = "Voice #10";
+
+"item.lore.voice_pack_1"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_2"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_3"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_4"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_5"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_6"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_7"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_8"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_9"  = "Assign to a contact from their profile.";
+"item.lore.voice_pack_10" = "Assign to a contact from their profile.";
+
+/* Pet lore — slug-keyed */
+"item.lore.pet_spark"    = "A tiny spark that never goes out.";
+"item.lore.pet_glitch"   = "Spawned from a glitch in the matrix.";
+"item.lore.pet_boop"     = "Loves a quick boop on the nose.";
+"item.lore.pet_pixel"    = "Made of pixels, like the old days.";
+"item.lore.pet_static"   = "Crackles when the signal is weak.";
+"item.lore.pet_echo"     = "Repeats whatever it hears.";
+"item.lore.pet_mist"     = "Drifts in and out at dawn.";
+"item.lore.pet_cyber"    = "Showed up from 2077 by accident.";
+"item.lore.pet_lune"     = "Glows only at night.";
+"item.lore.pet_ping"     = "Comes running on every ping.";
+"item.lore.forum_classics" = "A pack of vintage forum-era smileys.";
+
+/* ── Add contact / search ─────────────────────────────────── */
+
+"add.title" = "Find";
+"add.search.placeholder" = "UIN, nickname, group name…";
+"add.section.groups" = "GROUPS";
+"add.section.join_group" = "JOIN GROUP";
+
+"join_group.title" = "Join group";
+"join_group.entry_price" = "Entry price";
+"join_group.your_balance" = "You have";
+"join_group.cta.free" = "Join";
+"join_group.cta.pay" = "Pay and join";
+"join_group.cta.insufficient" = "Not enough tokens";
+"join_group.alert.title" = "Group";
+"join_group.error.insufficient" = "Need %d tokens, have %d";
+"join_group.error.blocked" = "The owner blocked you";
+"join_group.error.generic" = "Couldn't join. Try again.";
+
+"chat.menu.premium_content" = "Premium content";
+"chat.premium.coming_soon" = "Coming soon. The owner will be able to post photos/videos behind a blur with a token price — members unlock per-message and the owner gets 95% (5% marketplace fee).";
+"add.section.people" = "PEOPLE";
+"add.cta.add" = "Add to contacts";
+"add.cta.in_list" = "Already in your contact list";
+"add.cta.sending" = "Sending…";
+"add.cta.sent" = "Request sent — pending approval";
+"add.inventory" = "Inventory";
+"add.trade" = "Trade";
+"add.contact_info" = "Contact Info";
+"add.row.added" = "Added";
+"add.row.pending" = "Pending";
+"add.error.duplicate" = "This user is already in your contact list.";
+"add.error.generic" = "Couldn't send request: %@";
+"add.no_identity" = "No identity yet";
+
+"profile.title" = "User Details";
+"profile.section.identity" = "Identity";
+"profile.section.personal" = "Personal";
+"profile.section.location" = "Location";
+"profile.section.about" = "About";
+"profile.section.status" = "Status";
+"profile.section.notifications" = "Notifications";
+"profile.section.audience" = "Audience";
+"profile.field.nickname" = "Nickname";
+"profile.field.uin" = "UIN";
+"profile.field.first_name" = "First name";
+"profile.field.last_name" = "Last name";
+"profile.field.age" = "Age";
+"profile.field.gender" = "Gender";
+"profile.field.city" = "City";
+"profile.field.country" = "Country";
+"profile.field.about" = "About me";
+"profile.field.interests" = "Interests";
+"profile.field.homepage" = "Homepage";
+"profile.field.status_message" = "Status message";
+"profile.field.custom_sound" = "Custom sound";
+"profile.field.profile_views" = "Profile views";
+"profile.last_seen" = "Last seen %@";
+"profile.audience.last_7" = "· last 7 days";
+"profile.cta.propose_trade" = "Propose trade";
+"profile.cta.view_inventory" = "View their inventory";
+"profile.cta.share_my_rcq" = "Share my RCQ";
+"profile.cta.save" = "Save";
+"profile.cta.saving" = "Saving…";
+"profile.cta.no_changes" = "No changes";
+"profile.unavailable" = "Profile unavailable";
+
+"qr.title" = "QR Code";
+"qr.tab.my_code" = "My code";
+"qr.tab.scan" = "Scan";
+"qr.body.your_code" = "Other RCQ users point their scanner at this code to add you as a contact.";
+"qr.button.copy_link" = "Copy link";
+"qr.button.scan_code" = "Scan a code";
+"qr.scan.aim" = "Point at another RCQ QR code";
+"qr.alert.sent.title" = "Request sent";
+"qr.alert.sent.body" = "We sent a contact request to UIN %d. They'll see it in their pending list.";
+"qr.alert.already.title" = "Already in your contacts";
+"qr.alert.already.body" = "You're already connected with UIN %d.";
+"qr.alert.failed.title" = "Couldn't add";
+"qr.alert.invalid_code" = "Not a valid RCQ code.";
+"qr.alert.own_code" = "That's your own code.";
+
+"search.placeholder" = "Search contacts, groups, messages";
+"search.cta.cancel" = "Cancel";
+"search.empty.idle" = "Find a contact, a group, or any message you've sent or received.";
+"search.empty.no_match" = "Nothing matched.";
+"search.section.contacts" = "Contacts";
+"search.section.groups" = "Groups";
+"search.section.messages" = "Messages";
+"search.thread.in_named" = "in %@";
+"search.thread.in_uin" = "in #%d";
+"search.thread.in_group" = "in group";
+"pending.title" = "Pending Requests";
+"pending.empty.title" = "No pending requests";
+"pending.empty.body" = "New contact invites will show up here.";
+"pending.row.body" = "RCQ user %@ (%@) wants to add you to their contact list. Allow?";
+"pending.cta.accept" = "Accept";
+"pending.cta.decline" = "Decline";
+
+/* ── Inventory / Lootbox ──────────────────────────────────── */
+
+"inventory.title" = "Inventory";
+"inventory.syncing" = "Syncing…";
+"inventory.confirm.title_one" = "Disassemble %d item? It's gone for good.";
+"inventory.confirm.title_many" = "Disassemble %d items? They're gone for good.";
+"inventory.confirm.yield" = "You'll get: %d scrolls + %d tokens";
+"inventory.toast.gems" = "+%d";
+"inventory.empty.title" = "Inventory is empty";
+"inventory.empty.body" = "Open your first box — inside there's a smiley pack, a relic, or a handful of gems.";
+"inventory.tokens" = "Tokens";
+"inventory.gems" = "Gems";
+"inventory.button.open" = "Open";
+"inventory.button.buy_more" = "Buy more";
+"inventory.button.select_all" = "Select all";
+"inventory.button.disassemble" = "Disassemble (%d)";
+"inventory.section.smileys" = "Smileys";
+"inventory.section.voices" = "Voices";
+"inventory.section.pets" = "Pets";
+
+"lootbox.title" = "Lootbox";
+"lootbox.kicker" = "OPEN A BOX";
+"lootbox.heading" = "Inside";
+"lootbox.subhead" = "A smiley pack, a relic, or a handful of gems.";
+"lootbox.view_pool" = "VIEW POOL";
+"lootbox.remaining" = "REMAINING";
+"lootbox.buy_more" = "BUY MORE";
+"lootbox.button.pull" = "Pull";
+"lootbox.button.pulling" = "Pulling…";
+"lootbox.cost.per_open" = "%d per open";
+"lootbox.recent" = "RECENT";
+"lootbox.recent.empty" = "Your last openings will appear here.";
+"lootbox.reveal.you_pulled" = "YOU PULLED";
+"lootbox.reveal.essence" = "ESSENCE";
+"lootbox.reveal.gems" = "Gems";
+"lootbox.reveal.repeat" = "Open another";
+"lootbox.reveal.to_inventory" = "To inventory";
+
+"shop.kicker" = "SHOP";
+"shop.title" = "Buy tokens";
+"shop.subtitle" = "Tokens are RCQ's in-app currency. Spent on games, the market, premium content, and auctions.";
+"shop.tokens_n" = "%d tokens";
+"shop.best_value" = "BEST VALUE";
+"shop.per_token" = "%d¢ per token";
+"shop.balance" = "Your balance lives server-side under your UIN. Real App Store purchase will come later — packs above credit your wallet instantly for testing.";
+
+"item.action.enhance" = "Enhance";
+"item.action.equip" = "Equip";
+"item.action.unequip" = "Unequip";
+"item.action.disassemble" = "Disassemble";
+"item.action.sell" = "Sell on market";
+"item.action.preview_sound" = "Preview";
+"item.stat.essence" = "Essence";
+"item.stat.purity" = "Purity";
+"item.stat.level" = "Level";
+"item.stat.mint" = "Mint";
+"item.stat.acquired" = "Acquired";
+"item.equipped" = "Equipped";
+"item.history.title" = "HISTORY";
+"item.history.loading" = "Loading…";
+"item.history.empty" = "No journal yet.";
+"item.history.copied" = "Copied #%d";
+"item.history.action.drop" = "Dropped from a box";
+"item.history.action.trade" = "Traded";
+"item.history.action.gift" = "Gifted";
+"item.history.action.market_sold" = "Sold on market";
+"item.history.action.temper_success" = "Tempered";
+"item.history.action.temper_success_levels" = "Tempered +%d → +%d";
+"item.history.action.temper_burn" = "Burned in temper";
+"item.history.action.disassemble" = "Disassembled";
+"item.history.actor.you" = "you";
+"item.history.actor.by" = "by";
+"item.pack_contents" = "PACK CONTENTS · %d";
+"item.mint.of" = "#%d of %d";
+"pool.title" = "Pool";
+"pool.section_share" = "%.0f%% of pulls";
+"pool.cap" = "cap %d";
+"pool.gems.section" = "Gems";
+"pool.gems.title" = "Gem bundle";
+"pool.gems.range" = "%d–%d gems per drop";
+"public_inventory.title" = "%@'s items";
+"public_inventory.empty" = "%@ hasn't opened any boxes yet.";
+"public_inventory.private.title" = "Inventory is private";
+"public_inventory.private.body" = "%@ has hidden their inventory.";
+
+"temper.title" = "Temper";
+"temper.cta.enhance" = "Enhance";
+"temper.cta.enhancing" = "Enhancing…";
+"temper.cta.max_level" = "At max level";
+"temper.cta.no_gems" = "Not enough gems";
+"temper.stat.level_arrow" = "Level";
+"temper.stat.cost" = "Cost";
+"temper.stat.success" = "Success chance";
+"temper.stat.burn" = "Burn chance";
+"temper.stat.your_gems" = "Your gems";
+"temper.odds_by_level" = "ODDS BY LEVEL";
+"temper.success.flash" = "Tempered to +%d.";
+
+"disassemble.title" = "Disassemble";
+"disassemble.body" = "Disassembling will destroy this item permanently. You'll receive gems based on its rarity and temper level.";
+"disassemble.cta" = "Disassemble";
+"disassemble.cta.busy" = "Disassembling…";
+"disassemble.cta.cancel" = "Cancel";
+"disassemble.success.body" = "%@ is gone.";
+
+/* ── Trades ───────────────────────────────────────────────── */
+
+"trades.title" = "Trades";
+"trades.section.incoming" = "Incoming";
+"trades.section.outgoing" = "Outgoing";
+"trades.empty.title" = "No pending trades";
+"trades.empty.body" = "Open a contact's profile and propose a trade.";
+"trade.gift.received" = "Gift incoming";
+"trade.gift.sent" = "Gift sent";
+"trade.offer.received" = "Trade offer";
+"trade.offer.sent" = "Trade offer sent";
+"trade.buy.received" = "Wants from you";
+"trade.buy.sent" = "Asking from peer";
+"trade.cta.accept" = "Accept";
+"trade.cta.accept_gift" = "Accept gift";
+"trade.cta.decline" = "Decline";
+"trade.cta.cancel" = "Cancel offer";
+"trade.cta.send" = "Send %@";
+"trade.cta.sending" = "Sending…";
+"trade.cta.empty_prompt" = "Pick something to send";
+"trade.gift_confirm.title" = "Send as a gift?";
+"trade.gift_confirm.body" = "%@ won't owe you anything in return. If you meant to ask for items or currency back, cancel and add them on the other side first.";
+"trade.gift_confirm.send" = "Send gift";
+"trade.gift_confirm.cancel" = "Cancel";
+"trade.section.your" = "Your offer";
+"trade.section.theirs" = "Their side";
+"trade.note" = "NOTE (OPTIONAL)";
+"trade.kind.gift" = "Gift";
+"trade.kind.buy" = "Buy request";
+"trade.kind.trade" = "Trade";
+"trade.kind.swap" = "Currency swap";
+"trade.with" = "with %@";
+"trade.toast.sent" = "Offer sent";
+"trade.open_chat" = "Open chat with %@";
+"trade.resolved" = "Trade resolved";
+"trade.error.accept" = "Couldn't accept — proposer may have moved an item or spent currency.";
+"trade.error.decline" = "Couldn't decline — try again.";
+"trade.error.cancel" = "Couldn't cancel — try again.";
+"trade.send.note_placeholder" = "Add a quick note (optional)";
+"trade.preflight.no_offer_no_request" = "Add at least one item or currency to either side.";
+"trade.preflight.invalid_self" = "You cannot trade with yourself.";
+"trade.proposing.busy" = "Sending…";
+"trade.title" = "Propose";
+"trade.kind.empty" = "Empty";
+"trade.section.your.owner" = "You";
+"trade.section.your.empty" = "You don't own any items yet — you can still gift or buy with currency.";
+"trade.section.theirs.empty" = "%@ has no items yet.";
+"trade.section.theirs.private" = "%@'s inventory is private.";
+"trade.send.error" = "Couldn't send — your inventory or wallet may have changed. Refresh and retry.";
+
+/* ── Nearby + Hood ────────────────────────────────────────── */
+
+"nearby.title" = "Nearby";
+"nearby.ttl.30m" = "30 minutes";
+"nearby.ttl.1h" = "1 hour";
+"nearby.ttl.3h" = "3 hours";
+"nearby.optin.heading" = "People Nearby";
+"nearby.optin.body" = "Show up on a list of users in your area for a limited time.";
+"nearby.optin.privacy_note" = "Only a coarse area tag is shared — your exact location stays on this device.";
+"nearby.optin.visible_for" = "Visible for";
+"nearby.optin.anonymous" = "Show me anonymously";
+"nearby.optin.anonymous.on" = "Others see “%@” instead of your real nickname.";
+"nearby.optin.anonymous.off" = "Others see your real nickname.";
+"nearby.optin.cta" = "Show me to nearby users";
+"nearby.searching" = "Looking around…";
+"nearby.active.you_are" = "You're visible as ";
+"nearby.active.you_label" = "you";
+"nearby.active.until" = "Until %@";
+"nearby.active.area" = "· area %@";
+"nearby.active.stop" = "Stop";
+"nearby.hood.title" = "Hood Chat";
+"nearby.hood.body" = "Public room for everyone in this area · unencrypted";
+"nearby.empty.title" = "Nobody else here yet.";
+"nearby.empty.body" = "Check back in a bit — the list refreshes every 30 seconds.";
+"nearby.row.tag" = "Nearby";
+"nearby.row.in_contacts" = "In contacts";
+"nearby.row.requested" = "Requested";
+"nearby.profile.anonymous" = "Anonymous · Nearby";
+"nearby.profile.body.anon" = "Profiles in Nearby are anonymous. Add as a contact and you'll see the real one if they accept.";
+"nearby.profile.body.real" = "This user opted out of anonymous mode — their real account is visible.";
+"nearby.profile.already" = "Already in your contacts.";
+"nearby.profile.sent" = "Request sent.";
+"nearby.profile.add_contact" = "Add as contact";
+"nearby.denied.title" = "Location permission needed";
+"nearby.denied.body" = "Without location access we can't show you to other nearby users. Re-enable it in Settings → Privacy → Location Services → RCQ.";
+"nearby.denied.cta" = "Open Settings";
+"nearby.error.cta" = "Try again";
+
+"hood.title" = "Hood";
+"hood.you" = "You";
+"hood.warn.title" = "Hood Chat is unencrypted";
+"hood.warn.body" = "Anyone in this area can read what you post. Don't share private info — phone numbers, addresses, anything you wouldn't put on a poster.";
+"hood.empty.title" = "Quiet around here.";
+"hood.empty.body" = "Be the one who breaks the silence.";
+"hood.deleted" = "Message deleted";
+"hood.replying_to" = "Replying to %@";
+"hood.composer.placeholder" = "Say hi to the area…";
+"hood.profile.anon" = "Anonymous · Hood Chat";
+"hood.profile.body.anon" = "People in Hood Chat are anonymous. You can offer to add them as a contact — once they accept, you'll see their real profile.";
+"hood.profile.body.real" = "This user opted out of anonymous mode — their real account is visible.";
+"hood.profile.already" = "Already in your contacts.";
+"hood.profile.add_contact" = "Add as contact";
+"hood.action.reply" = "Reply";
+"hood.action.delete" = "Delete";
+
+/* ── Radio Chat ───────────────────────────────────────────── */
+
+"radio.title" = "Radio Chat";
+"radio.kicker" = "OFFLINE-FIRST";
+"radio.heading" = "People in radio range";
+"radio.subhead" = "No internet, no UIN exposed. Bluetooth + Wi-Fi handoff. Within ~30m on Bluetooth, ~100m on Wi-Fi-Direct line-of-sight.";
+"radio.section.people" = "People nearby";
+"radio.section.rooms" = "Rooms";
+"radio.empty" = "Listening for nearby devices…";
+"radio.state.discovered" = "TAP";
+"radio.state.inviting" = "INVITING…";
+"radio.state.connecting" = "CONNECTING…";
+"radio.state.connected" = "OPEN";
+"radio.state.gone" = "GONE";
+"radio.invite.heading" = "Incoming";
+"radio.invite.body" = "wants to chat over local radio";
+"radio.invite.accept" = "Accept";
+"radio.invite.decline" = "Decline";
+"radio.password.required" = "Password required";
+"radio.error.wrong_password" = "Wrong password — try again";
+"radio.error.connect_lost" = "Lost connection before joining — try again";
+"radio.joining" = "Joining %@…";
+"radio.password.body" = "Enter the password for %@.";
+"radio.password.field" = "Password";
+"radio.password.cta" = "Join";
+"radio.room.create" = "Create room";
+"radio.room.title" = "New room";
+"radio.room.name" = "ROOM NAME";
+"radio.room.name_placeholder" = "e.g. hangout";
+"radio.room.password_protected" = "Password-protected";
+"radio.room.password_placeholder" = "At least 6 characters";
+"radio.room.password_footer" = "Anyone with the password can join. PBKDF2-derived AES key — share it out-of-band, not over radio.";
+"radio.room.open_footer" = "Open room — anyone in range can join. Use password mode for closed sessions.";
+"radio.composer.placeholder" = "Say something local…";
+"radio.header.room" = "%d inside · radio";
+"radio.header.one_to_one" = "radio · 1:1";
+"radio.voice.speaking_pill" = "%@ on air";
+"radio.error.voice_start_failed" = "Couldn't open the mic";
+"radio.error.mic_denied" = "Microphone access denied — enable it in Settings";
+"radio.error.mic_simulator" = "Push-to-talk needs a real device — the iOS Simulator's mic stack reports an invalid format under voiceChat mode";
+
+/* ── Onboarding ───────────────────────────────────────────── */
+
+"onboard.cta.next" = "Next";
+"onboard.cta.back" = "Back";
+"onboard.cta.start" = "Get started";
+"onboard.cta.skip" = "Skip";
+"onboard.transition.tagline" = "STARTING";
+
+"onboard.welcome.kicker" = "RCQ";
+"onboard.welcome.title" = "Welcome";
+"onboard.welcome.body" = "An ICQ-flavoured messenger for the people who still remember the disconnect tone — fast, anonymous-friendly, and full of detail.";
+
+"onboard.status.kicker" = "STATUS";
+"onboard.status.title" = "Pick your status";
+"onboard.status.body" = "Online, Away, DND, Invisible, Offline. The classic five — and they actually mean something. Tap your status icon to switch.";
+
+"onboard.chat.kicker" = "CHAT";
+"onboard.chat.title" = "Sealed-sender chat";
+"onboard.chat.body" = "End-to-end encrypted, with Kolobok smileys built in. Type :), :D, ;-) the way you used to — they animate inline.";
+
+"onboard.nearby.kicker" = "NEARBY";
+"onboard.nearby.title" = "Find people in your area";
+"onboard.nearby.body" = "Drop into Hood Chat with whoever's around right now — anonymously, no UIN exposed unless you choose. Flip on Nearby and start chatting locally.";
+
+"onboard.calls.kicker" = "VOICE & VIDEO";
+"onboard.calls.title" = "Calls + groups";
+"onboard.calls.body" = "WebRTC voice and video calls, group chats with everyone you add. Push notifications wake you for incoming calls; sealed sender hides the routing from us.";
+
+"onboard.pets.kicker" = "PETS";
+"onboard.pets.title" = "Get a digital pet";
+"onboard.pets.body" = "Open boxes and collect rare animated pets. Upgrade them, gift them, trade them. The same pet can drop at different rarities — chase the perfect copy.";
+
+"onboard.trade.kicker" = "TRADE";
+"onboard.trade.title" = "Trade in real time";
+"onboard.trade.body" = "Send an offer in a chat — the recipient sees it instantly. Items, tokens, gems, on either side. Empty \"requested\" = gift. Empty \"offered\" = buy request.";
+
+"onboard.privacy.kicker" = "PRIVACY";
+"onboard.privacy.title" = "You decide who sees what";
+"onboard.privacy.body" = "Per-field visibility for last-seen, gender, group invites, trade offers — Everyone, Contacts only, or Nobody. Permanently delete the account whenever you want; nothing's salvageable after.";
+
+/* ── Rarity (used in chips, filters, history) ─────────────── */
+
+"rarity.common" = "Common";
+"rarity.uncommon" = "Uncommon";
+"rarity.rare" = "Rare";
+"rarity.epic" = "Epic";
+"rarity.legendary" = "Legendary";
+"rarity.all" = "All";
+
+/* ── Games hub + Crash ───────────────────────────────────────── */
+"games.title" = "Games";
+"games.subtitle" = "Fast token bets.\nRounds last 15-30 seconds.";
+"games.section.solo" = "Solo";
+"games.section.pvp" = "Player vs player";
+"games.soon" = "SOON";
+"games.cta.topup" = "Top up wallet";
+"games.crash.title" = "Crash";
+"games.crash.body" = "The multiplier rises — cash out before it crashes.";
+"games.hi_lo.title" = "Hi-Lo";
+"games.hi_lo.body" = "Guess if the next card is higher or lower.";
+"games.limbo.title" = "Limbo";
+"games.limbo.body" = "Set a target multiplier and roll your luck.";
+
+"crash.title" = "Crash";
+"crash.you" = "You";
+"crash.phase.betting" = "Bets · %.1fs";
+"crash.phase.running" = "RUNNING";
+"crash.phase.crashed" = "CRASHED";
+"crash.feed.title" = "Cashed out";
+"crash.feed.bets" = "%d players";
+"crash.feed.empty" = "Nobody has bet yet — be the first";
+"crash.row.holding" = "HOLDING";
+"crash.row.burned" = "BURNED";
+
+/* ── Hi-Lo ───────────────────────────────────────────────────── */
+"hilo.title" = "Hi-Lo";
+"hilo.phase.idle" = "Place a bet";
+"hilo.phase.guess" = "HIGHER OR LOWER?";
+"hilo.card.label" = "Card: %@";
+"hilo.bet.label" = "Bet";
+"hilo.cta.start" = "START %d";
+"hilo.cta.settling" = "SETTLING…";
+"hilo.cta.higher" = "HIGHER";
+"hilo.cta.lower" = "LOWER";
+"hilo.cta.cashout" = "CASH OUT %.2fx";
+"hilo.banner.won" = "Won %.2fx · +%d tokens";
+"hilo.banner.lost" = "Card %@ — wrong. Bet lost.";
+
+"hilo.rules.title" = "Hi-Lo rules";
+"hilo.rules.how.title" = "How to play";
+"hilo.rules.how.body" = "Place a bet — the server reveals a card A through K. Guess if the next card is higher or lower than the current one. Each correct guess compounds the multiplier. Wrong guess = bet lost. Cash out any time = bet × current multiplier.";
+"hilo.rules.payout.title" = "Multiplier";
+"hilo.rules.payout.body" = "Smaller probability = bigger multiplier. On a 7, higher and lower are roughly even (×1.83). On an A (higher is almost certain) it's only ×1.04. On a K — mirrored. Each correct step multiplies the chain.";
+"hilo.rules.fair.title" = "Provably fair";
+"hilo.rules.fair.body" = "Every card in the round is determined BEFORE start: SHA256(seed + index). You see the hash immediately; the seed is revealed when the round ends so you can verify every draw by hand.";
+
+/* ── Limbo ───────────────────────────────────────────────────── */
+"limbo.title" = "Limbo";
+"limbo.phase.ready" = "READY TO ROLL";
+"limbo.phase.rolling" = "Rolling…";
+"limbo.phase.won" = "WON";
+"limbo.phase.lost" = "MISSED";
+
+/* ── Equipped-pet preview sheet ───────────────────────────── */
+"pet_preview.title" = "Pet";
+"pet_preview.owner" = "Worn by %@";
+"pet_preview.mint" = "#%d";
+"pet_preview.level" = "+%d";
+"pet_preview.cta.see_more" = "Open %@'s inventory";
+"pet_preview.essence" = "ESS %d";
+"pet_preview.purity" = "PUR %.2fx";
+"limbo.target.label" = "Target: %.2fx";
+"limbo.slider.label" = "Target";
+"limbo.slider.chance" = "Chance";
+"limbo.bet.label" = "Bet";
+"limbo.cta.roll" = "ROLL %d";
+"limbo.banner.won" = "Rolled %.2fx · +%d tokens";
+"limbo.banner.lost" = "Rolled %.2fx (needed ≥%.2fx) — missed";
+
+"limbo.rules.title" = "Limbo rules";
+"limbo.rules.how.title" = "How to play";
+"limbo.rules.how.body" = "Pick a target multiplier with the slider (from 1.10x up to 100x). Place a bet, hit ROLL. The server draws a random number from the same curve Crash uses. Roll ≥ target = you win.";
+"limbo.rules.payout.title" = "Multiplier";
+"limbo.rules.payout.body" = "Higher target = bigger multiplier and smaller chance. Target 2.00x = ~48% × 1.94. Target 10x = ~9.7% × 9.7. You set the risk balance.";
+"limbo.rules.fair.title" = "Provably fair";
+"limbo.rules.fair.body" = "Each roll uses a client_seed (generated on your device) + server_seed (revealed after the roll). You can verify SHA256(server + client) yourself and confirm the result wasn't swapped.";
+"crash.bet.label" = "Bet";
+"crash.bet.cta" = "BET %d";
+"crash.bet.placed" = "Bet %d placed";
+"crash.bet.wait" = "waiting for start";
+"crash.cashout.label" = "CASH OUT %.2fx";
+"crash.you_cashed" = "You cashed out ✓";
+"crash.spectating" = "Wait for next round";
+"crash.result.lost" = "Crashed at %.2fx — bet lost";
+"crash.result.won" = "Won! %.2fx · +%d tokens";
+"crash.result.next_in" = "Next round in %d s";
+"crash.banner.cashed" = "Cashed %.2fx · +%d tokens";
+"crash.error.betting_closed" = "Bets already closed";
+"crash.error.cashout_too_late" = "Too late — already crashed";
+
+"crash.rules.title" = "Crash rules";
+"crash.rules.how.title" = "How to play";
+"crash.rules.how.body" = "Each round: 8 seconds to place a bet, then the multiplier rises from 1.00x. At any moment tap CASH OUT — you lock in bet × current multiplier. Stay in too long and the round crashes — you lose everything.";
+"crash.rules.payout.title" = "Payout";
+"crash.rules.payout.body" = "Winnings = bet × multiplier at cashout. Example: bet 10 tokens, cashed at 2.50x → +25 tokens. The longer you hold, the bigger the potential win — and the higher the crash risk.";
+"crash.rules.fair.title" = "Provably fair";
+"crash.rules.fair.body" = "The crash point is decided BEFORE bets open: SHA256(seed + round_id). The hash is published at round start, the seed itself is revealed when the round ends. You can verify by hand — nobody can change the result after your bet.";
+"crash.rules.risk.title" = "Risk";
+"crash.rules.risk.body" = "About 3% of rounds crash instantly at 1.00x — that's the mathematical house edge (tokens are burned, nobody profits). 50% of rounds crash before 2.00x. 10% make it past 10x. Play with what you're willing to lose.";
+
+"contact_list.bar.add" = "Add";  /* legacy key kept for transitional bundles */
+
+/* ── Audio Rooms ─────────────────────────────────────────── */
+"audio_room.section.title" = "Audio Rooms";
+"audio_room.section.create_first" = "Create or join a room";
+"audio_room.menu.copy_key" = "Copy join key";
+"audio_room.menu.delete" = "Delete room";
+"audio_room.menu.remove" = "Remove from list";
+"audio_room.row.idle" = "idle";
+"audio_room.row.inside" = "%d inside";
+"audio_room.sheet.title" = "Audio Room";
+"audio_room.sheet.mode.create" = "Create";
+"audio_room.sheet.mode.join" = "Join by key";
+"audio_room.sheet.field.name" = "Room name";
+"audio_room.sheet.field.key" = "Key";
+"audio_room.sheet.footer.create" = "You'll get a short key to share with whoever you want to invite. Anyone with the key can join.";
+"audio_room.sheet.footer.join" = "Paste the 8-character key the room owner shared with you.";
+"audio_room.sheet.hero.create" = "Spin up your own audio room and invite friends with a short key";
+"audio_room.sheet.hero.join" = "Enter a key from an existing room to add it to your list";
+"audio_room.sheet.button.create" = "Create";
+"audio_room.sheet.button.join" = "Join";
+"audio_room.sheet.error.create" = "Couldn't create the room";
+"audio_room.sheet.error.join" = "Couldn't join the room";
+"audio_room.screen.joining" = "Joining…";
+"audio_room.screen.listening" = "%d listening";
+"audio_room.screen.fallback_name" = "Audio Room";
+"audio_room.control.mute" = "Mute";
+"audio_room.control.camera" = "Camera";
+"audio_room.control.route" = "Route";
+"audio_room.control.leave" = "Leave";
+"audio_room.minimized.fallback" = "Audio Room";
+"audio_room.minimized.listening" = "%d listening";
+"audio_room.alert.cant_join.title" = "Couldn't join";
+"audio_room.error.busy" = "You're already in a call";
+"audio_room.error.full" = "Room is full (max 8)";
+"audio_room.error.not_member" = "You're not a member of this room";
+"audio_room.error.no_such_room" = "That room no longer exists";
+"audio_room.error.generic" = "Couldn't join the room";
+"audio_room.error.deleted" = "Room was deleted";
+"audio_room.error.in_call" = "Finish your current call first";
+"audio_room.error.kicked" = "You were kicked from the room";
+
+"audio_room.actions.title" = "Participant";
+"audio_room.actions.profile" = "Open profile";
+"audio_room.actions.trade" = "Propose trade";
+"audio_room.actions.mute" = "Mute participant";
+"audio_room.actions.unmute" = "Unmute participant";
+"audio_room.actions.mute_all" = "Owner only can speak";
+"audio_room.actions.unmute_all" = "Allow everyone to speak";
+"audio_room.rename.title" = "Rename room";
+"audio_room.rename.placeholder" = "Room name";
+"audio_room.actions.kick" = "Kick from room";
+"audio_room.kick.confirm.title" = "Kick %@?";
+"audio_room.kick.confirm.body" = "They lose access to the room. If they are in voice right now, they get dropped immediately.";
+"audio_room.kick.confirm.do" = "Kick";
+
+"audio_room.menu.rotate_key" = "Rotate join key";
+"audio_room.rotate.confirm.title" = "Rotate the join key?";
+"audio_room.rotate.confirm.body" = "The old key stops working. Everyone already in your list keeps the room — their key updates automatically. Anyone holding the old key without joining can no longer enter.";
+"audio_room.rotate.confirm.do" = "Rotate";
+"audio_room.rotate.toast" = "Key rotated";
+
+/* ── Premium UIN Auction ────────────────────────────────── */
+"games.uin_auction.title" = "UIN Auction";
+"games.uin_auction.body" = "One UIN per hour. Bid wars to the last second.";
+"games.pets_hunt.title" = "Pets on the hunt";
+"games.pets_hunt.body" = "Send your equipped pet on a raid against another player's pet. Loot, ranks, glory.";
+"uin_auction.alert.title" = "Auction";
+"uin_auction.hero.kicker" = "CURRENT LOT";
+"uin_auction.tier.legendary" = "Legendary";
+"uin_auction.tier.mid" = "Rare";
+"uin_auction.tier.common" = "Common";
+"uin_auction.soft_close" = "Soft close: any bid extends timer by 60s";
+"uin_auction.soft_close.badge" = "SOFT CLOSE";
+"uin_auction.soft_close.note" = "Any new bid extends the timer by 60 seconds";
+"uin_auction.error.generic" = "Couldn't place bid. Try again.";
+"uin_auction.high_bid" = "HIGH BID";
+"uin_auction.no_bids_yet" = "No bids yet";
+"uin_auction.you_lead" = "You're leading";
+"uin_auction.lead_by" = "Leader: %@";
+"uin_auction.min_next" = "MIN NEXT";
+"uin_auction.bid_placeholder" = "Min %d";
+"uin_auction.cta.bid" = "Bid";
+"uin_auction.cta.topup" = "Top up";
+"uin_auction.insufficient_hint" = "Not enough tokens";
+"uin_auction.need_tokens" = "Not enough tokens — buy more";
+"uin_auction.history.title" = "BID HISTORY";
+"uin_auction.history.empty" = "Be the first to bid";
+"uin_auction.waiting.title" = "Preparing the next lot…";
+"uin_auction.waiting.body" = "A new auction starts in a few seconds. Legendary UINs drop occasionally — stick around.";
+"uin_auction.error.bid_too_low" = "Min bid is %d tokens";
+"uin_auction.error.insufficient" = "Need %d tokens, have %d";
+"uin_auction.error.already_lead" = "You're already the leader";
+"uin_auction.error.ended" = "Auction ended";
+"uin_auction.outbid_refund" = "You've been outbid. %d tokens refunded.";
+"uin_auction.celebrate.won" = "🏆 You won UIN %d! Activate it from inventory.";
+"uin_auction.recent.title" = "Recent winners";
+"uin_auction.recent.empty" = "No completed auctions yet";
+"uin_auction.recent.won_by" = "Won by %@";
+"uin_auction.owned.title" = "My UINs";
+"uin_auction.owned.body" = "UINs won at auction. Activate any as your current UIN — runs the migration (99 tokens).";
+"uin_auction.owned.empty" = "No won UINs yet. Win an auction!";
+"uin_auction.owned.activate" = "Activate";
+"uin_auction.owned.sell" = "Sell on marketplace";
+"uin_auction.owned.confirm.title" = "Make UIN %d yours?";
+"uin_auction.owned.confirm.message" = "Runs the migration. Contacts, inventory and wallet move onto the new UIN. Your current UIN is preserved in inventory — you can swap back for 99 tokens. Local chats are wiped. Costs 99 tokens.";
+"uin_auction.owned.confirm.button" = "Activate (%d)";
+"uin_auction.owned.activated" = "Done. Your new UIN: %d";
+
+/* ── Last-seen relative time ────────────────────────────── */
+"last_seen.just_now" = "just now";
+"last_seen.minute_one" = "%d minute ago";
+"last_seen.minute_few" = "%d minutes ago";
+"last_seen.minute_many" = "%d minutes ago";
+"last_seen.hour_one" = "%d hour ago";
+"last_seen.hour_few" = "%d hours ago";
+"last_seen.hour_many" = "%d hours ago";
+"last_seen.yesterday" = "yesterday";
+"last_seen.day_one" = "%d day ago";
+"last_seen.day_few" = "%d days ago";
+"last_seen.day_many" = "%d days ago";

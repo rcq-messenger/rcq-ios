@@ -1,0 +1,16 @@
+# Acknowledgments
+
+libsignal makes use of the following open source projects.
+
+{{#each licenses}}
+## {{#each used_by}}{{#unless @first}}, {{/unless}}{{crate.name}}{{#if crate.source}} {{crate.version}}{{/if}}{{/each}}
+
+```
+{{{text}}}
+```
+
+{{/each}}
+
+## Kyber Patent License
+
+<https://csrc.nist.gov/csrc/media/Projects/post-quantum-cryptography/documents/selected-algos-2022/nist-pqc-license-summary-and-excerpts.pdf>

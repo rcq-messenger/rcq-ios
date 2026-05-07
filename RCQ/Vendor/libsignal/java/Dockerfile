@@ -1,0 +1,101 @@
+#
+# Copyright 2020 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+FROM ubuntu:jammy-20260109@sha256:c7eb020043d8fc2ae0793fb35a37bff1cf33f156d4d4b12ccc7f3ef8706c38b1
+
+COPY java/docker/ docker/
+COPY java/docker/apt.conf java/docker/sources.list /etc/apt/
+
+# Bit of a chicken-and-egg problem.
+# Ubuntu needs the ca-certificates package before it'll trust our mirror.
+# But we can't install it because it doesn't trust our mirror!
+# To resolve, we temporarily disable verification.
+RUN    apt-get update -oAcquire::https::Verify-Peer=false \
+    && apt-get install -oAcquire::https::Verify-Peer=false -y ca-certificates
+# Back to normal, verification back on
+RUN    apt-get update
+
+# Install only what's needed to set up Rust and Android
+# We'll install additional tools at the end to take advantage of Docker's caching of earlier steps.
+RUN    apt-get install -y openjdk-17-jdk-headless unzip
+
+ARG UID
+ARG GID
+
+# Create a user to map the host user to.
+RUN    groupadd -o -g "${GID}" libsignal \
+    && useradd -m -o -u "${UID}" -g "${GID}" -s /bin/bash libsignal
+
+USER libsignal
+ENV HOME=/home/libsignal
+ENV USER=libsignal
+ENV SHELL=/bin/bash
+ENV LANG=C.UTF-8
+
+WORKDIR /home/libsignal
+
+# Android SDK setup...
+ARG ANDROID_SDK_FILENAME=commandlinetools-linux-7583922_latest.zip
+ARG ANDROID_SDK_SHA=124f2d5115eee365df6cf3228ffbca6fc3911d16f8025bebd5b1c6e2fcfa7faf
+ARG ANDROID_API_LEVELS=android-34
+ARG ANDROID_BUILD_TOOLS_VERSION=34.0.0
+ARG NDK_VERSION=28.0.13004108
+ENV ANDROID_HOME=/home/libsignal/android-sdk
+ENV PATH=${PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/cmdline-tools/bin
+
+ADD --chown=libsignal --checksum=sha256:${ANDROID_SDK_SHA} \
+    https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME} ${ANDROID_SDK_FILENAME}
+
+RUN    unzip -q ${ANDROID_SDK_FILENAME} -d android-sdk \
+    && rm -rf ${ANDROID_SDK_FILENAME}
+
+RUN    yes | sdkmanager --sdk_root=${ANDROID_HOME} "platforms;${ANDROID_API_LEVELS}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "platform-tools" "ndk;${NDK_VERSION}"
+
+# Pre-download Gradle.
+COPY   java/gradle/wrapper gradle/wrapper
+COPY   java/gradlew gradlew
+RUN    ./gradlew --version
+
+# Rust setup...
+
+COPY rust-toolchain rust-toolchain
+ARG RUSTUP_SHA=20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c
+ENV PATH="/home/libsignal/.cargo/bin:${PATH}"
+
+ADD --chown=libsignal --chmod=755 --checksum=sha256:${RUSTUP_SHA} \
+    https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init /tmp/rustup-init
+
+RUN    /tmp/rustup-init -y --profile minimal --default-toolchain "$(cat rust-toolchain)" \
+    && rm -rf /tmp/rustup-init
+
+RUN    rustup target add armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android aarch64-unknown-linux-gnu
+
+# Manually install a newer protoc
+ADD --chown=libsignal https://github.com/protocolbuffers/protobuf/releases/download/v29.3/protoc-29.3-linux-x86_64.zip protoc.zip
+
+RUN unzip protoc.zip -d proto && rm -f protoc.zip
+
+ENV PATH="/home/libsignal/proto/bin:${PATH}"
+
+# Install the full set of tools now that the long setup steps are done.
+# Note that we temporarily hop back to root to do this.
+USER root
+# clang and libclang are used by boring-sys's bindgen;
+# otherwise we could use plain old gcc and g++.
+RUN    apt-get install -y \
+               clang \
+               cmake \
+               crossbuild-essential-arm64 \
+               git \
+               gpg-agent \
+               libclang-dev \
+               make \
+               python3
+USER libsignal
+
+# Convert ssh to https for git dependency access without a key.
+RUN    git config --global url."https://github".insteadOf ssh://git@github
+
+CMD [ "/bin/bash" ]

@@ -1,0 +1,46 @@
+#
+# Copyright (C) 2023 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "usernames"
+authors.workspace = true
+license.workspace = true
+rust-version = "1.85"
+version = "0.1.0"
+edition = "2024"
+description = "A zero-knowledge usernames library"
+
+[lints]
+workspace = true
+
+[dependencies]
+poksho = { workspace = true }
+signal-crypto = { workspace = true }
+
+curve25519-dalek = { workspace = true, features = ["digest"] }
+displaydoc = { workspace = true }
+hkdf = { workspace = true }
+hmac = { workspace = true }
+log = { workspace = true }
+prost = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+zkgroup = { workspace = true }
+
+base64 = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "usernames_benchmarks"
+harness = false
+
+[build-dependencies]
+prost-build = { workspace = true }

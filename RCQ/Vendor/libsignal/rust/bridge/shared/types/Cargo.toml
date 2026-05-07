@@ -1,0 +1,93 @@
+#
+# Copyright (C) 2024 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-bridge-types"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition = "2024"
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+attest = { workspace = true }
+device-transfer = { workspace = true }
+libsignal-account-keys = { workspace = true }
+libsignal-bridge-macros = { workspace = true }
+libsignal-core = { workspace = true }
+libsignal-debug = { workspace = true }
+libsignal-keytrans = { workspace = true }
+libsignal-message-backup = { workspace = true, features = ["json"] }
+libsignal-net = { workspace = true }
+libsignal-net-chat = { workspace = true }
+libsignal-protocol = { workspace = true }
+libsignal-svrb = { workspace = true }
+signal-crypto = { workspace = true }
+signal-media = { workspace = true, optional = true }
+usernames = { workspace = true }
+zkgroup = { workspace = true }
+
+aes-gcm-siv = { workspace = true }
+assert_matches = { workspace = true }
+async-trait = { workspace = true }
+atomic-take = { workspace = true }
+bytes = { workspace = true }
+const-str = { workspace = true }
+derive-where = { workspace = true }
+derive_more = { workspace = true, features = ["deref", "deref_mut", "from", "into"] }
+displaydoc = { workspace = true }
+futures-util = { workspace = true }
+hmac = { workspace = true }
+http = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+mediasan-common = { workspace = true }
+once_cell = { workspace = true }
+partial-default = { workspace = true }
+paste = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+static_assertions = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+uuid = { workspace = true }
+visibility = { workspace = true }
+zerocopy = { workspace = true }
+
+# Enable this for all libsignal app language libraries
+subtle = { workspace = true, features = ["core_hint_black_box"] }
+
+jni = { workspace = true, optional = true }
+linkme = { workspace = true, optional = true }
+neon = { workspace = true, optional = true, default-features = false, features = ["napi-6"] }
+signal-neon-futures = { workspace = true, optional = true }
+
+[dev-dependencies]
+libsignal-net-grpc = { workspace = true }
+
+test-case = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "time", "macros"] }
+
+[features]
+ffi = []
+jni = ["dep:jni"]
+jni-type-tagging = []
+jni-invoke-annotated = []
+extra-jni-checks = ["jni-type-tagging", "jni-invoke-annotated"]
+node = ["neon", "linkme", "signal-neon-futures"]
+
+[target.'cfg(not(any(windows, target_arch = "x86")))'.dependencies]
+# sha2's asm implementation uses standalone .S files that aren't compiled correctly on Windows,
+# and aren't linked correctly on x86 Android.
+# This will be fixed in sha2 0.11, which also removes the "asm" feature and turns it on by default.
+# So when sha2 0.11 is released, this section will go away.
+sha2 = { workspace = true, features = ["asm"] }

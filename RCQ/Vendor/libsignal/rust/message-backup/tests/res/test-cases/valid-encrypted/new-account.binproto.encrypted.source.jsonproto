@@ -1,0 +1,35 @@
+[
+    {
+        "backupTimeMs": "1705692409729",
+        "version": "1",
+        "mediaRootBackupKey": "q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=",
+    },
+    {
+        "account": {
+            "profileKey": "YQKRq+3DQklInaOaMcmlzZnN0m/1hzLiaONX7gB12dg=",
+            "accountSettings": {
+                "phoneNumberSharingMode": "NOBODY",
+                "defaultSentMediaQuality": "STANDARD",
+                "appTheme": "SYSTEM",
+                "callsUseLessDataSetting": "MOBILE_DATA_ONLY"
+            },
+            "androidSpecificSettings": {
+                "useSystemEmoji": true,
+                "screenshotSecurity": true,
+                "navigationBarSize": "NORMAL"
+            }
+        }
+    },
+    {
+        "recipient": {
+        "id": "2",
+        "self": {}
+        }
+    },
+    {
+        "chat": {
+        "id": "1",
+        "recipientId": "2"
+        }
+    }
+]

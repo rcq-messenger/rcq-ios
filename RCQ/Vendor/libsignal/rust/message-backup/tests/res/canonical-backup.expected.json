@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "version": 1,
+    "media_root_backup_key": "abababababababababababababababababababababababababababababababab",
+    "first_app_version": "",
+    "purpose": "RemoteBackup"
+  },
+  "account_data": {
+    "profile_key": "610291abedc34249489da39a31c9a5cd99cdd26ff58732e268e357ee0075d9d8",
+    "username": {
+      "username": "boba_fett.66",
+      "link": {
+        "color": "OLIVE",
+        "entropy": "65675c73d00eb01005e3bb7c4a47f296cb6554f78981238815e915d824fd2e93",
+        "server_id": "61c101a2-00d5-4217-89c2-0518d8497af0"
+      }
+    },
+    "given_name": "Boba",
+    "family_name": "Fett",
+    "account_settings": {
+      "phone_number_sharing": "WithNobody",
+      "read_receipts": true,
+      "sealed_sender_indicators": true,
+      "typing_indicators": true,
+      "link_previews": false,
+      "not_discoverable_by_phone_number": true,
+      "prefer_contact_avatars": true,
+      "display_badges_on_profile": true,
+      "keep_muted_chats_archived": true,
+      "has_set_my_stories_privacy": true,
+      "has_viewed_onboarding_story": true,
+      "stories_disabled": true,
+      "story_view_receipts_enabled": true,
+      "has_seen_group_story_education_sheet": true,
+      "has_completed_username_onboarding": true,
+      "universal_expire_timer": 3600000,
+      "preferred_reaction_emoji": [
+        "🏎️"
+      ],
+      "default_chat_style": null,
+      "custom_chat_colors": {},
+      "optimize_on_device_storage": false,
+      "backup_level": null,
+      "default_sent_media_quality": "Standard",
+      "auto_download_settings": null,
+      "screen_lock_timeout": null,
+      "pin_reminders": null,
+      "app_theme": "System",
+      "calls_use_less_data_setting": "MobileDataOnly",
+      "allow_sealed_sender_from_anyone": false,
+      "allow_automatic_key_verification": false,
+      "has_seen_admin_delete_education_dialog": false
+    },
+    "avatar_url_path": "",
+    "donation_subscription": {
+      "subscriber_id": "ecbb68c734331a2ea333cda747c98c4553652261582b4fce5ae0dea84dce6519",
+      "currency_code": "USD",
+      "manually_canceled": true
+    },
+    "backup_subscription": null,
+    "svr_pin": "",
+    "android_specific_settings": {
+      "use_system_emoji": true,
+      "screenshot_security": true,
+      "navigation_bar_size": "Normal"
+    },
+    "ios_specific_settings": null,
+    "bio_text": "",
+    "bio_emoji": "",
+    "key_transparency_data": null
+  },
+  "recipients": [
+    {
+      "Self_": {
+        "avatar_color": null
+      }
+    },
+    "ReleaseNotes",
+    {
+      "DistributionList": {
+        "List": {
+          "distribution_id": "00000000-0000-0000-0000-000000000000",
+          "name": "My Story",
+          "allow_replies": true,
+          "privacy_mode": "All"
+        }
+      }
+    },
+    {
+      "CallLink": {
+        "restrictions": "ADMIN_APPROVAL",
+        "root_key": "2cafce03c40a90049c0f73f295ffd340",
+        "admin_key": "b472fcc0ecbe9f1ad4db4bbf0303d59734193ebbd401bf068b42587a91b987b9",
+        "expiration": 1725926400000,
+        "name": "Team Meeting"
+      }
+    }
+  ],
+  "chats": [],
+  "ad_hoc_calls": [],
+  "pinned_chats": [],
+  "sticker_packs": [],
+  "notification_profiles": [],
+  "chat_folders": []
+}

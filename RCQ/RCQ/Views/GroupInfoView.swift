@@ -1,0 +1,734 @@
+import SwiftUI
+
+/// Group info — header + member list + admin actions. Tapping a
+/// member opens a quick-action bottom sheet (`MemberActionSheet`)
+/// where the viewer can propose a trade, send a contact request, or
+/// open the full profile. Trade/contact buttons honour the peer's
+/// privacy settings (trade_policy, already-a-contact).
+struct GroupInfoView: View {
+    let group: RCQGroup
+
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var groups = GroupService.shared
+    @StateObject private var contacts = ContactService.shared
+    @State private var renameDraft: String = ""
+    @State private var showAddMember = false
+    @State private var confirmLeave = false
+    @State private var error: String?
+    @State private var viewInfoForUIN: Int?
+    @State private var actionMember: RCQGroupMember?
+    @State private var petPreview: PetPreviewTarget?
+    /// Buffer for the entry-price field. Text vs Int because we
+    /// want users to be able to clear the field (string "" maps
+    /// to "free" on commit). Synced to the live model in onAppear.
+    @State private var entryPriceText: String = ""
+
+    private var currentGroup: RCQGroup {
+        groups.find(group.id) ?? group
+    }
+
+    private var amOwner: Bool {
+        AuthService.shared.ownUIN == currentGroup.ownerUIN
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.Color.bgPrimary.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+                        ForEach(currentGroup.members) { m in
+                            memberRow(m)
+                        }
+                    }
+                    // Paid-group invariant: in groups with a positive
+                    // `entry_price_tokens` only the owner can invite,
+                    // and the invite is free (a "gift access"). Others
+                    // would dilute the paywall — anyone could pre-add
+                    // their friend for $0 and bypass the price. Free
+                    // groups stay member-can-add (Telegram-style).
+                    let canInvite = amOwner ||
+                        (currentGroup.entryPriceTokens ?? 0) == 0
+                    if canInvite {
+                        section("group.section.manage".localized) {
+                            Button {
+                                showAddMember = true
+                            } label: {
+                                Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
+                                    .foregroundColor(Theme.Color.textPrimary)
+                            }
+                        }
+                    }
+                    if amOwner {
+                        ownerSettingsBlock
+                    }
+                    Button(role: .destructive) {
+                        confirmLeave = true
+                    } label: {
+                        Label(
+                            amOwner ? "group.cta.delete".localized : "group.cta.leave".localized,
+                            systemImage: "rectangle.portrait.and.arrow.right",
+                        )
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(.white)
+                            .padding(.vertical, 12)
+                            .background(Theme.Color.statusBusy)
+                            .cornerRadius(4)
+                    }
+                    if let error {
+                        Text(error).font(.caption).foregroundColor(Theme.Color.statusBusy)
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .navigationTitle("group.title".localized)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showAddMember) {
+            AddGroupMemberView(group: currentGroup)
+        }
+        .sheet(item: Binding(
+            get: { viewInfoForUIN.map { ViewInfoUIN(uin: $0) } },
+            set: { viewInfoForUIN = $0?.uin }
+        )) { wrap in
+            NavigationStack {
+                UserInfoView(uin: wrap.uin, isOwn: false)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("common.close".localized) { viewInfoForUIN = nil }
+                        }
+                    }
+            }
+        }
+        .sheet(item: $petPreview) { wrap in
+            PetPreviewSheet(
+                pet: wrap.pet,
+                ownerUIN: wrap.uin,
+                ownerNickname: wrap.nickname,
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $actionMember) { m in
+            MemberActionSheet(
+                member: m,
+                onOpenProfile: {
+                    viewInfoForUIN = m.uin
+                    actionMember = nil
+                },
+                onDismiss: { actionMember = nil },
+            )
+            // Sheet height tracks content. After adding the Block +
+            // Report rows below the trade / add / profile pills,
+            // 300pt felt cramped — bumped to 420 to give the
+            // destructive section breathing room and keep the
+            // Spacer(minLength: 8) pair able to actually centre
+            // the stack rather than collapse it.
+            .presentationDetents([.height(420)])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            amOwner ? "group.confirm.delete".localized : "group.confirm.leave".localized,
+            isPresented: $confirmLeave,
+            titleVisibility: .visible,
+        ) {
+            Button(amOwner ? "group.cta.delete.short".localized : "group.cta.leave.short".localized, role: .destructive) {
+                Task { await leaveOrDelete() }
+            }
+            Button("common.cancel".localized, role: .cancel) {}
+        }
+        .onAppear {
+            renameDraft = currentGroup.name
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.3.fill")
+                .font(.system(size: 26))
+                .foregroundColor(.white)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Theme.Color.accent))
+
+            VStack(alignment: .leading, spacing: 4) {
+                if amOwner {
+                    TextField("", text: $renameDraft, onCommit: {
+                        Task { await rename() }
+                    })
+                    .font(.title3.bold())
+                    .foregroundColor(Theme.Color.textPrimary)
+                } else {
+                    Text(currentGroup.name).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
+                }
+                Text(String(
+                    format: "group.created".localized,
+                    DateFormatter.localizedString(
+                        from: currentGroup.createdAt,
+                        dateStyle: .medium,
+                        timeStyle: .none
+                    )
+                ))
+                    .font(.caption2).foregroundColor(Theme.Color.textSecondary)
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(Theme.Color.textSecondary)
+            VStack(alignment: .leading, spacing: 6) { content() }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Theme.Color.bgSecondary)
+                .cornerRadius(4)
+        }
+    }
+
+    /// Owner-only settings block — broadcast-mode picker + entry-
+    /// price field. Both PATCH `/groups/{id}` immediately on change;
+    /// no separate Save CTA since each control is independent.
+    @ViewBuilder
+    private var ownerSettingsBlock: some View {
+        section("group.section.settings".localized) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Post policy.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("group.settings.post_policy".localized.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Picker(
+                        "group.settings.post_policy".localized,
+                        selection: Binding(
+                            get: { currentGroup.postPolicy },
+                            set: { newValue in
+                                Task {
+                                    try? await groups.setPostPolicy(
+                                        groupID: currentGroup.id,
+                                        policy: newValue,
+                                    )
+                                }
+                            }
+                        )
+                    ) {
+                        Text("group.settings.post_policy.all".localized).tag("all")
+                        Text("group.settings.post_policy.owner_only".localized).tag("owner_only")
+                    }
+                    .pickerStyle(.segmented)
+                    Text("group.settings.post_policy.hint".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                Divider().background(Theme.Color.divider)
+                // Entry price.
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("group.settings.entry_price".localized.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    HStack(spacing: 8) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                            .frame(width: 18, height: 18)
+                        TextField(
+                            "0",
+                            text: Binding(
+                                get: { entryPriceText },
+                                set: { newValue in
+                                    entryPriceText = newValue.filter { $0.isNumber }
+                                }
+                            ),
+                        )
+                        .keyboardType(.numberPad)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Button("common.save".localized) {
+                            Task { await commitEntryPrice() }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.Color.accent)
+                        .disabled(!entryPriceDirty)
+                    }
+                    Text("group.settings.entry_price.hint".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+        }
+        .onAppear {
+            entryPriceText = currentGroup.entryPriceTokens.map(String.init) ?? ""
+        }
+    }
+
+    private var entryPriceDirty: Bool {
+        let parsed = Int(entryPriceText) ?? 0
+        let current = currentGroup.entryPriceTokens ?? 0
+        return parsed != current
+    }
+
+    private func commitEntryPrice() async {
+        let parsed = max(0, Int(entryPriceText) ?? 0)
+        do {
+            try await groups.setEntryPrice(
+                groupID: currentGroup.id,
+                priceTokens: parsed,
+            )
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func memberRow(_ m: RCQGroupMember) -> some View {
+        let isMe = m.uin == AuthService.shared.ownUIN
+        // Status zone is tappable for pet-preview when the member
+        // has an equipped pet — wrapped in its own Button so the
+        // outer row Button (action sheet) only fires for taps
+        // outside this zone. SwiftUI handles the consumption
+        // natively: nested Button inside Button means the inner
+        // wins for its bounds, outer for everything else.
+        let statusZone = StatusWithPet(status: m.status, pet: m.equippedPet, size: 22)
+        return Button {
+            // Self-row: open the saved-messages thread instead of the
+            // action sheet — there's nothing to add/trade with yourself.
+            if !isMe { actionMember = m }
+        } label: {
+            HStack(spacing: 8) {
+                if let pet = m.equippedPet {
+                    Button {
+                        petPreview = PetPreviewTarget(
+                            pet: pet, uin: m.uin, nickname: m.nickname,
+                        )
+                    } label: {
+                        statusZone
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    statusZone
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(m.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                        // Crown for the group's owner. Mirrors the
+                        // `audio_room` row treatment so the group's
+                        // creator is identifiable at a glance — same
+                        // visual idiom across the app.
+                        if m.uin == currentGroup.ownerUIN {
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                    }
+                    Text(String(m.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                }
+                Spacer()
+                if m.role != "member" && m.uin != currentGroup.ownerUIN {
+                    Text(localizedRole(m.role)).font(.caption2)
+                        .foregroundColor(Theme.Color.accent)
+                }
+                if !isMe {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if !isMe && amOwner && m.uin != currentGroup.ownerUIN {
+                Button("group.member.remove".localized, role: .destructive) {
+                    Task { try? await groups.removeMember(groupID: currentGroup.id, uin: m.uin) }
+                }
+            }
+        }
+    }
+
+    private func localizedRole(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "owner": return "group.role.owner".localized
+        case "admin": return "group.role.admin".localized
+        default:      return raw.capitalized
+        }
+    }
+
+    private func rename() async {
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != currentGroup.name else { return }
+        do { try await groups.rename(groupID: currentGroup.id, name: trimmed) }
+        catch { self.error = error.localizedDescription }
+    }
+
+    private func leaveOrDelete() async {
+        do {
+            if amOwner { try await groups.delete(currentGroup.id) }
+            else { try await groups.leave(currentGroup.id) }
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+private struct ViewInfoUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
+
+// MARK: - Member action sheet
+
+/// Bottom-sheet quick actions for a tapped group member. Three buttons:
+///   - Propose trade (hidden if peer's `trade_policy` is "nobody" or
+///     "contacts"-and-we-aren't, or if we're already mid-loading the
+///     profile)
+///   - Send contact request (hidden if already in our contacts, or
+///     greyed out if a request is already in flight)
+///   - Open full profile (always available)
+///
+/// Pulls the peer's profile on appear so the trade-policy gate is
+/// honest. While loading, both action buttons are disabled with a
+/// subtle ProgressView in their slot.
+private struct MemberActionSheet: View {
+    let member: RCQGroupMember
+    let onOpenProfile: () -> Void
+    let onDismiss: () -> Void
+
+    @StateObject private var contacts = ContactService.shared
+    @State private var profile: UserProfile?
+    @State private var loading = true
+    @State private var loadError: String?
+    @State private var showTrade = false
+    @State private var addRequestSent = false
+    @State private var addError: String?
+
+    private var isAlreadyContact: Bool {
+        contacts.contacts.contains(where: { $0.uin == member.uin })
+    }
+
+    /// Whether the peer's trade_policy permits us to propose. Defaults
+    /// to allowed if the profile hasn't loaded yet — the backend will
+    /// 403 the actual POST if our optimism was wrong.
+    private var canPropose: Bool {
+        let policy = profile?.tradePolicy ?? "everyone"
+        if policy == "nobody" { return false }
+        if policy == "contacts" && !isAlreadyContact { return false }
+        return true
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            // Top breathing room — equal weight to the bottom Spacer
+            // so the identity header + buttons stack centres
+            // vertically inside the sheet instead of jamming against
+            // the drag indicator.
+            Spacer(minLength: 8)
+            // Identity header
+            HStack(spacing: 12) {
+                StatusIcon(status: member.status, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(member.nickname)
+                        .font(.title3.bold())
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text(String(member.uin))
+                        .font(Theme.Font.monoSmall)
+                        .foregroundColor(Theme.Color.textMono)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+
+            VStack(spacing: 10) {
+                // Trade — gated by tradePolicy + contact relationship.
+                if loading {
+                    pillLoading
+                } else if canPropose {
+                    Button {
+                        showTrade = true
+                    } label: {
+                        actionPill(
+                            icon: "arrow.left.arrow.right",
+                            text: "group.member.action.trade".localized,
+                            tint: Theme.Color.accent,
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                // Add as contact — only when not already added.
+                if !isAlreadyContact {
+                    Button {
+                        Task {
+                            do {
+                                try await contacts.sendAddRequest(to: member.uin)
+                                addRequestSent = true
+                            } catch {
+                                addError = error.localizedDescription
+                            }
+                        }
+                    } label: {
+                        actionPill(
+                            icon: addRequestSent ? "checkmark.circle.fill" : "person.crop.circle.badge.plus",
+                            text: addRequestSent
+                                ? "group.member.action.add.sent".localized
+                                : "group.member.action.add".localized,
+                            tint: addRequestSent ? Theme.Color.textSecondary : Theme.Color.accent,
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(addRequestSent)
+                }
+                // Open full profile — always present.
+                Button(action: onOpenProfile) {
+                    actionPill(
+                        icon: "person.crop.circle",
+                        text: "group.member.action.profile".localized,
+                        tint: Theme.Color.textPrimary,
+                        background: Theme.Color.bgSecondary,
+                    )
+                }
+                .buttonStyle(.plain)
+                if let addError {
+                    Text(addError)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.statusBusy)
+                }
+                if let loadError {
+                    Text(loadError)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.statusBusy)
+                }
+            }
+            .padding(.horizontal, 20)
+
+            // Block + Report — moderator surface for the group. Drops
+            // in as `.rows` style (same look as the existing actionRow
+            // helpers in AudioRoomQuickActionsSheet) below the trade
+            // / add / profile pills, separated by a divider so the
+            // destructive actions don't blur with neutral ones.
+            Divider().background(Theme.Color.divider)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+            VStack(spacing: 0) {
+                UserSafetyActions(
+                    targetUIN: member.uin,
+                    targetNickname: member.nickname,
+                    context: "group",
+                    style: .rows,
+                )
+            }
+
+            Spacer(minLength: 8)
+        }
+        .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        .task {
+            await loadProfile()
+        }
+        .sheet(isPresented: $showTrade) {
+            TradeProposeView(recipientUIN: member.uin, recipientNickname: member.nickname)
+        }
+    }
+
+    private var pillLoading: some View {
+        HStack(spacing: 8) {
+            ProgressView().scaleEffect(0.8)
+            Text("group.member.action.checking".localized)
+                .font(.system(.callout, weight: .semibold))
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(Theme.Color.bgSecondary.opacity(0.5))
+        .cornerRadius(10)
+    }
+
+    private func actionPill(
+        icon: String,
+        text: String,
+        tint: Color,
+        background: Color? = nil,
+    ) -> some View {
+        let bg = background ?? tint
+        let fg = background == nil ? Color.white : tint
+        return HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+            Text(text)
+                .font(.system(.callout, weight: .semibold))
+        }
+        .foregroundColor(fg)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(bg)
+        .cornerRadius(10)
+    }
+
+    private func loadProfile() async {
+        defer { loading = false }
+        do {
+            let p: UserProfile = try await APIClient.shared.request(
+                "GET", "/users/\(member.uin)/info"
+            )
+            profile = p
+        } catch {
+            loadError = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Add member sheet
+
+private struct AddGroupMemberView: View {
+    let group: RCQGroup
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var contacts = ContactService.shared
+    @State private var query = ""
+    @State private var serverResults: [UserProfile] = []
+    @State private var searching = false
+    @State private var addError: String?
+
+    /// Local-contacts filter — shown when the query matches contacts already in
+    /// our list (or when the field is empty).
+    private var localMatches: [Contact] {
+        contacts.contacts.filter { c in !group.contains(c.uin) }
+            .filter {
+                query.isEmpty
+                    || $0.nickname.localizedCaseInsensitiveContains(query)
+                    || String($0.uin).contains(query)
+            }
+    }
+
+    /// Server hits for non-contacts. Filters out users already in the group.
+    private var serverMatches: [UserProfile] {
+        serverResults.filter { u in
+            !group.contains(u.uin) &&
+            !contacts.contacts.contains(where: { $0.uin == u.uin })
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundColor(Theme.Color.textSecondary)
+                        TextField("group.add.placeholder".localized, text: $query)
+                            .textInputAutocapitalization(.never)
+                            .submitLabel(.search)
+                            .onSubmit { Task { await runServerSearch() } }
+                            .foregroundColor(Theme.Color.textPrimary)
+                        if searching { ProgressView().scaleEffect(0.7) }
+                    }
+                    .padding(10).background(Theme.Color.bgSecondary).cornerRadius(4)
+                    .padding(12)
+
+                    if let addError {
+                        Text(addError)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.statusBusy)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 8)
+                    }
+
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            if !localMatches.isEmpty {
+                                sectionHeader("group.add.section.contacts".localized)
+                                ForEach(localMatches) { c in
+                                    contactRow(c)
+                                    Divider().background(Theme.Color.divider)
+                                }
+                            }
+                            if !serverMatches.isEmpty {
+                                sectionHeader("group.add.section.others".localized)
+                                ForEach(serverMatches, id: \.uin) { u in
+                                    serverRow(u)
+                                    Divider().background(Theme.Color.divider)
+                                }
+                            }
+                            if !query.isEmpty && localMatches.isEmpty && serverMatches.isEmpty && !searching {
+                                Text("group.no_matches".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                    .padding(20)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("group.add.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("common.close".localized) { dismiss() } }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(Theme.Color.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14).padding(.vertical, 6)
+            .background(Theme.Color.bgSecondary.opacity(0.7))
+    }
+
+    private func contactRow(_ c: Contact) -> some View {
+        Button {
+            Task { await add(uin: c.uin) }
+        } label: {
+            HStack(spacing: 10) {
+                StatusIcon(status: c.status, size: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(c.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                    Text(String(c.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                }
+                Spacer()
+                Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+        }
+    }
+
+    private func serverRow(_ u: UserProfile) -> some View {
+        Button {
+            Task { await add(uin: u.uin) }
+        } label: {
+            HStack(spacing: 10) {
+                StatusIcon(status: u.status, size: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(u.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                    Text(String(u.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                }
+                Spacer()
+                Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+        }
+    }
+
+    private func runServerSearch() async {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { serverResults = []; return }
+        searching = true
+        defer { searching = false }
+        do {
+            let rows: [UserProfile] = try await APIClient.shared.request(
+                "GET", "/users/search", query: ["q": q, "limit": "20"]
+            )
+            self.serverResults = rows
+        } catch {
+            self.serverResults = []
+        }
+    }
+
+    private func add(uin: Int) async {
+        addError = nil
+        do {
+            try await GroupService.shared.addMember(groupID: group.id, uin: uin)
+            dismiss()
+        } catch APIError.http(403, _) {
+            addError = "group.add.error.blocked".localized
+        } catch {
+            addError = String(format: "group.add.error.generic".localized, error.localizedDescription)
+        }
+    }
+}
+

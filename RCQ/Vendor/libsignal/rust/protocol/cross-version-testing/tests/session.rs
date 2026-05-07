@@ -1,0 +1,154 @@
+//
+// Copyright 2023 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+use libsignal_protocol_cross_version_testing::*;
+
+#[test]
+fn test_basic_prekey() {
+    try_all_combinations(run, &[|| Box::new(LibSignalProtocolV74::new())]);
+
+    fn run(
+        alice_store: &mut dyn LibSignalProtocolStore,
+        bob_store: &mut dyn LibSignalProtocolStore,
+    ) {
+        let alice_name = "alice";
+        let bob_name = "bob";
+
+        let bob_pre_key_bundle = bob_store.create_pre_key_bundle();
+        alice_store.process_pre_key_bundle(bob_name, alice_name, bob_pre_key_bundle);
+
+        let original_message = "L'homme est condamné à être libre".as_bytes();
+        let (outgoing_message, outgoing_message_type) =
+            alice_store.encrypt(bob_name, alice_name, original_message);
+        assert_eq!(outgoing_message_type, CiphertextMessageType::PreKey);
+
+        let ptext = bob_store
+            .decrypt(
+                alice_name,
+                bob_name,
+                &outgoing_message,
+                outgoing_message_type,
+            )
+            .expect("decryption success");
+        assert_eq!(&ptext, original_message);
+
+        let bobs_response = "Who watches the watchers?".as_bytes();
+        let (bob_outgoing, bob_outgoing_type) =
+            bob_store.encrypt(alice_name, bob_name, bobs_response);
+        assert_eq!(bob_outgoing_type, CiphertextMessageType::Whisper);
+
+        let alice_decrypts = alice_store
+            .decrypt(bob_name, alice_name, &bob_outgoing, bob_outgoing_type)
+            .expect("decryption success");
+        assert_eq!(&alice_decrypts, bobs_response);
+
+        run_interaction(alice_store, alice_name, bob_store, bob_name);
+    }
+}
+
+fn run_interaction(
+    alice_store: &mut dyn LibSignalProtocolStore,
+    alice_name: &str,
+    bob_store: &mut dyn LibSignalProtocolStore,
+    bob_name: &str,
+) {
+    let alice_ptext = b"It's rabbit season";
+
+    let (alice_message, alice_message_type) =
+        alice_store.encrypt(bob_name, alice_name, alice_ptext);
+    assert_eq!(alice_message_type, CiphertextMessageType::Whisper);
+    assert_eq!(
+        &bob_store
+            .decrypt(alice_name, bob_name, &alice_message, alice_message_type)
+            .expect("decryption success"),
+        alice_ptext
+    );
+
+    let bob_ptext = b"It's duck season";
+
+    let (bob_message, bob_message_type) = bob_store.encrypt(alice_name, bob_name, bob_ptext);
+    assert_eq!(bob_message_type, CiphertextMessageType::Whisper);
+    assert_eq!(
+        &alice_store
+            .decrypt(bob_name, alice_name, &bob_message, bob_message_type)
+            .expect("decryption success"),
+        bob_ptext
+    );
+
+    for i in 0..10 {
+        let alice_ptext = format!("A->B message {}", i);
+        let (alice_message, alice_message_type) =
+            alice_store.encrypt(bob_name, alice_name, alice_ptext.as_bytes());
+        assert_eq!(alice_message_type, CiphertextMessageType::Whisper);
+        assert_eq!(
+            &bob_store
+                .decrypt(alice_name, bob_name, &alice_message, alice_message_type)
+                .expect("decryption success"),
+            alice_ptext.as_bytes()
+        );
+    }
+
+    for i in 0..10 {
+        let bob_ptext = format!("B->A message {}", i);
+        let (bob_message, bob_message_type) =
+            bob_store.encrypt(alice_name, bob_name, bob_ptext.as_bytes());
+        assert_eq!(bob_message_type, CiphertextMessageType::Whisper);
+        assert_eq!(
+            &alice_store
+                .decrypt(bob_name, alice_name, &bob_message, bob_message_type)
+                .expect("decryption success"),
+            bob_ptext.as_bytes()
+        );
+    }
+
+    let mut alice_ooo_messages = vec![];
+
+    for i in 0..10 {
+        let alice_ptext = format!("A->B OOO message {}", i);
+        let (alice_message, _) = alice_store.encrypt(bob_name, alice_name, alice_ptext.as_bytes());
+        alice_ooo_messages.push((alice_ptext, alice_message));
+    }
+
+    for i in 0..10 {
+        let alice_ptext = format!("A->B post-OOO message {}", i);
+        let (alice_message, _) = alice_store.encrypt(bob_name, alice_name, alice_ptext.as_bytes());
+        assert_eq!(
+            &bob_store
+                .decrypt(
+                    alice_name,
+                    bob_name,
+                    &alice_message,
+                    CiphertextMessageType::Whisper
+                )
+                .expect("decryption success"),
+            alice_ptext.as_bytes()
+        );
+    }
+
+    for i in 0..10 {
+        let bob_ptext = format!("B->A message post-OOO {}", i);
+        let (bob_message, _) = bob_store.encrypt(alice_name, bob_name, bob_ptext.as_bytes());
+        assert_eq!(
+            &alice_store
+                .decrypt(
+                    bob_name,
+                    alice_name,
+                    &bob_message,
+                    CiphertextMessageType::Whisper
+                )
+                .expect("decryption success"),
+            bob_ptext.as_bytes()
+        );
+    }
+
+    for (ptext, ctext) in alice_ooo_messages {
+        assert_eq!(
+            &bob_store
+                .decrypt(alice_name, bob_name, &ctext, CiphertextMessageType::Whisper)
+                .expect("decryption success"),
+            ptext.as_bytes()
+        );
+    }
+}

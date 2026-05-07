@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+//
+// Copyright 2020 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+package signal.proto.wire;
+
+message SignalMessage {
+  optional bytes  ratchet_key       = 1;
+  optional uint32 counter           = 2;
+  optional uint32 previous_counter  = 3;
+  optional bytes  ciphertext        = 4;
+  optional bytes  pq_ratchet        = 5;
+  optional bytes  addresses = 6;
+}
+
+message PreKeySignalMessage {
+  optional uint32 registration_id   = 5;
+  optional uint32 pre_key_id        = 1;
+  optional uint32 signed_pre_key_id = 6;
+  optional uint32 kyber_pre_key_id  = 7;
+  optional bytes  kyber_ciphertext  = 8;
+  optional bytes  base_key          = 2;
+  optional bytes  identity_key      = 3;
+  optional bytes  message           = 4; // SignalMessage
+}
+
+message SenderKeyMessage {
+  optional bytes  distribution_uuid = 1;
+  optional uint32 chain_id          = 2;
+  optional uint32 iteration         = 3;
+  optional bytes  ciphertext        = 4;
+}
+
+message SenderKeyDistributionMessage {
+  optional bytes  distribution_uuid = 1;
+  optional uint32 chain_id          = 2;
+  optional uint32 iteration         = 3;
+  optional bytes  chain_key         = 4;
+  optional bytes  signing_key       = 5;
+}

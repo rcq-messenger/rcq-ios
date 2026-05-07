@@ -1,0 +1,48 @@
+#
+# Copyright (C) 2022 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "attest"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+rust-version = "1.88"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+asn1 = { workspace = true }
+bitflags = { workspace = true }
+blake2 = { workspace = true }
+boring-signal = { workspace = true }
+chacha20poly1305 = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+const-str = { workspace = true }
+displaydoc = { workspace = true }
+hex = { workspace = true, features = ["serde"] }
+libc = { workspace = true }
+libcrux-ml-kem = { workspace = true, features = ["mlkem1024"] }
+log = { workspace = true }
+prost = { workspace = true }
+rand_core = { workspace = true, features = ["os_rng"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+sha2 = { workspace = true }
+snow = { workspace = true, features = ["hfs"] }
+static_assertions = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+x25519-dalek = { workspace = true }
+zerocopy = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+snow = { workspace = true, default-features = true }
+
+[build-dependencies]
+prost-build = { workspace = true }

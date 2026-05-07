@@ -1,0 +1,55 @@
+import Combine
+import Foundation
+
+@MainActor
+final class ContactListViewModel: ObservableObject {
+    @Published var collapsedOnline: Bool = false
+    @Published var collapsedOffline: Bool = false
+    /// Set once the first `refresh()` resolves. Gates the empty-state
+    /// CTA so a cold launch with non-empty contacts doesn't flash the
+    /// "Add contact" placeholder for one frame before the contacts
+    /// stream populates.
+    @Published var hasLoadedOnce: Bool = false
+
+    private let service = ContactService.shared
+    private var cancellables = Set<AnyCancellable>()
+
+    @Published var contacts: [Contact] = []
+    @Published var pendingCount: Int = 0
+
+    init() {
+        service.$contacts.receive(on: DispatchQueue.main).assign(to: &$contacts)
+        service.$pendingRequests
+            .receive(on: DispatchQueue.main)
+            .map { $0.count }
+            .assign(to: &$pendingCount)
+    }
+
+    /// Online section, filtered by archive state. Archived contacts
+    /// drop out of the regular online/offline groups and live under a
+    /// dedicated section at the bottom of the list.
+    var online: [Contact] {
+        contacts
+            .filter { $0.status != .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
+            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
+    }
+
+    var offline: [Contact] {
+        contacts
+            .filter { $0.status == .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
+            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
+    }
+
+    var archivedContacts: [Contact] {
+        contacts
+            .filter { ArchiveStore.shared.contains(peer: $0.uin) }
+            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
+    }
+
+    func refresh() async {
+        await service.refresh()
+        hasLoadedOnce = true
+    }
+    func remove(_ uin: Int) async { try? await service.remove(uin) }
+    func toggleBlock(_ uin: Int) async { try? await service.toggleBlock(uin) }
+}

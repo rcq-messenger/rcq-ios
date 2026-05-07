@@ -1,0 +1,365 @@
+# xcodegen spec — run `xcodegen generate` from this directory to produce a fully
+# wired RCQ.xcodeproj. Install xcodegen with `brew install xcodegen`.
+name: RCQ
+options:
+  bundleIdPrefix: app.rcq
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    DEVELOPMENT_TEAM: "P29Q334JHX"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  RCQ:
+    type: application
+    platform: iOS
+    sources:
+      - path: RCQ
+        excludes:
+          - "Resources/Sounds/README.md"
+          - "Resources/Emoticons/README.md"
+    resources:
+      - RCQ/Resources/Assets.xcassets
+      - RCQ/Resources/Sounds
+      - RCQ/Resources/Emoticons
+      - RCQ/Resources/Statuses
+      # Lootbox / inventory item assets. Bundled as a folder
+      # reference so the `coll1/` and `cosm1/` subdirectories survive
+      # — kind asset_refs from the server look like
+      # "items/coll1/Item1.png" and the iOS lookup uses
+      # `Bundle.main.url(forResource:withExtension:subdirectory:)`
+      # with that subpath.
+      - path: RCQ/Resources/Items
+        type: folder
+      # Per-language string tables. The lproj layout is the
+      # iOS-native localization mechanism; new languages drop in
+      # by adding `<code>.lproj/Localizable.strings` and the
+      # matching `AppLanguage` case in `LanguageManager`.
+      - RCQ/Resources/en.lproj
+      - RCQ/Resources/ru.lproj
+      # Apple-required privacy manifest. Declares data collected
+      # by RCQ + which Apple "required-reason" APIs the binary
+      # touches. Validated at App Store submission.
+      - RCQ/Resources/PrivacyInfo.xcprivacy
+    info:
+      path: RCQ/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: RCQ
+        CFBundleName: RCQ
+        UILaunchScreen:
+          UIColorName: BootBackground
+        NSCameraUsageDescription: "RCQ needs the camera for video calls."
+        NSMicrophoneUsageDescription: "RCQ needs the microphone for voice and video calls."
+        # People Nearby — opt-in only. We never read raw GPS to the
+        # server; the client computes a coarse area hash (level-6
+        # geohash, ~1km tile) and sends only the hash. No background
+        # location, no continuous tracking.
+        NSLocationWhenInUseUsageDescription: "Your location is used only to find other RCQ users near you while People Nearby is on. Your exact coordinates stay on this device — only a coarse area tag is shared."
+        # Radio Chat (Bluetooth + Wi-Fi-Direct via Apple's
+        # MultipeerConnectivity). Bluetooth permission triggers the
+        # standard iOS prompt; Local Network is required by
+        # MultipeerConnectivity for peer discovery on iOS 14+.
+        # NSBonjourServices declares the service type the framework
+        # advertises and browses over (must match `serviceType`
+        # passed to `MCNearbyServiceAdvertiser`/`Browser`).
+        NSBluetoothAlwaysUsageDescription: "RCQ uses Bluetooth to discover and chat with people physically nearby — no internet required. Direction-finding is off; data stays on the local radio link."
+        NSLocalNetworkUsageDescription: "Radio Chat needs the local network to discover other RCQ users on the same Bluetooth/Wi-Fi mesh. Nothing leaves your device through the internet on this surface."
+        NSBonjourServices:
+          - _rcq-radio._tcp
+          - _rcq-radio._udp
+        # Background modes — `remote-notification` lets iOS wake us when
+        # the backend fires a silent APNs push so we can drain
+        # `/messages/queue`. The other modes are placeholders for the
+        # call signalling work that follows (PushKit / VoIP audio).
+        UIBackgroundModes:
+          - remote-notification
+          - voip
+          - audio
+        # Encryption export compliance. RCQ ships standard E2E
+        # messaging crypto (libsignal: AES-GCM, X25519, Ed25519, HKDF)
+        # — non-exempt under US BIS rules but qualifies for the
+        # mass-market self-classification path (5D992.c) alongside
+        # Signal / WhatsApp / Telegram.
+        #
+        # `false` claims the BIS 5D992.c mass-market exemption:
+        # libsignal uses only STANDARD cryptographic primitives
+        # (AES-GCM, X25519, Curve25519, Ed25519, HKDF) — same
+        # exempt category Signal, WhatsApp, iMessage all sit in.
+        # No BIS Self-Classification email needed, no compliance
+        # code needed in Info.plist, no per-submission prompt in
+        # App Store Connect. Setting this to `true` (the previous
+        # value) required `ITSEncryptionExportComplianceCode` to
+        # match the App Store Connect documentation — without it
+        # archive validation fails ("Invalid Export Compliance Code").
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: RCQ/RCQ.entitlements
+      properties:
+        # APNs environment. **MUST match backend's `APNS_ENVIRONMENT`** in
+        # /opt/rcq/.env on the prod droplet — the two halves talk to
+        # different Apple hostnames depending on this value:
+        #   `development` → sandbox.push.apple.com  (debug builds via Xcode)
+        #   `production`  → api.push.apple.com       (TestFlight + App Store)
+        # Currently set for closed-beta debug builds installed onto real
+        # iPhones via Xcode. When uploading the first TestFlight build,
+        # flip BOTH this line AND `APNS_ENVIRONMENT=production` on the
+        # droplet — and bounce `rcq-backend`.
+        aps-environment: production
+        # Shared keychain access group — RCQ and RCQNotificationService
+        # both opt into this group so the NSE can read the X25519/Ed25519
+        # private keys and decrypt push envelopes locally before iOS
+        # shows the notification. Must match the hard-coded value in
+        # `KeychainStore.accessGroup`.
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)app.rcq.shared
+        # App Group container — shared SQLite database for libsignal
+        # protocol stores (sessions, prekeys, sender keys). Both the
+        # main app and the NSE write here so the NSE can decrypt v=2
+        # envelopes (and store any newly-derived ratchet state) before
+        # iOS displays the push. Must match the hard-coded value in
+        # `AppGroup.identifier`.
+        com.apple.security.application-groups:
+          - group.app.rcq.shared
+        # Universal Links for the share-profile flow. Recipient taps
+        # `https://rcq.app/u/<uin>` in any chat, iOS resolves AASA at
+        # `https://rcq.app/.well-known/apple-app-site-association`
+        # against this domain and routes the URL straight into
+        # `AppState.handle(deepLink:)` — no browser hop.
+        com.apple.developer.associated-domains:
+          - applinks:rcq.app
+    postBuildScripts:
+      # Copy WebRTC.framework's bundled dSYM into the archive's
+      # dSYMs folder during `archive` builds. stasel/WebRTC ships
+      # the dSYM INSIDE the precompiled `WebRTC.xcframework`, but
+      # Xcode 14+ doesn't auto-extract dSYMs from SwiftPM-vended
+      # xcframeworks — App Store Connect then warns:
+      #   "The archive did not include a dSYM for WebRTC.framework
+      #    with the UUIDs [...]. Ensure that the archive's dSYM
+      #    folder includes a DWARF file for WebRTC.framework..."
+      # and crash reports for WebRTC frames come back as raw
+      # addresses. Pulling the dSYM in here makes WebRTC traces
+      # symbolicated like the rest of the app.
+      - name: Copy WebRTC dSYM into archive
+        runOnlyWhenInstalling: true
+        # No declared inputs/outputs because the script's job is to
+        # discover the dSYM dynamically (its DerivedData path varies
+        # per machine + per SPM checkout) and copy it. Xcode warns
+        # "Run script will be run during every build" without this
+        # flag — we silence it explicitly. The first thing the
+        # script does is bail out when ACTION != install, so the
+        # cost on a non-archive build is one process spawn + a
+        # single string compare. Negligible.
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          # Only run during archive (`install` action) — regular
+          # debug builds don't have / need an archive dSYMs folder.
+          if [ "${ACTION}" != "install" ]; then
+            echo "[dSYM] Not an archive build — skipping"
+            exit 0
+          fi
+          # SPM xcframework artifacts live under DerivedData/.../SourcePackages/artifacts/.
+          # The exact path includes a hash, so we search.
+          ARTIFACTS_ROOT="${BUILD_DIR%/Build/*}/SourcePackages/artifacts"
+          if [ ! -d "$ARTIFACTS_ROOT" ]; then
+            echo "[dSYM] No SPM artifacts root at $ARTIFACTS_ROOT"
+            exit 0
+          fi
+          # Match a slice for the current platform (ios-arm64) so
+          # we don't accidentally copy the simulator dSYM into a
+          # device archive.
+          SLICE_HINT="${EFFECTIVE_PLATFORM_NAME:1}"  # strip leading "-"
+          [ -z "$SLICE_HINT" ] && SLICE_HINT="ios-arm64"
+          DSYM_SOURCE=$(find "$ARTIFACTS_ROOT" -path "*/${SLICE_HINT}*/dSYMs/WebRTC.framework.dSYM" -type d 2>/dev/null | head -1)
+          if [ -z "$DSYM_SOURCE" ]; then
+            DSYM_SOURCE=$(find "$ARTIFACTS_ROOT" -name "WebRTC.framework.dSYM" -type d 2>/dev/null | head -1)
+          fi
+          if [ -z "$DSYM_SOURCE" ] || [ ! -d "$DSYM_SOURCE" ]; then
+            echo "[dSYM] WebRTC.framework.dSYM not found under $ARTIFACTS_ROOT"
+            exit 0
+          fi
+          mkdir -p "${DWARF_DSYM_FOLDER_PATH}"
+          cp -R "$DSYM_SOURCE" "${DWARF_DSYM_FOLDER_PATH}/"
+          echo "[dSYM] Copied $DSYM_SOURCE -> ${DWARF_DSYM_FOLDER_PATH}"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.rcq.client
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+      # Per-configuration signing.
+      #
+      # Debug stays automatic — Xcode picks Apple Development cert +
+      # Development profile for whatever team is selected, simplest
+      # path for daily device debugging.
+      #
+      # Release uses MANUAL signing with the explicit App Store
+      # provisioning profile name. Auto-signing was misbehaving for
+      # this account: Xcode kept generating a Development profile at
+      # Archive time despite Apple Distribution cert being present,
+      # so the archive shipped with `aps-environment: development`
+      # and APNs production tokens never matched. Pinning the App
+      # Store profile name forces the right entitlements
+      # (production aps-environment, get-task-allow=false) and
+      # bypasses the auto-signing fallback. The profile itself
+      # already lives in `~/Library/Developer/Xcode/UserData/
+      # Provisioning Profiles/` (Apple issued it via the Developer
+      # Portal); when it expires Xcode regenerates a profile with
+      # the same Name.
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "Apple Development"
+        Release:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "RCQ AppStore Manual"
+    dependencies:
+      - package: WebRTC
+        product: WebRTC
+      - package: LibSignalClient
+        product: LibSignalClient
+      - target: RCQNotificationService
+
+  # Notification Service Extension — runs in its own process whenever an
+  # APNs push arrives with `mutable-content: 1`. Pulls the encrypted
+  # envelope out of the push's userInfo, decrypts via the shared
+  # SignalCryptoService + Keychain, and replaces the generic alert with
+  # the real sender + content preview. Falls back to the unmodified push
+  # on any failure (no key, malformed payload, decrypt error).
+  RCQNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RCQNotificationService
+      # The NSE compiles its own copies of these from the main-app
+      # source. They're stateless / pure (Crypto = CryptoKit primitives,
+      # KeychainStore = static helpers), so a per-target build is fine
+      # and keeps us free of a separate framework target.
+      - path: RCQ/Services/CryptoService.swift
+      - path: RCQ/Services/KeychainStore.swift
+      # Stage 3 protocol-store plumbing — also stateless wrappers, the
+      # backing SQLite lives in the shared App Group container so both
+      # targets see the same sessions / prekeys / sender keys.
+      - path: RCQ/Services/AppGroup.swift
+      - path: RCQ/Services/SignalProtocolDB.swift
+      - path: RCQ/Services/SignalProtocolStores.swift
+      # Tiny App Group-shared nickname cache so the NSE can render the
+      # actual sender name in pushes instead of "RCQ #UIN".
+      - path: RCQ/Services/NicknameCache.swift
+      # NSE writes the decrypted plaintext for each v=2 push into this
+      # cache so the main app's `MessageService.ingest` can consume it
+      # without re-running libsignal — preventing the dual-decrypt
+      # ratchet hazard. File-backed App Group storage.
+      - path: RCQ/Services/PushDecryptCache.swift
+    resources:
+      # Apple-required privacy manifest for the NSE bundle. Distinct
+      # file from the main app's because Apple validates each binary
+      # separately. Smaller surface — NSE only touches App Group
+      # storage and libsignal's monotonic clocks.
+      - RCQNotificationService/PrivacyInfo.xcprivacy
+      # Push body localizations (push.contact_request.body etc.).
+      # NSE picks the right lproj based on the App-Group-mirrored
+      # `rcq.app_language` UserDefaults key — so a user who set
+      # Russian inside the app gets Russian push bodies even when
+      # their iPhone is in English. Falls back to English when the
+      # NSE can't resolve the picked language to a bundled lproj.
+      - RCQNotificationService/Resources/en.lproj
+      - RCQNotificationService/Resources/ru.lproj
+    info:
+      path: RCQNotificationService/Info.plist
+      properties:
+        # Apple's TestFlight validation requires CFBundleDisplayName
+        # on every embedded bundle, including app extensions. Without
+        # this the upload bounces with
+        # "Missing Info.plist value … RCQNotificationService.appex".
+        # The string isn't user-visible (NSEs don't have a launcher
+        # icon), but the validator still demands it.
+        CFBundleDisplayName: RCQ Notifications
+        CFBundleName: RCQ Notifications
+        # Match the main app's marketing/build versions so the
+        # validator doesn't complain about extension/host mismatch.
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: RCQNotificationService/RCQNotificationService.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)app.rcq.shared
+        com.apple.security.application-groups:
+          - group.app.rcq.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.rcq.client.notification
+        TARGETED_DEVICE_FAMILY: "1"
+      # Same per-config signing fix as the main RCQ target — Release
+      # uses manual signing with the explicit NSE App Store profile
+      # so the .appex bundle ships with production entitlements
+      # (mirrors the rationale in the RCQ target above).
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "Apple Development"
+        Release:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: "RCQ Notification AppStore Manual"
+    dependencies:
+      - package: LibSignalClient
+        product: LibSignalClient
+
+packages:
+  # Pre-built WebRTC.xcframework distributed by the stasel community fork.
+  # Apple-signed Chromium-based libwebrtc — same media stack Signal/Discord
+  # use. Pin to a specific tag so future releases don't yank the binary
+  # checksum out from under us. Bumping later: pick a fresh release from
+  # https://github.com/stasel/WebRTC/releases and update the version below.
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    exactVersion: 147.0.0
+  # signalapp/libsignal Swift bindings, vendored at v0.93.1 in
+  # Vendor/libsignal/ (full upstream source plus a prebuilt
+  # libsignal_ffi.xcframework so consumers don't need a Rust toolchain).
+  # Patches: swift/Package.swift switched to .binaryTarget,
+  # swift/build_ffi.sh has its full-LTO block disabled, and the
+  # boring-sys cargo cache had its hardcoded -fembed-bitcode dropped —
+  # both LTO bitcode and Apple-deprecated bitcode break
+  # `xcodebuild -create-xcframework`.
+  # Stage 3 crypto migration (X3DH + Double Ratchet + Sender Keys)
+  # rides on this. See Vendor/libsignal/swift/Package.swift header
+  # comment for the rebuild commands.
+  LibSignalClient:
+    path: Vendor/libsignal/swift
+
+# Explicit shared schemes. Without this, xcodegen leaves scheme generation
+# to Xcode's lazy user-scheme path — and with two targets in the project,
+# Xcode sometimes ends up showing only the extension's scheme (which is
+# unrunnable on its own — extensions get embedded in their host app) and
+# hiding the main RCQ scheme. Pinning here keeps both schemes deterministic
+# and shared in source control.
+schemes:
+  RCQ:
+    build:
+      targets:
+        RCQ: all
+        # Extension is built as a side-effect of the host app (it's a
+        # `dependencies:` entry on RCQ), so the scheme doesn't need to
+        # mention it explicitly — keeping it here makes the dependency
+        # obvious in the Xcode UI.
+        RCQNotificationService: all
+    run:
+      config: Debug
+      executable: RCQ
+    archive:
+      config: Release
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+
+# LibSignalClient is now wired via a vendored copy at Vendor/libsignal/
+# (signalapp/libsignal v0.93.1) with a prebuilt libsignal_ffi.xcframework
+# inside swift/. See the `packages:` block above and that directory's
+# Package.swift header for the rebuild recipe and the patches we apply.

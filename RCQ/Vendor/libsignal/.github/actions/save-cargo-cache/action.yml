@@ -1,0 +1,23 @@
+name: 'Save Cargo Cache'
+description: 'Save cargo and build cache artifacts with appropriate keys'
+inputs:
+  key:
+    description: 'The cache key to save under'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Save cargo cache
+      if: ${{ env.DO_CLEAN_BUILD_AND_POPULATE_CACHE == 'true' }}
+      uses: runs-on/cache/save@575425708ccb521bfce731e8d8a67f7f337b8954 # main as of 2026-04-10
+      with:
+        # Keep this path list in sync with restore-cargo-cache/action.yml.
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/registry/src
+          ~/.cargo/git/db
+          ~/.cargo/git/checkouts
+          target
+          ${{ runner.os == 'Windows' && format('{0}\\libsignal', runner.temp) || '' }}
+        key: ${{ inputs.key }}

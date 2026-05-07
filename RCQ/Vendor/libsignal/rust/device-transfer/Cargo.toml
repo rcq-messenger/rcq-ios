@@ -1,0 +1,16 @@
+[package]
+name = "device-transfer"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+boring = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }

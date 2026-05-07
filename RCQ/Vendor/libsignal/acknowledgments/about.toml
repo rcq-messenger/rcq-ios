@@ -1,0 +1,418 @@
+accepted = [
+    # These are in priority order, if a project is multi-licensed
+    "CC0-1.0",
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "AGPL-3.0-only",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+
+ignore-dev-dependencies = true
+
+# Don't use an online service to verify licenses.
+no-clearly-defined = true
+
+# cargo-about will scan each crate for the exact text of a project's license.
+# This can take a long time, so we limit it to only checking the top level of each crate.
+# If the license isn't there, cargo-about will fall back to a generic version.
+# At the time this was introduced, this produced identical output to max-depth = 2
+# in a fraction of the time.
+max-depth = 1
+
+workarounds = [
+    "chrono",
+    "prost",
+    "ring",
+    "tonic",
+]
+
+
+# The async-compression crates are embedded in a larger repo
+[async-compression.clarify]
+license = "MIT"
+
+[[async-compression.clarify.git]]
+path = "LICENSE-MIT"
+checksum = "88d1e3160df48926ad3310a8ec5699b502889565908f1be7e77cd21282c7a709"
+
+[compression-codecs.clarify]
+license = "MIT"
+
+[[compression-codecs.clarify.git]]
+path = "LICENSE-MIT"
+checksum = "88d1e3160df48926ad3310a8ec5699b502889565908f1be7e77cd21282c7a709"
+
+[compression-core.clarify]
+license = "MIT"
+
+[[compression-core.clarify.git]]
+path = "LICENSE-MIT"
+checksum = "88d1e3160df48926ad3310a8ec5699b502889565908f1be7e77cd21282c7a709"
+
+
+# Boring's main license isn't at the root of the repo
+[boring.clarify]
+license = "Apache-2.0"
+
+[[boring.clarify.files]]
+path = "LICENSE"
+checksum = "48e488ce333f8a1e86a68b2a1df454464037f1ff580b5bff926053c56dbadc2d"
+
+
+# The BoringSSL inside boring-sys isn't a crate, so we have to specify its inner licenses manually.
+# See https://embarkstudios.github.io/cargo-about/cli/generate/config.html#the-clarify-field-optional
+# and the similar configuration for 'ring' in https://github.com/EmbarkStudios/cargo-about/blob/3bcd3380f606fd468b2836e04cdcf7997d1f3ff8/src/licenses/workarounds/ring.rs
+
+[boring-sys.clarify]
+license = "MIT AND Apache-2.0"
+
+[[boring-sys.clarify.files]]
+# The MIT license of the Rust code
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "ad2e7bdef7c00b92eaf4f657a472c7d3f8b36aac3cdc270e65bb0c287eec0d4e"
+
+[[boring-sys.clarify.files]]
+# The Apache 2.0 license of BoringSSL
+path = "deps/boringssl/LICENSE"
+license = "Apache-2.0"
+checksum = "827c8d8fc207c2392794eef9e00fe246f9f61fdcc132556c275be3dd8c3cd97f"
+
+
+# Newer versions of convert_case have a LICENSE file, we'll use that one
+[convert_case.clarify]
+license = "MIT"
+override-git-commit = "f72ca63c9d579fbab22e361c76e39d31d1e86a2e"
+
+[[convert_case.clarify.git]]
+path = "LICENSE"
+checksum = "797087750c4103075e96bb7a60202a040812f8679ae2f7263148a1cc0b298d28"
+
+
+# curve25519-dalek was derived from a Go project
+[curve25519-dalek.clarify]
+license = "BSD-3-Clause"
+
+[[curve25519-dalek.clarify.files]]
+# The Rust implementation
+path = "LICENSE"
+license = "BSD-3-Clause"
+start = "Copyright"
+end = "SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
+checksum = "db7e563b03fa70fa9998fbcae9b432057b7430740a58672c9a8df17af6e078d7"
+
+[[curve25519-dalek.clarify.files]]
+# The Go implementation used as a reference
+path = "LICENSE"
+license = "BSD-3-Clause"
+start = "Copyright (c) 2012 The Go Authors. All rights reserved."
+end = "SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
+checksum = "b790bcf9428074d098a455163df68ec35589ae22536051f3555a592c1e4dd772"
+
+
+# dyn-clonable is embedded in a larger repo
+[dyn-clonable.clarify]
+license = "MIT"
+override-git-commit = "b0faeec90f3c2fa9fd0cb34796308602cabf5f04"
+
+[[dyn-clonable.clarify.git]]
+path = "LICENSE"
+checksum = "d2c376e2d8ee747383aaf0d5b52997bd6aa04ab73720b6797edeb64fe90c05a3"
+
+[dyn-clonable-impl.clarify]
+license = "MIT"
+override-git-commit = "b0faeec90f3c2fa9fd0cb34796308602cabf5f04"
+
+[[dyn-clonable-impl.clarify.git]]
+path = "LICENSE"
+checksum = "d2c376e2d8ee747383aaf0d5b52997bd6aa04ab73720b6797edeb64fe90c05a3"
+
+
+# The hax crates are embedded in a larger repo.
+[hax-lib.clarify]
+license = "Apache-2.0"
+
+[[hax-lib.clarify.git]]
+path = "LICENSE"
+checksum = "9a50bad5a51e0ad726ea3a7f4b7b758e1b4d1784e6abefe1367f5bf01e972725"
+
+[hax-lib-macros.clarify]
+license = "Apache-2.0"
+
+[[hax-lib-macros.clarify.git]]
+path = "LICENSE"
+checksum = "9a50bad5a51e0ad726ea3a7f4b7b758e1b4d1784e6abefe1367f5bf01e972725"
+
+
+# The libcrux crates are embedded in a larger repo.
+[libcrux-hacl-rs.clarify]
+license = "Apache-2.0"
+
+[[libcrux-hacl-rs.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-hkdf.clarify]
+license = "Apache-2.0"
+
+[[libcrux-hkdf.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-hmac.clarify]
+license = "Apache-2.0"
+
+[[libcrux-hmac.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-intrinsics.clarify]
+license = "Apache-2.0"
+
+[[libcrux-intrinsics.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-macros.clarify]
+license = "Apache-2.0"
+
+[[libcrux-macros.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-ml-kem.clarify]
+license = "Apache-2.0"
+
+[[libcrux-ml-kem.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-platform.clarify]
+license = "Apache-2.0"
+
+[[libcrux-platform.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-secrets.clarify]
+license = "Apache-2.0"
+
+[[libcrux-secrets.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-sha2.clarify]
+license = "Apache-2.0"
+
+[[libcrux-sha2.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-sha3.clarify]
+license = "Apache-2.0"
+
+[[libcrux-sha3.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+[libcrux-traits.clarify]
+license = "Apache-2.0"
+
+[[libcrux-traits.clarify.git]]
+path = "LICENSE"
+checksum = "c517c468fc7f8d83319dd8b3743923f6891e0dfbaf7c57a874758c8f39b98564"
+
+
+# miniz_oxide's LICENSE and LICENSE-MIT.md don't get consistently chosen between. Force the choice here.
+[miniz_oxide.clarify]
+license = "MIT OR Zlib OR Apache-2.0"
+
+[[miniz_oxide.clarify.files]]
+path = "LICENSE"
+checksum = "4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b"
+
+
+# mp4san is embedded in a larger repo
+[mediasan-common.clarify]
+license = "MIT"
+
+[[mediasan-common.clarify.git]]
+path = "LICENSE"
+checksum = "f78d723e5d254b2037aa633b034dfe314caf37ace39727c66271b119027e5730"
+
+[mp4san.clarify]
+license = "MIT"
+
+[[mp4san.clarify.git]]
+path = "LICENSE"
+checksum = "f78d723e5d254b2037aa633b034dfe314caf37ace39727c66271b119027e5730"
+
+[mp4san-derive.clarify]
+license = "MIT"
+
+[[mp4san-derive.clarify.git]]
+path = "LICENSE"
+checksum = "f78d723e5d254b2037aa633b034dfe314caf37ace39727c66271b119027e5730"
+
+
+[neon.clarify]
+license = "MIT"
+
+[[neon.clarify.git]]
+path = "LICENSE-MIT"
+checksum = "e47f19ffc3ed618c75d166781681b27c30f841f9b5b10fc488150b9128b19cac"
+
+
+# partial-default-derive is embedded in a larger repo
+[partial-default-derive.clarify]
+license = "AGPL-3.0-only"
+
+[[partial-default-derive.clarify.git]]
+path = "LICENSE"
+checksum = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+
+
+# protobuf-parse has an addendum for the standard Google protobufs
+[protobuf-parse.clarify]
+license = "MIT"
+
+[[protobuf-parse.clarify.files]]
+path = "LICENSE.txt"
+checksum = "ea240b0b1a772a073d2f8941f2145dd8f0b5b2d83c700107a84a1f7eb8ac7af1"
+
+
+# rustls-platform-verifier-android is embedded in a larger repo
+[rustls-platform-verifier-android.clarify]
+license = "MIT OR Apache-2.0"
+override-git-commit = "v/0.3.2"
+
+[[rustls-platform-verifier-android.clarify.git]]
+path = "LICENSE-MIT"
+checksum = "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+
+
+# ryu has an unusual choice of licenses
+[ryu.clarify]
+license = "Apache-2.0 OR BSL-1.0"
+
+[[ryu.clarify.files]]
+path = "LICENSE-APACHE"
+checksum = "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+
+
+# sync_wrapper's license isn't recognized for some reason
+[sync_wrapper.clarify]
+license = "Apache-2.0"
+
+[[sync_wrapper.clarify.files]]
+path = "LICENSE"
+checksum = "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+
+
+# The tonic-prost crates are embedded in a larger repo
+[tonic-prost.clarify]
+license = "MIT"
+
+[[tonic-prost.clarify.git]]
+path = "LICENSE"
+checksum = "e24a56698aa6feaf3a02272b3624f9dc255d982970c5ed97ac4525a95056a5b3"
+
+[tonic-prost-build.clarify]
+license = "MIT"
+
+[[tonic-prost-build.clarify.git]]
+path = "LICENSE"
+checksum = "e24a56698aa6feaf3a02272b3624f9dc255d982970c5ed97ac4525a95056a5b3"
+
+
+# webpsan is embedded in a larger repo
+[webpsan.clarify]
+license = "MIT"
+
+[[webpsan.clarify.git]]
+path = "LICENSE"
+checksum = "f78d723e5d254b2037aa633b034dfe314caf37ace39727c66271b119027e5730"
+
+
+# Not sure what's up with the windows-* crates.
+[windows-core.clarify]
+license = "MIT"
+
+[[windows-core.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-implement.clarify]
+license = "MIT"
+
+[[windows-implement.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-interface.clarify]
+license = "MIT"
+
+[[windows-interface.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-link.clarify]
+license = "MIT"
+
+[[windows-link.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-result.clarify]
+license = "MIT"
+
+[[windows-result.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-strings.clarify]
+license = "MIT"
+
+[[windows-strings.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-sys.clarify]
+license = "MIT"
+
+[[windows-sys.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows-targets.clarify]
+license = "MIT"
+
+[[windows-targets.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows_aarch64_msvc.clarify]
+license = "MIT"
+
+[[windows_aarch64_msvc.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows_x86_64_gnu.clarify]
+license = "MIT"
+
+[[windows_x86_64_gnu.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+
+[windows_x86_64_msvc.clarify]
+license = "MIT"
+
+[[windows_x86_64_msvc.clarify.files]]
+path = "license-mit"
+checksum = "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"

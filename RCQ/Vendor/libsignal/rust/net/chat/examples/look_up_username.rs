@@ -1,0 +1,231 @@
+//
+// Copyright 2025 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+use std::fmt::Debug;
+use std::sync::Arc;
+
+use anyhow::anyhow;
+use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine as _};
+use clap::{Parser, ValueEnum};
+use libsignal_net::certs::SIGNAL_ROOT_CERTIFICATES;
+use libsignal_net::chat::test_support::simple_chat_connection;
+use libsignal_net::connect_state::{ConnectState, ConnectionResources, SUGGESTED_CONNECT_CONFIG};
+use libsignal_net::env::Env;
+use libsignal_net::infra::dns::DnsResolver;
+use libsignal_net::infra::host::Host;
+use libsignal_net::infra::http_client::{Http2Client, Http2Connector};
+use libsignal_net::infra::route::provider::EmptyProvider;
+use libsignal_net::infra::route::{
+    ConnectError, DirectOrProxyMode, DirectOrProxyProvider, DirectTcpRouteProvider, HttpVersion,
+    HttpsProvider, TlsRouteProvider,
+};
+use libsignal_net::infra::timeouts::TimeoutOr;
+use libsignal_net::infra::utils::no_network_change_events;
+use libsignal_net::infra::{EnableDomainFronting, OverrideNagleAlgorithm};
+use libsignal_net_chat::api::Unauth;
+use libsignal_net_chat::api::usernames::UnauthenticatedChatApi;
+use nonzero_ext::nonzero;
+use static_assertions::assert_impl_all;
+
+#[derive(Parser)]
+struct Config {
+    env: Environment,
+    username: String,
+
+    #[arg(long)]
+    h2: bool,
+    #[arg(long)]
+    use_grpc: bool,
+    #[arg(long, default_value = "")]
+    host: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Environment {
+    Staging,
+    #[value(alias("prod"))]
+    Production,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    env_logger::Builder::new()
+        .filter_module(module_path!(), log::LevelFilter::Info)
+        .parse_default_env()
+        .init();
+
+    let Config {
+        env,
+        username,
+        h2,
+        use_grpc,
+        host,
+    } = Config::parse();
+    let mut env = match env {
+        Environment::Staging => libsignal_net::env::STAGING,
+        Environment::Production => libsignal_net::env::PROD,
+    };
+
+    if !host.is_empty() {
+        // This is cheating, but we're just using it for testing anyway.
+        env.chat_domain_config.connect.hostname = Box::leak(host.into_boxed_str());
+        env.chat_domain_config.ip_v4 = &[];
+        env.chat_domain_config.ip_v6 = &[];
+    }
+    if h2 {
+        env.chat_domain_config.connect.http_version = Some(HttpVersion::Http2);
+    }
+
+    let grpc_connection;
+    let ws_connection;
+
+    if use_grpc {
+        grpc_connection = Some(Unauth(make_grpc_connection(env).await?));
+        ws_connection = None;
+    } else {
+        let chat_connection = simple_chat_connection(
+            &env,
+            EnableDomainFronting::No,
+            DirectOrProxyMode::DirectOnly,
+            |_route| true,
+        )
+        .await?;
+        grpc_connection = chat_connection.shared_h2_connection().map(Unauth);
+        ws_connection = Some(Unauth(chat_connection));
+    }
+
+    let username = if let Some(offset) = username.find("//signal.me/#eu/") {
+        let payload = username[offset..]
+            .strip_prefix("//signal.me/#eu/")
+            .and_then(|payload| BASE64_URL_SAFE_NO_PAD.decode(payload).ok())
+            .ok_or_else(|| anyhow!("invalid username link"))?;
+        let (entropy, handle_uuid) = payload
+            .split_first_chunk::<{ usernames::constants::USERNAME_LINK_ENTROPY_SIZE }>()
+            .ok_or_else(|| anyhow!("invalid username link payload"))?;
+        let handle_uuid = uuid::Uuid::from_slice(handle_uuid)
+            .map_err(|_| anyhow!("invalid username link UUID"))?;
+        let username = apply_to_both(
+            grpc_connection.as_ref(),
+            ws_connection.as_ref(),
+            |c| c.look_up_username_link(handle_uuid, entropy),
+            |c| c.look_up_username_link(handle_uuid, entropy),
+        )
+        .await?;
+
+        let Some(username) = username else {
+            log::info!("username link not found");
+            return Ok(());
+        };
+
+        log::info!("found username {username}");
+        username
+    } else {
+        usernames::Username::new(&username)?
+    };
+
+    let username_hash = username.hash();
+
+    let result = apply_to_both(
+        grpc_connection.as_ref(),
+        ws_connection.as_ref(),
+        |c| c.look_up_username_hash(&username_hash),
+        |c| c.look_up_username_hash(&username_hash),
+    )
+    .await?;
+
+    if let Some(aci) = result {
+        log::info!("found {}", aci.service_id_string());
+    } else {
+        log::info!("no user found");
+    }
+
+    Ok(())
+}
+
+/// Helper to call an operation on both gRPC and WS connections.
+///
+/// Unfortunately, the operation has to be specified twice because the two may not share a common
+/// trait. For instance, `usernames::UnauthApi<OverWs>` and `usernames::UnauthApi<OverGrpc>` are not
+/// the same type.
+async fn apply_to_both<'a, A, B, F, T, E>(
+    grpc_connection: Option<&'a A>,
+    ws_connection: Option<&'a B>,
+    grpc_operation: impl Fn(&'a A) -> F,
+    ws_operation: impl Fn(&'a B) -> F,
+) -> Result<T, E>
+where
+    F: Future<Output = Result<T, E>> + 'a,
+    T: PartialEq + Debug,
+{
+    match (grpc_connection, ws_connection) {
+        (Some(grpc_connection), Some(ws_connection)) => {
+            log::info!("trying both gRPC and websocket...");
+            let (grpc_result, ws_result) = futures_util::future::try_join(
+                grpc_operation(grpc_connection),
+                ws_operation(ws_connection),
+            )
+            .await?;
+            assert_eq!(
+                grpc_result, ws_result,
+                "connections disagreed on the answer?"
+            );
+            Ok(ws_result)
+        }
+        (Some(grpc_connection), None) => {
+            log::info!("sending request over gRPC...");
+            grpc_operation(grpc_connection).await
+        }
+        (None, Some(ws_connection)) => {
+            log::info!("sending request over websocket...");
+            ws_operation(ws_connection).await
+        }
+        (None, None) => unreachable!("we established at least one connection"),
+    }
+}
+
+assert_impl_all!(Http2Client<tonic::body::Body>: tonic::client::GrpcService<tonic::body::Body>);
+
+/// Connect to a gRPC server that uses Signal's pinned root certificate.
+///
+/// Eventually this should be covered by a libsignal-net-level API like `simple_chat_connection`.
+/// We're not just making an *arbitrary* H2 connection; we're specifically talking to chat-server.
+async fn make_grpc_connection(env: Env<'_>) -> anyhow::Result<Http2Client<tonic::body::Body>> {
+    let host: Arc<str> = Arc::from(env.chat_domain_config.connect.hostname);
+    let connect_state = Arc::new(ConnectState::new(SUGGESTED_CONNECT_CONFIG));
+    let resolver = DnsResolver::new(&no_network_change_events());
+    let (client, _route_info) = ConnectionResources {
+        connect_state: &connect_state,
+        dns_resolver: &resolver,
+        network_change_event: &no_network_change_events(),
+        confirmation_header_name: None,
+    }
+    .connect_h2(
+        env.chat_domain_config.connect.service,
+        HttpsProvider::new(
+            host.clone(),
+            HttpVersion::Http2,
+            EmptyProvider::default(),
+            TlsRouteProvider::new(
+                SIGNAL_ROOT_CERTIFICATES,
+                None,
+                Host::Domain(host.clone()),
+                DirectOrProxyProvider::direct(DirectTcpRouteProvider::new(
+                    host.clone(),
+                    nonzero!(443u16),
+                    OverrideNagleAlgorithm::UseSystemDefault,
+                )),
+            ),
+        ),
+        Http2Connector::new(),
+        "grpc",
+    )
+    .await
+    .map_err(|e| match e {
+        TimeoutOr::Timeout { .. } => anyhow!("timed out"),
+        TimeoutOr::Other(ConnectError::AllAttemptsFailed) => anyhow!("all attempts failed"),
+        TimeoutOr::Other(ConnectError::FatalConnect { error, .. }) => error.into(),
+    })?;
+    Ok(client)
+}

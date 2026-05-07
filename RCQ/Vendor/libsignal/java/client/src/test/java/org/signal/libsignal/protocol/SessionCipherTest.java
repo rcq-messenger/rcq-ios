@@ -1,0 +1,235 @@
+//
+// Copyright 2023 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+package org.signal.libsignal.protocol;
+
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Random;
+import junit.framework.TestCase;
+import org.signal.libsignal.protocol.ecc.ECKeyPair;
+import org.signal.libsignal.protocol.message.CiphertextMessage;
+import org.signal.libsignal.protocol.message.SignalMessage;
+import org.signal.libsignal.protocol.state.SessionRecord;
+import org.signal.libsignal.protocol.state.SignalProtocolStore;
+
+public class SessionCipherTest extends TestCase {
+
+  public class PairOfSessions {
+    public PairOfSessions(SessionRecord a, SessionRecord b) {
+      aliceSession = a;
+      bobSession = b;
+    }
+
+    public SessionRecord aliceSession;
+    public SessionRecord bobSession;
+  }
+
+  public void testBasicSessionV3()
+      throws InvalidKeyException,
+          DuplicateMessageException,
+          LegacyMessageException,
+          InvalidMessageException,
+          InvalidVersionException,
+          NoSuchAlgorithmException,
+          NoSessionException,
+          UntrustedIdentityException {
+    PairOfSessions sessions = initializeSessionsV4();
+    runInteraction(sessions.aliceSession, sessions.bobSession);
+  }
+
+  public void testMessageKeyLimits() throws Exception {
+    PairOfSessions sessions = initializeSessionsV4();
+
+    SignalProtocolStore aliceStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolStore bobStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolAddress bobAddress = new SignalProtocolAddress("+14159999999", 1);
+    SignalProtocolAddress aliceAddress = new SignalProtocolAddress("+14158888888", 1);
+
+    aliceStore.storeSession(bobAddress, sessions.aliceSession);
+    bobStore.storeSession(aliceAddress, sessions.bobSession);
+
+    SessionCipher aliceCipher = new SessionCipher(aliceStore, aliceAddress, bobAddress);
+    SessionCipher bobCipher = new SessionCipher(bobStore, bobAddress, aliceAddress);
+
+    List<CiphertextMessage> inflight = new LinkedList<>();
+
+    for (int i = 0; i < 2010; i++) {
+      inflight.add(
+          aliceCipher.encrypt("you've never been so hungry, you've never been so cold".getBytes()));
+    }
+
+    bobCipher.decrypt(new SignalMessage(inflight.get(1000).serialize()));
+    bobCipher.decrypt(new SignalMessage(inflight.get(inflight.size() - 1).serialize()));
+
+    try {
+      bobCipher.decrypt(new SignalMessage(inflight.get(0).serialize()));
+      throw new AssertionError("Should have failed!");
+    } catch (DuplicateMessageException dme) {
+      // good
+    }
+  }
+
+  public void testDecryptAfterReset() throws Exception {
+    PairOfSessions sessions = initializeSessionsV4();
+
+    SignalProtocolStore aliceStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolStore bobStore = new TestInMemorySignalProtocolStore();
+
+    SignalProtocolAddress aliceAddress = new SignalProtocolAddress("+14159999999", 1);
+    SignalProtocolAddress bobAddress = new SignalProtocolAddress("+141588888888", 1);
+
+    aliceStore.storeSession(bobAddress, sessions.aliceSession);
+    bobStore.storeSession(aliceAddress, sessions.bobSession);
+
+    SessionCipher aliceCipher = new SessionCipher(aliceStore, aliceAddress, bobAddress);
+    SessionCipher bobCipher = new SessionCipher(bobStore, bobAddress, aliceAddress);
+
+    byte[] alicePlaintext = "This is a plaintext message.".getBytes();
+    CiphertextMessage message = aliceCipher.encrypt(alicePlaintext);
+    byte[] bobPlaintext = bobCipher.decrypt(new SignalMessage(message.serialize()));
+
+    assertTrue(Arrays.equals(alicePlaintext, bobPlaintext));
+
+    CiphertextMessage message2 = aliceCipher.encrypt(alicePlaintext);
+
+    SessionRecord bobSession = bobStore.loadSession(aliceAddress);
+    assertFalse(bobSession.currentRatchetKeyMatches(ECKeyPair.generate().getPublicKey()));
+    bobSession.archiveCurrentState();
+    assertFalse(bobSession.currentRatchetKeyMatches(ECKeyPair.generate().getPublicKey()));
+    bobStore.storeSession(aliceAddress, bobSession);
+
+    byte[] bobPlaintext2 = bobCipher.decrypt(new SignalMessage(message2.serialize()));
+    assertTrue(Arrays.equals(alicePlaintext, bobPlaintext2));
+  }
+
+  public void testDecryptAfterDelete() throws Exception {
+    PairOfSessions sessions = initializeSessionsV4();
+
+    SignalProtocolStore aliceStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolStore bobStore = new TestInMemorySignalProtocolStore();
+
+    SignalProtocolAddress aliceAddress = new SignalProtocolAddress("+14159999999", 1);
+    SignalProtocolAddress bobAddress = new SignalProtocolAddress("+141588888888", 1);
+
+    aliceStore.storeSession(bobAddress, sessions.aliceSession);
+    bobStore.storeSession(aliceAddress, sessions.bobSession);
+
+    SessionCipher aliceCipher = new SessionCipher(aliceStore, aliceAddress, bobAddress);
+    SessionCipher bobCipher = new SessionCipher(bobStore, bobAddress, aliceAddress);
+
+    byte[] alicePlaintext = "This is a plaintext message.".getBytes();
+    CiphertextMessage message = aliceCipher.encrypt(alicePlaintext);
+    byte[] bobPlaintext = bobCipher.decrypt(new SignalMessage(message.serialize()));
+
+    assertTrue(Arrays.equals(alicePlaintext, bobPlaintext));
+
+    CiphertextMessage message2 = aliceCipher.encrypt(alicePlaintext);
+
+    bobStore.deleteSession(aliceAddress);
+    try {
+      bobCipher.decrypt(new SignalMessage(message2.serialize()));
+    } catch (NoSessionException e) {
+      assertEquals(e.getAddress(), aliceAddress);
+    }
+  }
+
+  private void runInteraction(SessionRecord aliceSessionRecord, SessionRecord bobSessionRecord)
+      throws DuplicateMessageException,
+          LegacyMessageException,
+          InvalidMessageException,
+          InvalidVersionException,
+          InvalidKeyException,
+          NoSuchAlgorithmException,
+          NoSessionException,
+          UntrustedIdentityException {
+    SignalProtocolStore aliceStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolStore bobStore = new TestInMemorySignalProtocolStore();
+    SignalProtocolAddress bobAddress = new SignalProtocolAddress("+14159999999", 1);
+    SignalProtocolAddress aliceAddress = new SignalProtocolAddress("+14158888888", 1);
+
+    aliceStore.storeSession(bobAddress, aliceSessionRecord);
+    bobStore.storeSession(aliceAddress, bobSessionRecord);
+
+    SessionCipher aliceCipher = new SessionCipher(aliceStore, aliceAddress, bobAddress);
+    SessionCipher bobCipher = new SessionCipher(bobStore, bobAddress, aliceAddress);
+
+    byte[] alicePlaintext = "This is a plaintext message.".getBytes();
+    CiphertextMessage message = aliceCipher.encrypt(alicePlaintext);
+    byte[] bobPlaintext = bobCipher.decrypt(new SignalMessage(message.serialize()));
+
+    assertTrue(Arrays.equals(alicePlaintext, bobPlaintext));
+
+    byte[] bobReply = "This is a message from Bob.".getBytes();
+    CiphertextMessage reply = bobCipher.encrypt(bobReply);
+    byte[] receivedReply = aliceCipher.decrypt(new SignalMessage(reply.serialize()));
+
+    assertTrue(Arrays.equals(bobReply, receivedReply));
+
+    List<CiphertextMessage> aliceCiphertextMessages = new ArrayList<>();
+    List<byte[]> alicePlaintextMessages = new ArrayList<>();
+
+    for (int i = 0; i < 50; i++) {
+      alicePlaintextMessages.add(("alice message " + i).getBytes());
+      aliceCiphertextMessages.add(aliceCipher.encrypt(("alice message " + i).getBytes()));
+    }
+
+    long seed = System.currentTimeMillis();
+
+    Collections.shuffle(aliceCiphertextMessages, new Random(seed));
+    Collections.shuffle(alicePlaintextMessages, new Random(seed));
+
+    for (int i = 0; i < aliceCiphertextMessages.size() / 2; i++) {
+      byte[] receivedPlaintext =
+          bobCipher.decrypt(new SignalMessage(aliceCiphertextMessages.get(i).serialize()));
+      assertTrue(Arrays.equals(receivedPlaintext, alicePlaintextMessages.get(i)));
+    }
+
+    List<CiphertextMessage> bobCiphertextMessages = new ArrayList<>();
+    List<byte[]> bobPlaintextMessages = new ArrayList<>();
+
+    for (int i = 0; i < 20; i++) {
+      bobPlaintextMessages.add(("bob message " + i).getBytes());
+      bobCiphertextMessages.add(bobCipher.encrypt(("bob message " + i).getBytes()));
+    }
+
+    seed = System.currentTimeMillis();
+
+    Collections.shuffle(bobCiphertextMessages, new Random(seed));
+    Collections.shuffle(bobPlaintextMessages, new Random(seed));
+
+    for (int i = 0; i < bobCiphertextMessages.size() / 2; i++) {
+      byte[] receivedPlaintext =
+          aliceCipher.decrypt(new SignalMessage(bobCiphertextMessages.get(i).serialize()));
+      assertTrue(Arrays.equals(receivedPlaintext, bobPlaintextMessages.get(i)));
+    }
+
+    for (int i = aliceCiphertextMessages.size() / 2; i < aliceCiphertextMessages.size(); i++) {
+      byte[] receivedPlaintext =
+          bobCipher.decrypt(new SignalMessage(aliceCiphertextMessages.get(i).serialize()));
+      assertTrue(Arrays.equals(receivedPlaintext, alicePlaintextMessages.get(i)));
+    }
+
+    for (int i = bobCiphertextMessages.size() / 2; i < bobCiphertextMessages.size(); i++) {
+      byte[] receivedPlaintext =
+          aliceCipher.decrypt(new SignalMessage(bobCiphertextMessages.get(i).serialize()));
+      assertTrue(Arrays.equals(receivedPlaintext, bobPlaintextMessages.get(i)));
+    }
+  }
+
+  private PairOfSessions initializeSessionsV4() throws InvalidKeyException {
+    var builder = new SessionBuilderTest.Versioned(new PQXDHBundleFactory(), 4);
+    var stores = builder.initializeSessions();
+    SessionRecord aliceSessionRecord =
+        stores.getFirst().loadSession(SessionBuilderTest.BOB_ADDRESS);
+    SessionRecord bobSessionRecord =
+        stores.getSecond().loadSession(SessionBuilderTest.ALICE_ADDRESS);
+    return new PairOfSessions(aliceSessionRecord, bobSessionRecord);
+  }
+}

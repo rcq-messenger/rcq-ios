@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package org.signal.cds2;
+
+// Part of the CDSi specification.
+
+message ClientHandshakeStart {
+  // Public key associated with this server's enclave
+  bytes pubkey = 1;
+
+  // Remote-attestation evidence associated with the public key
+  bytes evidence = 2;
+
+  // Endorsements of remote-attestation evidence.
+  bytes endorsement = 3;
+}

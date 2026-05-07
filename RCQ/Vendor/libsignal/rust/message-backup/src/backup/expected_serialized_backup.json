@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "version": 1,
+    "media_root_backup_key": "abababababababababababababababababababababababababababababababab",
+    "first_app_version": "libsignal-testing 0.0.1",
+    "purpose": "RemoteBackup"
+  },
+  "account_data": {
+    "profile_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "username": {
+      "username": "abc.123",
+      "link": {
+        "color": "BLUE",
+        "entropy": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "server_id": "0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a"
+      }
+    },
+    "given_name": "",
+    "family_name": "",
+    "account_settings": {
+      "phone_number_sharing": "WithEverybody",
+      "read_receipts": false,
+      "sealed_sender_indicators": false,
+      "typing_indicators": false,
+      "link_previews": false,
+      "not_discoverable_by_phone_number": false,
+      "prefer_contact_avatars": false,
+      "display_badges_on_profile": false,
+      "keep_muted_chats_archived": false,
+      "has_set_my_stories_privacy": false,
+      "has_viewed_onboarding_story": false,
+      "stories_disabled": false,
+      "story_view_receipts_enabled": null,
+      "has_seen_group_story_education_sheet": false,
+      "has_completed_username_onboarding": false,
+      "universal_expire_timer": null,
+      "preferred_reaction_emoji": [],
+      "default_chat_style": {
+        "wallpaper": null,
+        "bubble_color": {
+          "Custom": {
+            "Solid": {
+              "color": 4279383126
+            }
+          }
+        },
+        "dim_wallpaper_in_dark_mode": true
+      },
+      "custom_chat_colors": {
+        "333": {
+          "Solid": {
+            "color": 4279383126
+          }
+        }
+      },
+      "optimize_on_device_storage": false,
+      "backup_level": 201,
+      "default_sent_media_quality": "Standard",
+      "auto_download_settings": {
+        "images": "Never",
+        "audio": "Never",
+        "video": "Wifi",
+        "documents": "WifiAndCellular"
+      },
+      "screen_lock_timeout": 2520000,
+      "pin_reminders": null,
+      "app_theme": "System",
+      "calls_use_less_data_setting": "MobileDataOnly",
+      "allow_sealed_sender_from_anyone": false,
+      "allow_automatic_key_verification": false,
+      "has_seen_admin_delete_education_dialog": false
+    },
+    "avatar_url_path": "",
+    "donation_subscription": null,
+    "backup_subscription": {
+      "subscriber_id": "3737373737373737373737373737373737373737373737373737373737373737",
+      "subscription_id": {
+        "IosAppStoreOriginalTransactionId": 5
+      }
+    },
+    "svr_pin": "",
+    "android_specific_settings": {
+      "use_system_emoji": true,
+      "screenshot_security": false,
+      "navigation_bar_size": "Compact"
+    },
+    "ios_specific_settings": {
+      "is_system_call_log_enabled": true
+    },
+    "bio_text": "",
+    "bio_emoji": "",
+    "key_transparency_data": null
+  },
+  "recipients": [],
+  "chats": [],
+  "ad_hoc_calls": [],
+  "pinned_chats": [],
+  "sticker_packs": [],
+  "notification_profiles": [],
+  "chat_folders": []
+}

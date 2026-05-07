@@ -1,0 +1,62 @@
+RCQ for iOS — Third-Party Attributions
+=======================================
+
+This product includes software developed by third parties. Each
+upstream project's full license text lives at the path indicated.
+
+
+libsignal
+---------
+Path: RCQ/Vendor/libsignal/
+Project: https://github.com/signalapp/libsignal
+License: AGPL-3.0-or-later
+License text: RCQ/Vendor/libsignal/LICENSE
+
+Used for end-to-end encryption: X3DH key agreement, Double Ratchet
+session ratcheting, sealed-sender envelope encryption, Kyber-based
+PQXDH where peers are upgraded. Vendored unmodified at the version
+pinned in `RCQ/Vendor/libsignal/Cargo.lock`. Linked into the iOS
+binary; the AGPL-3.0 obligation propagates to the RCQ application
+itself, which is consequently also distributed under AGPL-3.0
+(see top-level LICENSE).
+
+
+WebRTC (stasel/WebRTC)
+----------------------
+Project: https://github.com/stasel/WebRTC
+License: BSD-3-Clause (Google's libwebrtc upstream license)
+Distributed via: Swift Package Manager
+
+Used for 1:1 voice / video calls and the audio-room mesh
+(WebRTC.framework). Pre-built xcframework binary; we don't vendor
+or modify the source.
+
+
+KOLOBOK emoticon set
+--------------------
+Path: RCQ/Resources/Emoticons/
+Origin: KOLOBOK Smiles Project (forum-classics set, mid-2000s
+        community-distributed pack)
+License: KOLOBOK Smiles are commonly redistributed under the
+         author's Russian-language statement on the original site;
+         non-commercial / attribution-respected use is granted.
+         See RCQ/Resources/Emoticons/README.md for details.
+
+If you are an author or rights-holder of any KOLOBOK frame and
+would like attribution updated, removed, or relicensed, please
+contact security@rcq.app.
+
+
+SF Symbols
+----------
+Apple's SF Symbols library is used throughout the UI under the
+Apple terms granted to Apple Developer Program members. SF
+Symbols may not be used outside of an Apple platform.
+
+
+Apple frameworks
+----------------
+SwiftUI, UIKit, AVFoundation, CryptoKit, NaturalLanguage,
+Translation, MultipeerConnectivity, Network — all standard
+Apple-provided frameworks under the iOS SDK license. No
+attribution required beyond linking to the iOS platform.

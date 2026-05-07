@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>RCQ</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>RCQ</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>RCQ uses Bluetooth to discover and chat with people physically nearby — no internet required. Direction-finding is off; data stays on the local radio link.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_rcq-radio._tcp</string>
+		<string>_rcq-radio._udp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>RCQ needs the camera for video calls.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Radio Chat needs the local network to discover other RCQ users on the same Bluetooth/Wi-Fi mesh. Nothing leaves your device through the internet on this surface.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is used only to find other RCQ users near you while People Nearby is on. Your exact coordinates stay on this device — only a coarse area tag is shared.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RCQ needs the microphone for voice and video calls.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>voip</string>
+		<string>audio</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>BootBackground</string>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,265 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2020-2022 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+set -euo pipefail
+
+SCRIPT_DIR=$(dirname "$0")
+cd "${SCRIPT_DIR}"/..
+. bin/build_helpers.sh
+
+# These paths are relative to the root directory
+ANDROID_LIB_DIR=java/android/src/main/jniLibs
+DESKTOP_LIB_DIR=java/client/src/main/resources
+SERVER_LIB_DIR=java/server/src/main/resources
+
+# Fetch dependencies first, so we can use them in computing later options.
+# But allow this to fail in case we're offline.
+cargo fetch || true
+
+export CARGO_PROFILE_RELEASE_DEBUG=1 # Enable line tables
+RUSTFLAGS="--cfg aes_armv8 ${RUSTFLAGS:-}" # Enable ARMv8 cryptography acceleration when available
+RUSTFLAGS="--cfg tokio_unstable ${RUSTFLAGS:-}" # Access tokio's unstable metrics
+RUSTFLAGS="$(rust_remap_path_options) ${RUSTFLAGS:-}" # Strip absolute paths
+export RUSTFLAGS
+
+DEBUG_LEVEL_LOGS=
+JNI_TYPE_TAGGING=
+RUST_RELEASE="release"
+while [ "${1:-}" != "" ]; do
+    case "${1:-}" in
+        --debug-level-logs )
+            DEBUG_LEVEL_LOGS=1
+            shift
+            ;;
+        --libsignal-debug )
+            LIBSIGNAL_DEBUG=1
+            shift
+            ;;
+        --jni-type-tagging )
+            JNI_TYPE_TAGGING=1
+            shift
+            ;;
+        --jni-check-annotations )
+            JNI_CHECK_ANNOTATIONS=1
+            shift
+            ;;
+        --debug )
+            RUST_RELEASE=
+            shift
+            ;;
+        -* )
+            echo "Unrecognized flag $1; expected --debug-level-logs, --jni-type-tagging, or --debug" >&2
+            exit 2
+            ;;
+        *)
+            break
+    esac
+done
+
+if [[ -z "${DEBUG_LEVEL_LOGS:-}" ]]; then
+    FEATURES+=("log/release_max_level_info")
+fi
+if [[ -n "${JNI_TYPE_TAGGING:-}" ]]; then
+    FEATURES+=("libsignal-bridge-types/jni-type-tagging")
+fi
+if [[ -n "${JNI_CHECK_ANNOTATIONS:-}" ]]; then
+    FEATURES+=("libsignal-bridge-types/jni-invoke-annotated")
+fi
+if [[ -n "${LIBSIGNAL_DEBUG:-}" ]]; then
+    FEATURES+=("libsignal-debug/enabled")
+fi
+
+# usage: check_for_debug_level_logs_if_needed lib_dir
+check_for_debug_level_logs_if_needed () {
+    if [[ "${RUST_RELEASE}" == "" ]]; then
+        # Unused strings are only stripped in release builds, not debug builds,
+        # so the check below won't tell us anything.
+        return
+    fi
+
+    if [[ -z "${DEBUG_LEVEL_LOGS:-}" ]]; then
+        # See libsignal-jni's logging.rs for the strings matched by this pattern.
+        # Searching *every* file in the lib directory is probably overkill,
+        # but it's easier than figuring out prefixes and suffixes like copy_built_library does.
+        if grep -q -- '-LEVEL LOGS ENABLED' "$1"/*; then
+            echo 'error: debug-level logs found in build that should not have them!' >&2
+            exit 2
+        fi
+    fi
+    # See libsignal-debug for the strings matched by this pattern.
+    if grep -q -- 'LIBSIGNAL-DEBUG IS ENABLED' "$1"/*; then
+        if [[ -z "${LIBSIGNAL_DEBUG:-}" ]]; then
+            echo 'error: libsignal-debug found in build that should not have it!' >&2
+            exit 2
+        fi
+    else
+        if [[ -n "${LIBSIGNAL_DEBUG:-}" ]]; then
+            echo 'error: libsignal-debug NOT found in build that SHOULD have it!' >&2
+            exit 2
+        fi
+    fi
+}
+
+# usage: build_desktop_for_arch target_triple host_triple output_dir
+build_desktop_for_arch () {
+    local CC
+    local CXX
+    local CPATH
+
+    local lib_dir="${3}/"
+    local cpuarch="${1%%-*}"
+    case "$cpuarch" in
+        x86_64)
+            suffix=amd64
+            ;;
+        aarch64)
+            suffix=aarch64
+            ;;
+        *)
+            echo "building for unknown CPU architecture ${cpuarch}; update build_jni.sh"
+            exit 2
+    esac
+    if [[ "$1" != "$2" ]]; then
+        # Set up cross-compiling flags
+        if [[ "$1" == *-linux-* && "$2" == *-linux-* && -z "${CC:-}" ]]; then
+            # When cross-compiling *from* Linux *to* Linux,
+            # set up standard cross-compiling environment if not already set
+            echo 'setting Linux cross-compilation options...'
+            export "CARGO_TARGET_$(echo "$cpuarch" | tr "[:lower:]" "[:upper:]")_UNKNOWN_LINUX_GNU_LINKER"="${cpuarch}-linux-gnu-gcc"
+            export CC="${cpuarch}-linux-gnu-gcc"
+            export CXX="${cpuarch}-linux-gnu-g++"
+            export CPATH="/usr/${cpuarch}-linux-gnu/include"
+        fi
+    fi
+
+    echo_then_run cargo build -p libsignal-jni -p libsignal-jni-testing ${RUST_RELEASE:+--release} ${FEATURES:+--features "${FEATURES[*]}"} --target "$1"
+    copy_built_library "target/${1}/${RUST_RELEASE:-debug}" signal_jni "$lib_dir" "signal_jni_${suffix}"
+    copy_built_library "target/${1}/${RUST_RELEASE:-debug}" signal_jni_testing "$lib_dir" "signal_jni_testing_${suffix}"
+    check_for_debug_level_logs_if_needed "$lib_dir"
+}
+
+android_abis=()
+
+while [ "${1:-}" != "" ]; do
+    case "${1:-}" in
+        desktop | server | server-all )
+            if [[ "$1" == desktop ]]; then
+                lib_dir=$DESKTOP_LIB_DIR
+            else
+                lib_dir=$SERVER_LIB_DIR
+            fi
+            # On Linux, cdylibs don't include public symbols from their dependencies,
+            # even if those symbols have been re-exported in the Rust source.
+            # Using LTO works around this at the cost of a slightly slower build.
+            # https://github.com/rust-lang/rfcs/issues/2771
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            host_triple=$(rustc -vV | sed -n 's|host: ||p')
+            if [[ "$1" == "server-all" ]]; then
+                build_desktop_for_arch x86_64-unknown-linux-gnu "$host_triple" $lib_dir
+                # Enable ARMv8.2 extensions for a production aarch64 server build
+                RUSTFLAGS="-C target-feature=+v8.2a ${RUSTFLAGS:-}" \
+                    build_desktop_for_arch aarch64-unknown-linux-gnu "$host_triple" $lib_dir
+            else
+                build_desktop_for_arch "${CARGO_BUILD_TARGET:-$host_triple}" "$host_triple" $lib_dir
+            fi
+            exit
+            ;;
+
+        android )
+            android_abis+=(arm64-v8a armeabi-v7a x86_64 x86)
+            ;;
+        android-arm64 | android-aarch64 )
+            android_abis+=(arm64-v8a)
+            ;;
+        android-arm | android-armv7 )
+            android_abis+=(armeabi-v7a)
+            ;;
+        android-x86_64 )
+            android_abis+=(x86_64)
+            ;;
+        android-x86 | android-i686 )
+            android_abis+=(x86)
+            ;;
+        *)
+            echo "Unknown target '${1:-}' (use 'desktop', 'android', or 'android-\$ARCH')" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
+if (( ${#android_abis[@]} == 0 )); then
+    echo "Missing target (use 'desktop', 'android', or 'android-\$ARCH')" >&2
+    exit 2
+fi
+
+# Everything from here down is Android-only.
+export CARGO_PROFILE_RELEASE_OPT_LEVEL=s # optimize for size over speed
+
+# Use full LTO and small BoringSSL curve tables to reduce binary size.
+export CFLAGS="-DOPENSSL_SMALL -flto=full ${CFLAGS:-}"
+export CXXFLAGS="-DOPENSSL_SMALL -flto=full ${CXXFLAGS:-}"
+export CARGO_PROFILE_RELEASE_LTO=fat
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+
+# Instruct boring-sys to autolink the *static* libc++, and to delay that linking until the final
+# build product (the -bundle part). This is consistent with Google's advice for Android JNI
+# libraries that are not part of the main app build[1], elaborated on in a GitHub thread[2]. It's
+# also what we're doing with WebRTC. The syntax comes from rustc[3] via Cargo's rustc-link-lib build
+# script feature.
+#
+# [1]: https://developer.android.com/ndk/guides/middleware-vendors#using_the_stl
+# [2]: https://github.com/android/ndk/issues/796
+# [3]: https://doc.rust-lang.org/rustc/command-line-arguments.html#-l-link-the-generated-crate-to-a-native-library
+export BORING_BSSL_RUST_CPPLIB="static:-bundle=c++"
+
+# Use the Android NDK's prebuilt Clang+lld as pqcrypto's compiler and Rust's linker.
+ANDROID_TOOLCHAIN_DIR=$(echo "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt"/*/bin/)
+ANDROID_MIN_SDK_VERSION=23
+export CC_aarch64_linux_android="${ANDROID_TOOLCHAIN_DIR}/aarch64-linux-android${ANDROID_MIN_SDK_VERSION}-clang"
+export CC_armv7_linux_androideabi="${ANDROID_TOOLCHAIN_DIR}/armv7a-linux-androideabi${ANDROID_MIN_SDK_VERSION}-clang"
+export CC_x86_64_linux_android="${ANDROID_TOOLCHAIN_DIR}/x86_64-linux-android${ANDROID_MIN_SDK_VERSION}-clang"
+export CC_i686_linux_android="${ANDROID_TOOLCHAIN_DIR}/i686-linux-android${ANDROID_MIN_SDK_VERSION}-clang"
+
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${CC_aarch64_linux_android}"
+export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="${CC_armv7_linux_androideabi}"
+export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="${CC_x86_64_linux_android}"
+export CARGO_TARGET_I686_LINUX_ANDROID_LINKER="${CC_i686_linux_android}"
+
+export TARGET_AR="${ANDROID_TOOLCHAIN_DIR}/llvm-ar"
+
+# The 64-bit curve25519-dalek backend is faster than the 32-bit one on at least some armv7a phones.
+# Comment out the following to allow the 32-bit backend on 32-bit targets.
+export RUSTFLAGS="--cfg curve25519_dalek_bits=\"64\" ${RUSTFLAGS:-}"
+
+target_for_abi() {
+    case "$1" in
+        arm64-v8a)
+            echo aarch64-linux-android
+            ;;
+        armeabi-v7a)
+            echo armv7-linux-androideabi
+            ;;
+        x86_64)
+            echo x86_64-linux-android
+            ;;
+        x86)
+            echo i686-linux-android
+            ;;
+        *)
+            echo "Unknown Android ABI $1; please update build_jni.sh" >&2
+            exit 2
+            ;;
+    esac
+}
+
+
+for abi in "${android_abis[@]}"; do
+    rust_target=$(target_for_abi "$abi")
+    echo_then_run cargo build -p libsignal-jni -p libsignal-jni-testing ${RUST_RELEASE:+--release} ${FEATURES:+--features "${FEATURES[*]}"} -Z unstable-options --target "$rust_target" --artifact-dir "${ANDROID_LIB_DIR}/$abi" --timings
+    check_for_debug_level_logs_if_needed "${ANDROID_LIB_DIR}/$abi"
+done

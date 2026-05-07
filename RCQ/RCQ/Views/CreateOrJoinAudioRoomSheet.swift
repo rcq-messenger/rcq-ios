@@ -1,0 +1,194 @@
+import SwiftUI
+
+/// Sheet behind the `+` icon next to the Audio Rooms section header.
+/// Two paths: create a brand-new room (server mints the join key,
+/// owner becomes the first subscriber) or join an existing one by
+/// pasting the 8-char key. Both flows resolve to an `AudioRoom`,
+/// which the caller can then `enter()` if the user wants to drop
+/// straight into the voice session.
+struct CreateOrJoinAudioRoomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var rooms = AudioRoomService.shared
+
+    /// Caller hook so the home-screen list can immediately push the
+    /// `AudioRoomScreen` for the newly-created/joined room. Sheet
+    /// closes either way.
+    var onResolved: (AudioRoom) -> Void = { _ in }
+
+    @State private var mode: Mode = .create
+    @State private var name: String = ""
+    @State private var key: String = ""
+    @State private var busy: Bool = false
+    @State private var error: String?
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case create, join
+        var id: String { rawValue }
+        var label: String {
+            (self == .create
+                ? "audio_room.sheet.mode.create"
+                : "audio_room.sheet.mode.join").localized
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            formBody
+                .navigationTitle("audio_room.sheet.title".localized)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { sheetToolbar }
+        }
+        // Half-height by default; the user can drag to large if they
+        // want more room (e.g. when the on-screen keyboard is up).
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    /// Form body extracted into its own computed view so we can layer
+    /// `.listSectionSpacing(.compact)` on iOS 17+ (collapses the
+    /// otherwise-fat gap between the navbar and the hero icon)
+    /// without the iOS 16 build complaining about an unavailable
+    /// modifier.
+    @ViewBuilder
+    private var formBody: some View {
+        let f = formContent
+        if #available(iOS 17.0, *) {
+            f.listSectionSpacing(.compact)
+        } else {
+            f
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sheetToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("common.cancel".localized) { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button((mode == .create
+                ? "audio_room.sheet.button.create"
+                : "audio_room.sheet.button.join").localized) {
+                Task { await submit() }
+            }
+            .disabled(busy || !canSubmit)
+        }
+    }
+
+    private var formContent: some View {
+        Form {
+                // Hero header — RouletteView-style icon + short
+                // kicker. Snug to the navbar (negative top inset
+                // collapses the Form's default first-section spacing
+                // and the row's own vertical padding) so the surface
+                // doesn't read as half-empty above the fold. Icon +
+                // copy cross-fade on `mode` so the create ↔ join
+                // toggle has a smooth swap instead of a hard cut.
+                Section {
+                    VStack(spacing: 10) {
+                        Image(systemName: mode == .create
+                              ? "speaker.wave.2.bubble.fill"
+                              : "key.fill")
+                            .font(.system(size: 44))
+                            .foregroundColor(Theme.Color.accent)
+                            .frame(maxWidth: .infinity)
+                            .id("hero-icon-\(mode.rawValue)")
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                        Text((mode == .create
+                              ? "audio_room.sheet.hero.create"
+                              : "audio_room.sheet.hero.join").localized)
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                            .id("hero-text-\(mode.rawValue)")
+                            .transition(.opacity)
+                    }
+                    .padding(.top, 0)
+                    .padding(.bottom, 4)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                }
+
+                // Segmented picker is already its own visual container —
+                // strip the surrounding Section card so we don't get a
+                // pill-inside-a-pill double-frame.
+                Section {
+                    Picker("", selection: $mode.animation(.easeInOut(duration: 0.22))) {
+                        ForEach(Mode.allCases) { m in
+                            Text(m.label).tag(m)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                }
+
+                // Field section cross-fades alongside the hero. The
+                // `.id(mode)` on the section block forces SwiftUI to
+                // treat create-mode and join-mode as DIFFERENT rows,
+                // so it animates them in/out instead of mutating the
+                // same row's content (which would jump the keyboard
+                // capitalisation mid-fade).
+                Group {
+                    if mode == .create {
+                        Section {
+                            TextField("audio_room.sheet.field.name".localized, text: $name)
+                                .textInputAutocapitalization(.words)
+                        } footer: {
+                            Text("audio_room.sheet.footer.create".localized)
+                                .font(.footnote)
+                        }
+                        .id("field-create")
+                        .transition(.opacity)
+                    } else {
+                        Section {
+                            TextField("audio_room.sheet.field.key".localized, text: $key)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                        } footer: {
+                            Text("audio_room.sheet.footer.join".localized)
+                                .font(.footnote)
+                        }
+                        .id("field-join")
+                        .transition(.opacity)
+                    }
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.footnote)
+                    }
+                }
+        }
+    }
+
+    private var canSubmit: Bool {
+        switch mode {
+        case .create: return !name.trimmingCharacters(in: .whitespaces).isEmpty
+        case .join:   return key.trimmingCharacters(in: .whitespaces).count >= 4
+        }
+    }
+
+    private func submit() async {
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            let room: AudioRoom
+            switch mode {
+            case .create:
+                room = try await rooms.create(name: name.trimmingCharacters(in: .whitespaces))
+            case .join:
+                room = try await rooms.join(byKey: key.trimmingCharacters(in: .whitespaces))
+            }
+            onResolved(room)
+            dismiss()
+        } catch {
+            self.error = (mode == .create
+                ? "audio_room.sheet.error.create"
+                : "audio_room.sheet.error.join").localized
+        }
+    }
+}

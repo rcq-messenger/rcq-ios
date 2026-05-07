@@ -1,0 +1,39 @@
+disabled_rules:
+- closure_parameter_position  # swift-format takes precedence here
+- cyclomatic_complexity
+- empty_enum_arguments
+- force_try
+- function_body_length
+- function_parameter_count
+- identifier_name
+- line_length
+- opening_brace  # swift-format takes precedence here
+- redundant_optional_initialization
+- trailing_comma
+- type_body_length
+opt_in_rules:
+- file_header
+file_header:
+  required_pattern: |
+    //
+    // Copyright \d{4}(-\d{4})? Signal Messenger, LLC.
+    // SPDX-License-Identifier: AGPL-3.0-only
+    //
+file_length:
+  warning: 1000
+  error: 1000
+inclusive_language:
+  override_allowed_terms:
+  - master
+nesting:
+  type_level: 2
+excluded:
+  - .build/**
+  - Benchmarks/.build/**
+custom_rules:
+  explicit_init_for_public_struct:
+    name: "Public structs should have explicit initializers"
+    # This says a public struct must have `init` before the first close-brace or nested open-brace.
+    # Regexes don't pair braces, but this is close enough in practice.
+    regex: "(public)[ \t\n][^{]*struct[^{]+[{]((?!init[ ?!<(])[^{}])+[{}]"
+    capture_group: 1

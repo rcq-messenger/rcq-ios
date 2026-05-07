@@ -1,0 +1,50 @@
+#
+# Copyright 2023 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "zkcredential"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+rust-version = "1.85"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+poksho = { workspace = true }
+
+cfg-if = { workspace = true }
+curve25519-dalek = { workspace = true, features = ["serde"] }
+derive-where = { workspace = true }
+displaydoc = { workspace = true }
+partial-default = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+
+# If rayon is enabled, certain operations will use rayon's thread pool.
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+bincode = { workspace = true }
+const-str = { workspace = true }
+hex = { workspace = true }
+
+# For benchmarking
+criterion = { workspace = true }
+
+# Many of zkcredential's tests live in the zkgroup crate,
+# since zkcredential was designed to work with existing verifiably encrypted attribute types.
+
+[[bench]]
+name = "endorsements"
+harness = false
+
+[[bench]]
+name = "zkcredential_benchmarks"
+harness = false

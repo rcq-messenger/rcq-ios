@@ -1,0 +1,71 @@
+#
+# Copyright 2020-2022 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "zkgroup"
+version = "0.9.0"
+authors.workspace = true
+license.workspace = true
+rust-version = "1.85"
+edition = "2024"
+description = "A zero-knowledge group library"
+
+[lints]
+workspace = true
+
+[dependencies]
+libsignal-account-keys = { workspace = true, features = ["serde"] }
+libsignal-core = { workspace = true }
+poksho = { workspace = true }
+zkcredential = { workspace = true, features = ["rayon"] }
+
+# Use our fork of curve25519-dalek for zkgroup support.
+curve25519-dalek-signal = { workspace = true, features = ["serde"] }
+
+aes = { workspace = true }
+aes-gcm-siv = { workspace = true }
+bincode = { workspace = true }
+const-str = { workspace = true }
+derive-where = { workspace = true }
+derive_more = { workspace = true, features = ["from", "try_from"] }
+displaydoc = { workspace = true }
+hex = { workspace = true }
+hkdf = { workspace = true }
+partial-default = { workspace = true, features = ["derive"] }
+rand = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true }
+static_assertions = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+# For generation
+base64 = { workspace = true, optional = true }
+
+[dev-dependencies]
+assert_matches = { workspace = true }
+uuid = { workspace = true, features = ["v5"] }
+
+# For benchmarking
+criterion = { workspace = true }
+test-case = { workspace = true }
+
+[[bench]]
+name = "zkgroup_benchmarks"
+harness = false
+
+[[bench]]
+name = "serialization"
+harness = false
+
+[[bin]]
+name = "generate_server_params"
+required-features = ["base64"]
+
+[[bin]]
+name = "generate_generic_server_params"
+required-features = ["base64"]

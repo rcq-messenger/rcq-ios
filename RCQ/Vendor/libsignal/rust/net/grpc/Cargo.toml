@@ -1,0 +1,24 @@
+[package]
+name = "libsignal-net-grpc"
+version = "0.1.0"
+edition = "2021"
+authors = ["Signal Messenger LLC"]
+license = "AGPL-3.0-only"
+
+[dependencies]
+libsignal-core = { workspace = true }
+
+const-str = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+tonic = { workspace = true, default-features = false, features = ["codegen"] }
+tonic-prost = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+
+[lib]
+# Some of the Google protos have unmarked code blocks that confuse the doctest runner.
+# tonic-prost-build has a feature to rewrite (or omit) the doc comments, but that's overkill.
+doctest = false

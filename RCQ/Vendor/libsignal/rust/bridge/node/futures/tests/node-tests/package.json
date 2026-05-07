@@ -1,0 +1,19 @@
+{
+  "name": "signal-neon-futures-tests",
+  "version": "0.1.0",
+  "author": "Signal Messenger LLC",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {},
+  "scripts": {
+    "test": "npm install && mocha --recursive test",
+    "bench": "npm install && node bench.js"
+  },
+  "devDependencies": {
+    "benchmark": "^2.1.4",
+    "chai": "^6.0.1",
+    "chai-as-promised": "^8.0.2",
+    "microtime": "^3.0.0",
+    "mocha": "^11"
+  }
+}

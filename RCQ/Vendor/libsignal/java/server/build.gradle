@@ -1,0 +1,130 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id 'org.jetbrains.kotlin.jvm'
+}
+
+base {
+    archivesName = "libsignal-server"
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+sourceSets {
+    main {
+        java {
+            // Include libsignal sources shared between the client and server
+            srcDir '../shared/java'
+        }
+        kotlin {
+            srcDir 'src/main/java'
+            // Include libsignal sources shared between the client and server
+            srcDir '../shared/java'
+        }
+        resources {
+            srcDir '../shared/resources'
+        }
+    }
+    test {
+        java {
+            srcDir '../shared/test/java'
+        }
+        kotlin {
+            srcDir 'src/test/java'
+            srcDir '../shared/test/java'
+        }
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test:2.1.0'
+}
+
+test {
+    jvmArgs '-Xcheck:jni'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+        showExceptions = true
+        exceptionFormat = 'full'
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+}
+
+sourcesJar {
+    // Cut down on artifact size by leaving these out of the sources jar.
+    exclude '*.dll'
+    exclude '*.dylib'
+    exclude '*.so'
+}
+
+task dokkaHtmlJar(type: Jar) {
+    dependsOn(dokkaGeneratePublicationHtml)
+    from(dokkaGeneratePublicationHtml)
+    archiveClassifier.set("dokka")
+}
+
+task dokkaJavadocJar(type: Jar) {
+    dependsOn(dokkaGeneratePublicationJavadoc)
+    from(dokkaGeneratePublicationJavadoc)
+    archiveClassifier.set("javadoc")
+}
+
+processResources {
+    dependsOn ':makeJniLibrariesServer'
+}
+
+// MARK: Publishing
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = base.archivesName.get()
+            from components.java
+            artifact dokkaHtmlJar
+            artifact dokkaJavadocJar
+
+            pom {
+                name = base.archivesName.get()
+                description = 'Signal Protocol cryptography library for Java (server-side)'
+                url = 'https://github.com/signalapp/libsignal'
+
+                scm {
+                    url = 'scm:git@github.com:signalapp/libsignal.git'
+                    connection = 'scm:git@github.com:signalapp/libsignal.git'
+                    developerConnection = 'scm:git@github.com:signalapp/libsignal.git'
+                }
+
+                licenses {
+                    license {
+                        name = 'AGPLv3'
+                        url = 'https://www.gnu.org/licenses/agpl-3.0.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        name = 'Signal Messenger LLC'
+                    }
+                }
+            }
+        }
+    }
+}
+
+setUpSigningKey(signing)
+signing {
+    required = { isReleaseBuild() && gradle.taskGraph.hasTask(":server:publish") }
+    sign publishing.publications.mavenJava
+}

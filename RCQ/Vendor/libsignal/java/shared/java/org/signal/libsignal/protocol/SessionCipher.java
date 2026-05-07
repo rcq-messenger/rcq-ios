@@ -1,0 +1,307 @@
+//
+// Copyright 2014-2016 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+package org.signal.libsignal.protocol;
+
+import static org.signal.libsignal.internal.FilterExceptions.filterExceptions;
+
+import java.time.Instant;
+import kotlin.Pair;
+import org.signal.libsignal.internal.Native;
+import org.signal.libsignal.internal.NativeHandleGuard;
+import org.signal.libsignal.protocol.ecc.ECPublicKey;
+import org.signal.libsignal.protocol.message.CiphertextMessage;
+import org.signal.libsignal.protocol.message.PreKeySignalMessage;
+import org.signal.libsignal.protocol.message.SignalMessage;
+import org.signal.libsignal.protocol.state.IdentityKeyStore;
+import org.signal.libsignal.protocol.state.KyberPreKeyRecord;
+import org.signal.libsignal.protocol.state.KyberPreKeyStore;
+import org.signal.libsignal.protocol.state.PreKeyRecord;
+import org.signal.libsignal.protocol.state.PreKeyStore;
+import org.signal.libsignal.protocol.state.SessionRecord;
+import org.signal.libsignal.protocol.state.SessionStore;
+import org.signal.libsignal.protocol.state.SignalProtocolStore;
+import org.signal.libsignal.protocol.state.SignedPreKeyRecord;
+import org.signal.libsignal.protocol.state.SignedPreKeyStore;
+
+/**
+ * The main entry point for Signal Protocol encrypt/decrypt operations.
+ *
+ * <p>Once a session has been established with {@link SessionBuilder}, this class can be used for
+ * all encrypt/decrypt operations within that session.
+ *
+ * <p>This class is not thread-safe.
+ *
+ * @author Moxie Marlinspike
+ */
+public class SessionCipher {
+
+  private final SessionStore sessionStore;
+  private final IdentityKeyStore identityKeyStore;
+  private final PreKeyStore preKeyStore;
+  private final SignedPreKeyStore signedPreKeyStore;
+  private final KyberPreKeyStore kyberPreKeyStore;
+  private final SignalProtocolAddress localAddress;
+  private final SignalProtocolAddress remoteAddress;
+
+  /**
+   * Construct a SessionCipher for encrypt/decrypt operations on a session. In order to use
+   * SessionCipher, a session must have already been created and stored using {@link
+   * SessionBuilder}.
+   *
+   * @param sessionStore The {@link SessionStore} that contains a session for this recipient.
+   * @param remoteAddress The remote address that messages will be encrypted to or decrypted from.
+   */
+  public SessionCipher(
+      SessionStore sessionStore,
+      PreKeyStore preKeyStore,
+      SignedPreKeyStore signedPreKeyStore,
+      KyberPreKeyStore kyberPreKeyStore,
+      IdentityKeyStore identityKeyStore,
+      SignalProtocolAddress localAddress,
+      SignalProtocolAddress remoteAddress) {
+    this.sessionStore = sessionStore;
+    this.preKeyStore = preKeyStore;
+    this.identityKeyStore = identityKeyStore;
+    this.localAddress = localAddress;
+    this.remoteAddress = remoteAddress;
+    this.signedPreKeyStore = signedPreKeyStore;
+    this.kyberPreKeyStore = kyberPreKeyStore;
+  }
+
+  public SessionCipher(
+      SignalProtocolStore store,
+      SignalProtocolAddress localAddress,
+      SignalProtocolAddress remoteAddress) {
+    this(store, store, store, store, store, localAddress, remoteAddress);
+  }
+
+  /** Exposed as public for {@code SealedSessionCipher}, do not use directly. */
+  public static org.signal.libsignal.protocol.state.internal.IdentityKeyStore _bridge(
+      IdentityKeyStore identityKeyStore) {
+    return new org.signal.libsignal.protocol.state.internal.IdentityKeyStore() {
+      public Pair<NativeHandleGuard.Owner, NativeHandleGuard.Owner> getLocalIdentityKeyPair()
+          throws Exception {
+        var keyPair = identityKeyStore.getIdentityKeyPair();
+        return new Pair<>(keyPair.getPrivateKey(), keyPair.getPublicKey().getPublicKey());
+      }
+
+      public int getLocalRegistrationId() throws Exception {
+        return identityKeyStore.getLocalRegistrationId();
+      }
+
+      public int saveIdentityKey(long rawAddress, long rawKey) throws Exception {
+        return identityKeyStore
+            .saveIdentity(
+                new SignalProtocolAddress(rawAddress), new IdentityKey(new ECPublicKey(rawKey)))
+            .ordinal();
+      }
+
+      public boolean isTrustedIdentity(long rawAddress, long rawKey, int rawDirection)
+          throws Exception {
+        var direction =
+            switch (rawDirection) {
+              case 0 -> IdentityKeyStore.Direction.SENDING;
+              case 1 -> IdentityKeyStore.Direction.RECEIVING;
+              default -> throw new AssertionError("invalid Direction");
+            };
+        return identityKeyStore.isTrustedIdentity(
+            new SignalProtocolAddress(rawAddress),
+            new IdentityKey(new ECPublicKey(rawKey)),
+            direction);
+      }
+
+      public NativeHandleGuard.Owner getIdentityKey(long rawAddress) {
+        return identityKeyStore.getIdentity(new SignalProtocolAddress(rawAddress)).getPublicKey();
+      }
+    };
+  }
+
+  /*package*/
+  static org.signal.libsignal.protocol.state.internal.SessionStore bridge(
+      SessionStore sessionStore) {
+    return new org.signal.libsignal.protocol.state.internal.SessionStore() {
+      public NativeHandleGuard.Owner loadSession(long rawAddress) throws Exception {
+        return sessionStore.loadSession(new SignalProtocolAddress(rawAddress));
+      }
+
+      public void storeSession(long rawAddress, long rawSession) throws Exception {
+        sessionStore.storeSession(
+            new SignalProtocolAddress(rawAddress), new SessionRecord(rawSession));
+      }
+    };
+  }
+
+  /**
+   * Encrypt a message.
+   *
+   * @param paddedMessage The plaintext message bytes, optionally padded to a constant multiple.
+   * @return A ciphertext message encrypted to the recipient+device tuple.
+   * @throws NoSessionException if there is no established session for this contact, or if an
+   *     unacknowledged session has expired
+   * @throws UntrustedIdentityException when the {@link IdentityKey} of the sender is out of date.
+   */
+  public CiphertextMessage encrypt(byte[] paddedMessage)
+      throws NoSessionException, UntrustedIdentityException {
+    return encrypt(paddedMessage, Instant.now());
+  }
+
+  /**
+   * Encrypt a message.
+   *
+   * <p>You should only use this overload if you need to test session expiration explicitly.
+   *
+   * @param paddedMessage The plaintext message bytes, optionally padded to a constant multiple.
+   * @return A ciphertext message encrypted to the recipient+device tuple.
+   * @throws NoSessionException if there is no established session for this contact, or if an
+   *     unacknowledged session has expired
+   * @throws UntrustedIdentityException when the {@link IdentityKey} of the sender is out of date.
+   */
+  public CiphertextMessage encrypt(byte[] paddedMessage, Instant now)
+      throws NoSessionException, UntrustedIdentityException {
+    try (NativeHandleGuard remoteAddress = new NativeHandleGuard(this.remoteAddress);
+        NativeHandleGuard localAddressGuard = new NativeHandleGuard(this.localAddress); ) {
+      return filterExceptions(
+          NoSessionException.class,
+          UntrustedIdentityException.class,
+          () ->
+              Native.SessionCipher_EncryptMessage(
+                  paddedMessage,
+                  remoteAddress.nativeHandle(),
+                  localAddressGuard.nativeHandle(),
+                  bridge(sessionStore),
+                  _bridge(identityKeyStore),
+                  now.toEpochMilli()));
+    }
+  }
+
+  /**
+   * Decrypt a message.
+   *
+   * @param ciphertext The {@link PreKeySignalMessage} to decrypt.
+   * @return The plaintext.
+   * @throws InvalidMessageException if the input is not valid ciphertext.
+   * @throws DuplicateMessageException if the input is a message that has already been received.
+   * @throws InvalidKeyIdException when there is no local {@link
+   *     org.signal.libsignal.protocol.state.PreKeyRecord} that corresponds to the PreKey ID in the
+   *     message.
+   * @throws InvalidKeyException when the message is formatted incorrectly.
+   * @throws UntrustedIdentityException when the {@link IdentityKey} of the sender is untrusted.
+   */
+  public byte[] decrypt(PreKeySignalMessage ciphertext)
+      throws DuplicateMessageException,
+          InvalidMessageException,
+          InvalidKeyIdException,
+          InvalidKeyException,
+          UntrustedIdentityException {
+    try (NativeHandleGuard ciphertextGuard = new NativeHandleGuard(ciphertext);
+        NativeHandleGuard remoteAddressGuard = new NativeHandleGuard(this.remoteAddress);
+        NativeHandleGuard localAddressGuard = new NativeHandleGuard(this.localAddress); ) {
+      return filterExceptions(
+          DuplicateMessageException.class,
+          InvalidMessageException.class,
+          InvalidKeyIdException.class,
+          InvalidKeyException.class,
+          UntrustedIdentityException.class,
+          () ->
+              Native.SessionCipher_DecryptPreKeySignalMessage(
+                  ciphertextGuard.nativeHandle(),
+                  remoteAddressGuard.nativeHandle(),
+                  localAddressGuard.nativeHandle(),
+                  bridge(sessionStore),
+                  _bridge(identityKeyStore),
+                  new org.signal.libsignal.protocol.state.internal.PreKeyStore() {
+                    public NativeHandleGuard.Owner loadPreKey(int id) throws Exception {
+                      return preKeyStore.loadPreKey(id);
+                    }
+
+                    public void storePreKey(int id, long rawPreKey) throws Exception {
+                      preKeyStore.storePreKey(id, new PreKeyRecord(rawPreKey));
+                    }
+
+                    public void removePreKey(int id) throws Exception {
+                      preKeyStore.removePreKey(id);
+                    }
+                  },
+                  new org.signal.libsignal.protocol.state.internal.SignedPreKeyStore() {
+                    public NativeHandleGuard.Owner loadSignedPreKey(int id) throws Exception {
+                      return signedPreKeyStore.loadSignedPreKey(id);
+                    }
+
+                    public void storeSignedPreKey(int id, long rawPreKey) throws Exception {
+                      signedPreKeyStore.storeSignedPreKey(id, new SignedPreKeyRecord(rawPreKey));
+                    }
+                  },
+                  new org.signal.libsignal.protocol.state.internal.KyberPreKeyStore() {
+                    public NativeHandleGuard.Owner loadKyberPreKey(int id) throws Exception {
+                      return kyberPreKeyStore.loadKyberPreKey(id);
+                    }
+
+                    public void storeKyberPreKey(int id, long rawPreKey) throws Exception {
+                      kyberPreKeyStore.storeKyberPreKey(id, new KyberPreKeyRecord(rawPreKey));
+                    }
+
+                    public void markKyberPreKeyUsed(int id, int ecPrekeyId, long rawBaseKey)
+                        throws Exception {
+                      kyberPreKeyStore.markKyberPreKeyUsed(
+                          id, ecPrekeyId, new ECPublicKey(rawBaseKey));
+                    }
+                  }));
+    }
+  }
+
+  /**
+   * Decrypt a message.
+   *
+   * @param ciphertext The {@link SignalMessage} to decrypt.
+   * @return The plaintext.
+   * @throws InvalidMessageException if the input is not valid ciphertext.
+   * @throws InvalidVersionException if the message version does not match the session version.
+   * @throws DuplicateMessageException if the input is a message that has already been received.
+   * @throws NoSessionException if there is no established session for this contact.
+   */
+  public byte[] decrypt(SignalMessage ciphertext)
+      throws InvalidMessageException,
+          InvalidVersionException,
+          DuplicateMessageException,
+          NoSessionException,
+          UntrustedIdentityException {
+    try (NativeHandleGuard ciphertextGuard = new NativeHandleGuard(ciphertext);
+        NativeHandleGuard remoteAddressGuard = new NativeHandleGuard(this.remoteAddress);
+        NativeHandleGuard localAddressGuard = new NativeHandleGuard(this.localAddress); ) {
+      return filterExceptions(
+          InvalidMessageException.class,
+          InvalidVersionException.class,
+          DuplicateMessageException.class,
+          NoSessionException.class,
+          UntrustedIdentityException.class,
+          () ->
+              Native.SessionCipher_DecryptSignalMessage(
+                  ciphertextGuard.nativeHandle(),
+                  remoteAddressGuard.nativeHandle(),
+                  localAddressGuard.nativeHandle(),
+                  bridge(sessionStore),
+                  _bridge(identityKeyStore)));
+    }
+  }
+
+  public int getRemoteRegistrationId() {
+    if (!sessionStore.containsSession(remoteAddress)) {
+      throw new IllegalStateException(String.format("No session for (%s)!", remoteAddress));
+    }
+
+    SessionRecord record = sessionStore.loadSession(remoteAddress);
+    return record.getRemoteRegistrationId();
+  }
+
+  public int getSessionVersion() {
+    if (!sessionStore.containsSession(remoteAddress)) {
+      throw new IllegalStateException(String.format("No session for (%s)!", remoteAddress));
+    }
+
+    SessionRecord record = sessionStore.loadSession(remoteAddress);
+    return record.getSessionVersion();
+  }
+}

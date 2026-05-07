@@ -1,0 +1,89 @@
+#
+# Copyright (C) 2020-2022 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+[package]
+name = "libsignal-protocol"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition = "2024"
+rust-version = "1.85"
+
+[lints]
+workspace = true
+
+[dependencies]
+libsignal-core = { workspace = true }
+libsignal-debug = { workspace = true }
+signal-crypto = { workspace = true }
+
+aes = { workspace = true, features = ["zeroize"] }
+aes-gcm-siv = { workspace = true }
+assert_matches = { workspace = true }
+async-trait = { workspace = true }
+bitflags = { workspace = true }
+const-str = { workspace = true }
+ctr = { workspace = true, features = ["zeroize"] }
+data-encoding-macro = { workspace = true }
+derive-where = { workspace = true }
+derive_more = { workspace = true, features = ["deref", "from", "into", "try_from"] }
+displaydoc = { workspace = true }
+hex = { workspace = true }
+hkdf = { workspace = true }
+hmac = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+libcrux-ml-kem = { workspace = true, features = ["kyber", "mlkem1024"] }
+log = { workspace = true }
+prost = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true }
+spqr = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+zerocopy = { workspace = true, features = ["derive"] }
+
+[features]
+kyber768 = ["libcrux-ml-kem/kyber", "libcrux-ml-kem/mlkem768"]
+# ML-KEM matches the NIST standard version of Kyber. It may still change
+# incompatibly until the final version of the standard is published and
+# libsignal will update to match.
+mlkem1024 = []
+
+[dev-dependencies]
+libsignal-protocol-test-support = { path = "test-support" }
+
+clap = { workspace = true, features = ["derive"] }
+criterion = { workspace = true }
+curve25519-dalek = { workspace = true, features = ["digest"] }
+env_logger = { workspace = true }
+futures-util = { workspace = true }
+proptest = { workspace = true }
+proptest-arbitrary-interop = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+
+[[bench]]
+name = "session"
+harness = false
+
+[[bench]]
+name = "ratchet"
+harness = false
+
+[[bench]]
+name = "sealed_sender"
+harness = false
+
+[[bench]]
+name = "kem"
+harness = false
+required-features = ["kyber768"]

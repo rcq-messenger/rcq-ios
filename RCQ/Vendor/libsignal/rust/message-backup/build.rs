@@ -1,0 +1,106 @@
+//
+// Copyright 2022 Signal Messenger, LLC.
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+
+use std::io::Write as _;
+
+use protobuf_codegen::{Customize, CustomizeCallback};
+
+const DERIVE_LINE: &str = "#[derive(crate::unknown::visit_static::VisitUnknownFields)]";
+
+struct DeriveVisitUnknownFields;
+
+impl CustomizeCallback for DeriveVisitUnknownFields {
+    fn field(&self, field: &protobuf::reflect::FieldDescriptor) -> Customize {
+        Customize::default().before(&format!("#[field_name({:?})]", field.name()))
+    }
+    fn message(&self, _: &protobuf::reflect::MessageDescriptor) -> Customize {
+        Customize::default().before(DERIVE_LINE)
+    }
+    fn enumeration(&self, _: &protobuf::reflect::EnumDescriptor) -> Customize {
+        Customize::default().before(DERIVE_LINE)
+    }
+    fn oneof(&self, _: &protobuf::reflect::OneofDescriptor) -> Customize {
+        Customize::default().before(DERIVE_LINE)
+    }
+}
+
+fn main() {
+    const PROTOS_DIR: &str = "protos";
+
+    let out_dir = format!(
+        "{}/{PROTOS_DIR}",
+        std::env::var("OUT_DIR").expect("OUT_DIR env var not set")
+    );
+    std::fs::create_dir_all(&out_dir).expect("failed to create output directory");
+
+    let make_codegen = || {
+        let mut codegen = protobuf_codegen::Codegen::new();
+        codegen
+            .protoc()
+            .protoc_extra_arg(
+                // Enable optional fields. This isn't needed in the most recent
+                // protobuf compiler version, but adding it lets us support older
+                // versions that might be installed in CI or on developer machines.
+                "--experimental_allow_proto3_optional",
+            )
+            .customize(Customize::default().lite_runtime(true))
+            .customize_callback(DeriveVisitUnknownFields)
+            .include("src")
+            .out_dir(&out_dir);
+        codegen
+    };
+
+    // For the test-only protos, use the full runtime instead of the lite
+    // runtime. This lets us test the dynamic and static unknown field dispatch.
+    const TEST_PROTOS: &[&str] = &["src/proto/test.proto"];
+    make_codegen()
+        .inputs(TEST_PROTOS)
+        .customize(Customize::default().lite_runtime(false))
+        .run_from_script();
+
+    const PROTOS: &[&str] = &["src/proto/backup.proto"];
+    make_codegen().inputs(PROTOS).run_from_script();
+
+    // Add the test.proto module to mod.rs as test-only.
+    let out_mod_rs = format!("{out_dir}/mod.rs");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&out_mod_rs)
+        .unwrap_or_else(|e| panic!("expected {out_mod_rs} to be writable, got {e}"))
+        .write_all(b" #[cfg(test)] pub mod test; ")
+        .expect("failed to write");
+
+    for proto in PROTOS.iter().chain(TEST_PROTOS) {
+        println!("cargo:rerun-if-changed={proto}");
+    }
+
+    // JSON support uses pbjson (prost-based)
+    #[cfg(feature = "json")]
+    {
+        // Based on pbjson-build's README.
+        let descriptor_path = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap())
+            .join("proto_descriptor.bin");
+
+        prost_build::Config::new()
+            .boxed(".signal.backup.DirectStoryReplyMessage.reply.textReply")
+            .boxed(".signal.backup.ChatStyle.wallpaper.wallpaperPhoto")
+            // Save descriptors to file
+            .file_descriptor_set_path(&descriptor_path)
+            // Override prost-types with pbjson-types
+            .compile_well_known_types()
+            .extern_path(".google.protobuf", "::pbjson_types")
+            // Generate prost structs
+            .compile_protos(PROTOS, &[PROTOS_DIR])
+            .expect("can compile with prost");
+
+        let descriptor_set =
+            std::fs::read(descriptor_path).expect("can read saved pb file descriptors");
+        pbjson_build::Builder::new()
+            .register_descriptors(&descriptor_set)
+            .expect("valid saved pb file descriptors")
+            .build(&[".signal.backup"])
+            .expect("can compile with pbjson");
+    }
+}

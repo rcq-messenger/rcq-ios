@@ -1,0 +1,24 @@
+self-hosted-runner:
+  # Labels of self-hosted runner in array of strings.
+  labels:
+    # Used in Slow Tests' AArch64 Linux Tests.
+    - ubuntu-24.04-arm64-4-cores
+    # This is... not a custom worker label, but it's not included in actionlint for some reason.
+    # See: https://github.com/rhysd/actionlint/blob/f9408506b4c7f9cda1263bca8166271f65e65c3d/rule_runner_label.go#L29
+    - windows-latest-4-cores
+
+# Configuration variables in array of strings defined in your repository or
+# organization. `null` means disabling configuration variables check.
+# Empty array means no configuration variable is allowed.
+config-variables: null
+
+# Configuration for file paths. The keys are glob patterns to match to file
+# paths relative to the repository root. The values are the configurations for
+# the file paths. Note that the path separator is always '/'.
+# The following configurations are available.
+#
+# "ignore" is an array of regular expression patterns. Matched error messages
+# are ignored. This is similar to the "-ignore" command line option.
+paths:
+#  .github/workflows/**/*.yml:
+#    ignore: []

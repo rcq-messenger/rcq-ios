@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Privacy manifest for the Notification Service Extension
+  (`app.rcq.client.notification`). Apple treats every binary as a
+  separate bundle so the NSE needs its own manifest, even though it
+  shares a lot of code with the main target.
+
+  The NSE's job is to decrypt the sealed-sender push payload
+  on-device before iOS shows the notification — strictly transient
+  processing. It does not ship analytics, does not collect new data,
+  does not phone home. Its sole privacy-relevant surfaces are:
+
+    - User defaults from the App Group container (shared keychain +
+      shared SQLite for libsignal protocol stores).
+    - File timestamps via FileManager when opening the shared SQLite.
+    - System boot time via libsignal's monotonic-clock usage.
+
+  No NSPrivacyCollectedDataTypes block — the NSE doesn't transmit
+  anything; the parent app is the surface that declares what RCQ
+  collects on the network.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!-- App Group UserDefaults — the NSE reads protocol-store
+             pointers and the nickname cache out of the shared
+             container. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>AC6B.1</string>
+            </array>
+        </dict>
+
+        <!-- File timestamps — touched when opening the shared
+             SQLite file backing libsignal's session/prekey/sender-
+             key stores. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>3B52.1</string>
+            </array>
+        </dict>
+
+        <!-- System boot time — libsignal touches monotonic clocks
+             during decrypt for replay-window bookkeeping. -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

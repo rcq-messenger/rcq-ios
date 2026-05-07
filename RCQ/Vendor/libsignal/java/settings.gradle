@@ -1,0 +1,15 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'libsignal'
+
+include 'client', 'server', 'backup-tool'
+
+if (!hasProperty('skipAndroid')) {
+    include ':android', ':android:benchmarks', ':android:packaging-test'
+}

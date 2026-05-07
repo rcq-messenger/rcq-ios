@@ -1,0 +1,199 @@
+name: "Release - Java"
+run-name: ${{ github.workflow }} (${{ github.ref_name }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Just build, don't publish"
+        default: false
+        required: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build for local development
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [windows-latest-8-cores, macos-15-xlarge]
+        include:
+          - os: windows-latest-8-cores
+          - os: macos-15-xlarge
+            additional-rust-target: x86_64-apple-darwin
+        # Ubuntu binaries are built using Docker, below
+
+    timeout-minutes: 45
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        submodules: recursive
+
+    - name: Checking run eligibility
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      with:
+        script: |
+          const dryRun = ${{ inputs.dry_run }};
+          const refType = '${{ github.ref_type }}';
+          const refName = '${{ github.ref_name }}';
+          console.log(dryRun
+            ? `Running in 'dry run' mode on '${refName}' ${refType}`
+            : `Running on '${refName}' ${refType}`);
+          if (refType !== 'tag' && !dryRun) {
+            core.setFailed("the action should either be launched on a tag or with a 'dry run' switch");
+          }
+
+    - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+
+    - run: rustup target add "${{ matrix.additional-rust-target }}"
+      if: ${{ matrix.additional-rust-target != '' }}
+
+    # install nasm compiler for boring
+    - name: Install nasm
+      if: startsWith(matrix.os, 'windows')
+      run: choco install nasm
+      shell: cmd
+
+    - run: choco install protoc
+      if: startsWith(matrix.os, 'windows-')
+
+    - run: brew install protobuf
+      if: startsWith(matrix.os, 'macos-')
+
+    - name: Build client for host
+      run: java/build_jni.sh desktop
+      shell: bash
+
+    - name: Build server for host
+      run: java/build_jni.sh server
+      shell: bash
+
+    - name: Build client for alternate target
+      run: java/build_jni.sh desktop
+      if: startsWith(matrix.os, 'macos-')
+      env:
+        CARGO_BUILD_TARGET: ${{ matrix.additional-rust-target }}
+
+    - name: Build server for alternate target
+      run: java/build_jni.sh server
+      if: startsWith(matrix.os, 'macos-')
+      env:
+        CARGO_BUILD_TARGET: ${{ matrix.additional-rust-target }}
+
+    - name: Upload client libraries
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: libsignal-client libraries (${{matrix.os}})
+        path: |
+          java/client/src/main/resources/*.dll
+          java/client/src/main/resources/*.dylib
+
+    - name: Upload server libraries
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: libsignal-server libraries (${{matrix.os}})
+        path: |
+          java/server/src/main/resources/*.dll
+          java/server/src/main/resources/*.dylib
+
+  verify-rust:
+    name: Verify JNI bindings
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 45
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        submodules: recursive
+
+    - run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal
+
+    - run: sudo apt-get install -U protobuf-compiler
+
+    - run: cargo +stable install --version "$(cat .cbindgen-version)" --locked cbindgen
+
+    - name: Verify that the JNI bindings are up to date
+      run: rust/bridge/jni/bin/gen_java_decl.py --verify
+
+  publish:
+    name: Build for production and publish
+
+    permissions:
+      contents: read
+      # Needed for google-github-actions/auth.
+      id-token: write
+
+    runs-on: ubuntu-latest-8-cores
+
+    needs: [build, verify-rust]
+
+    timeout-minutes: 45
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        submodules: recursive
+
+    - name: Download built client libraries
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        path: java/client/src/main/resources
+        pattern: libsignal-client*
+        merge-multiple: true
+
+    - name: Download built server libraries
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        path: java/server/src/main/resources
+        pattern: libsignal-server*
+        merge-multiple: true
+
+    - run: make
+      if: ${{ inputs.dry_run }}
+      working-directory: java
+
+    - name: Upload libsignal-android
+      if: ${{ inputs.dry_run }}
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: libsignal-android
+        path: java/android/build/outputs/aar/libsignal-android-release.aar
+
+    - name: Upload libsignal-client
+      if: ${{ inputs.dry_run }}
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: libsignal-client
+        path: java/client/build/libs/libsignal-client-*.jar
+
+    - name: Upload libsignal-server
+      if: ${{ inputs.dry_run }}
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: libsignal-server
+        path: java/server/build/libs/libsignal-server-*.jar
+
+    - id: gcp-auth
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+      if: ${{ !inputs.dry_run }}
+      with:
+        workload_identity_provider: 'projects/741367068918/locations/global/workloadIdentityPools/github/providers/github-actions'
+        service_account: 'github-actions@signal-build-artifacts.iam.gserviceaccount.com'
+        token_format: 'access_token'
+
+    - run: make publish_java
+      if: ${{ !inputs.dry_run }}
+      working-directory: java
+      env:
+        CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+        ORG_GRADLE_PROJECT_signingKeyId: ${{ secrets.SIGNING_KEYID }}
+        ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.SIGNING_PASSWORD }}
+        # ASCII-armored PGP secret key
+        ORG_GRADLE_PROJECT_signingKey: ${{ secrets.SIGNING_KEY }}

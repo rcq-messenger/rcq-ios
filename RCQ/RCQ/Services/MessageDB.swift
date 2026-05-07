@@ -1,0 +1,330 @@
+import CoreData
+import Foundation
+
+/// On-device message history. Per ICQ tradition (history.dat) and Signal best practice,
+/// the server never persists plaintext — all history lives client-side. We use a
+/// programmatic CoreData model so the schema travels in source (no `.xcdatamodeld`),
+/// and a SQLite store with `FileProtectionType.complete` so the database is
+/// inaccessible while the device is locked.
+@objc(MessageRecord)
+final class MessageRecord: NSManagedObject {
+    @NSManaged var id: UUID
+    @NSManaged var threadKind: String           // "peer" | "group"
+    @NSManaged var threadKey: Int64             // peer UIN or group ID
+    @NSManaged var senderUIN: Int64
+    @NSManaged var isFromMe: Bool
+    @NSManaged var kind: String                 // text | photo | video | systemNotice | deleteForEveryone
+    @NSManaged var text: String
+    @NSManaged var mediaID: String?
+    @NSManaged var sentAt: Date
+    @NSManaged var deliveryState: String        // sending | sent | delivered | read | failed
+    @NSManaged var receivedWhileAway: Bool
+    @NSManaged var deletedForEveryone: Bool
+    /// JSON dict of `{ "<uin>": "<asset>" }`. Empty `{}` when no reactions.
+    @NSManaged var reactionsJSON: String
+    /// Base64 JPEG thumbnail for video messages.
+    @NSManaged var thumbnailB64: String?
+    /// Video duration in seconds, 0 for non-video messages.
+    @NSManaged var durationSec: Double
+    /// Disappearing-message TTL in seconds. `0` = no expiry (model layer
+    /// converts to `nil`). Persisted so app restarts don't resurrect
+    /// messages that should already have been swept.
+    @NSManaged var ttlSeconds: Int64
+    /// Original sender's display name when this message was forwarded
+    /// into the thread. Empty string for first-hand messages (model
+    /// layer normalizes "" → nil on read). Persisted so the
+    /// "Forwarded from X" header survives app restarts.
+    @NSManaged var forwardedFromName: String?
+    /// Reply target id when this message is a reply, nil otherwise.
+    /// Stored as a UUID via CoreData's UUID attribute type — same
+    /// shape as the row's own `id`. Tap-quote-block jumps to the
+    /// original by looking up this id within the thread.
+    @NSManaged var replyToID: UUID?
+    /// Inline preview of the message we're replying to. Baked at
+    /// compose time so deletion of the original (or migration of
+    /// the recipient) doesn't blank the quote.
+    @NSManaged var replyToSnippet: String?
+    /// Display name of the author of the message we're replying to.
+    /// Same nickname-only attribution rule as `forwardedFromName`.
+    @NSManaged var replyToAuthorName: String?
+    /// Last `.edit` envelope timestamp applied to this row's text.
+    /// Nil = never edited. The "(edited)" suffix in MessageRow
+    /// reads off this presence; the actual edit time is shown in
+    /// the long-press preview if we ever surface it.
+    @NSManaged var editedAt: Date?
+    /// Token cost the recipient must pay to unlock this premium media.
+    /// `0` for non-premium rows (model layer normalizes to nil on read).
+    @NSManaged var premiumPriceTokens: Int64
+    /// True once the local user has a usable media key for this premium
+    /// message — either because they're the sender (always true) or
+    /// because they paid the unlock fee. Persisted so a re-launch
+    /// renders unlocked premium photos / videos directly without
+    /// asking to pay again.
+    @NSManaged var premiumUnlocked: Bool
+}
+
+@MainActor
+final class MessageDB {
+    static let shared = MessageDB()
+
+    private let container: NSPersistentContainer
+    private var ctx: NSManagedObjectContext { container.viewContext }
+
+    private init() {
+        let model = MessageDB.buildModel()
+        let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
+
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
+        // Schema versions:
+        //   v2 — gained threadKind/threadKey/senderUIN/mediaID/etc.
+        //   v3 — current
+        //   v4 — adds ttlSeconds for disappearing messages
+        //   v5 — adds forwardedFromName for forwarded-message attribution
+        //   v6 — adds replyToID + replyToSnippet + replyToAuthorName for
+        //        reply-with-quote
+        //   v7 — adds editedAt for the edit-message feature so the
+        //        "(edited)" suffix survives app restarts
+        //   v8 — adds premiumPriceTokens + premiumUnlocked for the
+        //        paywalled media flow (premium photo / video)
+        // Old store files are left untouched so a downgrade can still read them.
+        let storeURL = baseURL.appendingPathComponent("rcq-history-v8.sqlite")
+        let desc = NSPersistentStoreDescription(url: storeURL)
+        desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
+        desc.shouldAddStoreAsynchronously = false
+        // Lightweight migration in case a developer manages to attach an
+        // older store URL — additive optional attributes only, so the
+        // inferred mapping is safe.
+        desc.shouldMigrateStoreAutomatically = true
+        desc.shouldInferMappingModelAutomatically = true
+        container.persistentStoreDescriptions = [desc]
+
+        container.loadPersistentStores { _, err in
+            if let err { print("[MessageDB] load failed: \(err)") }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        self.container = container
+    }
+
+    // MARK: - schema
+
+    private static func buildModel() -> NSManagedObjectModel {
+        func attr(_ name: String, _ type: NSAttributeType, optional: Bool = false) -> NSAttributeDescription {
+            let a = NSAttributeDescription()
+            a.name = name
+            a.attributeType = type
+            a.isOptional = optional
+            return a
+        }
+
+        let entity = NSEntityDescription()
+        entity.name = "MessageRecord"
+        entity.managedObjectClassName = NSStringFromClass(MessageRecord.self)
+        entity.properties = [
+            attr("id",                 .UUIDAttributeType),
+            attr("threadKind",         .stringAttributeType),
+            attr("threadKey",          .integer64AttributeType),
+            attr("senderUIN",          .integer64AttributeType),
+            attr("isFromMe",           .booleanAttributeType),
+            attr("kind",               .stringAttributeType),
+            attr("text",               .stringAttributeType),
+            attr("mediaID",            .stringAttributeType, optional: true),
+            attr("sentAt",             .dateAttributeType),
+            attr("deliveryState",      .stringAttributeType),
+            attr("receivedWhileAway",  .booleanAttributeType),
+            attr("deletedForEveryone", .booleanAttributeType),
+            attr("reactionsJSON",      .stringAttributeType),
+            attr("thumbnailB64",       .stringAttributeType, optional: true),
+            attr("durationSec",        .doubleAttributeType),
+            attr("ttlSeconds",         .integer64AttributeType),
+            attr("forwardedFromName",  .stringAttributeType, optional: true),
+            attr("replyToID",          .UUIDAttributeType, optional: true),
+            attr("replyToSnippet",     .stringAttributeType, optional: true),
+            attr("replyToAuthorName",  .stringAttributeType, optional: true),
+            attr("editedAt",           .dateAttributeType, optional: true),
+            attr("premiumPriceTokens", .integer64AttributeType),
+            attr("premiumUnlocked",    .booleanAttributeType),
+        ]
+        let model = NSManagedObjectModel()
+        model.entities = [entity]
+        return model
+    }
+
+    // MARK: - CRUD
+
+    func fetchAll() -> [Message] {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: true)]
+        let rows = (try? ctx.fetch(req)) ?? []
+        return rows.map(Self.toModel)
+    }
+
+    func insert(_ msg: Message) {
+        // Idempotent — UUID is the natural key, and a duplicate
+        // insert here would create two rows with the same `id` and
+        // confuse `find(id:)` thereafter (CoreData has no implicit
+        // unique constraint on `id`). MessageStore.append already
+        // dedupes in memory, but this is defence-in-depth: a future
+        // call site that bypasses MessageStore won't bloat the DB.
+        if find(id: msg.id) != nil { return }
+        let row = MessageRecord(context: ctx)
+        Self.apply(msg, to: row)
+        save()
+    }
+
+    func updateState(id: UUID, state: DeliveryState) {
+        guard let row = find(id: id) else { return }
+        row.deliveryState = state.rawValue
+        save()
+    }
+
+    func updateMediaID(id: UUID, mediaID: String) {
+        guard let row = find(id: id) else { return }
+        row.mediaID = mediaID
+        save()
+    }
+
+    /// Persist a successful premium-content unlock — splices the
+    /// freshly-recovered mediaKey into the row's `mediaID` field
+    /// (previously `<id>|` with empty key) and flips `premiumUnlocked`
+    /// so re-launches render the unlocked bubble without re-charging.
+    func updatePremiumUnlocked(id: UUID, mediaID: String) {
+        guard let row = find(id: id) else { return }
+        row.mediaID = mediaID
+        row.premiumUnlocked = true
+        save()
+    }
+
+    /// Apply an `.edit` envelope to an existing row. Replaces the
+    /// stored body text and stamps `editedAt` so the renderer can
+    /// surface the "(edited)" affordance after rehydrate.
+    func updateText(id: UUID, text: String, editedAt: Date) {
+        guard let row = find(id: id) else { return }
+        row.text = text
+        row.editedAt = editedAt
+        save()
+    }
+
+    func updateReactions(id: UUID, reactions: [Int: String]) {
+        guard let row = find(id: id) else { return }
+        row.reactionsJSON = Self.encodeReactions(reactions)
+        save()
+    }
+
+    func markDeletedForEveryone(id: UUID) {
+        guard let row = find(id: id) else { return }
+        row.deletedForEveryone = true
+        row.text = ""
+        row.mediaID = nil
+        save()
+    }
+
+    func deleteRow(id: UUID) {
+        guard let row = find(id: id) else { return }
+        ctx.delete(row)
+        save()
+    }
+
+    func deleteThread(_ thread: ThreadID) {
+        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
+        req.predicate = NSPredicate(
+            format: "threadKind == %@ AND threadKey == %lld",
+            thread.kindString, Int64(thread.rawKey)
+        )
+        let delete = NSBatchDeleteRequest(fetchRequest: req)
+        _ = try? ctx.execute(delete)
+        save()
+    }
+
+    func deleteAll() {
+        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
+        let delete = NSBatchDeleteRequest(fetchRequest: req)
+        _ = try? ctx.execute(delete)
+        save()
+    }
+
+    // MARK: - helpers
+
+    private func find(id: UUID) -> MessageRecord? {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        req.fetchLimit = 1
+        return (try? ctx.fetch(req))?.first
+    }
+
+    private func save() {
+        guard ctx.hasChanges else { return }
+        do { try ctx.save() } catch { print("[MessageDB] save failed: \(error)") }
+    }
+
+    private static func apply(_ msg: Message, to row: MessageRecord) {
+        row.id = msg.id
+        row.threadKind = msg.thread.kindString
+        row.threadKey = Int64(msg.thread.rawKey)
+        row.senderUIN = Int64(msg.senderUIN)
+        row.isFromMe = msg.isFromMe
+        row.kind = msg.kind.rawValue
+        row.text = msg.text
+        row.mediaID = msg.mediaID
+        row.sentAt = msg.sentAt
+        row.deliveryState = msg.deliveryState.rawValue
+        row.receivedWhileAway = msg.receivedWhileAway
+        row.deletedForEveryone = msg.deletedForEveryone
+        row.reactionsJSON = encodeReactions(msg.reactions)
+        row.thumbnailB64 = msg.thumbnailB64
+        row.durationSec = msg.durationSec
+        row.ttlSeconds = Int64(msg.ttlSeconds ?? 0)
+        row.forwardedFromName = msg.forwardedFromName
+        row.replyToID = msg.replyToID
+        row.replyToSnippet = msg.replyToSnippet
+        row.replyToAuthorName = msg.replyToAuthorName
+        row.editedAt = msg.editedAt
+        row.premiumPriceTokens = Int64(msg.premiumPriceTokens ?? 0)
+        row.premiumUnlocked = msg.premiumUnlocked
+    }
+
+    private static func toModel(_ row: MessageRecord) -> Message {
+        Message(
+            id: row.id,
+            thread: ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey)),
+            senderUIN: Int(row.senderUIN),
+            isFromMe: row.isFromMe,
+            kind: MessageKind(rawValue: row.kind) ?? .text,
+            text: row.text,
+            mediaID: row.mediaID,
+            sentAt: row.sentAt,
+            deliveryState: DeliveryState(rawValue: row.deliveryState) ?? .delivered,
+            receivedWhileAway: row.receivedWhileAway,
+            deletedForEveryone: row.deletedForEveryone,
+            reactions: decodeReactions(row.reactionsJSON),
+            thumbnailB64: row.thumbnailB64,
+            durationSec: row.durationSec,
+            ttlSeconds: row.ttlSeconds > 0 ? Int(row.ttlSeconds) : nil,
+            forwardedFromName: (row.forwardedFromName?.isEmpty == false) ? row.forwardedFromName : nil,
+            replyToID: row.replyToID,
+            replyToSnippet: (row.replyToSnippet?.isEmpty == false) ? row.replyToSnippet : nil,
+            replyToAuthorName: (row.replyToAuthorName?.isEmpty == false) ? row.replyToAuthorName : nil,
+            editedAt: row.editedAt,
+            premiumPriceTokens: row.premiumPriceTokens > 0 ? Int(row.premiumPriceTokens) : nil,
+            premiumUnlocked: row.premiumUnlocked
+        )
+    }
+
+    /// JSON dict { "<uin>": "<asset>" }. Empty dict serialises as "{}".
+    static func encodeReactions(_ reactions: [Int: String]) -> String {
+        let stringKeyed = Dictionary(uniqueKeysWithValues: reactions.map { (String($0.key), $0.value) })
+        guard let data = try? JSONSerialization.data(withJSONObject: stringKeyed) else { return "{}" }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    static func decodeReactions(_ s: String) -> [Int: String] {
+        guard let data = s.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return [:] }
+        var out: [Int: String] = [:]
+        for (k, v) in obj {
+            if let uin = Int(k) { out[uin] = v }
+        }
+        return out
+    }
+}

@@ -1,0 +1,27 @@
+#
+# Copyright (C) 2020 Signal Messenger, LLC.
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+
+# This is a separate crate so we can run the Neon build script.
+
+[package]
+name = "signal-neon-futures-tests"
+version = "0.1.0"
+authors.workspace = true
+license.workspace = true
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+signal-neon-futures = { path = ".." }
+
+futures-util = { workspace = true }
+neon = { workspace = true, default-features = false, features = ["napi-1"] }
+
+[features]
+# Enable default-panic-hook to get backtraces of panics.
+default = []
+default-panic-hook = []

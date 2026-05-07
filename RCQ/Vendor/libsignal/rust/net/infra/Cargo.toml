@@ -1,0 +1,79 @@
+[package]
+name = "libsignal-net-infra"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+test-util = ["dep:warp", "snow/default"]
+dev-util = []
+
+[dependencies]
+attest = { workspace = true }
+libsignal-core = { workspace = true }
+
+assert_matches = { workspace = true }
+async-trait = { workspace = true }
+auto_enums = { workspace = true, features = ["tokio1"] }
+base64 = { workspace = true }
+bitstream-io = { workspace = true }
+boring-signal = { workspace = true }
+bytes = { workspace = true }
+const-str = { workspace = true }
+derive-where = { workspace = true }
+derive_more = { workspace = true, features = ["display", "from", "into", "into_iterator"] }
+displaydoc = { workspace = true }
+either = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["http1", "http2", "client"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+nonzero_ext = { workspace = true }
+once_cell = { workspace = true }
+pin-project = { workspace = true }
+prost = { workspace = true }
+rand = { workspace = true }
+rand_core = { workspace = true }
+rangemap = { workspace = true }
+rustls = { workspace = true, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = { workspace = true }
+snow = { workspace = true, default-features = false }
+static_assertions = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time", "macros"] }
+tokio-boring-signal = { workspace = true }
+tokio-socks = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+tower-service = { workspace = true, optional = true }
+tungstenite = { workspace = true }
+visibility = { workspace = true }
+warp = { workspace = true, optional = true, features = ["server"] }
+zerocopy = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+const-str = { workspace = true }
+env_logger = { workspace = true }
+hickory-proto = { workspace = true }
+hyper = { workspace = true, features = ["http1", "server"] }
+pretty_assertions = { workspace = true }
+proptest = { workspace = true }
+rcgen = { workspace = true }
+snow = { workspace = true, default-features = true }
+socks5-server = { workspace = true }
+test-case = { workspace = true }
+test-log = { workspace = true }
+tls-parser = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "io-std", "rt-multi-thread"] }
+warp = { workspace = true, features = ["server"] }
