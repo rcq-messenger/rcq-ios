@@ -24,9 +24,6 @@ struct RadioDiscoveryView: View {
                 } else {
                     listSurface
                 }
-                if let invite = radio.pendingInvite {
-                    inviteOverlay(invite)
-                }
                 if let pending = radio.pendingRoomJoin {
                     joiningOverlay(pending)
                 }
@@ -70,6 +67,11 @@ struct RadioDiscoveryView: View {
             .sheet(item: $passwordPromptFor) { peer in
                 passwordPrompt(for: peer)
                     .presentationDetents([.height(360)])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $radio.pendingInvite) { invite in
+                inviteSheet(invite)
+                    .presentationDetents([.height(320)])
                     .presentationDragIndicator(.visible)
             }
         }
@@ -247,20 +249,28 @@ struct RadioDiscoveryView: View {
 
     // MARK: - Invite overlay
 
-    private func inviteOverlay(_ invite: RadioService.PendingInvite) -> some View {
+    private func inviteSheet(_ invite: RadioService.PendingInvite) -> some View {
         ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea()
-            VStack(spacing: 16) {
+            Theme.Color.bgPrimary.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 38))
+                    .foregroundColor(Theme.Color.accent)
+                    .padding(.top, 8)
                 Text("radio.invite.heading".localized)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(Theme.Color.accent)
                     .tracking(3)
                 Text(invite.fromDisplayName)
-                    .font(.custom("Georgia", size: 22))
+                    .font(.custom("Georgia", size: 24))
                     .foregroundColor(Theme.Color.textPrimary)
+                    .multilineTextAlignment(.center)
                 Text("radio.invite.body".localized)
-                    .font(Theme.Font.statusLabel)
+                    .font(.callout)
                     .foregroundColor(Theme.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                Spacer(minLength: 0)
                 HStack(spacing: 10) {
                     Button {
                         radio.declineInvite(invite)
@@ -268,10 +278,10 @@ struct RadioDiscoveryView: View {
                         Text("radio.invite.decline".localized)
                             .font(.system(.body, weight: .semibold))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(height: 48)
                             .foregroundColor(Theme.Color.textPrimary)
                             .background(Theme.Color.bgSecondary)
-                            .cornerRadius(8)
+                            .cornerRadius(10)
                     }
                     Button {
                         radio.acceptInvite(invite)
@@ -280,17 +290,15 @@ struct RadioDiscoveryView: View {
                             .font(.system(.body, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(height: 48)
                             .background(Theme.Color.accent)
-                            .cornerRadius(8)
+                            .cornerRadius(10)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
             }
-            .padding(20)
-            .frame(width: 280)
-            .background(Theme.Color.bgPrimary)
-            .cornerRadius(12)
-            .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+            .padding(.top, 12)
         }
     }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct GamesView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var items = ItemsService.shared
+    @StateObject private var petHunt = PetHuntService.shared
 
     @State private var showCrash = false
     @State private var showHiLo = false
@@ -34,6 +35,7 @@ struct GamesView: View {
             .fullScreenCover(isPresented: $showPetHunt) { PetHuntView() }
             .task {
                 await items.refreshInventory()
+                await petHunt.refreshState()
             }
         }
     }
@@ -105,7 +107,8 @@ struct GamesView: View {
     }
 
     private var petHuntHeroCard: some View {
-        ZStack(alignment: .topLeading) {
+        let equipped = items.ownEquippedPet
+        return ZStack {
             LinearGradient(
                 colors: [
                     Color(hex: 0x6BB12C).opacity(0.20),
@@ -116,7 +119,7 @@ struct GamesView: View {
             )
             .cornerRadius(14)
 
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
                 Image(systemName: "pawprint.fill")
                     .font(.system(size: 32))
                     .foregroundColor(Theme.Color.accent)
@@ -133,18 +136,63 @@ struct GamesView: View {
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 70)
+                Spacer(minLength: 8)
+                if let equipped {
+                    equippedPetColumn(equipped)
+                }
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .overlay(alignment: .bottomTrailing) {
-            ItemAssetImage(bundleSubdir: "Items", filename: "pet9", ext: "gif")
-                .frame(width: 72, height: 72)
-                .offset(x: 8, y: 8)
-                .allowsHitTesting(false)
-        }
         .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func equippedPetColumn(_ pet: EquippedPet) -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                    .frame(width: 11, height: 11)
+                Text("\(petHunt.state?.dailyYield ?? 0)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Rectangle()
+                    .fill(Theme.Color.divider)
+                    .frame(width: 0.5, height: 10)
+                    .padding(.horizontal, 1)
+                ItemAssetImage(bundleSubdir: "Items", filename: "gem", ext: "gif")
+                    .frame(width: 11, height: 11)
+                Text("\(petHunt.state?.dailyGems ?? 0)")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            ItemAssetImage(
+                bundleSubdir: petAssetSubdir(for: pet),
+                filename: petAssetStem(for: pet),
+                ext: petAssetExt(for: pet),
+            )
+            .frame(width: 64, height: 64)
+        }
+    }
+
+    private func petAssetSubdir(for pet: EquippedPet) -> String {
+        guard let kind = items.catalog?.kind(by: pet.kindID) else { return "Items" }
+        let trimmed = kind.assetRef.hasPrefix("items/")
+            ? String(kind.assetRef.dropFirst("items/".count))
+            : kind.assetRef
+        let subdir = (trimmed as NSString).deletingLastPathComponent
+        return subdir.isEmpty ? "Items" : "Items/\(subdir)"
+    }
+
+    private func petAssetStem(for pet: EquippedPet) -> String {
+        guard let kind = items.catalog?.kind(by: pet.kindID) else { return "" }
+        let basename = (kind.assetRef as NSString).lastPathComponent
+        return (basename as NSString).deletingPathExtension
+    }
+
+    private func petAssetExt(for pet: EquippedPet) -> String {
+        guard let kind = items.catalog?.kind(by: pet.kindID) else { return "png" }
+        let basename = (kind.assetRef as NSString).lastPathComponent
+        return (basename as NSString).pathExtension
     }
 
     private func gameCard(

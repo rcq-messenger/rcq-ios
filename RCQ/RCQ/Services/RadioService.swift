@@ -562,9 +562,19 @@ extension RadioService: MCSessionDelegate {
                 if self.activeRoom == nil,
                    self.activeOneToOne == nil,
                    self.pendingRoomJoin == nil {
-                    if let row = self.discovered.first(where: { $0.peerID == peerID }) {
-                        self.activeOneToOne = row
-                    }
+                    // Browser restarts every 12s; if .connected fires
+                    // during that window the peer can be missing from
+                    // `discovered`. Synthesize from peerID so the
+                    // chat view still opens.
+                    let row = self.discovered.first(where: { $0.peerID == peerID })
+                        ?? RadioPeer(
+                            peerID: peerID,
+                            displayName: peerID.displayName,
+                            kind: .oneToOne,
+                            room: nil,
+                            state: .connected,
+                        )
+                    self.activeOneToOne = row
                 }
                 // Room mode skips handshake — sessionKey was derived from id/password.
                 if self.activeRoom == nil, self.pendingRoomJoin == nil {
