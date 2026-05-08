@@ -30,6 +30,10 @@ struct SettingsView: View {
     /// has visible feedback beyond the haptic.
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
+    /// Master toggle for the floating Crash / UIN-Auction
+    /// mini-bubbles. Same `@AppStorage` key `GameMinisOverlayHost`
+    /// reads — flipping here updates the overlay reactively.
+    @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -61,6 +65,25 @@ struct SettingsView: View {
                                 .foregroundColor(Theme.Color.textPrimary)
                         }
                         .tint(Theme.Color.accent)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    // Floating game-mini bubbles (Crash + UIN
+                    // Auction) — visible by default, but the
+                    // user can hide them entirely. Same backing
+                    // `@AppStorage` key the overlay host reads,
+                    // so flipping the switch removes / restores
+                    // both bubbles in one frame.
+                    Section {
+                        Toggle(isOn: $minisEnabled) {
+                            Text("settings.minis.toggle".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
+                        }
+                        .tint(Theme.Color.accent)
+                    } header: {
+                        Text("settings.minis.section".localized)
+                    } footer: {
+                        Text("settings.minis.footer".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 

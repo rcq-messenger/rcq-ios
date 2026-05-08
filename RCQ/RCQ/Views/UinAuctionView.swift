@@ -77,8 +77,13 @@ struct UinAuctionView: View {
                 BuyTokensSheet().presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showRules) {
+                // Single detent — multi-detent sheets with scroll
+                // content trigger iOS's expand-on-drag spring inside
+                // the ScrollView, which the user reads as a "loader"
+                // appearing on drag. Rules text fits the medium
+                // detent comfortably; no need for `.large`.
                 UinAuctionRulesSheet()
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRecent) {
@@ -629,7 +634,10 @@ private struct OwnedUINsSheet: View {
                     // completes the buy).
                     Task { await svc.refreshOwned() }
                 }
-                .presentationDetents([.medium, .large])
+                // Single detent — same rationale as the rules sheet
+                // above. Sell-form is compact (UIN header + price
+                // input + CTA), `.medium` fits without scroll.
+                .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
             }
         }
@@ -698,6 +706,12 @@ private struct UinAuctionRulesSheet: View {
                 }
                 .padding(20)
             }
+            // No bounce when content already fits — kills the
+            // overscroll-spring that was reading as a "loader appears
+            // when I drag inside" inside the sheet. iOS 16.4+; older
+            // 16.0–16.3 keeps the default overscroll bounce, which is
+            // a tolerable visual regression for a tiny iOS 16 sliver.
+            .modifier(NoBounceWhenFits())
             .background(Theme.Color.bgPrimary.ignoresSafeArea())
             .navigationTitle("uin_auction.rules.title".localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -838,6 +852,8 @@ private struct SellOwnedUinSheet: View {
                     }
                     .padding(16)
                 }
+                // Same fix as the rules sheet — see NoBounceWhenFits.
+                .modifier(NoBounceWhenFits())
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("market.sell.title".localized)
@@ -881,6 +897,22 @@ private struct SellOwnedUinSheet: View {
         case "legendary": return "uin.tier.legendary".localized
         case "mid":       return "uin.tier.mid".localized
         default:          return "uin.tier.common".localized
+        }
+    }
+}
+
+/// Disable the ScrollView's overscroll bounce when content already
+/// fits inside the viewport. Wraps `scrollBounceBehavior(.basedOnSize)`
+/// behind an iOS 16.4 availability check; on iOS 16.0–16.3 the
+/// default overscroll bounce stays — acceptable visual regression
+/// for that small slice. Used to kill the "loader-looking spring"
+/// inside short auction sheets.
+private struct NoBounceWhenFits: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.4, *) {
+            content.scrollBounceBehavior(.basedOnSize)
+        } else {
+            content
         }
     }
 }

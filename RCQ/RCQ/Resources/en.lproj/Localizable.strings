@@ -16,6 +16,9 @@
 "settings.appearance.theme" = "Theme";
 "settings.sound" = "Sound";
 "settings.sound.toggle" = "System sounds";
+"settings.minis.section" = "Floating bubbles";
+"settings.minis.toggle" = "Show Crash and Auction bubbles";
+"settings.minis.footer" = "When off, the floating bubbles for live Crash rounds and the UIN auction are hidden. The games keep running in the background — open them from the Games tab when you want to play.";
 "settings.language" = "Language";
 "settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
 

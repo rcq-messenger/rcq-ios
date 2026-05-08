@@ -19,10 +19,17 @@ import SwiftUI
 struct GameMinisOverlayHost: View {
     @StateObject private var crash = CrashService.shared
     @StateObject private var auctions = UinAuctionService.shared
+    /// User-controlled master toggle for the floating game-mini
+    /// overlays. Defaults to `true` (visible). Toggled from
+    /// `Settings → Floating bubbles`. When `false`, neither the
+    /// Crash nor the Auction bubble surfaces regardless of their
+    /// own `shouldShowMini` state — the games still run in the
+    /// background, just without the always-on-screen bubble.
+    @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
 
     var body: some View {
         ZStack {
-            if crash.shouldShowMini {
+            if minisEnabled && crash.shouldShowMini {
                 FloatingMini(
                     storageKey: "rcq.mini.crash.position",
                     initialPosition: defaultCrashPosition(),
@@ -32,7 +39,7 @@ struct GameMinisOverlayHost: View {
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
-            if auctions.shouldShowMini {
+            if minisEnabled && auctions.shouldShowMini {
                 FloatingMini(
                     storageKey: "rcq.mini.auction.position",
                     // Height bumped from 44 → 62 to fit the timer
@@ -50,6 +57,7 @@ struct GameMinisOverlayHost: View {
         .ignoresSafeArea()
         .animation(.spring(response: 0.35, dampingFraction: 0.78), value: crash.shouldShowMini)
         .animation(.spring(response: 0.35, dampingFraction: 0.78), value: auctions.shouldShowMini)
+        .animation(.spring(response: 0.35, dampingFraction: 0.78), value: minisEnabled)
     }
 
     /// Lower-right by default — out of the way of the contact
