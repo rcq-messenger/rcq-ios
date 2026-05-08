@@ -253,20 +253,37 @@ struct TradeProposeView: View {
                     text: scrollsInput, walletAmount: walletScrolls, kind: "scrolls",
                 )
             }
-            // UIN chip strip — only renders when this side has any
-            // UINs in inventory. Tap toggles selection. Listed UINs
-            // (active marketplace listing) render greyed out and
-            // tapping shows a hint instead of toggling.
-            if !ownedUins.isEmpty {
+            // UIN chip strip — listed UINs (active marketplace lots)
+            // are filtered out entirely; they can't be put into a
+            // trade anyway, so showing them greyed out was just
+            // visual noise.
+            //
+            // Outer card has `padding(14)` which clips the inner
+            // horizontal ScrollView at the same 14pt edge — first
+            // and last chips lost their cap-pill end. Bleed the
+            // ScrollView past the parent padding (negative inset)
+            // and re-add the same 14pt as content padding INSIDE the
+            // scroll, so the chips can scroll all the way to (and
+            // past) where the card edge would otherwise have cut
+            // them.
+            let tradeableUins = ownedUins.filter { !$0.listed }
+            if !tradeableUins.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(ownedUins) { o in
+                        ForEach(tradeableUins) { o in
                             uinChip(o, selected: selectedUins)
                         }
                     }
+                    .padding(.horizontal, 14)
                 }
+                .padding(.horizontal, -14)
             }
-            if inventory.isEmpty {
+            // Items grid — listed items can't be transferred, so
+            // hide them outright (matches the UIN filter above).
+            // The owner can still see them via the inventory view;
+            // here we only surface tradeable inventory.
+            let tradeableInventory = inventory.filter { !$0.listed }
+            if tradeableInventory.isEmpty {
                 Text(emptyText)
                     .font(Theme.Font.statusLabel)
                     .foregroundColor(Theme.Color.textSecondary)
@@ -274,7 +291,7 @@ struct TradeProposeView: View {
                     .padding(.vertical, 8)
             } else {
                 LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(inventory) { item in
+                    ForEach(tradeableInventory) { item in
                         Button {
                             if selected.wrappedValue.contains(item.id) {
                                 selected.wrappedValue.remove(item.id)
@@ -347,6 +364,11 @@ struct TradeProposeView: View {
         walletAmount: Int?,
         kind: String,
     ) -> some View {
+        // Minimalist treatment — transparent background, hairline
+        // bottom-only divider instead of the full rounded box. The
+        // currency-icon glyph + amount text float on the parent
+        // card's bgSecondary, which reads as "premium / less form-
+        // ish" than the boxed input chrome the field used before.
         HStack(spacing: 8) {
             ItemAssetImage(bundleSubdir: "Items", filename: image, ext: ext)
                 .frame(width: 22, height: 22)
@@ -360,13 +382,16 @@ struct TradeProposeView: View {
                     .foregroundColor(Theme.Color.textSecondary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .background(Theme.Color.bgPrimary)
-        .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6)
-            .stroke(Theme.Color.divider, lineWidth: 1))
+        .overlay(
+            // Single hairline at the bottom — typed text "underlines"
+            // the field without enclosing it in a box.
+            Rectangle()
+                .fill(Theme.Color.divider.opacity(0.5))
+                .frame(height: 0.5)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        )
     }
 
     private var noteField: some View {

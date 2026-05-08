@@ -552,22 +552,11 @@ private struct OwnedUINsSheet: View {
                                         .foregroundColor(Theme.Color.textSecondary)
                                 }
                                 Spacer()
-                                Button {
-                                    confirmActivateUIN = o.uin
-                                } label: {
-                                    Text("uin_auction.owned.activate".localized)
-                                        .font(.system(.caption, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(Theme.Color.accent)
-                                        .cornerRadius(6)
-                                }
-                                .buttonStyle(.plain)
-                                // Overflow menu — currently just "Sell on
-                                // marketplace", but the affordance is
-                                // here so we can stack future options
-                                // (Trade away, Gift to friend, ...) without
-                                // crowding the row.
+                                // Overflow menu LEFT of the primary CTA —
+                                // user-asked layout. Reads as "secondary
+                                // option | primary action" left-to-right
+                                // instead of the previous "action | dots"
+                                // which buried the menu in dead space.
                                 Menu {
                                     Button {
                                         sellTarget = o
@@ -583,6 +572,17 @@ private struct OwnedUINsSheet: View {
                                         .foregroundColor(Theme.Color.textSecondary)
                                         .frame(width: 28, height: 28)
                                         .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                Button {
+                                    confirmActivateUIN = o.uin
+                                } label: {
+                                    Text("uin_auction.owned.activate".localized)
+                                        .font(.system(.caption, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(Theme.Color.accent)
+                                        .cornerRadius(6)
                                 }
                                 .buttonStyle(.plain)
                             }

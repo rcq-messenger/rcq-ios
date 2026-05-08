@@ -663,28 +663,30 @@ private struct MarketListingDetailSheet: View {
         VStack(spacing: 0) {
             specRow(label: "market.spec.owner".localized) {
                 HStack(spacing: 6) {
+                    // UIN сначала (слева), потом ник.
+                    Text(verbatim: "#\(listing.sellerUIN)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(Theme.Color.textSecondary)
                     if let nick = listing.sellerNickname, !nick.isEmpty {
                         Text(nick)
                             .font(.callout.weight(.medium))
                             .foregroundColor(Theme.Color.textPrimary)
                     }
-                    Text(verbatim: "#\(listing.sellerUIN)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
                 }
             }
             specDivider
             specRow(label: "market.spec.tier".localized) {
                 HStack(spacing: 6) {
-                    Text(listing.rarity.label)
-                        .font(.callout.weight(.medium))
-                        .foregroundColor(listing.rarity.color)
+                    // % rarity сначала (слева), потом название.
                     Text(rarityPercentLabel(for: listing.rarity))
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Theme.Color.bgPrimary)
                         .cornerRadius(4)
+                    Text(listing.rarity.label)
+                        .font(.callout.weight(.medium))
+                        .foregroundColor(listing.rarity.color)
                 }
             }
             if listing.level > 0 {
@@ -1135,11 +1137,16 @@ private struct UinListingRow: View {
 
             Spacer()
 
-            HStack(spacing: 4) {
+            // Same chrome as `MarketListingRow` price chip — `.body
+            // .bold` font + 14pt coin gif + spacing 3. Earlier
+            // `subheadline .semibold` was visibly smaller than the
+            // items tab's price, breaking the at-a-glance parity
+            // between the two tabs.
+            HStack(spacing: 3) {
                 ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                     .frame(width: 14, height: 14)
                 Text(verbatim: "\(listing.priceTokens)")
-                    .font(.system(.subheadline, weight: .semibold).monospacedDigit())
+                    .font(.system(.body, weight: .bold).monospacedDigit())
                     .foregroundColor(Theme.Color.textPrimary)
             }
         }
