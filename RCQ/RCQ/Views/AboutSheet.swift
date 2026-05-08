@@ -69,19 +69,24 @@ struct AboutSheet: View {
                         .background(Theme.Color.bgSecondary)
                         .cornerRadius(6)
 
-                        // Contact / support block. Placeholder
-                        // links — swap before release. Each row
-                        // taps through to the matching native
-                        // app (Mail / Safari) so the user gets a
-                        // pre-filled draft instead of having to
-                        // copy the address out by hand.
+                        // Contact / support block. Surfaces only
+                        // channels that ACTUALLY exist:
+                        //   • Support email
+                        //   • FAQ (placeholder URL — page lands soon)
+                        //   • Website
+                        //   • GitHub source (open-source iOS client
+                        //     for trust positioning)
+                        // Removed (didn't have a real destination):
+                        //   • "Report a bug" — bug bounty surface
+                        //     handles this from Settings
+                        //   • "@rcqapp / news" — no Twitter / channel
+                        //     yet, surfaces only mislead
                         VStack(alignment: .leading, spacing: 8) {
                             Text("about.contact.section".localized).font(.system(size: 11, weight: .bold)).foregroundColor(Theme.Color.textSecondary)
                             contactLink(icon: "envelope.fill", label: "about.contact.support".localized, value: "support@rcq.app", url: URL(string: "mailto:support@rcq.app"))
-                            contactLink(icon: "ladybug.fill", label: "about.contact.bug".localized, value: "bugs@rcq.app", url: URL(string: "mailto:bugs@rcq.app?subject=RCQ%20bug%20report"))
                             contactLink(icon: "globe", label: "about.contact.website".localized, value: "rcq.app", url: URL(string: "https://rcq.app"))
-                            contactLink(icon: "newspaper", label: "about.contact.updates".localized, value: "@rcqapp", url: URL(string: "https://twitter.com/rcqapp"))
                             contactLink(icon: "questionmark.circle", label: "about.contact.faq".localized, value: "rcq.app/help", url: URL(string: "https://rcq.app/help"))
+                            contactLink(icon: "chevron.left.forwardslash.chevron.right", label: "about.contact.github".localized, value: "github.com/rcq-messenger/rcq-ios", url: URL(string: "https://github.com/rcq-messenger/rcq-ios"))
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)

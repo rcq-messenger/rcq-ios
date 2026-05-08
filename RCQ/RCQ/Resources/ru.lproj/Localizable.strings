@@ -559,10 +559,9 @@
 "about.privacy.b5" = "История живёт только на вашем устройстве и шифруется при блокировке.";
 "about.contact.section" = "КОНТАКТ";
 "about.contact.support" = "Поддержка";
-"about.contact.bug" = "Сообщить об ошибке";
 "about.contact.website" = "Сайт";
-"about.contact.updates" = "Новости";
 "about.contact.faq" = "FAQ";
+"about.contact.github" = "Исходный код (iOS)";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 

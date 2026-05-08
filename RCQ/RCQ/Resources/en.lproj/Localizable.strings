@@ -568,10 +568,9 @@
 "about.privacy.b5" = "History lives on your device only, encrypted at rest when locked.";
 "about.contact.section" = "CONTACT";
 "about.contact.support" = "Support";
-"about.contact.bug" = "Report a bug";
 "about.contact.website" = "Website";
-"about.contact.updates" = "Updates";
 "about.contact.faq" = "FAQ";
+"about.contact.github" = "Source code (iOS)";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
