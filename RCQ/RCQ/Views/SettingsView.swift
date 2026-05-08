@@ -68,24 +68,6 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    // Floating game-mini bubbles (Crash + UIN
-                    // Auction) — visible by default, but the
-                    // user can hide them entirely. Same backing
-                    // `@AppStorage` key the overlay host reads,
-                    // so flipping the switch removes / restores
-                    // both bubbles in one frame.
-                    Section {
-                        Toggle(isOn: $minisEnabled) {
-                            Text("settings.minis.toggle".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                    } header: {
-                        Text("settings.minis.section".localized)
-                    } footer: {
-                        Text("settings.minis.footer".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
 
                     Section {
                         // Custom Menu instead of a stock `Picker` so we
@@ -205,6 +187,18 @@ struct SettingsView: View {
                                     .font(.caption2)
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
+                        }
+                        .tint(Theme.Color.accent)
+                        // Floating Crash + UIN-Auction mini bubbles —
+                        // grouped here next to the inventory-visibility
+                        // toggle since both are "what's shown to me /
+                        // around me" personalisation switches. Same
+                        // `@AppStorage` key `GameMinisOverlayHost`
+                        // reads — flipping here updates the overlay
+                        // reactively.
+                        Toggle(isOn: $minisEnabled) {
+                            Text("settings.minis.toggle".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
                         }
                         .tint(Theme.Color.accent)
                     }

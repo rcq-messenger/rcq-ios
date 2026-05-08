@@ -77,14 +77,8 @@ struct UinAuctionView: View {
                 BuyTokensSheet().presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showRules) {
-                // Single detent — multi-detent sheets with scroll
-                // content trigger iOS's expand-on-drag spring inside
-                // the ScrollView, which the user reads as a "loader"
-                // appearing on drag. Rules text fits the medium
-                // detent comfortably; no need for `.large`.
                 UinAuctionRulesSheet()
                     .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRecent) {
                 RecentWinnersSheet().presentationDetents([.large])
@@ -638,7 +632,6 @@ private struct OwnedUINsSheet: View {
                 // above. Sell-form is compact (UIN header + price
                 // input + CTA), `.medium` fits without scroll.
                 .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -681,37 +674,40 @@ private struct UinAuctionRulesSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    section(
-                        icon: "number.circle.fill",
-                        title: "uin_auction.rules.what.title".localized,
-                        body: "uin_auction.rules.what.body".localized,
-                    )
-                    section(
-                        icon: "hammer.fill",
-                        title: "uin_auction.rules.bidding.title".localized,
-                        body: "uin_auction.rules.bidding.body".localized,
-                    )
-                    section(
-                        icon: "bolt.fill",
-                        title: "uin_auction.rules.softclose.title".localized,
-                        body: "uin_auction.rules.softclose.body".localized,
-                    )
-                    section(
-                        icon: "tray.full.fill",
-                        title: "uin_auction.rules.win.title".localized,
-                        body: "uin_auction.rules.win.body".localized,
-                    )
-                }
-                .padding(20)
+            // Plain VStack inside a single Color background — NO
+            // ScrollView. Content fits the medium detent in every
+            // locale, so the ScrollView only added an overscroll
+            // surface that iOS rendered with a sheet-resize spring
+            // the user kept reading as a "loader appears on drag".
+            // No scroll = no spring = no fake loader. If the rules
+            // copy ever grows beyond the detent, switch back to
+            // ScrollView with `scrollDisabled(true)` so it lays out
+            // but doesn't accept the dismiss-gesture conflict.
+            VStack(alignment: .leading, spacing: 18) {
+                section(
+                    icon: "number.circle.fill",
+                    title: "uin_auction.rules.what.title".localized,
+                    body: "uin_auction.rules.what.body".localized,
+                )
+                section(
+                    icon: "hammer.fill",
+                    title: "uin_auction.rules.bidding.title".localized,
+                    body: "uin_auction.rules.bidding.body".localized,
+                )
+                section(
+                    icon: "bolt.fill",
+                    title: "uin_auction.rules.softclose.title".localized,
+                    body: "uin_auction.rules.softclose.body".localized,
+                )
+                section(
+                    icon: "tray.full.fill",
+                    title: "uin_auction.rules.win.title".localized,
+                    body: "uin_auction.rules.win.body".localized,
+                )
+                Spacer(minLength: 0)
             }
-            // No bounce when content already fits — kills the
-            // overscroll-spring that was reading as a "loader appears
-            // when I drag inside" inside the sheet. iOS 16.4+; older
-            // 16.0–16.3 keeps the default overscroll bounce, which is
-            // a tolerable visual regression for a tiny iOS 16 sliver.
-            .modifier(NoBounceWhenFits())
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Theme.Color.bgPrimary.ignoresSafeArea())
             .navigationTitle("uin_auction.rules.title".localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -776,84 +772,75 @@ private struct SellOwnedUinSheet: View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 16) {
-                        VStack(spacing: 6) {
-                            // `Text(verbatim:)` keeps the UIN raw — no
-                            // thousands-separator from LocalizedStringKey
-                            // interpolation (`#123,456` would be wrong;
-                            // UINs are identifiers, not amounts).
-                            Text(verbatim: "#\(uin)")
-                                .font(.system(.title, design: .monospaced).weight(.bold))
-                                .foregroundColor(Theme.Color.textPrimary)
-                            Text(tierLabel(tier).uppercased())
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(Theme.Color.textSecondary)
+                // Plain VStack — same rationale as the rules sheet
+                // above. The form (UIN header + description + price
+                // field + button) fits the medium detent without
+                // scroll; pulling the keyboard up still works because
+                // SwiftUI's keyboard-avoidance applies at the
+                // navigation-stack level, not the scroll level.
+                VStack(spacing: 16) {
+                    VStack(spacing: 6) {
+                        // `Text(verbatim:)` keeps the UIN raw — no
+                        // thousands-separator from LocalizedStringKey
+                        // interpolation.
+                        Text(verbatim: "#\(uin)")
+                            .font(.system(.title, design: .monospaced).weight(.bold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Text(tierLabel(tier).uppercased())
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Theme.Color.bgSecondary)
+                    .cornerRadius(12)
+
+                    Text("market.sell.body".localized)
+                        .font(.footnote)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 8) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                            .frame(width: 20, height: 20)
+                        TextField("market.sell.price_placeholder".localized, text: $priceText)
+                            .keyboardType(.numberPad)
+                            .font(.body.monospacedDigit())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(Theme.Color.bgSecondary)
+                    .cornerRadius(8)
+
+                    if let hint = payoutHint {
+                        Text(hint)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Button {
+                        Task { await listIt() }
+                    } label: {
+                        HStack {
+                            if busy { ProgressView().tint(.white) }
+                            Text((busy ? "market.sell.busy" : "market.sell.cta").localized)
+                                .font(.headline)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Theme.Color.bgSecondary)
-                        .cornerRadius(12)
-
-                        // Body description — `fixedSize` on the vertical
-                        // axis stops it from being clipped to one line by
-                        // the surrounding VStack's height bid (was
-                        // showing `…` on iPhone min-width because the
-                        // sheet's compact detent gave the text only
-                        // 1.5 lines of slack).
-                        Text("market.sell.body".localized)
-                            .font(.footnote)
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // Price input — coin glyph sits INSIDE the field
-                        // chrome on the leading edge so the input reads
-                        // as one unit (number + currency icon), instead
-                        // of the previous setup where the coin floated
-                        // separately to the right of the field.
-                        HStack(spacing: 8) {
-                            ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                                .frame(width: 20, height: 20)
-                            TextField("market.sell.price_placeholder".localized, text: $priceText)
-                                .keyboardType(.numberPad)
-                                .font(.body.monospacedDigit())
-                        }
-                        .padding(.horizontal, 12)
                         .padding(.vertical, 12)
-                        .background(Theme.Color.bgSecondary)
-                        .cornerRadius(8)
-
-                        if let hint = payoutHint {
-                            Text(hint)
-                                .font(.caption)
-                                .foregroundColor(Theme.Color.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        Button {
-                            Task { await listIt() }
-                        } label: {
-                            HStack {
-                                if busy { ProgressView().tint(.white) }
-                                Text((busy ? "market.sell.busy" : "market.sell.cta").localized)
-                                    .font(.headline)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(validPrice ? Theme.Color.accent : Theme.Color.divider)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                        }
-                        .disabled(!validPrice || busy)
-
-                        Spacer(minLength: 0)
+                        .background(validPrice ? Theme.Color.accent : Theme.Color.divider)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
                     }
-                    .padding(16)
+                    .disabled(!validPrice || busy)
+
+                    Spacer(minLength: 0)
                 }
-                // Same fix as the rules sheet — see NoBounceWhenFits.
-                .modifier(NoBounceWhenFits())
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("market.sell.title".localized)
