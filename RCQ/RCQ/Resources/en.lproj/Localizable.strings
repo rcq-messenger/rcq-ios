@@ -1031,6 +1031,7 @@
 "games.subtitle" = "Fast token bets.\nRounds last 15-30 seconds.";
 "games.section.solo" = "Solo";
 "games.section.pvp" = "Player vs player";
+"games.section.pets" = "Pets";
 "games.soon" = "SOON";
 "games.cta.topup" = "Top up wallet";
 "games.crash.title" = "Crash";

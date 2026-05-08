@@ -65,6 +65,11 @@ final class CrashService: ObservableObject {
     /// What WE bet this round (nil if we haven't placed). Cleared on
     /// new round.
     @Published private(set) var myBetAmount: Int?
+    /// In-flight flag for `placeBet`. Used as a re-entrancy guard so
+    /// rapid double-taps on the bet button don't race the server
+    /// into an "already bet this round" 400. Not @Published — pure
+    /// internal state, not surfaced to UI.
+    private var isPlacingBet: Bool = false
     /// Set the moment we cash out — drives the "you cashed at X.XXx"
     /// banner. Cleared on new round.
     @Published private(set) var myCashoutMultiplier: Double?
@@ -150,6 +155,17 @@ final class CrashService: ObservableObject {
             lastError = "crash.error.betting_closed".localized
             return nil
         }
+        // Idempotency guards. Double-tap on the bet button used to
+        // race between client-side state flip + server processing:
+        // tap-1 fires POST, tap-2 fires another POST while myBetAmount
+        // is still nil, server's second POST returns 400 ("already bet
+        // this round"), iOS surfaced the raw server error message in a
+        // toast. Both the in-flight flag AND the already-bet guard are
+        // silent no-ops — no error toast for what the user perceives
+        // as a successful "I already pressed it" state.
+        if isPlacingBet || myBetAmount != nil { return nil }
+        isPlacingBet = true
+        defer { isPlacingBet = false }
         struct Body: Encodable { let round_id: String; let amount: Int }
         struct Reply: Decodable { let ok: Bool; let wallet_tokens: Int }
         do {
@@ -166,6 +182,15 @@ final class CrashService: ObservableObject {
             SoundService.shared.play(.crashBetPlaced)
             return reply.wallet_tokens
         } catch {
+            // Server-side "already bet this round" — race with another
+            // in-flight tap that won. Silent no-op; the UI is already
+            // showing `placedBetPill` thanks to the WS bet-confirm event
+            // mirroring myBetAmount, so the user doesn't see the
+            // double-tap as a failure.
+            if let apiErr = error as? APIError, case .http(400, let body) = apiErr,
+               body?.contains("already") == true {
+                return nil
+            }
             lastError = error.localizedDescription
             return nil
         }

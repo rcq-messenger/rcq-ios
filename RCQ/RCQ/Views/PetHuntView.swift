@@ -49,8 +49,11 @@ struct PetHuntView: View {
                 svc.tickTo(now)
             }
             .sheet(isPresented: $showInfo) {
+                // Larger detent than the auction rules sheet — the
+                // permadeath section needs the room. ScrollView
+                // inside the sheet handles overflow regardless.
                 PetHuntInfoSheet()
-                    .presentationDetents([.medium])
+                    .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showZonePicker) {
                 HuntZonePickerSheet { zone in
@@ -335,26 +338,33 @@ private struct PetHuntInfoSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                infoSection(
-                    icon: "leaf.fill",
-                    title: "pet_hunt.info.passive.title".localized,
-                    body: "pet_hunt.info.passive.body".localized,
-                )
-                infoSection(
-                    icon: "mountain.2.fill",
-                    title: "pet_hunt.info.zones.title".localized,
-                    body: "pet_hunt.info.zones.body".localized,
-                )
-                infoSection(
-                    icon: "exclamationmark.triangle.fill",
-                    title: "pet_hunt.info.death.title".localized,
-                    body: "pet_hunt.info.death.body".localized,
-                )
-                Spacer(minLength: 0)
+            // ScrollView + `.fixedSize` on each body Text — at the
+            // medium detent the death-info copy was truncating to
+            // "..." because the static VStack let SwiftUI compress
+            // bodies vertically. Scroll lets the longer copy breathe;
+            // `.fixedSize(vertical:)` makes Text claim its full
+            // intrinsic height instead of getting clipped.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    infoSection(
+                        icon: "leaf.fill",
+                        title: "pet_hunt.info.passive.title".localized,
+                        body: "pet_hunt.info.passive.body".localized,
+                    )
+                    infoSection(
+                        icon: "mountain.2.fill",
+                        title: "pet_hunt.info.zones.title".localized,
+                        body: "pet_hunt.info.zones.body".localized,
+                    )
+                    infoSection(
+                        icon: "exclamationmark.triangle.fill",
+                        title: "pet_hunt.info.death.title".localized,
+                        body: "pet_hunt.info.death.body".localized,
+                    )
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Theme.Color.bgPrimary.ignoresSafeArea())
             .navigationTitle("pet_hunt.info.title".localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -380,6 +390,7 @@ private struct PetHuntInfoSheet: View {
                 Text(body)
                     .font(.footnote)
                     .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

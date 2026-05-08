@@ -1022,6 +1022,7 @@
 "games.subtitle" = "Быстрые ставки на жетоны.\nРаунды по 15-30 секунд.";
 "games.section.solo" = "Соло";
 "games.section.pvp" = "Между игроками";
+"games.section.pets" = "Питомцы";
 "games.soon" = "СКОРО";
 "games.cta.topup" = "Пополнить кошелёк";
 "games.crash.title" = "Crash";

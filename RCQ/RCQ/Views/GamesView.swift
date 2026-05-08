@@ -91,12 +91,15 @@ struct GamesView: View {
                     accent: Theme.Color.accent
                 ) { showUinAuction = true }
 
-                gameCard(
-                    icon: "pawprint.fill",
-                    title: "games.pets_hunt.title".localized,
-                    body: "games.pets_hunt.body".localized,
-                    accent: Theme.Color.accent
-                ) { showPetHunt = true }
+                // ── Pets — отдельная секция со своим hero-tile.
+                // Питомцы — особая ветка экономики (passive farm +
+                // permadeath ставки), её tile визуально отличается
+                // от остальных: pet-portraits разбросаны по углам как
+                // декор, gradient-фон, увеличенная высота.
+                sectionHeader("games.section.pets".localized)
+
+                petHuntHeroCard
+                    .onTapGesture { showPetHunt = true }
 
                 Spacer(minLength: 24)
             }
@@ -114,6 +117,82 @@ struct GamesView: View {
         }
         .padding(.top, 6)
         .padding(.horizontal, 4)
+    }
+
+    /// Hero tile for the Pets section. Tall card with a soft
+    /// gradient + 4 pet GIF portraits scattered in the corners as
+    /// low-opacity decor — calls out the section visually so it
+    /// reads as its own thing, not just another row in PvP.
+    /// Pet assets used here are pure decoration (Items/pet1.gif
+    /// etc); no semantic link to the user's actual equipped pet.
+    private var petHuntHeroCard: some View {
+        let petDecor = ["pet1", "pet3", "pet6", "pet9"]
+        return ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [
+                    Color(hex: 0x6BB12C).opacity(0.20),
+                    Color(hex: 0x4FA85F).opacity(0.10),
+                    Theme.Color.bgSecondary,
+                ],
+                startPoint: .topLeading, endPoint: .bottomTrailing,
+            )
+            .cornerRadius(14)
+
+            // Decorative pet GIFs in 4 corners. `allowsHitTesting(false)`
+            // so taps fall through to the parent tap-gesture; opacity
+            // 0.55 keeps them as motif, not visual noise. Sizes alternate
+            // so the composition doesn't feel grid-aligned.
+            VStack {
+                HStack {
+                    petDecorTile(petDecor[0], size: 38)
+                    Spacer()
+                    petDecorTile(petDecor[1], size: 30).padding(.top, 12)
+                }
+                Spacer()
+                HStack {
+                    petDecorTile(petDecor[2], size: 32).padding(.bottom, 10)
+                    Spacer()
+                    petDecorTile(petDecor[3], size: 42)
+                }
+            }
+            .padding(10)
+            .allowsHitTesting(false)
+
+            // Foreground content — paw icon + title/body + chevron.
+            HStack(spacing: 14) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(Theme.Color.accent)
+                    .frame(width: 56, height: 56)
+                    .background(Theme.Color.accent.opacity(0.18))
+                    .cornerRadius(14)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("games.pets_hunt.title".localized)
+                        .font(.system(.headline, weight: .bold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("games.pets_hunt.body".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(.callout, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 130)
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    @ViewBuilder
+    private func petDecorTile(_ filename: String, size: CGFloat) -> some View {
+        ItemAssetImage(bundleSubdir: "Items", filename: filename, ext: "gif")
+            .frame(width: size, height: size)
+            .opacity(0.55)
     }
 
     private func gameCard(
