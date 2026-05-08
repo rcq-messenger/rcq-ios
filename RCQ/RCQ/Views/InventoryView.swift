@@ -23,6 +23,10 @@ struct InventoryView: View {
     @State private var showTrades = false
     @State private var showGames = false
     @State private var showMarket = false
+    /// Pet Hunt Memorial sheet — surfaces from the inventory
+    /// ellipsis menu so users can browse pets that died on hunts
+    /// without going into the Games tab.
+    @State private var showMemorial = false
     @State private var detailItem: Item?
     @State private var lastError: String?
 
@@ -152,6 +156,14 @@ struct InventoryView: View {
                                 systemImage: items.inventoryPublic ? "eye.slash" : "eye",
                             )
                         }
+                        Button {
+                            showMemorial = true
+                        } label: {
+                            Label(
+                                "pet_hunt.memorial.title".localized,
+                                systemImage: "leaf.fill"
+                            )
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                             .foregroundColor(Theme.Color.accent)
@@ -210,6 +222,13 @@ struct InventoryView: View {
             }
             .fullScreenCover(isPresented: $showGames) {
                 GamesView()
+            }
+            .sheet(isPresented: $showMemorial) {
+                // Memorial of pets that died on Pet Hunt. Loads
+                // its own data via PetHuntService.refreshMemorial
+                // on appear.
+                PetMemorialFromInventorySheet()
+                    .presentationDetents([.large])
             }
             .sheet(item: $detailItem) { item in
                 ItemDetailSheet(item: item)

@@ -1184,7 +1184,56 @@
 "games.uin_auction.title" = "Аукцион UIN";
 "games.uin_auction.body" = "Один UIN в час. Ставка-война до последней секунды.";
 "games.pets_hunt.title" = "Питомцы на охоте";
-"games.pets_hunt.body" = "Отправь снаряжённого питомца в рейд против питомца другого игрока. Добыча, ранги, слава.";
+"games.pets_hunt.body" = "Снаряжённый питомец пассивно фармит жетоны. Рискни им на охоте — заберёшь больше.";
+
+/* ── Экран Pet Hunt ─────────────────────────── */
+"pet_hunt.daily_yield" = "%d жетонов / день при полной загрузке";
+"pet_hunt.cap_reached" = "Буфер заполнен — забери жетоны или они сгорят";
+"pet_hunt.claim" = "Забрать";
+"pet_hunt.send" = "ОТПРАВИТЬ НА ОХОТУ";
+"pet_hunt.hunts_left" = "%d / %d охот сегодня";
+"pet_hunt.cta.open_memorial" = "Мемориал";
+"pet_hunt.empty.no_pet.title" = "Питомец не снаряжён";
+"pet_hunt.empty.no_pet.body" = "Снаряди питомца из инвентаря чтобы начать пассивный фарм жетонов.";
+
+/* Pet Hunt — info */
+"pet_hunt.info.title" = "Как работает Pet Hunt";
+"pet_hunt.info.passive.title" = "Пассивный фарм";
+"pet_hunt.info.passive.body" = "Снаряжённый питомец зарабатывает жетоны 24/7. Чем выше редкость, уровень и чистота — тем больше доход. Буфер копится максимум 24 часа — забирай ежедневно или потеряешь излишек.";
+"pet_hunt.info.zones.title" = "Зоны охоты";
+"pet_hunt.info.zones.body" = "Три охоты в день дают шанс рискнуть питомцем ради больших жетонов. Лес безопасен, Гора рискованна, Пещера хардкор. Сильный питомец чаще успевает И чаще выживает.";
+"pet_hunt.info.death.title" = "Permadeath";
+"pet_hunt.info.death.body" = "Если питомец проваливает охоту и получает рану на 0 уровне — он умирает навсегда. В Горе и Пещере возможна катастрофа — смерть независимо от уровня. Темперьте питомцев перед сложными зонами.";
+
+/* Pet Hunt — выбор зоны */
+"pet_hunt.zone_picker.title" = "Куда отправить";
+"pet_hunt.zone_picker.intro" = "Больше награда — больше риск. Качество питомца меняет реальные числа.";
+"pet_hunt.zone.forest" = "Лес";
+"pet_hunt.zone.forest.reward" = "Награда 3-8 × статы питомца";
+"pet_hunt.zone.forest.risk" = "Безопасно — только мелкие раны, без смерти";
+"pet_hunt.zone.mountain" = "Гора";
+"pet_hunt.zone.mountain.reward" = "Награда 8-20 × статы питомца";
+"pet_hunt.zone.mountain.risk" = "Рискованно — раны частые, смерть редко";
+"pet_hunt.zone.cave" = "Пещера";
+"pet_hunt.zone.cave.reward" = "Награда 20-50 × статы питомца";
+"pet_hunt.zone.cave.risk" = "Хардкор — частые раны, реальный риск смерти";
+
+/* Pet Hunt — результат */
+"pet_hunt.result.success" = "Успешная охота";
+"pet_hunt.result.success.body" = "Питомец вернулся с %@ невредимым.";
+"pet_hunt.result.wound" = "Ранен";
+"pet_hunt.result.wound.body" = "Питомец ранен и потерял уровень. Сейчас уровень %d.";
+"pet_hunt.result.death" = "Не вернулся";
+"pet_hunt.result.death.body" = "Питомец погиб. Он останется в Мемориале.";
+
+/* Pet Hunt — Мемориал */
+"pet_hunt.memorial.title" = "Мемориал";
+"pet_hunt.memorial.empty.title" = "Никто пока не пал";
+"pet_hunt.memorial.empty.body" = "Здесь будут храниться питомцы, погибшие на охоте.";
+"pet_hunt.memorial.died_in" = "Пал в зоне %@";
+
+/* Common */
+"common.continue" = "Продолжить";
 "uin_auction.alert.title" = "Аукцион";
 "uin_auction.hero.kicker" = "ТЕКУЩИЙ ЛОТ";
 "uin_auction.tier.legendary" = "Легендарный";

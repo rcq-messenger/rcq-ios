@@ -713,7 +713,12 @@ struct ItemDetailSheet: View {
     }
 }
 
-private extension DateFormatter {
+extension DateFormatter {
+    /// Acquired-date formatter — used by the item detail sheet, the
+    /// memorial sheet, and the inventory's history list. Promoted
+    /// from `fileprivate` so cross-file consumers (PetHuntView,
+    /// PetMemorialFromInventorySheet) share the same locale-aware
+    /// styling without re-declaring their own.
     static let itemAcquired: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium

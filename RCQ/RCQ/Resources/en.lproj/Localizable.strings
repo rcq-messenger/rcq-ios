@@ -1193,7 +1193,56 @@
 "games.uin_auction.title" = "UIN Auction";
 "games.uin_auction.body" = "One UIN per hour. Bid wars to the last second.";
 "games.pets_hunt.title" = "Pets on the hunt";
-"games.pets_hunt.body" = "Send your equipped pet on a raid against another player's pet. Loot, ranks, glory.";
+"games.pets_hunt.body" = "Your equipped pet earns jetons passively. Risk it on hunts for big rewards.";
+
+/* ── Pet Hunt screen ───────────────────────────── */
+"pet_hunt.daily_yield" = "%d jetons / day at full uptime";
+"pet_hunt.cap_reached" = "Buffer full — claim now or yield is lost";
+"pet_hunt.claim" = "Claim";
+"pet_hunt.send" = "SEND TO HUNT";
+"pet_hunt.hunts_left" = "%d / %d hunts left today";
+"pet_hunt.cta.open_memorial" = "Memorial";
+"pet_hunt.empty.no_pet.title" = "No pet equipped";
+"pet_hunt.empty.no_pet.body" = "Equip a pet from your inventory to start earning passive jetons.";
+
+/* Pet Hunt — info sheet */
+"pet_hunt.info.title" = "How Pet Hunt works";
+"pet_hunt.info.passive.title" = "Passive farming";
+"pet_hunt.info.passive.body" = "Your equipped pet earns jetons 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours — claim daily or you lose the overflow.";
+"pet_hunt.info.zones.title" = "Hunt zones";
+"pet_hunt.info.zones.body" = "Three daily hunts let you risk your pet for bigger rewards. Forest is safe, Mountain is risky, Cave is hardcore. Stronger pets succeed more often AND survive failure more often.";
+"pet_hunt.info.death.title" = "Permadeath";
+"pet_hunt.info.death.body" = "If your pet fails a hunt and gets wounded at level 0, it dies forever. Disasters in Mountain and Cave can kill any pet regardless of level. Temper your pets before sending them to hard zones.";
+
+/* Pet Hunt — zone picker */
+"pet_hunt.zone_picker.title" = "Choose hunt";
+"pet_hunt.zone_picker.intro" = "Bigger reward, bigger risk. Your pet quality changes the actual numbers.";
+"pet_hunt.zone.forest" = "Forest";
+"pet_hunt.zone.forest.reward" = "Reward 3-8 × pet stats";
+"pet_hunt.zone.forest.risk" = "Safe — only minor wounds, no death";
+"pet_hunt.zone.mountain" = "Mountain";
+"pet_hunt.zone.mountain.reward" = "Reward 8-20 × pet stats";
+"pet_hunt.zone.mountain.risk" = "Risky — wounds common, rare deaths";
+"pet_hunt.zone.cave" = "Cave";
+"pet_hunt.zone.cave.reward" = "Reward 20-50 × pet stats";
+"pet_hunt.zone.cave.risk" = "Hardcore — frequent wounds, real death risk";
+
+/* Pet Hunt — result */
+"pet_hunt.result.success" = "Successful hunt";
+"pet_hunt.result.success.body" = "Your pet returned from the %@ unscathed.";
+"pet_hunt.result.wound" = "Wounded";
+"pet_hunt.result.wound.body" = "Your pet was hurt and lost a level. Now at level %d.";
+"pet_hunt.result.death" = "Did not return";
+"pet_hunt.result.death.body" = "Your pet has fallen. It will be remembered in the Memorial.";
+
+/* Pet Hunt — memorial */
+"pet_hunt.memorial.title" = "Memorial";
+"pet_hunt.memorial.empty.title" = "Nobody's fallen yet";
+"pet_hunt.memorial.empty.body" = "Pets that die on hunts will be remembered here.";
+"pet_hunt.memorial.died_in" = "Fell in %@";
+
+/* Common */
+"common.continue" = "Continue";
 "uin_auction.alert.title" = "Auction";
 "uin_auction.hero.kicker" = "CURRENT LOT";
 "uin_auction.tier.legendary" = "Legendary";

@@ -13,6 +13,7 @@ struct GamesView: View {
     @State private var showHiLo = false
     @State private var showLimbo = false
     @State private var showUinAuction = false
+    @State private var showPetHunt = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +35,7 @@ struct GamesView: View {
             .fullScreenCover(isPresented: $showHiLo) { HiLoView() }
             .fullScreenCover(isPresented: $showLimbo) { LimboView() }
             .fullScreenCover(isPresented: $showUinAuction) { UinAuctionView() }
+            .fullScreenCover(isPresented: $showPetHunt) { PetHuntView() }
             .task {
                 // Make sure the wallet badge is fresh when this opens.
                 await items.refreshInventory()
@@ -89,14 +91,12 @@ struct GamesView: View {
                     accent: Theme.Color.accent
                 ) { showUinAuction = true }
 
-                // Coming-soon placeholder. Mechanics TBD; sits in
-                // the PvP section so the user knows another
-                // player-vs-player surface is on the roadmap.
-                comingSoonCard(
+                gameCard(
+                    icon: "pawprint.fill",
                     title: "games.pets_hunt.title".localized,
                     body: "games.pets_hunt.body".localized,
-                    icon: "pawprint.fill"
-                )
+                    accent: Theme.Color.accent
+                ) { showPetHunt = true }
 
                 Spacer(minLength: 24)
             }
