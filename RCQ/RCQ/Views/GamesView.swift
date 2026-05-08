@@ -1,10 +1,6 @@
 import SwiftUI
 
-/// Games hub. Lists available mini-games — for now just Crash, but
-/// Hi-Lo and Limbo can slot in here as additional cards without any
-/// nav-bar / routing changes. Mirrors the `InventoryView` /
-/// `RouletteView` shape (full-screen cover, close on the leading
-/// nav slot).
+/// Games hub. Lists available mini-games.
 struct GamesView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var items = ItemsService.shared
@@ -37,7 +33,6 @@ struct GamesView: View {
             .fullScreenCover(isPresented: $showUinAuction) { UinAuctionView() }
             .fullScreenCover(isPresented: $showPetHunt) { PetHuntView() }
             .task {
-                // Make sure the wallet badge is fresh when this opens.
                 await items.refreshInventory()
             }
         }
@@ -54,7 +49,11 @@ struct GamesView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
-                // ── Solo (один игрок против дома) ─────────
+                sectionHeader("games.section.pets".localized)
+
+                petHuntHeroCard
+                    .onTapGesture { showPetHunt = true }
+
                 sectionHeader("games.section.solo".localized)
 
                 gameCard(
@@ -71,12 +70,8 @@ struct GamesView: View {
                     accent: Theme.Color.accent
                 ) { showLimbo = true }
 
-                // ── PvP (общие раунды, видишь чужие ставки) ──
                 sectionHeader("games.section.pvp".localized)
 
-                // Crash — все игроки в одном раунде, видят ставки
-                // и кэшауты друг друга в общем фиде. Multiplayer
-                // по сути, поэтому сидит здесь, а не в Solo.
                 gameCard(
                     icon: "chart.line.uptrend.xyaxis",
                     title: "games.crash.title".localized,
@@ -90,16 +85,6 @@ struct GamesView: View {
                     body: "games.uin_auction.body".localized,
                     accent: Theme.Color.accent
                 ) { showUinAuction = true }
-
-                // ── Pets — отдельная секция со своим hero-tile.
-                // Питомцы — особая ветка экономики (passive farm +
-                // permadeath ставки), её tile визуально отличается
-                // от остальных: pet-portraits разбросаны по углам как
-                // декор, gradient-фон, увеличенная высота.
-                sectionHeader("games.section.pets".localized)
-
-                petHuntHeroCard
-                    .onTapGesture { showPetHunt = true }
 
                 Spacer(minLength: 24)
             }
@@ -119,15 +104,8 @@ struct GamesView: View {
         .padding(.horizontal, 4)
     }
 
-    /// Hero tile for the Pets section. Tall card with a soft
-    /// gradient + 4 pet GIF portraits scattered in the corners as
-    /// low-opacity decor — calls out the section visually so it
-    /// reads as its own thing, not just another row in PvP.
-    /// Pet assets used here are pure decoration (Items/pet1.gif
-    /// etc); no semantic link to the user's actual equipped pet.
     private var petHuntHeroCard: some View {
-        let petDecor = ["pet1", "pet3", "pet6", "pet9"]
-        return ZStack(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
             LinearGradient(
                 colors: [
                     Color(hex: 0x6BB12C).opacity(0.20),
@@ -138,35 +116,14 @@ struct GamesView: View {
             )
             .cornerRadius(14)
 
-            // Decorative pet GIFs in 4 corners. `allowsHitTesting(false)`
-            // so taps fall through to the parent tap-gesture; opacity
-            // 0.55 keeps them as motif, not visual noise. Sizes alternate
-            // so the composition doesn't feel grid-aligned.
-            VStack {
-                HStack {
-                    petDecorTile(petDecor[0], size: 38)
-                    Spacer()
-                    petDecorTile(petDecor[1], size: 30).padding(.top, 12)
-                }
-                Spacer()
-                HStack {
-                    petDecorTile(petDecor[2], size: 32).padding(.bottom, 10)
-                    Spacer()
-                    petDecorTile(petDecor[3], size: 42)
-                }
-            }
-            .padding(10)
-            .allowsHitTesting(false)
-
-            // Foreground content — paw icon + title/body + chevron.
-            HStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
                 Image(systemName: "pawprint.fill")
                     .font(.system(size: 32))
                     .foregroundColor(Theme.Color.accent)
                     .frame(width: 56, height: 56)
                     .background(Theme.Color.accent.opacity(0.18))
                     .cornerRadius(14)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("games.pets_hunt.title".localized)
                         .font(.system(.headline, weight: .bold))
                         .foregroundColor(Theme.Color.textPrimary)
@@ -174,25 +131,20 @@ struct GamesView: View {
                         .font(.caption)
                         .foregroundColor(Theme.Color.textSecondary)
                         .multilineTextAlignment(.leading)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(.callout, weight: .semibold))
-                    .foregroundColor(Theme.Color.textSecondary)
+                Spacer(minLength: 70)
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 130)
+        .overlay(alignment: .bottomTrailing) {
+            ItemAssetImage(bundleSubdir: "Items", filename: "pet9", ext: "gif")
+                .frame(width: 72, height: 72)
+                .offset(x: 8, y: 8)
+                .allowsHitTesting(false)
+        }
         .contentShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    @ViewBuilder
-    private func petDecorTile(_ filename: String, size: CGFloat) -> some View {
-        ItemAssetImage(bundleSubdir: "Items", filename: filename, ext: "gif")
-            .frame(width: size, height: size)
-            .opacity(0.55)
     }
 
     private func gameCard(
@@ -263,9 +215,6 @@ struct GamesView: View {
     @ViewBuilder
     private var walletBadge: some View {
         let tokens = items.wallet.tokens
-        // Standard 4pt spacing between the coin and the digits, with
-        // a positive trailing pad so the whole badge sits inset from
-        // the right edge instead of jamming against the safe area.
         HStack(spacing: 4) {
             ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                 .frame(width: 18, height: 18)

@@ -1,18 +1,7 @@
 import SwiftUI
 
-/// Inventory screen — owner side. Wallet readout + Open / Buy CTAs
-/// at the top, sectioned grid below.
-///
-/// Two modes:
-///   - **Browse** (default) — tap a tile → ItemDetailSheet.
-///   - **Select** (long-press a tile, or "Select" toolbar button) —
-///     tap toggles selection, "Select all" + "Disassemble N" CTAs
-///     surface, bulk POST to `/items/disassemble-bulk`. Mirrors IX.
-///
-/// Filter chips above the grid — "All" + one per rarity — narrow
-/// the visible items. Selection survives a filter change so the
-/// user can flip "All → Common" + "Select" + "Select all" +
-/// "Disassemble" to flush all commons in two taps.
+/// Inventory screen — wallet + sectioned tile grid with select-mode bulk
+/// disassemble. Tile long-press enters select mode.
 struct InventoryView: View {
     @StateObject private var items = ItemsService.shared
     @StateObject private var trades = TradesService.shared
@@ -23,9 +12,6 @@ struct InventoryView: View {
     @State private var showTrades = false
     @State private var showGames = false
     @State private var showMarket = false
-    /// Pet Hunt Memorial sheet — surfaces from the inventory
-    /// ellipsis menu so users can browse pets that died on hunts
-    /// without going into the Games tab.
     @State private var showMemorial = false
     @State private var detailItem: Item?
     @State private var lastError: String?
@@ -35,20 +21,11 @@ struct InventoryView: View {
     @State private var selected: Set<String> = []
     @State private var confirmingBulk: Bool = false
     @State private var bulkResultBanner: DisassembleYield? = nil
-    /// Cold-load gate. Set to false after the first `.task` resolves
-    /// — same pattern as `PublicInventoryView.loading`. Without this
-    /// the empty-state CTA flashes for one frame on cold open before
-    /// the items stream populates.
     @State private var loading: Bool = true
-    /// Tile ids whose long-press just fired — the post-longpress
-    /// tap that SwiftUI emits on finger-up needs to be swallowed,
-    /// otherwise releasing your finger immediately deselects the
-    /// tile you just selected.
+    // Suppresses the post-longpress finger-up tap that would otherwise
+    // immediately deselect the just-selected tile.
     @State private var longPressedJustNow: Set<String> = []
 
-    /// Five columns — IX uses four big tiles which made the grid
-    /// feel cramped and the icons oversized. Five gives the relics
-    /// room to read as collectibles without dominating the surface.
     private let columns = [
         GridItem(.flexible(), spacing: 6),
         GridItem(.flexible(), spacing: 6),
@@ -73,10 +50,6 @@ struct InventoryView: View {
                         Divider()
                             .background(Theme.Color.divider)
                             .padding(.horizontal, 16)
-                        // Edge-to-edge filter strip — bleeds past the
-                        // grid's 16pt gutter so the rightmost chip
-                        // doesn't clip when there are five rarities.
-                        // Same trick as the carousel.
                         filterChips
                         Group {
                             if loading && items.items.isEmpty {
@@ -102,14 +75,6 @@ struct InventoryView: View {
                 if let yield = bulkResultBanner {
                     successToast(yield: yield)
                 }
-                // Top-of-screen sync pill. Visible whenever the
-                // initial `.task` is still running, regardless of
-                // whether items are already cached from a previous
-                // session — the cold-load ProgressView only fires
-                // when items.isEmpty, so a user re-opening the
-                // surface saw nothing to indicate the fetch in
-                // flight. Pill matches the lightweight feel of
-                // pull-to-refresh without claiming the whole grid.
                 if loading {
                     syncingPill
                         .padding(.top, 8)
@@ -119,19 +84,10 @@ struct InventoryView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: loading)
-            // Animation curves are driven from `commitBulkDisassemble`
-            // via explicit `withAnimation` blocks — spring for the
-            // slide-in, ease-out for the fade-out. Spring on opacity
-            // removal felt jerky (no overshoot to settle on, just
-            // collapse), so the curves are split.
             .navigationTitle(selectMode ? "common.confirm".localized : "inventory.title".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    // In select mode this resolves to "Done" (exit);
-                    // otherwise normal close. The X-circle close on
-                    // the right is reserved for the new IX-style
-                    // surfaces — inventory stays with text-leading.
                     Button(selectMode ? "common.done".localized : "common.close".localized) {
                         if selectMode {
                             exitSelectMode()
@@ -141,9 +97,6 @@ struct InventoryView: View {
                     }
                     .foregroundColor(Theme.Color.accent)
                 }
-                // Top-right: ellipsis menu with the single hide/show
-                // inventory toggle (the only option that's been there
-                // since the start).
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
@@ -169,9 +122,6 @@ struct InventoryView: View {
                             .foregroundColor(Theme.Color.accent)
                     }
                 }
-                // Bottom bar: Games + Market + Trades, centred in the
-                // middle of the bar (Spacer on each side, no Spacer
-                // between them — they sit as a tight cluster).
                 ToolbarItemGroup(placement: .bottomBar) {
                     Spacer()
                     Button { showGames = true } label: {
@@ -224,9 +174,6 @@ struct InventoryView: View {
                 GamesView()
             }
             .sheet(isPresented: $showMemorial) {
-                // Memorial of pets that died on Pet Hunt. Loads
-                // its own data via PetHuntService.refreshMemorial
-                // on appear.
                 PetMemorialFromInventorySheet()
                     .presentationDetents([.large])
             }
@@ -265,11 +212,6 @@ struct InventoryView: View {
         )
     }
 
-    /// Sum the per-item scroll + token yield across the current
-    /// selection so the confirmation dialog can show "you'll get N
-    /// scrolls + M tokens" *before* the user commits to the burn.
-    /// Matches the server-side payout tables exactly (single source of
-    /// truth in `Models/TemperTables.swift`, mirrored on the backend).
     private var bulkYieldPreview: (scrolls: Int, tokens: Int) {
         let chosen = items.items.filter { selected.contains($0.id) }
         var scrolls = 0
@@ -283,12 +225,6 @@ struct InventoryView: View {
 
     // MARK: - Trailing toolbar menu
 
-    /// Single ellipsis menu hosting Games entry, Trades shortcut and
-    /// the public/private inventory toggle. Replaces the previous
-    /// two-icon trailing slot (trades + privacy). The trade pending-
-    /// count badge moves onto the ellipsis itself so the affordance
-    /// for "you have a trade waiting" stays glance-able from the
-    /// closed menu.
     @ViewBuilder
     private var inventoryMenu: some View {
         Menu {
@@ -326,11 +262,7 @@ struct InventoryView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        // Solid red — explicit `.opacity(1)` so toolbar
-                        // tinting context can't bleed alpha into the
-                        // chip. Slightly nudged up + left of the
-                        // ellipsis so it sits over the top-right
-                        // corner instead of clipping past the dots.
+                        // Explicit opacity(1) prevents toolbar tint bleed.
                         .background(Color.red.opacity(1))
                         .clipShape(Capsule())
                         .offset(x: 4, y: -6)
@@ -355,10 +287,6 @@ struct InventoryView: View {
                     showLootbox = true
                 } label: {
                     let canAfford = items.wallet.tokens >= (items.catalog?.pullCost ?? 2)
-                    // No leading glyph — the inventory entry-point in
-                    // ContactListView already wears `shippingbox.fill`,
-                    // and "Open" + a duplicate box icon in the same
-                    // surface read as redundant. Plain text CTA.
                     Text("inventory.button.open".localized)
                         .font(Theme.Font.nickname)
                         .foregroundColor(.white)
@@ -405,20 +333,12 @@ struct InventoryView: View {
     // MARK: - Filters
 
     private var filterChips: some View {
-        // Edge-to-edge horizontal scroll: the inner HStack starts at
-        // 16pt and ends at 16pt of slack so the first / last chip
-        // line up with the grid columns instead of bleeding into the
-        // safe-area edge. Pure ScrollView outside the parent's
-        // padding so the rightmost chip can keep scrolling past
-        // the screen edge without clipping.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 chip(label: "rarity.all".localized.uppercased(), color: Theme.Color.accent, isOn: rarityFilter == nil) {
                     rarityFilter = nil
                 }
-                // Common → Legendary order — `rollWeight` puts
-                // legendary at index 0, so reverse the sort here so
-                // the chip strip reads normal → rare.
+                // rollWeight puts legendary at 0; reverse so chips read common → rare.
                 ForEach(ItemRarity.allCases.sorted { $0.rollWeight > $1.rollWeight }, id: \.self) { r in
                     chip(label: r.label.uppercased(), color: r.color, isOn: rarityFilter == r) {
                         rarityFilter = (rarityFilter == r) ? nil : r
@@ -431,10 +351,6 @@ struct InventoryView: View {
     }
 
     private func chip(label: String, color: Color, isOn: Bool, action: @escaping () -> Void) -> some View {
-        // Always tinted with the rarity colour so the strip reads as
-        // a palette at a glance. Selected = solid + white text;
-        // unselected = 22% colour fill + white text. Same shape both
-        // ways so the strip doesn't jitter on tap.
         Button(action: action) {
             Text(label)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -450,10 +366,6 @@ struct InventoryView: View {
 
     // MARK: - Empty / sections
 
-    /// Floating "Syncing…" pill shown at the top of the inventory
-    /// while the initial fetch is in flight. Quiet, glassy capsule —
-    /// matches the lightweight feel of iOS's pull-to-refresh chrome
-    /// instead of claiming the centre of the grid.
     private var syncingPill: some View {
         HStack(spacing: 8) {
             ProgressView()
@@ -485,10 +397,6 @@ struct InventoryView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
-            // CTA — straight to the lootbox sheet which already
-            // exists at this level (`showLootbox` flag). Without
-            // this the empty state was a wall: the user reads
-            // "open your first box" with no obvious path to one.
             Button {
                 showLootbox = true
             } label: {
@@ -531,11 +439,8 @@ struct InventoryView: View {
 
     private func tile(item: Item) -> some View {
         let isSelected = selected.contains(item.id)
-        // Plain ZStack instead of Button — SwiftUI's Button swallows
-        // long-press inside its tap-recognizer, which is why the
-        // previous wiring did nothing on long-press. Pair an
-        // onTapGesture with a simultaneous LongPressGesture so both
-        // fire reliably on the same tile.
+        // Button swallows long-press inside its tap recognizer; the
+        // gesture pair below fires both reliably on the same tile.
         return ItemCard(item: item)
             .overlay(
                 selectMode && isSelected
@@ -543,11 +448,6 @@ struct InventoryView: View {
                         .stroke(Theme.Color.accent, lineWidth: 3)
                     : nil
             )
-            // Selection check — centered over the tile so it acts
-            // as a visual confirmation rather than chrome floating
-            // in the corner. Only renders when the tile is actually
-            // selected; non-selected tiles in select-mode just sit
-            // there waiting to be tapped.
             .overlay(alignment: .center) {
                 if selectMode && isSelected {
                     Image(systemName: "checkmark.circle.fill")
@@ -559,11 +459,6 @@ struct InventoryView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                // SwiftUI's `simultaneousGesture(LongPressGesture)`
-                // arrangement fires both long-press AND the
-                // finger-up tap. Without the guard, releasing right
-                // after a successful long-press toggled the tile
-                // back off — which is exactly what the user reported.
                 if longPressedJustNow.contains(item.id) {
                     longPressedJustNow.remove(item.id)
                     return
@@ -571,8 +466,6 @@ struct InventoryView: View {
                 if selectMode {
                     if isSelected {
                         selected.remove(item.id)
-                        // Empty selection ⇒ exit select mode
-                        // automatically. Mirrors IX.
                         if selected.isEmpty {
                             exitSelectMode()
                         }
@@ -584,9 +477,6 @@ struct InventoryView: View {
                 }
             }
             .simultaneousGesture(
-                // Shortened from 0.35 → 0.25 so the press feels
-                // responsive — IX's affordance fires before users
-                // start wondering if anything's happening.
                 LongPressGesture(minimumDuration: 0.25)
                     .onEnded { _ in
                         longPressedJustNow.insert(item.id)
@@ -600,11 +490,7 @@ struct InventoryView: View {
                             selected.insert(item.id)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
-                        // Belt-and-braces: the tap that the gesture
-                        // system emits on finger-up should land
-                        // within ~250ms; if it doesn't, drop the
-                        // guard so a real tap a moment later isn't
-                        // also swallowed.
+                        // Drop the guard if the finger-up tap never lands.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             longPressedJustNow.remove(item.id)
                         }
@@ -631,9 +517,6 @@ struct InventoryView: View {
     // MARK: - Select mode action bar
 
     private var selectActionBar: some View {
-        // Buttons sit flush with the bar's edges — no top inset, no
-        // horizontal gutter inside the action bar's container. Pure
-        // ultraThinMaterial backdrop, full-width buttons, IX-style.
         HStack(spacing: 0) {
             Button {
                 let visibleIDs = Set(filteredItems.map { $0.id })
@@ -667,12 +550,6 @@ struct InventoryView: View {
     }
 
     private func successToast(yield: DisassembleYield) -> some View {
-        // Glass pill anchored just below the navigation bar with the
-        // actual scroll + coin assets so the message reads as "+S
-        // scrolls · +T tokens" without text-only chrome. Slide-down
-        // + fade-out via the parent `.animation(value:)` modifier;
-        // previous version had the `.transition` defined here but
-        // no animation driver attached, so the toast just popped.
         VStack {
             HStack(spacing: 8) {
                 ItemAssetImage(bundleSubdir: "Items", filename: "gem", ext: "gif")
@@ -720,8 +597,6 @@ struct InventoryView: View {
                 }
             }
         }
-        // Empty selection ⇒ leave select mode. Mirrors the
-        // tile-deselect path.
         exitSelectMode()
     }
 }

@@ -2,22 +2,9 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-/// QR-code surface for adding contacts (and, eventually, currency
-/// transfers / trade hand-offs once the lootbox economy lands).
-/// Two segments:
-///
-///   - **My code** — renders a QR encoding `rcq://add/{ownUIN}`. The
-///     other person points their RCQ scanner at it and lands on a
-///     pre-filled contact-add request.
-///   - **Scan** — opens the camera. On a clean QR detection we
-///     parse the `rcq://...` deep link, fire the matching action
-///     (currently: send contact-add), and dismiss.
-///
-/// Cleaner than passing UINs around verbally, and fits the
-/// in-person-handoff flows the user wants for the upcoming token /
-/// trade economy. The `rcq://add/{uin}` format is the one the rest
-/// of the app already understands (existing Share-card uses it,
-/// `AppState.handle(deepLink:)` parses it for contact prefill).
+/// QR surface for adding contacts. My-code tab renders a QR for
+/// `rcq://add/{ownUIN}`; Scan tab opens the camera and routes a
+/// detected `rcq://add/{uin}` to a contact-add request.
 struct QRSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var auth = AuthService.shared
@@ -87,12 +74,8 @@ struct QRSheet: View {
                 VStack(spacing: 18) {
                     Spacer().frame(height: 12)
                     if let qr = QRCode.image(from: "rcq://add/\(uin)") {
-                        // Status icon sits centred over the QR. QR
-                        // error-correction at level M tolerates
-                        // ~15% obscured area, so a 44pt badge over
-                        // a 240pt code (~3.3%) is well under the
-                        // limit. No padding pad / shadow — icon
-                        // sits flush on the code.
+                        // 44pt badge over 240pt code = ~3.3%, well under
+                        // the ~15% level-M error-correction tolerance.
                         Image(uiImage: qr)
                             .interpolation(.none)
                             .resizable()
@@ -105,10 +88,6 @@ struct QRSheet: View {
                                 StatusIcon(status: presence.status, size: 44)
                             )
                     }
-                    // Identity block stays under the QR — just nick
-                    // + UIN now, status moved to the QR centre. Both
-                    // labels are centred horizontally now that
-                    // there's no leading icon to share an edge with.
                     VStack(spacing: 2) {
                         Text(auth.nickname.isEmpty ? "—" : auth.nickname)
                             .font(.title2.bold())
@@ -173,11 +152,8 @@ struct QRSheet: View {
             .cornerRadius(6)
             .padding(.top, 14)
         }
-        // Camera fills the whole pane down to the bottom edge of
-        // the sheet. SwiftUI's default sheet presentation reserves
-        // a small bottom safe-area inset which leaves a strip of
-        // background colour under the preview otherwise — the
-        // user reads that as "the camera is small".
+        // Camera fills to the sheet edges (default sheet safe-area
+        // would leave a visible bg strip under the preview).
         .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
     }
 
@@ -216,12 +192,8 @@ struct QRSheet: View {
         }
     }
 
-    /// Pull the UIN out of an `rcq://add/{uin}` URL. Tolerates a
-    /// trailing slash and missing leading-slash variants since users
-    /// will end up generating these by hand at some point.
     static func parseAddURL(_ url: URL) -> Int? {
         guard url.scheme == "rcq" else { return nil }
-        // `rcq://add/12345` — host is "add", path is "/12345"
         guard url.host == "add" else { return nil }
         let trimmed = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return Int(trimmed)
@@ -252,11 +224,8 @@ struct QRSheet: View {
 
 // MARK: - AVFoundation scanner
 
-/// `UIViewControllerRepresentable` wrapping an AVCaptureSession that
-/// fires `onScan(stringValue)` once when the first QR code in view
-/// is recognized. The session stops as soon as we get a hit so
-/// `onScan` doesn't fire twice; the parent dismisses or restarts as
-/// needed.
+/// AVCaptureSession wrapper that fires `onScan` once on the first
+/// QR detection and stops the session.
 struct QRScannerView: UIViewControllerRepresentable {
     let onScan: (String) -> Void
 
@@ -326,8 +295,6 @@ struct QRScannerView: UIViewControllerRepresentable {
         ) {
             guard let metadata = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
                   let value = metadata.stringValue else { return }
-            // Stop the session immediately so we don't keep firing
-            // the callback while the alert is up.
             session.stopRunning()
             onScan?(value)
         }

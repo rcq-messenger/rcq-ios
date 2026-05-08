@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// Item marketplace surface. Tab switch between **Browse** (every
-/// active listing on the platform, filtered + sorted by the user) and
-/// **My listings** (the local user's own active + resolved history).
-///
-/// Tap a row → `MarketListingDetailSheet` → Buy button (or Cancel
-/// when it's our own active listing). 5 % house fee is server-
-/// computed; we just render the seller-payout the server returns so
-/// rounding is consistent across clients.
+/// Item marketplace. Browse + My listings tabs; 5% fee is server-computed.
 struct MarketView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var market = MarketService.shared
@@ -23,10 +16,6 @@ struct MarketView: View {
         }
     }
 
-    /// Top-level category split. Items and UINs live on parallel
-    /// backend surfaces with separate listing tables — the picker
-    /// just flips which list + filters + detail sheet the view
-    /// renders. Tabs (Browse / Mine) work the same way under each.
     enum Category: String, CaseIterable, Identifiable {
         case items, uins
         var id: String { rawValue }
@@ -42,16 +31,12 @@ struct MarketView: View {
     @State private var rarityFilter: ItemRarity?
     @State private var sectionFilter: ItemSection?
     @State private var sort: MarketSort = .newest
-    @State private var tierFilter: String?  // "common"/"mid"/"legendary"; nil = all
+    @State private var tierFilter: String?
     @State private var selected: MarketplaceListing?
     @State private var selectedUin: UinMarketplaceListing?
     @State private var alertMessage: String?
     @State private var refreshing: Bool = false
 
-    /// Sections we surface as filter chips. Cleaned up — the catalog
-    /// now ships with three live sections (pets / voices / smileys);
-    /// the older `skins` and `founders` slots had zero items and got
-    /// removed (their pull weight redistributed to the live three).
     private static let visibleSections: [ItemSection] = [.pets, .voices, .smileys]
 
     var body: some View {
@@ -158,10 +143,6 @@ struct MarketView: View {
         .padding(.bottom, 8)
     }
 
-    /// Single-row filter strip: section chips → rarity chips → sort
-    /// menu, all on one horizontally-scrollable line. Earlier two-row
-    /// stacked layout ate too much vertical real estate above the
-    /// listing list.
     private var filterStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -236,9 +217,6 @@ struct MarketView: View {
 
     // MARK: - UIN browse strip + list
 
-    /// Filter strip for the UIN-marketplace surface. Tier chips
-    /// (common / mid / legendary) + the same sort menu as items.
-    /// Item-only chips (rarity, section) are hidden here.
     private var uinFilterStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -414,20 +392,12 @@ private struct ListingRow: View {
         items.catalog?.kind(by: listing.kindID)
     }
 
-    /// Showcase essence — the same headline number we surface on
-    /// `Item.showcaseValue`. Drives the "✨ N" pill on the row;
-    /// 0 while the catalog is still loading (renders a placeholder).
     private var essence: Int {
         listing.showcaseValue(catalog: items.catalog)
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Square art tile. Level badge perches on the top-leading
-            // corner of the artwork itself (`+N` in a tinted pill) so
-            // the user catches the temper level at a glance without
-            // needing to read the meta column. Rarity dot stays on
-            // the top-trailing corner — same lightweight signal.
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(Theme.Color.bgSecondary)
                 if let kind {
@@ -457,9 +427,6 @@ private struct ListingRow: View {
                         .background(Capsule().fill(Color.black.opacity(0.65)))
                         .padding(3)
                 }
-                // Rarity dot top-trailing — same as before, just sits
-                // in a sibling overlay (the parent `ZStack` aligns
-                // top-leading for the level badge above).
                 VStack {
                     HStack {
                         Spacer()
@@ -474,12 +441,6 @@ private struct ListingRow: View {
             .frame(width: 56, height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            // Title + rarity badge + essence column. Reads top-down:
-            //   1. Item name
-            //   2. Rarity tier badge (the "качество" the user asked
-            //      to bring back — colored pill in the rarity tint)
-            //   3. Essence (✨ N) bold under the badge
-            //   4. (My Listings) status badge
             VStack(alignment: .leading, spacing: 3) {
                 Text(ItemDisplay.name(for: listing.kindID))
                     .font(.system(.callout, weight: .semibold))
@@ -498,7 +459,6 @@ private struct ListingRow: View {
                 if isMine { statusBadge }
             }
             Spacer()
-            // Price.
             VStack(alignment: .trailing, spacing: 2) {
                 HStack(spacing: 3) {
                     ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
@@ -519,10 +479,6 @@ private struct ListingRow: View {
         .cornerRadius(10)
     }
 
-    /// Rarity badge — colored pill under the title. Same chrome as
-    /// the IX reveal-overlay's rarity chip + the inventory grid's
-    /// rarity tag, so the visual language is consistent across
-    /// every place rarity surfaces.
     private var rarityBadge: some View {
         Text(listing.rarity.label.uppercased())
             .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -629,8 +585,6 @@ private struct MarketListingDetailSheet: View {
         ItemDisplay.name(for: listing.kindID)
     }
 
-    /// Title block — item name + mint number, Telegram-style. Lives
-    /// directly under the artwork; the spec table comes below.
     @ViewBuilder
     private var titleBlock: some View {
         VStack(spacing: 4) {
@@ -652,18 +606,11 @@ private struct MarketListingDetailSheet: View {
         }
     }
 
-    /// Telegram-style spec table. Row = label on the left, value on
-    /// the right; rows separated by hairline dividers; whole table
-    /// has a soft rounded background. Replaces the chip-strip
-    /// `statsBlock` + the standalone `priceBlock` — one consolidated
-    /// surface where the user can scan everything that matters about
-    /// the listing.
     @ViewBuilder
     private var specTable: some View {
         VStack(spacing: 0) {
             specRow(label: "market.spec.owner".localized) {
                 HStack(spacing: 6) {
-                    // UIN сначала (слева), потом ник.
                     Text(verbatim: "#\(listing.sellerUIN)")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary)
@@ -677,7 +624,6 @@ private struct MarketListingDetailSheet: View {
             specDivider
             specRow(label: "market.spec.tier".localized) {
                 HStack(spacing: 6) {
-                    // % rarity сначала (слева), потом название.
                     Text(rarityPercentLabel(for: listing.rarity))
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary)
@@ -765,10 +711,6 @@ private struct MarketListingDetailSheet: View {
             .padding(.leading, 14)
     }
 
-    /// Approximate spawn rarity for the percent label next to the
-    /// tier name. Mirrors the lootbox catalog's drop-rate buckets;
-    /// surfaces "this is a rare drop" without leaking the exact
-    /// per-kind weight (which we keep server-side).
     private func rarityPercentLabel(for rarity: ItemRarity) -> String {
         switch rarity {
         case .common:    return "60%"
@@ -806,12 +748,20 @@ private struct MarketListingDetailSheet: View {
                     .buttonStyle(.plain)
                 }
             } else {
-                ItemAssetImage(
-                    bundleSubdir: subdir(kind),
-                    filename: stem(kind),
-                    ext: ext(kind),
-                )
-                .frame(width: 110, height: 110)
+                ZStack {
+                    if kind.section == .pets {
+                        Circle()
+                            .fill(listing.rarity.color.opacity(0.45))
+                            .frame(width: 150, height: 150)
+                            .blur(radius: 28)
+                    }
+                    ItemAssetImage(
+                        bundleSubdir: subdir(kind),
+                        filename: stem(kind),
+                        ext: ext(kind),
+                    )
+                    .frame(width: 110, height: 110)
+                }
             }
         }
     }
@@ -823,11 +773,7 @@ private struct MarketListingDetailSheet: View {
                 .font(.callout.weight(.semibold))
                 .foregroundColor(Theme.Color.textSecondary)
         } else if isMine {
-            // Same gotcha as ItemDetailSheet's cancel button — system
-            // destructive role overrides the explicit red fill with
-            // its own grey-pill chrome, hiding the button on the dark
-            // sheet. Our visual is already destructive-shaped; drop
-            // the role + force `.plain` so our styling holds.
+            // Avoid `.destructive` role; it overrides the red fill with system grey on dark sheets.
             Button {
                 Task { await cancel() }
             } label: {
@@ -926,9 +872,7 @@ private struct MarketListingDetailSheet: View {
 
 // MARK: - Sell sheet
 
-/// Set price + confirm flow. Opened from `ItemDetailSheet` when the
-/// owner taps "Sell on market". No item-state mutation here yet —
-/// the actual list happens on confirm via `MarketService.list`.
+/// Set-price flow opened from `ItemDetailSheet`; lists via `MarketService.list`.
 struct SellOnMarketSheet: View {
     let item: Item
     var onListed: () -> Void = {}
@@ -952,7 +896,7 @@ struct SellOnMarketSheet: View {
         return p >= 1 && p <= 999_999
     }
 
-    /// Same 5 % fee server uses. Render-only — server is canonical.
+    // 5% fee mirror of server math; render-only, server is canonical.
     private var localPayout: Int {
         guard let p = price else { return 0 }
         return p - (p * 5 / 100)
@@ -1058,10 +1002,6 @@ struct SellOnMarketSheet: View {
 
 // MARK: - UIN listing row + detail
 
-/// Compact row for a UIN sale on the marketplace browse / mine list.
-/// Renders the UIN itself as the headline (mono "#NNNNNN"), with a
-/// tier badge + price chip on the trailing edge — same visual rhythm
-/// as `ListingRow` so the two surfaces feel like the same product.
 private struct UinListingRow: View {
     let listing: UinMarketplaceListing
     let isMine: Bool
@@ -1084,8 +1024,6 @@ private struct UinListingRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // UIN-glyph tile — same size as the item ListingRow art
-            // tile so both lists align visually when scrolling.
             ZStack {
                 Rectangle().fill(Theme.Color.bgSecondary)
                 Image(systemName: "number")
@@ -1104,15 +1042,7 @@ private struct UinListingRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             VStack(alignment: .leading, spacing: 4) {
-                // UIN headline + tier badge inline. Earlier layout
-                // put the badge on the SECOND line next to the seller
-                // nickname, which read like the badge belonged to
-                // the seller, not the listing. Inline with the UIN
-                // makes the rarity unambiguous.
-                //
-                // `Text(verbatim:)` so the UIN renders as the raw
-                // identifier — no thousands separator from the
-                // default LocalizedStringKey path.
+                // `Text(verbatim:)` so the UIN renders without a thousands separator.
                 HStack(spacing: 8) {
                     Text(verbatim: "#\(listing.uin)")
                         .font(.system(.body, design: .monospaced).weight(.semibold))
@@ -1137,11 +1067,6 @@ private struct UinListingRow: View {
 
             Spacer()
 
-            // Same chrome as `MarketListingRow` price chip — `.body
-            // .bold` font + 14pt coin gif + spacing 3. Earlier
-            // `subheadline .semibold` was visibly smaller than the
-            // items tab's price, breaking the at-a-glance parity
-            // between the two tabs.
             HStack(spacing: 3) {
                 ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                     .frame(width: 14, height: 14)
@@ -1156,12 +1081,6 @@ private struct UinListingRow: View {
     }
 }
 
-/// Detail sheet for a UIN listing. Two modes:
-///   • Browse: `Buy for X tokens` button — runs the atomic purchase,
-///     credits the seller's wallet, flips the OwnedUin row to me.
-///   • Mine + active: `Cancel listing` button — frees the UIN back
-///     into my OwnedUin inventory without payment.
-///   • Mine + resolved: read-only (status badge says sold/cancelled).
 private struct UinMarketListingDetailSheet: View {
     let listing: UinMarketplaceListing
     let onBought: () async -> Void
@@ -1208,10 +1127,7 @@ private struct UinMarketListingDetailSheet: View {
                 ScrollView {
                     VStack(spacing: 18) {
                         VStack(spacing: 6) {
-                            // `Text(verbatim:)` — UINs are identifiers,
-                            // not amounts. Default Text("\(int)") would
-                            // route through LocalizedStringKey and add
-                            // thousands separators (`#123,456`).
+                            // `Text(verbatim:)` so the UIN doesn't get a thousands separator.
                             Text(verbatim: "#\(listing.uin)")
                                 .font(.system(.largeTitle, design: .monospaced).weight(.bold))
                                 .foregroundColor(Theme.Color.textPrimary)
@@ -1226,7 +1142,6 @@ private struct UinMarketListingDetailSheet: View {
                         .background(Theme.Color.bgSecondary)
                         .cornerRadius(14)
 
-                        // Price + payout row
                         VStack(spacing: 8) {
                             HStack {
                                 Text("market.detail.price".localized)
@@ -1262,7 +1177,6 @@ private struct UinMarketListingDetailSheet: View {
                         .background(Theme.Color.bgSecondary)
                         .cornerRadius(10)
 
-                        // Action button
                         if canBuy {
                             Button {
                                 Task { await buyIt() }

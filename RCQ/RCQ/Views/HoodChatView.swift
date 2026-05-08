@@ -1,20 +1,6 @@
 import SwiftUI
 
-/// Anonymous, bucket-local public chat. Lives behind a Nearby
-/// check-in: open via the "Hood Chat" entry on `NearbyView`,
-/// closes when you stop checking in.
-///
-/// Visual contract:
-///  - Permanent warning strip at the top — Hood Chat is *not*
-///    end-to-end encrypted, and the banner is non-dismissible
-///    so somebody scrolled five minutes deep can't forget.
-///  - Title shows the live participant count for the bucket.
-///  - Bubbles support reply / delete-mine / reactions through
-///    the same long-press affordance as the regular chat.
-///    Forward is intentionally absent — Hood is about saying a
-///    thing here, not exporting it elsewhere.
-///  - Tap on a bubble's nickname offers "Add as contact" since
-///    the UIN is exposed (anonymous-mini-profile sheet).
+/// Anonymous bucket-local public chat. Plaintext only; permanent warning banner.
 struct HoodChatView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = HoodChatService.shared
@@ -23,8 +9,6 @@ struct HoodChatView: View {
     @State private var profileTarget: ProfileTarget?
     @State private var showEmojiPanel: Bool = false
     @State private var composerHeight: CGFloat = 36
-    /// Currently long-pressed message — drives the floating
-    /// action overlay. `nil` while no menu is up.
     @State private var actionTarget: HoodMessage?
 
     let bucket: String
@@ -103,12 +87,7 @@ struct HoodChatView: View {
                 }
             }
             .task { await service.join(bucket: bucket) }
-            // Closing the view drops our active subscription so
-            // the bucket_count badge ticks down for the people
-            // who stayed. Without this, every other viewer kept
-            // seeing us in the count until the WS itself
-            // disconnected — surprising on a phone where the WS
-            // can stay alive for hours.
+            // leave() drops the subscription so other viewers' bucket_count badge ticks down.
             .onDisappear { service.leave() }
             .sheet(item: $profileTarget) { target in
                 anonymousProfile(target)
@@ -137,11 +116,6 @@ struct HoodChatView: View {
             Spacer()
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        // Glass + yellow tint. The translucent material picks up
-        // a hint of the chat content scrolling behind so the
-        // banner doesn't read as a hard slab — but the warm
-        // yellow overlay keeps the "this is a warning" colour
-        // signal intact.
         .background {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
@@ -175,11 +149,6 @@ struct HoodChatView: View {
                 }
             }
             .refreshable { await service.refresh() }
-            // Tap anywhere on the message scroll dismisses the
-            // keyboard. Using a high-priority tap so it doesn't
-            // fight with the bubble long-press; the contentShape
-            // rectangle keeps empty stretches between bubbles
-            // tappable too.
             .contentShape(Rectangle())
             .onTapGesture {
                 UIApplication.shared.sendAction(
@@ -211,11 +180,6 @@ struct HoodChatView: View {
             if isMine { Spacer(minLength: 50) }
             VStack(alignment: .leading, spacing: 2) {
                 if !isMine {
-                    // Bubble byline. UIN is intentionally NOT
-                    // surfaced here even in non-anonymous mode —
-                    // it'd clutter the chat and is one tap away
-                    // in the bottom-sheet profile when the user
-                    // actually wants to send a contact request.
                     Button {
                         profileTarget = ProfileTarget(
                             uin: msg.uin,
@@ -258,17 +222,12 @@ struct HoodChatView: View {
                     .font(.body.italic())
                     .foregroundColor(Theme.Color.textSecondary)
             } else {
-                // Same emoticon-aware renderer the regular chat
-                // uses, so `:)` / `;)` etc. inside Hood bodies
-                // animate as GIFs instead of staying as raw text.
                 EmoticonText(text: msg.body)
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
         .background(isMine ? Theme.Color.accent.opacity(0.18) : Theme.Color.bgSecondary)
         .cornerRadius(10)
-        // Long-press opens the action overlay. Skip when the
-        // bubble is already a tombstone — nothing to act on.
         .onLongPressGesture(minimumDuration: 0.35) {
             if !msg.deleted {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -299,9 +258,6 @@ struct HoodChatView: View {
         .cornerRadius(6)
     }
 
-    /// Aggregated reactions strip beneath a bubble. Same shape
-    /// as the regular chat: each unique asset shows its count;
-    /// tapping toggles the caller's pick on that asset.
     private func reactionsRow(_ msg: HoodMessage) -> some View {
         let counts: [(String, Int, Bool)] = {
             let myKey = String(AuthService.shared.ownUIN ?? -1)
@@ -419,10 +375,6 @@ struct HoodChatView: View {
         .background(.ultraThinMaterial)
     }
 
-    /// Same KOLOBOK palette the regular chat uses, just rendered
-    /// inline without the chat-side reply-strip neighbour. Tapping
-    /// an emoticon appends its text code into the composer; from
-    /// there the regular `/hood/send` flow ships it as plain text.
     private var emojiPanel: some View {
         let cols = [GridItem](repeating: GridItem(.flexible(), spacing: 8), count: 8)
         return ScrollView {
@@ -431,15 +383,6 @@ struct HoodChatView: View {
                     Button {
                         input += entry.primaryCode
                     } label: {
-                        // Render `GIFImage` unconditionally — the
-                        // wrapper handles its own load/animate
-                        // lifecycle. The previous `cachedImage`
-                        // gate was a chicken-and-egg trap: the
-                        // cache only warms when something *else*
-                        // already rendered the GIF, so a clean
-                        // Hood session (with no inline emoticons
-                        // yet) always fell through to the text
-                        // fallback.
                         GIFImage(name: entry.asset)
                             .frame(width: 28, height: 28)
                     }
@@ -468,10 +411,6 @@ struct HoodChatView: View {
     @ViewBuilder
     private func anonymousProfile(_ target: ProfileTarget) -> some View {
         let alreadyContact = contacts.contacts.contains(where: { $0.uin == target.uin })
-        // UIN intentionally not rendered — see the matching
-        // comment in NearbyView. Showing it would let an
-        // onlooker punch it into Search and undo the whole
-        // anonymous-display-name premise of Hood Chat.
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 StatusIcon(status: target.status, size: 36)
@@ -503,10 +442,6 @@ struct HoodChatView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 20)
-            // Push the CTA to the bottom of the sheet so the
-            // user's thumb lands on it without travel — matches
-            // the iOS share-sheet idiom of "primary action at
-            // the floor".
             Spacer()
             if alreadyContact {
                 Text("hood.profile.already".localized)
@@ -539,13 +474,6 @@ struct HoodChatView: View {
 
 // MARK: - HoodActionOverlay
 
-/// Long-press popover for a Hood Chat bubble. Same visual
-/// system as `MessageActionOverlay` (no scrim, just a tappable
-/// catcher; reactions strip on top, action rows below) but
-/// scoped to `HoodMessage` and Hood-specific actions: no
-/// forward (Hood is local-by-design), no "delete for me"
-/// (everything is server-broadcast — author-side delete is the
-/// only meaningful operation).
 private struct HoodActionOverlay: View {
     let message: HoodMessage
     let senderNickname: String
@@ -563,7 +491,6 @@ private struct HoodActionOverlay: View {
     var body: some View {
         let isMine = message.uin == (AuthService.shared.ownUIN ?? -1)
         return ZStack {
-            // Same visible blur as the regular chat overlay.
             Rectangle()
                 .fill(.regularMaterial)
                 .ignoresSafeArea()
@@ -584,15 +511,6 @@ private struct HoodActionOverlay: View {
         }
     }
 
-    /// Stripped-down copy of the focused Hood bubble — body
-    /// only. The original quote-block is intentionally NOT
-    /// rendered: when you long-press a reply you're acting on
-    /// *that reply*, not on whatever it was quoting, and the
-    /// nested quote just made the preview balloon to full
-    /// screen height for no payoff. Body itself is line-capped
-    /// so a wall-of-text bubble can't take over the screen
-    /// either — the original is still readable behind the
-    /// scrim.
     private var bubblePreview: some View {
         let isMine = message.uin == (AuthService.shared.ownUIN ?? -1)
         return HStack {

@@ -1,32 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// Push-to-talk audio engine for Radio Chat. One instance handles
-/// both sides of a half-duplex(-ish) walkie-talkie:
-///
-///   - **Capture path**: mic input → AVAudioConverter → AAC-LC
-///     packets (~24 kbps, 1024 samples / 64 ms each at 16 kHz mono).
-///     Each packet is delivered to `onFrame`, which the caller
-///     (`RadioService`) seals + ships over `MCSession` `.unreliable`.
-///
-///   - **Playback path**: incoming AAC packets fed via
-///     `feedFrame(speaker:data:)`. One `AVAudioPlayerNode` per
-///     remote speaker, all routed into `engine.mainMixerNode` —
-///     when two peers talk at once, both are audible because the
-///     mixer just sums them. Player nodes are torn down on
-///     `dropSpeaker` (peer disconnect / talk-stop) or after the
-///     speaker idle-timeout.
-///
-/// Audio session is `.playAndRecord` + `.voiceChat` mode +
-/// `.allowBluetooth` + `.defaultToSpeaker` — same shape as
-/// `AudioRoomMeshManager`, gives us hardware AEC so your own
-/// outgoing voice doesn't loop back through your earpiece into
-/// the next peer's stream.
-///
-/// Thread model: a private serial queue owns all engine state.
-/// The capture tap callback also runs on this queue (we hop over
-/// from the audio thread via `queue.async`). Public methods are
-/// safe to call from any thread; they marshal in.
+/// PTT audio engine for Radio Chat: AAC-LC capture + per-speaker decode mixed at mainMixerNode.
 final class RadioVoiceEngine {
     static let shared = RadioVoiceEngine()
 
@@ -36,8 +11,6 @@ final class RadioVoiceEngine {
     // MARK: - Capture state
     private var capturing = false
     private var encoder: AVAudioConverter?
-    /// PCM buffers fed into the encoder by `installTap`. Drained
-    /// by the converter's input callback on every tap invocation.
     private var pendingPCM: [AVAudioPCMBuffer] = []
     private var seq: UInt32 = 0
     private var onFrame: ((UInt32, Data) -> Void)?
@@ -53,9 +26,7 @@ final class RadioVoiceEngine {
 
     // MARK: - Formats
 
-    /// AAC-LC, 16 kHz mono, variable-bitrate, 1024 frames/packet.
-    /// Same format used as both encoder output (capture) and
-    /// decoder input (playback).
+    // AAC-LC, 16 kHz mono, 1024 frames/packet.
     private static let aacFormat: AVAudioFormat = {
         var asbd = AudioStreamBasicDescription(
             mSampleRate: 16_000,
@@ -71,10 +42,6 @@ final class RadioVoiceEngine {
         return AVAudioFormat(streamDescription: &asbd)!
     }()
 
-    /// Internal PCM format the engine mixes in. Matches the AAC
-    /// sample rate so the decoder doesn't need to do rate conversion
-    /// on every packet — the engine handles 16 kHz → hardware-rate
-    /// at the output node.
     private static let internalPCM: AVAudioFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 16_000,
@@ -89,10 +56,6 @@ final class RadioVoiceEngine {
         case micPermissionDenied
     }
 
-    /// Mic permission gate. NSException-prone APIs (`installTap`,
-    /// `engine.start`) tolerate denied permission, but checking
-    /// up front lets us surface a clean error instead of silently
-    /// recording garbage.
     static func hasMicPermission() -> Bool {
         if #available(iOS 17.0, *) {
             return AVAudioApplication.shared.recordPermission == .granted
@@ -101,9 +64,6 @@ final class RadioVoiceEngine {
         }
     }
 
-    /// Async permission request. Use from `RadioService.startTalking`
-    /// before invoking `startCapture` so `.undetermined` triggers
-    /// the system prompt rather than a confusing engine failure.
     static func requestMicPermission(_ completion: @escaping (Bool) -> Void) {
         if #available(iOS 17.0, *) {
             switch AVAudioApplication.shared.recordPermission {
@@ -129,10 +89,6 @@ final class RadioVoiceEngine {
 
     // MARK: - Lifecycle
 
-    /// Starts the audio session + engine if they're not already up.
-    /// Idempotent. Called lazily from both `startCapture` and
-    /// `feedFrame` so the engine spins up on the first interaction
-    /// regardless of which side fires first.
     func ensureStarted() throws {
         try queue.sync { try self._ensureStarted() }
     }
@@ -140,7 +96,7 @@ final class RadioVoiceEngine {
     private func _ensureStarted() throws {
         guard !engine.isRunning else { return }
         try configureAudioSession()
-        // Touching mainMixerNode forces engine to wire output graph.
+        // Touching mainMixerNode forces the engine to wire its output graph.
         _ = engine.mainMixerNode
         engine.prepare()
         try engine.start()
@@ -182,30 +138,15 @@ final class RadioVoiceEngine {
 
     // MARK: - Capture (outbound)
 
-    /// Begin tapping the mic. `onFrame` is invoked per AAC packet
-    /// off the engine's serial queue — caller is responsible for
-    /// hopping to whatever thread it needs (typically the main
-    /// actor for sending over MCSession).
-    ///
-    /// The two main NSException-prone failure modes for `installTap`
-    /// are guarded explicitly here:
-    ///   - **Pre-existing tap** ("required condition is false:
-    ///     nullptr == Tap()") — defensively `removeTap` first.
-    ///   - **Invalid hardware format** (zero sample rate, e.g.
-    ///     audio session never activated for record) — validate
-    ///     `hwFormat.sampleRate > 0` before installing.
-    /// Either of these would terminate the app since NSExceptions
-    /// can't be caught in pure Swift.
+    /// `onFrame` fires per AAC packet on the engine's serial queue.
+    /// installTap NSExceptions: pre-existing tap and zero hwFormat sample rate are both guarded.
     func startCapture(onFrame: @escaping (UInt32, Data) -> Void) throws {
         guard Self.hasMicPermission() else {
             print("[RadioVoice] startCapture: mic permission not granted")
             throw RadioVoiceError.micPermissionDenied
         }
         try queue.sync {
-            // Tear down any lingering tap before we start. The tap
-            // can outlive the `capturing` flag if a previous start
-            // crashed mid-setup or if stopCapture didn't reach the
-            // removeTap call — re-installing on top would NSException.
+            // Re-installing a tap on top of an existing one NSExceptions; remove defensively.
             self.engine.inputNode.removeTap(onBus: 0)
             self.capturing = false
             self.encoder = nil
@@ -215,14 +156,8 @@ final class RadioVoiceEngine {
             try self._ensureStarted()
 
             let inputNode = self.engine.inputNode
-            // Fetch the input format. On a non-trivial set of iPhones
-            // `inputNode.outputFormat(forBus: 0)` lies — it returns
-            // `sampleRate=0` even after `engine.start()` succeeded
-            // and the audio session reports a valid rate. Falling
-            // back to the audio session's sample rate + a standard
-            // mono PCM format gets the engine to do its own internal
-            // rate conversion downstream from the tap, and avoids
-            // the AURemoteIO `-10851 (FormatNotSupported)` crash.
+            // Some iPhones return sampleRate=0 from outputFormat even after engine.start;
+            // fall back to the session's rate to avoid AURemoteIO -10851.
             var tapFormat = inputNode.outputFormat(forBus: 0)
             print("[RadioVoice] hwFormat: sampleRate=\(tapFormat.sampleRate) channels=\(tapFormat.channelCount) commonFormat=\(tapFormat.commonFormat.rawValue)")
             if tapFormat.sampleRate <= 0 || tapFormat.channelCount == 0 {
@@ -250,16 +185,11 @@ final class RadioVoiceEngine {
                 )
                 throw RadioVoiceError.encoderUnavailable
             }
-            // 24 kbps target — intelligible voice, well within MC
-            // throughput even on a crowded BT mesh.
             enc.bitRate = 24_000
             self.encoder = enc
             self.onFrame = onFrame
             self.seq = 0
             self.pendingPCM.removeAll()
-            // 4096-frame tap @ 48 kHz hardware ≈ 85 ms — comfortable
-            // bite for the encoder, which needs 1024 output frames
-            // per AAC packet (≈ 3072 input frames at 48 kHz).
             inputNode.installTap(
                 onBus: 0,
                 bufferSize: 4096,
@@ -286,15 +216,10 @@ final class RadioVoiceEngine {
         self.pendingPCM.removeAll()
     }
 
-    /// Drains pending PCM into AAC packets. The converter callback
-    /// pulls one buffer at a time; we keep looping until it tells
-    /// us it wants more input than we have queued.
     private func handleTap(_ buffer: AVAudioPCMBuffer) {
         guard self.capturing, let encoder = self.encoder else { return }
         self.pendingPCM.append(buffer)
         while true {
-            // 768 bytes is a safe ceiling for a single AAC-LC packet
-            // at 24 kbps / 16 kHz mono (typical: 150-200 bytes).
             let outBuf = AVAudioCompressedBuffer(
                 format: Self.aacFormat,
                 packetCapacity: 1,
@@ -325,10 +250,6 @@ final class RadioVoiceEngine {
 
     // MARK: - Playback (inbound)
 
-    /// Decode + schedule one incoming AAC packet from a peer. Lazy-
-    /// allocates a player node + decoder on first frame from this
-    /// `speaker`; subsequent frames feed the same sink. Multiple
-    /// speakers automatically mix at `mainMixerNode`.
     func feedFrame(speaker: String, data: Data) {
         queue.async {
             do { try self._ensureStarted() } catch { return }
@@ -356,7 +277,6 @@ final class RadioVoiceEngine {
                 player.play()
             }
 
-            // Wrap incoming bytes as a one-packet AVAudioCompressedBuffer.
             let aac = AVAudioCompressedBuffer(
                 format: Self.aacFormat,
                 packetCapacity: 1,
@@ -401,9 +321,6 @@ final class RadioVoiceEngine {
         }
     }
 
-    /// Tear down a speaker's player node. Called on explicit
-    /// `voiceTalkStop` from the peer, on peer disconnect, or when
-    /// the active session ends.
     func dropSpeaker(_ speaker: String) {
         queue.async {
             guard let sink = self.perSpeaker.removeValue(forKey: speaker) else { return }
@@ -412,9 +329,6 @@ final class RadioVoiceEngine {
         }
     }
 
-    /// Drop all per-speaker state. Used on session leave so a
-    /// stale player node doesn't carry over into the next radio
-    /// session.
     func dropAllSpeakers() {
         queue.async {
             for (_, sink) in self.perSpeaker {

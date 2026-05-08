@@ -1,48 +1,23 @@
 import SwiftUI
 
-/// Crash — multiplayer gambling mini-game on the gem (token) wallet.
-///
-/// Top: history strip (last 20 crashes, colour-tinted).
-/// Centre: huge live multiplier, animated by `TimelineView` against
-///         `CrashService.projectedMultiplier(at:)`.
-/// Below: cashed-out feed for the current round.
-/// Bottom: action panel — bet amount picker during BETTING, big
-///         CASHOUT during RUNNING (only when we hold a bet), result
-///         banner during CRASHED.
-///
-/// Round state lives in `CrashService.shared`; this view is just a
-/// renderer + tap-target host.
+/// Crash — multiplayer gambling mini-game on the token wallet. Round state
+/// lives in `CrashService.shared`; this view renders + handles taps.
 struct CrashView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = CrashService.shared
     @StateObject private var items = ItemsService.shared
 
-    /// Selected bet amount for the current round. Persists across
-    /// rounds so a user can keep tapping BET at the same stake.
     @State private var betAmount: Int = 5
-    /// Brief banner after a successful cashout. "+127 at 2.54x".
     @State private var cashoutBanner: (multiplier: Double, payout: Int)?
-    /// Brief error toast surfaced from CrashService.lastError.
     @State private var errorToast: String?
-    /// Drives the rules sheet from the navbar info button.
     @State private var showRules = false
-    /// Top-up sheet binding for the wallet-empty path. The bet pill
-    /// swaps to a "Top up" CTA when the wallet can't cover the next
-    /// bet (matches HiLo / Limbo / UinAuction behaviour).
     @State private var showShop: Bool = false
 
     private static let presets: [Int] = [1, 5, 10, 25, 50, 100]
 
-    /// Single source-of-truth height + corner radius for every pill in the
-    /// bottom action panel. Bet / Cashout / "you cashed" / "you lost" /
-    /// "next round in N" all share this so the chrome doesn't visually
-    /// jump as state cycles.
     private static let actionPillHeight: CGFloat = 56
     private static let actionPillRadius: CGFloat = 12
 
-    /// Composite identity for the action panel — every change here fires
-    /// the spring transition on the panel container so panel swaps glide
-    /// instead of cutting.
     private var actionPanelKey: String {
         let bet = svc.myBetAmount.map(String.init) ?? "_"
         let cashout = svc.myCashoutMultiplier.map { String(format: "%.2f", $0) } ?? "_"
@@ -88,13 +63,7 @@ struct CrashView: View {
             .task {
                 await svc.refresh()
             }
-            // The full Crash view takes over the screen — hide the
-            // mini-bar (and reset the user-explicitly-closed flag so
-            // a fresh "leave with active round" cycle re-shows it).
             .onAppear { svc.expand() }
-            // User left the screen — flag the mini visible. The bar
-            // gates itself on `shouldShowMini` so it only actually
-            // appears if there's a betting/running round to show.
             .onDisappear { svc.minimize() }
             .onChange(of: svc.lastError) { msg in
                 guard let msg else { return }
@@ -113,10 +82,6 @@ struct CrashView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     withAnimation(.easeOut(duration: 0.4)) { cashoutBanner = nil }
                 }
-                // CrashService already mirrored the new balance into
-                // ItemsService.wallet via setWalletTokens — the toolbar
-                // badge ticks up automatically. No refreshInventory
-                // round-trip needed for the wallet number.
             }
             .onChange(of: svc.iLost) { lost in
                 if lost {
@@ -144,13 +109,7 @@ struct CrashView: View {
             Spacer(minLength: 12)
             cashoutFeed
                 .frame(maxHeight: 140)
-            // Reserve a fixed slot for the action panel so its
-            // betting-vs-running-vs-crashed swap doesn't ripple
-            // upward and shift the multiplier block. `alignment:
-            // .bottom` keeps the visible pill anchored to the
-            // floor of the slot — when the picker disappears
-            // (after bet placement) the pill stays put, only the
-            // picker fades from the top half of this slot.
+            // Fixed slot keeps the multiplier block anchored across panel swaps.
             actionPanel
                 .frame(height: 170, alignment: .bottom)
         }
@@ -178,9 +137,9 @@ struct CrashView: View {
     }
 
     private func historyColor(_ x: Double) -> Color {
-        if x < 1.50 { return Color(hex: 0xC8442A) }   // red — quick crash
-        if x < 2.00 { return Color(hex: 0xD9923A) }   // orange — borderline
-        return Theme.Color.accent                      // green — survivors
+        if x < 1.50 { return Color(hex: 0xC8442A) }
+        if x < 2.00 { return Color(hex: 0xD9923A) }
+        return Theme.Color.accent
     }
 
     // ── Multiplier block ──────────────────────────────────────────
@@ -188,12 +147,6 @@ struct CrashView: View {
     private var multiplierBlock: some View {
         VStack(spacing: 12) {
             phaseBadge
-            // Multiplier digits sit on top of a contained chart card.
-            // The chart is intentionally NOT edge-to-edge — it's a
-            // ~140 pt-tall card with rounded corners that anchors the
-            // multiplier visually, like a Bustabit window. Earlier
-            // edge-to-edge draft felt like background noise; this
-            // reads as "the multiplier rises along this curve".
             ZStack {
                 multiplierGraph
                     .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -208,26 +161,15 @@ struct CrashView: View {
                         .font(.system(size: 96, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundColor(currentMultiplierColor(display))
-                        // Soft shadow so digits stay legible on top
-                        // of the chart fill regardless of curve tint.
                         .shadow(color: Theme.Color.bgPrimary.opacity(0.6), radius: 6)
                 }
             }
-            // Fixed height = curve has visible bend room (~150 pt is
-            // plenty for an exponential to read as one). Inset
-            // horizontally so the card doesn't touch the screen
-            // edges — this is the "contained" feel.
             .frame(height: 150)
             .padding(.horizontal, 24)
             seedHashLine
         }
     }
 
-    /// Animated background chart for the multiplier block. Canvas
-    /// inside a TimelineView re-draws ~30 fps. During BETTING the
-    /// canvas is blank (no curve to draw); during RUNNING it traces
-    /// the exponential curve up to "now"; during CRASHED it freezes
-    /// the curve and tints it red.
     private var multiplierGraph: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { ctx in
             Canvas { gctx, size in
@@ -236,13 +178,6 @@ struct CrashView: View {
         }
     }
 
-    /// Computes the curve geometry and rasterises it into the Canvas
-    /// context. **Linear** Y mapping — the previous version log-
-    /// scaled the Y axis, which collapsed the natural exp(0.07·t)
-    /// shape into a straight diagonal. Linear Y plots the raw
-    /// multiplier, so the curve hugs the floor early and accelerates
-    /// upward as the multiplier climbs — the actual exponential
-    /// shape players expect from a Crash chart.
     private func drawGraph(in gctx: GraphicsContext, size: CGSize, at date: Date) {
         let elapsed: Double
         let multAtNow: Double
@@ -258,27 +193,19 @@ struct CrashView: View {
             multAtNow = cp
             isCrashed = true
         case .betting:
-            // Empty canvas — a flat baseline could read as "stuck",
-            // so we just leave it blank until the round starts.
             return
         }
-        // X axis spans max(8s, elapsed) so a slow round doesn't
-        // compress the curve to a stub on the left.
         let xMaxSeconds = max(8.0, elapsed)
-        // Y axis: linear, top = peak with 5 % headroom so the curve
-        // doesn't kiss the very top edge.
         let yPeak = max(1.05, multAtNow * 1.05)
-        let yRange = max(0.05, yPeak - 1.0)  // distance from baseline (1.00x) to peak
+        let yRange = max(0.05, yPeak - 1.0)
 
         func yFor(_ v: Double) -> Double {
-            // Linear normalize against the [1.0 .. yPeak] range.
             let frac = min(1.0, max(0.0, (v - 1.0) / yRange))
             return size.height - (frac * size.height * 0.92)
         }
 
         let steps = 80
         let nowX = (elapsed / xMaxSeconds) * size.width
-        // Build the area path (curve + close to baseline).
         var area = Path()
         area.move(to: CGPoint(x: 0, y: size.height))
         for i in 0...steps {
@@ -290,7 +217,6 @@ struct CrashView: View {
         }
         area.addLine(to: CGPoint(x: nowX, y: size.height))
         area.closeSubpath()
-        // Build the line path (curve only).
         var line = Path()
         for i in 0...steps {
             let frac = Double(i) / Double(steps)
@@ -305,7 +231,6 @@ struct CrashView: View {
             }
         }
         let tint = isCrashed ? Color(hex: 0xC8442A) : Theme.Color.accent
-        // Fill — soft vertical gradient from tinted top to transparent bottom.
         gctx.fill(
             area,
             with: .linearGradient(
@@ -314,7 +239,6 @@ struct CrashView: View {
                 endPoint: CGPoint(x: 0, y: size.height),
             )
         )
-        // Stroke — thin tinted line on top of the fill.
         gctx.stroke(line, with: .color(tint.opacity(0.7)), lineWidth: 1.5)
     }
 
@@ -322,13 +246,9 @@ struct CrashView: View {
         if x < 1.50 { return Theme.Color.textPrimary }
         if x < 3.00 { return Theme.Color.accent }
         if x < 10.00 { return Color(hex: 0xD9923A) }
-        return Color(hex: 0xC8442A)  // legendary territory
+        return Color(hex: 0xC8442A)
     }
 
-    /// Pure helper extracted from the TimelineView closure — returning
-    /// just the Double keeps the closure body single-expression so
-    /// SwiftUI's @ViewBuilder type-inference doesn't choke on mixed
-    /// let / if-else / Text shape.
     private func currentMultiplier(at date: Date) -> Double {
         if svc.phase == .crashed {
             return svc.lastCrashPoint ?? 1.00
@@ -393,11 +313,6 @@ struct CrashView: View {
 
     // ── Participant feed ───────────────────────────────────────────
 
-    /// Unified live feed showing every UIN that placed a bet this
-    /// round and their current state (cashed / holding / burned).
-    /// Cashed rows go first (greatest multiplier-pull at top),
-    /// holders next, burned last. Self always tagged "ВЫ" in the
-    /// nickname slot for visibility in the stack.
     private var cashoutFeed: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -430,9 +345,6 @@ struct CrashView: View {
     }
 
     private var sortedParticipants: [CrashParticipant] {
-        // Stable sort by state-rank (cashed/holding/burned) then by
-        // multiplier-descending within cashouts so the biggest pull
-        // floats to the top of its group.
         svc.participants.sorted { a, b in
             if a.state.sortRank != b.state.sortRank {
                 return a.state.sortRank < b.state.sortRank
@@ -448,9 +360,6 @@ struct CrashView: View {
 
     private func participantRow(_ p: CrashParticipant) -> some View {
         let isMe = p.uin == (AuthService.shared.ownUIN ?? -1)
-        // Show nickname when the server attached one (every modern build
-        // does); fall back to the bare UIN for legacy payloads. Self
-        // always wins: localized "Вы" beats both.
         let nameLabel: String = {
             if isMe { return "crash.you".localized }
             if let n = p.nickname, !n.isEmpty { return n }
@@ -479,13 +388,7 @@ struct CrashView: View {
             }
         }()
         return HStack(spacing: 8) {
-            // 6pt circle marker — same colour family as the row's
-            // status text so the eye groups by state at a glance.
             Circle().fill(tint).frame(width: 6, height: 6)
-            // Match the auction bidder list: nickname always semibold,
-            // default font (monospaced reads as code on alphabetic
-            // names — fine for the all-digit UIN fallback, weird for
-            // a real word).
             Text(nameLabel)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(isMe ? Theme.Color.accent : Theme.Color.textPrimary)
@@ -510,10 +413,6 @@ struct CrashView: View {
 
     // ── Action panel (bottom) ─────────────────────────────────────
 
-    /// Unified-height pill the action panel uses for every state — bet
-    /// CTA, cashout button, "you won", "you lost", "next round in N".
-    /// Same height + corner radius across all branches so the chrome
-    /// doesn't visually jump on state swaps.
     private func actionPill<Label: View>(
         background: Color,
         @ViewBuilder label: () -> Label,
@@ -527,9 +426,6 @@ struct CrashView: View {
     @ViewBuilder
     private var actionPanel: some View {
         VStack(spacing: 10) {
-            // Picker only appears in BETTING with no bet placed — fades
-            // out on bet. Wrapped in its own container so the transition
-            // is independent of the pill below.
             if svc.phase == .betting && svc.myBetAmount == nil {
                 betPicker
                     .transition(.asymmetric(
@@ -537,9 +433,6 @@ struct CrashView: View {
                         removal: .opacity.combined(with: .scale(scale: 0.95))
                     ))
             }
-            // The pill itself — content swaps based on `actionPanelKey`,
-            // each branch tagged with `.id` so SwiftUI sees them as
-            // distinct identities and runs the .transition on swap.
             ZStack {
                 pillForCurrentState
                     .id(actionPanelKey)
@@ -591,11 +484,7 @@ struct CrashView: View {
                     background: Theme.Color.accent,
                 )
             } else {
-                // Live countdown — was previously a frozen "4 sec" string
-                // because the value was hardcoded into the format. Anchor
-                // is `crashedAt` set by CrashService when the round-end
-                // event lands (PAUSE_AFTER_CRASH_SECONDS = 4 on the
-                // backend; the next .crashRoundBetting clears the anchor).
+                // PAUSE_AFTER_CRASH_SECONDS = 4 on the backend.
                 TimelineView(.periodic(from: .now, by: 0.25)) { ctx in
                     let elapsed = svc.crashedAt.map { max(0, ctx.date.timeIntervalSince($0)) } ?? 0
                     let remaining = max(0, Int(ceil(4.0 - elapsed)))
@@ -609,9 +498,6 @@ struct CrashView: View {
         }
     }
 
-    /// Information / status pill — same shape as the action buttons,
-    /// caption-weight text. Used for "wait for next round", "you cashed",
-    /// "next round in 4s".
     private func infoPill(text: String, background: Color, foreground: Color) -> some View {
         actionPill(background: background) {
             Text(text)
@@ -620,8 +506,6 @@ struct CrashView: View {
         }
     }
 
-    /// Result pill — won/lost banner. Same height + radius as the active
-    /// CTAs so the panel doesn't visually shrink when the round settles.
     private func resultPill(text: String, background: Color) -> some View {
         actionPill(background: background) {
             Text(text)
@@ -670,10 +554,6 @@ struct CrashView: View {
     @ViewBuilder
     private var placeBetPill: some View {
         if !canAfford {
-            // Wallet < bet → swap to "Top up" CTA. Same idiom as
-            // UinAuctionView / HiLoView / LimboView so the games
-            // hub stays consistent: the user always has one
-            // productive button, never a disabled one.
             Button {
                 showShop = true
             } label: {
@@ -729,10 +609,8 @@ struct CrashView: View {
     }
 
     private func cashoutPill(bet: Int) -> some View {
-        // The button identity stays stable across multiplier ticks
-        // because TimelineView only re-renders the LABEL, not the
-        // surrounding Button. Without that the action panel's
-        // .transition would re-fire on every tick.
+        // TimelineView re-renders only the label so the parent Button's
+        // identity stays stable across multiplier ticks.
         Button {
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             Task { _ = await svc.cashout() }
@@ -793,19 +671,9 @@ struct CrashView: View {
     @ViewBuilder
     private var walletBadge: some View {
         let tokens = items.wallet.tokens
-        // Standard HStack(spacing: 4) gap restored. Whole badge is
-        // shifted leftward via a positive trailing padding so it sits
-        // away from the screen edge — toolbar items pin to the right
-        // edge by default, which felt cramped against the safe-area
-        // boundary on smaller devices.
         HStack(spacing: 4) {
             ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                 .frame(width: 18, height: 18)
-            // Animate the value swap so a +25 cashout ticks up
-            // visibly instead of just snapping to a new number.
-            // `.numericText(value:)` is iOS 17+; the bare `.numericText()`
-            // form back to iOS 16 still rolls digits, just without the
-            // direction hint for ambiguous swaps.
             Text("\(tokens)")
                 .font(.system(.subheadline, weight: .semibold).monospacedDigit())
                 .foregroundColor(Theme.Color.textPrimary)
@@ -816,9 +684,6 @@ struct CrashView: View {
     }
 }
 
-/// Sheet shown from the navbar info button. Plain rules in three
-/// sections — how it works, payouts, fairness — so a first-time player
-/// understands the loop without trial-and-error losing gems.
 private struct CrashRulesSheet: View {
     @Environment(\.dismiss) private var dismiss
 

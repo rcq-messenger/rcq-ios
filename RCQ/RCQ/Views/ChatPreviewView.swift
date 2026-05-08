@@ -1,44 +1,17 @@
 import SwiftUI
 
-/// Read-only chat preview rendered inside iOS's contextual-menu
-/// `preview:` slot. Long-press on a contact or group row in the main
-/// list pops this up so the user can scroll through recent history
-/// without committing to opening the chat — Telegram-style anonymous
-/// glance.
-///
-/// **Anti-read-receipt**: this view deliberately does NOT call
-/// `MessageService.markRead`. The full `ChatView` fires read receipts
-/// in `onAppear` plus on every new inbound message, which would flip
-/// "delivered" to "read" on the peer's side the moment they hover-
-/// previewed. Since this is a glance affordance, we keep the
-/// receipts unsent — same trade-off Signal/Telegram make for swipe-
-/// preview interactions.
-///
-/// Renders bubbles via the same MessageRow+bubbleContent pipeline
-/// the live chat uses, just without the long-press / reaction /
-/// delete actions.
+/// Read-only chat preview for the contextMenu `preview:` slot. Does NOT fire read receipts.
 struct ChatPreviewView: View {
     let target: ChatTarget
-    /// Compact card layout for the contextMenu preview slot (fixed
-    /// frame, ~half-screen tall). When false the view fills its
-    /// container — used by the standalone "Quick Preview" sheet.
     var compact: Bool = true
 
     @StateObject private var store = MessageStore.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
-    /// True when the bottom sentinel of the preview scroll is on
-    /// screen. Drives the chevron-down pill that lets the user snap
-    /// back to the latest bubble after scrolling up.
     @State private var bottomVisible: Bool = true
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Messages bleed all the way to the top — no padding
-            // reservation for a header strip. The floating identity
-            // block hovers above them, drop-shadowed so it stays
-            // legible whether it lands over an empty bgPrimary
-            // stretch or over the top edge of a message bubble.
             messages
             if compact {
                 floatingIdentity
@@ -50,13 +23,6 @@ struct ChatPreviewView: View {
         .background(Theme.Color.bgPrimary)
     }
 
-    /// Floating identity block hovering over the chat preview at
-    /// the top — same shape as the live chat's `principalContent`
-    /// (status icon + nickname / UIN, or person.3 + name / member
-    /// count for groups), but **with no blur strip / no chrome**.
-    /// Each element carries a stacked drop-shadow so the cluster
-    /// stays legible whether it lands over `bgPrimary` or over the
-    /// top edge of a message bubble.
     @ViewBuilder
     private var floatingIdentity: some View {
         HStack(spacing: 8) {
@@ -106,8 +72,6 @@ struct ChatPreviewView: View {
     private var messages: some View {
         let thread = target.thread
         let all = store.threads[thread] ?? []
-        // Cap at the last ~50 so the scroll content stays light. The
-        // full chat with all history opens via tap, not preview.
         let recent = all.suffix(50)
         if recent.isEmpty {
             VStack {
@@ -132,11 +96,6 @@ struct ChatPreviewView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        // Bottom sentinel — used by the scroll-anchor
-                        // preference key + scrollTo target so we can
-                        // both detect "near bottom" and snap back to
-                        // the latest bubble when the user taps the
-                        // chevron pill.
                         Color.clear
                             .frame(height: 1)
                             .id(Self.bottomAnchorID)
@@ -192,10 +151,6 @@ struct ChatPreviewView: View {
     }
 }
 
-/// PreferenceKey carrying "is the bottom sentinel currently within
-/// the visible viewport". Threaded out from the GeometryReader
-/// attached to the trailing zero-height view in the message list
-/// and read at the parent ZStack to gate chevron visibility.
 private struct ChatPreviewBottomVisiblePref: PreferenceKey {
     static var defaultValue: Bool = true
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
@@ -203,10 +158,6 @@ private struct ChatPreviewBottomVisiblePref: PreferenceKey {
     }
 }
 
-/// Horizontal rectangle for the long-press preview overlay — wider
-/// than tall, so the card reads as a Telegram-style "peek" card
-/// rather than a slim column. Internal ScrollView handles overflow:
-/// you see ~4 recent rows by default and can scroll for more.
 private struct PreviewFrame: ViewModifier {
     let compact: Bool
     func body(content: Content) -> some View {
@@ -218,10 +169,6 @@ private struct PreviewFrame: ViewModifier {
     }
 }
 
-/// Two stacked drop-shadows — a soft diffuse glow + a tighter
-/// crisp shadow underneath — give the identity block depth and
-/// legibility against whatever scrolls beneath it without looking
-/// like a hard outlined sticker.
 private extension View {
     func floatingShadow() -> some View {
         self
@@ -230,10 +177,6 @@ private extension View {
     }
 }
 
-/// Slimmed-down bubble for the preview surface. Deliberately a fresh
-/// view (rather than reusing `MessageRow`) because `MessageRow` lives
-/// nested inside `ChatView` and brings along callback closures and
-/// state we don't need here.
 private struct ChatPreviewBubble: View {
     let message: Message
     let senderNickname: String
@@ -270,11 +213,6 @@ private struct ChatPreviewBubble: View {
                                 .fill(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         )
                     if !message.reactions.isEmpty {
-                        // Read-only reactions strip — taps in
-                        // the preview don't fire the toggle (the
-                        // outer view doesn't host the action
-                        // overlay), so we render the same shape
-                        // as `ReactionsBar` minus the buttons.
                         previewReactions
                     }
                 }
@@ -283,11 +221,6 @@ private struct ChatPreviewBubble: View {
         }
     }
 
-    /// Renders the bubble body via the same emoticon-aware
-    /// pipeline the live chat uses, so `:)` shows up animated
-    /// instead of as raw text. Photo/video bubbles fall back to
-    /// the kind tag because we don't want to download the media
-    /// inside a preview.
     @ViewBuilder
     private var bubbleBody: some View {
         if message.deletedForEveryone {
@@ -300,11 +233,6 @@ private struct ChatPreviewBubble: View {
                 EmoticonText(text: message.text, font: .callout, emoticonSize: 18)
                     .lineLimit(8)
             case .photo:
-                // Render the actual thumbnail via PhotoBubble — same
-                // bubble the chat itself uses, scaled down. Caption
-                // (if any) sits underneath. Earlier the preview just
-                // showed "📷 Photo" text which made the long-press
-                // peek a useless tease.
                 VStack(alignment: .leading, spacing: 4) {
                     PhotoBubble(message: message, maxWidth: 200)
                     if !message.text.isEmpty {

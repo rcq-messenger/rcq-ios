@@ -1,62 +1,33 @@
 import Combine
 import Foundation
 
-/// Holds the live state of the single active premium-UIN auction +
-/// the user's "won UINs" inventory. Subscribes to WS events so the
-/// UI ticks in real-time across bid wars and soft-close extensions
-/// without the UI needing to poll.
-///
-/// Single-auction-at-a-time on the server — the iOS view is a
-/// dedicated tab in the Games surface that hosts the current round
-/// only. Recent winners + history live in a sibling sheet.
+/// Live state of the single active premium-UIN auction + the user's
+/// won-UINs inventory. WS-driven, no polling.
 @MainActor
 final class UinAuctionService: ObservableObject {
     static let shared = UinAuctionService()
 
-    /// Current live auction (or nil during the ~15s gap between rounds).
     @Published private(set) var active: UinAuction?
-    /// Bid history for the active auction. Newest first. Capped at
-    /// 50 by the server.
     @Published private(set) var bids: [UinAuctionBid] = []
-    /// Server-computed minimum next bid (max of starting_bid +5% or
-    /// flat +50). Cached after each fetch / live bid.
     @Published private(set) var minNextBid: Int = 0
-    /// Premium UINs the user has won. Drives the inventory section.
     @Published private(set) var owned: [OwnedUIN] = []
-    /// Last 10 finished auctions for the "history" tab.
     @Published private(set) var recentWinners: [UinAuctionRecentWinner] = []
-    /// Sticky surface flag set when the LAST refresh hit a network
-    /// error or the user's last bid failed. Surfaced as a one-shot
-    /// alert by the view.
     @Published var lastError: String?
-    /// Set when an auction ENDED in this session AND the local user
-    /// was the winner — drives a celebratory toast in the auction view.
     @Published var celebrateWonUIN: Int?
 
-    // ── Mini-bar state ──────────────────────────────────────────────
-    /// True when the user left the full auction view AND has a bid
-    /// in the current round (leading or outbid). Drives
-    /// `AuctionMinimizedBar` visibility.
     @Published private(set) var isMinimized: Bool = false
-    /// User explicitly closed the mini-bar via the X. Suppresses
-    /// re-show until the user opens the full auction view again.
     @Published private(set) var isHidden: Bool = false
 
-    /// True if there's a bid by the local user in the current round's
-    /// `bids` list — covers both "leading" and "outbid" cases.
     var iHaveBidInRound: Bool {
         guard let me = AuthService.shared.ownUIN else { return false }
         return bids.contains { $0.bidderUIN == me }
     }
 
-    /// True if the local user holds the high bid right now.
     var iAmHighBidder: Bool {
         guard let me = AuthService.shared.ownUIN, let a = active else { return false }
         return a.highBidderUIN == me
     }
 
-    /// Mini-bar shows only when the user actually has skin in the
-    /// game — leading or outbid.
     var shouldShowMini: Bool {
         isMinimized && !isHidden && active != nil && iHaveBidInRound
     }
@@ -85,8 +56,6 @@ final class UinAuctionService: ObservableObject {
 
     // MARK: - HTTP
 
-    /// Pull the active auction snapshot + my owned UINs + recent
-    /// winners. Called on tab open and pull-to-refresh.
     func refresh() async {
         await refreshActive()
         await refreshOwned()
@@ -145,10 +114,6 @@ final class UinAuctionService: ObservableObject {
         }
     }
 
-    /// Place a bid. Server deducts the bid amount immediately and
-    /// refunds the previous high bidder. On 402 we surface a typed
-    /// error so the view can route to the BuyTokens shop instead of
-    /// just showing "couldn't bid".
     enum BidResult {
         case success
         case bidTooLow(minRequired: Int)
@@ -171,18 +136,13 @@ final class UinAuctionService: ObservableObject {
                 body: Body(amount: amount)
             )
             self.active = resp.auction
-            // Wallet just got debited server-side. forceWallet bypasses
-            // the defensive max() in refreshInventory so the visible
-            // token counter actually drops instead of preserving the
-            // pre-bid cached value.
+            // forceWallet bypasses defensive max() in refreshInventory so the counter drops.
             await ItemsService.shared.refreshInventory(forceWallet: true)
             SoundService.shared.play(.auctionBidPlaced)
             return .success
         } catch APIError.http(400, let body) {
             if let parsed = Self.parseBidTooLow(body) { return parsed }
             if Self.detectAlreadyHighBidder(body) { return .alreadyHighBidder }
-            // Never surface raw server JSON to the user — fall back to
-            // a localized generic error.
             return .other("uin_auction.error.generic".localized)
         } catch APIError.http(402, let body) {
             if let parsed = Self.parseInsufficient(body) { return parsed }
@@ -194,20 +154,12 @@ final class UinAuctionService: ObservableObject {
         }
     }
 
-    /// Activate a won UIN — kicks the existing migrate flow with
-    /// `target_uin` set. Costs 99 tokens (the migrate fee). Returns
-    /// the new UIN on success, nil on any failure (the caller surfaces
-    /// `lastError`).
     func activate(uin: Int) async -> AppState.MigrationResult {
         await AppState.shared.migrateAccount(targetUIN: uin)
     }
 
     // MARK: - WS event handling
 
-    /// Set on the first bid event whose `endsAt` lands within the
-    /// soft-close window. Used to fire the tense-beep cue exactly
-    /// once per auction instead of on every late bid. Reset on a
-    /// fresh round.
     private var softCloseAnnounced: Bool = false
 
     private func handle(_ event: WebSocketService.Event) {
@@ -217,7 +169,6 @@ final class UinAuctionService: ObservableObject {
             self.bids = []
             self.minNextBid = auction.startingBid
             self.softCloseAnnounced = false
-            // Pull recent-winners so the history strip refreshes too.
             Task { await self.refreshRecent() }
         case .uinAuctionBid(let auctionID, let amount, let bidderUIN, let nick, let highBid, let highBidderUIN, let endsAt, _):
             guard var a = active, a.id == auctionID else { return }
@@ -226,7 +177,6 @@ final class UinAuctionService: ObservableObject {
             a.highBidderNickname = nick
             a.endsAt = endsAt
             self.active = a
-            // Prepend to bid history (newest first, capped at 50).
             let bid = UinAuctionBid(
                 bidderUIN: bidderUIN,
                 bidderNickname: nick,
@@ -236,12 +186,8 @@ final class UinAuctionService: ObservableObject {
             var nextBids = [bid] + self.bids
             if nextBids.count > 50 { nextBids = Array(nextBids.prefix(50)) }
             self.bids = nextBids
-            // Recompute min-next-bid locally so the input field
-            // updates without an extra round-trip.
             self.minNextBid = max(highBid + 50, Int(Double(highBid) * 1.05))
-            // Soft-close enter cue — fires once per auction the
-            // first time a bid's resulting `endsAt` lands within
-            // the 30-second soft-close window.
+            // Soft-close cue: fires once per auction when endsAt enters the 30s window.
             if !softCloseAnnounced {
                 let remaining = endsAt.timeIntervalSinceNow
                 if remaining > 0 && remaining <= 30 {
@@ -255,7 +201,6 @@ final class UinAuctionService: ObservableObject {
             self.bids = []
             self.minNextBid = 0
             self.softCloseAnnounced = false
-            // Was the winner us? Pull updated owned + flag the toast.
             if let me = AuthService.shared.ownUIN, winnerUIN == me {
                 celebrateWonUIN = a.uin
                 Task { await self.refreshOwned() }
@@ -263,7 +208,6 @@ final class UinAuctionService: ObservableObject {
             }
             Task { await self.refreshRecent() }
         case .uinAuctionOutbid(_, _, let refund, _):
-            // Wallet just got the refund credited — refresh visible balance.
             Task { await ItemsService.shared.refreshInventory() }
             lastError = String(format: "uin_auction.outbid_refund".localized, refund)
             SoundService.shared.play(.auctionOutbid)
@@ -285,10 +229,6 @@ final class UinAuctionService: ObservableObject {
         return .bidTooLow(minRequired: minReq)
     }
 
-    /// Server returns `{"detail":"you are already the highest bidder"}`
-    /// on a self-outbid attempt — plain string, not the structured
-    /// `{detail: {code: ...}}` shape. Match on substring so a backend
-    /// copy tweak doesn't break the UX.
     private static func detectAlreadyHighBidder(_ body: String?) -> Bool {
         guard let raw = body?.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else {

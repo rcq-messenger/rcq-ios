@@ -1,11 +1,8 @@
 import SwiftUI
 import MultipeerConnectivity
 
-/// Entry surface for Radio Chat. Two sections — people-nearby
-/// (1:1 candidates) and rooms-nearby (discoverable hosted rooms),
-/// plus a "Create room" affordance. Tapping a 1:1 row sends an
-/// invite; tapping a room row joins (with password if needed).
-/// Acceptance flips to `RadioChatView`.
+/// Entry surface for Radio Chat. Sections: nearby people (1:1) and
+/// nearby rooms. Tap a 1:1 row to invite, a room row to join.
 struct RadioDiscoveryView: View {
     @StateObject private var radio = RadioService.shared
     @Environment(\.dismiss) private var dismiss
@@ -14,10 +11,6 @@ struct RadioDiscoveryView: View {
     @State private var passwordPromptFor: RadioPeer?
     @State private var passwordInput = ""
 
-    /// True when an active radio session has taken over the surface —
-    /// `RadioChatView` is rendered inside the same NavigationStack
-    /// in that case, and supplies its own toolbar items via
-    /// `principalContent` + back chevron + antenna glyph.
     private var inActiveSession: Bool {
         radio.activeOneToOne != nil || radio.activeRoom != nil
     }
@@ -42,22 +35,12 @@ struct RadioDiscoveryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                // Discovery-mode chrome (X close + create-room).
-                // RadioChatView injects its own back chevron +
-                // principal title + antenna icon when an active
-                // session takes over the surface; suppressing
-                // these items there keeps the nav bar from
-                // doubling up.
                 if !inActiveSession {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            // Stop radio explicitly here — `.onDisappear`
-                            // can fire spuriously on body re-renders when
-                            // `inActiveSession` toggles or sheets present
-                            // over the discovery surface, which would
-                            // wipe `activeRoom` / `sessionKey` mid-join
-                            // and silently downgrade a room session into
-                            // a 1:1 fallback.
+                            // Explicit stop here: .onDisappear fires on
+                            // spurious body re-renders and would clobber
+                            // activeRoom/sessionKey mid-join.
                             radio.stop()
                             dismiss()
                         } label: {
@@ -77,14 +60,9 @@ struct RadioDiscoveryView: View {
                 }
             }
             .task { radio.startDiscovery() }
-            // NOTE: don't put `radio.stop()` here. SwiftUI fires
-            // `.onDisappear` on this view in spurious cases (body
-            // re-renders when `inActiveSession` flips, sheet
-            // dismissals, etc.), which would clobber `activeRoom`
-            // and `sessionKey` mid-handshake — turning a room join
-            // into a 1:1 fallback. Cleanup is owned by the explicit
-            // X button (which calls `radio.stop()` then `dismiss()`)
-            // and by app-lifecycle handlers if needed.
+            // NOTE: do not call radio.stop() in .onDisappear — it fires
+            // on spurious body re-renders and would clobber the session
+            // mid-handshake. Cleanup is owned by the X button.
             .sheet(isPresented: $showCreateRoom) {
                 CreateRoomView()
                     .presentationDetents([.medium])
@@ -134,16 +112,11 @@ struct RadioDiscoveryView: View {
             .padding(.top, 12)
             .padding(.bottom, 40)
         }
-        // Pull-to-refresh — instant ghost-pruning + browser
-        // restart. The 12s background timer in RadioService also
-        // does this, but the manual gesture closes the gap when a
-        // host has just gone dark and the user wants the list
-        // clean *now*.
+        // Pull-to-refresh: prune ghosts + restart browser (the 12s
+        // background timer does this too, but the gesture is on-demand).
         .refreshable {
             radio.refreshDiscovery()
-            // Brief settle so the spinner isn't an instant no-op —
-            // gives MC a moment to re-fire foundPeer for the
-            // surviving live peers.
+            // Brief settle so MC can re-fire foundPeer for live peers.
             try? await Task.sleep(nanoseconds: 600_000_000)
         }
     }
@@ -252,11 +225,6 @@ struct RadioDiscoveryView: View {
 
     // MARK: - Joining overlay (room password verification in flight)
 
-    /// Modal-ish blocker shown while we wait for the host's first
-    /// sealed frame to decrypt under the joiner's derived key.
-    /// Resolves into either entry into the chat (key matches) or
-    /// a "wrong password" error (key mismatches) — see
-    /// `RadioService.pendingRoomJoin`.
     private func joiningOverlay(_ pending: RadioRoomMetadata) -> some View {
         ZStack {
             Color.black.opacity(0.5).ignoresSafeArea()
@@ -333,9 +301,6 @@ struct RadioDiscoveryView: View {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 VStack(spacing: 14) {
-                    // Centered lock glyph anchors the sheet visually
-                    // so a tight detent (~340pt) doesn't leave a
-                    // gap of empty bgPrimary above the headline.
                     Image(systemName: "lock.fill")
                         .font(.system(size: 38))
                         .foregroundColor(Theme.Color.accent)

@@ -1,9 +1,7 @@
 import SwiftUI
 
-/// Limbo — pick a target multiplier, server rolls a number from the
-/// same exponential distribution as Crash, you win iff roll ≥ target.
-/// Single tap, ~2 seconds per round. Same chrome family as CrashView
-/// and HiLoView so the games-hub feels coherent.
+/// Limbo — pick a target multiplier, server rolls from an
+/// exponential distribution; you win iff roll ≥ target.
 struct LimboView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = LimboService.shared
@@ -13,34 +11,17 @@ struct LimboView: View {
     @State private var target: Double = 2.00
     @State private var showRules = false
     @State private var resultBanner: LimboOutcome?
-    /// Final rolled value the on-screen number animates TO. Updated
-    /// in onChange(of: svc.lastResult). Start value 1.00 so an empty
-    /// surface reads as "ready for first roll".
     @State private var displayedRoll: Double = 1.00
-    /// Pulse the rolled block once on each result landing so the
-    /// number doesn't feel like a static value swap. Toggled in
-    /// onChange of `svc.lastResult` and animated via .scaleEffect.
     @State private var rollPulse: Bool = false
-    /// Wallclock instant of the last roll. The pill is locked for
-    /// `rollCooldown` after that. Without this, a fast-finger user
-    /// can mash the button between the time `svc.rolling` flips
-    /// false and the next request fires — the server handles it but
-    /// the UI froze for a beat under load. Keeps animations + state
-    /// transitions sane.
+    // Cooldown gate so a mashed button doesn't outrun svc.rolling.
     @State private var lastRollAt: Date?
-    /// Top-up sheet binding for the wallet-empty path.
     @State private var showShop: Bool = false
 
     private static let presets: [Int] = [1, 5, 10, 25, 50, 100]
-    /// Minimum gap between consecutive rolls. Half a second is below
-    /// the threshold a user would notice as "delayed", but blocks
-    /// the rapid-fire mash that previously locked the screen.
     private static let rollCooldown: TimeInterval = 0.5
     private static let actionPillHeight: CGFloat = 56
     private static let actionPillRadius: CGFloat = 12
 
-    /// Win probability for the current target — pure client compute,
-    /// matches the server's `(1 - HOUSE_EDGE) / target` formula.
     private var winChancePct: Double {
         max(0.01, min(98.0, (1.0 - 0.03) / target * 100.0))
     }
@@ -87,9 +68,6 @@ struct LimboView: View {
             }
             .onChange(of: svc.lastResult) { result in
                 guard let result else { return }
-                // Snap the number to the rolled value (animated by
-                // the .contentTransition + .easeOut on displayedRoll)
-                // and pulse the block once for tactile feedback.
                 displayedRoll = result.rolled
                 rollPulse = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
@@ -128,12 +106,9 @@ struct LimboView: View {
     private var rolledBlock: some View {
         VStack(spacing: 8) {
             phaseBadge
-                .frame(height: 24)  // reserved height — content swap below doesn't move slider
-            // While the server's RPC is in flight, cycle a rapid
-            // random-number reel — slot-machine feel that hides the
-            // ~150-300ms network latency. When the result lands we
-            // snap to the rolled value with a numeric content
-            // transition + scale pulse so the number "punches" in.
+                .frame(height: 24)
+            // Slot-machine reel hides the ~150-300ms RPC latency;
+            // result snaps in via numeric content transition.
             Group {
                 if svc.rolling {
                     TimelineView(.periodic(from: .now, by: 0.06)) { ctx in
@@ -148,11 +123,8 @@ struct LimboView: View {
                         .font(.system(size: 96, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundColor(rolledTint)
-                        // .numericText() is iOS 16+ — the
-                        // value-binding overload that animates digit
-                        // changes on every Double swap is iOS 17+,
-                        // so on 16 we just rely on the .easeOut
-                        // .animation(value:) below to fade-cross.
+                        // numericText value-binding overload is iOS 17+;
+                        // iOS 16 falls back to the easeOut fade-cross.
                         .contentTransition(.numericText())
                         .animation(.easeOut(duration: 0.45), value: displayedRoll)
                 }
@@ -171,11 +143,8 @@ struct LimboView: View {
         return r.won ? Theme.Color.accent : Color(hex: 0xC8442A)
     }
 
-    /// Phase badge always renders SOMETHING — empty branch was making
-    /// the rolled block shrink by ~24pt on result land, which pushed
-    /// the slider down and the central digits up. Now the badge swaps
-    /// content but its height stays put, so layout is stable across
-    /// the full ready → rolling → result cycle.
+    // Always-rendered (no empty branch) so layout doesn't shift
+    // ~24pt across the ready → rolling → result cycle.
     @ViewBuilder
     private var phaseBadge: some View {
         if svc.rolling {
@@ -228,10 +197,7 @@ struct LimboView: View {
                         .foregroundColor(Theme.Color.accent)
                 }
             }
-            // Slider sweeps a logarithmic range — small targets get
-            // more granularity (1.10/1.20/1.50) where most play
-            // happens, big targets compress (50/100/500) where rolls
-            // are vanishingly rare.
+            // Logarithmic — granular at low targets, compressed at high.
             Slider(value: Binding(
                 get: { log(target) },
                 set: { target = round(exp($0) * 100) / 100 },
@@ -288,12 +254,6 @@ struct LimboView: View {
         }
     }
 
-    /// Rolling is gated on three things: positive bet, server not
-    /// already mid-roll, AND the half-second cooldown window has
-    /// elapsed since the previous roll. The wallet check is no
-    /// longer here — when funds are short the button swaps to
-    /// "Top up" instead of disabling the roll path (handled in
-    /// `actionPill`).
     private var canRoll: Bool {
         guard betAmount >= 1, !svc.rolling else { return false }
         if let last = lastRollAt,
@@ -308,10 +268,6 @@ struct LimboView: View {
     @ViewBuilder
     private var rollPill: some View {
         if !canAfford {
-            // Wallet < bet → swap to "Top up" CTA, same pattern as
-            // UinAuctionView. Opens BuyTokensSheet directly so the
-            // user never stares at a disabled button wondering what
-            // to do next.
             Button {
                 showShop = true
             } label: {

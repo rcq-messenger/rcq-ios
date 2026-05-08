@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// Inventory grid tile. Square frame, kind asset on a neutral
-/// background, rarity rendered as a small coloured dot in the
-/// top-right corner — same idiom the pool browser uses. No coloured
-/// border, no bottom stripe; the dot carries the rarity signal.
-///
-/// Mint badge (`#42`) sits at bottom-left when capped. Temper level
-/// (`+N`) sits top-left. Equipped flag — small accent dot stacked
-/// next to the rarity dot in the top-right.
+/// Inventory grid tile: kind asset, rarity dot top-right, mint badge bottom-left, temper +N top-left.
 struct ItemCard: View {
     let item: Item
     @StateObject private var items = ItemsService.shared
@@ -22,11 +15,7 @@ struct ItemCard: View {
             Group {
                 if let kind {
                     if kind.section == .voices {
-                        // Voice packs ship as bare audio files; rendering
-                        // the .mp3 as an image would just hit the cube
-                        // placeholder. Music note glyph tinted by rarity
-                        // reads as "this is a sound" without wasting a
-                        // sprite slot per pack.
+                        // Voice packs are .mp3 files; rendering would hit the cube placeholder.
                         Image(systemName: "music.note")
                             .font(.system(size: 28, weight: .semibold))
                             .foregroundColor(item.rarity.color)
@@ -45,14 +34,7 @@ struct ItemCard: View {
                         .foregroundColor(Theme.Color.divider)
                 }
             }
-            // Equipped state is communicated by dimming the entire
-            // tile rather than stacking a second dot — the rarity
-            // dot in the corner is already the visual anchor, a
-            // green dot next to it competed with it. Owner sees
-            // their equipped packs as the "in use elsewhere"
-            // visual texture.
             .opacity(item.equipped ? 0.55 : 1.0)
-            // Rarity dot — top-right corner.
             VStack {
                 HStack {
                     Spacer()
@@ -63,7 +45,6 @@ struct ItemCard: View {
                 Spacer()
             }
             .padding(4)
-            // Mint badge — bottom-left.
             if let badge = item.mintBadge {
                 VStack {
                     Spacer()
@@ -80,10 +61,6 @@ struct ItemCard: View {
                     }
                 }
             }
-            // +N temper level — top-left. `.thinMaterial` plus a
-            // black 25%-tint underlay reads as a slightly tinted
-            // glass pill — darker than ultraThin but still legible
-            // over both light and dark icons.
             if item.level > 0 {
                 VStack {
                     HStack {
@@ -105,12 +82,6 @@ struct ItemCard: View {
                     Spacer()
                 }
             }
-            // Marketplace listed indicator. Green dim overlay + small
-            // cart pill bottom-right — same shape language as the
-            // mint badge bottom-left so the eye groups them as
-            // tile-meta. Hidden when not listed; doesn't compete
-            // with equipped dimming because items can't be both
-            // listed AND equipped (server gates the list call).
             if item.listed {
                 Rectangle()
                     .fill(Theme.Color.accent.opacity(0.18))

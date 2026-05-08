@@ -1,38 +1,28 @@
 import Combine
 import Foundation
 
-/// Live state holder for the item marketplace. Browses listings,
-/// owns the user's own active+resolved listings, exposes the buy /
-/// sell / cancel transactions. Subscribes to the WS event stream so
-/// `marketplace_listing_sold` flips the seller's "My listings" view
-/// without polling.
+/// Live state for the item + UIN marketplaces. Subscribes to WS events
+/// so `marketplace_listing_sold` updates "My listings" without polling.
 @MainActor
 final class MarketService: ObservableObject {
     static let shared = MarketService()
 
-    /// Current browse window. Replaced wholesale on each refresh
-    /// (no incremental pagination yet — closed-beta size makes
-    /// 100-row chunks reasonable).
+    /// Current browse window. Replaced wholesale on each refresh.
     @Published private(set) var listings: [MarketplaceListing] = []
-    /// Total count reported by the server for the active filter. Used
-    /// by the UI to render "Showing 50 of N" hints.
     @Published private(set) var total: Int = 0
 
-    /// Listings the local user has on the market — active + history.
+    /// Local user's market listings — active + history.
     @Published private(set) var myListings: [MarketplaceListing] = []
 
-    /// UIN listings on the parallel UIN-marketplace surface. Same
-    /// browse/buy/cancel shape as items, just keyed on a `uin: Int`
-    /// instead of an item snapshot.
+    /// UIN listings — parallel surface, keyed on `uin: Int`.
     @Published private(set) var uinListings: [UinMarketplaceListing] = []
     @Published private(set) var uinListingsTotal: Int = 0
     @Published private(set) var myUinListings: [UinMarketplaceListing] = []
 
-    /// Sticky surface flag — set when the last browse / buy / sell
-    /// failed. UI surfaces a one-shot alert via `acknowledgeError()`.
+    /// Set on browse/buy/sell failure. UI surfaces via `acknowledgeError()`.
     @Published var lastError: String?
 
-    /// Set on a successful buy/list/cancel — toast trigger in the UI.
+    /// Set on successful buy/list/cancel — toast trigger.
     @Published var lastSuccessKey: String?
 
     private var cancellables = Set<AnyCancellable>()
@@ -46,8 +36,6 @@ final class MarketService: ObservableObject {
 
     // ── HTTP ───────────────────────────────────────────────────────
 
-    /// Browse with optional filters. The view passes its current
-    /// filter chip set + sort + price range; we just forward them.
     func refresh(
         rarity: ItemRarity? = nil,
         section: ItemSection? = nil,
@@ -62,10 +50,8 @@ final class MarketService: ObservableObject {
             let listings: [MarketplaceListing]
             let total: Int
         }
-        // APIClient percent-encodes the path verbatim — query params
-        // MUST go through the typed `query:` argument, not appended
-        // into the URL with `?...` (which gets escaped to `%3F` and
-        // ends up as part of the path → 404).
+        // APIClient percent-encodes the path — query params MUST go
+        // through `query:`, never appended with `?...` (gets escaped → 404).
         var query: [String: String] = [
             "sort": sort.rawValue,
             "limit": String(limit),
@@ -83,14 +69,9 @@ final class MarketService: ObservableObject {
             self.listings = resp.listings
             self.total = resp.total
         } catch is CancellationError {
-            // Pull-to-refresh + an immediately-following category
-            // toggle (or view dismiss) cancels the in-flight request.
-            // Surfacing that as "couldn't load market" was wrong —
-            // the request was abandoned by us, not failed by the
-            // server. Stay quiet on the cancel path.
+            // Stay quiet on cancellation — request was abandoned by us.
             return
         } catch let urlError as URLError where urlError.code == .cancelled {
-            // URLSession-level cancellation — same story.
             return
         } catch {
             print("[MarketService] refresh failed: \(error)")
@@ -109,9 +90,6 @@ final class MarketService: ObservableObject {
         }
     }
 
-    /// List `item` for `priceTokens`. On success we refresh the
-    /// inventory so the tile gets its `listed` badge, and re-fetch
-    /// "My listings" so the new row shows up.
     enum ListResult {
         case success(MarketplaceListing)
         case alreadyListed
@@ -166,13 +144,10 @@ final class MarketService: ObservableObject {
             let resp: Out = try await APIClient.shared.request(
                 "POST", "/market/listings/\(listingID)/buy"
             )
-            // Authoritative new wallet after the deduction. Mirror it
-            // straight in so the inventory wallet badge ticks down
-            // before the next /me/inventory refresh resolves.
+            // Mirror authoritative wallet so the badge ticks down
+            // before the next /me/inventory resolves.
             ItemsService.shared.setWalletTokens(resp.wallet.tokens)
-            // Drop the bought row from the live browse list locally
-            // — the server has marked it sold, but the UI shouldn't
-            // wait on a re-fetch to reflect that.
+            // Drop the bought row locally — server has marked it sold.
             listings.removeAll { $0.id == listingID }
             await ItemsService.shared.refreshInventory(forceWallet: true)
             lastSuccessKey = "market.success.bought"
@@ -211,9 +186,6 @@ final class MarketService: ObservableObject {
             let listing: MarketplaceListing = try await APIClient.shared.request(
                 "DELETE", "/market/listings/\(listingID)"
             )
-            // Mirror locally: bump the row out of "My listings"' active
-            // section by re-pulling. Inventory tile loses its badge on
-            // next inventory refresh.
             if let idx = myListings.firstIndex(where: { $0.id == listingID }) {
                 myListings[idx] = listing
             }
@@ -229,9 +201,7 @@ final class MarketService: ObservableObject {
 
     // ── UIN marketplace HTTP ──────────────────────────────────────
 
-    /// Browse UIN listings. Tier filter accepts "common" / "mid" /
-    /// "legendary" (matches backend regex). Sort + price-range mirror
-    /// the item-marketplace shape.
+    /// Tier filter: "common" / "mid" / "legendary".
     func refreshUinListings(
         tier: String? = nil,
         minPrice: Int? = nil,
@@ -281,8 +251,7 @@ final class MarketService: ObservableObject {
 
     enum ListUinResult {
         case success(UinMarketplaceListing)
-        /// UIN isn't in the local user's `OwnedUin` inventory (or it's
-        /// the active identity — same backend code path).
+        /// UIN isn't in the user's OwnedUin inventory (or it's the active identity).
         case notInInventory
         case alreadyListed
         case tooManyListings(max: Int)
@@ -337,8 +306,7 @@ final class MarketService: ObservableObject {
             )
             ItemsService.shared.setWalletTokens(resp.wallet.tokens)
             uinListings.removeAll { $0.id == listingID }
-            // Buyer's OwnedUIN inventory just gained a UIN — refresh
-            // the auction service which holds that list.
+            // Buyer's OwnedUIN inventory gained a UIN — refresh auction service.
             Task { await UinAuctionService.shared.refreshOwned() }
             lastSuccessKey = "market.success.bought"
             return .success(resp.listing)
@@ -393,21 +361,14 @@ final class MarketService: ObservableObject {
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .marketplaceListingSold(let listing):
-            // Replace the row in `myListings` with the resolved version
-            // so "My listings" tab shows it as sold + crediting payout.
             if let idx = myListings.firstIndex(where: { $0.id == listing.id }) {
                 myListings[idx] = listing
             } else {
                 myListings.insert(listing, at: 0)
             }
-            // Wallet got credited server-side — re-fetch so the UI
-            // catches up immediately. forceWallet bypasses the
-            // defensive max() reconciliation.
+            // forceWallet bypasses the defensive max() reconciliation.
             Task { await ItemsService.shared.refreshInventory(forceWallet: true) }
         case .uinMarketplaceListingSold(let listing):
-            // Same pattern as items — patch myUinListings, refresh wallet,
-            // and refresh OwnedUINs so the seller's inventory loses the
-            // UIN that just changed hands.
             if let idx = myUinListings.firstIndex(where: { $0.id == listing.id }) {
                 myUinListings[idx] = listing
             } else {

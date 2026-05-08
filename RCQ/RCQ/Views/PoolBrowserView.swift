@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Pool browser — every catalog kind with its per-pull chance,
-/// grouped by section. Mirrors IX `PoolBrowserView`. Shown as a
-/// sheet from the LootboxView header.
+/// grouped by section. Shown as a sheet from the LootboxView header.
 struct PoolBrowserView: View {
     @StateObject private var items = ItemsService.shared
     @Environment(\.dismiss) private var dismiss
@@ -19,11 +18,8 @@ struct PoolBrowserView: View {
             }
     }
 
-    /// Fraction of pulls that land on items rather than gems. The
-    /// catalog's `sectionWeights` and `perPullChance` are computed
-    /// assuming every pull yields an item; we scale them by this
-    /// factor so the Pool view's percentages sum coherently with
-    /// the gems row at the top (Gems X% + Sections... = 100%).
+    // Catalog's sectionWeights / perPullChance assume every pull yields
+    // an item; scale by this so percentages sum to 100 with the gems row.
     private var itemShare: Double {
         1.0 - (items.catalog?.scrollDropChance ?? 0.0)
     }
@@ -51,14 +47,6 @@ struct PoolBrowserView: View {
                                 }
                                 ForEach(kinds, id: \.id) { kind in
                                     Button {
-                                        // Cosmetic packs ship a list of
-                                        // sub-emojis; tapping the pool
-                                        // row opens a sheet showing the
-                                        // full contents (animated). For
-                                        // collectibles (relics / founders)
-                                        // the row is informative-only —
-                                        // there's nothing else to drill
-                                        // into.
                                         if kind.appliesAs != .none {
                                             packPreview = kind
                                         }
@@ -101,10 +89,6 @@ struct PoolBrowserView: View {
             ZStack {
                 Rectangle().fill(Theme.Color.bgSecondary)
                 if kind.section == .voices {
-                    // Voice kind in the pool browser plays its
-                    // sound on tap of the row's glyph — lets the
-                    // user audition every voice in the loot pool
-                    // before deciding to spend tokens on a box.
                     Button {
                         SoundService.shared.preview(kindID: kind.id)
                     } label: {
@@ -151,10 +135,8 @@ struct PoolBrowserView: View {
                 }
             }
             Spacer(minLength: 0)
-            // Server's `perPullChance` is "given that an item drops,
-            // chance of THIS kind". Multiply by `itemShare` to surface
-            // the overall (post-gem-roll) probability so the row sums
-            // correctly with the gems row at the top.
+            // perPullChance is conditional on an item dropping; multiply
+            // by itemShare for overall (post-gem-roll) probability.
             Text(String(format: "%.1f%%", kind.perPullChance * itemShare))
                 .font(Theme.Font.monoSmall)
                 .foregroundColor(Theme.Color.textSecondary)
@@ -165,9 +147,6 @@ struct PoolBrowserView: View {
         .cornerRadius(6)
     }
 
-    /// Top-row "Gems" entry — same layout as the kind rows below so
-    /// the user can read down a single column of percentages and have
-    /// them sum to 100 across all sections + gems.
     @ViewBuilder
     private func gemsSection(catalog: ItemCatalog) -> some View {
         let pct = catalog.scrollDropChance * 100.0
@@ -220,9 +199,6 @@ struct PoolBrowserView: View {
     }
 }
 
-/// Bottom sheet shown when the user taps a cosmetic pack in the
-/// pool browser. Single-page summary: kind name + lore + the full
-/// list of contained emoticons rendered as an animated row.
 private struct PackPreviewSheet: View {
     let kind: ItemKind
     @Environment(\.dismiss) private var dismiss
@@ -243,9 +219,6 @@ private struct PackPreviewSheet: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                                 .padding(.horizontal, 16)
                         }
-                        // Edge-to-edge — view spans the full sheet
-                        // width with its own internal 16pt inset
-                        // so peer content lines up.
                         KindContentsView(kindID: kind.id, horizontalInset: 16)
                     }
                     .padding(.vertical, 16)

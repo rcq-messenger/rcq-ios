@@ -2,35 +2,12 @@ import CryptoKit
 import SwiftUI
 import UIKit
 
-/// "Link Web" sheet — generates a one-shot JSON linking blob the
-/// chat.rcq.app web client adopts as its session identity. Wire
-/// shape (matches `web-chat/src/lib/auth.ts`):
-///
-/// ```json
-/// {
-///   "uin": 123456,
-///   "jwt": "<bearer token from Keychain>",
-///   "api_base": "https://api.rcq.app",
-///   "identity_priv": "<base64 raw 32-byte X25519 priv>",
-///   "identity_pub":  "<base64 raw 32-byte X25519 pub>",
-///   "signing_priv":  "<base64 raw 32-byte Ed25519 priv>",
-///   "signing_pub":   "<base64 raw 32-byte Ed25519 pub>",
-///   "iat": 1714602000  // unix seconds at issue time
-/// }
-/// ```
-///
-/// **Sensitivity.** This blob carries the long-term private keys of
-/// the account. Anyone who has it gets full read-access to v=1
-/// envelopes addressed to the user *forever* (the keys don't
-/// rotate). Phase-1 prototype trade-off; phase-2 (libsignal-WASM)
-/// will move to a per-device-linked identity model and obsolete
-/// this blob. For now: copy → paste into the web client. The web
-/// side enforces a 5-minute clock-skew window — short enough that
-/// a stale paste a few minutes later doesn't keep working.
-///
-/// QR rendering was deliberately removed — desktops can't scan a
-/// phone screen with a webcam in any reliable way, so the QR was
-/// just visual noise. Copy-to-clipboard is the actual flow.
+/// Generates a one-shot JSON blob the chat.rcq.app web client adopts
+/// as its session identity. WARNING: blob carries long-term private
+/// keys; anyone with it gets full read-access to v=1 envelopes for the
+/// account forever (phase-1 trade-off; phase-2 will move to a per-
+/// device-linked identity). Web side enforces a 5-min clock-skew
+/// window. Wire shape matches web-chat/src/lib/auth.ts.
 struct LinkWebView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -119,10 +96,6 @@ struct LinkWebView: View {
         }
     }
 
-    /// Build the linking blob from local identity material. Failure
-    /// modes are surfaced inline — the most common is "Keychain
-    /// returned nil for the identity priv" which means the account
-    /// was bootstrapped before the keys existed (vanishingly rare).
     private func regenerate() {
         error = nil
         guard let uin = AuthService.shared.ownUIN,

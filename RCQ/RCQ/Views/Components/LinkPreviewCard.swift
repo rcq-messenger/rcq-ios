@@ -2,15 +2,9 @@ import LinkPresentation
 import SwiftUI
 import UIKit
 
-/// Telegram-style link preview attached underneath a text bubble or
-/// the composer. Fetches Open-Graph metadata via Apple's
-/// `LinkPresentation` framework — no backend, no scraping plumbing.
-/// On failure (404, no OG tags, network blip) the card just doesn't
-/// render and the URL stays visible in the bubble's body text.
+/// Link preview underneath a text bubble. Uses `LinkPresentation` for OG metadata; renders nothing on failure.
 struct LinkPreviewCard: View {
     let url: URL
-    /// Cap width so the card doesn't stretch to bubble-full width on
-    /// long captions. 260pt matches the Telegram visual rhythm.
     var maxWidth: CGFloat = 260
 
     @State private var metadata: LPLinkMetadata?
@@ -26,7 +20,6 @@ struct LinkPreviewCard: View {
             case .loaded:
                 if let metadata { content(metadata) } else { EmptyView() }
             case .failed:
-                // Render nothing — the URL is already in the bubble.
                 EmptyView()
             }
         }
@@ -65,9 +58,6 @@ struct LinkPreviewCard: View {
         .background(Theme.Color.bgSecondary.opacity(0.7))
         .cornerRadius(8)
         .overlay(
-            // Leading-edge accent strip — Telegram-style "this is a
-            // link" affordance. 3pt accent bar attached to the card's
-            // leading edge.
             HStack(spacing: 0) {
                 Rectangle().fill(Theme.Color.accent).frame(width: 3)
                 Spacer()
@@ -116,18 +106,9 @@ struct LinkPreviewCard: View {
             await LinkPreviewCache.shared.markFailed(url)
             status = .failed
         }
-        // No re-anchor signal needed — `BottomAnchoredScroll` installs
-        // `defaultScrollAnchor(.bottom)` on iOS 17+ which keeps the
-        // latest bubble glued to the composer when this card grows
-        // (or shrinks) the bubble's measured height.
     }
 }
 
-/// UIKit bridge to render the LPLinkMetadata's preview image. Apple
-/// supplies an `LPLinkView` that does this natively, but it's
-/// hard-coded to use the system Card chrome — way too heavy for an
-/// inline-bubble preview. We just pull the bytes via the metadata's
-/// image provider and render in a UIImageView.
 private struct LinkImageView: UIViewRepresentable {
     let metadata: LPLinkMetadata
 
@@ -145,7 +126,6 @@ private struct LinkImageView: UIViewRepresentable {
     }
 
     private func loadImage(into view: UIImageView) {
-        // Prefer the larger preview image; fall back to the favicon.
         let provider = metadata.imageProvider ?? metadata.iconProvider
         provider?.loadObject(ofClass: UIImage.self) { obj, _ in
             DispatchQueue.main.async {
@@ -157,11 +137,7 @@ private struct LinkImageView: UIViewRepresentable {
     }
 }
 
-/// Per-URL metadata cache. Reads fan out across every visible bubble
-/// that references the same link so we don't re-fetch on scroll-back.
-/// `failed` tombstones cap retries — a URL that timed out once won't
-/// re-try on the next render. Lifecycle is process-wide; no
-/// persistence needed since metadata becomes stale anyway.
+/// Per-URL metadata cache, process-wide. `failed` tombstones cap retries.
 actor LinkPreviewCache {
     static let shared = LinkPreviewCache()
 
@@ -169,12 +145,7 @@ actor LinkPreviewCache {
     private var failed: Set<URL> = []
 
     func get(_ url: URL) -> LPLinkMetadata? {
-        if failed.contains(url) {
-            // Return a sentinel-empty metadata so the card path stays
-            // off — actually we just return nil and the caller treats
-            // it as cache miss. Marker is checked via `wasFailed`.
-            return nil
-        }
+        if failed.contains(url) { return nil }
         return hits[url]
     }
 
@@ -183,9 +154,6 @@ actor LinkPreviewCache {
     func markFailed(_ url: URL) { failed.insert(url) }
 }
 
-/// First URL detected in a piece of text. Cached helper used by the
-/// chat-row composer to decide whether to attach a `LinkPreviewCard`
-/// underneath the bubble.
 enum LinkDetector {
     private static let detector: NSDataDetector? = {
         try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)

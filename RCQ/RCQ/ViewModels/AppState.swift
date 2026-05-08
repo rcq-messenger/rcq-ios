@@ -2,8 +2,8 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// Top-level state holder. Wires the WS event stream to the contact list, message store,
-/// presence service and sounds. ViewModels read from this and the underlying services.
+/// Top-level state holder. Wires the WS event stream into services and surfaces
+/// pending deep-link targets that views consume.
 @MainActor
 final class AppState: ObservableObject {
     static let shared = AppState()
@@ -11,29 +11,12 @@ final class AppState: ObservableObject {
     @Published var booted: Bool = false
     @Published var bootError: String? = nil
     @Published var typingByUIN: [Int: Bool] = [:]
-    /// Set when an `rcq://add/{uin}` deep link is opened. ContactListView observes
-    /// and presents AddContactView pre-filled with this UIN.
     @Published var pendingAddUIN: Int? = nil
-    /// Cross-screen request to open the chat with `uin`. Used by
-    /// the trades list to surface a "go to chat" affordance from
-    /// inside a sheet — sheets host their own NavigationStack and
-    /// can't push onto the contact list's. ContactListView reads
-    /// this and dismisses any open sheet, then appends the
-    /// contact to its `path`.
     @Published var pendingOpenChatUIN: Int? = nil
-    /// Tap on a "you have a contact request" push set this. The
-    /// contact list flips its `showPending` flag and presents the
-    /// PendingRequestsView sheet. Reset by ContactListView after
-    /// it acts on the value (single-shot like `pendingOpenChatUIN`).
     @Published var pendingOpenPending: Bool = false
-    /// Tap on a "you got a trade offer" push set this. ContactListView
-    /// presents TradesListView (same sheet that `trades.freshIncoming`
-    /// drives, but with no specific trade pre-selected — user lands
-    /// on the list and picks the new offer themselves).
     @Published var pendingOpenTrades: Bool = false
 
     func handle(deepLink url: URL) {
-        // Custom-scheme form: rcq://add/<uin>
         if url.scheme == "rcq", url.host == "add" {
             let uinStr = url.pathComponents.last ?? ""
             if let uin = Int(uinStr), uin > 0 {
@@ -41,10 +24,6 @@ final class AppState: ObservableObject {
             }
             return
         }
-        // Universal Link form: https://rcq.app/u/<uin> — what we share
-        // from Settings now. Tap in Messages/Telegram/etc opens the app
-        // directly when the AASA association resolves; falls back to
-        // the web landing page otherwise.
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
@@ -79,43 +58,18 @@ final class AppState: ObservableObject {
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
 
-            // Pull our own server-side state so PresenceService reflects the saved
-            // status + status message instead of resetting them. The server's
-            // `_on_connect` handler already promotes offline → online, so we don't
-            // need to push setStatus(.online) ourselves — that previously wiped the
-            // status_message because we sent it as nil.
             await syncOwnPresenceFromServer(uin: uin)
-            // Eager catalog load — `StatusWithPet` resolves a kind_id
-            // → asset_ref via `ItemsService.shared.catalog`. If the
-            // catalog isn't loaded by the time the contact list /
-            // chat header / group info first paints (a peer with an
-            // equipped pet appearing before the user ever opens
-            // their own Inventory), the pet glyph silently no-ops
-            // and only the bare status icon renders.
+            // Eager catalog + inventory: contact-list / chat header pet
+            // glyphs read from these synchronously and silently no-op
+            // when missing.
             await ItemsService.shared.refreshCatalog()
-            // Eager inventory load too — own equipped pet on the
-            // contact-list header reads `items.items[]` to find the
-            // currently-equipped pet_companion. If `items[]` is
-            // empty (lazy via InventoryView's `.task`), the header
-            // shows a bare status until the user happens to open
-            // Inventory once. Cheap GET — single response with the
-            // user's items + wallet.
             await ItemsService.shared.refreshInventory()
             await ContactService.shared.refresh()
             await GroupService.shared.refresh()
             await MessageService.shared.fetchOfflineQueue()
             await NotificationService.shared.requestAuthorization()
-            // If we already had an APNs token from a previous launch (the
-            // adapter handed it to NotificationService before auth
-            // completed), now's the time to ship it to the backend under
-            // the freshly authenticated session.
             await NotificationService.shared.refreshTokenSubmission()
-            // Pull per-category push toggles + muted-uin list. Soft-fail
-            // to defaults on network blip — UI binds against the in-
-            // memory copy and the next refresh re-syncs.
             await NotificationPrefsService.shared.refresh()
-            // Same for the VoIP-push token — PushKit hands it to us
-            // asynchronously and possibly before login finishes.
             await VoIPPushService.shared.refreshTokenSubmission()
 
             booted = true
@@ -126,11 +80,6 @@ final class AppState: ObservableObject {
 
     // MARK: - migration
 
-    /// Result of an account migration attempt. Either the server
-    /// granted the new UIN + token, or returned a typed failure the
-    /// settings sheet surfaces inline. We deliberately don't surface
-    /// the `cooldown.remaining_seconds` payload to the UI for v1 —
-    /// the user-facing copy just says "try again later".
     enum MigrationResult: Equatable {
         case success(newUIN: Int)
         case insufficientTokens(required: Int, have: Int)
@@ -138,30 +87,16 @@ final class AppState: ObservableObject {
         case other(String)
     }
 
-    /// Set during the brief window between firing `POST /account/migrate`
-    /// and finishing the local keychain swap + reboot. The server-side
-    /// migration broadcasts `account_burned` to every WS connected
-    /// under the OLD uin (multi-device users need to know their old
-    /// account is gone and re-bootstrap). The catch: the migrating
-    /// device IS one of those WS connections, so it would receive the
-    /// event and run the full burn-and-fresh-register flow, clobbering
-    /// the migration mid-flight (lost nickname, no contacts, no items
-    /// — the exact bug a tester hit in v1). This flag tells the
-    /// `.accountBurned` event handler to skip the burn for THIS
-    /// session; multi-device users on other phones still react.
+    // Suppresses the `.accountBurned` handler on THIS session during
+    // an in-flight migrate; the server fans `account_burned` to every
+    // WS under the old uin, including this one.
     private var migratingAccount: Bool = false
 
-    /// Migrate the current account to a freshly-allocated UIN. Server
-    /// keeps profile + contacts + items + wallet (minus the 99-token
-    /// fee) and re-keys every FK. Locally we wipe per-uin caches and
-    /// re-boot from the new identity — the client behaves as if it
-    /// just relaunched, except it lands authenticated as `new_uin`.
-    ///
-    /// The user's identity_key + signing_key are reused server-side so
-    /// peers' libsignal-stage-2 sessions to us survive intact. Stage-3
-    /// material is dropped on both ends — peers will re-handshake on
-    /// their next message, falling back to v=1 ECIES until the new
-    /// stage-3 bundle uploads.
+    /// Migrate the account to a freshly-allocated UIN. Server keeps
+    /// profile + contacts + items + wallet (minus the 99-token fee).
+    /// Identity + signing keys are reused server-side so peers' stage-2
+    /// sessions survive; stage-3 material is dropped and re-handshakes
+    /// on next message.
     func migrateAccount(targetUIN: Int? = nil) async -> MigrationResult {
         struct Body: Encodable { let target_uin: Int? }
         struct MigrateOut: Decodable {
@@ -169,10 +104,8 @@ final class AppState: ObservableObject {
             let token: String
         }
         let resp: MigrateOut
-        // Set the suppression flag BEFORE the network call so an
-        // early-arriving `account_burned` (server fires it the moment
-        // the row is deleted, before the HTTP response unwinds) can't
-        // trigger the burn handler ahead of us.
+        // Must be set before the POST: server fires `account_burned`
+        // before the HTTP response unwinds.
         migratingAccount = true
         do {
             resp = try await APIClient.shared.request(
@@ -193,10 +126,6 @@ final class AppState: ObservableObject {
             return .other(error.localizedDescription)
         }
 
-        // Local reset — same shape as `burnAccount` minus the
-        // identity-keys wipe (server reused them under the new
-        // UIN) and minus the deleteServerAccount call (the migrate
-        // endpoint already deleted the old User row).
         WebSocketService.shared.disconnect()
         ContactService.shared.wipe()
         GroupService.shared.wipe()
@@ -215,7 +144,6 @@ final class AppState: ObservableObject {
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
-        // Stage-3 sessions go away — peers re-handshake on next msg.
         SignalProtocolDB.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
@@ -225,8 +153,6 @@ final class AppState: ObservableObject {
         pendingOpenTrades = false
         pendingAddUIN = nil
 
-        // Swap the keychain over to the new identity. Identity priv
-        // keys + nickname stay put (server reused both).
         let nickname = AuthService.shared.nickname
         KeychainStore.delete(KeychainStore.Keys.uin)
         KeychainStore.delete(KeychainStore.Keys.token)
@@ -241,25 +167,14 @@ final class AppState: ObservableObject {
         bootError = nil
         await boot()
 
-        // Force-refresh wallet/items snapshot under the NEW uin's
-        // token. boot() already calls refreshInventory() but the
-        // defensive max() reconciliation in ItemsService preserves
-        // the stale-high cached pre-deduction balance — so the user
-        // saw the OLD pre-migration tokens until the next foreground.
-        // forceWallet: true bypasses max() and trusts the server.
+        // forceWallet bypasses ItemsService's defensive max() so the
+        // post-deduction balance from the server wins.
         await ItemsService.shared.refreshInventory(forceWallet: true)
 
-        // Reboot done — fresh `account_burned` events from this point
-        // forward should be honoured normally (e.g. user burns the
-        // newly-migrated account from another device).
         migratingAccount = false
         return .success(newUIN: resp.new_uin)
     }
 
-    /// Decode the typed `{ "code": "insufficient_tokens", "required": N,
-    /// "have": M }` payload our migrate endpoint returns on 402. Returns
-    /// nil if the body doesn't match — caller falls back to a generic
-    /// error string.
     private static func parseInsufficient(_ body: String?) -> MigrationResult? {
         guard let raw = body?.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
@@ -272,15 +187,12 @@ final class AppState: ObservableObject {
         return .insufficientTokens(required: required, have: have)
     }
 
-    /// "Burn account" — user-initiated nuclear reset. Tells the server to delete
-    /// our account, wipes every shred of local state, then re-runs `boot()`,
-    /// which mints a fresh identity (new UIN, new keys). The user lands on the
-    /// boot splash for a moment and comes back as a brand-new person.
+    /// User-initiated nuclear reset. Wipes server account + every local
+    /// store, then re-runs `boot()` which mints a fresh identity.
     func burnAccount() async {
         await AuthService.shared.deleteServerAccount()
         WebSocketService.shared.disconnect()
 
-        // Local state — caches, store, message DB, presence.
         ContactService.shared.wipe()
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
@@ -305,11 +217,8 @@ final class AppState: ObservableObject {
         pendingOpenTrades = false
         pendingAddUIN = nil
 
-        // Identity material — Keychain + API token.
         await AuthService.shared.wipeLocalIdentity()
 
-        // Flip back to the splash and re-run boot. AuthService.bootstrapIfNeeded
-        // sees no Keychain entries and registers afresh.
         booted = false
         bootError = nil
         await boot()
@@ -322,27 +231,17 @@ final class AppState: ObservableObject {
             PresenceService.shared.statusMessage = me.statusMessage
             AuthService.shared.updateNicknameLocal(me.nickname)
         } catch {
-            // Soft-fail: keep whatever local defaults the PresenceService had.
+            // Soft-fail.
         }
     }
 
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .opened:
-            // Drain the server-side offline queue every time the
-            // socket comes up — initial connect AND every auto-
-            // reconnect after a drop. Without this, messages that
-            // landed while the iOS WS was briefly down (cellular
-            // hiccup, app backgrounded, contact-add timing) sat in
-            // the queue until the user manually relaunched the
-            // app. Symptom the user saw: "added a peer, neither
-            // side sees messages until restart" — that was a WS
-            // drop during the contact-add round-trip leaving a
-            // queue that nothing drained on reconnect.
+            // Drain offline queue on every (re)connect.
             Task { await MessageService.shared.fetchOfflineQueue() }
 
         case .closed:
-            // Schedule a reconnect attempt — naive fixed delay is enough for now.
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 guard let uin = AuthService.shared.ownUIN,
@@ -352,29 +251,13 @@ final class AppState: ObservableObject {
             }
 
         case .accountBurned:
-            // Server burned this account from another session (e.g.
-            // user pressed "Burn" on chat.rcq.app while iOS was open
-            // here). Run the same local cleanup the user-initiated
-            // burn does — `deleteServerAccount` 404s, which is fine
-            // because the server already removed the row before
-            // sending us this event. UI swaps to onboarding via the
-            // booted/ownUIN bindings.
-            //
-            // Suppression: the migrate-account flow ALSO triggers
-            // `account_burned` server-side (multi-device clients
-            // need to drop their stale session). For the migrating
-            // device itself, running burnAccount here would clobber
-            // the migration flow mid-flight and the user would land
-            // on a fresh re-registered account. The flag is set
-            // around the migrate POST + reboot window.
+            // Suppressed during migration — see `migratingAccount`.
             if migratingAccount { return }
             Task { await self.burnAccount() }
 
         case .presence(let uin, let status, let message):
             let wasOnline = ContactService.shared.contacts.first(where: { $0.uin == uin })?.status != .offline
             ContactService.shared.updatePresence(uin: uin, status: status, statusMessage: message)
-            // Group member rows mirror the same presence — update them so the
-            // status icons in GroupInfoView track live, like the contact list.
             GroupService.shared.updateMemberPresence(uin: uin, status: status)
             if status == .offline && wasOnline {
                 SoundService.shared.play(.contactOffline, thread: .peer(uin: uin))
@@ -384,19 +267,11 @@ final class AppState: ObservableObject {
 
         case .envelope(let env):
             guard let outcome = MessageService.shared.ingest(envelope: env) else { return }
-            // Side effects only for actually-new content. The same
-            // envelope can arrive twice — once via the live WS or
-            // server-side `_on_connect` flush, once via the client's
-            // HTTP `/messages/queue` drain — and `MessageStore.append`
-            // dedupes by UUID. Without this guard each duplicate
-            // would still bump the badge and play a sound, which
-            // produced "badges higher than real unread" reports.
+            // Same envelope can arrive twice (WS live + HTTP queue drain);
+            // MessageStore dedupes by UUID, only fire effects on first.
             guard outcome.isNewContent else { return }
             let thread = outcome.thread
-            // Per-contact sound override only applies to 1:1
-            // threads — group senders are heterogeneous and a
-            // per-peer assignment doesn't carry useful semantics
-            // there. For groups we keep the default cue.
+            // Per-contact sound override only meaningful for 1:1 threads.
             let sender: Int? = {
                 if case .peer(let uin) = thread { return uin }
                 return nil
@@ -442,54 +317,22 @@ final class AppState: ObservableObject {
             GroupService.shared.purge(id)
             MessageStore.shared.clearThread(.group(id: id))
 
-		case .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction:
-            // HoodChatService subscribes to the WS event stream
-            // directly, same pattern as RandomChatService — keeps
-            // AppState's switch focused on the surfaces it owns.
-            break
-
-        case .randomMatch, .randomEnd:
-            // Handled directly by RandomChatService (it subscribes to the
-            // same event stream). AppState stays out of random-chat state.
-            break
-
-        case .callOffer, .callAnswer, .callIce, .callEnd,
-             .callRenegotiate, .callRenegotiateAnswer, .callRenegotiateDecline:
-            // Same arrangement as random-chat — CallService subscribes to
-            // the WS event stream itself, so AppState doesn't need to know.
-            break
-
-        case .roomEnterRejected, .roomRoster, .roomMemberEntered, .roomMemberLeft,
+		case .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction,
+             .randomMatch, .randomEnd,
+             .callOffer, .callAnswer, .callIce, .callEnd,
+             .callRenegotiate, .callRenegotiateAnswer, .callRenegotiateDecline,
+             .roomEnterRejected, .roomRoster, .roomMemberEntered, .roomMemberLeft,
              .roomOffer, .roomAnswer, .roomIce, .roomSpeaking,
              .roomKicked, .roomDeleted, .roomMembershipRevoked, .roomKeyRotated,
-             .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed:
-            // AudioRoomService subscribes to the same stream — same
-            // arrangement as the rest. AppState stays out.
-            break
-
-        case .uinAuctionStarted, .uinAuctionBid, .uinAuctionEnded, .uinAuctionOutbid:
-            // UinAuctionService subscribes directly to these.
-            break
-
-        case .tradeReceived, .tradeAccepted, .tradeDeclined, .tradeCancelled:
-            // TradesService subscribes to the same stream and owns
-            // all trade lifecycle state. AppState stays out.
-            break
-
-        case .crashRoundBetting, .crashRoundRunning, .crashRoundEnd,
-             .crashCashout, .crashBetPlaced:
-            // CrashService owns these — same arrangement as
-            // RandomChatService / TradesService / CallService.
-            break
-
-        case .storyPosted, .storyDeleted:
-            // StoryService subscribes directly and re-fetches the
-            // feed on either nudge. AppState stays out.
-            break
-
-        case .marketplaceListingSold,
+             .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed,
+             .uinAuctionStarted, .uinAuctionBid, .uinAuctionEnded, .uinAuctionOutbid,
+             .tradeReceived, .tradeAccepted, .tradeDeclined, .tradeCancelled,
+             .crashRoundBetting, .crashRoundRunning, .crashRoundEnd,
+             .crashCashout, .crashBetPlaced,
+             .storyPosted, .storyDeleted,
+             .marketplaceListingSold,
              .uinMarketplaceListingSold:
-            // MarketService subscribes directly — same pattern.
+            // Owned by their respective services that subscribe directly.
             break
         }
     }

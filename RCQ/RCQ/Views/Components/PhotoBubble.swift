@@ -1,32 +1,17 @@
 import SwiftUI
 
-/// Photo message bubble. Loads encrypted bytes from the server, decrypts via
-/// MediaService, displays the result. Tap to open the fullscreen viewer.
+/// Photo message bubble. Loads encrypted bytes, decrypts via MediaService, tap → fullscreen viewer.
 struct PhotoBubble: View {
     let message: Message
     var maxWidth: CGFloat = 240
-    /// When set, the bubble locks its frame to exactly this size and
-    /// fills it with `.scaledToFill` (cropping if needed). Used by the
-    /// premium-content flow so the locked + unlocked states render at
-    /// matching dimensions — without this, the locked blur sat at one
-    /// size and the unlocked photo popped to its natural aspect, which
-    /// looked like an ugly resize on unlock.
+    /// Pin frame to this size and `.scaledToFill` — used by premium flow so locked/unlocked render at matching dimensions.
     var forcedSize: CGSize? = nil
 
     @State private var image: UIImage?
     @State private var loading = true
     @State private var fullscreen = false
-    /// Live upload progress for outbound bubbles. Subscribes to
-    /// `MediaProgressStore` so the placeholder can show a real
-    /// percentage instead of a generic spinner. Source: KVO on the
-    /// underlying `URLSessionUploadTask.progress.fractionCompleted`.
     @StateObject private var progress = MediaProgressStore.shared
 
-    /// Outbound photo whose upload finished but failed (size cap,
-    /// network drop, server error). Distinct from `loading == false`
-    /// failure (which means a successful upload but a download
-    /// failure on a third-party device): for failed uploads we have
-    /// no `mediaID` and `deliveryState == .failed`.
     private var didFailUpload: Bool {
         message.mediaID == nil && message.deliveryState == .failed
     }
@@ -35,9 +20,6 @@ struct PhotoBubble: View {
         Group {
             if let image {
                 if let size = forcedSize {
-                    // Premium-flow rendering: pinned dimensions so the
-                    // unlocked photo fills the same frame the locked
-                    // blur was sitting in.
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -45,17 +27,7 @@ struct PhotoBubble: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .onTapGesture { fullscreen = true }
                 } else {
-                    // FIXED 4:3 frame — same shape `VideoBubble` uses,
-                    // and the same shape the placeholder + uploading
-                    // states render at. Identical width/height across
-                    // sender and receiver from frame zero (no envelope
-                    // round-trip needed for aspect data) AND no
-                    // bubble-resize when the image data lands later
-                    // (which used to push every later message down by
-                    // ΔH and yank the chat scroll position with it —
-                    // the "chat jumps when entering a thread with
-                    // media" symptom). Tap → fullscreen viewer renders
-                    // the full uncropped photo via `scaledToFit`.
+                    // Fixed 4:3 frame across all states avoids bubble-resize when image lands.
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -67,13 +39,6 @@ struct PhotoBubble: View {
             } else if didFailUpload {
                 failedPlaceholder
             } else if isUploading {
-                // Upload still in flight on our own outbound
-                // bubble — show a spinner instead of the
-                // failure-triangle so the user can see "this is
-                // sending, not broken". Random chat surfaced this
-                // most visibly: media bubble appears immediately
-                // with `mediaID == nil`, and only flips real once
-                // the upload completes a beat later.
                 uploadingPlaceholder
             } else if loading {
                 placeholder(systemName: "photo")
@@ -81,27 +46,17 @@ struct PhotoBubble: View {
                 placeholder(systemName: "exclamationmark.triangle")
             }
         }
-        // Re-run when the message's mediaID changes (e.g. local row gets patched
-        // post-upload), so the placeholder flips to the real photo immediately.
+        // Re-run on mediaID change so the placeholder flips to the real photo post-upload.
         .task(id: message.mediaID ?? "") { await load() }
         .fullScreenCover(isPresented: $fullscreen) {
             if let image { FullscreenPhotoViewer(image: image) { fullscreen = false } }
         }
     }
 
-    /// True while we *expect* a `mediaID` to land shortly. Outbound
-    /// bubbles are appended optimistically with `mediaID = nil`
-    /// and `deliveryState = .sending`; the failure-triangle only
-    /// makes sense once delivery itself failed.
     private var isUploading: Bool {
         message.mediaID == nil && message.deliveryState == .sending
     }
 
-    /// Visible "this didn't go through" marker — replaces the
-    /// generic photo icon for outbound bubbles whose upload threw
-    /// (size cap, network, server). Without it the user sees a
-    /// stale placeholder + the regular row's red bang somewhere off
-    /// to the side and can't tell what went wrong.
     private var failedPlaceholder: some View {
         ZStack {
             Theme.Color.bgSecondary
@@ -125,21 +80,12 @@ struct PhotoBubble: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .font(.system(size: 26))
         }
-        // Honour `forcedSize` for the placeholder too — premium flow
-        // shouldn't see a 240×180 spinner sitting over what was a
-        // 240×320 blur. Match the eventual photo's frame from frame 0.
         .frame(width: forcedSize?.width ?? maxWidth,
                height: forcedSize?.height ?? maxWidth * 0.75)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var uploadingPlaceholder: some View {
-        // Determinate ring whenever we have a real fraction from
-        // the upload-progress store; falls back to the system
-        // spinner if the store doesn't have an entry yet (very
-        // first frame, before `MediaProgressStore.begin` runs)
-        // OR for legacy code paths that didn't wire the
-        // progress callback.
         ZStack {
             Theme.Color.bgSecondary
             if let p = progress.value(for: message.id) {
@@ -249,8 +195,7 @@ struct FullscreenPhotoViewer: View {
                 }
             }
         }
-        // Retain the delegate via the associated object pattern — UIKit's selector
-        // callback fires after the closure goes out of scope otherwise.
+        // passRetained — UIKit selector callback fires after closure scope otherwise.
         UIImageWriteToSavedPhotosAlbum(image, delegate, #selector(PhotoSaveDelegate.didFinish(image:error:contextInfo:)), Unmanaged.passRetained(delegate).toOpaque())
     }
 }

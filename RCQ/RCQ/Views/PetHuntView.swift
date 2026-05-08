@@ -1,14 +1,6 @@
 import SwiftUI
 
-/// Pet Hunt — passive jeton mining + 3 risky hunt slots per day.
-/// Solo (no PvP). Three zones (Forest / Mountain / Cave) trade
-/// reward × success-rate against pet-quality death/wound risk.
-///
-/// Top bar mirrors `UinAuctionView` / `CrashView` for consistency:
-/// info button + wallet badge in `.topBarTrailing`.
-///
-/// The mining buffer ticks live every second so users see jetons
-/// accumulating; canonical numbers re-anchor on every refresh.
+/// Pet Hunt: passive token/gem mining + 3 hunt slots per day.
 struct PetHuntView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = PetHuntService.shared
@@ -19,7 +11,6 @@ struct PetHuntView: View {
     @State private var showMemorial: Bool = false
     @State private var claimingFlash: Bool = false
 
-    /// 1Hz ticker so the accumulator counter visibly rolls.
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -49,9 +40,6 @@ struct PetHuntView: View {
                 svc.tickTo(now)
             }
             .sheet(isPresented: $showInfo) {
-                // Larger detent than the auction rules sheet — the
-                // permadeath section needs the room. ScrollView
-                // inside the sheet handles overflow regardless.
                 PetHuntInfoSheet()
                     .presentationDetents([.medium, .large])
             }
@@ -68,9 +56,6 @@ struct PetHuntView: View {
                 MemorialSheet()
                     .presentationDetents([.large])
             }
-            // Result modal — driven by `svc.lastResult`. Shows the
-            // win / wound / death outcome with a brief reveal
-            // animation. Tap-out or "Continue" dismisses + clears.
             .sheet(item: $svc.lastResult) { result in
                 HuntResultSheet(result: result) {
                     svc.acknowledgeResult()
@@ -86,7 +71,6 @@ struct PetHuntView: View {
     @ViewBuilder
     private var content: some View {
         if svc.state == nil {
-            // Initial loading shimmer — replaced once /state lands.
             ProgressView()
                 .tint(Theme.Color.textSecondary)
         } else if svc.state?.pet == nil {
@@ -96,9 +80,6 @@ struct PetHuntView: View {
         }
     }
 
-    /// Shown when the user has no pet equipped. Pet Hunt only works
-    /// with an equipped pet — surface a clear pointer to inventory
-    /// instead of blank-screen confusion.
     private var noPetEmptyState: some View {
         VStack(spacing: 18) {
             Spacer()
@@ -131,6 +112,7 @@ struct PetHuntView: View {
         ScrollView {
             VStack(spacing: 18) {
                 petHero
+                petSpecTable
                 accumulatorCard
                 huntButton
                 memorialLink
@@ -146,37 +128,139 @@ struct PetHuntView: View {
 
     private var petHero: some View {
         let pet = svc.state?.pet
-        return VStack(spacing: 8) {
-            ItemAssetImage(
-                bundleSubdir: petAssetSubdir,
-                filename: petAssetStem,
-                ext: petAssetExt,
-            )
-            .frame(width: 140, height: 140)
-            .padding(.top, 8)
+        return VStack(spacing: 10) {
+            ZStack {
+                if let pet {
+                    Circle()
+                        .fill(pet.rarity.color.opacity(0.45))
+                        .frame(width: 180, height: 180)
+                        .blur(radius: 32)
+                }
+                ItemAssetImage(
+                    bundleSubdir: petAssetSubdir,
+                    filename: petAssetStem,
+                    ext: petAssetExt,
+                )
+                .frame(width: 144, height: 144)
+                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+            }
             if let pet {
                 Text(ItemDisplay.name(for: pet.kindID))
                     .font(.system(size: 22, weight: .bold))
                     .foregroundColor(Theme.Color.textPrimary)
-                HStack(spacing: 8) {
-                    Text(pet.rarity.label.uppercased())
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(pet.rarity.color))
-                    if pet.level > 0 {
-                        Text("+\(pet.level)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Theme.Color.textPrimary)
-                    }
-                    Text(String(format: "%.2f×", pet.purity))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
+                Text(pet.rarity.label.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(2)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(pet.rarity.color))
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.top, 8)
+    }
+
+    private var petSpecTable: some View {
+        guard let pet = svc.state?.pet, let s = svc.state else {
+            return AnyView(EmptyView())
+        }
+        let perHour = Double(s.dailyYield) / 24.0
+        return AnyView(
+            VStack(spacing: 0) {
+                specRow(label: "market.spec.tier".localized) {
+                    Text(pet.rarity.label)
+                        .font(.callout.weight(.medium))
+                        .foregroundColor(pet.rarity.color)
+                }
+                if pet.level > 0 {
+                    specDivider
+                    specRow(label: "market.spec.level".localized) {
+                        Text("+\(pet.level)")
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+                specDivider
+                specRow(label: "market.spec.purity".localized) {
+                    Text(String(format: "%.2f×", pet.purity))
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
+                if let mint = pet.mintNumber {
+                    specDivider
+                    specRow(label: "item.stat.mint".localized) {
+                        Text(verbatim: "#\(mint)")
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+                specDivider
+                specRow(label: "market.spec.essence".localized) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("\(pet.baseEssence)")
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(Theme.Color.accent)
+                }
+                specDivider
+                specRow(label: "pet_hunt.spec.daily_yield".localized) {
+                    HStack(spacing: 4) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                            .frame(width: 16, height: 16)
+                        Text("\(s.dailyYield)")
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+                specDivider
+                specRow(label: "pet_hunt.spec.daily_gems".localized) {
+                    HStack(spacing: 4) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "gem", ext: "gif")
+                            .frame(width: 16, height: 16)
+                        Text("\(s.dailyGems)")
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+                specDivider
+                specRow(label: "pet_hunt.spec.hourly_rate".localized) {
+                    HStack(spacing: 4) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                            .frame(width: 16, height: 16)
+                        Text(perHour >= 1
+                             ? String(format: "%.1f", perHour)
+                             : String(format: "%.2f", perHour))
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+            }
+            .background(Theme.Color.bgSecondary)
+            .cornerRadius(12)
+        )
+    }
+
+    private func specRow<Content: View>(
+        label: String, @ViewBuilder value: () -> Content
+    ) -> some View {
+        HStack {
+            Text(label)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+            Spacer()
+            value()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+
+    private var specDivider: some View {
+        Rectangle()
+            .fill(Theme.Color.divider.opacity(0.4))
+            .frame(height: 0.5)
+            .padding(.leading, 14)
     }
 
     private var petAssetSubdir: String {
@@ -203,23 +287,34 @@ struct PetHuntView: View {
 
     // MARK: - Accumulator + claim
 
-    /// Headline panel: live counter of pending jetons + Claim button
-    /// + "approaching cap" hint when the buffer is filling.
     private var accumulatorCard: some View {
         VStack(spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 22, height: 22)
-                Text("\(svc.displayedAccumulated)")
-                    .font(.system(size: 36, weight: .bold, design: .monospaced).monospacedDigit())
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.3), value: svc.displayedAccumulated)
+            Text("pet_hunt.accumulator.title".localized.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundColor(Theme.Color.textSecondary)
+            HStack(spacing: 24) {
+                accumulatorCounter(
+                    iconName: "coin",
+                    value: svc.displayedAccumulated,
+                )
+                Rectangle()
+                    .fill(Theme.Color.divider.opacity(0.5))
+                    .frame(width: 0.5, height: 36)
+                accumulatorCounter(
+                    iconName: "gem",
+                    value: svc.displayedAccumulatedGems,
+                )
             }
             if let s = svc.state {
-                Text(String(format: "pet_hunt.daily_yield".localized, s.dailyYield))
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
+                VStack(spacing: 2) {
+                    Text(String(format: "pet_hunt.daily_yield".localized, s.dailyYield))
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Text(String(format: "pet_hunt.daily_gems".localized, s.dailyGems))
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
                 if s.capReached {
                     Text("pet_hunt.cap_reached".localized)
                         .font(.caption2.weight(.semibold))
@@ -247,17 +342,34 @@ struct PetHuntView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(
-                        (svc.displayedAccumulated > 0 ? Theme.Color.accent : Theme.Color.divider)
-                    )
+                    .background(hasAnythingToClaim
+                                ? Theme.Color.accent
+                                : Theme.Color.divider)
                     .cornerRadius(10)
             }
-            .disabled(svc.displayedAccumulated == 0)
+            .disabled(!hasAnythingToClaim)
             .scaleEffect(claimingFlash ? 0.96 : 1.0)
         }
         .padding(16)
         .background(Theme.Color.bgSecondary)
         .cornerRadius(14)
+    }
+
+    private var hasAnythingToClaim: Bool {
+        svc.displayedAccumulated > 0 || svc.displayedAccumulatedGems > 0
+    }
+
+    private func accumulatorCounter(iconName: String, value: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            ItemAssetImage(bundleSubdir: "Items", filename: iconName, ext: "gif")
+                .frame(width: 32, height: 32)
+                .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 4 }
+            Text("\(value)")
+                .font(.system(size: 32, weight: .bold, design: .monospaced).monospacedDigit())
+                .foregroundColor(Theme.Color.textPrimary)
+                .contentTransition(.numericText())
+                .animation(.easeOut(duration: 0.3), value: value)
+        }
     }
 
     // MARK: - Hunt button
@@ -338,12 +450,7 @@ private struct PetHuntInfoSheet: View {
 
     var body: some View {
         NavigationStack {
-            // ScrollView + `.fixedSize` on each body Text — at the
-            // medium detent the death-info copy was truncating to
-            // "..." because the static VStack let SwiftUI compress
-            // bodies vertically. Scroll lets the longer copy breathe;
-            // `.fixedSize(vertical:)` makes Text claim its full
-            // intrinsic height instead of getting clipped.
+            // ScrollView + `.fixedSize` so death-section copy claims full intrinsic height instead of clipping.
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     infoSection(
@@ -492,9 +599,6 @@ private struct HuntResultSheet: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            // Symbol + headline. Animate in with a soft spring on
-            // first appear so the modal feels alive without being
-            // frantic.
             Image(systemName: symbolName)
                 .font(.system(size: 56))
                 .foregroundColor(symbolColor)
@@ -513,12 +617,23 @@ private struct HuntResultSheet: View {
                 .padding(.horizontal, 24)
                 .opacity(entryAnimated ? 1.0 : 0)
 
-            HStack(spacing: 4) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 18, height: 18)
-                Text("+\(result.reward)")
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.Color.accent)
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                        .frame(width: 28, height: 28)
+                    Text("+\(result.reward)")
+                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Color.accent)
+                }
+                if result.gemReward > 0 {
+                    HStack(spacing: 6) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "gem", ext: "gif")
+                            .frame(width: 28, height: 28)
+                        Text("+\(result.gemReward)")
+                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                }
             }
             .opacity(entryAnimated ? 1.0 : 0)
 
@@ -542,9 +657,6 @@ private struct HuntResultSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Color.bgPrimary)
         .onAppear {
-            // Defer haptic + spring by one runloop so the sheet's
-            // own present animation has finished — running both
-            // at the exact same frame felt jittery in dev.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
                     entryAnimated = true
@@ -562,7 +674,7 @@ private struct HuntResultSheet: View {
         switch result.outcome {
         case .success: return "checkmark.seal.fill"
         case .wound:   return "bandage.fill"
-        case .death:   return "leaf.fill"  // somber natural-cycle motif
+        case .death:   return "leaf.fill"
         }
     }
     private var symbolColor: Color {
@@ -650,9 +762,6 @@ private struct MemorialSheet: View {
 
     private func memorialRow(_ entry: MemorialEntry) -> some View {
         HStack(spacing: 12) {
-            // Greyscale-ish presentation: white tint over rarity
-            // colour gives the dimmed-tombstone feel without an
-            // actual bitmap manipulation pipeline.
             ZStack {
                 Rectangle()
                     .fill(Theme.Color.bgSecondary)

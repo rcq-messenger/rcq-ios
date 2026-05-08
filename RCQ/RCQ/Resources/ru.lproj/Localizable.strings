@@ -1184,18 +1184,23 @@
 /* ── Premium UIN Auction ────────────────────────────────── */
 "games.uin_auction.title" = "Аукцион UIN";
 "games.uin_auction.body" = "Один UIN в час. Ставка-война до последней секунды.";
-"games.pets_hunt.title" = "Питомцы на охоте";
+"games.pets_hunt.title" = "Охота";
 "games.pets_hunt.body" = "Снаряжённый питомец пассивно фармит жетоны. Рискни им на охоте — заберёшь больше.";
 
 /* ── Экран Pet Hunt ─────────────────────────── */
 "pet_hunt.daily_yield" = "%d жетонов / день при полной загрузке";
-"pet_hunt.cap_reached" = "Буфер заполнен — забери жетоны или они сгорят";
+"pet_hunt.daily_gems" = "%d гемов / день при полной загрузке";
+"pet_hunt.cap_reached" = "Буфер заполнен — забери награду или она сгорит";
 "pet_hunt.claim" = "Забрать";
 "pet_hunt.send" = "ОТПРАВИТЬ НА ОХОТУ";
 "pet_hunt.hunts_left" = "%d / %d охот сегодня";
 "pet_hunt.cta.open_memorial" = "Мемориал";
 "pet_hunt.empty.no_pet.title" = "Питомец не снаряжён";
 "pet_hunt.empty.no_pet.body" = "Снаряди питомца из инвентаря чтобы начать пассивный фарм жетонов.";
+"pet_hunt.accumulator.title" = "В буфере";
+"pet_hunt.spec.daily_yield" = "Жетонов / день";
+"pet_hunt.spec.daily_gems" = "Гемов / день";
+"pet_hunt.spec.hourly_rate" = "Жетонов / час";
 
 /* Pet Hunt — info */
 "pet_hunt.info.title" = "Как работает Pet Hunt";
@@ -1210,13 +1215,13 @@
 "pet_hunt.zone_picker.title" = "Куда отправить";
 "pet_hunt.zone_picker.intro" = "Больше награда — больше риск. Качество питомца меняет реальные числа.";
 "pet_hunt.zone.forest" = "Лес";
-"pet_hunt.zone.forest.reward" = "Награда 3-8 × статы питомца";
+"pet_hunt.zone.forest.reward" = "Жетоны 3–8 × статы + гемы 0–2";
 "pet_hunt.zone.forest.risk" = "Безопасно — только мелкие раны, без смерти";
 "pet_hunt.zone.mountain" = "Гора";
-"pet_hunt.zone.mountain.reward" = "Награда 8-20 × статы питомца";
+"pet_hunt.zone.mountain.reward" = "Жетоны 8–20 × статы + гемы 1–4";
 "pet_hunt.zone.mountain.risk" = "Рискованно — раны частые, смерть редко";
 "pet_hunt.zone.cave" = "Пещера";
-"pet_hunt.zone.cave.reward" = "Награда 20-50 × статы питомца";
+"pet_hunt.zone.cave.reward" = "Жетоны 20–50 × статы + гемы 2–7";
 "pet_hunt.zone.cave.risk" = "Хардкор — частые раны, реальный риск смерти";
 
 /* Pet Hunt — результат */

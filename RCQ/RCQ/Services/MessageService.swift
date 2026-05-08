@@ -2,24 +2,11 @@ import Foundation
 import os.log
 import UIKit
 
-/// Send + receive layer. Uses CryptoService to encrypt/decrypt. The HTTP send hits
-/// `/messages/sealed` (anonymous — server has no idea who sent it). Group sends fan
-/// out via `/messages/group-sealed`. Server only sees recipient + ciphertext.
-///
-/// 1:1 traffic rides on the real `SignalCryptoService` (CryptoKit ECIES +
-/// Ed25519 sealed-sender, Stage 1). Group traffic still uses the legacy
-/// `LegacyGroupCryptoService` until per-recipient encryption + Sender Keys
-/// land — that's Stage 2 work and is documented loudly on the relevant
-/// send/ingest call sites.
+/// Send + receive layer. Sealed-sender via `/messages/sealed`; group fan-out via `/messages/group-sealed`.
 @MainActor
 final class MessageService {
     static let shared = MessageService()
 
-    /// Stage-2 sealed-sender crypto. Used for both 1:1 and group traffic —
-    /// group sends fan out per-recipient, each ciphertext sealed to one
-    /// member's identity key. Built when `configure()` runs after auth
-    /// bootstrap; force-unwrapped because sends/ingests can't happen
-    /// before that point.
     private var crypto: CryptoService!
     private(set) var ownUIN: Int = 0
 
@@ -29,13 +16,8 @@ final class MessageService {
 
     func configure(ownUIN: Int) {
         self.ownUIN = ownUIN
-        // Rebuild the crypto service around the X25519 + Ed25519 private keys
-        // that AuthService.bootstrapIfNeeded already wrote to the Keychain
-        // (either fresh on first registration, or stored long ago). On the
-        // off chance the Keychain was wiped out from under us, bootstrap a
-        // throwaway identity so encrypt/decrypt at least don't crash —
-        // AuthService's 404/401 recovery on the next `/users/me` round-trip
-        // will force a real re-register.
+        // Throwaway identity fallback for wiped Keychain — AuthService's
+        // 404/401 recovery forces a real re-register on next /users/me.
         if let existing = SignalCryptoService.loadFromKeychain(ownUIN: ownUIN) {
             crypto = existing
         } else if let (_, fresh) = try? SignalCryptoService.bootstrap() {
@@ -60,14 +42,7 @@ final class MessageService {
             replyToAuthorName: replyTo?.authorName
         )
         MessageStore.shared.append(local)
-        // Detach encrypt + POST — the caller (ChatViewModel.send) awaits
-        // this method and the chat composer hangs until it returns. By
-        // returning right after the optimistic append, the bubble paints
-        // on the next frame instead of after Stage 3 session fetch +
-        // crypto + HTTP roundtrip (which together can run 100–500ms on a
-        // cold session, and 5–15ms even hot — visible "ICQ-era" lag).
-        // Failure is reflected back through MessageStore.updateState
-        // inside sendEnvelope, so we can swallow the error here.
+        // Detach so the bubble paints immediately; failure flows through MessageStore.updateState.
         Task { [weak self] in
             try? await self?.sendEnvelope(.text(id: local.id, text: text, ttl: ttl, replyTo: replyTo), to: contact, localID: local.id)
         }
@@ -89,11 +64,6 @@ final class MessageService {
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
-        // Detach upload + crypto + POST so the bubble paints immediately
-        // with its progress strip. Caller doesn't wait on the multi-second
-        // upload — they see the bubble on the next frame, the progress
-        // bar fills as bytes ship, and the delivery state flips once the
-        // server confirms. Same fire-and-forget pattern as the text path.
         Task { [weak self] in
             guard let self else { return }
             let upload: MediaService.UploadResult
@@ -116,9 +86,7 @@ final class MessageService {
         }
     }
 
-    /// Encrypt + upload a recorded voice message and ship the envelope.
-    /// The `.m4a` file at `fileURL` is consumed (deleted on success or
-    /// failure) so callers don't need a separate cleanup pass.
+    /// Consumes the `.m4a` at `fileURL` (deleted on success or failure).
     func sendVoice(fileURL: URL, durationSec: Double, to contact: Contact, replyTo: ReplyContext? = nil) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
@@ -136,9 +104,6 @@ final class MessageService {
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
-        // Same detach pattern as sendPhoto. The local file cleanup moved
-        // inside the Task so it doesn't race the upload. Caller returns
-        // immediately; UI shows the voice bubble with progress strip.
         Task { [weak self] in
             guard let self else { return }
             defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -186,8 +151,6 @@ final class MessageService {
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
-        // Detach — same rationale as sendPhoto. Bubble + thumbnail render
-        // immediately; the upload/encrypt/POST runs in the background.
         Task { [weak self] in
             guard let self else { return }
             defer { try? FileManager.default.removeItem(at: processed.url) }
@@ -221,13 +184,7 @@ final class MessageService {
 
     // MARK: - sending (forward)
 
-    /// Re-send `message` to a 1:1 destination, baking the original
-    /// author's nickname into the envelope so the recipient renders
-    /// "Forwarded from <name>" attribution. Per spec we don't
-    /// propagate the original sender's UIN — nickname-only keeps a
-    /// forwarded message from doubling as a contact-discovery vector.
-    /// The forwarder becomes the apparent sender (their UIN +
-    /// signature go on the wire as usual).
+    /// Nickname-only attribution per spec — original UIN is never propagated.
     func forward(message: Message, authorName: String, toContact contact: Contact) async throws {
         let thread = ThreadID.peer(uin: contact.uin)
         let newID = UUID()
@@ -237,8 +194,6 @@ final class MessageService {
         try await sendEnvelope(envelope, to: contact, localID: local.id)
     }
 
-    /// Group fan-out variant. Same envelope, fanned per-member via
-    /// the existing v=1/v=2 group path.
     func forward(message: Message, authorName: String, toGroup group: RCQGroup) async throws {
         let thread = ThreadID.group(id: group.id)
         let newID = UUID()
@@ -248,19 +203,11 @@ final class MessageService {
         try await sendGroupEnvelope(envelope, to: group, localID: local.id)
     }
 
-    /// Build an envelope that carries the same content as `source`
-    /// but under `newID`, with the destination thread's TTL setting
-    /// and `authorName` as forwarded-from attribution. Caller passes
-    /// the id explicitly so the local Message we append sits under
-    /// the same id and `updateState`/`tombstone` plumbing keeps
-    /// working.
     private func forwardEnvelope(from source: Message, newID: UUID, authorName: String, ttlForThread thread: ThreadID) -> Envelope {
         let ttl = ChatSettingsStore.shared.ttl(for: thread)
         switch source.kind {
         case .photo:
-            // mediaID stored as "<id>|<key>" — split back out so the
-            // forwarded envelope carries the same combined token a
-            // first-hand send produces.
+            // mediaID is "<id>|<key>" — split for the envelope.
             let parts = (source.mediaID ?? "").split(separator: "|", maxSplits: 1).map(String.init)
             let mediaID = parts.first ?? ""
             let mediaKey = parts.count > 1 ? parts[1] : ""
@@ -320,19 +267,12 @@ final class MessageService {
 
     // MARK: - editing
 
-    /// Edit the body text of a previously-sent text bubble. Applies
-    /// the change locally first (optimistic), then ships an `.edit`
-    /// envelope so the recipient's MessageStore mirrors the new
-    /// text + edited-at timestamp. v1 only supports text bubbles —
-    /// callers must gate this themselves (UI does, via the "Edit"
-    /// menu item only appearing on own text rows).
+    /// v1 supports text bubbles only — callers must gate.
     func edit(message: Message, newText: String, to contact: Contact) async throws {
         let now = Date()
         let thread = ThreadID.peer(uin: contact.uin)
         MessageStore.shared.applyEdit(messageID: message.id, thread: thread, newText: newText, editedAt: now)
-        // Saved-Messages short-circuit — same shape as the regular
-        // sendEnvelope path. No wire send because there's no peer
-        // to notify.
+        // Saved Messages — no peer to notify.
         if contact.uin == ownUIN { return }
         try await sendEnvelope(.edit(targetID: message.id, text: newText), to: contact, localID: nil)
     }
@@ -345,12 +285,7 @@ final class MessageService {
     }
 
     func edit(message: Message, newText: String, toRandom peer: RandomPeer) async throws {
-        // Random chat is in-memory only; rebuild the row in the
-        // ephemeral buffer so the bubble re-renders. Wire path
-        // mirrors regular send so the receiver applies via the
-        // same `.edit` ingest branch (random ingest is currently a
-        // no-op for `.edit` — that's fine for v1, the sender-side
-        // local update is the visible part).
+        // Random ingest is a no-op for .edit — sender-side local update is the visible part.
         if let idx = RandomChatService.shared.messages.firstIndex(where: { $0.id == message.id }) {
             var msg = RandomChatService.shared.messages[idx]
             msg = Message(
@@ -369,26 +304,14 @@ final class MessageService {
                 replyToAuthorName: msg.replyToAuthorName,
                 editedAt: Date()
             )
-            // Direct mutation through a private helper would be
-            // cleaner; for now we use the existing append+dedup path
-            // which is idempotent on UUID — but that adds rather
-            // than replaces. Use the deleteMessage + append pattern
-            // to swap. Could be refactored if edit-in-random becomes
-            // a hot path.
+            // delete + append swaps the row since append dedups on UUID.
             RandomChatService.shared.deleteMessage(id: message.id)
             RandomChatService.shared.append(msg)
         }
         try await sendRandomEnvelope(.edit(targetID: message.id, text: newText), to: peer, localID: nil)
     }
 
-    /// Local + remote delete. **Optimistic**: drop the local row
-    /// FIRST so the soft-delete fade fires the instant the user taps,
-    /// then ship the envelope in the background. The previous
-    /// post-await order made groups feel broken — encrypting +
-    /// shipping per-recipient blobs to a 5-person group took 200-500ms
-    /// of wall-clock during which the user's bubble sat untouched, so
-    /// the eventual fade looked like a delayed pop instead of a
-    /// reaction to their tap.
+    /// Drop the local row first so the fade fires on tap; ship envelope after.
     func deleteForEveryone(message: Message, to contact: Contact) async throws {
         MessageStore.shared.deleteLocal(messageID: message.id, thread: .peer(uin: contact.uin))
         try await sendEnvelope(
@@ -398,10 +321,6 @@ final class MessageService {
         )
     }
 
-    /// Random-chat variant of `deleteForEveryone`. Same wire
-    /// shape as the contact path — sealed `.deleteForEveryone`
-    /// envelope through the random tunnel — but the local copy
-    /// lives in `RandomChatService.messages`, not `MessageStore`.
     func deleteForEveryone(message: Message, toRandom peer: RandomPeer) async throws {
         RandomChatService.shared.deleteMessage(id: message.id)
         try await sendRandomEnvelope(
@@ -412,11 +331,7 @@ final class MessageService {
 
     // MARK: - sending (random chat)
 
-    /// Send a text message inside an active random-chat session. Reuses the
-    /// sealed-sender wire (server is type-agnostic — it just relays the blob)
-    /// but routes the local copy through `RandomChatService.messages`, NOT
-    /// `MessageStore`. Random sessions are ephemeral by design — when the
-    /// pair ends, the messages vanish without ever touching CoreData.
+    /// Local copy lives in `RandomChatService.messages` (in-memory, ephemeral).
     func send(text: String, toRandom peer: RandomPeer, replyTo: ReplyContext? = nil) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
@@ -451,11 +366,6 @@ final class MessageService {
         }
     }
 
-    /// Photo into the active random-chat session. Mirrors
-    /// `sendPhoto(_:to: Contact)` but writes the local copy into
-    /// `RandomChatService.messages` (in-memory, ephemeral) instead of
-    /// `MessageStore`. Media still uploads to the regular media bucket
-    /// so the recipient can fetch + decrypt the same way.
     func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
@@ -575,19 +485,6 @@ final class MessageService {
         )
     }
 
-    /// Encrypt + ship a generic envelope to the random peer. Pulled
-    /// out so photo/video paths share the same network shape as
-    /// `send(text:toRandom:)` without duplicating each step. Uses
-    /// the v=1 ECIES path — random peers don't expose a
-    /// `signal_identity_key` (they're discovered fresh, not fetched
-    /// by UIN), so Stage 3 v=2 isn't applicable here.
-    ///
-    /// `localID` is non-nil for content envelopes (text/photo/
-    /// video) where we want to flip a previously-appended
-    /// outbound bubble's delivery state on success/failure. For
-    /// "side-channel" envelopes — reactions, deletes — there's no
-    /// local row to update; pass nil and the helper just ships
-    /// the blob.
     private func sendRandomEnvelope(_ envelope: Envelope, to peer: RandomPeer, localID: UUID?) async throws {
         let bundle = PeerBundle(uin: peer.uin, identityKey: peer.identityKey, signingKey: peer.signingKey)
         let blob = try crypto.encrypt(envelope: envelope, for: bundle)
@@ -628,10 +525,7 @@ final class MessageService {
             replyToAuthorName: replyTo?.authorName
         )
         MessageStore.shared.append(local)
-        // Detach — group fan-out encryption can balloon to N×crypto
-        // rounds (one per member). Holding the caller across that turns
-        // a 10-person group send into a noticeable hang. Bubble paints
-        // immediately, status flips when the fan-out + POST settles.
+        // Detach — fan-out is N×crypto rounds, would otherwise hang the composer.
         Task { [weak self] in
             try? await self?.sendGroupEnvelope(.text(id: local.id, text: text, ttl: ttl, replyTo: replyTo), to: group, localID: local.id)
         }
@@ -770,12 +664,7 @@ final class MessageService {
     }
 
     func deleteForEveryone(message: Message, in group: RCQGroup) async throws {
-        // Same optimistic order as the 1:1 path. Group fan-out is
-        // strictly slower (TaskGroup of N per-recipient encrypts +
-        // one POST), so without the upfront local drop the deleter
-        // sees no animation until the slowest member's libsignal
-        // session encrypt finishes — typically the difference between
-        // "bubble fades smoothly" and "bubble pops a beat later".
+        // Local drop first — fan-out is too slow to animate against.
         MessageStore.shared.deleteLocal(messageID: message.id, thread: .group(id: group.id))
         try await sendGroupEnvelope(
             .deleteForEveryone(targetID: message.id), to: group, localID: nil
@@ -784,9 +673,6 @@ final class MessageService {
 
     // MARK: - premium content (paywalled media)
 
-    /// Recipient + identity-key tuple for the per-recipient ECIES key
-    /// wrap. Built once from the chat target so the wrap loop doesn't
-    /// rebuild PeerBundle on every iteration.
     private struct PremiumRecipient {
         let uin: Int
         let identityKey: String
@@ -810,16 +696,10 @@ final class MessageService {
                 )
             }
         case .randomPeer:
-            // Random chat is ephemeral by design — no wallet identity
-            // to charge, and the peer pair doesn't survive the session.
-            // Premium content doesn't make sense there.
             return []
         }
     }
 
-    /// Wrap K for every recipient + POST `/premium/contents` so the
-    /// server holds the wrapped forms behind the paywall. Same shape
-    /// for both 1:1 and group sends — just the recipient list differs.
     private func uploadPremiumKeys(
         contentID: UUID, mediaKeyB64: String, recipients: [PremiumRecipient], price: Int
     ) async throws {
@@ -842,23 +722,13 @@ final class MessageService {
         )
     }
 
-    /// Send a paywalled photo. Mirrors `sendPhoto` (encrypt + upload
-    /// the media via the existing flow, then ship a sealed envelope)
-    /// with two extras: K is wrapped per-recipient and uploaded to
-    /// `/premium/contents` BEFORE the envelope flies, and the envelope
-    /// carries no `mediaKey` (recipients fetch the wrapped K via
-    /// `/premium/contents/{id}/unlock` after paying).
-    ///
-    /// Local copy is appended unlocked — sender always sees their own
-    /// content. The wire envelope reaches recipients as a locked
-    /// bubble until they pay.
+    /// K is wrapped per-recipient and POSTed to `/premium/contents` before the envelope.
+    /// Recipients fetch wrapped K via `/premium/contents/{id}/unlock` after paying.
     func sendPremiumPhoto(_ image: UIImage, in target: ChatTarget, price: Int, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
         let recipients = premiumRecipients(for: target)
         guard !recipients.isEmpty else { return }
         let messageID = UUID()
         let ttl = ChatSettingsStore.shared.ttl(for: target.thread)
-        // Sender sees the unlocked bubble immediately (we generated K
-        // and have the plaintext-equivalent media handle locally).
         let local = Message(
             id: messageID,
             thread: target.thread,
@@ -889,14 +759,9 @@ final class MessageService {
                 return
             }
             MediaProgressStore.shared.clear(messageID)
-            // Patch the local row with the full mediaID|key pack so the
-            // sender's bubble can decrypt + render the photo just like a
-            // regular .photo message.
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: messageID, thread: target.thread, mediaID: combined)
-            // Wrap K per recipient + POST to backend BEFORE the envelope
-            // so a recipient who races to /unlock right after the WS
-            // event arrives finds the row instead of 404'ing.
+            // POST wrapped keys before the envelope so a racing /unlock finds the row.
             do {
                 try await self.uploadPremiumKeys(
                     contentID: messageID,
@@ -908,10 +773,6 @@ final class MessageService {
                 MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
                 return
             }
-            // For the sender's local thumbnail rendering — generate a
-            // small downscaled JPEG. Receivers blur this for the locked
-            // placeholder; sender doesn't render it (their bubble shows
-            // the full photo via the cached media).
             let blurThumb = Self.blurThumbnailB64(from: image)
             let envelope: Envelope = .premiumPhoto(
                 id: messageID,
@@ -933,9 +794,6 @@ final class MessageService {
         }
     }
 
-    /// Same model as `sendPremiumPhoto` for video — the existing
-    /// VideoProcessor.Output already carries a poster thumbnail we
-    /// can reuse for the blur placeholder.
     func sendPremiumVideo(processed: VideoProcessor.Output, in target: ChatTarget, price: Int, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
         let recipients = premiumRecipients(for: target)
         guard !recipients.isEmpty else { return }
@@ -1008,13 +866,7 @@ final class MessageService {
         }
     }
 
-    /// Recipient-side unlock. Charges the wallet (server-side, atomic
-    /// with the receipt insert), unwraps K with our identity private
-    /// key, and patches the local row so subsequent renders show the
-    /// real media. Idempotent on the server: re-calling unlock on a
-    /// previously-paid content returns the wrapped K without charging
-    /// again. Returns the new wallet balance so the caller can show
-    /// the spend in the UI without a separate inventory refresh.
+    /// Idempotent server-side — re-calling on paid content returns K without recharging.
     func unlockPremium(message: Message) async throws -> Int {
         struct Out: Decodable {
             let wrapped_key: String
@@ -1029,18 +881,10 @@ final class MessageService {
         MessageStore.shared.unlockPremium(
             messageID: message.id, thread: message.thread, mediaKeyB64: mediaKeyB64
         )
-        // Mirror the authoritative wallet from the server reply so
-        // the UI reflects the spend immediately — same pattern as
-        // marketplace buys + Crash settlements.
         ItemsService.shared.setWalletTokens(response.wallet.tokens)
         return response.wallet.tokens
     }
 
-    /// Tiny base64 JPEG used as the locked-state blur source. We
-    /// downscale aggressively (max 64px on the long edge) so even
-    /// before SwiftUI's `.blur(radius:)` is applied, the preview
-    /// reveals only general colors / shapes — no recognizable
-    /// content. Heavily blurred client-side on render.
     private static func blurThumbnailB64(from image: UIImage) -> String {
         let target: CGFloat = 64
         let scale = min(target / image.size.width, target / image.size.height, 1.0)
@@ -1054,26 +898,21 @@ final class MessageService {
 
     // MARK: - read receipts
 
-    /// Acknowledge a batch of received message ids. 1:1 only — group-wide read
-    /// receipts would mean broadcasting per-sender ack to N members, which gets
-    /// noisy fast. For groups we just clear the unread counter and stop.
+    /// 1:1 only — group acks would broadcast to N members.
     func markRead(messages: [Message], in target: ChatTarget) async {
         let received = messages.filter { !$0.isFromMe && $0.deliveryState != .read }
         guard !received.isEmpty else { return }
         let ids = received.map(\.id)
         switch target {
         case .peer(let contact):
-            // Mark locally so we don't re-ack on next open.
             MessageStore.shared.markRead(messageIDs: ids, thread: .peer(uin: contact.uin))
             do {
                 try await sendEnvelope(.readReceipt(targetIDs: ids), to: contact, localID: nil)
             } catch { }
         case .group:
-            // Local-only read in groups for now.
             MessageStore.shared.markRead(messageIDs: ids, thread: target.thread)
         case .randomPeer:
-            // Read receipts in anonymous chat would leak engagement metadata
-            // back to the stranger. Skip.
+            // Would leak engagement metadata to the stranger.
             break
         }
     }
@@ -1084,9 +923,6 @@ final class MessageService {
         let me = ownUIN
         let current = message.reactions[me]
         let newAsset: String? = (current == asset) ? nil : asset
-        // Apply locally first for snappy UI. Random chat keeps its
-        // own in-memory buffer; everything else flows through the
-        // persistent MessageStore.
         if case .randomPeer = target {
             RandomChatService.shared.applyReaction(targetID: message.id, uin: me, asset: newAsset)
         } else {
@@ -1094,7 +930,6 @@ final class MessageService {
                 targetID: message.id, thread: target.thread, uin: me, asset: newAsset
             )
         }
-        // Fan out so the other side updates.
         do {
             switch target {
             case .peer(let c):
@@ -1113,12 +948,7 @@ final class MessageService {
     // MARK: - low level
 
     private func sendEnvelope(_ envelope: Envelope, to contact: Contact, localID: UUID?) async throws {
-        // Saved Messages — sending to our own UIN. Short-circuit: the
-        // local Message is already in MessageStore (the upstream
-        // `send`/`sendPhoto` paths appended before calling here), so
-        // we just flip its delivery state to delivered and stop. No
-        // ciphertext, no /messages/sealed POST, no server queue —
-        // saved-messages stay 100% local on this device.
+        // Saved Messages: stay local — flip delivered state and skip the wire.
         if contact.uin == ownUIN {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .delivered)
@@ -1152,19 +982,10 @@ final class MessageService {
         }
     }
 
-    /// Decide v=1 vs v=2 and encrypt accordingly. Falls back to v=1 if
-    /// the peer hasn't uploaded a libsignal bundle yet, or if Stage 3
-    /// session establishment fails for any reason. Always returns a
-    /// blob the existing transport (`/messages/sealed`) can ship.
     private func encryptForPeer(envelope: Envelope, peer: PeerBundle, peerSignalIdentityKey: String?) async throws -> String {
         guard let psk = peerSignalIdentityKey, !psk.isEmpty else {
-            // Stage 2-only peer — straight v=1.
             return try crypto.encrypt(envelope: envelope, for: peer)
         }
-        // Stage 3 path: ensure session, then v=2 encrypt. Any failure
-        // here (network, malformed bundle, identity-store error) drops
-        // back to v=1 so the message still ships. Stage 3 is a perf
-        // and security win, not a hard requirement per message.
         do {
             try await SignalCryptoService.ensureStage3Session(forPeerUIN: peer.uin)
             return try crypto.encryptStage3(envelope: envelope, for: peer)
@@ -1175,27 +996,9 @@ final class MessageService {
     }
 
     private func sendGroupEnvelope(_ envelope: Envelope, to group: RCQGroup, localID: UUID?) async throws {
-        // Group fan-out: encrypt the envelope ONCE PER MEMBER (skipping
-        // ourselves — we already keep the local copy in MessageStore from
-        // the upstream send call). Per-member encryption picks v=2 (Stage 3
-        // hybrid: outer ECIES + inner libsignal session) when the member
-        // has uploaded a libsignal bundle, otherwise falls back to v=1
-        // (Stage 2 ECIES) so a stage-2-only member still gets the message.
-        //
-        // We deliberately skip libsignal Sender Keys for groups: those
-        // need either a server-signed SenderCertificate (heavy server
-        // crypto, not in this stage) or a leaked sender_uin in the
-        // outer wire (regresses the sealed-sender property Stage 2
-        // already shipped). Per-member v=2 keeps sealed-sender intact at
-        // the cost of N libsignal session encrypts instead of one
-        // groupEncrypt — acceptable for typical group sizes.
+        // Per-member encrypt (skipping self) — keeps sealed-sender intact
+        // at the cost of N session encrypts vs one Sender-Keys groupEncrypt.
         struct Entry: Encodable { let to_uin: Int; let payload: String }
-        // Parallel fan-out — earlier serial loop made a 10-person group
-        // pay 10× the per-peer encryption time. With TaskGroup the
-        // wall-clock cost collapses to roughly the slowest single
-        // member's Stage-3 session establishment (still bound by the
-        // shared SignalProtocolDB write lock for new sessions, but
-        // cached sessions encrypt fully in parallel).
         let recipients = group.members.filter { m in
             guard m.uin != ownUIN else { return false }
             if m.identityKey.isEmpty {
@@ -1220,9 +1023,7 @@ final class MessageService {
                         )
                         return Entry(to_uin: member.uin, payload: blob)
                     } catch {
-                        // One member's pubkey malformed — skip them, don't
-                        // fail the whole send. Their copy is lost for this
-                        // message; everyone else still gets it.
+                        // Skip one bad pubkey rather than failing the whole send.
                         print("[MessageService] encrypt for \(member.uin) failed: \(error)")
                         return nil
                     }
@@ -1273,20 +1074,10 @@ final class MessageService {
 
     // MARK: - profile visits
 
-    /// Last time we pinged each (target) UIN with a `.visit` envelope this session.
-    /// In-memory only — app restart resets it, which is fine: a viewer who reopens
-    /// the app and views the same profile counts as one fresh visit, not spam.
     private var lastVisitFiredAt: [Int: Date] = [:]
-    /// Don't re-fire `.visit` to the same target more often than this. Receiver
-    /// dedups too (in `VisitStore`), but cheap belt-and-suspenders avoids the
-    /// network round-trip on tap-spamming open/close on the same profile.
     private static let visitThrottle: TimeInterval = 60 * 60
 
-    /// Fire-and-forget: tell `targetUIN` that we just looked at their profile.
-    /// Sealed-sender, so the server only sees recipient + opaque blob. Caller
-    /// passes the target's identity + signing keys (both on hand from
-    /// `GET /users/.../info`). Throttled per (own-session, target) so re-opens
-    /// within the hour don't spam.
+    /// Fire-and-forget visit ping. Throttled per (session, target).
     func sendVisit(toUIN targetUIN: Int, identityKey: String, signingKey: String, signalIdentityKey: String? = nil) async {
         guard targetUIN != ownUIN else { return }
         if let last = lastVisitFiredAt[targetUIN],
@@ -1310,27 +1101,12 @@ final class MessageService {
                 authenticated: false
             )
         } catch {
-            // Fire-and-forget — a missed visit is just a missed +1 on the
-            // recipient's counter. Don't surface it.
             lastVisitFiredAt[targetUIN] = nil
         }
     }
 
-    /// Pluck out the carrying message id from an envelope when one exists. Used by
-    /// the block-bounce path: we need the id of the message we're rejecting to put
-    /// in our bounce envelope.
-    /// In random chat the sender embeds the *sender-side*
-    /// `authorName` ("You" if they're replying to their own
-    /// bubble, "Stranger" if to the peer's). On the receiving
-    /// end that mapping inverts: a "You" from the wire really
-    /// means "the original message was the *sender's* bubble"
-    /// — which from this client's vantage point is the
-    /// stranger. So we ignore `reply.authorName` entirely and
-    /// rebuild the label by looking up the parent in our local
-    /// random buffer: own bubble → "You", peer's → "Stranger".
-    /// Falls back to whatever was on the wire if the parent
-    /// can't be found (e.g. it was deleted-for-everyone before
-    /// this reply arrived).
+    /// Inverts wire `authorName` for random chat: sender's "You" = receiver's "Stranger".
+    /// Falls back to wire value if parent is gone.
     @MainActor
     static func resolveRandomReplyAuthor(reply: ReplyContext?) -> String? {
         guard let reply else { return nil }
@@ -1365,42 +1141,18 @@ final class MessageService {
 
     // MARK: - ingest
 
-    /// Outcome of an `ingest()` call. Callers (AppState's WS event
-    /// dispatcher, `fetchOfflineQueue`) need to know not just which
-    /// thread the envelope landed in but also whether it represents
-    /// new content — without that, a queue-drain that re-delivers an
-    /// already-stored message would still bump unread / play a
-    /// sound, inflating badges past the real unread count.
     struct IngestOutcome {
         let thread: ThreadID
-        /// True only when a brand-new content row landed in
-        /// `MessageStore`. False for: dedup'd content (same UUID
-        /// already stored), ephemeral / control envelopes
-        /// (read receipt, reaction, delete, bounce), and visits.
+        /// True only for brand-new content; false for dedup, control envelopes, visits.
         let isNewContent: Bool
     }
 
-    /// Decrypt an inbound envelope from the WS layer. Returns the
-    /// resulting thread + new-content flag so AppState can route
-    /// side-effects (badge, sound). `nil` means "drop silently" —
-    /// decrypt failed, blocked sender, random-chat routed, or
-    /// non-thread-routed envelope (visit).
+    /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket) -> IngestOutcome? {
         do {
-            // Stage-2: 1:1 AND group envelopes both ride on the same ECIES
-            // path. The sender encrypts per-recipient (one ciphertext per
-            // group member), so each member's wire payload is structurally
-            // identical to a 1:1 envelope addressed to them. Sender info
-            // lives inside the ciphertext via Ed25519 sealed-sender on
-            // every kind of envelope.
-            //
-            // First, check whether the NSE already decrypted this same
-            // ciphertext to render the push preview. For v=2 (libsignal)
-            // payloads that's load-bearing — calling `crypto.decrypt`
-            // twice on the same wire bytes advances the Double Ratchet
-            // twice and the second call fails. The cache hand-off keeps
-            // libsignal at exactly one decrypt per envelope.
+            // Hand off NSE-decrypted plaintext if present — decrypting v=2
+            // twice would advance the Double Ratchet twice and fail.
             let decrypted: DecryptedEnvelope
             if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
                 decrypted = cached
@@ -1409,12 +1161,7 @@ final class MessageService {
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
 
-            // Random-chat routing: if the sender is our currently-matched
-            // anonymous peer, the envelope belongs in `RandomChatService` —
-            // ephemeral and unpersisted — not the regular MessageStore. We
-            // only do this for 1:1 (no `groupID`) and for content envelopes
-            // that make sense in random chat (text for v1; photo/video etc.
-            // would land later if we choose to allow them).
+            // Route to ephemeral random buffer when sender is the active anonymous peer.
             if ws.groupID == nil,
                let peer = RandomChatService.shared.activePeer,
                decrypted.senderUIN == peer.uin {
@@ -1492,18 +1239,13 @@ final class MessageService {
                         targetID: targetID, uin: peer.uin, asset: asset
                     )
                 default:
-                    // Read-receipts, visits, system notices etc.
-                    // don't make sense in an ephemeral random
-                    // session — drop silently.
                     break
                 }
                 return nil
             }
 
-            // Block-list enforcement, client side. The server can't enforce it under
-            // sealed sender — only we know who actually sent this envelope. We drop
-            // the inbound silently AND bounce a tombstone back so the blocked sender's
-            // bubble flips to `.failed` (gives them an indication, not a leak).
+            // Block-list enforcement is client-side only under sealed sender.
+            // Bounce a tombstone so sender's bubble flips to .failed.
             let senderContact = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
             if let blocked = senderContact?.blocked, blocked {
                 if let messageID = Self.messageID(in: decrypted.envelope), let contact = senderContact {
@@ -1512,17 +1254,8 @@ final class MessageService {
                 return nil
             }
 
-            // Disappearing-message TTL precedence: sender's envelope ttl wins
-            // (their setting at send time), otherwise fall back to the
-            // recipient's local thread setting so each side can shorten the
-            // lifespan unilaterally.
+            // TTL precedence: envelope ttl wins, else local thread setting.
             let localTTL = ChatSettingsStore.shared.ttl(for: thread)
-            // Tracks whether `MessageStore.append` actually inserted
-            // a new row or whether it deduped against an existing
-            // UUID. Only content envelopes (text/photo/video/system)
-            // ever flip this true; control envelopes (delete / read /
-            // reaction / bounce) leave it false because the unread /
-            // sound side-effects shouldn't fire for those anyway.
             var inserted = false
             switch decrypted.envelope {
             case .text(let id, let text, let envTTL, let fwd, let reply):
@@ -1596,11 +1329,8 @@ final class MessageService {
                     replyToAuthorName: reply?.authorName
                 ))
             case .deleteForEveryone(let targetID):
-                // Drop the row outright on the receiving side too — no
-                // "Message deleted" placeholder, the bubble just disappears.
                 MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
             case .readReceipt(let ids):
-                // Sender's bubbles in *our* thread with this peer flip to .read.
                 MessageStore.shared.markRead(messageIDs: ids, thread: thread)
             case .reaction(let targetID, let asset):
                 MessageStore.shared.applyReaction(
@@ -1610,17 +1340,9 @@ final class MessageService {
             case .bounce(let targetID):
                 MessageStore.shared.updateState(messageID: targetID, thread: thread, state: .failed)
             case .visit(let at):
-                // Profile-view ping. Receiver-only side effect: bump the local
-                // visit log. We deliberately don't append to MessageStore — it's
-                // not a chat event and shouldn't show up in any thread.
                 VisitStore.shared.record(viewer: decrypted.senderUIN, at: at)
                 return nil
             case .edit(let targetID, let newText):
-                // Sender's edit lands on a row we already have. Apply
-                // it to MessageStore so the bubble re-renders with the
-                // updated text + the "(edited)" affordance. No new
-                // unread / sound side-effects — `isNewContent` stays
-                // false because nothing fresh appeared in the thread.
                 MessageStore.shared.applyEdit(
                     messageID: targetID, thread: thread,
                     newText: newText, editedAt: ws.serverTime
@@ -1636,10 +1358,7 @@ final class MessageService {
                     deliveryState: .delivered
                 ))
             case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let envTTL, let fwd, let reply):
-                // Locked bubble: store the mediaID with empty key
-                // (`<id>|`) so the existing media renderer's parser
-                // doesn't crash when it splits on `|`. The unlock flow
-                // patches in the real key + flips `premiumUnlocked`.
+                // Empty key half (`<id>|`) keeps the media renderer's split parser happy until unlock.
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1681,13 +1400,6 @@ final class MessageService {
                     premiumUnlocked: false
                 ))
             }
-            // Diagnostic: log successful ingest with key fields so
-            // when a user reports "message didn't appear" we can see
-            // in Console.app whether decrypt actually ran AND under
-            // which sender UIN / thread the message landed. Without
-            // this we have to guess between "decrypt failed silently"
-            // and "stored under a different thread than the user
-            // expected".
             os_log(
                 "ingest ok: senderUIN=%d thread=%{public}@ envType=%{public}@ offline=%{public}d new=%{public}d",
                 log: Self.log, type: .info,
@@ -1699,13 +1411,7 @@ final class MessageService {
             )
             return IngestOutcome(thread: thread, isNewContent: inserted)
         } catch {
-            // Decrypt / verify failures land here. Most common cause:
-            // sender's contact list cached the recipient's old
-            // identity_key (after the recipient reinstalled or
-            // re-registered). Surface the error to Console.app so
-            // we don't lose visibility — the previous silent return
-            // made it impossible to tell the difference between
-            // "nothing arrived" and "arrived but couldn't decrypt".
+            // Common: stale identity_key after peer reinstall/re-register.
             os_log(
                 "ingest decrypt failed: %{public}@ — payload=%{public}@... type=%{public}@ offline=%{public}d groupID=%{public}@",
                 log: Self.log, type: .error,
@@ -1729,12 +1435,7 @@ final class MessageService {
         }
         do {
             let rows: [Row] = try await APIClient.shared.request("GET", "/messages/queue")
-            // Track UINs that ingested under a thread we don't have a
-            // contact for. If any landed, force a contact-list refresh
-            // after the drain — covers the case where a peer was added
-            // (or re-registered with a new UIN) while we were offline,
-            // so a tap on the push notification can find their row in
-            // the freshly-pulled list.
+            // Refresh contact list if any envelope landed under an unknown UIN.
             var sawUnknownPeer = false
             for r in rows {
                 let env = WebSocketService.EnvelopePacket(
@@ -1745,13 +1446,7 @@ final class MessageService {
                     groupID: r.group_id
                 )
                 guard let outcome = ingest(envelope: env) else { continue }
-                // Only bump unread for content that actually landed
-                // in the store. The HTTP queue drain races with the
-                // server's WS `_on_connect` flush, so the same row
-                // can be ingested twice (once via WS push with
-                // `offline=true`, once via this HTTP fetch). The new-
-                // content flag stops both paths from each adding
-                // their own +1 to the badge.
+                // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
                 guard outcome.isNewContent else { continue }
                 switch outcome.thread {
                 case .peer(let uin):
@@ -1766,8 +1461,6 @@ final class MessageService {
             if sawUnknownPeer {
                 await ContactService.shared.refresh()
             }
-        } catch {
-            // Silent — server will retry on next reconnect.
-        }
+        } catch { }
     }
 }

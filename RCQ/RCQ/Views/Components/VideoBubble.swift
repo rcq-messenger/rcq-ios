@@ -2,10 +2,8 @@ import AVKit
 import SwiftUI
 import UIKit
 
-/// Video message bubble. Shows the inline thumbnail (decoded from the envelope's
-/// embedded base64), a play button overlay, and the duration badge. Tapping
-/// downloads the encrypted blob, decrypts to a temp file, and plays in
-/// fullscreen via AVPlayerViewController.
+/// Video message bubble. Inline thumbnail + play overlay + duration badge.
+/// Tap → downloads encrypted blob, decrypts to temp file, plays via AVPlayerViewController.
 struct VideoBubble: View {
     let message: Message
     var maxWidth: CGFloat = 240
@@ -15,32 +13,16 @@ struct VideoBubble: View {
     @State private var playerURL: URL?
     @StateObject private var progress = MediaProgressStore.shared
 
-    /// True while we're still uploading the encrypted blob — bubble
-    /// has thumbnail (baked from local source) but no `mediaID`
-    /// yet, and `deliveryState` is still `sending`. Drives the
-    /// progress-ring overlay instead of the play button.
     private var isUploading: Bool {
         message.mediaID == nil && message.deliveryState == .sending
     }
 
-    /// Upload finished but failed (size cap, network, server error).
-    /// Visually distinct from "still uploading" so the user knows
-    /// to re-pick the file rather than wait. Currently no in-row
-    /// retry — user has to delete the bubble and re-attach (matching
-    /// the photo path; retry-button is a polish-tier item).
     private var didFailUpload: Bool {
         message.mediaID == nil && message.deliveryState == .failed
     }
 
     var body: some View {
         ZStack {
-            // Background layer: thumbnail when decoded, secondary
-            // fill otherwise. Decoupling the overlays from the
-            // thumb-availability branch fixes the "first-frame
-            // placeholder shows nothing" symptom — the ring (or
-            // failure marker) appears the instant the bubble paints,
-            // regardless of how long the base64 → UIImage decode
-            // takes.
             if let thumb {
                 Image(uiImage: thumb)
                     .resizable()
@@ -50,10 +32,6 @@ struct VideoBubble: View {
             } else {
                 placeholderFill
             }
-            // Duration badge — only meaningful once we know the
-            // bubble is "real video" (mediaID landed or thumb
-            // decoded). Hide during upload to give the ring full
-            // visual weight.
             if !isUploading && !didFailUpload, message.durationSec > 0 {
                 VStack {
                     HStack {
@@ -69,9 +47,6 @@ struct VideoBubble: View {
                 }
                 .frame(width: maxWidth, height: maxWidth * 0.75)
             }
-            // Foreground state overlay — exactly one of (uploading
-            // ring, upload-failed marker, preparing spinner, play
-            // button) is rendered.
             if isUploading {
                 uploadRing
             } else if didFailUpload {
@@ -104,12 +79,6 @@ struct VideoBubble: View {
         }
     }
 
-    /// Determinate progress ring drawn over the video thumbnail
-    /// while the encrypted blob is uploading. Shares the visual
-    /// language of `PhotoBubble.uploadingPlaceholder` — circle +
-    /// arc + percentage — but layers over the live thumbnail
-    /// rather than a flat secondary background, since video bubbles
-    /// always have a poster frame.
     private var uploadRing: some View {
         ZStack {
             Color.black.opacity(0.35)
@@ -129,16 +98,10 @@ struct VideoBubble: View {
         }
     }
 
-    /// Background fill used when the thumbnail isn't decoded yet.
-    /// No icon — the foreground state overlay (ring / failure /
-    /// play) provides all the visual content the user needs.
     private var placeholderFill: some View {
         Theme.Color.bgSecondary
     }
 
-    /// Failed-upload marker — explicit "X" + small caption so the
-    /// user sees that this bubble didn't go anywhere instead of
-    /// staring at a play button that does nothing.
     private var uploadFailed: some View {
         ZStack {
             Color.black.opacity(0.55)

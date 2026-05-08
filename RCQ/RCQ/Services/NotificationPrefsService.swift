@@ -1,20 +1,13 @@
 import Foundation
 
-/// Per-user push-notification preferences. Mirror of the backend's
-/// `push_preferences` JSONB column on the User table — same shape,
-/// same defaults. Backend is the source of truth (it's what
-/// actually gates the APNs send), but the iOS Settings UI binds
-/// against this in-memory copy for snappy toggle UX.
+/// Per-user push prefs. Mirror of backend `push_preferences` JSONB.
+/// Backend is source of truth; this is an in-memory copy for snappy UI.
 ///
-/// Sealed-sender messages (1:1 + group) keep their existing
-/// always-push behaviour. The server never knows the sender of a
-/// sealed payload, so a "from contacts only" toggle for messages
-/// can't be enforced server-side without unwrapping the seal.
-/// What we DO control here:
+/// Sealed-sender messages (1:1 + group) keep always-push — server can't
+/// see the sender to gate by contact/stranger. Controls here cover:
 ///   - contact-request push on/off
 ///   - trade-offer push, split by contact / stranger
-///   - per-UIN mute list (silences contact_request + trade
-///     pushes from those senders)
+///   - per-UIN mute list (silences contact_request + trade pushes)
 @MainActor
 final class NotificationPrefsService: ObservableObject {
     static let shared = NotificationPrefsService()
@@ -45,26 +38,18 @@ final class NotificationPrefsService: ObservableObject {
 
     private init() {}
 
-    /// Pull preferences from the server. Called from `AppState.boot`
-    /// once auth is in place. Soft-fail to defaults on network
-    /// error — UI falls back to "permissive" so the user isn't
-    /// silently muted because /users/me/push-preferences 500'd.
+    /// Pull from server. Soft-fail keeps current state — don't reset
+    /// to defaults on a network blip mid-session.
     func refresh() async {
         do {
             let out: Prefs = try await APIClient.shared.request("GET", "/users/me/push-preferences")
             self.prefs = out
         } catch {
-            // Keep current state — don't reset to defaults on a
-            // network blip mid-session.
         }
         self.loaded = true
     }
 
-    /// Replace `prefs` and ship the change. Single endpoint accepts
-    /// partial updates, but it's simpler to ship the full map every
-    /// toggle and let the server do its own field-by-field merge.
-    /// Optimistic — UI flips immediately, server-side state catches
-    /// up async.
+    /// Optimistic full-map PUT. UI flips first, server catches up async.
     func update(_ patch: (inout Prefs) -> Void) async {
         var next = prefs
         patch(&next)
@@ -87,9 +72,7 @@ final class NotificationPrefsService: ObservableObject {
                 )
             )
         } catch {
-            // Couldn't sync — server keeps its old value, ours has
-            // already drifted. On next `refresh()` (boot or pull-
-            // to-refresh) the server's authoritative state wins.
+            // Server keeps its old value — next refresh() reconciles.
         }
     }
 
@@ -105,10 +88,7 @@ final class NotificationPrefsService: ObservableObject {
         await update { $0.tradesFromStrangers = on }
     }
 
-    /// Add or remove a UIN from the muted list. Used by the
-    /// per-contact mute toggle in the contact list — the same
-    /// action that toggles iOS-side sound mute also flips this so
-    /// the server stops firing pushes from that sender.
+    /// Per-contact mute also flips server-side push gating.
     func setMuted(_ uin: Int, muted: Bool) async {
         await update { current in
             var set = Set(current.mutedUINs)
@@ -117,7 +97,6 @@ final class NotificationPrefsService: ObservableObject {
         }
     }
 
-    /// Burn-flow reset. Called from `AppState.burnAccount`.
     func wipe() {
         prefs = .defaults
         loaded = false

@@ -7,25 +7,13 @@ struct AddContactView: View {
     @State private var results: [UserProfile] = []
     @State private var loading = false
     @State private var sentTo: Set<Int> = []
-    /// Server-fetched previews of foreign (non-member) groups matching
-    /// the query — by exact id when numeric, by name substring otherwise.
-    /// Drives the "Join group" affordances at the top of the result list.
     @State private var foreignGroups: [GroupService.Preview] = []
-    /// Debounce token so per-keystroke searches don't fan out a request
-    /// for every typed character. Replaced on each query change; the
-    /// previous task self-cancels via the equality guard inside.
     @State private var searchTask: Task<Void, Never>?
-    /// Active "Join group" sheet target. Set on tap of the preview row.
     @State private var joinPreview: GroupService.Preview?
-    /// Pre-filled UIN from an `rcq://add/{uin}` deep link. When set, the search
-    /// is kicked off immediately on appear so the user lands on the target row.
+    /// Pre-filled UIN from an `rcq://add/{uin}` deep link.
     var prefillUIN: Int? = nil
-    /// Optional callback so the caller (ContactListView) can dismiss this sheet
-    /// and push the group chat onto its NavigationStack when a group result is
-    /// tapped — Telegram-style mixed search.
     var onSelectGroup: ((RCQGroup) -> Void)? = nil
 
-    /// Local-filter my groups by name or id substring.
     private var groupMatches: [RCQGroup] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
@@ -34,9 +22,6 @@ struct AddContactView: View {
         }
     }
 
-    /// Trimmed-and-lowercased query — used both for the local
-    /// groups filter and as the cancellation key on the debounced
-    /// foreign-group search.
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespaces)
     }
@@ -135,11 +120,6 @@ struct AddContactView: View {
         }
     }
 
-    /// Debounced foreign-group search. Cancels any in-flight task on
-    /// each keystroke and waits 300ms before hitting the server, so
-    /// fast typists don't fan out one request per character. Local
-    /// own-group matches are excluded server-side via the caller-uin
-    /// filter on `/groups/search`.
     private func scheduleForeignGroupSearch() {
         searchTask?.cancel()
         let q = trimmedQuery
@@ -151,7 +131,6 @@ struct AddContactView: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
             let rows = await groupSvc.search(query: q)
-            // Race guard — query may have changed during the request.
             if !Task.isCancelled, q == trimmedQuery {
                 foreignGroups = rows
             }
@@ -176,17 +155,13 @@ struct AddContactView: View {
             let rows: [UserProfile] = try await APIClient.shared.request(
                 "GET", "/users/search", query: ["q": q, "limit": "30"]
             )
-            // Defensive: hide the caller from their own search even if an older
-            // backend forgets. Server-side filter is the real fix; this is a belt.
+            // Defensive filter; server should also exclude self.
             let me = AuthService.shared.ownUIN
             self.results = rows.filter { $0.uin != me }
         } catch { }
     }
 }
 
-/// Foreign-group preview row — surfaced when the user types a
-/// numeric id we don't already belong to. Shows the price tag prominently
-/// when the group is paid; tap routes to `JoinGroupSheet`.
 private struct GroupPreviewHit: View {
     let preview: GroupService.Preview
 
@@ -220,7 +195,6 @@ private struct GroupPreviewHit: View {
                 }
             }
             Spacer()
-            // Price chip when paid, else a join chevron.
             if let price = preview.entryPriceTokens, price > 0 {
                 HStack(spacing: 3) {
                     ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
@@ -240,10 +214,6 @@ private struct GroupPreviewHit: View {
     }
 }
 
-/// Modal sheet shown when the user taps a foreign-group preview row.
-/// Renders the deal one more time + the explicit Join CTA. On
-/// success the parent dismisses itself and routes the user into the
-/// group's chat.
 struct JoinGroupSheet: View {
     let preview: GroupService.Preview
     var onJoined: (RCQGroup) -> Void
@@ -447,8 +417,6 @@ private struct AddDetailView: View {
     @State private var showInventory = false
     @State private var showTrade = false
 
-    /// True if `user` is already in our contact list — the backend will reject a
-    /// duplicate Add anyway, but we hide the button preemptively for a cleaner UX.
     private var alreadyInList: Bool {
         contacts.contacts.contains(where: { $0.uin == user.uin })
     }
@@ -485,11 +453,6 @@ private struct AddDetailView: View {
                 .padding(.horizontal, 24)
                 .disabled(buttonState.disabled)
 
-                // Inventory + Propose-trade affordances. The trade
-                // system is open by default — anyone can propose
-                // (subject to the recipient's `trade_policy`), so a
-                // user can be encountered via search and exchange
-                // gifts without being a mutual contact first.
                 HStack(spacing: 8) {
                     Button {
                         showInventory = true
@@ -501,10 +464,6 @@ private struct AddDetailView: View {
                             .foregroundColor(Theme.Color.textPrimary)
                             .cornerRadius(4)
                     }
-                    // Trade button — accent green to match the
-                    // primary "propose trade" CTA on UserInfoView.
-                    // Inventory stays neutral; Trade is the affordance
-                    // we're nudging toward.
                     Button {
                         showTrade = true
                     } label: {
@@ -547,8 +506,7 @@ private struct AddDetailView: View {
             try await ContactService.shared.sendAddRequest(to: user.uin)
             onSent()
             sent = true
-            // The auto-accept branch on the backend may have already made us mutual
-            // contacts; refresh to reflect that without waiting for a presence event.
+            // Server may have auto-accepted — refresh without waiting for the WS event.
             await ContactService.shared.refresh()
         } catch let APIError.http(code, _) where code == 409 {
             errorMessage = "add.error.duplicate".localized
@@ -590,18 +548,12 @@ struct PendingRequestsView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("common.close".localized) { dismiss() } }
             }
         }
-        // Compact by default — most users have 0–1 pending requests at a
-        // time, so the half-screen `.medium` was too tall. Drag-up to expand
-        // when the queue actually has volume.
         .presentationDetents([.fraction(0.32), .large])
         .presentationDragIndicator(.visible)
     }
 
     private func requestRow(_ req: ContactService.PendingRequest) -> some View {
-        // `String(req.from_uin)` bypasses Text's locale-aware number
-        // formatting — without it, "100,000,000" renders with grouping
-        // separators (spaces in RU, commas in US, etc.) which reads as
-        // junk inside parentheses.
+        // `String(req.from_uin)` bypasses Text's locale-aware grouping separators.
         VStack(alignment: .leading, spacing: 8) {
             Text(String(format: "pending.row.body".localized, req.nickname, String(req.from_uin)))
                 .font(.body)

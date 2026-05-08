@@ -1,18 +1,10 @@
 import SwiftUI
 
-/// Sheet behind the `+` icon next to the Audio Rooms section header.
-/// Two paths: create a brand-new room (server mints the join key,
-/// owner becomes the first subscriber) or join an existing one by
-/// pasting the 8-char key. Both flows resolve to an `AudioRoom`,
-/// which the caller can then `enter()` if the user wants to drop
-/// straight into the voice session.
+/// Sheet for creating or joining an audio room. Both paths resolve to an `AudioRoom`.
 struct CreateOrJoinAudioRoomSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var rooms = AudioRoomService.shared
 
-    /// Caller hook so the home-screen list can immediately push the
-    /// `AudioRoomScreen` for the newly-created/joined room. Sheet
-    /// closes either way.
     var onResolved: (AudioRoom) -> Void = { _ in }
 
     @State private var mode: Mode = .create
@@ -38,17 +30,11 @@ struct CreateOrJoinAudioRoomSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { sheetToolbar }
         }
-        // Half-height by default; the user can drag to large if they
-        // want more room (e.g. when the on-screen keyboard is up).
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 
-    /// Form body extracted into its own computed view so we can layer
-    /// `.listSectionSpacing(.compact)` on iOS 17+ (collapses the
-    /// otherwise-fat gap between the navbar and the hero icon)
-    /// without the iOS 16 build complaining about an unavailable
-    /// modifier.
+    // listSectionSpacing(.compact) is iOS 17+; split so iOS 16 build doesn't complain.
     @ViewBuilder
     private var formBody: some View {
         let f = formContent
@@ -76,13 +62,6 @@ struct CreateOrJoinAudioRoomSheet: View {
 
     private var formContent: some View {
         Form {
-                // Hero header — RouletteView-style icon + short
-                // kicker. Snug to the navbar (negative top inset
-                // collapses the Form's default first-section spacing
-                // and the row's own vertical padding) so the surface
-                // doesn't read as half-empty above the fold. Icon +
-                // copy cross-fade on `mode` so the create ↔ join
-                // toggle has a smooth swap instead of a hard cut.
                 Section {
                     VStack(spacing: 10) {
                         Image(systemName: mode == .create
@@ -109,9 +88,6 @@ struct CreateOrJoinAudioRoomSheet: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
 
-                // Segmented picker is already its own visual container —
-                // strip the surrounding Section card so we don't get a
-                // pill-inside-a-pill double-frame.
                 Section {
                     Picker("", selection: $mode.animation(.easeInOut(duration: 0.22))) {
                         ForEach(Mode.allCases) { m in
@@ -123,12 +99,7 @@ struct CreateOrJoinAudioRoomSheet: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
 
-                // Field section cross-fades alongside the hero. The
-                // `.id(mode)` on the section block forces SwiftUI to
-                // treat create-mode and join-mode as DIFFERENT rows,
-                // so it animates them in/out instead of mutating the
-                // same row's content (which would jump the keyboard
-                // capitalisation mid-fade).
+                // Distinct .id per mode so SwiftUI treats them as different rows and animates the swap.
                 Group {
                     if mode == .create {
                         Section {

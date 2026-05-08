@@ -2,27 +2,8 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Imperative UIKit-driven launcher for PHPickerViewController.
-///
-/// SwiftUI's `.sheet { PhotoPicker(...) }` works fine outside a
-/// `fullScreenCover`, but on iOS 26 there is a cascade-dismiss
-/// bug: when a PHPicker sheet hosted inside a fullScreenCover
-/// dismisses (either via `picker.dismiss(...)` or via the binding
-/// flipping to false), the system unwinds the modal stack one
-/// step too far and tears down the parent fullScreenCover too.
-/// Visible to the user as "I sent a photo and the chat
-/// disappeared". Wrapping `ChatView` in a `NavigationStack` did
-/// not help on iOS 26.
-///
-/// Workaround: present the picker imperatively via UIKit on the
-/// scene's top view controller, completely outside SwiftUI's
-/// `.sheet` mechanism. Dismiss is then a plain `dismiss(animated:)`
-/// on the picker itself, which iOS handles correctly without
-/// touching ancestor SwiftUI presentations.
-///
-/// API mirrors the SwiftUI wrappers it replaces:
-/// `pickImages(limit:)` for PhotoPicker, `pickVideo()` for
-/// VideoPicker.
+/// iOS 26 cascade-dismiss bug: PHPicker hosted in `.sheet` inside a `fullScreenCover`
+/// tears down the parent cover on dismiss. Present imperatively on the scene's top VC instead.
 @MainActor
 enum ImperativePicker {
 
@@ -38,21 +19,11 @@ enum ImperativePicker {
         let picker = PHPickerViewController(configuration: cfg)
         let coord = ImageCoordinator(onPick: onPick)
         picker.delegate = coord
-        // Anchor the coordinator to the picker's lifetime — we only
-        // hold a weak ref via `delegate`, but the coordinator must
-        // outlive the picker's last delegate callback. Stash on
-        // `presentationController.delegate` won't do (taken by the
-        // PHPickerViewController). Use associated objects on the
-        // picker so the coord goes away with it.
+        // delegate is weak; associated object keeps coord alive for picker's lifetime.
         objc_setAssociatedObject(picker, &Self.coordKey, coord, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         presenter.present(picker, animated: true)
     }
 
-    /// Launch the system camera for an in-the-moment photo OR video
-    /// capture. Uses `UIImagePickerController` (PHPicker has no camera
-    /// source). Both modes are exposed in one call so the chat
-    /// attachment menu can drop the user into either capture flow.
-    /// `.both` lets the user choose still/movie inside the picker.
     enum CameraMode { case photo, video, both }
 
     static func captureFromCamera(mode: CameraMode = .both, onPick: @escaping (CapturedMedia?) -> Void) {
@@ -98,9 +69,6 @@ enum ImperativePicker {
 
     // MARK: - top VC lookup
 
-    /// Walk the active scene's window chain to find the top-most
-    /// presented view controller. Falls back to the root if no
-    /// modal is up.
     private static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -115,9 +83,6 @@ enum ImperativePicker {
     private static var coordKey: UInt8 = 0
 }
 
-/// Discriminated payload returned by `captureFromCamera` — either a
-/// freshly-shot photo or a movie file URL the chat can then upload
-/// through the existing photo / video send paths.
 enum CapturedMedia {
     case photo(UIImage)
     case video(URL)
@@ -135,9 +100,7 @@ private final class CameraCoordinator: NSObject, UIImagePickerControllerDelegate
         _ picker: UIImagePickerController,
         didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
     ) {
-        // Movie capture lands as a temp URL the system writes to;
-        // copy into our own temp dir so the existing video pipeline
-        // (which deletes the source after upload) can manage it.
+        // Copy off the system temp URL — upload pipeline deletes its source.
         if let movieURL = info[.mediaURL] as? URL {
             let copy = FileManager.default.temporaryDirectory
                 .appendingPathComponent("rcq-cap-\(UUID().uuidString).\(movieURL.pathExtension)")

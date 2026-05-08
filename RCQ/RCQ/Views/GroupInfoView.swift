@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Group info — header + member list + admin actions. Tapping a
-/// member opens a quick-action bottom sheet (`MemberActionSheet`)
-/// where the viewer can propose a trade, send a contact request, or
-/// open the full profile. Trade/contact buttons honour the peer's
-/// privacy settings (trade_policy, already-a-contact).
 struct GroupInfoView: View {
     let group: RCQGroup
 
@@ -18,9 +13,6 @@ struct GroupInfoView: View {
     @State private var viewInfoForUIN: Int?
     @State private var actionMember: RCQGroupMember?
     @State private var petPreview: PetPreviewTarget?
-    /// Buffer for the entry-price field. Text vs Int because we
-    /// want users to be able to clear the field (string "" maps
-    /// to "free" on commit). Synced to the live model in onAppear.
     @State private var entryPriceText: String = ""
 
     private var currentGroup: RCQGroup {
@@ -42,12 +34,8 @@ struct GroupInfoView: View {
                             memberRow(m)
                         }
                     }
-                    // Paid-group invariant: in groups with a positive
-                    // `entry_price_tokens` only the owner can invite,
-                    // and the invite is free (a "gift access"). Others
-                    // would dilute the paywall — anyone could pre-add
-                    // their friend for $0 and bypass the price. Free
-                    // groups stay member-can-add (Telegram-style).
+                    // Paid groups: only owner can invite (free invites
+                    // would let anyone bypass the entry-price paywall).
                     let canInvite = amOwner ||
                         (currentGroup.entryPriceTokens ?? 0) == 0
                     if canInvite {
@@ -118,12 +106,6 @@ struct GroupInfoView: View {
                 },
                 onDismiss: { actionMember = nil },
             )
-            // Sheet height tracks content. After adding the Block +
-            // Report rows below the trade / add / profile pills,
-            // 300pt felt cramped — bumped to 420 to give the
-            // destructive section breathing room and keep the
-            // Spacer(minLength: 8) pair able to actually centre
-            // the stack rather than collapse it.
             .presentationDetents([.height(420)])
             .presentationDragIndicator(.visible)
         }
@@ -188,14 +170,10 @@ struct GroupInfoView: View {
         }
     }
 
-    /// Owner-only settings block — broadcast-mode picker + entry-
-    /// price field. Both PATCH `/groups/{id}` immediately on change;
-    /// no separate Save CTA since each control is independent.
     @ViewBuilder
     private var ownerSettingsBlock: some View {
         section("group.section.settings".localized) {
             VStack(alignment: .leading, spacing: 12) {
-                // Post policy.
                 VStack(alignment: .leading, spacing: 4) {
                     Text("group.settings.post_policy".localized.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -224,7 +202,6 @@ struct GroupInfoView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
                 Divider().background(Theme.Color.divider)
-                // Entry price.
                 VStack(alignment: .leading, spacing: 4) {
                     Text("group.settings.entry_price".localized.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -284,16 +261,10 @@ struct GroupInfoView: View {
 
     private func memberRow(_ m: RCQGroupMember) -> some View {
         let isMe = m.uin == AuthService.shared.ownUIN
-        // Status zone is tappable for pet-preview when the member
-        // has an equipped pet — wrapped in its own Button so the
-        // outer row Button (action sheet) only fires for taps
-        // outside this zone. SwiftUI handles the consumption
-        // natively: nested Button inside Button means the inner
-        // wins for its bounds, outer for everything else.
+        // Inner pet-preview Button wins for its bounds; outer row
+        // Button handles taps outside that zone.
         let statusZone = StatusWithPet(status: m.status, pet: m.equippedPet, size: 22)
         return Button {
-            // Self-row: open the saved-messages thread instead of the
-            // action sheet — there's nothing to add/trade with yourself.
             if !isMe { actionMember = m }
         } label: {
             HStack(spacing: 8) {
@@ -312,10 +283,6 @@ struct GroupInfoView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text(m.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                        // Crown for the group's owner. Mirrors the
-                        // `audio_room` row treatment so the group's
-                        // creator is identifiable at a glance — same
-                        // visual idiom across the app.
                         if m.uin == currentGroup.ownerUIN {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 10))
@@ -377,17 +344,6 @@ private struct ViewInfoUIN: Identifiable, Hashable { let uin: Int; var id: Int {
 
 // MARK: - Member action sheet
 
-/// Bottom-sheet quick actions for a tapped group member. Three buttons:
-///   - Propose trade (hidden if peer's `trade_policy` is "nobody" or
-///     "contacts"-and-we-aren't, or if we're already mid-loading the
-///     profile)
-///   - Send contact request (hidden if already in our contacts, or
-///     greyed out if a request is already in flight)
-///   - Open full profile (always available)
-///
-/// Pulls the peer's profile on appear so the trade-policy gate is
-/// honest. While loading, both action buttons are disabled with a
-/// subtle ProgressView in their slot.
 private struct MemberActionSheet: View {
     let member: RCQGroupMember
     let onOpenProfile: () -> Void
@@ -405,9 +361,6 @@ private struct MemberActionSheet: View {
         contacts.contacts.contains(where: { $0.uin == member.uin })
     }
 
-    /// Whether the peer's trade_policy permits us to propose. Defaults
-    /// to allowed if the profile hasn't loaded yet — the backend will
-    /// 403 the actual POST if our optimism was wrong.
     private var canPropose: Bool {
         let policy = profile?.tradePolicy ?? "everyone"
         if policy == "nobody" { return false }
@@ -417,12 +370,7 @@ private struct MemberActionSheet: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // Top breathing room — equal weight to the bottom Spacer
-            // so the identity header + buttons stack centres
-            // vertically inside the sheet instead of jamming against
-            // the drag indicator.
             Spacer(minLength: 8)
-            // Identity header
             HStack(spacing: 12) {
                 StatusIcon(status: member.status, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
@@ -438,7 +386,6 @@ private struct MemberActionSheet: View {
             .padding(.horizontal, 20)
 
             VStack(spacing: 10) {
-                // Trade — gated by tradePolicy + contact relationship.
                 if loading {
                     pillLoading
                 } else if canPropose {
@@ -453,7 +400,6 @@ private struct MemberActionSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
-                // Add as contact — only when not already added.
                 if !isAlreadyContact {
                     Button {
                         Task {
@@ -476,7 +422,6 @@ private struct MemberActionSheet: View {
                     .buttonStyle(.plain)
                     .disabled(addRequestSent)
                 }
-                // Open full profile — always present.
                 Button(action: onOpenProfile) {
                     actionPill(
                         icon: "person.crop.circle",
@@ -499,11 +444,6 @@ private struct MemberActionSheet: View {
             }
             .padding(.horizontal, 20)
 
-            // Block + Report — moderator surface for the group. Drops
-            // in as `.rows` style (same look as the existing actionRow
-            // helpers in AudioRoomQuickActionsSheet) below the trade
-            // / add / profile pills, separated by a divider so the
-            // destructive actions don't blur with neutral ones.
             Divider().background(Theme.Color.divider)
                 .padding(.horizontal, 20)
                 .padding(.top, 4)
@@ -583,8 +523,6 @@ private struct AddGroupMemberView: View {
     @State private var searching = false
     @State private var addError: String?
 
-    /// Local-contacts filter — shown when the query matches contacts already in
-    /// our list (or when the field is empty).
     private var localMatches: [Contact] {
         contacts.contacts.filter { c in !group.contains(c.uin) }
             .filter {
@@ -594,7 +532,6 @@ private struct AddGroupMemberView: View {
             }
     }
 
-    /// Server hits for non-contacts. Filters out users already in the group.
     private var serverMatches: [UserProfile] {
         serverResults.filter { u in
             !group.contains(u.uin) &&

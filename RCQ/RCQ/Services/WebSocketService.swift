@@ -1,9 +1,7 @@
 import Combine
 import Foundation
 
-/// Real-time channel. Emits typed events for the rest of the app via the `events`
-/// publisher. Reconnects with naive fixed delay (handled by AppState). Backed by
-/// URLSessionWebSocketTask.
+/// Real-time channel emitting typed events. Reconnect handled by AppState.
 @MainActor
 final class WebSocketService: ObservableObject {
     static let shared = WebSocketService()
@@ -24,28 +22,13 @@ final class WebSocketService: ObservableObject {
         case hoodCount(bucketID: String, count: Int)
         case hoodDelete(bucketID: String, messageID: Int)
         case hoodReaction(bucketID: String, messageID: Int, reactions: [String: String])
-        // Call-signalling events. SDP travels as raw text (line-broken,
-        // huge-ish — couple of KB), ICE candidate as JSON. Both are carried
-        // on the wire as plain strings; CallService unpacks them into
-        // WebRTCManager's expected formats.
         case callOffer(fromUIN: Int, nickname: String, callID: String, media: CallMedia, sdp: String)
         case callAnswer(fromUIN: Int, callID: String, sdp: String)
         case callIce(fromUIN: Int, callID: String, candidateJSON: String)
         case callEnd(fromUIN: Int, callID: String, reason: String)
-        // Mid-call audio→video upgrade. `callRenegotiate` ships the
-        // caller's new offer with an extra video m-line; the callee
-        // replies with `callRenegotiateAnswer` (accepted, new SDP) or
-        // `callRenegotiateDecline` (rejected, caller rolls back its
-        // local video track).
         case callRenegotiate(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateAnswer(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateDecline(fromUIN: Int, callID: String)
-        // Audio Rooms — Discord-style persistent voice rooms. Server
-        // is a dumb relay for mesh signalling (`roomOffer/Answer/Ice`)
-        // plus an in-memory presence tracker that pushes roster +
-        // join/leave deltas. `roomKicked` fires when the owner deletes
-        // the room out from under us; `roomDeleted` is the home-screen
-        // list update for that same event.
         case roomEnterRejected(roomID: Int, reason: String)
         case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, equippedPet: EquippedPet?, mutedByOwner: Bool)], ownerOnlySpeaking: Bool)
         case roomMemberEntered(roomID: Int, uin: Int, nickname: String, equippedPet: EquippedPet?, mutedByOwner: Bool)
@@ -56,87 +39,37 @@ final class WebSocketService: ObservableObject {
         case roomSpeaking(roomID: Int, uin: Int, speaking: Bool)
         case roomKicked(roomID: Int, reason: String)
         case roomDeleted(roomID: Int)
-        /// Owner toggled per-member mute on a room participant. Goes
-        /// to every subscriber so all tiles repaint the badge; the
-        /// muted user's client also honors by flipping its own mic.
         case roomMemberMuted(roomID: Int, uin: Int, mutedByOwner: Bool)
-        /// Owner toggled the room into / out of "only owner can
-        /// speak" mode. Non-owner clients auto-mute mic on enable,
-        /// stop blocking the toolbar mic on disable.
         case roomOwnerOnlyChanged(roomID: Int, enabled: Bool)
-        /// Owner-initiated kick removed THIS user from the room's
-        /// subscription list (the room itself stays alive for everyone
-        /// else). Triggers home-list removal — separate event from
-        /// `roomDeleted` because the semantic is different ("you were
-        /// kicked" vs "the room is gone").
         case roomMembershipRevoked(roomID: Int)
-        /// Owner rotated the room's join key. All current subscribers
-        /// receive the new key so their cached `AudioRoom.joinKey`
-        /// updates without a refresh.
         case roomKeyRotated(roomID: Int, newKey: String)
-        /// Owner renamed the room. Fanned to every subscriber so
-        /// home-screen lists + the active room view update in
-        /// lockstep without a refetch.
         case roomRenamed(roomID: Int, name: String)
-        // Premium-UIN auctions. Server runs one auction at a time;
-        // events fan out to every connected client so the live UI in
-        // the auction surface ticks in lockstep with the bidding.
         case uinAuctionStarted(auction: UinAuction)
         case uinAuctionBid(auctionID: Int, amount: Int, bidderUIN: Int, bidderNickname: String, highBid: Int, highBidderUIN: Int, endsAt: Date, extended: Bool)
         case uinAuctionEnded(auctionID: Int, uin: Int, tier: String, winnerUIN: Int?, winningBid: Int)
         case uinAuctionOutbid(auctionID: Int, uin: Int, refund: Int, newHighBid: Int)
-        // Lootbox / trade lifecycle. Items system runs over plain
-        // REST for state changes; WS is only used to nudge the
-        // recipient (and, on accept, both sides) so their UIs
-        // refresh immediately. Offline users see the change on next
-        // refreshIncoming / refreshInventory.
         case tradeReceived(trade: Trade)
         case tradeAccepted(trade: Trade)
         case tradeDeclined(tradeID: String)
         case tradeCancelled(tradeID: String)
-        // Stories — fan-out nudges so a contact's freshly-posted
-        // story appears in the feed without requiring a foreground
-        // refresh. The server pushes these to every UIN that has the
-        // poster in their contacts list.
         case storyPosted(storyID: String, ownerUIN: Int?)
         case storyDeleted(storyID: String, ownerUIN: Int?)
-        /// Server side: a buyer paid for one of our marketplace
-        /// listings. Carries the resolved `ListingOut` snapshot
-        /// (status="sold", sold_to_uin set, resolved_at populated)
-        /// so the iOS client can update "My listings" + the wallet
-        /// without a follow-up refresh.
         case marketplaceListingSold(listing: MarketplaceListing)
-        /// Fired to the SELLER of a UIN listing the moment a buyer
-        /// completes the atomic purchase. Mirror of
-        /// `marketplaceListingSold` for the parallel UIN-marketplace
-        /// surface — drops the row from "My UIN listings" + credits
-        /// the wallet without polling.
         case uinMarketplaceListingSold(listing: UinMarketplaceListing)
-        // Crash game lifecycle. Single forever-running round-loop
-        // on the server fans these out to ALL connected clients
-        // (closed-beta scale; see backend's `connection_manager.broadcast_all`).
-        // CrashService subscribes to this stream same as
-        // RandomChatService / TradesService.
         case crashRoundBetting(roundID: String, seedHash: String, bettingSeconds: Double)
         case crashRoundRunning(roundID: String, crashInSecondsHint: Double)
         case crashRoundEnd(roundID: String, crashPoint: Double, seed: String, cashouts: [CrashCashoutEvent])
         case crashCashout(roundID: String, uin: Int, nickname: String?, multiplier: Double, payout: Int)
         case crashBetPlaced(roundID: String, uin: Int, nickname: String?, amount: Int, betsCount: Int)
-        /// Server pushes this when the account this WS is
-        /// authenticated as got burned — possibly from a different
-        /// device. Listener is `AppState`, which mirrors the local
-        /// burn flow: wipe identity + drop the WebSocket. UI
-        /// naturally returns to OnboardingView via the
-        /// AuthService.ownUIN binding.
         case accountBurned
     }
 
     struct EnvelopePacket {
-        let type: String        // "message" | "delete" | "system" | "read" | "reaction" | "bounce" | "visit"
+        let type: String
         let payload: String
         let serverTime: Date
         let offline: Bool
-        let groupID: Int?       // nil for 1:1, set for group fan-out
+        let groupID: Int?
     }
 
     @Published private(set) var isConnected: Bool = false
@@ -178,12 +111,6 @@ final class WebSocketService: ObservableObject {
         send(["type": "typing", "to_uin": uin, "active": active])
     }
 
-    /// Mark this connection as actively viewing Hood Chat for the
-    /// given bucket. Server keeps a per-bucket set of subscribers
-    /// (used to drive both the toolbar count badge and the fan-out
-    /// recipient list for `hood_message`/`hood_delete`/
-    /// `hood_reaction`), and broadcasts a `hood_count` event back
-    /// to every viewer when the set changes.
     func subscribeHood(bucket: String) {
         send(["type": "hood_subscribe", "bucket": bucket])
     }
@@ -192,36 +119,23 @@ final class WebSocketService: ObservableObject {
         send(["type": "hood_unsubscribe"])
     }
 
-    /// Send a call-signalling message (offer / answer / ICE / end) to the
-    /// peer. Backend acts as a dumb relay — it stamps `from_uin` and forwards.
-    /// `extras` carries SDP / ICE candidate / media kind / hangup reason as
-    /// applicable; unknown keys are dropped server-side.
     func sendCallSignal(type: String, toUIN: Int, callID: String, extras: [String: Any] = [:]) {
         var payload: [String: Any] = ["type": type, "to_uin": toUIN, "call_id": callID]
         for (k, v) in extras { payload[k] = v }
         send(payload)
     }
 
-    /// Audio Rooms — entry / exit. Server moves us in/out of the in-memory
-    /// roster and fans out `room_member_entered` / `room_member_left` so
-    /// the rest of the room can mint mesh peer connections to us (or tear
-    /// theirs down on exit).
     func sendRoomEnter(roomID: Int) {
         send(["type": "room_enter", "room_id": roomID])
     }
     func sendRoomLeave(roomID: Int) {
         send(["type": "room_leave", "room_id": roomID])
     }
-    /// Mesh signalling. `to_uin` must be another current member of the
-    /// room or the server drops the message silently — both endpoints
-    /// are validated as co-tenants before relay.
     func sendRoomSignal(type: String, roomID: Int, toUIN: Int, extras: [String: Any] = [:]) {
         var payload: [String: Any] = ["type": type, "room_id": roomID, "to_uin": toUIN]
         for (k, v) in extras { payload[k] = v }
         send(payload)
     }
-    /// VAD-driven "I am talking now / I stopped" indicator. Pure UX —
-    /// drives the speaking ring on remote avatars in the room view.
     func sendRoomSpeaking(roomID: Int, speaking: Bool) {
         send(["type": "room_speaking", "room_id": roomID, "speaking": speaking])
     }
@@ -236,11 +150,7 @@ final class WebSocketService: ObservableObject {
     private func startPingTimer() {
         pingTimer?.invalidate()
         pingTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
-            // Hop to the main actor — `send` is main-isolated (the
-            // class is `@MainActor`); the Timer's underlying RunLoop
-            // callback is nonisolated, so the direct call from inside
-            // the closure tripped the strict-concurrency warning even
-            // though we always end up on main at runtime.
+            // Timer's RunLoop callback is nonisolated; `send` is main-isolated.
             Task { @MainActor in self?.send(["type": "ping"]) }
         }
     }
@@ -274,11 +184,6 @@ final class WebSocketService: ObservableObject {
 
         switch type {
         case "account_burned":
-            // Backend fanned this out before the row delete, so the
-            // current WS will close right after with code 4401/4403
-            // (token now invalid). AppState handles the cleanup so
-            // the UI swaps to onboarding without waiting for the
-            // disconnect itself.
             events.send(.accountBurned)
 
         case "presence":
@@ -333,11 +238,6 @@ final class WebSocketService: ObservableObject {
             events.send(.randomEnd(pairID: pairID, reason: reason))
 
         case "hood_message":
-            // Anonymous Hood Chat fan-out. Server pushes the same
-            // payload to every checked-in UIN in the bucket; the
-            // sender's own client picks it up the same way the
-            // recipients do, so HoodChatService doesn't have to
-            // optimistic-append.
             guard let msgDict = dict["message"] as? [String: Any],
                   let data = try? JSONSerialization.data(withJSONObject: msgDict),
                   let parsed = decodeHoodMessage(data) else { return }
@@ -362,8 +262,7 @@ final class WebSocketService: ObservableObject {
                   let callID = dict["call_id"] as? String else { return }
             let media = CallMedia(rawValue: (dict["media"] as? String) ?? "video") ?? .video
             let sdp = (dict["sdp"] as? String) ?? ""
-            // The caller's nickname doesn't ride on the wire — fall back to UIN
-            // string and let CallService swap it with our local Contact name.
+            // Caller nickname not on the wire; CallService swaps via local Contact.
             events.send(.callOffer(
                 fromUIN: from, nickname: String(from), callID: callID, media: media, sdp: sdp
             ))
@@ -377,8 +276,6 @@ final class WebSocketService: ObservableObject {
         case "call_ice":
             guard let from = dict["from_uin"] as? Int,
                   let callID = dict["call_id"] as? String else { return }
-            // The candidate ships as a JSON string in `candidate`; we keep it
-            // opaque at this layer and hand it to WebRTC verbatim later.
             let cand = (dict["candidate"] as? String) ?? ""
             events.send(.callIce(fromUIN: from, callID: callID, candidateJSON: cand))
 
@@ -537,10 +434,6 @@ final class WebSocketService: ObservableObject {
             ))
 
         case "trade_received", "trade_accepted":
-            // Server pushes the full trade payload (after `_hydrate`)
-            // so we can update the local list without a follow-up
-            // GET. The trade decoder uses the project-wide lenient
-            // date parser via APIClient.
             guard let tradeDict = dict["trade"] as? [String: Any],
                   let raw = try? JSONSerialization.data(withJSONObject: tradeDict),
                   let trade = decodeTrade(raw)
@@ -562,10 +455,7 @@ final class WebSocketService: ObservableObject {
             events.send(.storyDeleted(storyID: id, ownerUIN: owner))
 
         case "marketplace_listing_sold":
-            // Server stuffs the full ListingOut payload under "listing".
-            // We re-encode → decode to reuse the model's CodingKeys
-            // mapping (snake_case → Swift) without hand-rolling each
-            // field here.
+            // Re-encode → decode to reuse model CodingKeys (snake_case → Swift).
             guard let raw = dict["listing"] as? [String: Any],
                   let data = try? JSONSerialization.data(withJSONObject: raw) else {
                 return
@@ -578,9 +468,6 @@ final class WebSocketService: ObservableObject {
             events.send(.marketplaceListingSold(listing: listing))
 
         case "uin_marketplace_listing_sold":
-            // Same shape as item-listing-sold: a `listing` dict carrying
-            // the full UinListingOut snapshot. Re-encode → decode for
-            // CodingKeys reuse.
             guard let raw = dict["listing"] as? [String: Any],
                   let data = try? JSONSerialization.data(withJSONObject: raw) else {
                 return
@@ -658,12 +545,7 @@ final class WebSocketService: ObservableObject {
         }
     }
 
-    /// Lenient ISO-8601 parser used for `random_match.expires_at`. Reuses the
-    /// project-wide multi-format date logic so microsecond-precision timestamps
-    /// from FastAPI/Pydantic don't get rejected.
-    /// JSON decoder used to parse embedded auction snapshots inside
-    /// WS payloads. Same lenient ISO-8601 strategy the APIClient uses
-    /// — accepts both with-fractional-seconds and plain Internet-time.
+    /// Accepts both fractional-second and plain Internet-time ISO-8601.
     private static let dateLenientDecoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .custom { decoder in
@@ -693,10 +575,7 @@ final class WebSocketService: ObservableObject {
     }
 
     private func decodeGroup(_ data: Data) -> RCQGroup? {
-        // Reuse APIClient's lenient date parser — `created_at` from pydantic v2
-        // carries microsecond precision, which the strict ISO8601 strategy
-        // rejects. That's exactly what was silently swallowing inbound group
-        // events, so the second user never saw they'd been added.
+        // Lenient parser: pydantic v2 `created_at` carries microseconds.
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom(APIClient.parseDateForExternal)
         return try? decoder.decode(RCQGroup.self, from: data)
@@ -714,10 +593,6 @@ final class WebSocketService: ObservableObject {
         return try? decoder.decode(Trade.self, from: data)
     }
 
-    /// Decode the loose `equipped_pet` dict that comes inline on
-    /// roster / member-entered events. Returns nil for missing /
-    /// malformed / explicit-null values — callers treat that as
-    /// "no pet equipped" without complaint.
     fileprivate static func decodeEquippedPet(_ raw: Any?) -> EquippedPet? {
         guard let dict = raw as? [String: Any] else { return nil }
         guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }

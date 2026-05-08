@@ -5,17 +5,6 @@ import Foundation
 import UIKit
 
 /// Owns the story feed + posting flow.
-///
-/// - `feed` is the grouped, server-shaped list of active stories
-///   from the user's contacts plus their own. Refreshed on app
-///   foreground, after successful post / delete, and on `story_posted`
-///   / `story_deleted` WS nudges.
-/// - `post(...)` encrypts media client-side via the existing
-///   `MediaService` AES-GCM pipeline, uploads, then attaches the
-///   resulting `media_id` + key to the story row server-side.
-/// - `markViewed(...)` is fire-and-forget — the iOS side optimistically
-///   flips the `viewed` flag locally so the ring re-renders without
-///   waiting for the round trip.
 @MainActor
 final class StoryService: ObservableObject {
     static let shared = StoryService()
@@ -27,10 +16,6 @@ final class StoryService: ObservableObject {
     private var bag = Set<AnyCancellable>()
 
     private init() {
-        // Subscribe to WS nudges so contacts who post a story while
-        // we're foregrounded see their ring appear immediately. The
-        // server fans out to every UIN that has the poster in their
-        // contacts (see `_broadcast_to_contacts` in routers/stories.py).
         WebSocketService.shared.events
             .sink { [weak self] event in
                 Task { @MainActor [weak self] in
@@ -42,8 +27,6 @@ final class StoryService: ObservableObject {
 
     // MARK: - Feed
 
-    /// Pull `/stories/feed`. Replaces the local list atomically so
-    /// SwiftUI gets one diff per refresh (no flicker).
     func refresh() async {
         do {
             let resp: StoryFeedResponse = try await APIClient.shared.request(
@@ -51,23 +34,16 @@ final class StoryService: ObservableObject {
             )
             self.feed = resp.groups
         } catch {
-            // Don't surface — feed errors shouldn't block the
-            // contact list. Log only.
             print("[StoryService] feed refresh failed: \(error)")
         }
     }
 
-    /// Look up the active story group for a given UIN. Returns nil
-    /// when the contact has no active stories. Called from
-    /// `ContactRow` to decide whether to render the thumbnail ring.
     func group(forUIN uin: Int) -> StoryGroup? {
         feed.first(where: { $0.ownerUIN == uin })
     }
 
     // MARK: - Posting
 
-    /// Post a photo story. Compresses + encrypts via `MediaService`,
-    /// uploads, then writes the story row.
     func postPhoto(_ image: UIImage, caption: String?, anonymous: Bool) async {
         isPosting = true
         defer { isPosting = false }
@@ -88,8 +64,6 @@ final class StoryService: ObservableObject {
         }
     }
 
-    /// Post a video story. Caller passes a file URL (typically from
-    /// PHPicker) — we read, encrypt, and upload as one blob.
     func postVideo(_ url: URL, caption: String?, anonymous: Bool) async {
         isPosting = true
         defer { isPosting = false }
@@ -153,11 +127,7 @@ final class StoryService: ObservableObject {
 
     // MARK: - Viewing
 
-    /// Mark a story watched. Optimistically flip the local `viewed`
-    /// flag so the ring redraws immediately, then send the server
-    /// nudge in the background. Idempotent.
     func markViewed(_ storyID: String) {
-        // Optimistic local update.
         var changed = false
         feed = feed.map { group in
             var g = group
@@ -227,9 +197,6 @@ final class StoryService: ObservableObject {
     private func onWSEvent(_ event: WebSocketService.Event) {
         switch event {
         case .storyPosted, .storyDeleted, .opened:
-            // Any of these → re-pull. Cheap (small payload, single
-            // request), and it side-steps the awkward "merge a
-            // single delta into a grouped feed" logic.
             Task { await self.refresh() }
         default:
             break

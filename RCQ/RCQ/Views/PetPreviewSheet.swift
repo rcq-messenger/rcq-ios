@@ -1,16 +1,7 @@
 import SwiftUI
 
-/// Read-only "card" sheet shown when a viewer taps another user's
-/// equipped-pet overlay. Big animated GIF + display name + lore
-/// + rarity / mint badges + a CTA to drill into the owner's full
-/// public inventory. Owner-side actions (temper / disassemble) are
-/// deliberately absent — that's a different surface (`ItemDetailSheet`)
-/// for owned items only.
+/// Read-only sheet for another user's equipped pet.
 struct PetPreviewSheet: View {
-    /// Snapshot the caller already has from the
-    /// `Contact.equippedPet` / `UserProfile.equippedPet` /
-    /// `RCQGroupMember.equippedPet` field — no extra fetch needed
-    /// to render the sheet's first paint.
     let pet: EquippedPet
     let ownerUIN: Int
     let ownerNickname: String
@@ -53,12 +44,6 @@ struct PetPreviewSheet: View {
 
     private var petHero: some View {
         ZStack {
-            // Soft rarity-tinted halo. No clip / no stroke ring on
-            // the GIF — the glow alone signals "this is a special
-            // creature" without the heavy framed-avatar look.
-            // Sized to ~90% of the original — the previous 200/160
-            // dimensions read as too dominant inside the bottom
-            // sheet's vertical budget, leaving the title cramped.
             Circle()
                 .fill(pet.rarity.color.opacity(0.45))
                 .frame(width: 180, height: 180)
@@ -93,10 +78,6 @@ struct PetPreviewSheet: View {
         }
     }
 
-    /// Telegram-style spec table — same chrome as MarketView's
-    /// `specTable` and ItemDetailSheet's `statsBlock`. Replaces the
-    /// chip strip so the pet sheet reads consistently with the
-    /// rest of the catalog detail surfaces.
     private var specTable: some View {
         VStack(spacing: 0) {
             specRow(label: "market.spec.owner".localized) {

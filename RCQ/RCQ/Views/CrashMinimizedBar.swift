@@ -1,16 +1,7 @@
 import SwiftUI
 
-/// Floating Crash mini-bubble. Hosted by `GameMinisOverlayHost`
-/// inside a `FloatingMini` container — surrounding container
-/// owns drag/snap/peek behaviour, this view is just the visual
-/// card with the live game controls.
-///
-/// Layout: **X close on the leading side** so when the bubble
-/// is docked off-screen at the right edge, the visible peek tab
-/// is the X — user knows they can dismiss right from the peek.
-/// The right side of the bubble carries the action button
-/// (Bet / Cash-out / disabled placeholder) so the bubble
-/// reads "close ← play".
+/// Floating Crash mini-bubble. Hosted by `GameMinisOverlayHost` inside a `FloatingMini`.
+/// X-close on leading edge so it remains the peek-tab when docked off-screen right.
 struct CrashMiniBubble: View {
     @StateObject private var svc = CrashService.shared
 
@@ -40,19 +31,10 @@ struct CrashMiniBubble: View {
 
             Spacer(minLength: 2)
 
-            // Action button always renders (disabled when no
-            // valid action) so the right edge of the bubble has
-            // consistent visual weight across phases — no width
-            // jitter when "Bet" → vanishes after placement.
             actionButton
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        // Expand to fill the outer FloatingMini-proposed frame so
-        // the background draws at fixed bubble dimensions instead
-        // of shrinking to HStack-intrinsic. Without this, swapping
-        // "Поставить" → "Принято" or showing the payout pill (coin
-        // gif + amount) made the visible card width / height jitter
-        // by a few pt every phase change.
+        // Fill outer FloatingMini frame — keeps bubble dimensions stable across phase changes.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 14)
@@ -66,9 +48,6 @@ struct CrashMiniBubble: View {
         .onLongPressGesture(minimumDuration: 0.35) { openFull() }
     }
 
-    /// Tint-by-phase: green-accent during normal play, red while
-    /// the round is crashing, smoothly cross-faded by the
-    /// `.animation(value: svc.phase)` modifier above.
     private var backgroundTint: Color {
         switch svc.phase {
         case .crashed: return Color.red
@@ -110,9 +89,6 @@ struct CrashMiniBubble: View {
             .buttonStyle(.plain)
             .disabled(betIndex == 0)
 
-            // Coin gif + amount as one tight unit. Inner spacing
-            // 1pt + leading-aligned text frame hugs the digits to
-            // the gif so they read as "🪙 100", not "🪙   100".
             HStack(spacing: 1) {
                 ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                     .frame(width: 14, height: 14)
@@ -137,19 +113,6 @@ struct CrashMiniBubble: View {
         }
     }
 
-    /// Single phase-aware trailing element — always present so the
-    /// bubble's width stays steady across phases. Shapes:
-    ///
-    /// - **Bet** (active, white pill): betting phase, no bet yet.
-    /// - **Placed** (disabled placeholder): betting phase after we
-    ///   placed our bet — keeps the layout filled until running.
-    /// - **Cash-out** (active, white pill): running phase, holding
-    ///   a bet that hasn't cashed yet. The big tap target.
-    /// - **Cash-out** (disabled placeholder): running phase but we
-    ///   never bet this round — read-only state.
-    /// - **Payout pill** (coin gif + amount): running OR crashed
-    ///   phase after a successful cash-out — replaces the cash-out
-    ///   button until the next round resets state.
     @ViewBuilder
     private var actionButton: some View {
         if let payout = svc.myPayout, svc.myCashoutMultiplier != nil {
@@ -165,30 +128,17 @@ struct CrashMiniBubble: View {
                     pillButton(label: "crash.mini.placed".localized, enabled: false) {}
                 }
             case .running:
-                // Render the cash-out pill ONLY when we actually have a
-                // live bet to cash. Spectating (no stake) used to show
-                // a permanently-disabled pill that read as a broken UI
-                // element. Empty trailing slot is cleaner — the
-                // multiplier in `content` already conveys "round in
-                // progress".
                 if svc.myBetAmount != nil && svc.myCashoutMultiplier == nil {
                     pillButton(label: "crash.mini.cashout_cta".localized, enabled: true) {
                         Task { _ = await svc.cashout() }
                     }
                 }
             case .crashed:
-                // No actionable button mid-crash either — keep the
-                // trailing slot empty so the bubble doesn't look like
-                // it's offering a click that does nothing.
                 EmptyView()
             }
         }
     }
 
-    /// Coin-gif + payout amount, rendered in the same white pill
-    /// shape as the action buttons so the trailing side stays
-    /// visually consistent. Animated coin reuses the lootbox /
-    /// inventory `coin.gif` asset.
     private func payoutPill(amount: Int) -> some View {
         HStack(spacing: 3) {
             ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
@@ -204,13 +154,6 @@ struct CrashMiniBubble: View {
         .transition(.opacity.combined(with: .scale(scale: 0.85)))
     }
 
-    /// White capsule button used uniformly on the trailing side.
-    /// `fixedSize(horizontal: true, vertical: false)` prevents
-    /// SwiftUI from collapsing the label to "..." when the bubble
-    /// is laid out tighter than its intrinsic width. Disabled state
-    /// keeps the white background but tints the label with reduced
-    /// alpha — text stays clearly visible (just dimmed) so the user
-    /// reads "Забрать" / "Cash out" even when nothing's actionable.
     private func pillButton(label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)

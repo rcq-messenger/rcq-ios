@@ -2,30 +2,17 @@ import AVKit
 import SwiftUI
 import WebRTC
 
-/// Full-screen surface for the active audio room. Roster grid up top,
-/// "Joining…" placeholder before the first roster lands, control bar
-/// (mute / route / leave) at the bottom. Tap chevron-down to minimise
-/// → `AudioRoomMinimizedBar` floats above the home screen and audio
-/// keeps streaming via the `audio` UIBackgroundMode.
+/// Full-screen surface for the active audio room. Roster grid + control bar.
+/// Tap chevron-down to hand off to `AudioRoomMinimizedBar` while audio keeps
+/// streaming via the `audio` UIBackgroundMode.
 struct AudioRoomScreen: View {
     @StateObject private var rooms = AudioRoomService.shared
     let initialRoomName: String
 
-    /// Pet snapshot the user just tapped on — drives the
-    /// `PetPreviewSheet` modal so a member can inspect another
-    /// participant's equipped pet without leaving the room.
     @State private var inspectingPet: PetPreviewTarget?
-    /// Roster member whose tile was tapped — drives the quick-actions
-    /// sheet (open profile / propose trade / kick if owner).
     @State private var quickActionsTarget: AudioRoomMember?
-    /// Profile detail sheet — pushed when the user picks "Open profile"
-    /// from the quick-actions sheet.
     @State private var profilePeekUIN: Int?
-    /// Trade composer target — set when "Propose trade" is picked.
     @State private var tradeTarget: AudioRoomMember?
-    /// Owner-only rename sheet trigger. Toggled when the owner taps
-    /// the room name in the top bar; pre-fills with the current name
-    /// + persists via `AudioRoomService.renameRoom`.
     @State private var showRenameSheet: Bool = false
     @State private var renameDraft: String = ""
 
@@ -122,9 +109,6 @@ struct AudioRoomScreen: View {
 
     // MARK: - bars
 
-    /// True when the local user owns the active room. Drives the
-    /// owner-only "mute all" toggle on the top bar and the Mute /
-    /// Unmute row in the per-member quick-actions sheet.
     private var isRoomOwner: Bool {
         guard let id = rooms.activeRoomID,
               let room = rooms.rooms.first(where: { $0.id == id }) else {
@@ -133,9 +117,6 @@ struct AudioRoomScreen: View {
         return room.ownerUIN == AuthService.shared.ownUIN
     }
 
-    /// Current `owner_only_speaking` state of the active room. Read
-    /// off the cached `AudioRoom` so the toolbar toggle reflects the
-    /// canonical value (server-broadcast via `audio_room_owner_only_changed`).
     private var ownerOnlyActive: Bool {
         guard let id = rooms.activeRoomID,
               let room = rooms.rooms.first(where: { $0.id == id }) else {
@@ -144,12 +125,7 @@ struct AudioRoomScreen: View {
         return room.ownerOnlySpeaking
     }
 
-    /// Room name + "N listening" stack. For the owner the whole
-    /// block is a Button that opens the rename sheet (pencil-icon
-    /// affordance hints at it). Non-owners get a plain label.
-    /// Extracted from `topBar`'s body to keep the type-checker
-    /// happy — inlined, the conditional made the topBar's
-    /// expression unable to type-check in reasonable time.
+    // Extracted from topBar to keep the type-checker happy.
     @ViewBuilder
     private var roomTitleBlock: some View {
         let displayName = rooms.activeRoomName ?? initialRoomName
@@ -200,13 +176,6 @@ struct AudioRoomScreen: View {
             }
             roomTitleBlock
             Spacer()
-            // Owner-only mute-all toggle. Flips `owner_only_speaking`
-            // on the room — when active, every non-owner client
-            // auto-mutes its mic and the toolbar mic toggle becomes
-            // a no-op for them. Soft enforcement (mesh WebRTC means
-            // the server can't drop a misbehaving client's audio),
-            // but the canonical state is server-held + broadcast so
-            // every member sees the same room mode.
             if isRoomOwner {
                 Button {
                     if let id = rooms.activeRoomID {
@@ -246,9 +215,6 @@ struct AudioRoomScreen: View {
     private func memberTile(_ m: AudioRoomMember) -> some View {
         let isMe = m.uin == AuthService.shared.ownUIN
         let isMuted = isMe && rooms.localMuted
-        // Local preview comes off the mesh's local track; remote tiles
-        // pull from the per-UIN remote map. Either may be nil — we
-        // fall back to the gradient avatar in that case.
         let videoTrack: RTCVideoTrack? = isMe
             ? rooms.localVideoTrack
             : rooms.remoteVideoTracks[m.uin]
@@ -275,13 +241,7 @@ struct AudioRoomScreen: View {
                         .frame(width: 92, height: 92)
                 }
                 if isMuted || m.mutedByOwner {
-                    // Bottom-trailing mic-slash badge. Two reasons it
-                    // can show: the local user toggled their own mic
-                    // off (`isMuted`), or the room owner force-muted
-                    // this member (`mutedByOwner`). The owner-mute
-                    // case uses an orange backing so it reads as a
-                    // distinct moderation state and not "they muted
-                    // themselves" — own-mute stays red.
+                    // Owner-mute uses orange so it reads distinct from self-mute (red).
                     VStack {
                         Spacer()
                         HStack {
@@ -297,11 +257,6 @@ struct AudioRoomScreen: View {
                     }
                     .frame(width: 84, height: 84)
                 }
-                // Equipped-pet glyph — same affordance as the home
-                // contact-list overlay. Sits in the bottom-leading
-                // corner so it doesn't overlap the muted indicator
-                // (which lives bottom-trailing). Tap-routes through a
-                // higher-z hit area (see overlay below) to PetPreviewSheet.
                 if let pet = m.equippedPet {
                     VStack {
                         Spacer()
@@ -317,10 +272,6 @@ struct AudioRoomScreen: View {
                     .frame(width: 84, height: 84)
                 }
             }
-            // Tile-wide tap → flip camera (own video on) / quick
-            // actions (someone else). Pet glyph above takes its tap
-            // first because it sits in a higher-z VStack within the
-            // ZStack — the .onTapGesture is scoped to that overlay.
             .contentShape(Circle())
             .onTapGesture { handleTileTap(member: m, hasVideo: videoTrack != nil, isMe: isMe) }
             Text(m.nickname)
@@ -331,14 +282,6 @@ struct AudioRoomScreen: View {
         }
     }
 
-    /// Tile tap router. Three branches:
-    ///   • Own tile + camera on → flip front/back. The most useful
-    ///     thing to do with your own video preview.
-    ///   • Own tile + camera off → no-op (the bottom toolbar is the
-    ///     right entry point to enable the camera).
-    ///   • Other user's tile → quick-actions sheet (profile / trade /
-    ///     kick). Same content for owner + non-owner; the kick row
-    ///     only renders when the local user is the room owner.
     private func handleTileTap(member: AudioRoomMember, hasVideo: Bool, isMe: Bool) {
         if isMe {
             if hasVideo { rooms.flipCamera() }
@@ -348,12 +291,6 @@ struct AudioRoomScreen: View {
     }
 
     private var controlBar: some View {
-        // Mic disabled in two cases for the local user:
-        //   • Room owner flipped owner-only mode and I'm not the owner
-        //   • Owner force-muted me individually
-        // Either way the toggle becomes a no-op — `AudioRoomService`
-        // already auto-mutes the mic on the matching events, this just
-        // stops the user from poking at a button that won't do anything.
         let micLocked: Bool = {
             let mutedByOwner: Bool = {
                 guard let ownUIN = AuthService.shared.ownUIN else { return false }
@@ -422,11 +359,6 @@ struct AudioRoomScreen: View {
     }
 }
 
-/// SwiftUI bridge for an `RTCMTLVideoView`. Used inside member tiles
-/// to render either the local camera preview (when own tile) or a
-/// peer's incoming video track (when remote). The track lives on
-/// `AudioRoomMeshManager` / `AudioRoomService`; this view just
-/// attaches a Metal renderer to it.
 private struct AudioRoomVideoTile: UIViewRepresentable {
     let track: RTCVideoTrack
 
@@ -439,9 +371,7 @@ private struct AudioRoomVideoTile: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {
-        // Track identity can swap when a peer's video re-arrives after
-        // a renegotiation. Detach the previous and bind the new so the
-        // tile keeps rendering instead of going black.
+        // Track identity swaps on peer renegotiation; rebind to avoid black tile.
         if context.coordinator.attachedTrack !== track {
             context.coordinator.attachedTrack?.remove(uiView)
             track.add(uiView)
@@ -461,9 +391,6 @@ private struct AudioRoomVideoTile: UIViewRepresentable {
     }
 }
 
-/// Same role as the route picker in CallScreen — local copy here
-/// instead of bridging across files because the two surfaces have
-/// independently-styled chrome.
 private struct AudioRoomRoutePickerButton: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
@@ -488,37 +415,20 @@ private struct AudioRoomRoutePickerButton: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
-/// Identifiable wrapper for the profile-peek sheet — `Int` would
-/// collide with SwiftUI's identity tracking when used directly.
 private struct ProfilePeekTarget: Identifiable {
     let uin: Int
     var id: Int { uin }
 }
 
-/// Equipped-pet badge for an audio-room tile. Same rendering rules as
-/// `StatusWithPet`'s pet glyph — bare animated GIF with a soft
-/// rarity-tinted halo behind it. No hard ring, no backing disc:
-/// matches the contact-list / chat-header / group-info presentation.
-///
-/// The basename for the GIF is resolved through the catalog the same
-/// way `StatusWithPet.petBasename` does — `pet.kindID` alone is NOT
-/// the bundled file name (kinds like `pet_spark` map to bundled
-/// assets like `pet1.gif` via the catalog's `assetRef`).
 private struct AudioRoomPetGlyph: View {
     let pet: EquippedPet
     var size: CGFloat = 28
 
-    /// Observe `ItemsService` so the glyph re-evaluates if the
-    /// catalog finishes loading after the room screen mounts. Same
-    /// pattern as `StatusWithPet`.
     @StateObject private var items = ItemsService.shared
 
     var body: some View {
         if let basename = petBasename(for: pet.kindID) {
             ZStack {
-                // Soft rarity-tinted halo. Same opacity + blur ratio
-                // as StatusWithPet so the glow reads as a subtle aura
-                // around the pet, not a colored disc behind it.
                 Circle()
                     .fill(pet.rarity.color.opacity(0.35))
                     .blur(radius: size * 0.18)
@@ -530,9 +440,7 @@ private struct AudioRoomPetGlyph: View {
             .frame(width: size, height: size)
             .contentShape(Circle())
         } else {
-            // Catalog not loaded yet (or unknown kind) — render
-            // nothing rather than a broken placeholder. Re-attempts
-            // automatically on the next ItemsService publish.
+            // Catalog not loaded; re-attempts on next ItemsService publish.
             Color.clear.frame(width: size, height: size)
         }
     }
@@ -544,20 +452,13 @@ private struct AudioRoomPetGlyph: View {
     }
 }
 
-/// Quick-actions sheet shown when a user taps another participant's
-/// tile in an audio room. Three rows: open profile, propose trade,
-/// (owner only) kick. Mirrors the iOS-system "long-press on a person
-/// in a Group FaceTime call" surface — quick interactions without
-/// leaving the room.
 private struct AudioRoomQuickActionsSheet: View {
     let member: AudioRoomMember
     let isRoomOwner: Bool
     let onOpenProfile: () -> Void
     let onTrade: () -> Void
     let onKick: () -> Void
-    /// Toggle owner-set mute on this member. Bool is the NEW state
-    /// (true = mute now, false = unmute now). Called from the
-    /// Mute / Unmute action row right above Kick.
+    /// Bool is the NEW mute state.
     let onSetMute: (Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -602,11 +503,6 @@ private struct AudioRoomQuickActionsSheet: View {
                     }
                     if isRoomOwner {
                         Divider().background(Theme.Color.divider)
-                        // Mute / Unmute toggle. Single row that flips
-                        // its label + glyph based on current state —
-                        // simpler than two separate rows that always
-                        // show one disabled. Mic-slash-fill mirrors
-                        // the iOS-system muted-mic icon.
                         actionRow(
                             systemImage: member.mutedByOwner ? "mic.fill" : "mic.slash.fill",
                             labelKey: member.mutedByOwner
@@ -624,10 +520,6 @@ private struct AudioRoomQuickActionsSheet: View {
                             confirmKick = true
                         }
                     }
-                    // Block + Report — available to ANY participant
-                    // about another participant (not gated to room
-                    // owner). Same shared component as profile / chat
-                    // / group surfaces.
                     Divider().background(Theme.Color.divider)
                     UserSafetyActions(
                         targetUIN: member.uin,
@@ -641,11 +533,6 @@ private struct AudioRoomQuickActionsSheet: View {
             .navigationTitle("audio_room.actions.title".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Cancel sits on the trailing edge (top-right) per the
-                // user's preference — `.cancellationAction` defaults to
-                // leading on iOS, which felt off-balance for a sheet
-                // whose primary content (the participant + actions) is
-                // left-aligned.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("common.cancel".localized) { dismiss() }
                 }
@@ -686,9 +573,7 @@ private struct AudioRoomQuickActionsSheet: View {
     }
 }
 
-/// Floating bar shown over the home screen while a room session is
-/// minimised. Tap to expand back to the full screen, square button
-/// to leave.
+/// Floating bar shown over the home screen while the room is minimised.
 struct AudioRoomMinimizedBar: View {
     @StateObject private var rooms = AudioRoomService.shared
 
@@ -727,14 +612,8 @@ struct AudioRoomMinimizedBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        // Frosted-green pill: ultraThinMaterial blurs whatever is
-        // behind the bar (contact list, etc.), then a green tint
-        // washes over the blur so it still reads as the "you're
-        // in a room" green colour. Layering — material is the
-        // CLOSEST background, the green tint sits BEHIND it so
-        // SwiftUI's blur picks up the tint and softens it.
-        // Previous solid `Color.green.opacity(0.85)` was an opaque
-        // panel — nothing blurred through it, looked flat.
+        // Layered: green tint behind, ultraThinMaterial in front so blur
+        // picks up the tint and softens it.
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.green.opacity(0.55))

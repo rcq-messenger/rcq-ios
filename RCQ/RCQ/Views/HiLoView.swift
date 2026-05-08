@@ -1,13 +1,7 @@
 import SwiftUI
 
-/// Hi-Lo — guess if the next card is higher or lower than the current
-/// one. Each correct guess compounds the multiplier; a wrong guess
-/// burns the bet. Cash-out anytime to settle.
-///
-/// Same look-and-feel idiom as `CrashView`: top history strip (recent
-/// draws), big animated focal element in the middle (the card),
-/// stable-height action panel at the bottom that morphs through bet
-/// → guess → result phases with smooth transitions.
+/// Hi-Lo — guess if the next card is higher or lower than the
+/// current one; cash out anytime to settle.
 struct HiLoView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = HiLoService.shared
@@ -16,17 +10,12 @@ struct HiLoView: View {
     @State private var betAmount: Int = 5
     @State private var showRules = false
     @State private var resultBanner: HiLoOutcome?
-    /// Top-up sheet for the wallet-empty path. When the wallet
-    /// can't cover the next bet the place-bet pill swaps to a
-    /// "Top up" CTA that opens BuyTokensSheet.
     @State private var showShop: Bool = false
 
     private static let presets: [Int] = [1, 5, 10, 25, 50, 100]
     private static let actionPillHeight: CGFloat = 56
     private static let actionPillRadius: CGFloat = 12
 
-    /// Composite key — every change here drives the spring transition
-    /// on the action panel container so phase swaps glide.
     private var actionKey: String {
         "\(svc.active ? 1 : 0)|\(svc.currentCard)|\(svc.multiplier)|\(svc.lastResult?.won == true ? "w" : (svc.lastResult?.won == false ? "l" : "_"))"
     }
@@ -134,11 +123,8 @@ struct HiLoView: View {
 
     @ViewBuilder
     private var multiplierBadge: some View {
-        // Fixed-height container so the card below doesn't drift up
-        // and down as the badge swaps between "GUESS" / "IDLE" /
-        // "1.23x" forms (each had different intrinsic content height
-        // + vertical padding before, which pushed the centre card a
-        // few px on every state flip — the user-reported "shift").
+        // Fixed-height container so the card below doesn't shift as
+        // the badge swaps between GUESS / IDLE / multiplier forms.
         Group {
             if svc.active && svc.multiplier > 1.0 {
                 HStack(spacing: 6) {
@@ -198,7 +184,7 @@ struct HiLoView: View {
                 .padding(12)
             )
             .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
-            .id(svc.currentCard)  // re-mount on draw → SwiftUI runs the transition
+            .id(svc.currentCard)
             .transition(.opacity.combined(with: .scale(scale: 0.92)))
     }
 
@@ -266,24 +252,11 @@ struct HiLoView: View {
         }
     }
 
-    /// True between the moment a round resolves (win / loss) and the
-    /// moment the 2.4s result-banner timer fires `svc.reset()`. During
-    /// this settling window `svc.active` is already false (server-side
-    /// the previous round is closed), but the local snapshot still
-    /// holds the final card / draws so the result overlay can render.
-    /// Letting Place-bet fire here was the bug the user hit:
-    ///   1. server starts a fresh round and writes new state
-    ///   2. apply() bumps active=true, currentCard=X
-    ///   3. the still-pending reset fires 2.4s later, WIPES the new
-    ///      state back to active=false / currentCard=0
-    ///   4. user sees the "−" placeholder while a round is silently
-    ///      live on the server, only visible after a re-enter.
+    // Settling: round resolved but the 2.4s result-banner timer
+    // hasn't fired svc.reset() yet. Place-bet must be gated here or
+    // a fresh round started in this window gets wiped by the timer.
     private var isSettling: Bool { svc.lastResult != nil }
 
-    /// Bet placement is gated on (a) bet ≥ 1 and (b) settle window
-    /// has cleared — the wallet check moved to a separate `canAfford`
-    /// flag so the pill can swap to a Top-Up CTA when funds are
-    /// short, instead of disabling the bet path entirely.
     private var canPlace: Bool {
         betAmount >= 1 && !isSettling
     }
@@ -293,8 +266,6 @@ struct HiLoView: View {
     @ViewBuilder
     private var placeBetPill: some View {
         if !canAfford {
-            // Wallet < bet → "Top up" CTA opens BuyTokensSheet
-            // directly. Same swap pattern as UinAuctionView.
             Button {
                 showShop = true
             } label: {

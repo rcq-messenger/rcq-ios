@@ -1,22 +1,9 @@
 import SwiftUI
 
-/// Inline "trade as a chat message" card. Pure renderer — no chrome
-/// of its own (no border, no chevron, no internal horizontal
-/// padding). Caller decides whether the card is interactive: in
-/// `ChatView` it gets wrapped in a `Button { … }` to deep-link to
-/// `TradesListView`; inside `TradesListView` it's just a layout
-/// node above the inline accept/decline row.
-///
-/// Item tiles are sized to actually be readable — 36pt thumbs with
-/// a small overlap. Below the offered/requested strip we surface
-/// a status line so the chat thread reads "you sent" vs "they
-/// sent" without forcing the reader to parse the arrows.
+/// Inline "trade as a chat message" card. Pure renderer — caller wraps in a Button to make interactive.
 struct InlineTradeCard: View {
     let trade: Trade
     let isFromMe: Bool
-    /// Optional per-tile tap. Caller passes a closure to make item
-    /// tiles tappable (read-only detail), nil leaves them
-    /// decorative (chat thread / preview surfaces).
     var onItemTap: ((Item) -> Void)? = nil
 
     var body: some View {
@@ -46,9 +33,6 @@ struct InlineTradeCard: View {
         .cornerRadius(10)
     }
 
-    /// Status icon when the counterparty is a known contact (so
-    /// incoming offers from contacts are visually marked vs raw
-    /// UIN-only senders), otherwise the generic trade glyph.
     @ViewBuilder
     private var leadingGlyph: some View {
         let myUIN = AuthService.shared.ownUIN ?? -1
@@ -63,9 +47,6 @@ struct InlineTradeCard: View {
         }
     }
 
-    /// Contact's nickname rendered as the second line of the card
-    /// header, so list rows and chat cards both surface "trade
-    /// with whom" without forcing the user to memorize UINs.
     private var counterpartyName: String? {
         let myUIN = AuthService.shared.ownUIN ?? -1
         let peerUIN = isFromMe ? trade.toUIN : trade.fromUIN
@@ -117,11 +98,6 @@ struct InlineTradeCard: View {
                 if !items.isEmpty {
                     HStack(spacing: -10) {
                         ForEach(items.prefix(3)) { item in
-                            // Tappable when `onItemTap` is provided —
-                            // TradesListView wires it to a read-only
-                            // ItemDetailSheet so the recipient can
-                            // actually inspect what they're being
-                            // offered. Chat thread leaves it nil.
                             Group {
                                 if let onItemTap {
                                     Button { onItemTap(item) } label: {
@@ -141,9 +117,6 @@ struct InlineTradeCard: View {
                             .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
-                // UIN chips — render up to 2 inline, overflow as "+N
-                // UINs". Same shape as the items overflow above so a
-                // mixed bundle reads consistently.
                 if !uins.isEmpty {
                     ForEach(uins.prefix(2)) { u in
                         uinPill(u)
@@ -176,13 +149,7 @@ struct InlineTradeCard: View {
         }
     }
 
-    /// Compact tier-tinted UIN pill. Same look as the chip in the
-    /// trade composer's UIN strip — keeps the visual language
-    /// consistent across compose and inbox surfaces.
-    ///
-    /// `Text(verbatim:)` for the UIN itself: it's an identifier, not
-    /// a quantity. SwiftUI's default `Text("\(intValue)")` would
-    /// thousands-separate it (`#123,456`).
+    // Text(verbatim:) — UIN is an identifier, default Text would thousands-separate it.
     private func uinPill(_ chip: TradeUinChip) -> some View {
         let tint: Color = {
             switch chip.tier {

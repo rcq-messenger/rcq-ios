@@ -12,11 +12,6 @@ struct ContactListView: View {
 
     @StateObject private var appState = AppState.shared
     @StateObject private var trades = TradesService.shared
-    /// Observe so `ownEquippedPet` (read from `items.items` +
-    /// `items.catalog`) re-evaluates when inventory loads after
-    /// boot or when the user equips/unequips a pet from another
-    /// surface — without this the own status icon in the header
-    /// is a snapshot at first render and the pet stays missing.
     @StateObject private var items = ItemsService.shared
     @StateObject private var stories = StoryService.shared
 
@@ -27,77 +22,30 @@ struct ContactListView: View {
     @State private var showCreateGroup = false
     @State private var showAudioRoomSheet = false
     @State private var collapsedAudioRooms = false
-    /// Audio room awaiting key-rotation confirmation. Set when the
-    /// owner picks "Rotate join key" from the row's context menu;
-    /// cleared by the confirmation dialog's actions. Carrying the
-    /// whole room (not just the id) keeps the dialog title bound to
-    /// the room name without a second lookup.
     @State private var rotateKeyConfirmRoom: AudioRoom?
     @State private var showRoulette = false
     @State private var showNearby = false
     @State private var showQR = false
     @State private var showSearch = false
     @State private var showInventory = false
-    /// Driven by `pendingOpenTrades` push tap. Opens the same
-    /// TradesListView the trades.freshIncoming sheet uses, but
-    /// without needing a specific Trade object — handy when the
-    /// push lands and the trade row hasn't been pulled yet (or
-    /// has since been actioned and removed from `incoming`).
     @State private var showTradesList = false
     @State private var collapsedGroups = false
-    /// Long-press preview target (Telegram-style scrollable preview
-    /// + action list). Set on long-press of a contact or group row;
-    /// drives the `ContactPreviewOverlay` rendering at the body root.
     @State private var previewTarget: ChatTarget?
-    /// Row identifier that's currently being pressed (finger held, but
-    /// the long-press hasn't yet armed). Drives a subtle scale-down on
-    /// the matching row so the user gets a "pushed in" cue while their
-    /// finger sits on the contact. Cleared on release or when the
-    /// long-press completes. Format: `"peer:<uin>"` / `"group:<id>"`.
+    /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
     @State private var pressedRowID: String?
-    /// Drives the story composer fullScreenCover. Bound to a
-    /// nav-bar `+ camera` button.
     @State private var showStoryComposer = false
-    /// Drives the fullscreen Instagram-style story viewer. Holds an
-    /// `Identifiable` wrapper around the index into `stories.feed`
-    /// of the group whose first story should be shown first; nil →
-    /// no viewer presented.
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
-    /// Pending UINs we've already attempted a forced refresh for, so
-    /// `tryOpenPendingChat` doesn't loop on /contacts when the
-    /// requested UIN simply doesn't exist server-side (peer burned
-    /// account, etc.). Reset whenever the pending value clears.
     @State private var refreshAttemptedFor: Set<Int> = []
-    /// Active "Quick Preview" sheet target. Driven from the row
-    /// context menu — the sheet renders a scrollable read-only chat
-    /// preview, separate from the small contextMenu peek (which is
-    /// static on iOS 16). Nil = no sheet open.
-    /// Active equipped-pet preview sheet. Set when the user taps
-    /// the status-icon zone of a contact row (or group member)
-    /// whose `equippedPet` is non-nil. Wraps the pet snapshot plus
-    /// the owner's nickname/UIN so the sheet can render the
-    /// "view inventory" CTA without an extra fetch.
     @State private var petPreview: PetPreviewTarget?
-    /// Active trade-propose target. Set from the contact context-menu
-    /// "Trade" action; presented as a sheet over the contact list.
     @State private var tradeWithContact: Contact?
-    /// Active report target. Set from the contact preview's "Report"
-    /// action; drives the ReportContactSheet modal which POSTs to
-    /// /reports for admin triage at admin.rcq.app.
     @State private var reportContact: Contact?
 
     var body: some View {
-        // Outer ZStack hosts the preview overlay AT THE ROOT so it
-        // covers the bottom safeAreaInset bar (and anything else the
-        // NavigationStack lays out). Putting the overlay inside the
-        // navigation stack's ZStack let the bar poke through and
-        // pushed siblings around when previewTarget toggled — the
-        // overlay needs to be a sibling of the whole nav stack, not
-        // a sibling of the list.
+        // Preview overlay must sit at the root so it can cover the bottom safeAreaInset bar.
         ZStack {
             navigationStackBody
             if let pt = previewTarget {
@@ -105,7 +53,6 @@ struct ContactListView: View {
                     target: pt,
                     actions: previewActions(for: pt),
                     onDismiss: {
-                        // Snappy dismiss — easeOut without lingering tail.
                         withAnimation(.easeOut(duration: 0.14)) {
                             previewTarget = nil
                         }
@@ -140,12 +87,6 @@ struct ContactListView: View {
                     .zIndex(100)
                 }
             }
-            // System nav bar with our identity (status icon + nick
-            // + UIN) in `.principal` plus a single ellipsis menu
-            // on the trailing edge — same idiom the chat header
-            // uses. Search / Inventory / Saved Messages all sit
-            // inside that ellipsis menu now. Bottom is the IX-
-            // style floating capsule.
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
@@ -157,10 +98,6 @@ struct ContactListView: View {
                             Image(systemName: "shippingbox.fill")
                                 .foregroundColor(Theme.Color.textPrimary)
                             if trades.pendingIncomingCount > 0 {
-                                // Sits flush over the box's top-
-                                // right corner — system toolbar's
-                                // hit-area was clipping the badge
-                                // when it spilled past the icon.
                                 Text("\(trades.pendingIncomingCount)")
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
@@ -176,15 +113,7 @@ struct ContactListView: View {
                 ToolbarItem(placement: .principal) {
                     identityPrincipal
                 }
-                // Single trailing slot containing the own-story
-                // ring + the ⋯ menu in one HStack. iOS 26's new
-                // toolbar style wraps each `ToolbarItem` in its own
-                // pill capsule with non-trivial inter-pill spacing —
-                // putting both into one item collapses the two pills
-                // into a single capsule we control. Bonus: the pill's
-                // internal content rect is taller than the trailing-
-                // slot's per-item clip, so the circular ring renders
-                // without the top/bottom flattening we had at 20pt.
+                // One HStack collapses iOS 26's two-pill spacing into a single capsule.
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 8) {
                         ownStoryButton
@@ -231,16 +160,7 @@ struct ContactListView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
             .sheet(isPresented: $showPending) { PendingRequestsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
-            // Random Chat is a modal-takeover surface (own header,
-            // own bottom strip, own pickers). Using `fullScreenCover`
-            // instead of `.sheet` removes the swipe-down cascade
-            // that iOS occasionally fires when an inner sheet
-            // (PhotoPicker / VideoPicker) dismisses — symptom was
-            // "I sent a photo and the chat closed on me."
-            // `fullScreenCover` has no swipe gesture at all, so a
-            // PhotoPicker dismiss can never be reinterpreted as a
-            // parent dismiss. The user still leaves explicitly via
-            // the X / Close buttons.
+            // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRoulette) { RouletteView() }
             .fullScreenCover(isPresented: $showInventory) { InventoryView() }
             .background(storiesCoverHost)
@@ -254,10 +174,6 @@ struct ContactListView: View {
             }
             .sheet(isPresented: $showAudioRoomSheet) {
                 CreateOrJoinAudioRoomSheet { room in
-                    // Drop the user straight into the live voice
-                    // session — typical "create + start talking"
-                    // flow. Sheet closes itself; the full-screen
-                    // AudioRoomScreen takes over from RootView.
                     audioRooms.enter(room: room)
                 }
             }
@@ -316,16 +232,8 @@ struct ContactListView: View {
                 await groups.refresh()
                 await audioRooms.refresh()
                 await stories.refresh()
-                // Pull pending trades on launch so the inventory's
-                // incoming-badge and the global banner can paint
-                // immediately. Cheap (filtered to status=pending).
                 await trades.refreshAll()
-                // Cold-launch push-tap replay. RCQAppDelegate.didReceive
-                // sets these flags BEFORE this view is mounted (the
-                // first `.onChange` observer never fires for values
-                // already present at attach time). Same fix pattern as
-                // `tryOpenPendingChat` for `pendingOpenChatUIN` —
-                // check explicitly after first mount.
+                // Cold-launch replay: RCQAppDelegate sets these flags before mount, so onChange misses them.
                 if appState.pendingOpenTrades {
                     showTradesList = true
                     appState.pendingOpenTrades = false
@@ -335,12 +243,6 @@ struct ContactListView: View {
                     appState.pendingOpenPending = false
                 }
             }
-            // Global incoming-trade nudge. When `trade_received`
-            // lands over WS, surface the unified TradesListView so
-            // the user sees the row inline with Accept / Decline
-            // buttons attached to it directly. Previously this used
-            // a separate IncomingTradeSheet that just duplicated the
-            // list row — the user (rightly) called that out.
             .sheet(isPresented: Binding(
                 get: { trades.freshIncoming != nil },
                 set: { if !$0 { trades.freshIncoming = nil } },
@@ -356,36 +258,15 @@ struct ContactListView: View {
                     appState.pendingAddUIN = nil
                 }
             }
-            // Cross-stack request from the trades list OR a tapped
-            // push notification: somebody set `pendingOpenChatUIN` and
-            // we're expected to push that contact's chat onto our
-            // NavigationPath.
-            //
-            // The tricky part is timing: a tap on a push from a cold
-            // launch can fire BEFORE `ContactService.refresh()` has
-            // populated `vm.contacts`. The previous version then
-            // dropped the request silently. Two changes below:
-            //
-            //   1. We DON'T clear `pendingOpenChatUIN` until we
-            //      actually navigate. So if the contact isn't loaded
-            //      yet, the value stays set and we retry on contact
-            //      list updates.
-            //   2. A second `.onChange(of: vm.contacts)` re-checks the
-            //      pending UIN every time the contact list refreshes.
-            //      First refresh after launch picks up the deferred
-            //      navigation.
+            // Don't clear pendingOpenChatUIN until navigation succeeds — cold-launch push taps land
+            // before vm.contacts populates, so the second onChange retries once the list loads.
             .onChange(of: appState.pendingOpenChatUIN) { _ in
                 tryOpenPendingChat()
             }
             .onChange(of: vm.contacts) { _ in
                 tryOpenPendingChat()
             }
-            // Push-tap routing for "Friend request" and "Trade
-            // offer" pushes. RCQAppDelegate sets the corresponding
-            // flag on AppState; we surface the matching sheet then
-            // flip the flag back so subsequent identical taps re-
-            // fire (assigning the same value twice on `onChange`
-            // is a no-op, hence the explicit reset).
+            // Reset the flag so subsequent identical push taps re-fire (same-value assigns are no-ops).
             .onChange(of: appState.pendingOpenPending) { newValue in
                 if newValue {
                     showInventory = false
@@ -397,35 +278,15 @@ struct ContactListView: View {
             .onChange(of: appState.pendingOpenTrades) { newValue in
                 if newValue {
                     showInventory = false
-                    trades.freshIncoming = nil  // dismiss the
-                    // single-trade sheet first — opening both
-                    // bindings concurrently would have iOS pick
-                    // one and silently drop the other.
+                    trades.freshIncoming = nil
                     showTradesList = true
                     appState.pendingOpenTrades = false
-                    // Refresh in the background so by the time
-                    // the user is reading the list the freshly-
-                    // landed offer is in it.
                     Task { @MainActor in await trades.refreshAll() }
                 }
             }
         }
     }
 
-    /// Try to consume a pending "open chat with X" request. Pulled
-    /// out into its own helper because two onChange hooks call it —
-    /// one when the request lands, one when contacts finish
-    /// loading. We only clear the pending value after a successful
-    /// navigation so a cold-launch push tap that lands before
-    /// contacts populate gets retried on the next refresh.
-    ///
-    /// If the requested UIN isn't in our cached contact list AND
-    /// we haven't already tried a forced refresh for it, kick a
-    /// `vm.refresh()` once. Covers the case where the sender re-
-    /// registered (new UIN) after our last contact-list refresh —
-    /// without this, a push tap from a peer with a fresh UIN would
-    /// just sit in `pendingOpenChatUIN` forever, waiting for an
-    /// /contacts call that nothing else triggered.
     private func tryOpenPendingChat() {
         guard let uin = appState.pendingOpenChatUIN else {
             refreshAttemptedFor.removeAll()
@@ -445,12 +306,6 @@ struct ContactListView: View {
         path.append(contact)
     }
 
-    /// One contact row + its associated context menu + tap routing.
-    /// Hoisted out of the listSection's ForEach to keep the body's
-    /// type-checker complexity below the implicit limit. Resolves
-    /// the contact's active story group at row-build time and passes
-    /// a tap callback that opens the fullscreen viewer at the right
-    /// index in the live feed.
     @ViewBuilder
     private func contactRowItem(for contact: Contact) -> some View {
         let group = stories.group(forUIN: contact.uin)
@@ -482,24 +337,12 @@ struct ContactListView: View {
     }
 
     private func openStoryViewer(forUIN uin: Int) {
-        // Resolve the index in the live feed at tap-time (the array
-        // can shift between render and tap as new stories arrive).
+        // Resolve at tap-time — the array shifts as stories arrive.
         if let idx = stories.feed.firstIndex(where: { $0.ownerUIN == uin }) {
             storyViewerGroupIndex = StoryViewerWrapper(index: idx)
         }
     }
 
-    /// Identity for the system nav bar's `.principal` slot —
-    /// status icon menu, nickname, UIN, optional status message
-    /// stacked. Tap on the nickname/UIN block opens ProfileView;
-    /// tap on the status icon opens the status picker menu.
-    /// Own-stories thumbnail ring in the toolbar. Renders only when
-    /// the user has at least one active story today — there's no
-    /// "you" row in the contact list, so without this entry point
-    /// you couldn't watch your own stories back. Tap opens the
-    /// viewer pre-positioned on your own group; the viewer's
-    /// existing menu surfaces the "show viewers" + "delete"
-    /// affordances from there.
     @ViewBuilder
     private var ownStoryButton: some View {
         if let myUIN = AuthService.shared.ownUIN,
@@ -514,10 +357,6 @@ struct ContactListView: View {
         }
     }
 
-    /// Invisible attachment surface for the story-related fullScreen
-    /// covers. Mounted as `.background(...)` so the type-checker
-    /// processes it as its own subexpression and the main body
-    /// stays under the implicit complexity budget.
     private var storiesCoverHost: some View {
         Color.clear
             .fullScreenCover(isPresented: $showStoryComposer) {
@@ -533,11 +372,7 @@ struct ContactListView: View {
     }
 
     private var identityPrincipal: some View {
-        // Same centring trick as `ChatView.principalContent`: a
-        // `Color.clear` of the leading icon's width pads the trailing
-        // edge so the nickname / UIN VStack lands in the visual
-        // centre of the nav bar instead of being shoved right by
-        // the status icon. Status menu stays fully tappable.
+        // Trailing Color.clear pads against the leading icon to centre nick/UIN in the nav bar.
         HStack(spacing: 8) {
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
@@ -547,11 +382,6 @@ struct ContactListView: View {
                 }
                 .pickerStyle(.inline)
             } label: {
-                // Own status icon picks up your equipped-pet
-                // overlay too. Tap STILL opens the status picker
-                // (don't override that — it's the primary purpose
-                // here). To preview the pet itself, tap your own
-                // contact row in the list.
                 StatusWithPet(
                     status: presence.status,
                     pet: items.ownEquippedPet,
@@ -575,13 +405,6 @@ struct ContactListView: View {
         }
     }
 
-    /// Trailing ellipsis menu — Add contact, Search and Saved
-    /// Messages. The Inventory affordance lives on the leading
-    /// toolbar slot instead (badge-bearing, frequently used), so
-    /// it's no longer duplicated here. "Add" is duplicated from
-    /// the bottom bar by request — keyboard-thumb users reach the
-    /// top trailing corner more comfortably than the centre of
-    /// the bottom capsule.
     @ViewBuilder
     private var contactListMenu: some View {
         Menu {
@@ -620,10 +443,7 @@ struct ContactListView: View {
                 if vm.pendingCount > 0 {
                     pendingBanner
                 }
-                // Gate empty-state on a completed first refresh — cold
-                // launches with non-empty contacts otherwise flash the
-                // "Add contact" CTA for one frame before the stream
-                // populates.
+                // Gate empty-state on a completed first refresh — otherwise the CTA flashes during cold launch.
                 if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount == 0 {
                     emptyState
                 }
@@ -648,10 +468,6 @@ struct ContactListView: View {
                 Spacer().frame(height: 8)
             }
         }
-        // Standard system pull-to-refresh. Pulls every surface
-        // the user might want fresh in one tug — contacts +
-        // groups + pending trades. Returns when all three resolve
-        // so the spinner stays attached until everything settles.
         .refreshable {
             async let c: Void = vm.refresh()
             async let g: Void = groups.refresh()
@@ -661,9 +477,6 @@ struct ContactListView: View {
         }
     }
 
-    /// Pinned section at the top — surfaces contacts and groups the user
-    /// long-pressed → "Add to Favorites". Hidden entirely when empty so the
-    /// chrome doesn't take up space until there's something to show.
     @ViewBuilder
     private var favoritesSection: some View {
         let favGroups = groups.groups.filter { favorites.contains(group: $0.id) }
@@ -687,12 +500,7 @@ struct ContactListView: View {
                     .background(Theme.Color.bgSecondary.opacity(0.7))
                 }
                 if !collapsedFavorites {
-                    // Favorites section duplicates rows that ALSO
-                    // appear in online/offline / groups sections.
-                    // Use a distinct `fav-` prefix on the press ID
-                    // so a press on the favorites row doesn't also
-                    // visually compress the same contact's row in
-                    // the online section (and vice versa).
+                    // `fav-` prefix isolates press cues from the duplicate row in online/offline/groups.
                     ForEach(favGroups) { group in
                         GroupRow(group: group)
                             .contentShape(Rectangle())
@@ -783,14 +591,7 @@ struct ContactListView: View {
                             .onLongPressGesture(
                                 minimumDuration: 0.18,
                                 pressing: { isPressing in
-                                    // No haptic here — `pressing: true`
-                                    // fires on every touch-down including
-                                    // taps and scroll-starts, which made
-                                    // the whole list feel "buzzy". Visual
-                                    // scale-down is the press cue;
-                                    // medium-impact haptic fires on
-                                    // `perform` (when the menu actually
-                                    // arms) inside `openPreview`.
+                                    // No haptic on press-down — fires on every taps/scroll-start.
                                     if isPressing {
                                         pressedRowID = "group:\(group.id)"
                                     } else if pressedRowID == "group:\(group.id)" {
@@ -805,10 +606,6 @@ struct ContactListView: View {
         }
     }
 
-    /// "Audio Rooms" section — same shape as `groupsSection`, with a
-    /// `+` in the header that opens `CreateOrJoinAudioRoomSheet`.
-    /// Tapping a row enters the live voice session; long-press for
-    /// owner-only Delete or self Unsubscribe.
     private var audioRoomsSection: some View {
         VStack(spacing: 0) {
             Button { collapsedAudioRooms.toggle() } label: {
@@ -871,12 +668,7 @@ struct ContactListView: View {
                                     } label: {
                                         Label("audio_room.menu.delete".localized, systemImage: "trash")
                                     }
-                                    // Override the inherited app `.tint` (Theme.Color.accent
-                                    // = green) just for this menu item. contextMenu items
-                                    // pick up tint regardless of `role: .destructive`,
-                                    // which previously left the icon green even though
-                                    // the text rendered red. `.tint(.red)` cascades to
-                                    // both halves uniformly.
+                                    // contextMenu items inherit app .tint (green) regardless of role: .destructive.
                                     .tint(.red)
                                 } else {
                                     Button(role: .destructive) {
@@ -887,24 +679,13 @@ struct ContactListView: View {
                                     .tint(.red)
                                 }
                             }
-                            // Plain opacity for per-row inserts — no
-                            // .move offset. With .move(.top) the rows
-                            // animate sliding down WHILE the layout below
-                            // them shifts in the same frame range, which
-                            // SwiftUI compositor can't always keep
-                            // synced — visible as the "laggy" appearance
-                            // the user flagged. Pure opacity fade is
-                            // cheap and reads as smooth.
+                            // Pure opacity per-row insert — .move offsets desync from layout shifts below.
                             .transition(.opacity)
                     }
                 }
             }
         }
-        // Gate the whole section's opacity on `hasLoadedOnce` so the
-        // initial reveal is a single clean fade-in instead of a "pop +
-        // restyle" cascade as /audio_rooms returns. Per-row inserts
-        // after the first load (someone creates a new room) still use
-        // the per-row opacity transition above.
+        // Gate first reveal on hasLoadedOnce so /audio_rooms doesn't pop-then-restyle.
         .opacity(audioRooms.hasLoadedOnce ? 1 : 0)
         .animation(.easeOut(duration: 0.32), value: audioRooms.hasLoadedOnce)
         .animation(.easeOut(duration: 0.22), value: audioRooms.rooms.count)

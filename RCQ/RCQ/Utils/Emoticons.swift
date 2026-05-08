@@ -1,11 +1,7 @@
 import SwiftUI
 
-/// KOLOBOK emoticon table — extracted from the original `Emoticons.plist` shipped
-/// with the Adium pack so the shortcodes round-trip exactly. Order matters: the
-/// tokenizer matches longest shortcodes first, so we sort accordingly at runtime.
-///
-/// Asset naming: the bundle ships loose `.gif` files (e.g. `smile.gif`). UIImage(named:)
-/// looks them up by basename, which is what we use below.
+/// KOLOBOK emoticon table extracted from the Adium pack's Emoticons.plist.
+/// Tokenizer matches longest shortcodes first, so entries sort by length at runtime.
 enum Emoticons {
     struct Entry: Hashable {
         let code: String
@@ -48,14 +44,11 @@ enum Emoticons {
         add("drinks",     "Drink",            ["*DRINK*"])
         add("heart",      "In Love",          ["*IN LOVE*", "<3"])
 
-        // Longest first so the tokenizer doesn't clip a longer shortcode by matching a
-        // shorter prefix. Stable order otherwise.
+        // Longest first so a shorter prefix doesn't clip a longer shortcode.
         return raw.sorted { $0.code.count > $1.code.count }
     }()
 
     /// Distinct default emoticons for the picker grid (one per asset).
-    /// The default Kolobok set is unconditionally available; equipped
-    /// cosmetic packs are layered on top via `paletteAssets(equippedKindIDs:)`.
     static var paletteAssets: [(asset: String, name: String, primaryCode: String)] {
         var seen = Set<String>()
         var out: [(String, String, String)] = []
@@ -67,13 +60,7 @@ enum Emoticons {
         return out
     }
 
-    /// Default palette + every equipped cosmetic pack's contents
-    /// appended in the order they were equipped. Each pack contributes
-    /// extra entries with shortcodes derived from the asset name
-    /// (`:banana:`, `:coolblue:`, etc) so users can type them inline
-    /// in chat or tap them in the picker. Mirrors the additive
-    /// behaviour the user wanted: Kolobok stays the base, packs add
-    /// on top, never replace.
+    /// Default palette + every equipped cosmetic pack appended in equip order.
     static func paletteAssets(
         equippedKindIDs: [String],
     ) -> [(asset: String, name: String, primaryCode: String)] {
@@ -92,12 +79,6 @@ enum Emoticons {
         case emoticon(asset: String, code: String)
     }
 
-    /// Default-Kolobok entries augmented with every cosmetic-pack
-    /// emoticon ever shipped. Sender's equip state doesn't matter
-    /// for rendering inbound text — once a pack's assets are
-    /// bundled into the app, the receiver tokenises them. Equip
-    /// status only gates the typing-side picker (so a user without
-    /// the pack doesn't see options they'd type as raw text).
     private static let allEntries: [Entry] = {
         let extras: [Entry] = CosmeticPacks.allKindIDs.flatMap { kindID in
             CosmeticPacks.entries(for: kindID).map {
@@ -118,13 +99,7 @@ enum Emoticons {
         var idx = 0
         while idx < chars.count {
             var matched: (code: String, asset: String)? = nil
-            // Word-boundary gate: an emoticon match is only valid
-            // when it's at the very start of the text or the
-            // preceding character is whitespace. This blocks
-            // smileys nested inside words — the canonical case is
-            // "https://example.com" where `:/` would otherwise
-            // tokenize as a frowny mid-URL. Telegram and most
-            // modern messengers enforce the same rule.
+            // Word-boundary gate so :/ in https:// doesn't tokenize as a frowny.
             let atBoundary = (idx == 0) || chars[idx - 1].isWhitespace
             if atBoundary {
                 for entry in table {

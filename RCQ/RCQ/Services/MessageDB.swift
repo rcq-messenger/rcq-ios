@@ -1,11 +1,9 @@
 import CoreData
 import Foundation
 
-/// On-device message history. Per ICQ tradition (history.dat) and Signal best practice,
-/// the server never persists plaintext — all history lives client-side. We use a
-/// programmatic CoreData model so the schema travels in source (no `.xcdatamodeld`),
-/// and a SQLite store with `FileProtectionType.complete` so the database is
-/// inaccessible while the device is locked.
+/// On-device message history. Server never persists plaintext — all
+/// history lives client-side. Programmatic CoreData model (no xcdatamodeld);
+/// SQLite store with `FileProtectionType.complete`.
 @objc(MessageRecord)
 final class MessageRecord: NSManagedObject {
     @NSManaged var id: UUID
@@ -13,53 +11,30 @@ final class MessageRecord: NSManagedObject {
     @NSManaged var threadKey: Int64             // peer UIN or group ID
     @NSManaged var senderUIN: Int64
     @NSManaged var isFromMe: Bool
-    @NSManaged var kind: String                 // text | photo | video | systemNotice | deleteForEveryone
+    @NSManaged var kind: String
     @NSManaged var text: String
     @NSManaged var mediaID: String?
     @NSManaged var sentAt: Date
-    @NSManaged var deliveryState: String        // sending | sent | delivered | read | failed
+    @NSManaged var deliveryState: String
     @NSManaged var receivedWhileAway: Bool
     @NSManaged var deletedForEveryone: Bool
-    /// JSON dict of `{ "<uin>": "<asset>" }`. Empty `{}` when no reactions.
+    /// JSON `{ "<uin>": "<asset>" }`. Empty = `{}`.
     @NSManaged var reactionsJSON: String
-    /// Base64 JPEG thumbnail for video messages.
     @NSManaged var thumbnailB64: String?
-    /// Video duration in seconds, 0 for non-video messages.
     @NSManaged var durationSec: Double
-    /// Disappearing-message TTL in seconds. `0` = no expiry (model layer
-    /// converts to `nil`). Persisted so app restarts don't resurrect
-    /// messages that should already have been swept.
+    /// `0` = no expiry (model layer converts to nil).
     @NSManaged var ttlSeconds: Int64
-    /// Original sender's display name when this message was forwarded
-    /// into the thread. Empty string for first-hand messages (model
-    /// layer normalizes "" → nil on read). Persisted so the
-    /// "Forwarded from X" header survives app restarts.
+    /// Empty string for first-hand messages ("" → nil on read).
     @NSManaged var forwardedFromName: String?
-    /// Reply target id when this message is a reply, nil otherwise.
-    /// Stored as a UUID via CoreData's UUID attribute type — same
-    /// shape as the row's own `id`. Tap-quote-block jumps to the
-    /// original by looking up this id within the thread.
     @NSManaged var replyToID: UUID?
-    /// Inline preview of the message we're replying to. Baked at
-    /// compose time so deletion of the original (or migration of
-    /// the recipient) doesn't blank the quote.
     @NSManaged var replyToSnippet: String?
-    /// Display name of the author of the message we're replying to.
-    /// Same nickname-only attribution rule as `forwardedFromName`.
     @NSManaged var replyToAuthorName: String?
-    /// Last `.edit` envelope timestamp applied to this row's text.
-    /// Nil = never edited. The "(edited)" suffix in MessageRow
-    /// reads off this presence; the actual edit time is shown in
-    /// the long-press preview if we ever surface it.
+    /// Last `.edit` timestamp. Nil = never edited.
     @NSManaged var editedAt: Date?
-    /// Token cost the recipient must pay to unlock this premium media.
-    /// `0` for non-premium rows (model layer normalizes to nil on read).
+    /// `0` for non-premium rows (normalized to nil on read).
     @NSManaged var premiumPriceTokens: Int64
-    /// True once the local user has a usable media key for this premium
-    /// message — either because they're the sender (always true) or
-    /// because they paid the unlock fee. Persisted so a re-launch
-    /// renders unlocked premium photos / videos directly without
-    /// asking to pay again.
+    /// True once local user has a usable media key (sender always true,
+    /// recipients flip after paid unlock).
     @NSManaged var premiumUnlocked: Bool
 }
 
@@ -76,25 +51,10 @@ final class MessageDB {
 
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
-        // Schema versions:
-        //   v2 — gained threadKind/threadKey/senderUIN/mediaID/etc.
-        //   v3 — current
-        //   v4 — adds ttlSeconds for disappearing messages
-        //   v5 — adds forwardedFromName for forwarded-message attribution
-        //   v6 — adds replyToID + replyToSnippet + replyToAuthorName for
-        //        reply-with-quote
-        //   v7 — adds editedAt for the edit-message feature so the
-        //        "(edited)" suffix survives app restarts
-        //   v8 — adds premiumPriceTokens + premiumUnlocked for the
-        //        paywalled media flow (premium photo / video)
-        // Old store files are left untouched so a downgrade can still read them.
         let storeURL = baseURL.appendingPathComponent("rcq-history-v8.sqlite")
         let desc = NSPersistentStoreDescription(url: storeURL)
         desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
         desc.shouldAddStoreAsynchronously = false
-        // Lightweight migration in case a developer manages to attach an
-        // older store URL — additive optional attributes only, so the
-        // inferred mapping is safe.
         desc.shouldMigrateStoreAutomatically = true
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
@@ -160,12 +120,7 @@ final class MessageDB {
     }
 
     func insert(_ msg: Message) {
-        // Idempotent — UUID is the natural key, and a duplicate
-        // insert here would create two rows with the same `id` and
-        // confuse `find(id:)` thereafter (CoreData has no implicit
-        // unique constraint on `id`). MessageStore.append already
-        // dedupes in memory, but this is defence-in-depth: a future
-        // call site that bypasses MessageStore won't bloat the DB.
+        // Idempotent — CoreData has no implicit unique constraint on `id`.
         if find(id: msg.id) != nil { return }
         let row = MessageRecord(context: ctx)
         Self.apply(msg, to: row)
@@ -184,10 +139,8 @@ final class MessageDB {
         save()
     }
 
-    /// Persist a successful premium-content unlock — splices the
-    /// freshly-recovered mediaKey into the row's `mediaID` field
-    /// (previously `<id>|` with empty key) and flips `premiumUnlocked`
-    /// so re-launches render the unlocked bubble without re-charging.
+    /// Splices the recovered mediaKey into `mediaID` (was `<id>|`) and
+    /// flips `premiumUnlocked` so re-launches render without re-charging.
     func updatePremiumUnlocked(id: UUID, mediaID: String) {
         guard let row = find(id: id) else { return }
         row.mediaID = mediaID
@@ -195,9 +148,6 @@ final class MessageDB {
         save()
     }
 
-    /// Apply an `.edit` envelope to an existing row. Replaces the
-    /// stored body text and stamps `editedAt` so the renderer can
-    /// surface the "(edited)" affordance after rehydrate.
     func updateText(id: UUID, text: String, editedAt: Date) {
         guard let row = find(id: id) else { return }
         row.text = text
@@ -310,7 +260,6 @@ final class MessageDB {
         )
     }
 
-    /// JSON dict { "<uin>": "<asset>" }. Empty dict serialises as "{}".
     static func encodeReactions(_ reactions: [Int: String]) -> String {
         let stringKeyed = Dictionary(uniqueKeysWithValues: reactions.map { (String($0.key), $0.value) })
         guard let data = try? JSONSerialization.data(withJSONObject: stringKeyed) else { return "{}" }

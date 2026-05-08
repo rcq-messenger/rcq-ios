@@ -57,12 +57,7 @@ struct UserInfoView: View {
                             }
                         }
                         if !isOwn {
-                            // Per-contact custom notification sound
-                            // (ICQ-classic feature). Pack list comes
-                            // from `SoundPack.allCases`; once the
-                            // lootbox Voices section ships, this
-                            // expands to include traded packs from
-                            // inventory.
+                            // Per-contact custom notification sound.
                             section("profile.section.notifications".localized) {
                                 customSoundPicker(uin: p.uin)
                             }
@@ -85,11 +80,6 @@ struct UserInfoView: View {
                                 }
                             }
                         }
-                        // Bottom CTAs (Trade / View inventory / Save /
-                        // Share) used to live here as full-width
-                        // buttons. They migrated to the navbar
-                        // (`trailingToolbarContent`) so the body now
-                        // stays a clean info-only surface.
                     }
                     .padding(16)
                 }
@@ -117,13 +107,6 @@ struct UserInfoView: View {
         }
     }
 
-    /// Trailing nav-bar slot. Self-profile gets a checkmark Save
-    /// button (disabled until `hasChanges`); peer profile gets a
-    /// single ellipsis menu with Propose-trade + View-inventory.
-    /// Trade entry honours the peer's `tradePolicy` (hidden when
-    /// "nobody" / "contacts" + we aren't a contact) — server still
-    /// 403s as the safety net but the UI doesn't surface a button
-    /// the user can't actually use.
     @ViewBuilder
     private var trailingToolbarContent: some View {
         if isOwn {
@@ -153,10 +136,6 @@ struct UserInfoView: View {
                     Label("profile.cta.view_inventory".localized, systemImage: "shippingbox")
                 }
                 Divider()
-                // Block + Report at the bottom — separated by a
-                // Divider so destructive actions don't blur with
-                // benign ones above. Same pair appears on every
-                // UGC surface that exposes another user.
                 UserSafetyActions(
                     targetUIN: p.uin,
                     targetNickname: p.nickname,
@@ -171,9 +150,6 @@ struct UserInfoView: View {
         }
     }
 
-    /// Whether the peer's `tradePolicy` allows us to send a trade.
-    /// Defaults to `true` while the profile is still loading so the
-    /// menu doesn't flash empty mid-fetch.
     private var peerCanReceiveTrade: Bool {
         let policy = profile?.tradePolicy ?? "everyone"
         if policy == "nobody" { return false }
@@ -185,11 +161,6 @@ struct UserInfoView: View {
 
     @ViewBuilder
     private func customSoundPicker(uin: Int) -> some View {
-        // Read current pack via @StateObject-equivalent — we observe
-        // via `ContactSoundStore.shared` directly. The picker's
-        // option list is derived from the user's own inventory:
-        // `default` plus one entry per UNIQUE voice-pack kind they
-        // own. No mock list — empty inventory ⇒ "Default" only.
         let store = ContactSoundStore.shared
         let items = ItemsService.shared
         let current = store.packID(for: uin) ?? SoundPack.default.id
@@ -215,16 +186,8 @@ struct UserInfoView: View {
         .tint(Theme.Color.accent)
     }
 
-    /// Header: a single big status icon, nickname, UIN, optional status message. The
-    /// status icon is the visual anchor — duplicating it next to the nickname would
-    /// just be noise, so we don't.
     private func header(_ p: UserProfile) -> some View {
         HStack(spacing: 12) {
-            // Status icon picks up the equipped-pet overlay too.
-            // No tap-routing here: own-profile users don't need a
-            // self-pet-preview (they own the inventory), and peer
-            // profiles already expose "View inventory" via the
-            // toolbar ellipsis menu where the same content lives.
             StatusWithPet(status: p.status, pet: p.equippedPet, size: 48)
             VStack(alignment: .leading, spacing: 2) {
                 Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
@@ -232,11 +195,8 @@ struct UserInfoView: View {
                 if let m = p.statusMessage, !m.isEmpty {
                     Text(m).font(.caption.italic()).foregroundColor(Theme.Color.textSecondary)
                 }
-                // Last-seen is server-filtered: nil means the
-                // viewer is outside the target's privacy window
-                // ("contacts" with no mutual contact, or "nobody").
-                // Only show when peer is offline — for online/away
-                // /dnd the status icon is the active signal.
+                // Server filters lastSeen to nil when outside the
+                // target's privacy window. Only show when offline.
                 if p.status == .offline, let ts = p.lastSeen {
                     Text(String(format: "profile.last_seen".localized, LastSeenFormatter.shared.relative(from: ts)))
                         .font(.caption2)
@@ -253,9 +213,6 @@ struct UserInfoView: View {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(Theme.Color.textSecondary)
-            // alignment .leading so multiline content (About me) lays out flush left
-            // alongside the single-line key/value rows. Without this, SwiftUI's default
-            // .center alignment centers any child wider than the column.
             VStack(alignment: .leading, spacing: 6) { content() }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -264,14 +221,9 @@ struct UserInfoView: View {
         }
     }
 
-    /// Gender row: a constrained Picker for the owner so the
-    /// only writable values are the three the server validates,
-    /// or a read-only label + icon for everyone else.
     @ViewBuilder
     private func genderRow(_ profile: UserProfile) -> some View {
-        // Resolve the gender we're rendering: draft (in-edit own
-        // profile) → profile (committed). Empty string = "don't
-        // share", same as the Picker tag for the dont_share option.
+        // Empty string = "don't share" (same as the dont_share tag).
         let resolved = (isOwn ? (draft?.gender ?? profile.gender) : profile.gender) ?? ""
         let displayLabel = resolved.isEmpty
             ? "settings.privacy.gender.dont_share".localized
@@ -282,16 +234,9 @@ struct UserInfoView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .frame(width: 110, alignment: .leading)
             if isOwn {
-                // Menu with a CUSTOM label so we can stack the gender
-                // text + glyph + dropdown chevron in our own HStack.
-                // Stock SwiftUI Picker hides custom labels (and only
-                // exposes Text-tagged options), which is why the
-                // earlier Picker-with-icon-after-Spacer attempt
-                // never actually rendered the glyph the user could
-                // see — the label position belonged to the system
-                // chrome, not our HStack. Menu honours arbitrary
-                // SwiftUI content for both the trigger and the
-                // option list.
+                // Menu (not Picker): Picker hides custom labels, so the
+                // glyph next to the gender text needs Menu's free-form
+                // trigger content.
                 Menu {
                     Button("settings.privacy.gender.dont_share".localized) {
                         draft?.gender = nil
@@ -319,8 +264,6 @@ struct UserInfoView: View {
                 }
                 Spacer()
             } else if !resolved.isEmpty {
-                // Icon AFTER the label text — reads as a small
-                // trailing badge instead of a leading bullet.
                 HStack(spacing: 6) {
                     Text(genderLabel(resolved))
                         .foregroundColor(Theme.Color.textPrimary)
@@ -397,9 +340,9 @@ struct UserInfoView: View {
             self.profile = p
             self.draft = p
             self.loading = false
-            // Fire a sealed `.visit` envelope so the target device can tally a
-            // "+1 in last 7 days" on their own profile. Skipped for our own
-            // profile. Throttled per (target, session) inside MessageService.
+            // Fire a sealed .visit envelope so the target can tally a
+            // "+1 in last 7 days" tally. Throttled per (target, session)
+            // inside MessageService.
             if !isOwn {
                 Task {
                     await MessageService.shared.sendVisit(

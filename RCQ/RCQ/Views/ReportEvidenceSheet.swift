@@ -1,36 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Report-with-evidence flow for media messages. Differs from the
-/// reason-only `ReportContactSheet` in two crucial ways:
-///
-///   1. **Consent gate.** The reporter has to explicitly toggle "I
-///      authorize RCQ moderators to view this content" before Submit
-///      enables. Without it, the upload would silently send a
-///      decrypted private file to the server — dark-pattern. The
-///      toggle makes the trade-off legible.
-///
-///   2. **Decrypted bytes upload.** The endpoint takes a multipart
-///      form with the actual decrypted JPEG / video bytes attached.
-///      The server stores under `evidence/<uuid>.<ext>` for admin
-///      review. This is the missing puzzle piece App Review needs:
-///      sealed-sender + E2EE + paid user-generated content was
-///      previously a moderation black hole; with this path admin
-///      sees what was reported.
-///
-/// Scope (v1)
-/// ----------
-/// Photos only. Video evidence requires raw decrypted bytes that
-/// MediaService doesn't currently expose — added as a follow-up.
-/// Premium-locked-but-not-unlocked photos can't be reported with
-/// evidence either (the local device has no plaintext); reporter
-/// falls back to `ReportContactSheet` for those.
+/// Report-with-evidence flow for media messages. Differs from
+/// `ReportContactSheet` by gating Submit on an explicit moderator-
+/// access consent toggle and uploading the decrypted bytes to
+/// `POST /reports/with_evidence` for admin review.
+/// v1: photos only — video bytes aren't surfaced by MediaService yet.
 struct ReportEvidenceSheet: View {
     let message: Message
-    /// Decrypted JPEG / PNG bytes of the media being reported. The
-    /// caller (ChatView) loads via `MediaService.loadImage` and then
-    /// re-encodes via `image.jpegData(compressionQuality:)` — for v1
-    /// we only support image evidence.
     let evidenceBytes: Data
     let evidenceMime: String
     let targetUIN: Int
@@ -58,9 +35,6 @@ struct ReportEvidenceSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
-                    // Why-this-is-different explainer. Plain language —
-                    // "we'll see this content" — so the reporter
-                    // understands the trade-off before consenting.
                     Text("report_evidence.body".localized)
                         .font(.callout)
                         .foregroundColor(Theme.Color.textSecondary)
@@ -152,9 +126,6 @@ struct ReportEvidenceSheet: View {
         }
     }
 
-    /// Explicit consent block. The toggle has to be ON before Submit
-    /// activates — we make the trade-off ("decrypted file goes to
-    /// our moderators") visible instead of burying it in a TOS.
     private var consentToggle: some View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle(isOn: $consentAcknowledged) {
@@ -189,9 +160,6 @@ struct ReportEvidenceSheet: View {
         }
     }
 
-    /// Multipart-upload to `POST /reports/with_evidence` via the
-    /// shared APIClient. Returns a CreateReportOut shape — we don't
-    /// need the body, just the success/failure signal.
     private func submit() async {
         struct Out: Decodable { let id: Int }
         sending = true
@@ -223,8 +191,6 @@ struct ReportEvidenceSheet: View {
                 fileBytes: evidenceBytes,
             )
             sentOK = true
-            // Auto-dismiss after a beat so the user sees the
-            // confirmation tick before the sheet leaves.
             try? await Task.sleep(nanoseconds: 1_400_000_000)
             await MainActor.run { dismiss() }
         } catch {

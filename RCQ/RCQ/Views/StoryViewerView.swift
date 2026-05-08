@@ -2,27 +2,9 @@ import AVKit
 import SwiftUI
 import UIKit
 
-/// Fullscreen Instagram-style stories viewer.
-///
-/// Layout:
-/// - **Top progress bar**: N segments (one per story), the current
-///   one fills with a 5s timer (photos) or playback duration (videos).
-///   Already-watched segments fully filled, future segments empty.
-/// - **Top byline**: nickname (or "Anonymous") + relative posted-at.
-///   For owner stories, an extra "X views" subtitle.
-/// - **Center**: media (photo for 5s, video plays through).
-/// - **Bottom caption**: floating overlay on the media, dimmed
-///   background so text stays legible against any photo.
-///
-/// Gestures:
-/// - **Tap right half**: next story (within group, then jumps to
-///   next group's first story).
-/// - **Tap left half**: previous story (or back to previous group).
-/// - **Press-and-hold anywhere**: pause progress + dim chrome, like
-///   Instagram. Release resumes.
-/// - **Swipe down**: dismiss.
-/// - **Owner-only**: tapping the eye-count opens a viewers list sheet.
-/// - **Owner-only**: long-press → confirm-delete sheet.
+/// Fullscreen Instagram-style stories viewer. Tap left/right to step,
+/// hold to pause, swipe down to dismiss. Photos auto-advance after
+/// 5s; videos drive progress from playback time.
 struct StoryViewerView: View {
     @Environment(\.dismiss) private var dismiss
     let groups: [StoryGroup]
@@ -53,11 +35,8 @@ struct StoryViewerView: View {
                 Color.black.ignoresSafeArea()
                 if let story = currentStory {
                     media(for: story, in: geo)
-                    // Tap zones go BELOW chrome in z-order so the
-                    // chrome's actual Buttons (X, ⋯ menu) get
-                    // hit-tested first — otherwise the full-screen
-                    // tap zones absorbed every tap and the chrome
-                    // buttons never fired.
+                    // Tap zones below chrome in z-order so chrome
+                    // Buttons (X, ⋯) hit-test first.
                     tapZones(width: geo.size.width, topInset: 84)
                     chrome(for: story)
                 }
@@ -67,7 +46,6 @@ struct StoryViewerView: View {
             .gesture(
                 DragGesture(minimumDistance: 8)
                     .onChanged { v in
-                        // Only drag-down dismiss; ignore upward.
                         if v.translation.height > 0 {
                             dragOffset = v.translation.height
                         }
@@ -251,11 +229,8 @@ struct StoryViewerView: View {
                         .padding(8)
                 }
             } else if !story.isAnonymous, let ownerUIN = story.ownerUIN {
-                // Non-owner menu — only the safety actions. Anonymous
-                // stories (and rows where the server stripped the
-                // owner identity) don't expose the author, so we hide
-                // the menu entirely there. Same shared component as
-                // the rest of the app.
+                // Anonymous stories hide the menu since the author is
+                // not exposed.
                 Menu {
                     UserSafetyActions(
                         targetUIN: ownerUIN,
@@ -297,27 +272,20 @@ struct StoryViewerView: View {
 
     private func tapZones(width: CGFloat, topInset: CGFloat) -> some View {
         VStack(spacing: 0) {
-            // Reserve the top strip for chrome (progress bar +
-            // byline + X + ⋯ menu). Without this gap the full-screen
-            // tap zones swallow taps that should land on those
-            // buttons.
+            // Reserve top strip for chrome (progress / byline / buttons).
             Color.clear
                 .frame(height: topInset)
                 .allowsHitTesting(false)
             HStack(spacing: 0) {
-                // Left half = prev
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { goBack() }
-                // Right half = next
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { advance() }
             }
         }
         .simultaneousGesture(
-            // Long-press anywhere in the tap-zone area → pause.
-            // Release resumes.
             LongPressGesture(minimumDuration: 0.18)
                 .sequenced(before: DragGesture(minimumDistance: 0))
                 .onChanged { v in
@@ -350,37 +318,30 @@ struct StoryViewerView: View {
             progress = 0
         } else if groupIndex > 0 {
             groupIndex -= 1
-            // Jump to last story of previous group so prev-tap feels
-            // continuous rather than restarting from segment 0.
             let prevCount = groups[groupIndex].stories.count
             storyIndex = max(0, prevCount - 1)
             progress = 0
         } else {
-            // First story of first group + tapped left = restart
-            // current segment, matches Instagram's behavior.
             progress = 0
         }
     }
 
     private func handleDeletedCurrentStory() {
-        // After delete, the feed will refresh; we may have lost the
-        // current story. Move on or dismiss if nothing left.
         Task { await stories.refresh() }
         dismiss()
     }
 
     // MARK: - Photo tick
 
-    /// 5-second auto-advance for photo stories. Re-invoked on every
-    /// story change; if the new story is a video, we no-op (the
-    /// player drives `progress` via `onProgress`).
+    // 5s auto-advance for photo stories; video stories are driven by
+    // the player's onProgress callback.
     private func schedulePhotoTick() {
         guard let s = currentStory, s.mediaKind == .photo else { return }
         let total = photoDuration
         let started = Date()
         Task { @MainActor in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 33_000_000)  // ~30fps tick
+                try? await Task.sleep(nanoseconds: 33_000_000)
                 guard let still = currentStory, still.id == s.id else { return }
                 if isPaused { continue }
                 let elapsed = Date().timeIntervalSince(started)
@@ -471,7 +432,6 @@ private struct StoryVideoPlayer: UIViewControllerRepresentable {
             let player = AVPlayer(url: url)
             player.isMuted = false
             vc.player = player
-            // Time observer ticks the progress bar at ~10fps.
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
                 let dur = player.currentItem?.duration ?? .zero

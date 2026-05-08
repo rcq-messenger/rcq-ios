@@ -2,21 +2,12 @@ import SwiftUI
 import UIKit
 import ImageIO
 
-/// Renders a kind asset out of the bundled `Items/` folder reference.
-/// Supports PNG (static) and GIF (animated) — the cosmetic packs use
-/// gifs, the relics are PNGs. For unknown / missing assets falls back
-/// to a placeholder cube glyph so a misnamed asset_ref doesn't crash
-/// the inventory grid.
+/// Renders an item asset (PNG static, GIF animated) from the bundle. Falls back to a cube glyph.
 struct ItemAssetImage: View {
-    /// Kept for forward-compat with a future folder-reference layout
-    /// but unused at runtime — xcodegen flattens `RCQ/Resources/Items`
-    /// into the .app root regardless of `type: folder`, so the bundle
-    /// has no `Items/` subdirectory and `subdirectory:` lookups would
-    /// always miss. We rely on every relic / cosmetic / wallet asset
-    /// having a globally-unique basename, which they do.
+    // bundleSubdir unused: xcodegen flattens Resources/Items into the .app root.
     let bundleSubdir: String
-    let filename: String       // basename without extension, e.g. "Item1"
-    let ext: String            // "png" / "gif"
+    let filename: String
+    let ext: String
 
     var body: some View {
         if let url = Bundle.main.url(forResource: filename, withExtension: ext) {
@@ -25,7 +16,7 @@ struct ItemAssetImage: View {
             } else if let img = UIImage(contentsOfFile: url.path) {
                 Image(uiImage: img)
                     .resizable()
-                    .interpolation(.none)  // pixel-perfect for the 32×32 PNG relics
+                    .interpolation(.none)
                     .scaledToFit()
             } else {
                 placeholder
@@ -42,35 +33,14 @@ struct ItemAssetImage: View {
     }
 }
 
-/// Pure-SwiftUI animated-GIF renderer.
-///
-/// Earlier iterations wrapped a `UIImageView` and drove its
-/// `animationImages` property — fast initial render, but Apple's
-/// animation lifecycle is fragile: iOS pauses the animation when
-/// the view is covered by a sheet, drops `animationImages` on
-/// memory pressure, and doesn't auto-resume on re-show. We tried
-/// patching with `updateUIView` self-heal, `layoutSubviews`,
-/// `didMoveToWindow`, and scene-active observers — each fix broke
-/// a different scenario (Form scroll flashing, sheet-dismiss
-/// freeze, etc.).
-///
-/// Now: drive frames manually via `TimelineView(.animation)`. The
-/// frame index is computed off the wall-clock modulo the gif's
-/// total duration. SwiftUI's TimelineView automatically pauses when
-/// off-screen and resumes when re-shown — no UIView lifecycle to
-/// manage. Decoded frames live in `AnimatedGIFCache` so re-render
-/// after a sheet dismiss is just a dictionary lookup.
+/// SwiftUI animated-GIF renderer. Drives frame index off wall-clock via `TimelineView(.animation)`
+/// — TimelineView pauses off-screen and resumes on re-show, no UIView lifecycle to manage.
 struct AnimatedGIFImage: View {
     let url: URL
 
     var body: some View {
         if let frames = AnimatedGIFCache.shared.frames(for: url),
            !frames.images.isEmpty {
-            // `.animation` schedule ticks ~60fps; we sample frame
-            // index from elapsed time so render is deterministic.
-            // Capping interval to ~30fps would be marginally more
-            // efficient but most cosmetic gifs are <12 frames long
-            // and the difference is invisible.
             TimelineView(.animation) { ctx in
                 let elapsed = ctx.date.timeIntervalSince1970
                 let phase = elapsed.truncatingRemainder(dividingBy: frames.duration)
@@ -83,8 +53,6 @@ struct AnimatedGIFImage: View {
                     .scaledToFit()
             }
         } else {
-            // Decode failed (corrupt gif, unreadable file). Static
-            // placeholder so the cell still has SOMETHING to draw.
             Image(systemName: "cube")
                 .font(.system(size: 18, weight: .light))
                 .foregroundColor(Theme.Color.divider)
@@ -92,10 +60,6 @@ struct AnimatedGIFImage: View {
     }
 }
 
-/// In-memory cache of decoded GIF frames keyed by URL. The decode
-/// happens on the first `frames(for:)` call and is shared across
-/// every `AnimatedGIFImage` referencing the same URL — so the coin
-/// asset rendering in five different places only decodes once.
 private final class AnimatedGIFCache {
     static let shared = AnimatedGIFCache()
 

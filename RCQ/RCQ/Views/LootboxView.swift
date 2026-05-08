@@ -1,18 +1,6 @@
 import SwiftUI
 
-/// Lootbox / Open-box surface — port of IX `PullView` repainted in
-/// RCQ's palette.
-///
-/// Layout:
-///   1. Header: kicker + "View pool" link → PoolBrowserView sheet.
-///   2. Edge-to-edge RouletteCarousel (negates the parent's
-///      horizontal padding so it spans the full screen width).
-///   3. Token availability row + "Buy more" CTA.
-///   4. Big "Open box" pull button.
-///   5. Recent pulls list — taps open ItemDetailSheet.
-///
-/// Reveal: full-screen cover with tap-bg-to-dismiss, ~110pt asset,
-/// `open.wav` on appear, repeat-pull / to-inventory CTAs.
+/// Lootbox surface: roulette carousel, pull button, recent history, fullscreen reveal.
 struct LootboxView: View {
     @StateObject private var items = ItemsService.shared
     @Environment(\.dismiss) private var dismiss
@@ -20,35 +8,17 @@ struct LootboxView: View {
     @State private var showShop = false
     @State private var showPool = false
     @State private var detailItem: Item?
-    /// Single reveal target — either an item bubble or a scroll
-    /// drop. Two separate `fullScreenCover` modifiers (one for item,
-    /// one for scroll) racing on the same view caused a known
-    /// SwiftUI bug where the second cover would silently fail to
-    /// present after the first dismissed: e.g. user pulls a scroll,
-    /// hits "open another", gets an item — but the item reveal
-    /// never appears because the scroll cover is still mid-dismiss
-    /// when the item binding flips. Symptom from the user: "I only
-    /// get gems, items don't open." Consolidating both into one
-    /// binding sidesteps the race entirely.
+    // One binding for both item + scroll reveals; two fullScreenCovers race on dismiss.
     @State private var revealTarget: RevealTarget?
     @State private var rolling = false
 
     @State private var spinTrigger = 0
     @State private var landingKindIndex = 0
     @State private var pendingOutcome: PullOutcome?
-    /// Spin-time order — shuffled once per cover open so the drift
-    /// doesn't always show the same kind on the centre tile.
     @State private var carouselKinds: [ItemKind] = []
-    /// Persistent "skip the spin" preference. When on, `rollOnce()`
-    /// goes straight from the server response to the reveal cover —
-    /// no carousel animation, no 3.6s wait. The toggle lives in the
-    /// header next to "View pool" so power users can flip it once
-    /// and burn through tokens without re-tapping each spin.
     @AppStorage("rcq.lootbox.skip_spin") private var skipSpin: Bool = false
 
-    /// ID of the item that's been pulled but not yet revealed (carousel
-    /// still spinning, or reveal up). Filtered out of the history list
-    /// so the brother can't peek before the reveal lands. Mirrors IX.
+    // ID of an item pulled but not yet revealed; hidden from history until reveal lands.
     private var inFlightID: String? {
         if let outcome = pendingOutcome, case .item(let i) = outcome { return i.id }
         if case .item(let i) = revealTarget { return i.id }
@@ -72,12 +42,6 @@ struct LootboxView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // No title — the screen's content is its own header
-                // ("OPEN A BOX" kicker + "Inside" Georgia heading).
-                // X close on the leading edge so the swipe-out + tap-
-                // close affordances live on the same side; bare
-                // `xmark` glyph because the system toolbar already
-                // renders the touch target.
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
@@ -85,10 +49,6 @@ struct LootboxView: View {
                             .foregroundColor(Theme.Color.accent)
                     }
                 }
-                // Pool browser moved out of the body header into the
-                // trailing toolbar slot — same vertical row as the
-                // close X, frees up the kicker line for the skip
-                // toggle without crowding.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showPool = true } label: {
                         Image(systemName: "list.bullet.rectangle")
@@ -138,13 +98,7 @@ struct LootboxView: View {
                 .presentationDetents([.large])
         }
         .task {
-            // Hard reset of the per-view spin / reveal state on every
-            // (re-)open. Without this, a previous session that got
-            // wedged with `rolling = true` (e.g. crash mid-await,
-            // backgrounding during a request) would render the Open
-            // box button permanently disabled — re-entering the cover
-            // wouldn't help because @State survives re-presentation
-            // when the parent owns the cover binding.
+            // Reset spin/reveal state; @State survives re-presentation when parent owns the binding.
             rolling = false
             pendingOutcome = nil
             if items.catalog == nil { await items.refreshCatalog() }
@@ -190,9 +144,7 @@ struct LootboxView: View {
 
     private var pullPanel: some View {
         VStack(spacing: 14) {
-            // Edge-to-edge carousel — negate the parent's horizontal
-            // padding so it bleeds to the screen edges. Same trick as
-            // IX `PullView`'s `padding(.horizontal, -Spacing.inner)`.
+            // Negative inset bleeds the carousel past the parent's horizontal padding.
             if !carouselKinds.isEmpty {
                 RouletteCarousel(
                     kinds: carouselKinds,
@@ -224,9 +176,6 @@ struct LootboxView: View {
                         .cornerRadius(8)
                 }
                 .disabled(items.wallet.tokens < (items.catalog?.pullCost ?? 2) || rolling)
-                // Per-open price caption beneath the CTA — small
-                // mono digits next to the coin gif so the user sees
-                // the spend without it eating CTA real estate.
                 HStack(spacing: 4) {
                     ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                         .frame(width: 14, height: 14)
@@ -307,7 +256,6 @@ struct LootboxView: View {
         }
     }
 
-    /// Compact 36pt-thumb row — same shape as IX historyRow.
     private func historyRow(_ item: Item) -> some View {
         HStack(spacing: 10) {
             ItemCard(item: item)
@@ -352,37 +300,17 @@ struct LootboxView: View {
         let outcome = await items.openPull()
         switch outcome {
         case .item(let item):
-            // Land the carousel on the rolled kind — the spin
-            // promise is "ends on the kind you actually got".
             if let idx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) {
                 landingKindIndex = idx
             } else if let kind = items.catalog?.kind(by: item.kindID) {
-                // Pulled kind isn't in the shuffled local strip yet —
-                // can happen if the catalog grew between session
-                // start and the pull (server redeploy). Append the
-                // missing kind so the carousel CAN land on it
-                // instead of falling back to a random tile that
-                // doesn't match the reveal.
+                // Catalog grew since session start; append so the spin can land on the new kind.
                 carouselKinds.append(kind)
                 landingKindIndex = carouselKinds.count - 1
             } else {
-                // True orphan: server returned a kind we don't know
-                // at all. Random tile keeps the spin from stalling
-                // — the reveal sheet will still show the correct
-                // item via the catalog-by-id lookup.
                 landingKindIndex = Int.random(in: 0..<carouselKinds.count)
             }
             pendingOutcome = .item(item)
-            // Power-user shortcut: skip the 3.6s spin and go straight
-            // to the reveal. We hop one runloop tick before flipping
-            // `revealItem` so SwiftUI commits the wallet-update +
-            // rolling-flag state changes BEFORE presenting the
-            // fullScreenCover. Without this hop, all three mutations
-            // collapse into the same render cycle and the cover
-            // sometimes silently fails to present (which is what made
-            // the lootbox look "stuck": tokens spent server-side, no
-            // reveal shown, button disabled because rolling stuck
-            // until the next iteration cleared it).
+            // Hop one runloop tick before presenting the cover so wallet/rolling commits first.
             if skipSpin {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 30_000_000)
@@ -392,9 +320,6 @@ struct LootboxView: View {
                 spinTrigger += 1
             }
         case .scroll(let count):
-            // No spin for scrolls — the scroll reveal lands directly,
-            // the carousel stays idle. The user opted in to a token;
-            // they shouldn't have to wait 3.6s extra for a scroll bundle.
             rolling = false
             pendingOutcome = nil
             revealTarget = .scroll(count: count)
@@ -423,11 +348,7 @@ struct LootboxView: View {
     }
 }
 
-/// Single discriminator for the lootbox reveal cover. Identifiable so
-/// `fullScreenCover(item:)` can latch onto it; `id` deliberately
-/// includes the case marker so flipping from a scroll bundle to an
-/// item drop forces a fresh present (rather than reusing the cover
-/// instance, which would render the wrong overlay).
+/// Discriminator for the lootbox reveal cover; `id` includes the case marker.
 enum RevealTarget: Identifiable {
     case item(Item)
     case scroll(count: Int)
@@ -472,9 +393,6 @@ private struct RevealOverlay: View {
                     .tracking(3)
                 if let kind {
                     if kind.section == .voices {
-                        // Voice drops auto-play their sound on reveal
-                        // so the user hears what they pulled. Tap the
-                        // glyph to replay before dismissing.
                         Button {
                             SoundService.shared.preview(kindID: item.kindID)
                         } label: {
@@ -490,10 +408,7 @@ private struct RevealOverlay: View {
                         }
                         .buttonStyle(.plain)
                         .onAppear {
-                            // Slight delay so the reveal-overlay
-                            // entrance animation completes before the
-                            // sound fires; otherwise the chime feels
-                            // disconnected from the visual pop.
+                            // Delay sync the chime to the entrance animation.
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                                 SoundService.shared.preview(kindID: item.kindID)
                             }
@@ -550,9 +465,6 @@ private struct RevealOverlay: View {
             .padding(.bottom, 24)
         }
         .onAppear {
-            // The lootbox-open SFX waits for the reveal so it doesn't
-            // tip off the outcome during the carousel spin — the
-            // tick stream owns the spin's soundtrack.
             SoundService.shared.play(.lootboxOpen)
             withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) {
                 appeared = true

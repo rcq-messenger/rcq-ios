@@ -27,8 +27,10 @@ struct HuntPetSummary: Codable, Hashable {
 /// locally between refreshes.
 struct HuntState: Codable, Hashable {
     let pet: HuntPetSummary?
-    let accumulated: Int
-    let dailyYield: Int
+    let accumulated: Int        // tokens (жетоны) in mining buffer
+    let accumulatedGems: Int    // gems (scrolls col in DB) in buffer
+    let dailyYield: Int         // tokens/day at full uptime
+    let dailyGems: Int          // gems/day at full uptime
     let capReached: Bool
     let lastClaimAt: Date?
     let huntsUsedToday: Int
@@ -37,7 +39,9 @@ struct HuntState: Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case pet, accumulated
+        case accumulatedGems = "accumulated_gems"
         case dailyYield = "daily_yield"
+        case dailyGems = "daily_gems"
         case capReached = "cap_reached"
         case lastClaimAt = "last_claim_at"
         case huntsUsedToday = "hunts_used_today"
@@ -84,24 +88,28 @@ struct HuntResult: Codable, Hashable, Identifiable {
 
     let outcome: Outcome
     let zone: HuntZone
-    let reward: Int
+    let reward: Int             // tokens
+    let gemReward: Int          // gems — only > 0 on success
     let newLevel: Int
     let petDied: Bool
     let walletTokens: Int
+    let walletGems: Int
     let huntsLeft: Int
 
     /// Synthetic id so SwiftUI's `.sheet(item:)` binding accepts the
     /// type. Each new hunt-result rolls a fresh UUID server-side so
     /// the sheet re-presents on back-to-back hunts.
     var id: String {
-        "\(outcome.rawValue)-\(zone.rawValue)-\(reward)-\(newLevel)-\(petDied)"
+        "\(outcome.rawValue)-\(zone.rawValue)-\(reward)-\(gemReward)-\(newLevel)-\(petDied)"
     }
 
     enum CodingKeys: String, CodingKey {
         case outcome, zone, reward
+        case gemReward = "gem_reward"
         case newLevel = "new_level"
         case petDied = "pet_died"
         case walletTokens = "wallet_tokens"
+        case walletGems = "wallet_gems"
         case huntsLeft = "hunts_left"
     }
 }

@@ -5,148 +5,63 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm: ChatViewModel
     @StateObject private var appState = AppState.shared
-    /// Subscribed so the chat header reflects live presence updates the moment a
-    /// `presence` event arrives over the WebSocket. Without this, the captured
-    /// `Contact` inside `vm.target` is a stale snapshot from the moment of nav.
     @StateObject private var contacts = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
     @StateObject private var randomChat = RandomChatService.shared
-    /// Subscribed so the call buttons in the header grey out the moment a
-    /// call (any direction, any peer) becomes active — taps would silently
-    /// no-op against `CallService.start`'s `state.isActive` guard otherwise.
     @StateObject private var calls = CallService.shared
-    /// Subscribed so the clock badge in the header reflects the live TTL the
-    /// moment the user picks a new option (or `wipe()` clears it).
     @StateObject private var chatSettings = ChatSettingsStore.shared
     @StateObject private var tradesSvc = TradesService.shared
     @StateObject private var itemsSvc = ItemsService.shared
     @StateObject private var emoticonUsage = EmoticonUsageStore.shared
-    /// Active tab id in the emoji panel. `nil` = default (Kolobok
-    /// base, sorted by usage); otherwise = equipped pack kind id.
     @State private var emoticonTab: String? = nil
     @State private var showEmojiPanel = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
-    /// Premium-content composer sheet (price input + photo/video pick).
-    /// Only available in 1:1 + group threads — random chat skips it
-    /// because the ephemeral session has no wallet identity to credit.
     @State private var showPremiumComposer: Bool = false
     @State private var showTTLPicker = false
     @State private var showTrade = false
     @State private var showTrades = false
-    /// In-chat message search overlay. Mirrors the global search
-    /// surface from ContactListView but scoped to messages of this
-    /// thread only — see `InChatSearchOverlay`.
     @State private var showInChatSearch = false
-    /// User's own call-privacy setting, mirrored from
-    /// `/users/me/info` into UserDefaults by `PrivacySettingsView`.
-    /// "nobody" hides every call-button affordance (voice + video)
-    /// in the chat-thread trailing menu — the user has opted out
-    /// of calls altogether.
     @AppStorage("rcq.privacy.callPolicy") private var callPolicy: String = "everyone"
-    /// Set to a message id when the user picks a hit in the in-chat
-    /// search overlay. The `messageScroll`'s ScrollViewReader watches
-    /// this and asks the proxy to scroll the row into view, then
-    /// flashes a brief accent highlight via `flashHighlightID` so the
-    /// match is locatable inside a long thread. Reset to nil after
-    /// the scroll fires.
     @State private var pendingScrollID: UUID?
-    /// Currently flashed hit id. Set in lockstep with `pendingScrollID`
-    /// when a search result is chosen, cleared after the highlight
-    /// fade finishes — drives the `MessageRow`'s background tint.
     @State private var flashHighlightID: UUID?
-    /// Specific trade the user tapped on the inline card. Distinct
-    /// from `showTrades` (full list) — opens a sheet showing only
-    /// that trade with accept / decline / cancel inline.
     @State private var inspectingTrade: Trade?
     @State private var videoError: String?
-    /// Composer height — driven by `EmoticonTextField` via its
-    /// `dynamicHeight` binding. Starts at the single-line min, grows
-    /// up to ~5 lines, then the field switches to internal scroll.
     @State private var composerHeight: CGFloat = 36
     @StateObject private var voiceRecorder = VoiceRecorder.shared
-    /// Drag-distance threshold (negative y) past which a release
-    /// cancels the recording instead of sending. Tunable; matches
-    /// the rough Telegram/WhatsApp feel.
     private static let voiceCancelOffset: CGFloat = 60
-    /// Live drag offset of the mic button while held — drives the
-    /// "slide ↑ to cancel" arrow's vertical position and the cancel-
-    /// armed visual state.
     @State private var micDragOffset: CGFloat = 0
-    /// True when the user has dragged past the cancel threshold so
-    /// we're previewing a cancel-on-release — the timer pill flips
-    /// red to make the state obvious.
     @State private var voiceCancelArmed: Bool = false
-    /// Mic permission denial banner — set when `VoiceRecorder.start`
-    /// returns false because the user said no in Settings.
     @State private var voicePermissionDenied: Bool = false
-    /// Mirror of the system keyboard's presence — flipped by the
-    /// will-show / will-hide notifications. SwiftUI gives us no
-    /// first-class way to ask "is any text field first responder
-    /// right now", so we cache the most recent transition. Drives
-    /// the chat-area tap handler: keyboard up → tap dismisses it,
-    /// keyboard down + emoji open → tap dismisses the panel.
     @State private var isKeyboardVisible: Bool = false
-    /// True iff the chat thread is the user's own UIN (Saved
-    /// Messages). Drives "no ellipsis menu" + "no call buttons" +
-    /// the bookmark identity glyph in the principal slot.
     private var isSelfThread: Bool {
         if case .peer(let snapshot) = vm.target {
             return snapshot.uin == (AuthService.shared.ownUIN ?? -1)
         }
         return false
     }
-    /// True when the chat is scrolled away from the bottom — drives
-    /// the floating "scroll to latest" button. Tracked via an
-    /// anchor view at the end of the LazyVStack whose
-    /// onAppear / onDisappear flips this flag.
     @State private var showScrollToBottom: Bool = false
-    /// Set when the user picks "Forward" in the long-press overlay —
-    /// drives a sheet that lists contacts/groups to send the
-    /// message into. `nil` while no forward is in flight.
     @State private var forwardTarget: Message?
 
-    /// Reply is allowed in every thread type, including random
-    /// chat — the wire format already carries `replyTo` on
-    /// `.text/.photo/.video`, and the random send path now plumbs
-    /// it through alongside the regular contact and group paths.
     private var replyAllowed: Bool { true }
-    /// Drives the 1Hz redraw of the random-chat countdown header. Updated
-    /// from a Timer publisher whenever the chat target is anonymous.
     @State private var now = Date()
-    /// Long-press target — drives the custom MessageActionOverlay
-    /// (reactions panel on top + system-style action list below).
     @State private var actionTarget: Message?
-    /// Drives the report-with-evidence sheet. Set when the user
-    /// picks "Report content" on a non-own media bubble. The
-    /// caller pre-loads the decrypted bytes here so the sheet has
-    /// everything it needs to upload — avoids an awkward in-sheet
-    /// load spinner that could fail mid-flow.
     @State private var evidenceReportTarget: PendingEvidenceReport?
 
     init(target: ChatTarget) {
         _vm = StateObject(wrappedValue: ChatViewModel(target: target))
     }
 
-    /// Convenience for legacy 1:1 callers that still pass a Contact.
     init(contact: Contact) {
         _vm = StateObject(wrappedValue: ChatViewModel(target: .peer(contact)))
     }
 
     var body: some View {
-        // Header and footer sit in safe-area insets with translucent material,
-        // so the message scroll passes underneath them — same blur pattern iOS
-        // uses for its own navigation chrome.
         ZStack {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
             messageScroll
 
-            // In-chat search overlay — same blur-backed surface the
-            // global SearchOverlay uses on the contact list, but
-            // scoped to this thread's messages. Sits above the chat
-            // content; tap-out or Cancel dismisses, tap on a hit
-            // closes and scrolls the underlying chat to that row.
             if showInChatSearch {
                 InChatSearchOverlay(
                     messages: vm.messages,
@@ -155,15 +70,11 @@ struct ChatView: View {
                     },
                     onSelectMessage: { msg in
                         withAnimation(.easeInOut(duration: 0.18)) { showInChatSearch = false }
-                        // Defer one runloop tick so the overlay
-                        // dismiss animation isn't fighting the
-                        // ScrollViewReader's scroll request.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             pendingScrollID = msg.id
                             withAnimation(.easeIn(duration: 0.2)) {
                                 flashHighlightID = msg.id
                             }
-                            // Fade the highlight back out after a beat.
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                                 if flashHighlightID == msg.id {
                                     withAnimation(.easeOut(duration: 0.5)) {
@@ -178,13 +89,6 @@ struct ChatView: View {
                 .zIndex(60)
             }
 
-            // Long-press popover: reactions row on top (animated
-            // KOLOBOK GIFs that the iOS system menu can't render),
-            // bubble preview, system-styled action list below.
-            // Material backdrop with tap-outside dismissal — same
-            // posture Telegram uses, just without UIContextMenu-
-            // Interaction's lift animation (SwiftUI doesn't expose
-            // that without a UIKit wrapper).
             if let target = actionTarget {
                 MessageActionOverlay(
                     message: target,
@@ -197,12 +101,6 @@ struct ChatView: View {
                     onReact: { asset in vm.toggleReaction(asset, on: target) },
                     onReply: {
                         let copy = target
-                        // No `withAnimation` — the inline reply context
-                        // appears in one frame inside the pill. Spring-
-                        // animating the reply chrome jittered the chat
-                        // (safeAreaInset chasing the pill height through
-                        // a multi-frame spring), which the user perceived
-                        // as lag.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                             vm.replyTarget = copy
                         }
@@ -222,11 +120,6 @@ struct ChatView: View {
                     onTranslate: {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            // In-place text swap (Argus-style): toggle
-                            // the translation cache for this message.
-                            // First call kicks off TranslationSession
-                            // (see `.translationTask` below); second
-                            // call reverts to the original body.
                             vm.toggleTranslate(copy)
                         }
                     },
@@ -234,11 +127,6 @@ struct ChatView: View {
                     onDeleteForMe: { vm.deleteForMe(target) },
                     onDeleteForEveryone: { Task { await vm.deleteForEveryone(target) } },
                     onDismiss: { withAnimation(.easeInOut(duration: 0.18)) { actionTarget = nil } },
-                    // Report-with-evidence is gated to:
-                    //   • non-own media bubbles
-                    //   • photo or premium-photo (video evidence is a v2 follow-up)
-                    //   • premium-photos that are unlocked (otherwise the
-                    //     local device has no plaintext to attach)
                     onReport: shouldOfferEvidenceReport(target) ? {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -263,54 +151,25 @@ struct ChatView: View {
                 } else {
                     inputBar
                 }
-                // Emoji panel sits BELOW the composer inside the
-                // safeAreaInset — same posture as the system
-                // keyboard would when raised. When `showEmojiPanel`
-                // flips, the inset's height changes, the chat above
-                // re-flows, and the latest message stays glued to
-                // the top of the panel. The whole inset is wrapped
-                // in `.animation` below so the growth is one smooth
-                // movement instead of an instant snap.
                 if showEmojiPanel {
                     emojiPanel
                 }
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
         }
-        // CallMinimizedBar reserves the top row when a minimized
-        // call is active. Applied AFTER the header inset so it
-        // composes outside it — the bar lands above the chat
-        // header instead of overlapping it. SafeAreaInset from a
-        // parent doesn't traverse `navigationDestination`, so each
-        // root-level screen has to host its own copy.
         .callMinimizedBarInset()
-        // System nav bar carries the chrome now: back chevron in
-        // its iOS 26 bubble (automatic), centred peer / group /
-        // stranger principal, and a single trailing ellipsis menu
-        // that fans out into Call / Trade / Disappearing messages
-        // (and Skip / Leave for random sessions).
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 principalContent
             }
-            // Trailing menu — always present now that "Search
-            // messages" lives at its top. Saved Messages
-            // (self-thread) used to skip the toolbar item entirely
-            // because Call / Trade / TTL didn't apply; with
-            // search added, the menu is always non-empty.
             ToolbarItem(placement: .topBarTrailing) {
                 trailingMenu
             }
         }
         .enableSwipeBack()
-        // Random-chat presents this view inside a `.sheet`, where
-        // there's no enclosing NavigationStack — `navigationDestination`
-        // would log a "misplaced modifier" warning every render.
-        // Skip it for the random path; info isn't reachable there
-        // anyway (the header doesn't expose the tap-username
-        // affordance for strangers).
+        // Random chat presents this view inside a sheet without an enclosing NavigationStack.
         .applyIfNotRandom(vm.target) {
             $0.navigationDestination(isPresented: $showInfo) { infoDestination }
         }
@@ -325,11 +184,6 @@ struct ChatView: View {
                 }
             } onCancel: { forwardTarget = nil }
         }
-        // Report-with-evidence sheet — opened when the user picks
-        // "Report content" on a non-own media bubble. The decrypted
-        // bytes were prepared in `prepareEvidenceReport(for:)` before
-        // this sheet appears, so the sheet itself can submit straight
-        // away without an inline load step.
         .sheet(item: $evidenceReportTarget) { target in
             ReportEvidenceSheet(
                 message: target.message,
@@ -339,24 +193,9 @@ struct ChatView: View {
                 targetNickname: vm.senderNickname(target.message.senderUIN),
             )
         }
-        // Pickers are launched imperatively via UIKit on the
-        // scene's top view controller (see `ImperativePicker`)
-        // rather than via SwiftUI's `.sheet`. Hosting a PHPicker
-        // sheet inside the random-chat fullScreenCover triggered an
-        // iOS 26 cascade-dismiss bug — the cover collapsed the
-        // moment the picker dismissed, dropping the user out of
-        // the active session mid-send. Going through UIKit keeps
-        // the picker outside SwiftUI's modal stack entirely, so
-        // its dismiss can't propagate upward.
+        // Pickers go through UIKit (ImperativePicker) — hosting a PHPicker sheet inside the
+        // random-chat fullScreenCover triggers an iOS 26 cascade-dismiss bug.
         .sheet(isPresented: $showAttachmentMenu) {
-            // Bottom sheet attachment picker — on iOS 26
-            // `confirmationDialog` from a small UIView (the paperclip
-            // button) sometimes anchors as a popover above the
-            // button instead of the standard bottom action sheet,
-            // putting the picker far from the user's thumb. A native
-            // sheet with `[.height(360)]` detent always rises from
-            // the bottom edge and reads as the same "card from
-            // below" affordance the user expects.
             AttachmentPickerSheet(
                 isRandom: { if case .randomPeer = vm.target { return true } else { return false } }(),
                 onPhoto: {
@@ -364,12 +203,7 @@ struct ChatView: View {
                     ImperativePicker.pickImages(limit: 5) { images in
                         Task {
                             for img in images {
-                                // Surface the FIRST friendly error
-                                // we hit (most likely a `tooLarge`
-                                // from the 25 MB pre-flight) and
-                                // bail — continuing the loop after
-                                // a size-cap failure would just
-                                // stack the same error per image.
+                                // Bail on first error so a size-cap failure doesn't stack per image.
                                 if let err = await vm.sendPhoto(img) {
                                     videoError = err
                                     break
@@ -447,8 +281,6 @@ struct ChatView: View {
             }
             Button("common.cancel".localized, role: .cancel) {}
         } message: {
-            // Show the live setting underneath the title so it's obvious
-            // which option is active without having to read the labels twice.
             Text(String(format: "chat.ttl.currently".localized, ChatSettingsStore.label(for: chatSettings.ttl(for: vm.target.thread))))
         }
         .alert("chat.video_error.title".localized, isPresented: Binding(
@@ -459,11 +291,7 @@ struct ChatView: View {
         } message: {
             Text(videoError ?? "")
         }
-        // Mic permission alert lives at body root, not on the
-        // composer inputBar — alert modifiers attached to deeply
-        // nested views can trigger redundant layout passes that
-        // jiggle the seam between the composer and the message
-        // list by 1-2pt every frame the binding is evaluated.
+        // Lives at body root — nested alert modifiers cause layout-pass jitter at the composer seam.
         .alert("chat.voice.permission.title".localized, isPresented: $voicePermissionDenied) {
             Button("common.ok".localized, role: .cancel) {}
         } message: {
@@ -471,13 +299,7 @@ struct ChatView: View {
         }
         .onAppear {
             vm.onAppear()
-            // Refresh pending trade lists so the chat banner can
-            // paint immediately if there's a live offer between us
-            // and the peer.
             Task { await tradesSvc.refreshAll() }
-            // Cosmetic-pack picker reads off ItemsService — pull
-            // catalog + inventory if the user opens chat before
-            // ever visiting the inventory.
             Task {
                 if itemsSvc.catalog == nil { await itemsSvc.refreshCatalog() }
                 if itemsSvc.items.isEmpty { await itemsSvc.refreshInventory() }
@@ -491,25 +313,15 @@ struct ChatView: View {
         .sheet(isPresented: $showTrades) {
             TradesListView()
         }
-        // In-place translation. Long-press → Translate stages a
-        // `pendingTranslationMessage` on the VM; our hidden
-        // translation runner kicks the iOS 18+ TranslationSession,
-        // writes the result back into `vm.translatedTexts`, and the
-        // bubble's text branch swaps over via `vm.displayText(for:)`.
-        // No modal, no Apple "Open in Translate" hand-off, no Google.
         .modifier(InPlaceTranslator(vm: vm))
         .sheet(item: $inspectingTrade) { trade in
             SingleTradeSheet(trade: trade)
                 .presentationDetents([.fraction(0.5), .large])
         }
         .onChange(of: vm.messages.last?.id) { _ in
-            // Live ack: when a new inbound message lands while the chat is open,
-            // mark it read immediately so the sender sees the read tick.
             if let last = vm.messages.last { vm.ackIfVisible(last) }
         }
-        // 1Hz tick drives the random-chat countdown banner. Cheap to leave
-        // running for non-random targets (just bumps a State var nothing else
-        // reads), but we could gate it if it ever showed up in profiling.
+        // 1Hz tick drives the random-chat countdown banner.
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             if case .randomPeer = vm.target { now = tick }
         }
@@ -517,10 +329,6 @@ struct ChatView: View {
 
     // MARK: - pending-trade banner
 
-    /// Live trade between us and this chat's peer, if any. Pulls
-    /// from both incoming and outgoing pending lists — either side
-    /// of the conversation is allowed to surface the banner from the
-    /// other's perspective.
     private var pendingTradeWithPeer: Trade? {
         guard case .peer(let snapshot) = vm.target else { return nil }
         let myUIN = AuthService.shared.ownUIN ?? -1
@@ -535,12 +343,6 @@ struct ChatView: View {
 
     // MARK: - random-chat CTA strip
 
-    /// Bottom strip shown only in random sessions. Carries the live countdown,
-    /// the 60-second warning treatment, and the "Add as contact" button.
-    /// Server's `/contacts/request` is idempotent and auto-accepts when both
-    /// sides have requested each other, so the moment this stranger ALSO taps
-    /// Add, both ends materialise as real contacts via the standard
-    /// `contact_response` WS event flow — no random-chat-specific server logic.
     @ViewBuilder
     private func randomCTAStrip(peer: RandomPeer) -> some View {
         let secondsLeft = max(0, Int(peer.expiresAt.timeIntervalSince(now)))
@@ -578,30 +380,14 @@ struct ChatView: View {
 
     // MARK: - System nav-bar slots
 
-    /// Centred peer / group / stranger identity for `.principal`.
-    /// Status icon (or group / stranger glyph) plus nick stacked
-    /// over UIN — fits inside the system nav bar's single row.
-    /// Whole stack is tap-to-open-info for peer / group; random
-    /// session has no info surface so it stays non-interactive.
     @ViewBuilder
     private var principalContent: some View {
         switch vm.target {
         case .peer(let snapshot):
             let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
             let isSelf = live.uin == (AuthService.shared.ownUIN ?? -1)
-            // Saved Messages — render as plain View, not a Button.
-            // `Button.disabled(true)` greys child views to ~50%
-            // opacity even with `.foregroundColor(...)` set, which
-            // is why the bookmark + label looked transparent in
-            // self-thread. Keep Button only for tap-to-open-info
-            // (peer profile) which doesn't apply to ourselves.
-            //
-            // Centring: a `Color.clear` of the same fixed width as
-            // the leading icon is appended on the trailing side so
-            // the HStack balances around its middle. Without it the
-            // status icon ate width on the left, shifting the
-            // nickname / UIN visibly to the right of the nav-bar
-            // centre.
+            // Saved Messages renders as plain View — Button.disabled greys child views even with foregroundColor set.
+            // Trailing Color.clear matches the leading icon width so the HStack balances around the nav-bar centre.
             let identityBlock = HStack(spacing: 8) {
                 if isSelf {
                     Image(systemName: "bookmark.fill")
@@ -636,9 +422,6 @@ struct ChatView: View {
         case .group(let snapshot):
             let live = groupSvc.find(snapshot.id) ?? snapshot
             Button { showInfo = true } label: {
-                // Group icon was removed by request — name + count
-                // alone is enough identity, and the navbar already
-                // implies "you're in a group" via the Manage menu.
                 VStack(spacing: 0) {
                     Text(live.name)
                         .font(.system(.subheadline, weight: .semibold))
@@ -675,20 +458,9 @@ struct ChatView: View {
         }
     }
 
-    /// Single ellipsis menu — fans out the actions that used to
-    /// sit as separate icons in the custom header. Per target:
-    /// peer = Audio call / Video call / Propose trade /
-    /// Disappearing messages, group = Disappearing messages,
-    /// random = Skip / Leave.
     @ViewBuilder
     private var trailingMenu: some View {
         Menu {
-            // Search messages is offered for every thread type that
-            // has a persisted history — i.e. peer + group + self
-            // thread. Random sessions are ephemeral (RandomChatService
-            // holds the buffer, no MessageStore), but searching the
-            // in-memory list still works the same way: the overlay
-            // reads off `vm.messages` directly.
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) { showInChatSearch = true }
             } label: {
@@ -729,24 +501,14 @@ struct ChatView: View {
                         Label(disappearingLabel, systemImage: ttlActive ? "clock.fill" : "clock")
                     }
                     Divider()
-                    // Block + Report at the bottom of the 1:1 chat
-                    // menu — same shared component used on profile
-                    // / group / audio room. Required by App Review
-                    // 1.2 (UGC moderation reachable from every
-                    // surface where one user surfaces another).
+                    // App Review 1.2: UGC moderation reachable from every surface.
                     UserSafetyActions(
                         targetUIN: snapshot.uin,
                         targetNickname: snapshot.nickname,
                         context: "chat",
                         style: .menu,
                     )
-                    // `.tint(.red)` cascades to the inner Block + Report
-                    // Buttons. iOS 26 Menu otherwise ignores the per-row
-                    // `.foregroundStyle(.red)` we set inside the Label
-                    // and inherits the chat's accent (green) for the
-                    // SF symbols. Tinting the wrapping Section is the
-                    // one knob the Menu template DOES honor for its
-                    // child icons.
+                    // .tint cascades into the Menu's icon SF symbols — .foregroundStyle on the Label is ignored.
                     .tint(.red)
                 }
             case .group:
@@ -775,8 +537,6 @@ struct ChatView: View {
                 Divider()
                 // Block + Report for the matched stranger. Report
                 // surfaces in admin queue with context="stranger_mode";
-                // Block uses the peer's real UIN so the same person
-                // can't reach you via contacts later.
                 UserSafetyActions(
                     targetUIN: peer.uin,
                     targetNickname: peer.nickname,
@@ -791,8 +551,6 @@ struct ChatView: View {
         }
     }
 
-    /// Active TTL label for the menu row — shows "Off" when no
-    /// disappearing window is set, otherwise the configured option.
     private var disappearingLabel: String {
         if let ttl = chatSettings.ttl(for: vm.target.thread) {
             return String(format: "chat.ttl.disappearing_with".localized, ChatSettingsStore.label(for: ttl))
@@ -804,11 +562,6 @@ struct ChatView: View {
         chatSettings.ttl(for: vm.target.thread) != nil
     }
 
-    /// Centered "Say hi" empty-state. Rendered as an overlay above
-    /// the (empty) ScrollView rather than as a row inside the
-    /// LazyVStack so its position doesn't depend on the scroll
-    /// anchor — sits ~1/3 from the top of the viewport, where the
-    /// eye lands naturally.
     private var emptyChatPlaceholder: some View {
         VStack(spacing: 10) {
             Image(systemName: "bubble.left.and.bubble.right")
@@ -834,13 +587,10 @@ struct ChatView: View {
         case .peer(let c): UserInfoView(uin: c.uin, isOwn: false)
         case .group(let g): GroupInfoView(group: g)
         case .randomPeer:
-            // No info page in random chat — that's the whole point of "anonymous".
             EmptyView()
         }
     }
 
-    /// True if my live record of this peer is blocked. Group and random chats
-    /// can't be "blocked" — the property stays false there.
     private var isPeerBlocked: Bool {
         guard case .peer(let snapshot) = vm.target else { return false }
         return contacts.contacts.first(where: { $0.uin == snapshot.uin })?.blocked ?? false
@@ -852,23 +602,12 @@ struct ChatView: View {
     private var messageScroll: some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottomTrailing) {
-            // Empty-state placeholder lives OUTSIDE the ScrollView so
-            // it sits centered in the viewport rather than getting
-            // pinned against the input bar by the bottom-anchor
-            // logic. Fades out the moment the first message lands.
             if vm.messages.isEmpty {
                 emptyChatPlaceholder
                     .transition(.opacity)
                     .zIndex(1)
             }
             ScrollView {
-                // Drive the `.transition` on each row from the
-                // current message-id list. Without this, the
-                // `withAnimation` blocks in `MessageStore.deleteLocal`
-                // and `sweepExpired` get swallowed by the Combine
-                // receive(on:) hop into ChatViewModel.$messages, so
-                // removal animations would never fire — rows just
-                // disappeared abruptly.
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(vm.grouped().enumerated()), id: \.offset) { _, group in
                         DateDivider(label: group.label)
@@ -892,24 +631,10 @@ struct ChatView: View {
                                     }
                                 },
                                 onDoubleTapLike: {
-                                    // Quick-react path. Picks the
-                                    // "good" KOLOBOK (👍-equivalent in
-                                    // our reaction set) — same toggle
-                                    // semantics as picking it from the
-                                    // long-press overlay, so a second
-                                    // double-tap clears the reaction.
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     vm.toggleReaction("good", on: msg)
                                 },
                                 onTapReplyQuote: { targetID in
-                                    // Reuse the same scroll/flash
-                                    // pipeline the in-chat search uses
-                                    // — set `pendingScrollID`,
-                                    // `flashHighlightID`, fade the
-                                    // accent tint after a beat. Skip
-                                    // silently if the target row isn't
-                                    // in the thread anymore (TTL'd
-                                    // out, deleted-for-everyone).
                                     guard vm.messages.contains(where: { $0.id == targetID }) else { return }
                                     pendingScrollID = targetID
                                     withAnimation(.easeIn(duration: 0.2)) {
@@ -924,25 +649,11 @@ struct ChatView: View {
                                     }
                                 },
                                 onSwipeReply: {
-                                    // Same end-state as long-press →
-                                    // Reply: drop a `replyTarget` on
-                                    // the VM, the composer's reply
-                                    // strip animates in. Spring matches
-                                    // the long-press path so the strip
-                                    // transition feels identical
-                                    // regardless of how the user got
-                                    // there.
                                     let copy = msg
                                     vm.replyTarget = copy
                                 }
                             )
-                            // Visual selection: dim every row that's *not* the
-                            // long-pressed one, scale the chosen bubble up just
-                            // a touch.
-                            // Fade-out (soft delete) takes precedence over the
-                            // dim + scale stack for the action overlay so a
-                            // bubble vanishing while another is long-pressed
-                            // doesn't hold at 30% opacity.
+                            // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
                                      ? 0
                                      : (actionTarget == nil || actionTarget?.id == msg.id ? 1 : 0.3))
@@ -951,27 +662,13 @@ struct ChatView: View {
                                          : (actionTarget?.id == msg.id ? 1.04 : 1.0),
                                          anchor: msg.isFromMe ? .trailing : .leading)
                             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: actionTarget?.id)
-                            // Drives the soft-delete fade — implicit
-                            // animation, doesn't need a withAnimation
-                            // transaction to inherit (the Combine assign chain
-                            // would lose it before SwiftUI re-renders).
-                            // Row stays at full height during the fade so
-                            // adjacent bubbles don't slide while it's still
-                            // visibly in place. The actual layout collapse
-                            // happens at MessageStore's phase-2 array removal,
-                            // animated by the count-watch on the LazyVStack
-                            // (.animation(.easeInOut(.25), value: messages.count)
-                            // above) — fade THEN reflow, not both at once.
+                            // Implicit (Combine receive(on:) would drop a withAnimation transaction).
+                            // Row stays full height; layout collapse happens later via the LazyVStack count-watch.
                             .animation(.easeInOut(duration: 0.3), value: vm.fadingOutIDs.contains(msg.id))
                             .transition(.opacity)
                             .id(msg.id)
                         }
                     }
-                    // Pending trade between us and this peer rendered
-                    // inline as a system-style chat card. Sits below
-                    // the latest message so it reads as the most
-                    // recent activity in the thread. Tap →
-                    // TradesListView for accept/decline.
                     if let trade = pendingTradeWithPeer {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -987,13 +684,7 @@ struct ChatView: View {
                         .padding(.top, 4)
                         .id("trade-\(trade.id)")
                     }
-                    // Bottom anchor — drives both the initial
-                    // scroll-to-latest on chat open AND the
-                    // floating "scroll to bottom" button visibility.
-                    // Sized 1pt high so it's effectively invisible
-                    // but still mountable / hit-trackable inside the
-                    // LazyVStack. onAppear → at-bottom (hide FAB),
-                    // onDisappear → user scrolled up (show FAB).
+                    // Bottom anchor — drives initial scroll-to-latest and the FAB visibility flag.
                     Color.clear
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
@@ -1010,53 +701,14 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
-                // No explicit bottom padding — `safeAreaInset(.bottom)`
-                // already reserves the composer's height + any reply /
-                // emoji-panel chrome. Adding more padding on top of
-                // the inset doubled the gap and caused the seam between
-                // the last bubble and the input bar to jitter as the
-                // inset's measured height settled across renders.
-                // Insertion / removal animations driven by the live
-                // count. `.count` (vs `.map(\.id)`) keeps the animation
-                // off state mutations like edit/react/state-flip,
-                // which previously fired a tiny shudder on every
-                // send/receive. Duration is back at 0.25 — 0.18 felt
-                // snappy on inserts but visually clipped delete fades.
+                // Animate on count only — animating on id changes would shudder on edits/reactions.
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.count)
             }
-            // No `defaultScrollAnchor(.bottom)` — it had two failure
-            // modes the user kept hitting:
-            //   1. When the user scrolls UP and LazyVStack realizes
-            //      previously-unrealized rows, content size grows;
-            //      the bottom anchor yanks the viewport back to the
-            //      bottom mid-scroll. Symptom the user reported as
-            //      "иногда начинаю листать и меня возвращает назад".
-            //   2. On an empty chat the placeholder gets glued to
-            //      the input bar (the bottom edge of the bottom-
-            //      anchored ScrollView), instead of sitting near
-            //      the top / center of the viewport like a fresh
-            //      iMessage thread does.
-            // Initial scroll-to-bottom is owned exclusively by the
-            // `.task` retry loop below. After that the user owns
-            // the scroll position; new-message inserts re-pin via
-            // an `onChange(messages.count)` only when the chat is
-            // already at the bottom (preserves "scrolled up to
-            // re-read" intent).
-            // Drag down inside the chat scroll dismisses the keyboard.
-            // The `.immediately` mode hides the keyboard the instant a
-            // pan starts — feels lighter than `.interactively` for a
-            // chat (no rubber-band tracking the keyboard's bottom
-            // edge), and a tap elsewhere on the chat surface still
-            // closes it via the explicit `.onTapGesture` below.
+            // No defaultScrollAnchor(.bottom) — it yanks mid-scroll when LazyVStack realizes rows,
+            // and pins the empty-state to the input bar. Initial scroll is owned by the .task loop below.
             .scrollDismissesKeyboard(.immediately)
             .onTapGesture {
-                // Tap-anywhere-on-the-chat-area dismiss. Two-step,
-                // iMessage-style: if the keyboard is up, drop it
-                // first; if it's already down but the emoji panel
-                // is open, close the panel. Without the staging the
-                // user couldn't pick stickers — the same tap that
-                // dismissed the keyboard would also collapse the
-                // panel, forcing a re-open every time.
+                // Two-step iMessage-style: keyboard first, then emoji panel — otherwise stickers can't be picked.
                 if isKeyboardVisible {
                     UIApplication.shared.sendAction(
                         #selector(UIResponder.resignFirstResponder),
@@ -1069,23 +721,10 @@ struct ChatView: View {
                 }
             }
             .onChange(of: vm.messages.count) { _ in
-                // New message arrived (or sent). Re-anchor to the
-                // bottom ONLY if the chat is already parked there —
-                // otherwise the user is scrolled up reading older
-                // history and yanking them down would be hostile.
-                // The `showScrollToBottom` flag is the inverse of
-                // "is at bottom" (anchor view is offscreen ⇒ not
-                // at bottom), set by the bottom-anchor's onAppear/
-                // onDisappear handlers.
+                // Re-anchor only if already at bottom — yanking a scrolled-up reader down is hostile.
                 guard !showScrollToBottom else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
-            // Scroll requested by the in-chat search overlay. The
-            // overlay sets `pendingScrollID` after its own dismiss
-            // animation; we centre the row in the viewport, then
-            // clear the request so a subsequent tap on the same hit
-            // still re-fires (assigning the same UUID twice is a
-            // no-op for `onChange`, so reset to nil).
             .onChange(of: pendingScrollID) { id in
                 guard let id else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -1095,54 +734,8 @@ struct ChatView: View {
                     pendingScrollID = nil
                 }
             }
-            // Keyboard-show → snap the chat to its last bubble so
-            // the rising composer doesn't reveal an empty stretch
-            // above the keyboard. SwiftUI's auto-keyboard-avoidance
-            // already shrinks the visible scroll area; this just
-            // re-anchors the content. For threads with too few
-            // messages to fill the viewport the scrollTo is a
-            // no-op (content already top-aligned), which matches
-            // the user's expectation that short chats don't get
-            // shoved offscreen by keyboard-up.
-            // Re-anchor the scroll to the latest bubble on every
-            // event that grows OR shrinks the bottom safeAreaInset:
-            // keyboard show/hide, emoji panel toggle, reply / edit
-            // strip toggle. Earlier code deferred each scroll by
-            // ~0.32s past the spring (waiting for layout to settle)
-            // — that produced the characteristic "messages stand
-            // still then jump" lag the user reported. Synchronous
-            // scroll wrapped in a spring matching the binding's
-            // animation lets the inset growth and the scroll glide
-            // together in one frame, no jump.
-            //
-            // Both directions are handled — opening AND closing —
-            // so dismissing reply via X / closing the emoji panel /
-            // keyboard descent all collapse the empty space below
-            // the last bubble back against the composer. Without
-            // the close-direction handlers there was a 44–180pt
-            // empty band hanging under the latest message that
-            // only resolved on the next user scroll.
-            // Reply / edit / emoji-panel toggle: on iOS 17+, leave the
-            // scroll alone — `defaultScrollAnchor(.bottom)` already
-            // re-pins the latest bubble against the rising / shrinking
-            // composer in lockstep with the safeAreaInset's height
-            // change, all in one frame. Stacking a manual `proxy.scrollTo`
-            // on top fired a second animation that landed on a stale
-            // layout snapshot ~50ms later, producing the visible
-            // "jump" the user reported when adding/removing a reply
-            // (especially noticeable on media-bubble replies, where
-            // ΔH is biggest because the reply row is taller). On
-            // pre-17, no system anchor exists, so we still scroll
-            // manually.
-            // Re-anchor the chat to the bottom whenever the bottom
-            // chrome grows: emoji panel opens, reply/edit context
-            // appears in the pill, keyboard rises. Without this the
-            // last bubble gets hidden under the new chrome — the
-            // chat doesn't auto-anchor by itself once we've taken
-            // `defaultScrollAnchor` off (it was causing snap-back
-            // on user scroll-up). Animation duration matches the
-            // 0.22s applied to the safeAreaInset's content above so
-            // the scroll glides in lockstep with the inset growth.
+            // Bottom-chrome growth (emoji panel, reply/edit, keyboard) needs an explicit re-anchor —
+            // we don't use defaultScrollAnchor. Duration matches the 0.22s on the safeAreaInset.
             .onChange(of: showEmojiPanel) { _ in
                 withAnimation(.easeOut(duration: 0.22)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
@@ -1163,10 +756,7 @@ struct ChatView: View {
                 if showEmojiPanel {
                     showEmojiPanel = false
                 }
-                // System keyboard rise is a 0.25s easeOut by default;
-                // matching it on our scrollTo lets the chat content
-                // glide up in sync with the keyboard instead of
-                // landing in a different frame.
+                // Match the system keyboard's 0.25s easeOut so the scroll glides in sync.
                 withAnimation(.easeOut(duration: 0.25)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
@@ -1174,13 +764,7 @@ struct ChatView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 isKeyboardVisible = false
             }
-            // Open the chat parked at the bottom anchor. Three-pass
-            // retry: 0 / 50 / 200 ms covers the LazyVStack's lazy
-            // realization without overlapping into a "user just
-            // tapped the input field" window — the longer 700ms
-            // tail of the previous loop fired manual scrollTo's
-            // mid-keyboard-rise, which was the source of the "rise
-            // резкий при первом заходе" jitter.
+            // Three-pass retry covers LazyVStack's lazy realization without overlapping keyboard-rise.
             .task {
                 let delaysMs: [UInt64] = [0, 50, 200]
                 for ms in delaysMs {
@@ -1215,28 +799,10 @@ struct ChatView: View {
         }
     }
 
-    /// Stable id for the bottom-of-thread anchor view used by both
-    /// the initial scroll-to-latest on open and the floating
-    /// scroll-to-bottom button.
     private static let bottomAnchorID = "__rcq_chat_bottom_anchor"
 
     // MARK: - report-with-evidence helpers
 
-    /// Whether the long-press overlay should offer the "Report
-    /// content" action for `message`. The contract:
-    ///
-    ///   • Must NOT be from the local user (you can't report
-    ///     yourself; the row would be a UX dark pattern).
-    ///   • Must be image media — `.photo` (any sender) or
-    ///     `.premiumPhoto` IF unlocked. Video evidence is a v2
-    ///     follow-up; MediaService doesn't yet expose raw decrypted
-    ///     video bytes for upload.
-    ///   • Must have a `mediaID` (sanity — bubbles in flight don't
-    ///     have one yet).
-    ///
-    /// All other surfaces fall back to the existing reason-only
-    /// `Report` action on the contact (lives in the chat header
-    /// menu — added in the Block + Report rollout).
     private func shouldOfferEvidenceReport(_ message: Message) -> Bool {
         if message.isFromMe { return false }
         guard message.mediaID != nil else { return false }
@@ -1246,15 +812,10 @@ struct ChatView: View {
         case .premiumPhoto:
             return message.premiumUnlocked
         default:
-            return false  // video / voice / text / etc.
+            return false
         }
     }
 
-    /// Decrypts the media + re-encodes as JPEG, then sets
-    /// `evidenceReportTarget` to fire the sheet. Pre-loading here
-    /// (rather than inside the sheet) keeps the sheet itself a
-    /// pure submit-only surface — no spinner, no failure-mid-sheet,
-    /// no "open the sheet, see a placeholder, give up".
     private func prepareEvidenceReport(for message: Message) async {
         guard let mediaID = message.mediaID else { return }
         let parts = mediaID.split(separator: "|", maxSplits: 1).map(String.init)
@@ -1324,9 +885,6 @@ struct ChatView: View {
 
     // MARK: - input
 
-    /// Pill-style "only the owner can post" affordance. Replaces the
-    /// composer in broadcast-mode groups for non-owners. Same height
-    /// rhythm as the regular input bar so the layout doesn't pop.
     private func broadcastReadOnlyHint(group: RCQGroup) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "megaphone.fill")
@@ -1340,28 +898,6 @@ struct ChatView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Telegram-style composer. Three pieces, bottom-aligned so side
-    /// buttons stay glued to the last text line as the pill grows
-    /// with multi-line input:
-    ///
-    ///   [📎 attach]   [ ───── pill field   ☺ ]   [🎤 mic / ➤ send]
-    ///
-    /// • Attach + Mic/Send sit OUTSIDE the field in 36pt glass
-    ///   circles (system .ultraThinMaterial through the parent).
-    /// • Smiley toggle lives INSIDE the pill on the trailing edge —
-    ///   tap flips between system keyboard and the equipped-smileys
-    ///   panel below.
-    /// • Voice record gesture (hold-to-record, swipe-up to cancel) is
-    ///   the SAME `micButton` from before — TG-style mechanics were
-    ///   already correct, only the chrome changed.
-    /// • While recording, the pill is replaced wholesale by the
-    ///   `recordingPill` strip (red dot + timer + "↑ slide to cancel").
-    /// True when the active thread is a Stranger-Mode pair. Hides
-    /// every non-text affordance from the composer (attach button,
-    /// mic / voice recording) so the surface enforces the
-    /// text-only contract Apple's UGC guidance expects from
-    /// random-matching surfaces. The chat row itself also strips
-    /// links + phone numbers from outgoing text in this mode.
     private var isStrangerMode: Bool {
         if case .randomPeer = vm.target { return true }
         return false
@@ -1372,24 +908,14 @@ struct ChatView: View {
         let showSend = !trimmed.isEmpty
         return HStack(alignment: .bottom, spacing: 8) {
             if voiceRecorder.isRecording {
-                // Recording owns the whole row except the mic button
-                // on the right (which stays so the user has a visual
-                // anchor for the gesture).
                 recordingPill
             } else {
-                // Attach is hidden in stranger mode — the surface is
-                // text-only by design (no media uploads, no voice
-                // notes). Keeps the bar simpler and removes the
-                // single biggest abuse vector.
+                // Stranger mode is text-only — no attach, no voice.
                 if !isStrangerMode {
                     attachButton
                 }
                 pillField
             }
-            // Right-edge action. Stranger mode pins to send-only:
-            // mic / voice are disabled, so the button never flips
-            // into mic state. Greyed-disabled when text is empty.
-            // Regular threads keep the original send ↔ mic swap.
             if isStrangerMode {
                 sendButton
                     .opacity(showSend ? 1.0 : 0.4)
@@ -1414,10 +940,6 @@ struct ChatView: View {
         .padding(.vertical, 8)
     }
 
-    /// Paperclip in a 36pt material-blur circle. iOS-system "attach"
-    /// affordance — uses `.regularMaterial` so the wallpaper /
-    /// chat-content behind reads through, matching the system-bar
-    /// aesthetic of Messages / Telegram.
     private var attachButton: some View {
         Button { showAttachmentMenu = true } label: {
             Image(systemName: "paperclip")
@@ -1434,15 +956,6 @@ struct ChatView: View {
         .buttonStyle(.plain)
     }
 
-    /// Pill-shaped composer. Now hosts an OPTIONAL reply / edit
-    /// context row INSIDE the pill (above the typing area), and a
-    /// smiley toggle pinned to the trailing edge of the typing
-    /// area. The pill's silhouette flips from `Capsule` to a
-    /// rounded rect when the context row is present, so the top
-    /// edge can carry the reply preview without the capsule
-    /// curvature crowding it. Animation is on the context-row
-    /// insert/remove so the pill grows / shrinks smoothly instead
-    /// of jumping.
     private var pillField: some View {
         let hasContext = (vm.replyTarget != nil) || (vm.editingTarget != nil)
         return VStack(alignment: .leading, spacing: 0) {
@@ -1467,13 +980,7 @@ struct ChatView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)
                 .animation(.easeOut(duration: 0.18), value: composerHeight)
-                // Smiley toggle. Icon flips to "keyboard" while the
-                // panel is open so the same button reads as "back to
-                // typing" on the second tap.
                 Button {
-                    // Drive the opacity transition on emojiPanel via
-                    // an animation context here. Without it the panel
-                    // pops in/out without fade.
                     withAnimation(.easeInOut(duration: 0.18)) {
                         showEmojiPanel.toggle()
                     }
@@ -1509,22 +1016,9 @@ struct ChatView: View {
                 }
             }
         )
-        // No explicit `.animation(...)` here — the callers that flip
-        // `vm.replyTarget` / `vm.editingTarget` already wrap the
-        // assignment in `withAnimation(.spring(...))`. Adding a second
-        // implicit animation modifier on this view stacked TWO
-        // animation transactions on top of each other, which is what
-        // produced the "lag when removing reply" + jitter the user
-        // reported. The transitions on `inlineReplyContext` /
-        // `inlineEditContext` still inherit from the caller's
-        // withAnimation block, so the row-grow/shrink animation runs
-        // exactly once.
+        // No explicit .animation here — callers already wrap replyTarget/editingTarget assignments in withAnimation.
     }
 
-    /// Compact reply preview rendered INSIDE the pill at its top
-    /// edge. Tapping × clears the reply target; the pill collapses
-    /// back to a capsule via the spring animation on
-    /// `vm.replyTarget?.id`.
     @ViewBuilder
     private func inlineReplyContext(_ message: Message) -> some View {
         let snippet = Self.replyPreview(for: message)
@@ -1560,7 +1054,6 @@ struct ChatView: View {
         .padding(.vertical, 6)
     }
 
-    /// Edit-mode context row, parallel to `inlineReplyContext`.
     @ViewBuilder
     private func inlineEditContext(_ message: Message) -> some View {
         HStack(spacing: 8) {
@@ -1592,36 +1085,19 @@ struct ChatView: View {
         .padding(.vertical, 6)
     }
 
-    /// Accent-green send button. White paperplane on the brand
-    /// colour reads instantly as "go" — no ambiguity with the
-    /// glass-circle aesthetic of the side affordances.
     private var sendButton: some View {
         Button { Task { await vm.send() } } label: {
             Image(systemName: "paperplane.fill")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
-                .rotationEffect(.degrees(45))  // TG-style angled send glyph
-                .offset(x: -1, y: 1)           // optical centre after rotation
+                .rotationEffect(.degrees(45))
+                .offset(x: -1, y: 1)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(Theme.Color.accent))
         }
         .buttonStyle(.plain)
     }
 
-    /// Hold-to-record mic. Press starts the recorder; lifting the
-    /// finger sends the bubble. Dragging up past `voiceCancelOffset`
-    /// arms a cancel — release in that state discards the recording.
-    ///
-    /// Visual is intentionally *static* between recording / idle
-    /// states — no scaleEffect / spring animation. Earlier versions
-    /// scaled the button up by 1.15 when recording, and the spring
-    /// settle-period (~0.3s after every isRecording flip) caused
-    /// 1-2px jitter at the messages/composer seam. The recordingPill
-    /// (which replaces the text field) is the visual indicator that
-    /// the gesture is live.
-    ///
-    /// 36pt glass circle to match the paperclip's chrome on the
-    /// other side of the bar — symmetric weight reads cleanly.
     private var micButton: some View {
         Image(systemName: "mic.fill")
             .font(.system(size: 18))
@@ -1644,8 +1120,7 @@ struct ChatView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         if !voiceRecorder.isRecording && micDragOffset == 0 {
-                            // First touch — kick the recorder. Permission
-                            // prompt happens here on first ever use.
+                            // First touch fires the mic permission prompt.
                             Task {
                                 let ok = await voiceRecorder.start()
                                 if !ok { voicePermissionDenied = true }
@@ -1671,14 +1146,6 @@ struct ChatView: View {
             )
     }
 
-    /// In-bar overlay shown while the mic gesture is live. Pulsing
-    /// red dot + elapsed timer + "↑ slide to cancel" hint. The whole
-    /// strip flips red when the user has dragged past the threshold
-    /// so the cancel-on-release state reads at a glance.
-    ///
-    /// Capsule shape matches the new pill-style text field — when
-    /// recording starts the field morphs into this same outline so
-    /// the bar's silhouette stays steady, only the contents change.
     private var recordingPill: some View {
         HStack(spacing: 10) {
             Circle()
@@ -1722,14 +1189,6 @@ struct ChatView: View {
     }
 
     private var emojiPanel: some View {
-        // Floating rounded-card picker. Pulled INSIDE 8pt of
-        // horizontal margin (vs the previous edge-to-edge keyboard-
-        // style panel) so it reads as a discrete element above the
-        // composer pill — same visual rhythm as the input bar's own
-        // pieces. `.regularMaterial` matches the composer's
-        // material; the chat wallpaper shows through the
-        // surrounding margin so the card feels lifted, not nailed
-        // to the screen edges.
         let equippedKinds: [ItemKind] = itemsSvc.items
             .filter { $0.equipped }
             .compactMap { itemsSvc.catalog?.kind(by: $0.kindID) }
@@ -1812,9 +1271,6 @@ struct ChatView: View {
         }
     }
 
-    /// Default tab → Kolobok base set sorted by usage (most used
-    /// first, then unused entries in their original order). Pack
-    /// tabs → exactly that pack's entries (in manifest order).
     private func emoticonEntries(
         for tab: String?, equippedKinds: [ItemKind],
     ) -> [(asset: String, name: String, primaryCode: String)] {
@@ -1823,27 +1279,17 @@ struct ChatView: View {
                 (asset: $0.asset, name: $0.name, primaryCode: $0.primaryCode)
             }
         }
-        // Default tab — Kolobok set, frequency-sorted.
         let defaults = Emoticons.paletteAssets
         let usage = emoticonUsage.counts
         return defaults.sorted { a, b in
             let ca = usage[a.asset] ?? 0
             let cb = usage[b.asset] ?? 0
             if ca != cb { return ca > cb }
-            return false  // stable for tied entries
+            return false
         }
     }
 }
 
-/// On iOS 17+ pins the ScrollView's bottom edge to the viewport's
-/// bottom across layout changes — so a growing safeAreaInset (reply
-/// strip slides in, emoji panel pops up, keyboard rises) keeps the
-/// latest bubble glued to the composer instead of drifting upward
-/// while we wait for our own scrollTo handler to catch up.
-///
-/// Pre-iOS-17 falls through to the manual `anchorToLatest` calls
-/// stitched onto each binding's `.onChange` — slightly less crisp
-/// than the native anchor but no janky jump-after-settle.
 private struct BottomAnchoredScroll: ViewModifier {
     let active: Bool
 
@@ -1900,77 +1346,23 @@ private struct MessageRow: View {
     let message: Message
     let showSender: Bool
     let senderNickname: String
-    /// Translation-aware body text — equal to `message.text` when no
-    /// translation is active, or to the cached translated body when
-    /// the user toggled "Translate" via long-press. Computed at the
-    /// call site (`vm.displayText(for:)`) so MessageRow stays
-    /// VM-agnostic.
     let displayBody: String
-    /// `true` when `displayBody` is the translated version. Drives
-    /// the small "Translated · tap to revert" footer under the bubble
-    /// so the user never wonders why the text suddenly changed.
     let isTranslated: Bool
-    /// True when this row was just selected from the in-chat search
-    /// overlay — drives a brief accent-tinted background flash so the
-    /// match is locatable inside a long thread. Reset by the host
-    /// `ChatView` after the fade.
     let isHighlighted: Bool
     let onTapReaction: (String) -> Void
     let onLongPress: () -> Void
-    /// Double-tap-anywhere shortcut for the most common reaction
-    /// (the KOLOBOK "good" thumbs-up). Modeled after Telegram's
-    /// double-tap-to-like — caller toggles, so a second double-tap
-    /// clears it. Long-press path stays available for the full
-    /// reaction palette + actions menu.
     let onDoubleTapLike: () -> Void
-    /// Tap on the in-bubble reply quote-block jumps the chat to
-    /// the original message (same scroll/flash mechanism the
-    /// in-chat search uses). No-op if the original is no longer
-    /// in the thread (expired, deleted, fell off the rehydrate
-    /// cap) — caller decides.
     let onTapReplyQuote: (UUID) -> Void
-    /// Swipe-left-on-bubble enters reply-mode for this message —
-    /// same effect as picking Reply from the long-press menu, just
-    /// faster. Caller decides what to do (typically set
-    /// `vm.replyTarget`).
     let onSwipeReply: () -> Void
 
-    /// Live x-offset of the bubble under finger during a leftward
-    /// swipe. Snaps back to 0 on release; if the drag passed the
-    /// trigger threshold first, `onSwipeReply` fires before the
-    /// snap-back animation.
     @State private var swipeOffset: CGFloat = 0
-    /// True once the current drag passed the trigger distance —
-    /// gates the haptic feedback (one buzz per swipe, not
-    /// continuous) and tells `onEnded` whether to fire reply.
     @State private var swipeArmed: Bool = false
-    /// True while finger is held down on the bubble (during the
-    /// long-press window). Drives a subtle scale-down on the
-    /// bubble so the user gets an instant "pushed in" cue before
-    /// the long-press menu actually fires. Cleared on release or
-    /// when the menu pops.
     @State private var bubblePressed: Bool = false
-    /// Drives the confirm-before-paying flow on a locked premium
-    /// bubble. Set true when the user taps the in-bubble Unlock CTA;
-    /// the `.confirmationDialog` shows the price + Pay/Cancel options.
     @State private var showUnlockConfirm: Bool = false
-    /// Set by the unlock attempt when the server returns 402 / network
-    /// error. Drives the `.alert` so the user sees why the unlock
-    /// didn't go through (typically insufficient tokens).
     @State private var unlockError: String?
-    /// True while the unlock POST is in-flight — disables the Pay
-    /// button so the user can't double-charge themselves on a slow
-    /// network.
     @State private var unlockInFlight: Bool = false
 
-    /// Distance (px leftward) the bubble must travel before the
-    /// reply trigger arms. Past this point the bubble decelerates
-    /// (rubber-band) and the user gets a haptic confirmation that
-    /// release-now would reply.
     private static let swipeTriggerDistance: CGFloat = 60
-    /// Hard cap on bubble travel — past this, additional drag is
-    /// absorbed (rubber-band feel) so the bubble can't slide
-    /// arbitrarily off-screen.
     private static let swipeMaxDistance: CGFloat = 80
 
     var body: some View {
@@ -1986,13 +1378,6 @@ private struct MessageRow: View {
         } else {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
                 ZStack(alignment: .trailing) {
-                    // Reveal icon — slides into view from behind the
-                    // right edge as the bubble is dragged left. Opacity
-                    // and scale ramp linearly with drag distance up to
-                    // the trigger threshold; past it, the icon stays
-                    // pegged + tinted-accent so the user has a clear
-                    // "release-now-to-reply" affordance. Hidden when
-                    // not actively swiping.
                     if swipeOffset < -2 {
                         let progress = min(1.0, abs(swipeOffset) / Self.swipeTriggerDistance)
                         let armed = abs(swipeOffset) >= Self.swipeTriggerDistance
@@ -2005,12 +1390,7 @@ private struct MessageRow: View {
                     }
                     HStack(alignment: .bottom) {
                         if message.isFromMe { Spacer(minLength: 40) }
-                        // Tap / long-press are scoped to the bubble
-                        // itself — the wider row is the swipe-only
-                        // hit target (see `.contentShape` below).
-                        // Otherwise a double-tap on empty space next
-                        // to a short incoming bubble would silently
-                        // toggle a reaction.
+                        // Tap/long-press scoped to bubble; the wider row only handles swipe-reply.
                         bubble
                             .scaleEffect(bubblePressed ? 0.96 : 1.0, anchor: message.isFromMe ? .trailing : .leading)
                             .animation(.spring(response: 0.18, dampingFraction: 0.86), value: bubblePressed)
@@ -2021,13 +1401,6 @@ private struct MessageRow: View {
                             .onLongPressGesture(
                                 minimumDuration: 0.18,
                                 pressing: { isPressing in
-                                    // No haptic in `pressing:` — it
-                                    // fires on every touch-down (incl.
-                                    // taps and scroll-starts), which
-                                    // made the chat feel buzzy. The
-                                    // `onLongPress` parent already
-                                    // fires medium-impact when the menu
-                                    // actually arms.
                                     bubblePressed = isPressing
                                 },
                                 perform: {
@@ -2047,56 +1420,20 @@ private struct MessageRow: View {
                     }
                 }
             }
-            // Make the row span the full chat width so the swipe
-            // gesture below has something to hit even when the
-            // bubble itself is short. Without this an incoming
-            // single-word bubble would only reply-arm if the user's
-            // finger started on the ~30pt-wide bubble.
+            // Full-width row so swipe-reply has a hit target even when the bubble is short.
             .frame(maxWidth: .infinity, alignment: message.isFromMe ? .trailing : .leading)
-            // Search-hit flash. ~1.4s tinted band behind the bubble
-            // row, fades out via the host's withAnimation when
-            // `flashHighlightID` is cleared. Bare RoundedRectangle so
-            // the bubble itself keeps its own corner radius.
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Theme.Color.accent.opacity(isHighlighted ? 0.18 : 0))
             )
-            // Make the entire row hit-testable for the swipe gesture
-            // below. The transparent background above doesn't extend
-            // the hit area, so without this `.gesture` only fires on
-            // the bubble itself — the user has to actually touch the
-            // bubble to swipe-reply, which is awkward for short
-            // incoming messages. With `Rectangle` the empty Spacer
-            // beside the bubble becomes a valid swipe target too.
             .contentShape(Rectangle())
-            // Swipe-left → enter reply-mode for this bubble. Mirrors
-            // Telegram/WhatsApp; faster path than long-press → Reply.
-            // We require horizontal dominance over vertical so the
-            // outer ScrollView's pan gesture still wins for diagonal
-            // / vertical scrolls. Tombstones skip — nothing to reply
-            // to once the original message is gone. Past the trigger
-            // distance we fire one haptic; past `swipeMaxDistance`
-            // the bubble decelerates instead of sliding off-screen.
-            //
-            // `.simultaneousGesture` (not `.gesture`) is what lets
-            // iOS's screen-edge pan recognizer keep working — with
-            // exclusive `.gesture`, this DragGesture claims every
-            // horizontal touch on the row, including right-swipes
-            // that originate near the leading edge, blocking the
-            // system back-swipe so the user had to grab the very
-            // last pixel of the screen edge to pop the chat.
+            // simultaneousGesture (not .gesture) so iOS's screen-edge back-swipe keeps working.
             .simultaneousGesture(
                 DragGesture(minimumDistance: 18)
                     .onChanged { value in
                         guard !message.deletedForEveryone, message.kind != .systemNotice else { return }
-                        // Drags that originate near the leading edge
-                        // are reserved for iOS's interactive-pop
-                        // gesture (swipe right to back). Bailing on
-                        // those before our recognizer claims them
-                        // makes the back-swipe predictable from any
-                        // starting Y rather than only at the very
-                        // last 20pt the system natively reserves.
+                        // Leading-edge drags belong to iOS's interactive-pop gesture.
                         if value.startLocation.x < 32 {
                             if swipeOffset != 0 { swipeOffset = 0 }
                             swipeArmed = false
@@ -2104,24 +1441,19 @@ private struct MessageRow: View {
                         }
                         let dx = value.translation.width
                         let dy = value.translation.height
-                        // Vertical wins → bail; the ScrollView is
-                        // probably handling the gesture as a scroll.
+                        // Vertical-dominant or right-swipe → let the ScrollView pan win.
                         if abs(dy) > abs(dx) {
                             if swipeOffset != 0 { swipeOffset = 0 }
                             swipeArmed = false
                             return
                         }
-                        // Right-swipes ignored — only left = reply.
                         if dx >= 0 {
                             if swipeOffset != 0 { swipeOffset = 0 }
                             swipeArmed = false
                             return
                         }
-                        // Linear track up to the trigger distance,
-                        // then rubber-band: each extra pixel of finger
-                        // movement only moves the bubble half a pixel
-                        // until we hit the hard cap.
-                        let raw = -dx  // positive magnitude
+                        // Linear up to trigger, then rubber-band to the hard cap.
+                        let raw = -dx
                         let bubble: CGFloat
                         if raw <= Self.swipeTriggerDistance {
                             bubble = -raw
@@ -2134,9 +1466,6 @@ private struct MessageRow: View {
                             swipeArmed = true
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         } else if swipeArmed && raw < Self.swipeTriggerDistance {
-                            // Drag retracted past the trigger — disarm
-                            // so a second outward push re-fires the
-                            // haptic cleanly.
                             swipeArmed = false
                         }
                     }
@@ -2151,10 +1480,6 @@ private struct MessageRow: View {
                         }
                     }
             )
-            // Confirm-before-paying for paywalled-media unlock. Triggered
-            // by the in-bubble Unlock CTA (PremiumLockedBubble.onUnlock).
-            // Native confirmationDialog mirrors the destructive-action
-            // pattern users already know from Delete-for-everyone.
             .confirmationDialog(
                 String(format: "chat.premium.confirm.title".localized, message.premiumPriceTokens ?? 0),
                 isPresented: $showUnlockConfirm,
@@ -2187,11 +1512,6 @@ private struct MessageRow: View {
                     .foregroundColor(Theme.Color.accent)
             }
             if let fwdName = message.forwardedFromName, !fwdName.isEmpty {
-                // Forwarded-message attribution. Rendered above the
-                // bubble's own content as a small italic note. Per
-                // spec we only carry the nickname — no UIN, no
-                // status — so a forwarded message can't double as a
-                // contact-discovery vector.
                 HStack(spacing: 4) {
                     Image(systemName: "arrowshape.turn.up.right.fill")
                         .font(.system(size: 9))
@@ -2201,19 +1521,6 @@ private struct MessageRow: View {
                 .foregroundColor(Theme.Color.textSecondary)
             }
             if let snippet = message.replyToSnippet, !snippet.isEmpty {
-                // Reply quote-block: vertical accent rule + author
-                // + snippet, sits inside the bubble above the actual
-                // content. The outer frame inherits the bubble's
-                // side — incoming hugs `.leading`, outgoing hugs
-                // `.trailing` — so the quote sits *over* the
-                // sender's bubble instead of drifting to screen
-                // centre. Earlier code hard-coded `.leading` which
-                // looked correct only for incoming messages.
-                //
-                // The whole block is a `Button` so a tap jumps to
-                // the original via `onTapReplyQuote`. `.buttonStyle(.plain)`
-                // keeps the visual styling identical to the previous
-                // non-tappable shape — only the hit-target is new.
                 Button {
                     if let target = message.replyToID {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -2261,19 +1568,11 @@ private struct MessageRow: View {
                     .font(Theme.Font.timestamp)
                     .foregroundColor(Theme.Color.textSecondary)
                 if message.editedAt != nil {
-                    // "(edited)" suffix — surfaces the fact that
-                    // body text isn't the original. Italic to match
-                    // the visual weight of timestamps; deliberately
-                    // not a full timestamp itself because the user
-                    // mostly cares about "edited or not", not when.
                     Text("chat.edited_suffix".localized)
                         .font(Theme.Font.timestamp.italic())
                         .foregroundColor(Theme.Color.textSecondary)
                 }
                 if message.ttlSeconds != nil {
-                    // Tiny clock badge on disappearing bubbles. No animation —
-                    // a per-row countdown would burn battery for very little
-                    // value at the typical TTL scale we offer (≥1 minute).
                     Image(systemName: "clock")
                         .font(.system(size: 9))
                         .foregroundColor(Theme.Color.textSecondary)
@@ -2297,8 +1596,6 @@ private struct MessageRow: View {
                         .stroke(Theme.Color.divider, lineWidth: 1)
                 )
         } else if message.kind == .photo {
-            // Media bubbles render the image as the bubble itself — no surrounding
-            // colored frame. Caption (if any) gets its own text bubble underneath.
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PhotoBubble(message: message)
                 if !displayBody.isEmpty {
@@ -2326,11 +1623,7 @@ private struct MessageRow: View {
                 .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                 .cornerRadius(Theme.Metrics.bubbleRadius)
         } else if message.kind == .premiumPhoto || message.kind == .premiumVideo {
-            // Single component handles BOTH locked and unlocked states
-            // so the unlock transition is a smooth in-place blur
-            // dissolve rather than a hard swap to PhotoBubble. The
-            // size is locked to the thumbnail's aspect so the bubble
-            // never resizes on unlock.
+            // Same component handles locked + unlocked so the unlock transition is an in-place blur dissolve.
             let size = Self.premiumBubbleSize(thumbnailB64: message.thumbnailB64)
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PremiumLockedBubble(message: message, onUnlock: { askUnlock(message) }, size: size)
@@ -2349,11 +1642,7 @@ private struct MessageRow: View {
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
                 if isTranslated { translatedFooter }
-                // Telegram-style link preview attached underneath
-                // when the message text carries a URL. Read off the
-                // ORIGINAL body (`message.text`) so a translation
-                // that omits / mangles the URL doesn't drop the
-                // preview card.
+                // Read off the original body so a translation that mangles the URL still gets a preview.
                 if let url = LinkDetector.firstURL(in: message.text) {
                     LinkPreviewCard(url: url)
                 }
@@ -2361,12 +1650,6 @@ private struct MessageRow: View {
         }
     }
 
-    /// Tiny "Translated · tap to revert" footer under translated
-    /// bubbles — the affordance Argus uses on its mission cards.
-    /// Tapping it would normally clear the translation, but the
-    /// row's tap surface is already claimed by reply-jump and
-    /// long-press handlers; the user reverts via long-press →
-    /// "Show original" instead. Footer is informational only.
     private var translatedFooter: some View {
         HStack(spacing: 4) {
             Image(systemName: "globe")
@@ -2388,17 +1671,10 @@ private struct MessageRow: View {
         }
     }
 
-    /// Compute the locked + unlocked bubble dimensions for a premium
-    /// media message from the included thumbnail. Width is fixed at
-    /// 240 (matches PhotoBubble's normal maxWidth); height derives
-    /// from the thumbnail's aspect ratio, capped at 240×1.4 (336pt)
-    /// so a very tall portrait photo doesn't dominate the chat. When
-    /// no thumbnail is decodable, defaults to 4:3 — same fallback
-    /// PhotoBubble's placeholder uses.
     fileprivate static func premiumBubbleSize(thumbnailB64: String?) -> CGSize {
         let width: CGFloat = 240
         let maxHeight: CGFloat = width * 1.4
-        let defaultHeight: CGFloat = width * 0.75  // 4:3 fallback
+        let defaultHeight: CGFloat = width * 0.75
         guard let b64 = thumbnailB64,
               !b64.isEmpty,
               let data = Data(base64Encoded: b64),
@@ -2411,20 +1687,10 @@ private struct MessageRow: View {
         return CGSize(width: width, height: height)
     }
 
-    /// Bridge from `PremiumLockedBubble.onUnlock` → confirmation. Two-
-    /// step flow so the user can't lose tokens to an accidental tap:
-    /// the in-bubble pill flips this flag, the parent `body` mounts a
-    /// `.confirmationDialog` that asks "Pay N tokens?" before firing
-    /// the actual `MessageService.unlockPremium` POST.
     fileprivate func askUnlock(_ message: Message) {
         showUnlockConfirm = true
     }
 
-    /// Confirmed unlock — POST to `/premium/contents/{id}/unlock`,
-    /// debit the wallet, splice the unwrapped key into the row.
-    /// Errors land in `unlockError` so the parent `.alert` surfaces
-    /// them (typically 402 insufficient tokens, sometimes a generic
-    /// network failure).
     fileprivate func performUnlock(_ message: Message) async {
         if unlockInFlight { return }
         unlockInFlight = true
@@ -2433,10 +1699,6 @@ private struct MessageRow: View {
             _ = try await MessageService.shared.unlockPremium(message: message)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch let APIError.http(402, body) {
-            // Server's 402 detail JSON carries `required` + `have`. We
-            // could parse for a precise message; for v1 a generic
-            // "insufficient tokens" line is enough — the user can see
-            // their balance from the wallet badge.
             _ = body
             unlockError = "chat.premium.error.insufficient".localized
         } catch APIError.http(404, _) {
@@ -2447,10 +1709,6 @@ private struct MessageRow: View {
     }
 }
 
-/// In-flight report-with-evidence target. Carries the message being
-/// reported AND the pre-decoded media bytes so `ReportEvidenceSheet`
-/// can submit immediately. Identifiable via the message UUID for
-/// SwiftUI's `.sheet(item:)` binding.
 struct PendingEvidenceReport: Identifiable {
     let message: Message
     let bytes: Data

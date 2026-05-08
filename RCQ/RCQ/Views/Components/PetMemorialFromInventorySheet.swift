@@ -1,10 +1,6 @@
 import SwiftUI
 
-/// Memorial of pets that fell on Pet Hunt — surfaced from the
-/// inventory ellipsis menu so users can mourn their dead from
-/// the most natural surface (where the pet would have lived).
-/// Identical content shape to the MemorialSheet inside
-/// PetHuntView; shares the same `PetHuntService.memorial` source.
+/// Pet Hunt memorial surfaced from the inventory ellipsis menu.
 struct PetMemorialFromInventorySheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = PetHuntService.shared

@@ -1,14 +1,6 @@
 import SwiftUI
 
-/// Premium-UIN auction surface. Single auction at a time, lives in
-/// the Games tab next to Crash / Hi-Lo / Limbo. The shape mirrors
-/// CrashView: hero block with the prize, live timer + high bid,
-/// bid history, place-bid input row.
-///
-/// Server runs the round-loop and broadcasts WS events
-/// (`uin_auction_started`, `_bid`, `_ended`, `_outbid`); the
-/// `UinAuctionService` mirrors those into @Published state and we
-/// render off it. No polling.
+/// Premium-UIN auction surface. Server runs the round loop and broadcasts WS events.
 struct UinAuctionView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = UinAuctionService.shared
@@ -27,11 +19,7 @@ struct UinAuctionView: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 content
             }
-            // simultaneousGesture lets ScrollView's pan AND a tap-
-            // anywhere dismiss coexist. Earlier `.onTapGesture` on
-            // the bg colour got swallowed by the ScrollView's hit
-            // testing — taps on visible content area never reached
-            // the bg. Simultaneous TapGesture bubbles up regardless.
+            // simultaneousGesture coexists with ScrollView pan; plain onTapGesture gets swallowed.
             .simultaneousGesture(
                 TapGesture().onEnded {
                     UIApplication.shared.sendAction(
@@ -47,10 +35,6 @@ struct UinAuctionView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                 }
-                // Top-right matches Crash / Hi-Lo / Limbo 1:1 — info
-                // glyph + wallet badge in a horizontal stack. Owned
-                // UINs and recent winners moved to the bottom bar so
-                // the upper strip stays focused on rules + balance.
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         Button { showRules = true } label: {
@@ -64,6 +48,10 @@ struct UinAuctionView: View {
                     Button { showOwned = true } label: {
                         Label("uin_auction.owned.title".localized,
                               systemImage: "tray.full.fill")
+                    }
+                    Spacer()
+                    if svc.active != nil && !walletCoversMinBid {
+                        insufficientBottomPill
                     }
                     Spacer()
                     Button { showRecent = true } label: {
@@ -88,12 +76,7 @@ struct UinAuctionView: View {
             }
             .task { await svc.refresh() }
             .refreshable { await svc.refresh() }
-            // Full auction view takes over the screen — hide the
-            // mini, reset the closed flag.
             .onAppear { svc.expand() }
-            // Leaving the full view re-arms the mini. The bar gates
-            // itself on `iHaveBidInRound`, so users who never bid
-            // see nothing.
             .onDisappear { svc.minimize() }
             .alert("uin_auction.alert.title".localized,
                    isPresented: Binding(
@@ -147,9 +130,7 @@ struct UinAuctionView: View {
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .tracking(2)
                 .foregroundColor(Theme.Color.textSecondary)
-            // `verbatim:` skips SwiftUI's LocalizedStringKey path —
-            // otherwise an Int interpolation gets locale-formatted
-            // and a 7-digit UIN renders as "1,234,567" with a comma.
+            // `verbatim:` skips LocalizedStringKey so the UIN doesn't get a thousands separator.
             Text(verbatim: "\(a.uin)")
                 .font(.system(size: 56, weight: .bold, design: .monospaced))
                 .foregroundColor(Theme.Color.textPrimary)
@@ -203,11 +184,6 @@ struct UinAuctionView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             if inSoftClose {
-                // No leading icon — the soft-close badge above
-                // already telegraphs the urgency, and the
-                // info.circle.fill glyph here read as a static
-                // loader / status spinner alongside the live
-                // timer pulse. Plain text reads cleaner.
                 Text("uin_auction.soft_close.note".localized)
                     .font(.caption)
                     .foregroundColor(Theme.Color.textSecondary)
@@ -277,77 +253,65 @@ struct UinAuctionView: View {
     }
 
     private func bidComposerBlock(_ a: UinAuction) -> some View {
-        let canAfford = items.wallet.tokens >= svc.minNextBid
+        let canAfford = walletCoversMinBid
         let parsedBid = Int(bidInput.trimmingCharacters(in: .whitespaces)) ?? 0
         let validBid = parsedBid >= svc.minNextBid && parsedBid <= items.wallet.tokens
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                TextField(String(format: "uin_auction.bid_placeholder".localized, svc.minNextBid),
-                          text: $bidInput)
-                    .keyboardType(.numberPad)
-                    .font(.system(.body, design: .monospaced))
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .background(Theme.Color.bgSecondary)
-                    .cornerRadius(8)
-                // Single CTA slot: when the wallet covers the min
-                // bid → "Ставка". When it doesn't → swap to
-                // "Пополнить" which opens the BuyTokensSheet. One
-                // button never disabled-and-useless — there's
-                // always a productive action to take.
-                if canAfford {
-                    Button {
-                        Task { await place(bid: parsedBid) }
-                    } label: {
-                        Text("uin_auction.cta.bid".localized)
-                            .font(.system(.callout, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16).padding(.vertical, 10)
-                            .background(validBid ? Theme.Color.accent : Theme.Color.divider)
-                            .cornerRadius(8)
-                    }
-                    .disabled(!validBid)
-                    .buttonStyle(.plain)
-                } else {
-                    Button { showShop = true } label: {
-                        Text("uin_auction.cta.topup".localized)
-                            .font(.system(.callout, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16).padding(.vertical, 10)
-                            .background(Theme.Color.accent)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
+        return HStack(spacing: 10) {
+            TextField(String(format: "uin_auction.bid_placeholder".localized, svc.minNextBid),
+                      text: $bidInput)
+                .keyboardType(.numberPad)
+                .font(.system(.body, design: .monospaced))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Theme.Color.bgSecondary)
+                .cornerRadius(8)
+            if canAfford {
+                Button {
+                    Task { await place(bid: parsedBid) }
+                } label: {
+                    Text("uin_auction.cta.bid".localized)
+                        .font(.system(.callout, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(validBid ? Theme.Color.accent : Theme.Color.divider)
+                        .cornerRadius(8)
                 }
-            }
-            // Red badge with a leading warning glyph — reads as a
-            // proper inline alert, not a typo'd label. Only shown when
-            // the wallet can't cover the next bid; the CTA above
-            // already swaps to "Пополнить".
-            if !canAfford {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                    Text("uin_auction.insufficient_hint".localized)
-                        .font(.caption.weight(.semibold))
+                .disabled(!validBid)
+                .buttonStyle(.plain)
+            } else {
+                Button { showShop = true } label: {
+                    Text("uin_auction.cta.topup".localized)
+                        .font(.system(.callout, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Theme.Color.accent)
+                        .cornerRadius(8)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.red)
-                .cornerRadius(6)
-                .padding(.leading, 4)
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    private var walletCoversMinBid: Bool {
+        items.wallet.tokens >= svc.minNextBid
+    }
+
+    private var insufficientBottomPill: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text("uin_auction.insufficient_hint".localized)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.red)
+        .cornerRadius(6)
     }
 
     private var bidsHistory: some View {
         let visibleBids: [UinAuctionBid] = Array(svc.bids.prefix(20))
         return VStack(alignment: .leading, spacing: 8) {
-            // The label needs to span the row width so it actually
-            // hugs leading even when the body below is empty (a
-            // single-line VStack with .leading alignment otherwise
-            // shrinks to its widest child — the empty-state Text
-            // — and SwiftUI centred it in the parent).
             HStack {
                 Text("uin_auction.history.title".localized)
                     .font(.caption.weight(.semibold))
@@ -388,12 +352,6 @@ struct UinAuctionView: View {
     }
 
     private var waitingBlock: some View {
-        // Pure typographic empty-state — no hourglass icon. The
-        // animated-looking hourglass SF Symbol read as a loading
-        // spinner to users ("nothing's happening, is the screen
-        // broken?") even though it was static art. Title + body
-        // alone tells the same story without the "wait, am I
-        // stuck" beat.
         VStack(spacing: 10) {
             Spacer().frame(height: 80)
             Text("uin_auction.waiting.title".localized)
@@ -428,11 +386,6 @@ struct UinAuctionView: View {
         }
     }
 
-    /// 1:1 with Crash / Hi-Lo / Limbo `walletBadge` so the user's
-    /// balance occupies the same upper-right slot across every game
-    /// surface. coin GIF + monospace digits + numeric content
-    /// transition. The trailing padding keeps the badge inset from
-    /// the safe-area edge instead of jamming against it.
     @ViewBuilder
     private var walletBadge: some View {
         let tokens = items.wallet.tokens
@@ -520,9 +473,6 @@ private struct OwnedUINsSheet: View {
     @State private var confirmActivateUIN: Int?
     @State private var activating: Bool = false
     @State private var alertMessage: String?
-    /// Drives the «Sell on marketplace» price-entry sheet. Set when
-    /// the user picks "Sell" from a row's ellipsis menu; cleared on
-    /// dismiss / successful list.
     @State private var sellTarget: OwnedUIN?
 
     var body: some View {
@@ -552,11 +502,6 @@ private struct OwnedUINsSheet: View {
                                         .foregroundColor(Theme.Color.textSecondary)
                                 }
                                 Spacer()
-                                // Overflow menu LEFT of the primary CTA —
-                                // user-asked layout. Reads as "secondary
-                                // option | primary action" left-to-right
-                                // instead of the previous "action | dots"
-                                // which buried the menu in dead space.
                                 Menu {
                                     Button {
                                         sellTarget = o
@@ -622,15 +567,8 @@ private struct OwnedUINsSheet: View {
                    message: { Text(alertMessage ?? "") })
             .sheet(item: $sellTarget) { target in
                 SellOwnedUinSheet(uin: target.uin, tier: target.tier) {
-                    // After a successful list, refresh the local owned
-                    // inventory so the seller sees the row updated (the
-                    // UIN itself stays in inventory until the buyer
-                    // completes the buy).
                     Task { await svc.refreshOwned() }
                 }
-                // Single detent — same rationale as the rules sheet
-                // above. Sell-form is compact (UIN header + price
-                // input + CTA), `.medium` fits without scroll.
                 .presentationDetents([.medium])
             }
         }
@@ -665,24 +603,11 @@ private struct OwnedUINsSheet: View {
 
 // MARK: - Rules sheet
 
-/// "Как работает аукцион" sheet — same shape as HiLoRulesSheet /
-/// LimboRulesSheet so the games-hub feels consistent. Sections:
-/// what's auctioned, how bidding works, soft-close, what happens
-/// after winning.
 private struct UinAuctionRulesSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            // Plain VStack inside a single Color background — NO
-            // ScrollView. Content fits the medium detent in every
-            // locale, so the ScrollView only added an overscroll
-            // surface that iOS rendered with a sheet-resize spring
-            // the user kept reading as a "loader appears on drag".
-            // No scroll = no spring = no fake loader. If the rules
-            // copy ever grows beyond the detent, switch back to
-            // ScrollView with `scrollDisabled(true)` so it lays out
-            // but doesn't accept the dismiss-gesture conflict.
             VStack(alignment: .leading, spacing: 18) {
                 section(
                     icon: "number.circle.fill",
@@ -739,10 +664,6 @@ private struct UinAuctionRulesSheet: View {
 
 // MARK: - Sell owned UIN on marketplace
 
-/// Compact price-entry sheet — opened from `OwnedUINsSheet`'s ellipsis
-/// menu. Lists the picked UIN on the marketplace at the user-supplied
-/// price. Mirrors the item-marketplace's `SellItemSheet` shape so both
-/// sell-flows feel like the same product.
 private struct SellOwnedUinSheet: View {
     let uin: Int
     let tier: String
@@ -762,8 +683,7 @@ private struct SellOwnedUinSheet: View {
 
     private var payoutHint: String? {
         guard let p = price, validPrice else { return nil }
-        // 5% house fee, floor-rounded — same formula as the backend's
-        // `_seller_payout()` so the hint matches what actually arrives.
+        // 5% house fee, floor-rounded — must match backend `_seller_payout()`.
         let payout = p - (p * 500 / 10_000)
         return String(format: "market.sell.payout_hint".localized) + ": \(payout)"
     }
@@ -772,17 +692,8 @@ private struct SellOwnedUinSheet: View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                // Plain VStack — same rationale as the rules sheet
-                // above. The form (UIN header + description + price
-                // field + button) fits the medium detent without
-                // scroll; pulling the keyboard up still works because
-                // SwiftUI's keyboard-avoidance applies at the
-                // navigation-stack level, not the scroll level.
                 VStack(spacing: 16) {
                     VStack(spacing: 6) {
-                        // `Text(verbatim:)` keeps the UIN raw — no
-                        // thousands-separator from LocalizedStringKey
-                        // interpolation.
                         Text(verbatim: "#\(uin)")
                             .font(.system(.title, design: .monospaced).weight(.bold))
                             .foregroundColor(Theme.Color.textPrimary)
@@ -888,12 +799,6 @@ private struct SellOwnedUinSheet: View {
     }
 }
 
-/// Disable the ScrollView's overscroll bounce when content already
-/// fits inside the viewport. Wraps `scrollBounceBehavior(.basedOnSize)`
-/// behind an iOS 16.4 availability check; on iOS 16.0–16.3 the
-/// default overscroll bounce stays — acceptable visual regression
-/// for that small slice. Used to kill the "loader-looking spring"
-/// inside short auction sheets.
 private struct NoBounceWhenFits: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 16.4, *) {

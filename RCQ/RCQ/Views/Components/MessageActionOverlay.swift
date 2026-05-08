@@ -1,76 +1,38 @@
 import SwiftUI
 import UIKit
 
-/// Telegram-style long-press popover for a message, minus the background blur.
-///
-/// The screen behind stays visible (no scrim), only a transparent tap-catcher
-/// dismisses on tap-outside. Two stacked panels appear in the centre:
-///
-///   ┌──────────────────────────────┐   reactions panel — animated KOLOBOK
-///   │ 😀 😂 😯 😢 👍 ❤️             │   smileys, custom-styled (not a system
-///   └──────────────────────────────┘   menu, since the system one can't show
-///                                       animated GIFs).
-///
-///   ┌──────────────────────────────┐   actions panel — system-styled rows.
-///   │ Delete            🗑  ›       │   For my own message, "Delete" reveals
-///   └──────────────────────────────┘   a sub-state with "Delete for me" /
-///                                       "Delete for everyone". For received
-///                                       messages, the root row is already
-///                                       "Delete for me" with no sub-state.
+/// Long-press popover for a message: reactions row + actions panel over a material backdrop.
 struct MessageActionOverlay: View {
     let message: Message
-    /// Resolved by the parent (`ChatView`) via its
-    /// `senderNickname(_:)` helper — for random chats this is
-    /// already collapsed to "You" / "Stranger" so we surface a
-    /// label that matches what the body sees, not the real
-    /// account nickname.
     let senderNickname: String
     let canDeleteForEveryone: Bool
     let canReply: Bool
-    /// True when this message is one we sent AND a text bubble (the
-    /// only kind editable in v1). Caller decides; the overlay just
-    /// reads the flag to gate the Edit row.
     let canEdit: Bool
     let onReact: (String) -> Void
     let onReply: () -> Void
     let onEdit: () -> Void
     let onForward: () -> Void
     let onTranslate: () -> Void
-    /// True when the host bubble is currently rendering a stored
-    /// translation; flips the row label from "Translate" to "Show
-    /// original" so the same tap reverts.
     var isTranslated: Bool = false
     let onDeleteForMe: () -> Void
     let onDeleteForEveryone: () -> Void
     let onDismiss: () -> Void
-    /// Fired when the reporter taps "Report content" on a non-own
-    /// media bubble. Caller (ChatView) opens `ReportEvidenceSheet`
-    /// with the message + decrypted bytes attached. Optional —
-    /// non-media surfaces don't surface the row at all.
     var onReport: (() -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
 
-    /// Six classic KOLOBOK reactions — same set as the picker row, animated.
     private static let assets: [String] = [
         "smile", "biggrin", "shok", "cray", "good", "heart",
     ]
 
     var body: some View {
         ZStack {
-            // Material backdrop — same `.regularMaterial` glass we
-            // use everywhere else for modal-ish overlays. Tap
-            // anywhere outside the panels closes the menu.
             Rectangle()
                 .fill(.regularMaterial)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
 
-            // Reactions panel above, focused bubble preview in
-            // the middle, actions panel below. The sender label
-            // sits tight against the bubble (spacing 2) so the
-            // pair reads as one unit "lifted" out of the chat.
             VStack(spacing: 10) {
                 reactionsPanel
                 VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
@@ -79,12 +41,6 @@ struct MessageActionOverlay: View {
                         .foregroundColor(Theme.Color.accent)
                     MessagePreviewCard(message: message)
                 }
-                // Wider cap so the lifted bubble can match its actual
-                // chat-row width. 280pt was visibly clipping wrapped
-                // text and made the 240pt photo bubble look pinched
-                // (the surrounding frame was only 40pt wider than the
-                // photo). 320pt fits both shapes without forcing a
-                // wrap that the original row didn't have.
                 .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
                 actionsPanel
                     .frame(width: 260)
@@ -153,14 +109,6 @@ struct MessageActionOverlay: View {
                         onDismiss()
                     }
                     rowDivider
-                    // In-place translation toggle. First tap kicks
-                    // the iOS 18 TranslationSession in the host
-                    // chat's `InPlaceTranslator` modifier and writes
-                    // the result into `vm.translatedTexts`, swapping
-                    // the bubble's text. Second tap (label now reads
-                    // "Show original") clears the cache entry and
-                    // reverts. No modal sheet, no Apple "Open in
-                    // Translate" hand-off.
                     actionRow(
                         (isTranslated ? "chat.action.show_original" : "chat.action.translate").localized,
                         icon: "globe",
@@ -176,12 +124,6 @@ struct MessageActionOverlay: View {
                     }
                     rowDivider
                 }
-                // Report content — only for media bubbles received from
-                // someone else. Caller (ChatView) wires this up only
-                // when the message kind is .photo / .video / .premiumPhoto
-                // / .premiumVideo AND the local user has unlocked /
-                // viewed it (i.e. plaintext bytes are obtainable for
-                // upload as evidence).
                 if let onReport, !canDeleteForEveryone {
                     actionRow(
                         "chat.action.report_content".localized,
@@ -208,17 +150,12 @@ struct MessageActionOverlay: View {
         .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
     }
 
-    /// Hairline separator between rows — matches iOS system menu
-    /// styling (~0.33pt, low-contrast, tinted to the panel material).
     private var rowDivider: some View {
         Rectangle()
             .fill(Color.primary.opacity(0.08))
             .frame(height: 0.33)
     }
 
-    /// Forward only makes sense for actual content. Hide for
-    /// already-tombstoned messages, system notices, and offline
-    /// markers — there's nothing meaningful to re-send.
     private var canForward: Bool {
         if message.deletedForEveryone { return false }
         switch message.kind {
@@ -227,12 +164,6 @@ struct MessageActionOverlay: View {
         }
     }
 
-    /// Telegram / iOS-system-menu row layout: icon **on the left**
-    /// (fixed-width column for vertical alignment of all rows), text
-    /// after the icon, no right-side glyph. Destructive role tints
-    /// both icon and label red. Layout hugs iOS's native
-    /// `UIMenu`/`UIAction` row dimensions so the overlay reads as
-    /// system-style without us actually using the system menu API.
     private func actionRow(
         _ title: String,
         icon: String?,
@@ -261,10 +192,6 @@ struct MessageActionOverlay: View {
         .buttonStyle(.plain)
     }
 
-    /// Material-blur background to match the iOS native context
-    /// menu look. `.regularMaterial` adapts to dark/light mode out
-    /// of the box and gives the same translucent backdrop the system
-    /// menu uses on top of the dimmed chat.
     private var panelBackground: some View {
         Rectangle().fill(.regularMaterial)
     }

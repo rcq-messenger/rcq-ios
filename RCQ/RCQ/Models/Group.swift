@@ -1,17 +1,15 @@
 import Foundation
 
-/// Group of friends, ICQ-style. The wire model lines up 1:1 with the FastAPI
-/// `GroupOut`. `RCQGroup` instead of `Group` to avoid collision with SwiftUI's
-/// `Group { … }` view container.
+/// Group of friends, ICQ-style. Mirrors `GroupOut`. Named `RCQGroup` to
+/// avoid collision with SwiftUI's `Group` view container.
 struct RCQGroup: Identifiable, Hashable, Codable {
     let id: Int
     var name: String
     var ownerUIN: Int
     var avatarSeed: Int
-    /// `"all"` (everyone can post) or `"owner_only"` (broadcast mode —
-    /// only the owner sends, members read). Server treats it as a UX
-    /// hint (sealed-sender means it can't enforce identity at send
-    /// time); iOS gates the composer to keep the contract honest.
+    /// `"all"` (everyone can post) or `"owner_only"` (broadcast mode).
+    /// Sealed-sender means the server can't enforce identity at send
+    /// time; iOS gates the composer to keep the contract honest.
     var postPolicy: String = "all"
     /// Tokens charged on `POST /groups/{id}/join`. NULL/0 = free.
     /// Owner gets `floor(price × 0.95)`; the 5% delta burns.
@@ -50,8 +48,6 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         members.contains(where: { $0.uin == uin })
     }
 
-    /// Can this user post into the group's chat? Owner always can;
-    /// in `owner_only` mode others can't.
     func canPost(_ uin: Int) -> Bool {
         if uin == ownerUIN { return true }
         return postPolicy != "owner_only"
@@ -63,18 +59,12 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     let nickname: String
     let role: String  // owner | admin | member
     var status: UserStatus
-    /// X25519 ECDH public key (base64). The sender uses this to encrypt
-    /// the per-member ciphertext when fanning out a group message.
+    /// X25519 ECDH public key (base64).
     let identityKey: String
-    /// Ed25519 signing public key (base64). Recipients verify the
-    /// sealed-sender signature against this on decrypt.
+    /// Ed25519 signing public key (base64).
     let signingKey: String
-    /// Stage 3 marker — non-null means the member runs a libsignal client
-    /// (3b 1:1 sends + 3c group Sender Keys are eligible). Null means
-    /// Stage 2-only and group fan-out for this member uses v=1 ECIES.
+    /// Non-null = member runs libsignal (Stage 3 eligible).
     let signalIdentityKey: String?
-    /// Currently-equipped pet — drives the small status-icon overlay
-    /// on group member rows. Null = no pet equipped.
     let equippedPet: EquippedPet?
 
     var id: Int { uin }
@@ -94,9 +84,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.role = try c.decode(String.self, forKey: .role)
         let raw = (try? c.decodeIfPresent(String.self, forKey: .status)) ?? "offline"
         self.status = UserStatus(rawValue: raw) ?? .offline
-        // identity/signing keys are required as of Stage 2 e2ee. Default to
-        // empty strings if a stale server response omits them; the encrypt
-        // path skips members with empty keys (silent drop, no crash).
+        // Encrypt path skips members with empty keys (silent drop, no crash).
         self.identityKey = (try? c.decodeIfPresent(String.self, forKey: .identityKey)) ?? ""
         self.signingKey = (try? c.decodeIfPresent(String.self, forKey: .signingKey)) ?? ""
         self.signalIdentityKey = try? c.decodeIfPresent(String.self, forKey: .signalIdentityKey)
@@ -104,14 +92,8 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     }
 }
 
-/// What ChatView is talking to — either a 1:1 contact, a group, or an
-/// anonymous random-chat session.
-///
-/// Random sessions reuse the same SwiftUI surface but their messages are
-/// ephemeral: they live in `RandomChatService.messages` (in-memory,
-/// session-scoped), never in `MessageStore`/`MessageDB`. The `thread`
-/// property still surfaces a `.peer(uin: peerUIN)` so call sites that
-/// dereference it don't crash, but no persistence path actually consumes it.
+/// What ChatView is talking to — peer contact, group, or random-chat session.
+/// Random messages live in `RandomChatService.messages` only (ephemeral).
 enum ChatTarget: Hashable {
     case peer(Contact)
     case group(RCQGroup)
@@ -133,10 +115,8 @@ enum ChatTarget: Hashable {
         }
     }
 
-    /// `RCQGroup` if this target is a broadcast-mode group AND the
-    /// supplied UIN can't post — i.e., the composer should be
-    /// replaced with a read-only hint. Returns nil for everyone who
-    /// can post.
+    /// Returns the group if the viewer should see a read-only hint
+    /// instead of the composer (broadcast-mode and not allowed to post).
     func broadcastReadOnly(viewerUIN: Int?) -> RCQGroup? {
         guard case .group(let g) = self else { return nil }
         guard let me = viewerUIN else { return nil }

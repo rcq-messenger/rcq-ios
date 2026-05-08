@@ -1,33 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// In-session chat surface for Radio Chat. Same MessageRow visual
-/// language as the regular `ChatView` but the transport is
-/// MultipeerConnectivity, the history is in-memory, and there's
-/// no media. Reply + reaction supported. Foreground only — when
-/// the app backgrounds, MC drops the link and we bounce back to
-/// discovery.
+/// In-session chat surface for Radio Chat. Transport is
+/// MultipeerConnectivity, history is in-memory, foreground only.
 struct RadioChatView: View {
     @StateObject private var radio = RadioService.shared
     @State private var input: String = ""
     @State private var replyTarget: RadioMessage?
-    /// Local latch for the hold-to-talk gesture. Tracked separately
-    /// from `radio.isTalking` so the press → start sequence is
-    /// edge-triggered (we only call `startTalking()` on the rising
-    /// edge, regardless of how often `onChanged` fires).
+    // Edge-triggered PTT latch — DragGesture.onChanged fires repeatedly.
     @State private var ptt: Bool = false
 
     var body: some View {
-        // No outer NavigationStack — this view is rendered inside
-        // RadioDiscoveryView's NavigationStack and shares its nav
-        // bar. The previous version painted its own ultraThinMaterial
-        // header strip *below* that nav bar, doubling chrome and
-        // mismatching the rest of the app's typography. Now the
-        // toolbar carries the room title (principal slot) and the
-        // back chevron / antenna glyph, matching the Nearby surface
-        // exactly. RadioDiscoveryView's discovery-only toolbar items
-        // (X close + create-room) hide themselves when an active
-        // session takes over.
+        // Renders inside RadioDiscoveryView's NavigationStack; supplies
+        // its own toolbar items (back / principal title / antenna).
         ZStack {
             Theme.Color.bgPrimary.ignoresSafeArea()
             VStack(spacing: 0) {
@@ -64,10 +49,6 @@ struct RadioChatView: View {
 
     // MARK: - principal slot
 
-    /// Centred room/peer identity for the system nav bar's principal
-    /// slot. Same shape as `ChatView.principalContent` — single
-    /// trailing `Color.clear` keeps the title visually centred when
-    /// the toolbar adds its leading back chevron.
     @ViewBuilder
     private var principalContent: some View {
         if let room = radio.activeRoom {
@@ -132,10 +113,6 @@ struct RadioChatView: View {
                 if let parentSender = msg.replyToSender, let parentBody = msg.replyToBody {
                     quoteBlock(sender: parentSender, body: parentBody)
                 }
-                // Default font argument (Theme.Font.bubble) — same as
-                // ChatView. Earlier override to `.body` made Radio
-                // bubbles read with a heavier system font and stood
-                // out from every other chat surface.
                 EmoticonText(text: msg.text)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(
@@ -218,9 +195,6 @@ struct RadioChatView: View {
 
     // MARK: - Speaking pill
 
-    /// "🔴 Alice, Bob говорят…" pill above the composer. Shown
-    /// while any remote peer is mid-PTT-transmission. Local
-    /// self-talk has its own indicator on the mic button.
     private var speakingPill: some View {
         let names = radio.activeSpeakers.sorted().joined(separator: ", ")
         return HStack(spacing: 6) {
@@ -243,10 +217,7 @@ struct RadioChatView: View {
 
     // MARK: - Composer
 
-    /// Empty input → mic (hold-to-talk PTT). Non-empty input → send.
-    /// Mirrors the main `ChatView` voice-message pattern, but here
-    /// the press streams live audio over MultipeerConnectivity
-    /// instead of recording a discrete voice message.
+    // Empty input → mic (hold-to-talk PTT). Non-empty input → send.
     private var composer: some View {
         let inputEmpty = input.trimmingCharacters(in: .whitespaces).isEmpty
         return HStack(alignment: .center, spacing: 8) {
@@ -283,10 +254,8 @@ struct RadioChatView: View {
         }
     }
 
-    /// Hold-to-talk. `DragGesture(minimumDistance: 0)` fires
-    /// `onChanged` immediately on touch-down (which `LongPressGesture`
-    /// can't — it always waits for `minimumDuration`). Edge-triggered
-    /// via `ptt` so we only invoke `startTalking` once per press.
+    // DragGesture(minimumDistance: 0) fires onChanged immediately on
+    // touch-down — LongPressGesture can't (waits for minimumDuration).
     private var pttButton: some View {
         let radius: CGFloat = 16
         return Image(systemName: ptt ? "mic.fill" : "mic")

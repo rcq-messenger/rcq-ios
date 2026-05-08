@@ -1,41 +1,19 @@
 import SwiftUI
 
-/// Renders text with inline ICQ emoticons. When the GIF asset is present, the
-/// emoticon is rendered via the animated GIFImage so the bubble actually feels alive.
-/// When it's missing (dev builds without the pack), we render the literal shortcode.
-///
-/// Layout: a flow layout that wraps text + animated images on the same line. SwiftUI's
-/// Text-concat trick (`Text + Text(Image(…))`) only handles static images, so for the
-/// animated path we need to break out of Text-only rendering and use a wrapping layout.
+/// Renders text with inline animated GIF emoticons. Falls back to the
+/// literal shortcode when the asset isn't bundled.
 struct EmoticonText: View {
     let text: String
     var font: Font = Theme.Font.bubble
     var color: Color = Theme.Color.textPrimary
-    /// Inline emoticon side. Tied to `~22pt` so a smiley sharing a
-    /// row with body-size text stays the same visual height — bigger
-    /// values (28pt was the previous default) inflated row heights
-    /// and made bubbles look gappy on lines that contained one.
     var emoticonSize: CGFloat = 22
-    /// Vertical gap between logical lines of the message. SwiftUI
-    /// Text already adds its own ascent/descent leading; this is an
-    /// extra nudge between paragraphs only.
     var lineSpacing: CGFloat = 2
 
     var body: some View {
-        // VStack of per-logical-line FlowLayouts. Splitting on `\n`
-        // up-front means the user's explicit newlines drive real
-        // line breaks here, and each line's per-word + emoticon
-        // wrapping happens inside its own FlowLayout. The previous
-        // single-FlowLayout version emitted `Text("\n")` slots for
-        // each newline, which contributed a full font-height empty
-        // row to the layout and made multi-line bubbles read with
-        // huge gaps between lines.
+        // VStack of per-line FlowLayouts so user newlines drive real breaks.
         VStack(alignment: .leading, spacing: lineSpacing) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, lineRuns in
                 if lineRuns.isEmpty {
-                    // Preserve a blank line the user typed — render
-                    // as a single zero-width Text so VStack adds the
-                    // expected vertical step between paragraphs.
                     Text(" ").font(font).foregroundColor(color)
                 } else {
                     FlowLayout(spacing: 0, lineSpacing: 2) {
@@ -52,17 +30,10 @@ struct EmoticonText: View {
     private func renderRun(_ run: Run) -> some View {
         switch run {
         case .text(let s):
-            // SwiftUI auto-handles `.link` AttributedString attribute
-            // on Text — tap opens the URL via the environment's
-            // OpenURL action. Detection is best-effort via
-            // NSDataDetector; non-URL text falls through unchanged.
             Text(Self.linkify(s)).font(font).foregroundColor(color)
         case .emoticon(let asset, let code):
             if let img = GIFImage.cachedImage(for: asset) {
-                // Preserve native aspect ratio; pin height to the
-                // requested size and let width scale proportionally.
-                // Square frames squashed wide kolobok/forum-classic
-                // glyphs into deformed boxes.
+                // Preserve native aspect ratio; square frames squash wide glyphs.
                 let aspect: CGFloat = {
                     guard img.size.width > 0, img.size.height > 0 else { return 1 }
                     return img.size.width / img.size.height
@@ -76,9 +47,6 @@ struct EmoticonText: View {
         }
     }
 
-    /// Run NSDataDetector across `s` and decorate every URL match
-    /// with a `.link` + accent color + underline. Cached detector
-    /// avoids the per-render allocator hit.
     private static let linkDetector: NSDataDetector? = {
         try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     }()
@@ -90,7 +58,6 @@ struct EmoticonText: View {
         detector.enumerateMatches(in: s, options: [], range: nsRange) { match, _, _ in
             guard let match, let url = match.url,
                   let r = Range(match.range, in: s) else { return }
-            // Convert the String range to AttributedString offsets.
             let lower = s.distance(from: s.startIndex, to: r.lowerBound)
             let upper = s.distance(from: s.startIndex, to: r.upperBound)
             let lo = attr.index(attr.startIndex, offsetByCharacters: lower)
@@ -102,12 +69,6 @@ struct EmoticonText: View {
         return attr
     }
 
-    /// Tokenize the message into [logical line] → [run]. Logical
-    /// lines come from `\n` splits in the source text; runs inside a
-    /// line are word-text fragments + inline emoticons. Per-word
-    /// splitting (rather than one Text per line) lets a wide line
-    /// wrap inside its FlowLayout while still leaving the next
-    /// emoticon glued to the right of the prior word.
     private var lines: [[Run]] {
         var out: [[Run]] = []
         for line in text.components(separatedBy: "\n") {
@@ -140,21 +101,14 @@ struct EmoticonText: View {
     }
 }
 
-/// Single-pass flow layout: lays children left-to-right, wraps when the next child
-/// won't fit. Uses each child's natural size. iOS 16+.
+/// Flow layout: lays children left-to-right, wraps when a child won't fit. iOS 16+.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 4
     var lineSpacing: CGFloat = 4
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
-        // Crucial: propose the available width to each child
-        // (instead of `.unspecified`), so a long `Text` returns
-        // its *wrapped* multi-line size rather than a single
-        // continuous line wider than the bubble. The previous
-        // version asked text "what's your natural size?" which
-        // blew through the right edge of the chat for any
-        // long-paragraph send.
+        // Propose available width to each child so long Text returns wrapped multi-line size.
         let childProposal = ProposedViewSize(
             width: maxWidth.isFinite ? maxWidth : nil,
             height: nil
@@ -180,12 +134,7 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        // Same `bounds.width` propagation as the sizing pass —
-        // each child gets to wrap inside the bubble's actual
-        // width. Two-pass layout: row heights first, then
-        // vertical-centred placement so a 22pt smiley sharing a
-        // row with shorter text doesn't get clipped along the
-        // top.
+        // Two-pass: row heights, then vertical-centred placement.
         let childProposal = ProposedViewSize(width: bounds.width, height: nil)
         struct Slot { let x: CGFloat; let row: Int; let size: CGSize }
         var slots: [Slot] = []

@@ -16,9 +16,7 @@ struct SettingsView: View {
     @State private var migrationAlert: String?
     @State private var showShop = false
 
-    /// Token cost of an account migration. Mirrors the server-side
-    /// constant in `routers/migrate.py:MIGRATION_TOKEN_COST` — kept
-    /// in sync by hand. If we change one, change the other.
+    // Mirrors `routers/migrate.py:MIGRATION_TOKEN_COST`.
     private let migrationCost: Int = 99
     @State private var showAbout = false
     @State private var showBugBounty = false
@@ -26,13 +24,8 @@ struct SettingsView: View {
     @State private var showPrivacy = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
-    /// Brief "Copied" overlay over the UIN-copy chip so the user
-    /// has visible feedback beyond the haptic.
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
-    /// Master toggle for the floating Crash / UIN-Auction
-    /// mini-bubbles. Same `@AppStorage` key `GameMinisOverlayHost`
-    /// reads — flipping here updates the overlay reactively.
     @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
 
     var body: some View {
@@ -40,11 +33,6 @@ struct SettingsView: View {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 Form {
-                    // Identity header — duplicate of the main-screen
-                    // strip but pinned at the top of Settings so the
-                    // user can copy their UIN without bouncing through
-                    // the share-card. Tap on the row opens the profile;
-                    // tap on the UIN-chip copies + flashes "Copied".
                     Section {
                         identityHeader
                     }
@@ -70,15 +58,7 @@ struct SettingsView: View {
 
 
                     Section {
-                        // Custom Menu instead of a stock `Picker` so we
-                        // can render every language we plan to support
-                        // (so the user sees the roadmap) but DISABLE
-                        // the rows whose strings table isn't translated
-                        // end-to-end yet. SwiftUI's Picker has no
-                        // per-row disabled state — every row is always
-                        // selectable. Menu + `.disabled(!isAvailable)`
-                        // greys the row out and the tap is a no-op,
-                        // exactly what we want.
+                        // Menu (not Picker) so per-row .disabled greys out unfinished languages.
                         Menu {
                             ForEach(AppLanguage.allCases) { lang in
                                 Button {
@@ -113,10 +93,6 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    // Privacy — moved out of the main Settings
-                    // surface into its own sheet now that the
-                    // calls-policy picker brings it to five
-                    // settings. Keeps Settings scannable.
                     Section {
                         Button {
                             showPrivacy = true
@@ -144,11 +120,7 @@ struct SettingsView: View {
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
                         }
-                        // Blocked users — sits in the same Privacy / Safety
-                        // section. Centralised place to inspect everyone
-                        // the user has blocked across the app and lift any
-                        // they no longer want gone. Apple's UGC guidance
-                        // (1.2) expects this surface to exist.
+                        // Apple UGC guidance 1.2 requires a centralised blocked-users surface.
                         Button {
                             showBlockedUsers = true
                         } label: {
@@ -189,13 +161,6 @@ struct SettingsView: View {
                             }
                         }
                         .tint(Theme.Color.accent)
-                        // Floating Crash + UIN-Auction mini bubbles —
-                        // grouped here next to the inventory-visibility
-                        // toggle since both are "what's shown to me /
-                        // around me" personalisation switches. Same
-                        // `@AppStorage` key `GameMinisOverlayHost`
-                        // reads — flipping here updates the overlay
-                        // reactively.
                         Toggle(isOn: $minisEnabled) {
                             Text("settings.minis.toggle".localized)
                                 .foregroundColor(Theme.Color.textPrimary)
@@ -217,12 +182,7 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
 
                     Section {
-                        // Two-state row: enabled when the wallet
-                        // covers the migration fee → tap opens the
-                        // confirm dialog; disabled-with-CTA when
-                        // it doesn't → tap opens the token shop.
-                        // Without the second branch the user just
-                        // saw a dead grey row with no path forward.
+                        // If wallet can't cover fee, redirect to shop instead of disabling the row.
                         let canAfford = itemsSvc.wallet.tokens >= migrationCost
                         Button {
                             if canAfford {
@@ -280,13 +240,7 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    // Web-chat link surface hidden for the App Store
-                    // submission. The web client isn't ready for public
-                    // use yet (still partial in `chat.rcq.app`), and
-                    // shipping a "Link to web" CTA that lands on a
-                    // half-implemented surface looks bad in review.
-                    // Re-enable by flipping #if false → true once the
-                    // web client is feature-complete.
+                    // Web-chat link hidden for App Store submission. Flip #if false → true when web is ready.
                     #if false
                     Section {
                         Button {
@@ -324,11 +278,6 @@ struct SettingsView: View {
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
                         }
-                        // Bug Bounty — separate row, separate sheet.
-                        // It's the project's only public support /
-                        // disclosure surface, and worth reading as
-                        // its own feature rather than buried inside
-                        // About.
                         Button {
                             showBugBounty = true
                         } label: {
@@ -447,14 +396,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Trailing toolbar item — system share sheet for the user's
-    /// `https://rcq.app/u/{uin}` universal link. Tappable in any chat
-    /// app (iMessage, Telegram, etc.) because it's HTTPS, not a custom
-    /// scheme. Recipients with the app installed get the app opened
-    /// directly via Universal Links → `AppState.handle(deepLink:)` →
-    /// `AddDetailView` profile preview. Recipients without the app land
-    /// on the web fallback at `rcq.app/u/<uin>` which tries the
-    /// `rcq://add/<uin>` deep link and falls back to an "install" CTA.
     @ViewBuilder
     private var shareContactLinkButton: some View {
         if let uin = auth.ownUIN, let url = URL(string: "https://rcq.app/u/\(uin)") {
@@ -469,10 +410,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Top section content — status icon + nickname (large) + UIN
-    /// (mono, tap to copy). Mirrors the contact-list header but
-    /// duplicated here so the user can copy their UIN without
-    /// leaving Settings.
     @ViewBuilder
     private var identityHeader: some View {
         HStack(spacing: 12) {
@@ -512,18 +449,11 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
-            // Wallet readout — coin glyph + token balance + scroll
-            // glyph + scroll balance. Was empty space before; gives
-            // the row useful context-at-a-glance and matches the
-            // "wallet badge" treatment used in the games / chat
-            // toolbars.
             walletReadout
         }
         .padding(.vertical, 4)
     }
 
-    /// Compact two-line wallet readout for the identity row's
-    /// trailing edge. Tokens (coin) on top, scrolls (gem) below.
     private var walletReadout: some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(spacing: 4) {

@@ -2,20 +2,12 @@ import CoreImage.CIFilterBuiltins
 import SwiftUI
 import UIKit
 
-/// "About RCQ" sheet — tagline + the four crypto donation addresses with copy
-/// buttons and tap-to-expand QR codes. Pure UI, no network. Replace placeholder
-/// addresses with real ones before release (search for `REPLACE_` below).
+/// "About RCQ" sheet — tagline + crypto donation addresses with copy + QR.
 struct AboutSheet: View {
     @Environment(\.dismiss) private var dismiss
-    /// Continuous slow rotation on the header logo, same idiom as
-    /// BootSplash + onboarding — the mark stays in motion as a
-    /// visual signature on every surface where it appears at size.
     @State private var headerLogoAngle: Double = 0
 
-    /// Donation targets. Order is the same as the legacy ICQ "Tip jar" layout —
-    /// BTC first because it's the most universal. Addresses below are
-    /// **placeholders for layout review** — swap with real receive
-    /// addresses before shipping a release build (search for `mock`).
+    // TODO: replace placeholder addresses with real receive addresses before release.
     private let donations: [DonationAddress] = [
         DonationAddress(
             ticker: "BTC", network: "Bitcoin",
@@ -69,18 +61,6 @@ struct AboutSheet: View {
                         .background(Theme.Color.bgSecondary)
                         .cornerRadius(6)
 
-                        // Contact / support block. Surfaces only
-                        // channels that ACTUALLY exist:
-                        //   • Support email
-                        //   • FAQ (placeholder URL — page lands soon)
-                        //   • Website
-                        //   • GitHub source (open-source iOS client
-                        //     for trust positioning)
-                        // Removed (didn't have a real destination):
-                        //   • "Report a bug" — bug bounty surface
-                        //     handles this from Settings
-                        //   • "@rcqapp / news" — no Twitter / channel
-                        //     yet, surfaces only mislead
                         VStack(alignment: .leading, spacing: 8) {
                             Text("about.contact.section".localized).font(.system(size: 11, weight: .bold)).foregroundColor(Theme.Color.textSecondary)
                             contactLink(icon: "envelope.fill", label: "about.contact.support".localized, value: "support@rcq.app", url: URL(string: "mailto:support@rcq.app"))
@@ -137,8 +117,6 @@ struct AboutSheet: View {
         }
     }
 
-    /// Single contact / support row. Tappable; opens the URL via
-    /// the system handler (`mailto:` → Mail, `https://` → Safari).
     private func contactLink(icon: String, label: String, value: String, url: URL?) -> some View {
         Button {
             if let url, UIApplication.shared.canOpenURL(url) {
@@ -169,10 +147,6 @@ struct AboutSheet: View {
     }
 
     private func bullet(_ text: String) -> some View {
-        // No leading bullet glyph — the privacy block is already
-        // visually offset by its rounded background, and the
-        // green accent dots were reading as a status-online list
-        // rather than just plain bullets.
         Text(text)
             .font(.caption)
             .foregroundColor(Theme.Color.textPrimary)
@@ -190,10 +164,6 @@ private struct DonationAddress: Identifiable {
     let ticker: String
     let network: String
     let address: String
-    /// Asset-catalog name of the network's logo
-    /// (`crypto_btc`/`crypto_eth`/...). Falls back to a circle
-    /// with the ticker if the image isn't present in the
-    /// bundle.
     let assetName: String
     var id: String { ticker }
 }
@@ -278,8 +248,7 @@ private struct DonationRow: View {
 }
 
 enum QRCode {
-    /// Render the given string as a black-on-white QR code UIImage. Returns nil if
-    /// the string is empty.
+    /// Render `text` as a black-on-white QR code. Nil for empty strings.
     static func image(from text: String) -> UIImage? {
         guard !text.isEmpty else { return nil }
         let filter = CIFilter.qrCodeGenerator()

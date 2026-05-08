@@ -2,16 +2,7 @@ import Combine
 import Foundation
 import UIKit
 
-/// Item / inventory / wallet store. Single source of truth on the
-/// server; this class is just a published cache of the latest server
-/// response. Everywhere SwiftUI needs inventory it observes
-/// `ItemsService.shared` and reads `items` / `wallet` / `catalog`.
-///
-/// Defensive reconcile: when refreshing wallet from a partial response
-/// (e.g. `/me/inventory`), apply `max(local, server)` so an in-flight
-/// grant the server hasn't seen yet doesn't get clobbered. Authoritative
-/// responses (`/pulls/open`, `/tokens/buy-pack`) overwrite directly —
-/// they're the single transaction the server just committed.
+/// Published cache of inventory/wallet/catalog. Server is the source of truth.
 @MainActor
 final class ItemsService: ObservableObject {
     static let shared = ItemsService()
@@ -21,16 +12,12 @@ final class ItemsService: ObservableObject {
     @Published private(set) var wallet: Wallet = Wallet(tokens: 0, scrolls: 0)
     @Published private(set) var inventoryPublic: Bool = true
 
-    /// Most recent pull's outcome — drives the LootboxView reveal
-    /// overlay. Nil while idle.
     @Published var lastOutcome: PullOutcome?
 
     private init() {}
 
     // MARK: - Catalog
 
-    /// Fetch (or refresh) the catalog. Cheap to call; the server
-    /// returns ~30 entries even at full size. Idempotent.
     func refreshCatalog() async {
         do {
             let snap: ItemCatalog = try await APIClient.shared.request(
@@ -46,16 +33,7 @@ final class ItemsService: ObservableObject {
 
     // MARK: - Inventory
 
-    /// `forceWallet=true` overrides the wallet with the server's
-    /// snapshot directly, bypassing the defensive max-reconcile.
-    /// Used by trade flows where the server's authoritative wallet
-    /// is LOWER than the local cache (sender just escrowed tokens
-    /// that haven't been reflected locally yet) — max() would
-    /// preserve the stale-high local value and the user would
-    /// never see their own deduction. The default `false` keeps
-    /// the IX-inherited race-defence for cases where local might
-    /// be the fresher value (a recent /pulls/open returned a
-    /// grant, then a backgrounded /me/inventory races back stale).
+    /// `forceWallet=true` overwrites the wallet directly; default uses max(local, server) to avoid clobbering in-flight grants.
     func refreshInventory(forceWallet: Bool = false) async {
         do {
             let snap: InventoryResponse = try await APIClient.shared.request(
@@ -65,7 +43,6 @@ final class ItemsService: ObservableObject {
             if forceWallet {
                 self.wallet = snap.wallet
             } else {
-                // Defensive max-policy on wallet — see header comment.
                 self.wallet = Wallet(
                     tokens: max(self.wallet.tokens, snap.wallet.tokens),
                     scrolls: max(self.wallet.scrolls, snap.wallet.scrolls),
@@ -79,12 +56,7 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    /// Apply an in-flight delta to the wallet without round-tripping
-    /// the server. Used by the trade-propose path for an optimistic
-    /// local decrement so the sender sees their balance drop the
-    /// instant they hit "Send" instead of waiting on the next
-    /// inventory refresh. Caller is expected to revert on API
-    /// failure. Clamps at 0 — never produces negative balances.
+    /// Optimistic local delta. Caller reverts on failure. Clamps at 0.
     func applyWalletDelta(tokens: Int = 0, scrolls: Int = 0) {
         self.wallet = Wallet(
             tokens: max(0, self.wallet.tokens + tokens),
@@ -92,22 +64,12 @@ final class ItemsService: ObservableObject {
         )
     }
 
-    /// Push an authoritative wallet snapshot from a non-inventory
-    /// endpoint (Crash bet / cashout, future game settlements). Server
-    /// returns the new absolute balance in its reply; we mirror it
-    /// straight into the canonical `wallet` so every observer (toolbar
-    /// badges, inventory grid wallet panel) updates in lockstep
-    /// without waiting on a `/me/inventory` refresh.
+    /// Authoritative token snapshot from a non-inventory endpoint (e.g. Crash settlements).
     func setWalletTokens(_ tokens: Int) {
         self.wallet = Wallet(tokens: max(0, tokens), scrolls: self.wallet.scrolls)
     }
 
-    /// Own equipped pet derived from the in-memory item list — used
-    /// by the contact-list header (own status icon overlay) and any
-    /// other surface that needs to render "what's MY pet right now"
-    /// without an extra round-trip. Server-side `equipped_pet` on
-    /// `/users/{ownUIN}/info` is the same value; this is the locally-
-    /// cached version that reflects equip toggles instantly.
+    /// Own equipped pet derived from the in-memory item list.
     var ownEquippedPet: EquippedPet? {
         guard let catalog = self.catalog else { return nil }
         for item in items where item.equipped {
@@ -133,7 +95,7 @@ final class ItemsService: ObservableObject {
                 body: ["public": value],
             )
             self.items = snap.items
-            self.wallet = snap.wallet  // server-authoritative on this round-trip
+            self.wallet = snap.wallet
             self.inventoryPublic = snap.public
         } catch {
             #if DEBUG
@@ -144,10 +106,7 @@ final class ItemsService: ObservableObject {
 
     // MARK: - Pull
 
-    /// Open one box. Costs `catalog.pull_cost` tokens (default 2 —
-    /// server is the source of truth, client uses the catalog
-    /// snapshot for the wallet pre-flight). Returns either an
-    /// item or a scroll bundle.
+    /// Open one box. Returns either an item or a scroll bundle.
     @discardableResult
     func openPull() async -> PullOutcome? {
         let cost = catalog?.pullCost ?? 2
@@ -184,13 +143,9 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    // MARK: - Temper / equip / disassemble (Session 2)
+    // MARK: - Temper / equip / disassemble
 
-    /// Attempt a temper roll on an item. Server is authoritative —
-    /// it deducts the scroll cost, rolls success against the same
-    /// table the iOS pre-flight uses, and either bumps the level or
-    /// destroys the row outright. iOS reconciles from the response;
-    /// no local roll, no local scroll math.
+    /// Server-authoritative temper roll. Reconciles from response.
     @discardableResult
     func temper(_ item: Item) async -> TemperOutcome? {
         guard wallet.scrolls >= TemperTables.scrollCost(at: item.level) else {
@@ -225,10 +180,7 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    /// Toggle equip flag on a cosmetic. Server enforces per-kind
-    /// exclusivity (only one instance of any kind can be equipped
-    /// at once); skin themes are stricter (one skin total). Smiley /
-    /// voice packs across different kinds stack additively.
+    /// Toggle equip flag. Server enforces per-kind exclusivity.
     @discardableResult
     func toggleEquip(_ item: Item) async -> Bool {
         let serverID = item.id.lowercased()
@@ -238,14 +190,7 @@ final class ItemsService: ObservableObject {
                 "POST", "/items/\(serverID)/equip",
                 body: ["equipped": nextEquipped],
             )
-            // Light haptic on successful flip — mirrors how the
-            // status / TTL toggles in chat feel. Equip = pulse,
-            // unequip = same; the user gets the same texture either
-            // direction so they know the tap landed without having
-            // to glance at the label change.
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            // Refresh inventory to pick up server-side knock-on
-            // unequips (per-kind dups, skin exclusivity).
             await refreshInventory()
             if let idx = items.firstIndex(where: { $0.id == item.id }) {
                 items[idx] = res
@@ -260,9 +205,7 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    /// Disassemble — destroy item, gain scrolls + tokens. Burn is
-    /// final, no recovery (same policy as the temper-burn path).
-    /// Returns (scroll yield, token yield).
+    /// Destroy item, gain scrolls + tokens. Burn is final.
     @discardableResult
     func disassemble(_ item: Item) async -> DisassembleYield? {
         let serverID = item.id.lowercased()
@@ -282,10 +225,7 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    /// Bulk-disassemble. Server skips silently over stale ids (e.g.
-    /// the user's selection includes an item that's been traded
-    /// away in the same window) and returns only the ids that
-    /// actually got destroyed.
+    /// Bulk-disassemble. Server returns only the ids actually destroyed.
     @discardableResult
     func disassembleBulk(_ batch: [Item]) async -> DisassembleYield? {
         guard !batch.isEmpty else { return nil }
@@ -309,8 +249,7 @@ final class ItemsService: ObservableObject {
 
     // MARK: - Tokens
 
-    /// Mock IAP — tap a pack, server credits the wallet immediately.
-    /// Real StoreKit lands in Session 5; this stays as the dev path.
+    /// Mock IAP. Server credits the wallet immediately.
     @discardableResult
     func buyTokenPack(_ pack: TokenPack) async -> Bool {
         do {
@@ -328,8 +267,7 @@ final class ItemsService: ObservableObject {
         }
     }
 
-    /// Dev-only token grant (server-gated on ENV != "prod"). Useful
-    /// for debugging via the override base URL.
+    /// Dev-only token grant (server-gated on ENV != "prod").
     @discardableResult
     func debugGrantTokens(_ tokens: Int) async -> Bool {
         do {
@@ -371,14 +309,11 @@ private struct PullResultResponse: Codable {
 
 private struct EmptyBody: Encodable {}
 
-/// Surfaced to the LootboxView to drive the reveal overlay.
 enum PullOutcome: Equatable {
     case item(Item)
     case scroll(count: Int)
 }
 
-/// Outcome of a temper attempt — UI surfaces a celebratory or
-/// dedicated burn screen depending on the value.
 enum TemperOutcome: Equatable {
     case success(newLevel: Int, item: Item)
     case burned

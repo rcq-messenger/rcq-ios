@@ -2,20 +2,8 @@ import AudioToolbox
 import SwiftUI
 import UIKit
 
-/// Horizontal slot-machine carousel — port of IX's RouletteCarousel
-/// with RCQ palette + asset rendering.
-///
-/// Rendering is windowed: only the ~9 tiles visible in the viewport
-/// are placed via `.position(x:y:)` each frame. Two phases:
-///   - **Idle** — continuous slow leftward drift (~30 pt/s).
-///   - **Spinning** — 3-segment slot-ease (ease-in / cruise /
-///     ease-out) totalling ~3.6s, deterministically lands on
-///     `landingKindIndex`.
-///
-/// Per-tile haptic + system "Tock" ticks are fired during the spin,
-/// rate-modulated by the live ease velocity so it slows toward the
-/// end like a real slot machine. Tap anywhere on the carousel during
-/// a spin to skip straight to the reveal.
+/// Horizontal slot-machine carousel. Idle drift, then 3-segment slot-ease that lands on `landingKindIndex`.
+/// Tap during spin to skip to reveal. Haptic + tick rate modulated by ease velocity.
 struct RouletteCarousel: View {
     let kinds: [ItemKind]
     let landingKindIndex: Int
@@ -44,8 +32,7 @@ struct RouletteCarousel: View {
     private static let spinDuration: TimeInterval = 3.6
     private static let baseSpinPitches: Int = 50
 
-    /// iOS keyboard click — short, percussive, reads as a slot click
-    /// without us bundling a custom audio file.
+    // 1104 = iOS keyboard click; reads as a slot tick.
     private static let tickSystemSoundID: SystemSoundID = 1104
 
     // MARK: - Body
@@ -56,12 +43,6 @@ struct RouletteCarousel: View {
                 TimelineView(.animation) { ctx in
                     renderFrame(geo: geo, at: ctx.date)
                 }
-                // Centre indicator: top + bottom triangles framing the
-                // tile that's currently centred. Without these the
-                // 1.18× scale alone wasn't loud enough — users
-                // reported the spin "didn't end on" their prize even
-                // though the math is exact. The carets make the
-                // landing tile unambiguous at a glance.
                 centerIndicator(in: geo)
             }
         }
@@ -97,15 +78,7 @@ struct RouletteCarousel: View {
 
         let centerIndex = Int(floor((-offset) / Self.pitch))
         let halfWindow = 4
-        // Keying tiles by their stable `i` (position along the strip)
-        // instead of the visible-slot index is what makes the idle
-        // drift look like motion rather than an in-place asset swap.
-        // With slot-keyed tiles, when `centerIndex` ticks from 5→6
-        // the SwiftUI view at slot=4 kept its identity but its kind
-        // changed (i flipped 5→6) — visually the tile's image
-        // mutated in place. Keying by `i` rebuilds only the
-        // newcomer/leaver tiles at the edges; the visible centre
-        // tiles keep their identity and just animate position.
+        // Key tiles by stable strip index `i` (not slot index) so visible centre tiles keep identity during drift.
         let visibleIs = (centerIndex - halfWindow)...(centerIndex + halfWindow)
 
         return ZStack(alignment: .topLeading) {
@@ -144,9 +117,6 @@ struct RouletteCarousel: View {
         ZStack {
             Rectangle().fill(Theme.Color.bgSecondary)
             if kind.section == .voices {
-                // Voice packs ship as audio — render the music note
-                // glyph tinted by rarity instead of the placeholder
-                // cube the .mp3 lookup would fall back to.
                 Image(systemName: "music.note")
                     .font(.system(size: Self.tileSize * 0.45, weight: .semibold))
                     .foregroundColor(kind.rarity.color)
@@ -188,8 +158,6 @@ struct RouletteCarousel: View {
         }
     }
 
-    /// Slot-machine 3-segment easing — quadratic ramp, linear cruise,
-    /// cubic deceleration.
     private func slotEase(_ t: Double) -> Double {
         if t < 0.15 {
             let p = t / 0.15
@@ -203,8 +171,6 @@ struct RouletteCarousel: View {
         }
     }
 
-    /// Velocity model derivative — feeds the tick scheduler so ticks
-    /// space out as the carousel decelerates.
     private func slotEaseDerivative(_ t: Double) -> Double {
         if t < 0.15 {
             return (2 * 0.06 / (0.15 * 0.15)) * t
@@ -275,9 +241,7 @@ struct RouletteCarousel: View {
         let totalDistance = abs(spinTargetOffset - spinStartOffset)
         let velocity = totalDistance / Self.spinDuration * slotEaseDerivative(normalized)
         let raw = Self.pitch / max(velocity, 1)
-        // Cap at 40ms — the iOS haptic engine collapses anything
-        // faster than ~25 Hz, and at peak ease velocity the raw
-        // interval would push past 60 Hz.
+        // Cap at 40ms — haptic engine collapses anything faster than ~25 Hz.
         let interval = max(0.04, min(0.6, raw))
 
         let item = DispatchWorkItem {

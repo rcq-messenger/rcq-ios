@@ -1,15 +1,6 @@
 import SwiftUI
 
-/// People Nearby surface. Opt-in TTL picker → check-in →
-/// scrollable list of other users currently checked in to the same
-/// 1km bucket. Refreshes every 30s while open.
-///
-/// Privacy posture mirrored from `NearbyService`'s comment block:
-///   - Server stores opaque hash, never raw GPS
-///   - Mutual visibility (must be checked in to see others)
-///   - TTL bounded — 30 min / 1 h / 3 h presets, no "always on"
-///   - Tap on a row offers contact-request only — no DM, no calls
-///     until the request is accepted
+/// People Nearby surface. Opt-in TTL picker, check-in, list of others in the same 1km bucket.
 struct NearbyView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var service = NearbyService.shared
@@ -18,15 +9,8 @@ struct NearbyView: View {
     @State private var sentRequests: Set<Int> = []
     @State private var showHood: Bool = false
     @State private var showRadio: Bool = false
-    /// Anonymous mini-profile for a tapped person row. Same
-    /// minimal sheet as Hood Chat — anonymous nick + UIN +
-    /// Add-as-contact, deliberately no real-profile leakage.
     @State private var profileTarget: NearbyPerson?
 
-    /// Label shown in the active-screen header. Anonymous mode
-    /// surfaces the minted handle; non-anonymous surfaces the
-    /// real account nickname so the user has visible feedback
-    /// that the toggle is OFF.
     private var visibleAsLabel: String {
         if service.anonymous { return service.displayName }
         let nick = AuthService.shared.nickname
@@ -61,32 +45,16 @@ struct NearbyView: View {
                     Button("common.close".localized) { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    // Radio Chat lives here — both surfaces share
-                    // the "find people physically near me" mental
-                    // model: Nearby = people on the same geohash
-                    // bucket via the server, Radio = people on the
-                    // same Bluetooth/Wi-Fi mesh with no server.
                     Button {
                         showRadio = true
                     } label: {
-                        // SF Symbols ships no Bluetooth runic glyph at
-                        // any point in 5.x. Stick with the antenna —
-                        // it reads as "wireless / radio" which is
-                        // semantically what Radio Chat is.
                         Image(systemName: "antenna.radiowaves.left.and.right")
                             .foregroundColor(Theme.Color.accent)
                     }
                 }
             }
             .task { await service.refreshList() }
-            // NOTE: deliberately NO `onDisappear { service.stop() }`.
-            // Closing this sheet shouldn't end your visibility — the
-            // TTL preset is the maximum time you've opted in for
-            // (e.g. "30 min visible") and it should keep ticking
-            // while the app is open / backgrounded so people can
-            // still see you and send Add requests. Auto-stop happens
-            // when the *app* is terminated, wired in
-            // `NearbyService.init` via `willTerminateNotification`.
+            // No onDisappear stop: visibility is bound by TTL, not sheet lifetime.
             .sheet(isPresented: $showHood) {
                 if case .active(let bucket, _) = service.state {
                     HoodChatView(bucket: bucket)
@@ -96,13 +64,7 @@ struct NearbyView: View {
                 RadioDiscoveryView()
             }
             .sheet(item: $profileTarget) { p in
-                // Always render against the live row from
-                // `service.people` so a presence change while
-                // the sheet is up updates the status icon
-                // in-place. Falls back to the captured copy if
-                // the row has aged out of the list (e.g. they
-                // went offline mid-view — sheet stays open with
-                // the last-known status rather than emptying).
+                // Render against the live row so presence changes update in-place.
                 let live = service.people.first(where: { $0.uin == p.uin }) ?? p
                 anonymousProfile(live)
                     .presentationDetents([.height(320)])
@@ -135,11 +97,6 @@ struct NearbyView: View {
     // MARK: - opt-in
 
     private var optInScreen: some View {
-        // Roulette-style centred composition: Spacer above and
-        // below pushes the cluster toward the visual middle of the
-        // sheet, matching how the Random Chat entry surface feels.
-        // Slight upward bias (Spacer ratio 1:1.4) so the call-to-
-        // action button doesn't sink below the natural reading line.
         VStack(spacing: 22) {
             Spacer()
             Image(systemName: "location.viewfinder")
@@ -162,12 +119,6 @@ struct NearbyView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 32)
-            // Anonymous-vs-real-nickname switch. ON by default —
-            // the People Nearby spec is "be visible to strangers
-            // without revealing who you are". The opt-out is for
-            // power-users who deliberately want their real
-            // nickname (and the matching real profile, if a
-            // contact request comes in) on the list.
             Toggle(isOn: Binding(
                 get: { service.anonymous },
                 set: { service.setAnonymous($0) }
@@ -241,12 +192,6 @@ struct NearbyView: View {
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                         if let bucketTag {
-                            // Surfaced as a debug aid: when two
-                            // devices don't see each other,
-                            // comparing the bucket strings tells
-                            // you whether their simulated
-                            // locations actually matched. Same
-                            // hash = same area; should overlap.
                             Text(String(format: "nearby.active.area".localized, bucketTag))
                                 .font(.caption2.monospaced())
                                 .foregroundColor(Theme.Color.textMono)
@@ -263,10 +208,6 @@ struct NearbyView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Theme.Color.bgSecondary)
 
-            // Hood Chat entry. Always visible while checked-in;
-            // tap opens the bucket-local public room. Subtle
-            // accent strip rather than a primary CTA — the main
-            // surface here is the people list.
             Button {
                 showHood = true
             } label: {
@@ -337,20 +278,8 @@ struct NearbyView: View {
                         Text(person.nickname)
                             .font(Theme.Font.nickname)
                             .foregroundColor(Theme.Color.textPrimary)
-                        // Gender icon survives anonymous mode —
-                        // server only ships it when the user has
-                        // explicitly chosen `gender_visibility =
-                        // "everyone"`, so showing it here is a
-                        // direct echo of their own choice.
                         GenderIcon(gender: person.gender)
                     }
-                    // Anonymous users get the neutral "Nearby"
-                    // tag — UIN is hidden because the whole
-                    // point of anonymous mode is "stranger
-                    // discoverability without ID-leak". Users
-                    // who explicitly opted out of anonymous mode
-                    // get their UIN inline since they signed up
-                    // for being identifiable.
                     if person.anonymous {
                         Text("nearby.row.tag".localized)
                             .font(.caption2)
@@ -371,9 +300,6 @@ struct NearbyView: View {
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
                 } else {
-                    // Quick-add button stays on the row so the
-                    // user can fire a request without opening
-                    // the mini-profile.
                     Button {
                         Task {
                             try? await ContactService.shared.sendAddRequest(to: person.uin)
@@ -393,13 +319,6 @@ struct NearbyView: View {
         .buttonStyle(.plain)
     }
 
-    /// Mini-profile sheet shown when the user taps a row in the
-    /// list. Fully anonymous: only the display nickname and the
-    /// status icon are surfaced. UIN is *deliberately* hidden in
-    /// the UI — it lives in the data model just so `Add as
-    /// contact` can route through `/contacts/request`, but
-    /// rendering it would defeat the point (any onlooker could
-    /// punch the UIN into search and resolve the real account).
     @ViewBuilder
     private func anonymousProfile(_ person: NearbyPerson) -> some View {
         let alreadyContact = contacts.contacts.contains(where: { $0.uin == person.uin })
@@ -435,9 +354,6 @@ struct NearbyView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 20)
-            // Push the CTA all the way to the floor of the
-            // sheet — same idiom as the system share sheet so
-            // the primary action lands under the user's thumb.
             Spacer()
             if alreadyContact {
                 Text("nearby.profile.already".localized)
@@ -517,16 +433,9 @@ struct NearbyView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
-            // "Try again" alone wasn't enough — `start()` is a no-op
-            // when the state machine is already in `.error` (the
-            // pending guard rejects the new request). The Reset path
-            // forces back to `.idle` first so the next start fires
-            // a fresh location request.
+            // forceReset before start — start() is a no-op while state is .error.
             Button {
                 service.forceReset()
-                // Defer to the next tick so the @Published state
-                // change has time to propagate before we start a
-                // new request.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     service.start(ttlSeconds: pickedTTL.rawValue)
                 }

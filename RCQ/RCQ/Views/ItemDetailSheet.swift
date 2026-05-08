@@ -1,16 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// Full per-item detail sheet — kind name + lore + rarity + mint
-/// badge + purity + level + acquired-at + ownership history (Session 4
-/// will populate the chain via `GET /items/{id}`). Equip / temper
-/// buttons live here too; in Session 1 they are visible-but-disabled
-/// placeholders so the layout solidifies.
+/// Per-item detail sheet — stats, history, equip/temper/disassemble actions.
 struct ItemDetailSheet: View {
     let item: Item
-    /// `true` when shown from someone else's public inventory — hides
-    /// the action row entirely (no Temper / Equip / Disassemble for
-    /// items you don't own).
+    /// True when shown from someone else's public inventory.
     var readOnly: Bool = false
     @StateObject private var items = ItemsService.shared
     @Environment(\.dismiss) private var dismiss
@@ -21,25 +15,17 @@ struct ItemDetailSheet: View {
     @State private var sellGateAlert: String?
     @State private var history: [ItemHistoryEvent] = []
     @State private var historyLoading = true
-    /// Shows a transient "Copied" toast above the history block
-    /// when the user taps a UIN chip — so the action has visible
-    /// feedback beyond the haptic.
     @State private var copiedUIN: Int? = nil
 
     private var kind: ItemKind? {
         items.catalog?.kind(by: item.kindID)
     }
 
-    /// Live item — `item` is the snapshot at sheet-open time, but
-    /// after a successful temper / equip the canonical row lives in
-    /// `items.items`. Re-resolve by id so state changes (level bump,
-    /// equipped flag) reflect immediately without dismissing.
+    // Re-resolve from items.items so post-temper/equip state reflects without dismissing.
     private var live: Item {
         items.items.first(where: { $0.id == item.id }) ?? item
     }
 
-    /// Whether the temper button should fire. Mirrors the IX preflight:
-    /// at max level → no, no scrolls for the next attempt → no.
     private var canTemper: Bool {
         guard let kind, kind.isTemperable else { return false }
         let level = live.level
@@ -54,18 +40,7 @@ struct ItemDetailSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     hero
                     statsBlock
-                    // Pack contents — only for cosmetic packs (the
-                    // `forum_classics` row, plus future voice / skin
-                    // packs). Renders the animated thumbnail strip
-                    // so the user knows what equipping this pack
-                    // adds to their chat.
                     if let kind, kind.appliesAs != .none {
-                        // Bleed past the parent VStack's 18pt
-                        // horizontal padding so the scroll strip
-                        // reads edge-to-edge — KindContentsView
-                        // re-applies the same inset internally so
-                        // peer content (title, first tile) still
-                        // aligns with the rest of the sheet.
                         KindContentsView(kindID: kind.id, horizontalInset: 18)
                             .padding(.horizontal, -18)
                     }
@@ -90,8 +65,6 @@ struct ItemDetailSheet: View {
             .sheet(isPresented: $showTemper) {
                 TemperConfirmSheet(item: live, onComplete: { outcome in
                     showTemper = false
-                    // Burn dismisses the detail sheet — there's no
-                    // longer an item to inspect.
                     if outcome == .burned {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                             dismiss()
@@ -109,18 +82,11 @@ struct ItemDetailSheet: View {
                         }
                     }
                 })
-                // Bump the detent — at .medium the explainer copy was
-                // clipped on the smaller phones. A custom fraction
-                // gives it the breathing room to render the whole
-                // body without forcing .large (which felt overdone for
-                // a confirm dialog).
                 .presentationDetents([.fraction(0.62), .large])
             }
             .sheet(isPresented: $showSell) {
                 SellOnMarketSheet(item: live, onListed: {
                     showSell = false
-                    // Listing succeeded — bounce back to inventory
-                    // so the user sees the for-sale badge land.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         dismiss()
                     }
@@ -141,19 +107,9 @@ struct ItemDetailSheet: View {
     // MARK: - Hero
 
     private var hero: some View {
-        // Centred 110pt image on a clean background — no border, no
-        // square frame. Mint badge sits as a small monospaced label
-        // under the name in the stats block, not overlaid on the
-        // image. Mirrors IX's RevealOverlay sizing (90pt + a bit) so
-        // detail and reveal feel like the same artifact at different
-        // scales.
         VStack(spacing: 8) {
             if let kind {
                 if kind.section == .voices {
-                    // Voices ship as audio without a thumbnail —
-                    // music-note glyph + tap-to-play. Tap the icon
-                    // OR the explicit Preview button below it; both
-                    // route through SoundService.preview.
                     Button {
                         SoundService.shared.preview(kindID: item.kindID)
                     } label: {
@@ -176,20 +132,26 @@ struct ItemDetailSheet: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    ItemAssetImage(
-                        bundleSubdir: subdir(kind),
-                        filename: stem(kind),
-                        ext: ext(kind),
-                    )
-                    .frame(width: 110, height: 110)
+                    ZStack {
+                        if kind.section == .pets {
+                            Circle()
+                                .fill(item.rarity.color.opacity(0.45))
+                                .frame(width: 150, height: 150)
+                                .blur(radius: 28)
+                        }
+                        ItemAssetImage(
+                            bundleSubdir: subdir(kind),
+                            filename: stem(kind),
+                            ext: ext(kind),
+                        )
+                        .frame(width: 110, height: 110)
+                    }
                 }
             }
             Text(displayName)
                 .font(.custom("Georgia", size: 22))
                 .foregroundColor(Theme.Color.textPrimary)
                 .multilineTextAlignment(.center)
-            // Lore line — small upright caption under the name.
-            // nil for kinds we haven't written lore for; just hide.
             if let lore = ItemDisplay.lore(for: item.kindID) {
                 Text(lore)
                     .font(.footnote)
@@ -206,12 +168,7 @@ struct ItemDetailSheet: View {
         kindName(for: item.kindID)
     }
 
-    /// Computed showcase essence — base × mintMul × levelMul × purity.
-    /// IX surfaces this as the headline number; we follow suit. No
-    /// "(base N)" annotation — purity below 1.0 makes the computed
-    /// value drop below `base`, and the parens were just confusing
-    /// (looked like a typo). The base roll is still inferable from
-    /// the headline + purity stat below if anyone needs it.
+    /// base × mintMul × levelMul × purity.
     private var essenceDisplay: String {
         guard let catalog = items.catalog else {
             return "\(live.baseEssence)"
@@ -221,16 +178,10 @@ struct ItemDetailSheet: View {
 
     // MARK: - Stats
 
-    /// Telegram-style spec table — same shape as the market detail
-    /// sheet's `specTable`. Replaces the chip-strip + key/value rows
-    /// for a single consolidated surface that reads cleanly.
     private var statsBlock: some View {
         VStack(spacing: 0) {
             specRow(label: "market.spec.tier".localized) {
                 HStack(spacing: 6) {
-                    Text(item.rarity.label)
-                        .font(.callout.weight(.medium))
-                        .foregroundColor(item.rarity.color)
                     if live.equipped {
                         Text("item.equipped".localized)
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -238,8 +189,15 @@ struct ItemDetailSheet: View {
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Theme.Color.accent)
                             .cornerRadius(4)
+                            .transition(
+                                .scale.combined(with: .opacity)
+                            )
                     }
+                    Text(item.rarity.label)
+                        .font(.callout.weight(.medium))
+                        .foregroundColor(item.rarity.color)
                 }
+                .animation(.easeOut(duration: 0.25), value: live.equipped)
             }
             specDivider
             specRow(label: "market.spec.essence".localized) {
@@ -325,19 +283,9 @@ struct ItemDetailSheet: View {
 
     private var actionRow: some View {
         VStack(spacing: 10) {
-            // While the item is listed on the marketplace every
-            // mutation (temper / equip / disassemble) is gated on the
-            // server with a 409 — render only the "Cancel listing"
-            // affordance to avoid offering buttons that would 409.
+            // While listed, mutations 409 server-side; only show cancel.
             if live.listed {
-                // No `role: .destructive` here — that flag tells the
-                // system to apply its default destructive chrome
-                // (greyed pill + red label) which OVERRIDES our
-                // explicit red background, leaving an unreadable
-                // grey-on-white capsule on the dark sheet. The
-                // visual treatment below already reads as
-                // destructive (red fill + white label) without the
-                // role hint.
+                // No role: .destructive — system chrome overrides the red background.
                 Button {
                     Task { await cancelListing() }
                 } label: {
@@ -375,10 +323,6 @@ struct ItemDetailSheet: View {
                         } label: {
                             HStack(spacing: 6) {
                                 if live.equipped {
-                                    // Checkmark differentiates the two
-                                    // accent-green buttons that stack
-                                    // when a temperable pet is also
-                                    // equipped (Прокачать + Снять).
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 13, weight: .bold))
                                 }
@@ -387,14 +331,6 @@ struct ItemDetailSheet: View {
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
-                            // Theme-stable colours. Earlier the
-                            // equipped variant used `Theme.Color.textPrimary`
-                            // as the fill, which flipped to white in
-                            // dark mode and rendered the button
-                            // invisible (white-on-white). Accent
-                            // green works in both themes; the check
-                            // glyph above keeps it distinguishable
-                            // from a green Temper button next to it.
                             .foregroundColor(live.equipped ? .white : Theme.Color.textPrimary)
                             .background(live.equipped ? Theme.Color.accent : Theme.Color.bgSecondary)
                             .cornerRadius(8)
@@ -413,12 +349,7 @@ struct ItemDetailSheet: View {
                                 .stroke(Theme.Color.divider, lineWidth: 1))
                     }
                 }
-                // Sell — separate row beneath the action cluster so
-                // the three-button rhythm above stays consistent.
-                // Always rendered; if the item is currently equipped
-                // we surface a friendly "unequip first" alert instead
-                // of opening the sell sheet (server would 409 anyway,
-                // and hiding the button left users hunting for it).
+                // Equipped → show "unequip first" alert (server would 409).
                 Button {
                     if live.equipped {
                         sellGateAlert = "market.error.equipped".localized
@@ -440,14 +371,9 @@ struct ItemDetailSheet: View {
     }
 
     private func cancelListing() async {
-        // Pull the active listing out of MarketService.myListings;
-        // we don't carry the listing id on the Item itself.
         guard let listing = MarketService.shared.myListings.first(where: {
             $0.itemID == item.id && $0.status == "active"
         }) else {
-            // Nothing local to cancel — refresh and bail; the badge
-            // will clear on the next inventory tick if the server
-            // already cleared it.
             await MarketService.shared.refreshMine()
             await items.refreshInventory()
             return
@@ -507,10 +433,6 @@ struct ItemDetailSheet: View {
             }
         }
         .task { await loadHistory() }
-        // Re-fetch the journal whenever a temper bumps the level —
-        // the success path appends a `temper_success` row server-
-        // side, and we want it to surface here without forcing the
-        // user to close + reopen the detail sheet.
         .onChange(of: live.level) { _ in
             Task { await loadHistory() }
         }
@@ -521,9 +443,6 @@ struct ItemDetailSheet: View {
 
     private func historyRow(_ e: ItemHistoryEvent) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            // Tighter icon size for the history row — the chrome
-            // around it (action title + actor chips) is the visual
-            // anchor; the icon just decorates.
             Image(systemName: iconName(for: e.action))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(iconColor(for: e.action))
@@ -544,16 +463,11 @@ struct ItemDetailSheet: View {
         .padding(.vertical, 6)
     }
 
-    /// One or two UIN chips per row, depending on the action — the
-    /// chip is tappable and copies the UIN to the clipboard with a
-    /// light haptic. "you" is rendered for the owner's own UIN
-    /// (no copy — there's nothing to look up).
     @ViewBuilder
     private func actorChips(_ e: ItemHistoryEvent) -> some View {
         let myUIN = AuthService.shared.ownUIN
         switch e.action {
         case "drop":
-            // No actor — system event.
             EmptyView()
         case "trade", "gift":
             if let from = e.fromUIN {
@@ -566,9 +480,6 @@ struct ItemDetailSheet: View {
                 actorChip(uin: to, isMe: to == myUIN)
             }
         case "market_sold":
-            // Same from→to shape as a trade, plus a small coin-pill
-            // for the price the buyer paid. Shows the full deal in
-            // one row without inflating the action title text.
             if let from = e.fromUIN {
                 actorChip(uin: from, isMe: from == myUIN)
                 Text("→")
@@ -616,10 +527,7 @@ struct ItemDetailSheet: View {
                 }
             }
         } label: {
-            // `Text("#\(Int)")` triggers SwiftUI's locale-aware
-            // grouping ("#1,234"). UINs are identifiers, not
-            // numbers — interpolate via String() so the digits
-            // render raw.
+            // String() interpolation avoids SwiftUI locale grouping ("#1,234").
             Text(isMe ? "item.history.actor.you".localized : "#" + String(uin))
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundColor(isMe ? Theme.Color.textMono : Theme.Color.accent)
@@ -673,8 +581,6 @@ struct ItemDetailSheet: View {
 
     @MainActor
     private func loadHistory() async {
-        // No guard — re-fetched on temper / equip / etc, the row is
-        // small and the trip is cheap.
         if history.isEmpty { historyLoading = true }
         defer { historyLoading = false }
         do {
@@ -683,7 +589,7 @@ struct ItemDetailSheet: View {
             )
             self.history = res.events
         } catch {
-            // Don't blow away an existing list on a transient failure.
+            // Keep existing list on transient failure.
             if history.isEmpty {
                 self.history = []
             }
@@ -714,11 +620,7 @@ struct ItemDetailSheet: View {
 }
 
 extension DateFormatter {
-    /// Acquired-date formatter — used by the item detail sheet, the
-    /// memorial sheet, and the inventory's history list. Promoted
-    /// from `fileprivate` so cross-file consumers (PetHuntView,
-    /// PetMemorialFromInventorySheet) share the same locale-aware
-    /// styling without re-declaring their own.
+    /// Shared item-acquired formatter (item detail / memorial / history).
     static let itemAcquired: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium

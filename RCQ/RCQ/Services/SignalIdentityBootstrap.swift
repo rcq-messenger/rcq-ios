@@ -1,34 +1,23 @@
 import Foundation
 import LibSignalClient
 
-/// Stage 3 bootstrap: makes sure the local libsignal identity, signed
-/// pre-key, Kyber pre-key, and a fresh OPK pool are present and the
-/// matching public material is uploaded to the backend.
-///
-/// Idempotent. Called once on every successful auth bootstrap (after
-/// register or after token validation), so a Stage 2 user upgrading to
-/// Stage 3 just lands here on first launch with the new build, runs
-/// the generation+upload exactly once, and returns instantly forever
-/// after.
+/// Idempotent Stage 3 bootstrap — ensures local libsignal identity,
+/// signed pre-key, Kyber pre-key, and OPK pool exist and the matching
+/// public material is uploaded.
 enum SignalIdentityBootstrap {
-    /// Pool size we keep on the server. Top-up triggers below ~25.
+    /// Server-side pool target. Top-up below ~25.
     static let targetOPKCount = 100
     static let topUpThreshold = 25
 
-    /// Call this from `AuthService.bootstrapIfNeeded` once `ownUIN` is
-    /// known and `APIClient` has a token. Throws if generation or
-    /// upload fails so the caller can surface "Stage 3 not ready"
-    /// state — encrypt path will then pick the v=1 fallback per peer
-    /// instead.
+    /// Throws if generation or upload fails so the caller can surface
+    /// "Stage 3 not ready" — encrypt path falls back to v=1 per peer.
     static func ensureBootstrapped(ownUIN: Int) async throws {
         let stores = SignalProtocolStores.shared
         let ctx = RCQStoreContext.shared
 
         if let existing = try stores.loadLocalIdentity() {
-            // Sanity: if the saved UIN drifted (e.g. local DB survived
-            // a server-side wipe + re-register), throw out the stale
-            // libsignal state and rebootstrap. Better to rotate keys
-            // than ship with mismatched UIN.
+            // UIN drift (local DB survived server-side wipe + re-register):
+            // throw out stale libsignal state and rebootstrap.
             if existing.uin != ownUIN {
                 print("[SignalBootstrap] uin drift \(existing.uin)→\(ownUIN), rebootstrapping")
                 SignalProtocolDB.shared.wipe()
@@ -44,17 +33,12 @@ enum SignalIdentityBootstrap {
     private static func freshBootstrap(ownUIN: Int, ctx: StoreContext) async throws {
         let stores = SignalProtocolStores.shared
 
-        // 1. Identity + registrationId. registrationId is a 14-bit value
-        // libsignal uses to disambiguate co-existing devices behind one
-        // identity; we run single-device today but pick a fresh one
-        // anyway so a future multi-device split is mechanical.
+        // 1. Identity + registrationId (14-bit, libsignal device disambiguator).
         let identity = IdentityKeyPair.generate()
         let registrationId = UInt32.random(in: 1...16380)
         stores.storeLocalIdentity(uin: ownUIN, identityKeyPair: identity, registrationId: registrationId)
 
-        // 2. Signed pre-key. Rotation cadence isn't enforced yet; for
-        // now bootstrap-once-and-forget. Future polish: rotate every
-        // ~7 days from a launch hook.
+        // 2. Signed pre-key. TODO: rotate every ~7 days from a launch hook.
         let signedId = UInt32.random(in: 1...0x7FFFFFFF)
         let signedPriv = PrivateKey.generate()
         let signedPubBytes = signedPriv.publicKey.serialize()
@@ -68,8 +52,7 @@ enum SignalIdentityBootstrap {
         )
         try stores.storeSignedPreKey(signedRecord, id: signedId, context: ctx)
 
-        // 3. Kyber pre-key. Single rotating "last-resort" key; reuse
-        // is acceptable per PQXDH design (FS comes from EC ephemeral).
+        // 3. Kyber pre-key. Reuse is OK per PQXDH (FS comes from EC ephemeral).
         let kyberId = UInt32.random(in: 1...0x7FFFFFFF)
         let kyberKp = KEMKeyPair.generate()
         let kyberPubBytes = kyberKp.publicKey.serialize()
@@ -82,9 +65,7 @@ enum SignalIdentityBootstrap {
         )
         try stores.storeKyberPreKey(kyberRecord, id: kyberId, context: ctx)
 
-        // 4. OPK pool — one-time EC pre-keys consumed at X3DH
-        // initiation. We also stash the public halves so the upload
-        // payload doesn't need to deserialize records we just made.
+        // 4. OPK pool — one-time pre-keys consumed at X3DH initiation.
         struct LocalOPK { let id: UInt32; let pub: String }
         var opks: [LocalOPK] = []
         for _ in 0..<targetOPKCount {
@@ -95,8 +76,7 @@ enum SignalIdentityBootstrap {
             opks.append(LocalOPK(id: id, pub: priv.publicKey.serialize().base64EncodedString()))
         }
 
-        // 5. Upload the bundle. Backend overwrites prior libsignal
-        // material atomically — see /keys/bundle.
+        // 5. Upload bundle. Backend overwrites prior material atomically.
         struct SignedPreKeyOut: Encodable { let id: UInt32; let publicKey: String; let signature: String
             enum CodingKeys: String, CodingKey { case id; case publicKey = "public"; case signature }
         }
@@ -134,9 +114,6 @@ enum SignalIdentityBootstrap {
         print("[SignalBootstrap] uploaded fresh bundle for UIN=\(ownUIN), OPKs=\(opks.count)")
     }
 
-    /// Called on every successful re-auth. Pings the server's pool
-    /// status and replenishes if low. Fails silently — this is a
-    /// best-effort top-up, real bootstrap already happened.
     private static func topUpIfNeeded() async {
         struct StatusOut: Decodable {
             let has_bundle: Bool
@@ -147,9 +124,7 @@ enum SignalIdentityBootstrap {
         do {
             let status: StatusOut = try await APIClient.shared.request("GET", "/keys/me/status")
             if !status.has_bundle {
-                // Server forgot us (db wipe). Force a fresh bootstrap
-                // by clearing the local stores and recursing. Cheap —
-                // generate cost is sub-second.
+                // Server forgot us (db wipe) — clear local stores and rebootstrap.
                 print("[SignalBootstrap] server has no bundle, re-bootstrapping")
                 if let row = try SignalProtocolStores.shared.loadLocalIdentity() {
                     SignalProtocolDB.shared.wipe()

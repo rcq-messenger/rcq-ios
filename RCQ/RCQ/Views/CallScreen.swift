@@ -2,24 +2,15 @@ import AVKit
 import SwiftUI
 import WebRTC
 
-/// Full-screen call surface. Covers ringing (in & out), in-call, and the
-/// brief post-end "X declined / hung up" hint before auto-dismiss.
-///
-/// During an active call the backdrop becomes the remote `RTCMTLVideoView`
-/// (Metal-backed); a small picture-in-picture in the corner mirrors the
-/// local camera so the user can frame themselves.
+/// Full-screen call surface: ringing, in-call, and the brief end-state hint.
 struct CallScreen: View {
     @StateObject private var calls = CallService.shared
     @StateObject private var rtc = WebRTCManager.shared
 
     var body: some View {
         ZStack {
-            // Solid dark background — visible during ringing states and
-            // until the first remote video frame lands.
             Color.black.ignoresSafeArea()
 
-            // Remote video fills the whole surface once we're connected
-            // and the peer's video track has arrived.
             if case .connected = calls.state, let track = rtc.remoteVideoTrack {
                 WebRTCVideoView(track: track)
                     .ignoresSafeArea()
@@ -42,20 +33,12 @@ struct CallScreen: View {
                 endedOverlay(call: c, reason: reason)
             }
 
-            // Inbound mid-call upgrade prompt. Floats above any chrome
-            // (video remote, audio avatar, control bar) so the user
-            // can't miss it. Auto-dismisses on Accept / Decline; also
-            // disappears if the call ends or peer cancels.
             if calls.incomingVideoUpgrade, case .connected(let c) = calls.state {
                 videoUpgradePrompt(call: c)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .zIndex(10)
             }
 
-            // Local self-view PIP — only on connected video calls. Sits
-            // below the top status bar (peer name + duration) so the two
-            // don't overlap on devices with narrow notches. Far from the
-            // hangup button so it's not accidentally tapped.
             if case .connected(let c) = calls.state,
                c.media == .video,
                let local = rtc.localVideoTrack {
@@ -81,8 +64,6 @@ struct CallScreen: View {
 
     // MARK: - state surfaces
 
-    /// Outgoing ringing or in-call dial-tone screen — single big avatar
-    /// circle, peer nickname, "Calling…" subtitle, hangup button.
     private func ringing(call: Call, label: String) -> some View {
         VStack(spacing: 22) {
             Spacer()
@@ -124,9 +105,6 @@ struct CallScreen: View {
 
     private func connected(call: Call) -> some View {
         VStack(spacing: 22) {
-            // Top status bar over the remote video — peer name + duration,
-            // sized to read against any background. Subtle scrim on top
-            // ensures legibility even on bright video frames.
             HStack(spacing: 12) {
                 Button { calls.minimize() } label: {
                     Image(systemName: "chevron.down")
@@ -152,9 +130,6 @@ struct CallScreen: View {
                 .ignoresSafeArea(edges: .top)
             )
             Spacer()
-            // For audio-only calls the avatar fills the canvas (no remote
-            // video to render). For video calls the remote RTCMTLVideoView
-            // is rendered behind everything by the parent ZStack.
             if call.media == .audio {
                 avatarOrb(call.peerNickname)
             }
@@ -166,9 +141,6 @@ struct CallScreen: View {
         }
     }
 
-    /// Mid-call control row — mic mute, camera flip + on/off (video only),
-    /// speakerphone toggle. Sits above the hangup button. Each control
-    /// reflects WebRTCManager's current state via @Published bindings.
     private func controlBar(media: CallMedia) -> some View {
         HStack(spacing: 28) {
             controlButton(
@@ -190,10 +162,7 @@ struct CallScreen: View {
                     label: "Flip"
                 ) { rtc.flipCamera() }
             } else {
-                // Audio call → offer "Turn on camera". Tap kicks off the
-                // mid-call upgrade: local PIP lights up immediately, peer
-                // gets an Accept/Decline prompt. Disabled while a previous
-                // request is still awaiting the peer's answer.
+                // Audio call → offer mid-call video upgrade.
                 controlButton(
                     systemName: "video.badge.plus",
                     active: false,
@@ -208,10 +177,6 @@ struct CallScreen: View {
                 label: "Speaker"
             ) { rtc.toggleSpeaker() }
 
-            // Native iOS route picker — handset / speaker / BT / AirPods /
-            // CarPlay all show up as a system sheet. The Speaker toggle
-            // above is a 1-tap shortcut; this is the proper picker for
-            // anything else (mid-call BT switch was the missing piece).
             VStack(spacing: 4) {
                 AudioRoutePickerButton()
                     .frame(width: 52, height: 52)
@@ -252,9 +217,6 @@ struct CallScreen: View {
                 .font(.title3.bold()).foregroundColor(.white)
             Text(call.peerNickname)
                 .font(.callout).foregroundColor(.white.opacity(0.6))
-            // Show duration only when the call actually reached connected.
-            // For declined / cancelled / busy calls `lastCallDuration` is
-            // nil and we just leave the title alone ("Call declined" etc).
             if let duration = calls.lastCallDuration {
                 Text(formatDuration(duration))
                     .font(.system(size: 32, design: .monospaced))
@@ -267,9 +229,6 @@ struct CallScreen: View {
         }
     }
 
-    /// Inbound audio→video upgrade prompt. Centred card with the peer
-    /// name + Accept / Decline. Solid backdrop blur so it reads against
-    /// either the audio avatar or a remote video frame.
     private func videoUpgradePrompt(call: Call) -> some View {
         VStack {
             Spacer()
@@ -319,7 +278,6 @@ struct CallScreen: View {
         }
     }
 
-    /// "M:SS" — same format as the live duration label.
     private func formatDuration(_ secs: TimeInterval) -> String {
         let total = Int(secs.rounded())
         let m = total / 60
@@ -396,9 +354,6 @@ struct CallScreen: View {
     }
 }
 
-/// SwiftUI bridge for `RTCMTLVideoView` — Metal-backed renderer that
-/// libwebrtc fills with decoded frames as they arrive. We hand it the
-/// track on creation; the framework wires the rest internally.
 private struct WebRTCVideoView: UIViewRepresentable {
     let track: RTCVideoTrack
 
@@ -410,23 +365,14 @@ private struct WebRTCVideoView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {
-        // If a different track instance arrives (rare — typically the same
-        // track lives across the whole call), reattach the renderer.
         track.add(uiView)
     }
 
     static func dismantleUIView(_ uiView: RTCMTLVideoView, coordinator: ()) {
-        // Metal renderers hold strong refs to their last frame buffer;
-        // detaching here lets WebRTC release the track cleanly when the
-        // call ends and the SwiftUI view goes away.
     }
 }
 
-/// SwiftUI bridge for `AVRoutePickerView`. Tap pops the system audio
-/// route sheet (handset / speaker / Bluetooth / AirPods / CarPlay).
-/// Styled to match the round in-call control buttons — translucent white
-/// fill, white glyph. The picker draws its own glyph; we just sit it
-/// inside a circle background.
+/// SwiftUI bridge for `AVRoutePickerView`.
 private struct AudioRoutePickerButton: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
@@ -451,9 +397,6 @@ private struct AudioRoutePickerButton: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
-/// "0:42" — refreshes once a second from a Timer publisher. Lives in its
-/// own subview so the surrounding CallScreen doesn't redraw the whole
-/// surface every tick.
 private struct LiveDurationLabel: View {
     let startedAt: Date
     @State private var now = Date()

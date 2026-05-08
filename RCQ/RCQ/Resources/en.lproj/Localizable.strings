@@ -1193,11 +1193,12 @@
 /* ── Premium UIN Auction ────────────────────────────────── */
 "games.uin_auction.title" = "UIN Auction";
 "games.uin_auction.body" = "One UIN per hour. Bid wars to the last second.";
-"games.pets_hunt.title" = "Pets on the hunt";
+"games.pets_hunt.title" = "Hunt";
 "games.pets_hunt.body" = "Your equipped pet earns jetons passively. Risk it on hunts for big rewards.";
 
 /* ── Pet Hunt screen ───────────────────────────── */
 "pet_hunt.daily_yield" = "%d jetons / day at full uptime";
+"pet_hunt.daily_gems" = "%d gems / day at full uptime";
 "pet_hunt.cap_reached" = "Buffer full — claim now or yield is lost";
 "pet_hunt.claim" = "Claim";
 "pet_hunt.send" = "SEND TO HUNT";
@@ -1205,6 +1206,10 @@
 "pet_hunt.cta.open_memorial" = "Memorial";
 "pet_hunt.empty.no_pet.title" = "No pet equipped";
 "pet_hunt.empty.no_pet.body" = "Equip a pet from your inventory to start earning passive jetons.";
+"pet_hunt.accumulator.title" = "In buffer";
+"pet_hunt.spec.daily_yield" = "Jetons / day";
+"pet_hunt.spec.daily_gems" = "Gems / day";
+"pet_hunt.spec.hourly_rate" = "Jetons / hour";
 
 /* Pet Hunt — info sheet */
 "pet_hunt.info.title" = "How Pet Hunt works";
@@ -1219,13 +1224,13 @@
 "pet_hunt.zone_picker.title" = "Choose hunt";
 "pet_hunt.zone_picker.intro" = "Bigger reward, bigger risk. Your pet quality changes the actual numbers.";
 "pet_hunt.zone.forest" = "Forest";
-"pet_hunt.zone.forest.reward" = "Reward 3-8 × pet stats";
+"pet_hunt.zone.forest.reward" = "Jetons 3–8 × stats + gems 0–2";
 "pet_hunt.zone.forest.risk" = "Safe — only minor wounds, no death";
 "pet_hunt.zone.mountain" = "Mountain";
-"pet_hunt.zone.mountain.reward" = "Reward 8-20 × pet stats";
+"pet_hunt.zone.mountain.reward" = "Jetons 8–20 × stats + gems 1–4";
 "pet_hunt.zone.mountain.risk" = "Risky — wounds common, rare deaths";
 "pet_hunt.zone.cave" = "Cave";
-"pet_hunt.zone.cave.reward" = "Reward 20-50 × pet stats";
+"pet_hunt.zone.cave.reward" = "Jetons 20–50 × stats + gems 2–7";
 "pet_hunt.zone.cave.risk" = "Hardcore — frequent wounds, real death risk";
 
 /* Pet Hunt — result */

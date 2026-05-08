@@ -2,63 +2,27 @@ import AVFoundation
 import Foundation
 import WebRTC
 
-/// Mesh WebRTC for an audio room. One `RTCPeerConnection` per OTHER
-/// member (n − 1 connections, ≤7 at full capacity). All connections
-/// share the same single audio source — we mint one local audio track
-/// at start and add it to every fresh peer connection.
-///
-/// Tie-breaking the offer/answer race: by server convention the
-/// EXISTING member is the offerer when a newcomer enters. The newcomer
-/// just listens for offers from each existing member and answers each.
-/// This avoids glare without an explicit ordering protocol.
-///
-/// Audio session is configured at start with `.playAndRecord` /
-/// `.voiceChat`, same as 1:1 calls. The `audio` UIBackgroundMode in
-/// the app's Info.plist is what keeps audio alive when the app is
-/// backgrounded — CallKit isn't involved here (audio rooms are not
-/// "calls" from iOS's perspective; the in-app pill provides return-to-room).
+/// Mesh WebRTC for an audio room — one RTCPeerConnection per other member
+/// (≤7 at full capacity). Server convention: existing member is the offerer
+/// when a newcomer enters, avoiding glare without an ordering protocol.
 @MainActor
 final class AudioRoomMeshManager: NSObject {
     static let shared = AudioRoomMeshManager()
 
-    /// Peer connections keyed by remote UIN. Created in `dialNewPeer`
-    /// (we are the offerer) or `handleOffer` (we are the answerer).
-    /// Removed in `dropPeer` and `stop`.
     private var peers: [Int: RTCPeerConnection] = [:]
-    /// One shared local audio track across every connection — the
-    /// peer connection just references it via `add(track, streamIds:)`.
-    /// Mute is implemented by toggling `isEnabled` on the track itself
-    /// (libwebrtc gates the encoder on this flag).
     private var localAudioTrack: RTCAudioTrack?
-    /// Optional local camera track. Nil until `setCameraEnabled(true)`;
-    /// torn down on `setCameraEnabled(false)`. Attached to every peer
-    /// connection alongside the audio track when present.
     private(set) var localVideoTrack: RTCVideoTrack?
     private var videoCapturer: RTCCameraVideoCapturer?
-    /// Front by default — selfie-style is the typical "speaking on
-    /// camera in a voice room" expectation. `flipCamera()` toggles.
     private var cameraPosition: AVCaptureDevice.Position = .front
-    /// Remote video tracks keyed by sender UIN. Mesh peers append here
-    /// the moment libwebrtc surfaces their video receiver; cleared per-peer
-    /// on `dropPeer` and globally on `stop`.
     private(set) var remoteVideoTracks: [Int: RTCVideoTrack] = [:]
-    /// True after `setCameraEnabled(true)` until matching false. Surfaced
-    /// via the service so the toolbar button can reflect state.
     private(set) var isCameraEnabled: Bool = false
-    /// Service-layer hooks. Mesh fires these when local/remote video
-    /// state changes so AudioRoomService can mirror into @Published
-    /// properties for SwiftUI to observe.
     var onLocalVideoTrackChanged: ((RTCVideoTrack?) -> Void)?
     var onRemoteVideoTrackChanged: ((_ remoteUIN: Int, _ track: RTCVideoTrack?) -> Void)?
 
-    /// The room we're currently servicing — used to tag every WS
-    /// signal we ship out so the server can verify both endpoints.
     private var roomID: Int?
 
-    /// ICE candidates that arrived for a peer connection we hadn't
-    /// minted yet (race: their offer hasn't reached us, or our offer
-    /// hadn't been answered). Drained when the peer connection
-    /// materialises in `handleOffer` / `handleAnswer`.
+    /// ICE for peers we haven't minted yet (offer-arrival race); drained on
+    /// handleOffer / handleAnswer.
     private var pendingIce: [Int: [String]] = [:]
 
     private let factory: RTCPeerConnectionFactory
@@ -69,9 +33,7 @@ final class AudioRoomMeshManager: NSObject {
     private var cachedTurn: (server: RTCIceServer, expiresAt: Date)?
 
     private override init() {
-        // SSL is initialised at first use of any WebRTC component.
-        // Calling `RTCInitializeSSL` again is a safe no-op if WebRTCManager
-        // already did it for a 1:1 call earlier in the session.
+        // RTCInitializeSSL is a safe no-op if WebRTCManager already ran it.
         RTCInitializeSSL()
         let encoderFactory = RTCDefaultVideoEncoderFactory()
         let decoderFactory = RTCDefaultVideoDecoderFactory()
@@ -84,24 +46,18 @@ final class AudioRoomMeshManager: NSObject {
 
     // MARK: - lifecycle
 
-    /// Open the audio session, mint the local audio track. Called
-    /// from `AudioRoomService.enter` BEFORE we ship `room_enter` to
-    /// the server — by the time the roster comes back we already
-    /// have a local source ready to feed every fresh peer connection.
+    /// Called from AudioRoomService.enter before `room_enter` ships so the
+    /// local audio source is ready when the roster comes back.
     func start(roomID: Int) {
         self.roomID = roomID
         configureAudioSession()
         Task { await refreshTurnIfNeeded() }
-        // Audio source + track. One per session, reused across every
-        // peer connection we open in the mesh.
         let audioConstraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         let audioSource = factory.audioSource(with: audioConstraints)
         localAudioTrack = factory.audioTrack(with: audioSource, trackId: "rcq_room_audio0")
     }
 
-    /// Tear down everything — peers, audio track, audio session
-    /// deactivation. Idempotent so the service can call it from any
-    /// exit path (user leaves, owner deletes, account burned).
+    /// Idempotent.
     func stop() {
         for (_, pc) in peers { pc.close() }
         peers.removeAll()
@@ -114,27 +70,18 @@ final class AudioRoomMeshManager: NSObject {
         isCameraEnabled = false
         onLocalVideoTrackChanged?(nil)
         roomID = nil
-        // Best-effort deactivation. If a regular 1:1 call starts up
-        // right after, WebRTCManager will reconfigure from scratch.
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         try? session.setActive(false)
         session.unlockForConfiguration()
     }
 
-    /// Mute / unmute the shared local audio track. Flipping
-    /// `isEnabled = false` makes libwebrtc push silent samples to
-    /// every peer in the mesh — same trick as 1:1 calls.
     func setMicMuted(_ muted: Bool) {
         localAudioTrack?.isEnabled = !muted
     }
 
     // MARK: - camera
 
-    /// Toggle the local camera. On: mint capturer + video track, attach
-    /// to every existing peer, re-offer SDP so the m-section reaches
-    /// the wire. Off: stop capturer, remove the sender from each peer,
-    /// re-offer to drop the m-section. Idempotent.
     func setCameraEnabled(_ on: Bool) {
         guard isCameraEnabled != on else { return }
         if on {
@@ -143,13 +90,10 @@ final class AudioRoomMeshManager: NSObject {
             tearDownLocalVideoTrack()
         }
         isCameraEnabled = on
-        // Re-issue offers so peers see the new (or removed) video
-        // m-section. Without this libwebrtc holds the local change
-        // and never propagates it to remotes.
+        // libwebrtc holds the local track-change without a re-offer.
         renegotiateAll()
     }
 
-    /// Flip front ↔ back camera. No-op when camera is off.
     func flipCamera() {
         guard isCameraEnabled, let capturer = videoCapturer else { return }
         cameraPosition = (cameraPosition == .front) ? .back : .front
@@ -163,8 +107,6 @@ final class AudioRoomMeshManager: NSObject {
         videoCapturer = capturer
         let track = factory.videoTrack(with: videoSource, trackId: "rcq_room_video0")
         localVideoTrack = track
-        // Attach to every existing peer connection so the new offer
-        // generated by `renegotiateAll()` carries a video m-section.
         for pc in peers.values {
             pc.add(track, streamIds: ["rcq_room_stream0"])
         }
@@ -195,11 +137,7 @@ final class AudioRoomMeshManager: NSObject {
             ?? devices.first
         guard let device else { return }
         let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
-        // 480p / 24fps target — meaningfully lighter than the 720p/30
-        // preset 1:1 calls use, because a mesh can have up to 7 video
-        // peers ingressing simultaneously. Halving width × height
-        // brings the worst-case bandwidth from ~5 Mbps down to ~1.5
-        // Mbps which fits comfortably on a typical mobile data plan.
+        // 480p/24fps — lighter than 1:1's 720p/30; mesh ingresses up to 7 peers.
         let targetWidth: Int32 = 640
         let format = formats.min(by: { lhs, rhs in
             let l = abs(CMVideoFormatDescriptionGetDimensions(lhs.formatDescription).width - targetWidth)
@@ -213,10 +151,6 @@ final class AudioRoomMeshManager: NSObject {
         capturer.startCapture(with: device, format: chosenFormat, fps: fps)
     }
 
-    /// Re-issue offers to every existing peer after a track add/remove.
-    /// Without this the new track never reaches the wire — libwebrtc
-    /// holds it locally but the remote SDP doesn't include the new
-    /// m-section.
     private func renegotiateAll() {
         guard let roomID else { return }
         let constraints = RTCMediaConstraints(
@@ -244,9 +178,6 @@ final class AudioRoomMeshManager: NSObject {
         }
     }
 
-    /// Called from `MeshPeerDelegate.didAdd rtpReceiver` for video
-    /// tracks. Keeps the per-UIN mapping in sync with what libwebrtc
-    /// is actually surfacing on the wire.
     func recordRemoteVideoTrack(remoteUIN: Int, track: RTCVideoTrack) {
         remoteVideoTracks[remoteUIN] = track
         onRemoteVideoTrackChanged?(remoteUIN, track)
@@ -254,19 +185,15 @@ final class AudioRoomMeshManager: NSObject {
 
     // MARK: - mesh signalling driven by AudioRoomService
 
-    /// We are an EXISTING member; a NEWCOMER just entered. Mint a
-    /// peer connection to them, attach our audio, generate an offer,
-    /// and ship it. Per server convention this side is the offerer.
+    /// Existing-member side: a newcomer entered, dial them.
     func dialNewPeer(uin: Int) {
         guard let roomID, peers[uin] == nil else { return }
         let pc = makePeerConnection(remoteUIN: uin)
         peers[uin] = pc
         attachLocalMedia(to: pc)
 
-        // Always advertise willingness to receive video — the peer
-        // may turn their camera on at any time; without this flag the
-        // recvonly m-section never gets allocated and their later
-        // re-offer would have to bump the bundle, which is fragile.
+        // Always offer recvonly video so the peer can turn camera on later
+        // without a bundle bump.
         let constraints = RTCMediaConstraints(
             mandatoryConstraints: [
                 "OfferToReceiveAudio": "true",
@@ -290,10 +217,6 @@ final class AudioRoomMeshManager: NSObject {
         }
     }
 
-    /// We received an offer from `from` — they are the offerer
-    /// (existing member; we just entered, OR they minted a new
-    /// connection for some reason). Build our peer connection if we
-    /// don't already have one, ingest the remote SDP, answer.
     func handleOffer(fromUIN: Int, sdp: String) {
         guard let roomID else { return }
         let pc = peers[fromUIN] ?? makePeerConnection(remoteUIN: fromUIN)
@@ -328,8 +251,6 @@ final class AudioRoomMeshManager: NSObject {
         }
     }
 
-    /// We are the offerer; remote just answered our offer. Ingest the
-    /// answer to flip the connection into stable state.
     func handleAnswer(fromUIN: Int, sdp: String) {
         guard let pc = peers[fromUIN] else { return }
         let remote = RTCSessionDescription(type: .answer, sdp: sdp)
@@ -344,8 +265,7 @@ final class AudioRoomMeshManager: NSObject {
         }
     }
 
-    /// ICE candidate from a specific peer. If the connection isn't
-    /// ready yet (offer/answer race), stash it and drain later.
+    /// Stashes ICE for unready peers; drained later by handleOffer/Answer.
     func handleIce(fromUIN: Int, candidateJSON: String) {
         if let pc = peers[fromUIN] {
             applyIce(json: candidateJSON, to: pc)
@@ -354,7 +274,6 @@ final class AudioRoomMeshManager: NSObject {
         }
     }
 
-    /// Peer left the room — close their connection and forget them.
     func dropPeer(uin: Int) {
         peers.removeValue(forKey: uin)?.close()
         pendingIce.removeValue(forKey: uin)
@@ -376,23 +295,14 @@ final class AudioRoomMeshManager: NSObject {
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         let delegate = MeshPeerDelegate(remoteUIN: remoteUIN, owner: self)
-        // Hold the delegate for the lifetime of the connection.
-        // RTCPeerConnection holds its delegate weakly, so without
-        // this stash it'd be deallocated on the next loop tick.
+        // RTCPeerConnection holds delegate weakly; stash strongly here.
         peerDelegates[remoteUIN] = delegate
         guard let pc = factory.peerConnection(with: config, constraints: constraints, delegate: delegate) else {
-            // Realistically unreachable — the factory failing to mint
-            // a peer connection means OOM or libwebrtc-internal state
-            // corruption. Caller already checked we have a roomID.
             fatalError("[AudioRoomMesh] failed to create peer connection")
         }
         return pc
     }
 
-    /// Attach whatever local media we currently have to a fresh peer
-    /// connection. Always attaches audio; attaches video too if camera
-    /// is on at the moment the peer is dialled (so newcomers see our
-    /// stream from the first offer/answer cycle).
     private func attachLocalMedia(to pc: RTCPeerConnection) {
         if let audio = localAudioTrack {
             pc.add(audio, streamIds: ["rcq_room_stream0"])
@@ -417,8 +327,6 @@ final class AudioRoomMeshManager: NSObject {
         for json in queued { applyIce(json: json, to: pc) }
     }
 
-    /// Fire a locally-generated ICE candidate to the right peer over
-    /// WS. Called from the per-peer delegate.
     func shipLocalIce(remoteUIN: Int, candidate: RTCIceCandidate) {
         guard let roomID else { return }
         let payload: [String: Any] = [
@@ -438,15 +346,10 @@ final class AudioRoomMeshManager: NSObject {
 
     private var peerDelegates: [Int: MeshPeerDelegate] = [:]
 
-    /// Reuses the WebRTCManager pattern. `.allowBluetoothHFP` covers BT
-    /// HFP routing; the user can still bring up the system route picker
-    /// from the room screen for AirPods/CarPlay/etc.
     private func configureAudioSession() {
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         do {
-            // Audio rooms default to speakerphone — multi-party voice
-            // through the earpiece is rough.
             let options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP, .defaultToSpeaker]
             try session.setCategory(AVAudioSession.Category.playAndRecord, with: options)
             try session.setMode(AVAudioSession.Mode.voiceChat)

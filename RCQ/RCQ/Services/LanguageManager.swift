@@ -1,34 +1,18 @@
 import Foundation
 import SwiftUI
 
-/// Per-app language override. iOS picks the system locale by
-/// default, but ICQ-era users expect a manual switcher in
-/// Settings — and we eventually want the app to ship in the
-/// dozen-ish languages that cover most of the messenger market.
-///
-/// This is the *fundament* — actual translations live in the
-/// `Localizable.strings` files inside each `*.lproj` directory.
-/// Adding a new language is two steps:
-///   1. Add a case to `AppLanguage` (with code + display name)
-///   2. Drop a translated `Localizable.strings` into
-///      `RCQ/Resources/<code>.lproj/`
-///
-/// Strings in Swift code reach for the active language via
-/// `String.localized` (see `String+Localized.swift`); calling
-/// `set(_:)` here flips the active bundle and bumps `version`,
-/// which `LocalizedText` views observe to re-render.
+/// Per-app language override. ICQ-era users expect a manual switcher
+/// in Settings. Translations live in `*.lproj/Localizable.strings`;
+/// adding a language = add a case to `AppLanguage` + drop strings file.
+/// `String.localized` reads the active bundle; `set(_:)` flips the
+/// bundle and bumps `version` so `LocalizedText` re-renders.
 @MainActor
 final class LanguageManager: ObservableObject {
     static let shared = LanguageManager()
 
-    /// Currently active language. Persisted in UserDefaults so
-    /// the choice survives app restarts.
     @Published private(set) var current: AppLanguage
 
-    /// Bumped on every `set(_:)` so SwiftUI views that read
-    /// localized strings re-render. Views observe by depending
-    /// on `LanguageManager.shared.version` somewhere in their
-    /// body (the `LocalizedText` helper does this implicitly).
+    /// Bumped on every `set(_:)` so SwiftUI views re-render.
     @Published private(set) var version: Int = 0
 
     private static let defaultsKey = "rcq.app_language"
@@ -39,8 +23,6 @@ final class LanguageManager: ObservableObject {
             current = lang
         } else if let prefix = Locale.preferredLanguages.first?.prefix(2),
                   let lang = AppLanguage(rawValue: String(prefix)) {
-            // Fall back to the system's first preferred language
-            // when the user hasn't picked one yet.
             current = lang
         } else {
             current = .english
@@ -58,19 +40,11 @@ final class LanguageManager: ObservableObject {
         version &+= 1
     }
 
-    /// Write the active language code into the App Group so the NSE
-    /// (which runs in its own process and can't see the main app's
-    /// standard UserDefaults) localizes push notifications against
-    /// the same language the user picked in the app's Settings →
-    /// Language picker.
-    ///
-    /// We write BOTH a flat file and the App Group UserDefaults.
-    /// The file is the source of truth — App Group UserDefaults is
-    /// flaky on iOS (cfprefsd routinely "detaches" the shared
-    /// suite, after which writes silently stop propagating to the
-    /// NSE process), but a single-line file in the shared container
-    /// is rock-solid. UserDefaults stays as a secondary cache for
-    /// callers that already use it.
+    /// Mirror the active language to the App Group so the NSE (separate
+    /// process) localizes pushes against the same language the user picked.
+    /// Writes BOTH a flat file (source of truth) and App Group UserDefaults
+    /// — cfprefsd routinely detaches the shared suite, after which writes
+    /// stop propagating to the NSE; the file is rock-solid.
     private func mirrorToAppGroup() {
         let code = current.rawValue
         try? code.data(using: .utf8)?.write(
@@ -80,10 +54,8 @@ final class LanguageManager: ObservableObject {
         shared?.set(code, forKey: Self.defaultsKey)
     }
 
-    /// Resolved bundle for the active language. Falls back to
-    /// the main bundle when the requested lproj doesn't exist
-    /// yet (translations land incrementally — missing keys read
-    /// from the development language).
+    /// Resolved bundle for the active language. Falls back to main
+    /// bundle for missing lproj (translations land incrementally).
     var activeBundle: Bundle {
         if let path = Bundle.main.path(forResource: current.rawValue, ofType: "lproj"),
            let bundle = Bundle(path: path) {
@@ -92,22 +64,14 @@ final class LanguageManager: ObservableObject {
         return .main
     }
 
-    /// Hint to UIKit's localization machinery for libraries (and
-    /// our own `NSLocalizedString` calls without an explicit
-    /// bundle) so a fresh launch picks up the right
-    /// language. SwiftUI components mostly read via
-    /// `String.localized`, but anything that hits
-    /// `Bundle.main.localizedString` directly reads
-    /// `AppleLanguages` first.
+    /// Sets `AppleLanguages` so UIKit + bundle.localizedString reads pick
+    /// up the right language on next launch.
     private func applyToBundleSearchPath() {
         UserDefaults.standard.set([current.rawValue], forKey: "AppleLanguages")
     }
 }
 
-/// Languages we plan to ship, in display-friendly order. The
-/// `rawValue` doubles as the lproj folder name and the code
-/// stored in UserDefaults — keep them in sync with the
-/// directory layout under `Resources/`.
+/// `rawValue` doubles as the lproj folder name and the UserDefaults code.
 enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
     case english       = "en"
     case russian       = "ru"
@@ -147,12 +111,9 @@ enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// True iff the bundled `lproj/` actually carries the strings
-    /// table. Today only en + ru are translated end-to-end; the
-    /// other entries are visible-but-disabled in the picker so
-    /// users see the roadmap without being able to switch into a
-    /// half-translated UI. Add to this list as full translations
-    /// land.
+    /// True iff the lproj has a full strings table. Other entries
+    /// are visible-but-disabled in the picker so users see the roadmap
+    /// without switching into a half-translated UI.
     var isAvailable: Bool {
         switch self {
         case .english, .russian: return true

@@ -1,17 +1,6 @@
 import SwiftUI
 
-/// Compose-a-trade screen — port of IX `TradeView` repainted in
-/// RCQ's palette. Two stacked sections:
-///   - "Your offer" — your items + tokens / scrolls
-///   - "Their side" — their items + tokens / scrolls
-/// At least one side must have something on it. The trade-kind chip
-/// auto-detects gift / sale / purchase / trade based on what's
-/// filled.
-///
-/// Recipient items are pulled from the public-inventory endpoint —
-/// gated by their `InventorySettings.public`. A private inventory
-/// shows an "inventory hidden" empty state with the currency fields
-/// still usable (so token-only gifts / buys still work).
+/// Compose-a-trade screen. Trade-kind chip auto-detects gift / sale / purchase / swap.
 struct TradeProposeView: View {
     let recipientUIN: Int
     let recipientNickname: String
@@ -23,11 +12,6 @@ struct TradeProposeView: View {
 
     @State private var selectedMine: Set<String> = []
     @State private var selectedTheirs: Set<String> = []
-    /// UIN selections per side. Tracks the raw BigInt uin values
-    /// (parallel to the item id sets above). Server validates that
-    /// each picked UIN sits in the right party's `OwnedUin`
-    /// inventory, isn't on a marketplace listing, and isn't on
-    /// another pending trade.
     @State private var selectedMyUins: Set<Int> = []
     @State private var selectedTheirUins: Set<Int> = []
     @State private var offeredTokens = ""
@@ -37,26 +21,14 @@ struct TradeProposeView: View {
     @State private var note = ""
 
     @State private var theirItems: [Item] = []
-    /// UINs from the recipient's public inventory. Comes back from
-    /// `/users/{uin}/inventory` alongside items + privacy flag.
     @State private var theirUins: [TradeInvUin] = []
     @State private var theirInventoryPublic: Bool = true
     @State private var loadingTheirs = true
     @State private var sending = false
     @State private var sentBanner = false
     @State private var errorMessage: String?
-    /// Drives the "are you sure this is a gift?" alert. Send tap
-    /// for a gift-shape (something offered, nothing requested)
-    /// flips this true; the alert's confirm action calls the real
-    /// `send()`. Stops the user from accidentally one-way-gifting
-    /// when they meant to ask for something in return but forgot
-    /// to fill the requested side.
     @State private var showGiftConfirm: Bool = false
 
-    /// True iff the current form represents a one-way transfer:
-    /// something on offer, nothing requested back. Mirrors the
-    /// backend's `is_gift` flag, kept on the client so we can
-    /// gate the confirmation prompt without round-tripping.
     private var isGiftShape: Bool {
         hasOffered && !hasRequested
     }
@@ -107,12 +79,6 @@ struct TradeProposeView: View {
         }
     }
 
-    /// Send-button copy. Three states:
-    /// - sending → "Отправляем…"
-    /// - empty (nothing on either side) → plain "Выбери что отправить"
-    ///   (button stays disabled — we just don't want the previous
-    ///   "Отправить пусто" eyesore the format string produced)
-    /// - normal → "Отправить подарок" / "Отправить обмен" / etc.
     private var buttonLabel: String {
         if sending { return "trade.cta.sending".localized }
         if !(hasOffered || hasRequested) { return "trade.cta.empty_prompt".localized }
@@ -189,9 +155,6 @@ struct TradeProposeView: View {
             }
             .task {
                 await items.refreshInventory()
-                // Pull my owned UINs so the chip strip on "Your offer"
-                // populates immediately. UinAuctionService caches on
-                // its own; this is just ensuring the latest snapshot.
                 await uinAuction.refreshOwned()
                 await loadTheirInventory()
             }
@@ -253,19 +216,7 @@ struct TradeProposeView: View {
                     text: scrollsInput, walletAmount: walletScrolls, kind: "scrolls",
                 )
             }
-            // UIN chip strip — listed UINs (active marketplace lots)
-            // are filtered out entirely; they can't be put into a
-            // trade anyway, so showing them greyed out was just
-            // visual noise.
-            //
-            // Outer card has `padding(14)` which clips the inner
-            // horizontal ScrollView at the same 14pt edge — first
-            // and last chips lost their cap-pill end. Bleed the
-            // ScrollView past the parent padding (negative inset)
-            // and re-add the same 14pt as content padding INSIDE the
-            // scroll, so the chips can scroll all the way to (and
-            // past) where the card edge would otherwise have cut
-            // them.
+            // Negative outer inset lets chips scroll past the card edge instead of clipping.
             let tradeableUins = ownedUins.filter { !$0.listed }
             if !tradeableUins.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -278,10 +229,6 @@ struct TradeProposeView: View {
                 }
                 .padding(.horizontal, -14)
             }
-            // Items grid — listed items can't be transferred, so
-            // hide them outright (matches the UIN filter above).
-            // The owner can still see them via the inventory view;
-            // here we only surface tradeable inventory.
             let tradeableInventory = inventory.filter { !$0.listed }
             if tradeableInventory.isEmpty {
                 Text(emptyText)
@@ -318,17 +265,7 @@ struct TradeProposeView: View {
         .cornerRadius(8)
     }
 
-    /// Tier-tinted chip rendering a single tradeable UIN. Tap toggles
-    /// selection; listed UINs (active marketplace lot) render with a
-    /// reduced opacity + tap is a no-op (user has to cancel the
-    /// listing first to free it).
-    ///
-    /// `Text(verbatim:)` is mandatory for UIN rendering anywhere in
-    /// the app — `Text("\(intValue)")` would route through
-    /// `LocalizedStringKey` interpolation and add locale-aware
-    /// thousands separators (`#123,456` in en, `#123 456` in ru).
-    /// UINs are identifiers, not quantities — they should NEVER be
-    /// thousands-separated.
+    // `Text(verbatim:)` keeps UIN rendering free of locale thousands separators.
     private func uinChip(_ o: TradeInvUin, selected: Binding<Set<Int>>) -> some View {
         let isSelected = selected.wrappedValue.contains(o.uin)
         let tint: Color = {
@@ -364,11 +301,6 @@ struct TradeProposeView: View {
         walletAmount: Int?,
         kind: String,
     ) -> some View {
-        // Minimalist treatment — transparent background, hairline
-        // bottom-only divider instead of the full rounded box. The
-        // currency-icon glyph + amount text float on the parent
-        // card's bgSecondary, which reads as "premium / less form-
-        // ish" than the boxed input chrome the field used before.
         HStack(spacing: 8) {
             ItemAssetImage(bundleSubdir: "Items", filename: image, ext: ext)
                 .frame(width: 22, height: 22)
@@ -385,8 +317,6 @@ struct TradeProposeView: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
         .overlay(
-            // Single hairline at the bottom — typed text "underlines"
-            // the field without enclosing it in a box.
             Rectangle()
                 .fill(Theme.Color.divider.opacity(0.5))
                 .frame(height: 0.5)
@@ -413,23 +343,11 @@ struct TradeProposeView: View {
         HStack(spacing: 10) {
             Button {
                 if isGiftShape {
-                    // Force a confirm dialog for one-way gifts —
-                    // the empty "their side" panel reads as
-                    // intentional far too easily, especially when
-                    // the user actually wanted a 2-way swap and
-                    // forgot to pick anything from the recipient's
-                    // inventory.
                     showGiftConfirm = true
                 } else {
                     Task { await send() }
                 }
             } label: {
-                // Three-state label so the disabled-empty case
-                // doesn't read as the goofy "Отправить пусто" the
-                // generic format string produced. When neither side
-                // has anything we surface a plain prompt; once the
-                // user picks something we switch to the real
-                // tradeKind-based action label.
                 Text(buttonLabel)
                     .font(Theme.Font.nickname)
                     .foregroundColor(.white)
@@ -456,9 +374,6 @@ struct TradeProposeView: View {
     }
 
     private var sentToast: some View {
-        // Same glass-pill shape and slide-down anchor as the
-        // inventory bulk-disassemble toast so the "feedback at the
-        // top of the screen" pattern is consistent across the app.
         VStack {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
@@ -491,9 +406,6 @@ struct TradeProposeView: View {
         defer { loadingTheirs = false }
         struct Resp: Codable {
             let items: [Item]
-            // Backend ships an empty array for users with no UINs and
-            // omits the field entirely on legacy clients — decoding
-            // is defensive (default empty).
             let uins: [TradeInvUin]?
             let `public`: Bool
         }
@@ -505,9 +417,7 @@ struct TradeProposeView: View {
             self.theirUins = res.uins ?? []
             self.theirInventoryPublic = res.public
         } catch {
-            // 403 → private inventory; show empty state with the
-            // private-inventory label and let the user proceed with
-            // currency-only trade if they want.
+            // 403 = private inventory; allow currency-only trade.
             self.theirItems = []
             self.theirUins = []
             self.theirInventoryPublic = false
@@ -536,7 +446,6 @@ struct TradeProposeView: View {
                 ? nil : note,
         )
         if trade != nil {
-            // Mutation triggers the parent's `.animation(value:)`.
             sentBanner = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 dismiss()
@@ -547,12 +456,7 @@ struct TradeProposeView: View {
     }
 }
 
-/// Compact UIN snapshot used inside the trade composer's chip strip.
-/// Shape mirrors the backend's `OwnedUinSummary` from
-/// `/me/inventory` and `/users/{uin}/inventory`. `listed` greys out
-/// the chip and disables tap when the UIN is currently up on the
-/// marketplace (server would reject the trade with `uins_listed`
-/// otherwise — preempting in UI keeps the round-trip cleaner).
+/// Compact UIN summary returned by `/me/inventory` and `/users/{uin}/inventory`.
 struct TradeInvUin: Codable, Hashable, Identifiable {
     let uin: Int
     let tier: String
