@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HoodBannerCarousel: View {
     let bucket: String
@@ -23,7 +24,6 @@ struct HoodBannerCarousel: View {
                 carousel
             }
         }
-        .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .task(id: bucket) { await svc.refresh(bucket: bucket) }
         .onReceive(Timer.publish(every: autoScrollInterval, on: .main, in: .common).autoconnect()) { _ in
@@ -80,7 +80,7 @@ struct HoodBannerCarousel: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 16)
     }
 
     private var emptyState: some View {
@@ -102,9 +102,45 @@ struct HoodBannerCarousel: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 16)
     }
 
+    @ViewBuilder
     private var carousel: some View {
+        if #available(iOS 17.0, *) {
+            modernCarousel
+        } else {
+            legacyCarousel
+        }
+    }
+
+    @available(iOS 17.0, *)
+    private var modernCarousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(banners) { banner in
+                    HoodBannerCard(banner: banner)
+                        .containerRelativeFrame(.horizontal, count: 1, span: 1, spacing: 10)
+                        .scrollTransition(.animated.threshold(.visible(0.7))) { c, phase in
+                            c.opacity(phase.isIdentity ? 1.0 : 0.55)
+                        }
+                        .onTapGesture {
+                            pauseAutoScroll()
+                            selected = banner
+                        }
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned)
+        .frame(height: 96)
+        .simultaneousGesture(
+            DragGesture().onChanged { _ in pauseAutoScroll() }
+        )
+    }
+
+    private var legacyCarousel: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -117,9 +153,9 @@ struct HoodBannerCarousel: View {
                             }
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 16)
             }
-            .frame(height: 88)
+            .frame(height: 96)
             .onChange(of: autoScrollIndex) { idx in
                 guard !paused else { return }
                 withAnimation(.easeInOut(duration: 0.4)) {
@@ -127,8 +163,7 @@ struct HoodBannerCarousel: View {
                 }
             }
             .simultaneousGesture(
-                DragGesture()
-                    .onChanged { _ in pauseAutoScroll() }
+                DragGesture().onChanged { _ in pauseAutoScroll() }
             )
         }
     }
@@ -145,28 +180,21 @@ struct HoodBannerCarousel: View {
     }
 }
 
-private struct HoodBannerCard: View {
+struct HoodBannerCard: View {
     let banner: HoodBanner
 
     var body: some View {
         HStack(spacing: 10) {
-            if let thumb = banner.imageThumbURL ?? banner.imageURL {
-                AsyncImage(url: URL(string: thumb)) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        Color.black.opacity(0.2)
-                    }
-                }
-                .frame(width: 60, height: 60)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            if banner.imageURL != nil {
+                BannerThumbnail(imageRef: banner.imageThumbURL ?? banner.imageURL)
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(banner.text)
                     .font(.system(size: 13))
                     .foregroundColor(Theme.Color.textPrimary)
-                    .lineLimit(banner.imageThumbURL != nil ? 2 : 3)
+                    .lineLimit(banner.imageURL != nil ? 2 : 3)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
                 Text(authorLine)
@@ -177,7 +205,8 @@ private struct HoodBannerCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(10)
-        .frame(width: 280, height: 80, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .frame(height: 88, alignment: .leading)
         .background(Theme.Color.bgSecondary)
         .cornerRadius(12)
     }
@@ -186,5 +215,41 @@ private struct HoodBannerCard: View {
         if banner.isAnonymous { return "hood_banner.anonymous".localized }
         if let nick = banner.ownerNickname { return nick }
         return ""
+    }
+}
+
+/// Renders a banner image. Banner image_url uses the format
+/// `mediaID|keyBase64` — the same encrypted-blob pattern as photo
+/// messages, decrypted client-side via MediaService.loadImage.
+struct BannerThumbnail: View {
+    let imageRef: String?
+    @State private var image: UIImage?
+    @State private var isLoading = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.15)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if isLoading {
+                ProgressView()
+                    .tint(Theme.Color.textSecondary)
+            }
+        }
+        .task(id: imageRef) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        guard let imageRef, image == nil, !isLoading else { return }
+        let parts = imageRef.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return }
+        isLoading = true
+        let img = await MediaService.shared.loadImage(mediaID: parts[0], keyBase64: parts[1])
+        image = img
+        isLoading = false
     }
 }

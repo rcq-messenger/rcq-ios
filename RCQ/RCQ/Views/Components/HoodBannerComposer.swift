@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct HoodBannerComposer: View {
     let bucket: String
@@ -13,6 +15,11 @@ struct HoodBannerComposer: View {
     @State private var alertMessage: String?
     @State private var showConfirm: Bool = false
 
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photoImage: UIImage?
+    @State private var uploadingPhoto = false
+    @State private var uploadedRef: String?  // "mediaID|keyBase64"
+
     private let textLimit = 200
 
     var body: some View {
@@ -22,6 +29,7 @@ struct HoodBannerComposer: View {
                 ScrollView {
                     VStack(spacing: 18) {
                         textField
+                        photoBlock
                         durationPicker
                         anonymousToggle
                         warningBlock
@@ -40,7 +48,7 @@ struct HoodBannerComposer: View {
                     Button("hood_banner.composer.publish".localized) {
                         showConfirm = true
                     }
-                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty || busy)
+                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty || busy || uploadingPhoto)
                 }
             }
             .alert("hood_banner.alert.title".localized,
@@ -50,7 +58,7 @@ struct HoodBannerComposer: View {
                    actions: { Button("common.ok".localized, role: .cancel) {} },
                    message: { Text(alertMessage ?? "") })
             .confirmationDialog(
-                String(format: "hood_banner.confirm.message".localized, duration.tokens, max(0, items.wallet.tokens - duration.tokens)),
+                String(format: "hood_banner.confirm.message".localized, duration.tokens),
                 isPresented: $showConfirm,
                 titleVisibility: .visible
             ) {
@@ -58,6 +66,10 @@ struct HoodBannerComposer: View {
                     Task { await submit() }
                 }
                 Button("common.cancel".localized, role: .cancel) {}
+            }
+            .onChange(of: photoItem) { newItem in
+                guard let newItem else { return }
+                Task { await loadAndUploadPhoto(newItem) }
             }
         }
     }
@@ -86,6 +98,67 @@ struct HoodBannerComposer: View {
                 Text("\(text.count) / \(textLimit)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(Theme.Color.textSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("hood_banner.composer.photo_label".localized)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundColor(Theme.Color.textSecondary)
+            HStack(spacing: 12) {
+                if let img = photoImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 4) {
+                        if uploadingPhoto {
+                            HStack(spacing: 6) {
+                                ProgressView().tint(Theme.Color.textSecondary)
+                                Text("hood_banner.composer.photo_uploading".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        } else if uploadedRef != nil {
+                            Text("hood_banner.composer.photo_attached".localized)
+                                .font(.caption)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                        Button(role: .destructive) {
+                            photoImage = nil
+                            uploadedRef = nil
+                            photoItem = nil
+                        } label: {
+                            Text("hood_banner.composer.photo_remove".localized)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                } else {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 20))
+                                .foregroundColor(Theme.Color.accent)
+                            Text("hood_banner.composer.photo_pick".localized)
+                                .font(.callout.weight(.medium))
+                                .foregroundColor(Theme.Color.textPrimary)
+                            Spacer()
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity)
+                        .background(Theme.Color.bgSecondary)
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -139,21 +212,19 @@ struct HoodBannerComposer: View {
     }
 
     private var anonymousToggle: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle(isOn: $isAnonymous) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("hood_banner.composer.anonymous_label".localized)
-                        .font(.callout.weight(.medium))
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text("hood_banner.composer.anonymous_hint".localized)
-                        .font(.caption)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
+        Toggle(isOn: $isAnonymous) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("hood_banner.composer.anonymous_label".localized)
+                    .font(.callout.weight(.medium))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text("hood_banner.composer.anonymous_hint".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
             }
-            .padding(14)
-            .background(Theme.Color.bgSecondary)
-            .cornerRadius(10)
         }
+        .padding(14)
+        .background(Theme.Color.bgSecondary)
+        .cornerRadius(10)
     }
 
     private var warningBlock: some View {
@@ -172,6 +243,23 @@ struct HoodBannerComposer: View {
         .cornerRadius(10)
     }
 
+    private func loadAndUploadPhoto(_ item: PhotosPickerItem) async {
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let img = UIImage(data: data) else { return }
+            photoImage = img
+            uploadingPhoto = true
+            let result = try await MediaService.shared.uploadImage(img)
+            uploadedRef = "\(result.mediaID)|\(result.keyBase64)"
+            uploadingPhoto = false
+        } catch {
+            uploadingPhoto = false
+            photoImage = nil
+            uploadedRef = nil
+            alertMessage = error.localizedDescription
+        }
+    }
+
     private func submit() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -182,6 +270,8 @@ struct HoodBannerComposer: View {
             text: trimmed,
             duration: duration,
             isAnonymous: isAnonymous,
+            imageURL: uploadedRef,
+            imageThumbURL: uploadedRef,
         )
         switch result {
         case .success:

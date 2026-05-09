@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HoodBannerDetailSheet: View {
     let banner: HoodBanner
@@ -14,19 +15,13 @@ struct HoodBannerDetailSheet: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        if let url = banner.imageURL {
+                        if banner.imageURL != nil {
                             Button {
                                 showFullPhoto = true
                             } label: {
-                                AsyncImage(url: URL(string: url)) { phase in
-                                    switch phase {
-                                    case .success(let img):
-                                        img.resizable().scaledToFit()
-                                    default:
-                                        Color.black.opacity(0.2).aspectRatio(16/9, contentMode: .fit)
-                                    }
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                BannerThumbnail(imageRef: banner.imageURL)
+                                    .aspectRatio(16/10, contentMode: .fill)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
                         }
@@ -48,6 +43,10 @@ struct HoodBannerDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Wrap Menu in `.tint(.red)` so destructive Label
+                    // glyphs render red on iOS 26 — Menu otherwise
+                    // ignores per-Label foregroundStyle. Matches the
+                    // pattern used in UserSafetyMenu elsewhere in the app.
                     Menu {
                         if banner.isMine {
                             Button(role: .destructive) {
@@ -65,13 +64,14 @@ struct HoodBannerDetailSheet: View {
                                     alertMessage = "hood_banner.detail.reported".localized
                                 }
                             } label: {
-                                Label("common.report".localized, systemImage: "flag")
+                                Label("hood_banner.detail.report".localized, systemImage: "flag")
                             }
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .foregroundColor(Theme.Color.textPrimary)
                     }
+                    .tint(.red)
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button("common.done".localized) { dismiss() }
@@ -84,8 +84,8 @@ struct HoodBannerDetailSheet: View {
                    actions: { Button("common.ok".localized, role: .cancel) {} },
                    message: { Text(alertMessage ?? "") })
             .fullScreenCover(isPresented: $showFullPhoto) {
-                if let url = banner.imageURL {
-                    FullPhotoView(url: url)
+                if let ref = banner.imageURL {
+                    FullPhotoView(imageRef: ref)
                 }
             }
         }
@@ -163,20 +163,14 @@ struct HoodBannerDetailSheet: View {
 }
 
 private struct FullPhotoView: View {
-    let url: String
+    let imageRef: String
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            AsyncImage(url: URL(string: url)) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFit()
-                default:
-                    ProgressView().tint(.white)
-                }
-            }
+            BannerThumbnail(imageRef: imageRef)
+                .aspectRatio(contentMode: .fit)
             VStack {
                 HStack {
                     Spacer()
@@ -234,17 +228,10 @@ private struct BoardRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let thumb = banner.imageThumbURL ?? banner.imageURL {
-                AsyncImage(url: URL(string: thumb)) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        Color.black.opacity(0.2)
-                    }
-                }
-                .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            if banner.imageURL != nil {
+                BannerThumbnail(imageRef: banner.imageThumbURL ?? banner.imageURL)
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(banner.text)

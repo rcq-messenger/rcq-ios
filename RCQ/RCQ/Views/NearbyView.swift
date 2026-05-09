@@ -232,11 +232,6 @@ struct NearbyView: View {
             }
             .buttonStyle(.plain)
 
-            if let bucket = bucketTag {
-                HoodBannerCarousel(bucket: bucket)
-                    .padding(.top, 12)
-            }
-
             if service.people.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
@@ -266,6 +261,10 @@ struct NearbyView: View {
                 .refreshable {
                     await service.refreshList()
                 }
+            }
+
+            if let bucket = bucketTag {
+                HoodBannerCarousel(bucket: bucket)
             }
         }
     }
