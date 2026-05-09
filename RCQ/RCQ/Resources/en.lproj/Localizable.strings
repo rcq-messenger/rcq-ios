@@ -172,6 +172,38 @@
 /* ── Contact list (main screen) ───────────────────────────── */
 
 "contact_list.offline_badge" = "Offline";
+
+/* ── Hood banners ─────────────────────────────────────────── */
+"hood_banner.section.title" = "AREA BULLETINS";
+"hood_banner.show_all" = "All";
+"hood_banner.empty.cta" = "Post an announcement in this area";
+"hood_banner.anonymous" = "Anonymous";
+"hood_banner.alert.title" = "Banner";
+"hood_banner.duration.1h" = "1 hour";
+"hood_banner.duration.6h" = "6 hours";
+"hood_banner.duration.24h" = "24 hours";
+"hood_banner.duration.7d" = "7 days";
+"hood_banner.composer.title" = "New banner";
+"hood_banner.composer.publish" = "Publish";
+"hood_banner.composer.text_label" = "TEXT";
+"hood_banner.composer.duration_label" = "DURATION";
+"hood_banner.composer.anonymous_label" = "Anonymous";
+"hood_banner.composer.anonymous_hint" = "Nobody will see your nickname or UIN";
+"hood_banner.composer.warning" = "Banners are not editable after publication. Early deletion does NOT refund tokens. Content and anonymity are locked at publish time.";
+"hood_banner.confirm.message" = "%d tokens will be deducted. Balance after: %d. Publish?";
+"hood_banner.confirm.publish" = "Publish";
+"hood_banner.error.insufficient" = "Insufficient tokens: need %d, have %d.";
+"hood_banner.error.bucket_full" = "This area already has the max number of banners (10). Wait until one expires.";
+"hood_banner.error.already_have" = "You already have an active banner in this area.";
+"hood_banner.error.cooldown" = "Wait %d more seconds before posting another banner.";
+"hood_banner.detail.title" = "Banner";
+"hood_banner.detail.add_contact" = "Add contact";
+"hood_banner.detail.delete" = "Delete (no refund)";
+"hood_banner.detail.reported" = "Report sent. Thank you.";
+"hood_banner.expires_in_days" = "expires in %d d";
+"hood_banner.expires_in_hm" = "expires in %dh %dm";
+"hood_banner.expires_in_min" = "expires in %d min";
+"hood_banner.board.title" = "Area board";
 "contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.roulette" = "Stranger Mode";

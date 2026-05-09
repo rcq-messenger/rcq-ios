@@ -163,6 +163,38 @@
 /* ── Contact list ─────────────────────────────────────────── */
 
 "contact_list.offline_badge" = "Без сети";
+
+/* ── Hood banners ─────────────────────────────────────────── */
+"hood_banner.section.title" = "ОБЪЯВЛЕНИЯ РАЙОНА";
+"hood_banner.show_all" = "Все";
+"hood_banner.empty.cta" = "Поставить объявление в этом районе";
+"hood_banner.anonymous" = "Анонимно";
+"hood_banner.alert.title" = "Объявление";
+"hood_banner.duration.1h" = "1 час";
+"hood_banner.duration.6h" = "6 часов";
+"hood_banner.duration.24h" = "24 часа";
+"hood_banner.duration.7d" = "7 дней";
+"hood_banner.composer.title" = "Новое объявление";
+"hood_banner.composer.publish" = "Опубликовать";
+"hood_banner.composer.text_label" = "ТЕКСТ";
+"hood_banner.composer.duration_label" = "ДЛИТЕЛЬНОСТЬ";
+"hood_banner.composer.anonymous_label" = "Анонимно";
+"hood_banner.composer.anonymous_hint" = "Никто не увидит твоего ника и UIN";
+"hood_banner.composer.warning" = "После публикации редактировать нельзя. Удаление досрочно НЕ возвращает жетоны. Содержание и режим (анонимно/нет) фиксируются навсегда.";
+"hood_banner.confirm.message" = "Спишется %d жетонов. Останется %d. Опубликовать?";
+"hood_banner.confirm.publish" = "Опубликовать";
+"hood_banner.error.insufficient" = "Не хватает жетонов: нужно %d, есть %d.";
+"hood_banner.error.bucket_full" = "В этом районе уже максимум объявлений (10). Подожди пока какое-то истечёт.";
+"hood_banner.error.already_have" = "У тебя уже есть активное объявление в этом районе.";
+"hood_banner.error.cooldown" = "Подожди ещё %d секунд перед следующим объявлением.";
+"hood_banner.detail.title" = "Объявление";
+"hood_banner.detail.add_contact" = "В контакты";
+"hood_banner.detail.delete" = "Удалить (без возврата)";
+"hood_banner.detail.reported" = "Жалоба отправлена. Спасибо.";
+"hood_banner.expires_in_days" = "истекает через %d дн.";
+"hood_banner.expires_in_hm" = "истекает через %dч %dм";
+"hood_banner.expires_in_min" = "истекает через %d мин";
+"hood_banner.board.title" = "Доска района";
 "contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.roulette" = "Незнакомец";
