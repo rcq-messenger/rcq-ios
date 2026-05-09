@@ -162,6 +162,7 @@
 
 /* ── Contact list ─────────────────────────────────────────── */
 
+"contact_list.offline_badge" = "Без сети";
 "contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.roulette" = "Незнакомец";

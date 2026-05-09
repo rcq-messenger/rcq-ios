@@ -171,6 +171,7 @@
 
 /* ── Contact list (main screen) ───────────────────────────── */
 
+"contact_list.offline_badge" = "Offline";
 "contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.roulette" = "Stranger Mode";

@@ -394,9 +394,15 @@ struct ContactListView: View {
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                    Text(String(auth.ownUIN ?? 0))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Color.textMono)
+                    if appState.isOffline {
+                        Text("contact_list.offline_badge".localized)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color.orange)
+                    } else {
+                        Text(String(auth.ownUIN ?? 0))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Theme.Color.textMono)
+                    }
                 }
                 .contentShape(Rectangle())
             }

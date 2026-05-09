@@ -79,11 +79,27 @@ final class WebSocketService: ObservableObject {
     private var session: URLSession = .shared
     private var reconnectAttempt = 0
     private var pingTimer: Timer?
+    private var pendingReconnect: DispatchWorkItem?
+    private var shouldStayConnected: Bool = false
+    private var lastUIN: Int?
+    private var lastToken: String?
+    private var lastBaseURL: URL?
 
     private init() {}
 
     func connect(uin: Int, token: String, baseURL: URL) {
-        disconnect()
+        shouldStayConnected = true
+        lastUIN = uin
+        lastToken = token
+        lastBaseURL = baseURL
+        pendingReconnect?.cancel()
+        pendingReconnect = nil
+
+        // Tear down any existing task without flipping shouldStayConnected.
+        task?.cancel(with: .normalClosure, reason: nil)
+        pingTimer?.invalidate()
+        pingTimer = nil
+
         var comp = URLComponents(url: baseURL.appendingPathComponent("/ws/\(uin)"), resolvingAgainstBaseURL: false)!
         if comp.scheme == "http" { comp.scheme = "ws" }
         if comp.scheme == "https" { comp.scheme = "wss" }
@@ -94,17 +110,41 @@ final class WebSocketService: ObservableObject {
         self.task = task
         task.resume()
         isConnected = true
+        reconnectAttempt = 0
         events.send(.opened)
         startPingTimer()
         receiveLoop()
     }
 
     func disconnect() {
+        shouldStayConnected = false
+        pendingReconnect?.cancel()
+        pendingReconnect = nil
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         isConnected = false
         pingTimer?.invalidate()
         pingTimer = nil
+    }
+
+    private func scheduleReconnect() {
+        pendingReconnect?.cancel()
+        reconnectAttempt += 1
+        // Exponential backoff capped at 30s: 1, 2, 4, 8, 16, 30, 30, ...
+        let exponent = min(reconnectAttempt - 1, 5)
+        let delay = min(30.0, pow(2.0, Double(exponent)))
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.shouldStayConnected else { return }
+                guard let uin = self.lastUIN,
+                      let token = self.lastToken,
+                      let baseURL = self.lastBaseURL else { return }
+                self.connect(uin: uin, token: token, baseURL: baseURL)
+            }
+        }
+        pendingReconnect = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     func sendTyping(to uin: Int, active: Bool) {
@@ -604,5 +644,9 @@ final class WebSocketService: ObservableObject {
         events.send(.closed)
         task = nil
         pingTimer?.invalidate()
+        pingTimer = nil
+        if shouldStayConnected {
+            scheduleReconnect()
+        }
     }
 }

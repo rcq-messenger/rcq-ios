@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Network
 import SwiftUI
 
 /// Top-level state holder. Wires the WS event stream into services and surfaces
@@ -10,11 +11,16 @@ final class AppState: ObservableObject {
 
     @Published var booted: Bool = false
     @Published var bootError: String? = nil
+    @Published var isOffline: Bool = false
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     @Published var pendingOpenChatUIN: Int? = nil
     @Published var pendingOpenPending: Bool = false
     @Published var pendingOpenTrades: Bool = false
+
+    private let pathMonitor = NWPathMonitor()
+    private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
+    private var pendingOnlineSync: Task<Void, Never>?
 
     func handle(deepLink url: URL) {
         if url.scheme == "rcq", url.host == "add" {
@@ -44,9 +50,58 @@ final class AppState: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in self?.handle(event) }
             .store(in: &cancellables)
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let offline = path.status != .satisfied
+            Task { @MainActor in
+                self?.handlePathChange(offline: offline)
+            }
+        }
+        pathMonitor.start(queue: pathQueue)
+    }
+
+    private func handlePathChange(offline: Bool) {
+        let wasOffline = isOffline
+        isOffline = offline
+        // Coming back online after an offline boot — replay the network
+        // half of the boot sequence so caches/contacts/wallet sync up.
+        if wasOffline && !offline && booted {
+            pendingOnlineSync?.cancel()
+            pendingOnlineSync = Task { [weak self] in
+                await self?.runOnlineSync()
+            }
+        }
+    }
+
+    private func runOnlineSync() async {
+        guard let uin = AuthService.shared.ownUIN,
+              let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
+        let baseURL = APIClient.shared.baseURL
+        WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+        await syncOwnPresenceFromServer(uin: uin)
+        await ItemsService.shared.refreshCatalog()
+        await ItemsService.shared.refreshInventory()
+        await ContactService.shared.refresh()
+        await GroupService.shared.refresh()
+        await MessageService.shared.fetchOfflineQueue()
     }
 
     func boot(suggestedNickname: String? = nil) async {
+        // Offline-first path. If we already have a local identity AND no
+        // network is available, skip every server-touching call and let
+        // the app launch into the local-only surfaces (Radio Chat over
+        // Bluetooth, settings, history). The online sync runs as soon
+        // as connectivity returns via the NWPathMonitor handler.
+        let cachedUIN = AuthService.shared.ownUIN
+        let cachedToken = KeychainStore.string(KeychainStore.Keys.token)
+        let pathSatisfied = pathMonitor.currentPath.status == .satisfied
+
+        if !pathSatisfied, let uin = cachedUIN, cachedToken != nil {
+            isOffline = true
+            MessageService.shared.configure(ownUIN: uin)
+            booted = true
+            return
+        }
+
         do {
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,
@@ -74,7 +129,15 @@ final class AppState: ObservableObject {
 
             booted = true
         } catch {
-            bootError = error.localizedDescription
+            // If we have a cached identity, fall back to offline-mode
+            // boot rather than blocking the UI on a transport error.
+            if let uin = cachedUIN, cachedToken != nil {
+                isOffline = true
+                MessageService.shared.configure(ownUIN: uin)
+                booted = true
+            } else {
+                bootError = error.localizedDescription
+            }
         }
     }
 
