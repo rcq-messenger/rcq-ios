@@ -23,6 +23,7 @@ struct ItemCard: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(item.rarity.color)
                                 .padding(min(geo.size.width, geo.size.height) * 0.22)
+                                .frame(width: geo.size.width, height: geo.size.height)
                         }
                     } else {
                         ItemAssetImage(
