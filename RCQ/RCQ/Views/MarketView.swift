@@ -593,7 +593,7 @@ struct MarketListingDetailSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("common.done".localized) { dismiss() }
+                    Button("common.close".localized) { dismiss() }
                 }
             }
             .sheet(isPresented: $showForwardPicker) {
@@ -1326,7 +1326,7 @@ struct UinMarketListingDetailSheet: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("common.close".localized) { dismiss() }
                 }
             }

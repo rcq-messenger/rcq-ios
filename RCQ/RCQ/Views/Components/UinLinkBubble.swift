@@ -35,7 +35,7 @@ struct UinLinkBubble: View {
                     .frame(width: 72, height: 72)
                     .blur(radius: 18)
                 VStack(spacing: 2) {
-                    Text(verbatim: "#\(listing.uin)")
+                    Text(verbatim: "\(listing.uin)")
                         .font(.system(.title3, design: .monospaced).weight(.bold))
                         .foregroundColor(Theme.Color.textPrimary)
                     Text(Self.tierLabel(for: listing.tier).uppercased())
@@ -170,7 +170,7 @@ struct UinReplyMiniCard: View {
             Circle()
                 .fill(UinLinkBubble.tierColor(for: listing.tier))
                 .frame(width: 6, height: 6)
-            Text(verbatim: "#\(listing.uin)")
+            Text(verbatim: "\(listing.uin)")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(Theme.Color.textPrimary)
                 .lineLimit(1)

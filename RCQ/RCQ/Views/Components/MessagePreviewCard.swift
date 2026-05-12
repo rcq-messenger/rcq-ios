@@ -29,6 +29,12 @@ struct MessagePreviewCard: View {
                     RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius)
                         .stroke(Theme.Color.divider, lineWidth: 1)
                 )
+        } else if message.kind == .text,
+                  let share = MarketLinkParser.parse(message.text) {
+            MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
+        } else if message.kind == .text,
+                  let share = UinLinkParser.parse(message.text) {
+            UinLinkBubble(listingID: share.listingID, rawURL: share.url)
         } else {
             // Bubble dimensions here MUST match the chat row's defaults
             // (PhotoBubble.maxWidth = 240, premium size 240×aspect)

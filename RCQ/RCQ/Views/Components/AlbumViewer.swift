@@ -419,11 +419,13 @@ private struct AlbumPage: View {
 }
 
 /// Pinch-zoom + double-tap photo page. Self-loads the encrypted
-/// blob and decrypts via MediaService.
+/// blob and decrypts via MediaService. Branches to AnimatedGIFView
+/// when the payload is a GIF — UIImage strips multi-frame data.
 private struct ZoomableImage: View {
     let message: Message
 
     @State private var image: UIImage?
+    @State private var gifData: Data?
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
     @State private var offset: CGSize = .zero
@@ -432,35 +434,51 @@ private struct ZoomableImage: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .scaleEffect(scale)
-                        .offset(offset)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { v in scale = max(1, lastScale * v) }
-                                .onEnded { _ in lastScale = scale }
-                        )
-                        .onTapGesture(count: 2) {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                if scale > 1 {
-                                    scale = 1; lastScale = 1
-                                    offset = .zero; lastOffset = .zero
-                                } else {
-                                    scale = 2.5; lastScale = 2.5
-                                }
-                            }
-                        }
-                } else {
+                imageLayer(in: geo.size)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                if image == nil && gifData == nil {
                     ProgressView().tint(.white)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .task(id: message.mediaID ?? "") { await load() }
+    }
+
+    @ViewBuilder
+    private func imageLayer(in size: CGSize) -> some View {
+        if let gifData {
+            AnimatedGIFView(data: gifData)
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(zoomGesture)
+                .onTapGesture(count: 2, perform: toggleZoom)
+        } else if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(zoomGesture)
+                .onTapGesture(count: 2, perform: toggleZoom)
+        }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { v in scale = max(1, lastScale * v) }
+            .onEnded { _ in lastScale = scale }
+    }
+
+    private func toggleZoom() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            if scale > 1 {
+                scale = 1; lastScale = 1
+                offset = .zero; lastOffset = .zero
+            } else {
+                scale = 2.5; lastScale = 2.5
+            }
+        }
     }
 
     private func load() async {
@@ -470,8 +488,14 @@ private struct ZoomableImage: View {
         let mediaID = String(parts[0])
         let key = String(parts[1])
         guard !mediaID.isEmpty, !key.isEmpty else { return }
-        if let img = await MediaService.shared.loadImage(mediaID: mediaID, keyBase64: key) {
-            await MainActor.run { self.image = img }
+        if let (img, data) = await MediaService.shared.loadImageWithData(mediaID: mediaID, keyBase64: key) {
+            await MainActor.run {
+                if AnimatedGIFView.isGIF(data) {
+                    self.gifData = data
+                } else {
+                    self.image = img
+                }
+            }
         }
     }
 }

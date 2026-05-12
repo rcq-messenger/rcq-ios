@@ -15,13 +15,15 @@ struct ItemCard: View {
             Group {
                 if let kind {
                     if kind.section == .voices {
-                        // Heavy padding so the tall `music.note` glyph reads as an icon, not a tile-filling shape.
-                        Image(systemName: "music.note")
-                            .resizable()
-                            .scaledToFit()
-                            .fontWeight(.semibold)
-                            .foregroundColor(item.rarity.color)
-                            .padding(22)
+                        // Padding proportional to tile size so the tall `music.note` glyph reads as an icon at any scale (36pt history row → 80pt inventory tile).
+                        GeometryReader { geo in
+                            Image(systemName: "music.note")
+                                .resizable()
+                                .scaledToFit()
+                                .fontWeight(.semibold)
+                                .foregroundColor(item.rarity.color)
+                                .padding(min(geo.size.width, geo.size.height) * 0.22)
+                        }
                     } else {
                         ItemAssetImage(
                             bundleSubdir: assetSubdir(for: kind),

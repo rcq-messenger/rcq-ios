@@ -186,6 +186,9 @@ private struct ChatPreviewBubble: View {
     private var isPureMedia: Bool {
         switch message.kind {
         case .photo, .video: return message.text.isEmpty
+        case .text:
+            return MarketLinkParser.parse(message.text) != nil
+                || UinLinkParser.parse(message.text) != nil
         default: return false
         }
     }
@@ -244,8 +247,14 @@ private struct ChatPreviewBubble: View {
         } else {
             switch message.kind {
             case .text:
-                EmoticonText(text: message.text, font: .callout, emoticonSize: 18)
-                    .lineLimit(8)
+                if let share = MarketLinkParser.parse(message.text) {
+                    MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
+                } else if let share = UinLinkParser.parse(message.text) {
+                    UinLinkBubble(listingID: share.listingID, rawURL: share.url)
+                } else {
+                    EmoticonText(text: message.text, font: .callout, emoticonSize: 18)
+                        .lineLimit(8)
+                }
             case .photo:
                 VStack(alignment: .leading, spacing: 4) {
                     PhotoBubble(message: message, maxWidth: 200)
