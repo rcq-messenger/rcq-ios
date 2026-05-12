@@ -442,7 +442,7 @@ struct PetHuntView: View {
             showInventory = true
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "archivebox.fill")
+                Image(systemName: "shippingbox.fill")
                     .foregroundColor(Theme.Color.textSecondary)
                 Text("pet_hunt.cta.open_inventory".localized)
                     .font(.callout)

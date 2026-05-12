@@ -277,6 +277,11 @@ final class CrashService: ObservableObject {
                 participants.append(CrashParticipant(uin: uin, nickname: nick, amount: amount, state: .holding))
             }
 
+        case .opened:
+            // WS reconnect — pull a fresh snapshot so we don't keep
+            // rendering the stale pre-disconnect round.
+            Task { [weak self] in await self?.refresh() }
+
         default:
             break
         }

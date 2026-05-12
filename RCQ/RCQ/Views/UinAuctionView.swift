@@ -74,7 +74,8 @@ struct UinAuctionView: View {
             }
             .sheet(isPresented: $showRules) {
                 UinAuctionRulesSheet()
-                    .presentationDetents([.medium])
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRecent) {
                 RecentWinnersSheet().presentationDetents([.large])
@@ -619,31 +620,32 @@ private struct UinAuctionRulesSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
-                section(
-                    icon: "number.circle.fill",
-                    title: "uin_auction.rules.what.title".localized,
-                    body: "uin_auction.rules.what.body".localized,
-                )
-                section(
-                    icon: "hammer.fill",
-                    title: "uin_auction.rules.bidding.title".localized,
-                    body: "uin_auction.rules.bidding.body".localized,
-                )
-                section(
-                    icon: "bolt.fill",
-                    title: "uin_auction.rules.softclose.title".localized,
-                    body: "uin_auction.rules.softclose.body".localized,
-                )
-                section(
-                    icon: "tray.full.fill",
-                    title: "uin_auction.rules.win.title".localized,
-                    body: "uin_auction.rules.win.body".localized,
-                )
-                Spacer(minLength: 0)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    section(
+                        icon: "number.circle.fill",
+                        title: "uin_auction.rules.what.title".localized,
+                        body: "uin_auction.rules.what.body".localized,
+                    )
+                    section(
+                        icon: "hammer.fill",
+                        title: "uin_auction.rules.bidding.title".localized,
+                        body: "uin_auction.rules.bidding.body".localized,
+                    )
+                    section(
+                        icon: "bolt.fill",
+                        title: "uin_auction.rules.softclose.title".localized,
+                        body: "uin_auction.rules.softclose.body".localized,
+                    )
+                    section(
+                        icon: "tray.full.fill",
+                        title: "uin_auction.rules.win.title".localized,
+                        body: "uin_auction.rules.win.body".localized,
+                    )
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Theme.Color.bgPrimary.ignoresSafeArea())
             .navigationTitle("uin_auction.rules.title".localized)
             .navigationBarTitleDisplayMode(.inline)

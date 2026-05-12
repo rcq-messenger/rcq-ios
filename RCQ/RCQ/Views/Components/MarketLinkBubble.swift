@@ -21,7 +21,7 @@ struct MarketLinkBubble: View {
     @State private var loadFailed: Bool = false
 
     private static let cardWidth: CGFloat = 260
-    private static let cardHeight: CGFloat = 120
+    private static let cardHeight: CGFloat = 96
 
     var body: some View {
         Group {
@@ -78,30 +78,6 @@ struct MarketLinkBubble: View {
                         Image(systemName: "cube")
                             .foregroundColor(Theme.Color.divider)
                     }
-                    // Level badge — same +N treatment as `ItemCard`
-                    // grid tile so the chat-preview keeps stat parity
-                    // with the rest of the surfaces.
-                    if listing.level > 0 {
-                        VStack {
-                            HStack {
-                                Text("+\(listing.level)")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(
-                                        ZStack {
-                                            Rectangle().fill(.thinMaterial)
-                                            Rectangle().fill(Color.black.opacity(0.25))
-                                        }
-                                    )
-                                    .cornerRadius(2)
-                                Spacer()
-                            }
-                            Spacer()
-                        }
-                        .padding(2)
-                    }
                 }
                 .frame(width: 72, height: 72)
                 VStack(alignment: .leading, spacing: 4) {
@@ -119,9 +95,6 @@ struct MarketLinkBubble: View {
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
                             .foregroundColor(Theme.Color.textPrimary)
                     }
-                    Text("market.share.cta_open".localized)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
                 }
                 Spacer(minLength: 0)
             }
@@ -132,24 +105,31 @@ struct MarketLinkBubble: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Theme.Color.divider, lineWidth: 0.5),
         )
-        // Essence badge — top-right overlay so it can't push the price/name column around.
+        // Top-right stat badges (level + essence). HStack so they sit
+        // on the same row without pushing the price/name column.
         .overlay(alignment: .topTrailing) {
             let essence = listing.showcaseValue(catalog: items.catalog)
-            if essence > 0 {
-                HStack(spacing: 3) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("\(essence)")
+            HStack(spacing: 4) {
+                if listing.level > 0 {
+                    Text("+\(listing.level)")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Capsule().fill(Color.black.opacity(0.55)))
                 }
-                .foregroundColor(Theme.Color.accent)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill(Theme.Color.bgPrimary.opacity(0.85))
-                )
-                .padding(6)
+                if essence > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("\(essence)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(Theme.Color.accent)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.Color.bgPrimary.opacity(0.85)))
+                }
             }
+            .padding(6)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())

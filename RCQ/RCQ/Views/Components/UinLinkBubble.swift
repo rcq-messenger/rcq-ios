@@ -61,9 +61,6 @@ struct UinLinkBubble: View {
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
                         .foregroundColor(Theme.Color.textPrimary)
                 }
-                Text("uin_listing.share.cta_open".localized)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
             }
             Spacer(minLength: 0)
         }

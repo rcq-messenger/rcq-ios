@@ -4,6 +4,7 @@ import SwiftUI
 /// lives in `CrashService.shared`; this view renders + handles taps.
 struct CrashView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var svc = CrashService.shared
     @StateObject private var items = ItemsService.shared
 
@@ -63,7 +64,17 @@ struct CrashView: View {
             .task {
                 await svc.refresh()
             }
-            .onAppear { svc.expand() }
+            .onAppear {
+                svc.expand()
+                // Re-pull state on every (re)appearance. `.task` fires
+                // only on first mount, so coming back from a backgrounded
+                // app or another tab used to leave the round frozen on
+                // last-known state.
+                Task { await svc.refresh() }
+            }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active { Task { await svc.refresh() } }
+            }
             .onDisappear { svc.minimize() }
             .onChange(of: svc.lastError) { msg in
                 guard let msg else { return }
