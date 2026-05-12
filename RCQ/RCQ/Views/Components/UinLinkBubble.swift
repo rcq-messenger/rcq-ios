@@ -11,6 +11,7 @@ struct UinLinkBubble: View {
     @State private var loadFailed: Bool = false
 
     private static let cardWidth: CGFloat = 260
+    private static let cardHeight: CGFloat = 96
 
     var body: some View {
         Group {
@@ -67,7 +68,7 @@ struct UinLinkBubble: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .frame(width: Self.cardWidth)
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
         .background(Theme.Color.bgSecondary.opacity(0.7))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
@@ -97,7 +98,7 @@ struct UinLinkBubble: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .frame(width: Self.cardWidth, height: 96)
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
         .background(Theme.Color.bgSecondary.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }

@@ -126,7 +126,7 @@ struct MarketLinkBubble: View {
                 Spacer(minLength: 0)
             }
         .padding(8)
-        .frame(width: Self.cardWidth)
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
         .background(Theme.Color.bgSecondary.opacity(0.7))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
