@@ -8,7 +8,10 @@ struct FloatingMini<Content: View>: View {
     let initialPosition: CGPoint
     let bubbleSize: CGSize
     var peekWidth: CGFloat = 28
-    @ViewBuilder var content: () -> Content
+    /// Closure receives `isDocked` so the bubble can swap to a small
+    /// icon-tab when its body is off-screen, instead of just being
+    /// clipped at the edge.
+    var content: (Bool) -> Content
 
     @State private var position: CGPoint
     @State private var dragOffset: CGSize = .zero
@@ -22,7 +25,7 @@ struct FloatingMini<Content: View>: View {
         initialPosition: CGPoint,
         bubbleSize: CGSize,
         peekWidth: CGFloat = 28,
-        @ViewBuilder content: @escaping () -> Content
+        @ViewBuilder content: @escaping (Bool) -> Content
     ) {
         self.storageKey = storageKey
         self.initialPosition = initialPosition
@@ -39,11 +42,15 @@ struct FloatingMini<Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            content()
-                .frame(width: bubbleSize.width, height: bubbleSize.height)
+            let docked = (dockedEdge != nil) && !isDragging
+            content(docked)
+                .frame(
+                    width: docked ? tabSize.width : bubbleSize.width,
+                    height: docked ? tabSize.height : bubbleSize.height
+                )
                 .scaleEffect(isDragging ? 1.05 : 1.0)
                 .shadow(color: .black.opacity(0.25), radius: isDragging ? 18 : 10, y: isDragging ? 8 : 4)
-                .position(displayPosition(in: geo.size))
+                .position(displayPosition(in: geo.size, docked: docked))
                 .gesture(dragGesture(in: geo.size))
                 .onTapGesture {
                     if dockedEdge != nil {
@@ -60,10 +67,17 @@ struct FloatingMini<Content: View>: View {
         .ignoresSafeArea(.keyboard)
     }
 
+    /// Compact size of the docked tab (vertical pill that pokes out of
+    /// the screen edge). 44pt-wide hits Apple's HIG minimum tap-target
+    /// so the user can actually grab it with a finger. Stored as
+    /// instance property because Swift doesn't allow `static let` on
+    /// a generic type.
+    private var tabSize: CGSize { CGSize(width: 44, height: 64) }
+
     // MARK: - Position math
 
-    private func displayPosition(in size: CGSize) -> CGPoint {
-        if let edge = dockedEdge, !isDragging {
+    private func displayPosition(in size: CGSize, docked: Bool) -> CGPoint {
+        if docked, let edge = dockedEdge {
             return dockedPosition(for: edge, in: size, baseY: position.y)
         }
         let liveX = position.x + dragOffset.width
@@ -75,11 +89,20 @@ struct FloatingMini<Content: View>: View {
     }
 
     private func dockedPosition(for edge: Edge, in size: CGSize, baseY: CGFloat) -> CGPoint {
-        let halfW = bubbleSize.width / 2
+        // Almost the whole tab pokes out — only a thin sliver hides
+        // beyond the edge so it visually reads as "docked" without
+        // shrinking the finger target.
+        let halfW = tabSize.width / 2
+        // Tab center sits ~halfW * 0.5 inside the screen so a ~24pt
+        // glyph is fully visible regardless of how it's centered
+        // inside the 44pt touch target. Previous 1.05 left the tab
+        // center on the screen edge and clipped the inner rocket /
+        // hammer glyph.
+        let peekVisible: CGFloat = halfW * 1.5
         let visibleX: CGFloat
         switch edge {
-        case .leading:  visibleX = -halfW + peekWidth
-        case .trailing: visibleX = size.width + halfW - peekWidth
+        case .leading:  visibleX = -halfW + peekVisible
+        case .trailing: visibleX = size.width + halfW - peekVisible
         }
         return CGPoint(x: visibleX, y: clampedY(baseY, in: size))
     }

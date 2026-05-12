@@ -233,9 +233,14 @@ final class SoundService: ObservableObject {
             nowMuted = true
         }
         UserDefaults.standard.set(Array(mutedThreads), forKey: "sound.muted_threads")
-        // Mirror to backend `push_preferences.muted_uins` for 1:1 only; groups stay client-side.
-        if case .peer(let uin) = thread {
+        // Mirror to backend so the push fan-out can suppress APNs
+        // alerts for muted threads. 1:1 → `muted_uins`; groups →
+        // `muted_group_ids`.
+        switch thread {
+        case .peer(let uin):
             Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted) }
+        case .group(let gid):
+            Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted) }
         }
     }
 

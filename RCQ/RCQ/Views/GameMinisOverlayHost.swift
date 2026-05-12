@@ -7,7 +7,11 @@ import SwiftUI
 struct GameMinisOverlayHost: View {
     @StateObject private var crash = CrashService.shared
     @StateObject private var auctions = UinAuctionService.shared
+    @EnvironmentObject private var appState: AppState
     @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
+
+    @State private var showFullCrash: Bool = false
+    @State private var showFullAuction: Bool = false
 
     var body: some View {
         ZStack {
@@ -16,8 +20,8 @@ struct GameMinisOverlayHost: View {
                     storageKey: "rcq.mini.crash.position",
                     initialPosition: defaultCrashPosition(),
                     bubbleSize: CGSize(width: 220, height: 44)
-                ) {
-                    CrashMiniBubble()
+                ) { docked in
+                    CrashMiniBubble(isDocked: docked) { showFullCrash = true }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
@@ -26,8 +30,8 @@ struct GameMinisOverlayHost: View {
                     storageKey: "rcq.mini.auction.position",
                     initialPosition: defaultAuctionPosition(),
                     bubbleSize: CGSize(width: 280, height: 62)
-                ) {
-                    AuctionMiniBubble()
+                ) { docked in
+                    AuctionMiniBubble(isDocked: docked) { showFullAuction = true }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
@@ -36,6 +40,16 @@ struct GameMinisOverlayHost: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.78), value: crash.shouldShowMini)
         .animation(.spring(response: 0.35, dampingFraction: 0.78), value: auctions.shouldShowMini)
         .animation(.spring(response: 0.35, dampingFraction: 0.78), value: minisEnabled)
+        .fullScreenCover(isPresented: $showFullCrash) { CrashView() }
+        .fullScreenCover(isPresented: $showFullAuction) { UinAuctionView() }
+        .onChange(of: appState.pendingOpenUinAuction) { newValue in
+            // Outbid banner tap → open auction. Reset the flag once
+            // consumed so the same banner can fire again next round.
+            if newValue {
+                appState.pendingOpenUinAuction = false
+                showFullAuction = true
+            }
+        }
     }
 
     private func defaultCrashPosition() -> CGPoint {

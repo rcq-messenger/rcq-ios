@@ -176,6 +176,13 @@ struct StoryComposerView: View {
                         switch media {
                         case .photo(let img): pickedPhoto = img; pickedVideoURL = nil
                         case .video(let url): pickedVideoURL = url; pickedPhoto = nil
+                        case .gif(_, let preview):
+                            // Camera capture never produces GIFs in
+                            // practice, but the enum is exhaustive —
+                            // fall back to treating the first-frame
+                            // preview as a regular photo for stories.
+                            pickedPhoto = preview
+                            pickedVideoURL = nil
                         case .none:
                             if pickedPhoto == nil && pickedVideoURL == nil { dismiss() }
                         }

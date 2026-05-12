@@ -136,6 +136,24 @@ final class UinAuctionService: ObservableObject {
                 body: Body(amount: amount)
             )
             self.active = resp.auction
+            // Optimistic local insert. The WS `uin_auction_bid`
+            // broadcast races with the HTTP response and has dropped
+            // bids in the past (e.g. when the `ends_at` ISO parse
+            // failed in WS dispatch, silently swallowing the entire
+            // event). Inserting here guarantees the bidder sees their
+            // own bid the moment the server confirms it — the
+            // `_dedupBid` filter below skips the duplicate when the
+            // WS frame eventually arrives.
+            if let me = AuthService.shared.ownUIN {
+                let myNick = AuthService.shared.nickname
+                let bid = UinAuctionBid(
+                    bidderUIN: me,
+                    bidderNickname: myNick.isEmpty ? String(me) : myNick,
+                    amount: amount,
+                    placedAt: Date(),
+                )
+                appendBid(bid)
+            }
             // forceWallet bypasses defensive max() in refreshInventory so the counter drops.
             await ItemsService.shared.refreshInventory(forceWallet: true)
             SoundService.shared.play(.auctionBidPlaced)
@@ -183,9 +201,7 @@ final class UinAuctionService: ObservableObject {
                 amount: amount,
                 placedAt: Date(),
             )
-            var nextBids = [bid] + self.bids
-            if nextBids.count > 50 { nextBids = Array(nextBids.prefix(50)) }
-            self.bids = nextBids
+            appendBid(bid)
             self.minNextBid = max(highBid + 50, Int(Double(highBid) * 1.05))
             // Soft-close cue: fires once per auction when endsAt enters the 30s window.
             if !softCloseAnnounced {
@@ -211,9 +227,37 @@ final class UinAuctionService: ObservableObject {
             Task { await ItemsService.shared.refreshInventory() }
             lastError = String(format: "uin_auction.outbid_refund".localized, refund)
             SoundService.shared.play(.auctionOutbid)
+            // In-app banner so the user knows they were outbid without
+            // having to sit on the auction screen. Tap routes to the
+            // auction full-screen so they can rebid in one motion.
+            MessageBannerService.shared.tryPresentSystem(
+                title: "uin_auction.banner.outbid.title".localized,
+                body: String(format: "uin_auction.banner.outbid.body".localized, refund),
+                target: .auction,
+            )
         default:
             break
         }
+    }
+
+    // MARK: - bid list helpers
+
+    /// Prepend a bid, deduping against the recent head. Two bids match
+    /// when same bidder, same amount, and within a 5s window — that's
+    /// the optimistic-insert vs WS-echo race. Without the dedup the
+    /// bidder would see their own bid twice (once from `placeBid`,
+    /// once from the `uin_auction_bid` broadcast).
+    private func appendBid(_ bid: UinAuctionBid) {
+        let dupWindow: TimeInterval = 5
+        if let head = bids.first,
+           head.bidderUIN == bid.bidderUIN,
+           head.amount == bid.amount,
+           abs(head.placedAt.timeIntervalSince(bid.placedAt)) <= dupWindow {
+            return
+        }
+        var next = [bid] + bids
+        if next.count > 50 { next = Array(next.prefix(50)) }
+        bids = next
     }
 
     // MARK: - error parsing

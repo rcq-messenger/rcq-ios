@@ -78,6 +78,11 @@ struct Message: Identifiable, Hashable, Codable {
     /// True once the local user has a usable media key. Sender's copy
     /// is always unlocked; recipients flip true after `/premium/contents/{id}/unlock`.
     var premiumUnlocked: Bool
+    /// Shared id for media sent in one batch (multi-pick from gallery
+    /// or camera). Same id on every photo/video the sender shipped
+    /// together, nil for stand-alone messages. Renderer groups
+    /// consecutive same-album messages into a Telegram-style cluster.
+    var albumID: UUID?
 
     init(
         id: UUID = UUID(),
@@ -101,7 +106,8 @@ struct Message: Identifiable, Hashable, Codable {
         replyToAuthorName: String? = nil,
         editedAt: Date? = nil,
         premiumPriceTokens: Int? = nil,
-        premiumUnlocked: Bool = false
+        premiumUnlocked: Bool = false,
+        albumID: UUID? = nil
     ) {
         self.id = id
         self.thread = thread
@@ -125,5 +131,6 @@ struct Message: Identifiable, Hashable, Codable {
         self.editedAt = editedAt
         self.premiumPriceTokens = premiumPriceTokens
         self.premiumUnlocked = premiumUnlocked
+        self.albumID = albumID
     }
 }

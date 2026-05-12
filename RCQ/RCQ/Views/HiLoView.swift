@@ -258,7 +258,7 @@ struct HiLoView: View {
     private var isSettling: Bool { svc.lastResult != nil }
 
     private var canPlace: Bool {
-        betAmount >= 1 && !isSettling
+        betAmount >= 1 && !isSettling && !svc.inFlight
     }
 
     private var canAfford: Bool { items.wallet.tokens >= betAmount }
@@ -331,20 +331,32 @@ struct HiLoView: View {
         multiplier: Double,
         enabled: Bool,
     ) -> some View {
-        Button {
-            guard enabled else { return }
+        // Tappable while the request is in flight reads as "stuck"
+        // when a slow network swallows the next tap into a parallel
+        // HTTP request. Disable + dim until the service settles.
+        let tappable = enabled && !svc.inFlight
+        return Button {
+            guard tappable else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             Task { await svc.guess(dir) }
         } label: {
-            VStack(spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: dir == .higher ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                    Text(label)
-                        .font(.system(.callout, weight: .bold))
+            ZStack {
+                VStack(spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: dir == .higher ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                        Text(label)
+                            .font(.system(.callout, weight: .bold))
+                    }
+                    Text(String(format: "%.2fx", multiplier))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .opacity(0.8)
                 }
-                Text(String(format: "%.2fx", multiplier))
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .opacity(0.8)
+                .opacity(svc.inFlight ? 0.4 : 1)
+                if svc.inFlight {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                }
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity, minHeight: Self.actionPillHeight)
@@ -352,12 +364,12 @@ struct HiLoView: View {
             .cornerRadius(Self.actionPillRadius)
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
+        .disabled(!tappable)
     }
 
     private var cashoutPill: some View {
         let payout = Int(Double(svc.bet) * svc.multiplier)
-        let canCash = svc.multiplier > 1.0
+        let canCash = svc.multiplier > 1.0 && !svc.inFlight
         return Button {
             guard canCash else { return }
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()

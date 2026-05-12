@@ -14,6 +14,9 @@ struct GroupInfoView: View {
     @State private var actionMember: RCQGroupMember?
     @State private var petPreview: PetPreviewTarget?
     @State private var entryPriceText: String = ""
+    @State private var showAvatarPicker = false
+    @State private var avatarUploading = false
+    @State private var confirmAvatarRemove = false
 
     private var currentGroup: RCQGroup {
         groups.find(group.id) ?? group
@@ -21,6 +24,13 @@ struct GroupInfoView: View {
 
     private var amOwner: Bool {
         AuthService.shared.ownUIN == currentGroup.ownerUIN
+    }
+
+    /// Owner OR admin. Matches the backend gate on the rename + avatar
+    /// branches of PATCH /groups/{id}.
+    private var canEditChrome: Bool {
+        guard let me = AuthService.shared.ownUIN else { return false }
+        return currentGroup.isAdmin(me)
     }
 
     var body: some View {
@@ -126,11 +136,58 @@ struct GroupInfoView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.3.fill")
-                .font(.system(size: 26))
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Circle().fill(Theme.Color.accent))
+            ZStack(alignment: .bottomTrailing) {
+                GroupAvatarView(
+                    mediaID: currentGroup.avatarMediaID,
+                    keyBase64: currentGroup.avatarMediaKey,
+                    size: 56,
+                    glyphSize: 26,
+                )
+                if avatarUploading {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .frame(width: 56, height: 56)
+                        .background(Circle().fill(Color.black.opacity(0.4)))
+                } else if canEditChrome {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white, Theme.Color.accent)
+                        .background(Circle().fill(Theme.Color.bgPrimary))
+                        .offset(x: 2, y: 2)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard canEditChrome, !avatarUploading else { return }
+                if currentGroup.avatarMediaID != nil {
+                    // Existing avatar — let the user pick between
+                    // replacing it and clearing it back to the
+                    // placeholder.
+                    confirmAvatarRemove = true
+                } else {
+                    showAvatarPicker = true
+                }
+            }
+            .confirmationDialog(
+                "group.avatar.change".localized,
+                isPresented: $confirmAvatarRemove,
+                titleVisibility: .visible,
+            ) {
+                Button("group.avatar.change".localized) {
+                    showAvatarPicker = true
+                }
+                Button("group.avatar.remove".localized, role: .destructive) {
+                    Task { await removeAvatar() }
+                }
+                Button("common.cancel".localized, role: .cancel) {}
+            }
+            .sheet(isPresented: $showAvatarPicker) {
+                PhotoPicker(selectionLimit: 1) { images in
+                    showAvatarPicker = false
+                    guard let img = images.first else { return }
+                    Task { await uploadAvatar(img) }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 if amOwner {
@@ -327,6 +384,35 @@ struct GroupInfoView: View {
         guard !trimmed.isEmpty, trimmed != currentGroup.name else { return }
         do { try await groups.rename(groupID: currentGroup.id, name: trimmed) }
         catch { self.error = error.localizedDescription }
+    }
+
+    private func uploadAvatar(_ image: UIImage) async {
+        avatarUploading = true
+        defer { avatarUploading = false }
+        do {
+            let result = try await MediaService.shared.uploadImage(image)
+            try await groups.setAvatar(
+                groupID: currentGroup.id,
+                mediaID: result.mediaID,
+                keyBase64: result.keyBase64,
+            )
+        } catch {
+            self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)
+        }
+    }
+
+    private func removeAvatar() async {
+        avatarUploading = true
+        defer { avatarUploading = false }
+        do {
+            try await groups.setAvatar(
+                groupID: currentGroup.id,
+                mediaID: nil,
+                keyBase64: nil,
+            )
+        } catch {
+            self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)
+        }
     }
 
     private func leaveOrDelete() async {

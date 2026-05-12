@@ -14,7 +14,6 @@ struct PremiumLockedBubble: View {
     @State private var fullImage: UIImage?
     @State private var currentBlur: CGFloat
     @State private var overlayOpacity: Double
-    @State private var fullscreen: Bool = false
 
     init(message: Message, onUnlock: @escaping () -> Void, size: CGSize = CGSize(width: 240, height: 240)) {
         self.message = message
@@ -36,24 +35,42 @@ struct PremiumLockedBubble: View {
                 .frame(width: size.width, height: size.height)
                 .clipped()
                 .blur(radius: currentBlur)
+            // Play badge so video is visually distinct from photo
+            // even after unlock — without this both kinds collapse
+            // to the same still-frame look.
+            if isVideo, isUnlocked {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 38))
+                    .foregroundColor(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.45), radius: 6)
+            }
         }
         .frame(width: size.width, height: size.height)
         .cornerRadius(Theme.Metrics.bubbleRadius)
         .clipped()
+        .overlay(alignment: .topTrailing) {
+            // Keep recipient aware that this bubble was paid content
+            // even after the unlock blur dissolves.
+            if isUnlocked {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white, Color.black.opacity(0.55))
+                    .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                    .padding(8)
+            }
+        }
         .overlay(lockedOverlay.opacity(overlayOpacity).allowsHitTesting(overlayOpacity > 0.05))
         .contentShape(Rectangle())
         .onTapGesture {
-            if isUnlocked, fullImage != nil {
-                fullscreen = true
-            }
+            guard isUnlocked else { return }
+            // Same viewer for premium photo and video — keeps close /
+            // save icons and swipe-down dismiss consistent with the
+            // rest of the app instead of forking into the old
+            // FullscreenPhotoViewer.
+            AlbumViewerPresenter.present(items: [message], initialIndex: 0)
         }
         .task(id: message.id) { decodeThumbnail() }
         .task(id: cacheKey) { await syncWithUnlockState() }
-        .fullScreenCover(isPresented: $fullscreen) {
-            if let img = fullImage {
-                FullscreenPhotoViewer(image: img) { fullscreen = false }
-            }
-        }
     }
 
     // Recomputes when unlock flips OR the mediaID gets the AES key spliced in by unlockPremium.
@@ -80,7 +97,11 @@ struct PremiumLockedBubble: View {
         ZStack {
             Color.black.opacity(0.25)
             VStack(spacing: 12) {
-                Image(systemName: isVideo ? "lock.rectangle.stack.fill" : "lock.fill")
+                // Same `lock.fill` for both kinds — the previous
+                // `lock.rectangle.stack.fill` looked like a "stack of
+                // media" badge and read as if multiple items were
+                // hidden, even though premium content is always one.
+                Image(systemName: "lock.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(.white)
                     .shadow(color: .black.opacity(0.4), radius: 4, y: 1)

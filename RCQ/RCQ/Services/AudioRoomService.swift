@@ -254,6 +254,24 @@ final class AudioRoomService: ObservableObject {
         lastJoinError = nil
     }
 
+    /// Called from RootView when the scene becomes active. iOS suspends
+    /// the WS while the app is backgrounded; when it reconnects the
+    /// server's in-memory room roster may have ejected this UIN (after
+    /// the offline grace window) or kept it stale. Re-sending
+    /// `room_enter` is idempotent server-side (Lua dedups) and forces
+    /// a fresh `room_roster` event so the iOS roster + the chat-list
+    /// participant counts get re-synced. `refresh()` brings the rooms
+    /// list (member counts) up to date too. If we're not in a room,
+    /// just refresh the list.
+    func restoreOnForeground() {
+        Task { @MainActor in
+            await refresh()
+            if let id = activeRoomID {
+                WebSocketService.shared.sendRoomEnter(roomID: id)
+            }
+        }
+    }
+
     // MARK: - WS event routing
 
     private func handle(_ event: WebSocketService.Event) {

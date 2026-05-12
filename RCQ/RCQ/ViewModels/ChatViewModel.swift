@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 import UIKit
 
 @MainActor
@@ -14,6 +15,33 @@ final class ChatViewModel: ObservableObject {
     @Published var editingTarget: Message?
     @Published var translatedTexts: [UUID: String] = [:]
     @Published var pendingTranslationMessage: Message?
+    /// Picked-but-not-yet-sent media. Lives in the composer as preview
+    /// thumbnails so the user can attach a caption before tapping Send,
+    /// instead of the picker firing each item off as a standalone
+    /// message the moment it returns.
+    @Published var pendingMedia: [PendingMediaItem] = []
+    /// Multi-select state for batch delete / forward. Entered via the
+    /// "Select" action on the message context menu and exited via the
+    /// Cancel button on the selection action bar.
+    @Published var isSelecting: Bool = false
+    @Published var selectedIDs: Set<UUID> = []
+
+    enum PendingMediaItem: Identifiable {
+        case photo(id: UUID, image: UIImage)
+        case video(id: UUID, url: URL, thumbnail: UIImage?)
+        /// Animated GIF carried through the composer as raw bytes so
+        /// the send path can upload without JPEG recompression.
+        /// `preview` is the first frame for the pending-tile thumbnail.
+        case gif(id: UUID, data: Data, preview: UIImage)
+
+        var id: UUID {
+            switch self {
+            case .photo(let id, _): return id
+            case .video(let id, _, _): return id
+            case .gif(let id, _, _): return id
+            }
+        }
+    }
 
     private var cancellables = Set<AnyCancellable>()
     private var typingDebounce: Task<Void, Never>?
@@ -128,7 +156,9 @@ final class ChatViewModel: ObservableObject {
                     }
                 } catch { }
             }
-            editingTarget = nil
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                editingTarget = nil
+            }
             input = ""
             return
         }
@@ -145,24 +175,127 @@ final class ChatViewModel: ObservableObject {
     }
 
     func startEdit(_ message: Message) {
-        replyTarget = nil
-        editingTarget = message
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+            replyTarget = nil
+            editingTarget = message
+        }
         input = message.text
     }
 
     func cancelEdit() {
-        editingTarget = nil
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+            editingTarget = nil
+        }
         input = ""
     }
 
+    /// Hard cap so the composer doesn't grow unboundedly (and to mirror
+    /// the picker's selectionLimit). Items past the cap are dropped on
+    /// the floor — UI prevents picking past it, this is a safety net.
+    static let maxPendingMedia = 5
+
+    func queuePendingPhotos(_ images: [UIImage]) {
+        for img in images {
+            guard pendingMedia.count < Self.maxPendingMedia else { break }
+            pendingMedia.append(.photo(id: UUID(), image: img))
+        }
+    }
+
+    func queuePendingVideo(url: URL, thumbnail: UIImage?) {
+        guard pendingMedia.count < Self.maxPendingMedia else { return }
+        pendingMedia.append(.video(id: UUID(), url: url, thumbnail: thumbnail))
+    }
+
+    func queuePendingGIF(data: Data, preview: UIImage) {
+        guard pendingMedia.count < Self.maxPendingMedia else { return }
+        pendingMedia.append(.gif(id: UUID(), data: data, preview: preview))
+    }
+
+    var pendingMediaSlotsLeft: Int {
+        max(0, Self.maxPendingMedia - pendingMedia.count)
+    }
+
+    func removePendingMedia(_ id: UUID) {
+        if case .video(_, let url, _) = pendingMedia.first(where: { $0.id == id }) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        pendingMedia.removeAll { $0.id == id }
+    }
+
+    func clearPendingMedia() {
+        for item in pendingMedia {
+            if case .video(_, let url, _) = item {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        pendingMedia = []
+    }
+
+    /// Drains `pendingMedia`, attaching the composer text to the LAST
+    /// item as a caption (Telegram-style album behaviour). Returns
+    /// the first error encountered, or nil. The composer text and
+    /// pending list are cleared once dispatch starts so the user sees
+    /// the queue empty out immediately.
     @discardableResult
-    func sendPhoto(_ image: UIImage) async -> String? {
+    func sendPendingMediaWithCaption() async -> String? {
+        guard !pendingMedia.isEmpty else { return nil }
+        let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queue = pendingMedia
+        pendingMedia = []
+        input = ""
+        // One album-id for the whole batch — only assigned when there
+        // are 2+ items, so a single-pick send keeps the standalone
+        // bubble layout. Receivers group by this id at render time.
+        let album: UUID? = queue.count > 1 ? UUID() : nil
+        var firstError: String?
+        for (idx, item) in queue.enumerated() {
+            // Caption rides inline on the LAST media — sending it as
+            // a separate `.text` message would let it race ahead of
+            // the slow video upload and arrive out of album-order.
+            // The renderer pulls the caption out and paints it as a
+            // proper-looking text bubble below the album, so visually
+            // it still reads like a separate chat message.
+            let isLast = (idx == queue.count - 1)
+            let cap: String? = (isLast && !caption.isEmpty) ? caption : nil
+            let err: String?
+            switch item {
+            case .photo(_, let img):
+                err = await sendPhoto(img, caption: cap, albumID: album)
+            case .video(_, let url, _):
+                err = await sendVideo(from: url, caption: cap, albumID: album)
+            case .gif(_, let data, let preview):
+                err = await sendGIF(data: data, preview: preview, caption: cap, albumID: album)
+            }
+            if let e = err, firstError == nil { firstError = e }
+        }
+        return firstError
+    }
+
+    @discardableResult
+    func sendGIF(data: Data, preview: UIImage, caption: String? = nil, albumID: UUID? = nil) async -> String? {
         let reply = consumeReplyContext()
         do {
             switch target {
-            case .peer(let c):       try await MessageService.shared.sendPhoto(image, to: c, replyTo: reply)
-            case .group(let g):      try await MessageService.shared.sendPhoto(image, to: g, replyTo: reply)
-            case .randomPeer(let p): try await MessageService.shared.sendPhoto(image, toRandom: p, replyTo: reply)
+            case .peer(let c):       try await MessageService.shared.sendGIF(data: data, preview: preview, to: c, caption: caption, replyTo: reply, albumID: albumID)
+            case .group(let g):      try await MessageService.shared.sendGIF(data: data, preview: preview, to: g, caption: caption, replyTo: reply, albumID: albumID)
+            case .randomPeer(let p): try await MessageService.shared.sendGIF(data: data, preview: preview, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
+            }
+            return nil
+        } catch let err as MediaService.Failure {
+            return err.errorDescription
+        } catch {
+            return nil
+        }
+    }
+
+    @discardableResult
+    func sendPhoto(_ image: UIImage, caption: String? = nil, albumID: UUID? = nil) async -> String? {
+        let reply = consumeReplyContext()
+        do {
+            switch target {
+            case .peer(let c):       try await MessageService.shared.sendPhoto(image, to: c, caption: caption, replyTo: reply, albumID: albumID)
+            case .group(let g):      try await MessageService.shared.sendPhoto(image, to: g, caption: caption, replyTo: reply, albumID: albumID)
+            case .randomPeer(let p): try await MessageService.shared.sendPhoto(image, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
             }
             return nil
         } catch let err as MediaService.Failure {
@@ -202,7 +335,9 @@ final class ChatViewModel: ObservableObject {
 
     private func consumeReplyContext() -> ReplyContext? {
         guard let target = replyTarget else { return nil }
-        replyTarget = nil
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+            replyTarget = nil
+        }
         let snippet = Self.snippet(for: target)
         let author = senderNickname(target.senderUIN)
         return ReplyContext(id: target.id, snippet: snippet, authorName: author)
@@ -238,15 +373,15 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func sendVideo(from sourceURL: URL) async -> String? {
+    func sendVideo(from sourceURL: URL, caption: String? = nil, albumID: UUID? = nil) async -> String? {
         let reply = consumeReplyContext()
         do {
             let processed = try await VideoProcessor.process(sourceURL: sourceURL)
             try? FileManager.default.removeItem(at: sourceURL)
             switch target {
-            case .peer(let c):       try await MessageService.shared.sendVideo(processed: processed, to: c, replyTo: reply)
-            case .group(let g):      try await MessageService.shared.sendVideo(processed: processed, to: g, replyTo: reply)
-            case .randomPeer(let p): try await MessageService.shared.sendVideo(processed: processed, toRandom: p, replyTo: reply)
+            case .peer(let c):       try await MessageService.shared.sendVideo(processed: processed, to: c, caption: caption, replyTo: reply, albumID: albumID)
+            case .group(let g):      try await MessageService.shared.sendVideo(processed: processed, to: g, caption: caption, replyTo: reply, albumID: albumID)
+            case .randomPeer(let p): try await MessageService.shared.sendVideo(processed: processed, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
             }
             return nil
         } catch let err as VideoProcessor.Failure {
@@ -318,6 +453,96 @@ final class ChatViewModel: ObservableObject {
         } catch { }
     }
 
+    // MARK: - Multi-select
+
+    func enterSelection(seeding messageID: UUID) {
+        isSelecting = true
+        selectedIDs = [messageID]
+    }
+
+    func toggleSelection(_ messageID: UUID) {
+        if selectedIDs.contains(messageID) {
+            selectedIDs.remove(messageID)
+        } else {
+            selectedIDs.insert(messageID)
+        }
+        if selectedIDs.isEmpty {
+            isSelecting = false
+        }
+    }
+
+    func cancelSelection() {
+        isSelecting = false
+        selectedIDs = []
+    }
+
+    private var selectedMessages: [Message] {
+        let set = selectedIDs
+        return messages.filter { set.contains($0.id) }
+    }
+
+    /// True when every selected message was sent by the current user
+    /// AND can be retracted (none too old, none already deleted).
+    /// Drives the visibility of the "Delete for everyone" option in
+    /// the selection action bar.
+    var selectionAllRetractable: Bool {
+        let me = AuthService.shared.ownUIN
+        guard let me else { return false }
+        return !selectedMessages.isEmpty
+            && selectedMessages.allSatisfy { $0.senderUIN == me && !$0.deletedForEveryone }
+    }
+
+    /// True if any selected message can't be forwarded (deleted,
+    /// voice, premium, etc). Hides the Forward button rather than
+    /// silently skipping unforwardable items.
+    var selectedMessagesContainNonForwardable: Bool {
+        selectedMessages.contains { msg in
+            if msg.deletedForEveryone { return true }
+            switch msg.kind {
+            case .text, .photo, .video: return false
+            default: return true
+            }
+        }
+    }
+
+    /// Anchor for the multi-forward picker sheet. Picks the earliest-
+    /// sent selected message so the sheet's preview is stable when
+    /// the user adds/removes items.
+    var firstSelectedMessage: Message? {
+        selectedMessages.min(by: { $0.sentAt < $1.sentAt })
+    }
+
+    func deleteSelectedForMe() {
+        for m in selectedMessages {
+            deleteForMe(m)
+        }
+        cancelSelection()
+    }
+
+    func deleteSelectedForEveryone() async {
+        let snapshot = selectedMessages
+        cancelSelection()
+        for m in snapshot {
+            await deleteForEveryone(m)
+        }
+    }
+
+    func forwardSelected(toContact contact: Contact) async {
+        let snapshot = selectedMessages.sorted { $0.sentAt < $1.sentAt }
+        cancelSelection()
+        for m in snapshot {
+            await forward(m, toContact: contact)
+        }
+    }
+
+    func forwardSelected(toGroup group: RCQGroup) async {
+        let snapshot = selectedMessages.sorted { $0.sentAt < $1.sentAt }
+        cancelSelection()
+        for m in snapshot {
+            await forward(m, toGroup: group)
+        }
+    }
+
     private static let typingThrottle: TimeInterval = 3.0
     private static let typingIdleTimeout: UInt64 = 4_000_000_000
 
@@ -353,6 +578,52 @@ final class ChatViewModel: ObservableObject {
             let label = items.first.map { DateFormatters.dayDivider.string(from: $0.sentAt) } ?? ""
             return (label, items.sorted { $0.sentAt < $1.sentAt })
         }
+    }
+
+    /// Render unit — either a stand-alone message or a contiguous run
+    /// of media that shared an albumID at send time.
+    enum RenderUnit: Identifiable {
+        case single(Message)
+        case album(id: UUID, items: [Message])
+
+        var id: UUID {
+            switch self {
+            case .single(let m): return m.id
+            case .album(let id, _): return id
+            }
+        }
+    }
+
+    /// Collapses consecutive messages with the same `albumID` (and same
+    /// sender) into one render unit. Anything without an albumID, or a
+    /// run of length 1, stays as `.single`.
+    func collapsedAlbums(_ items: [Message]) -> [RenderUnit] {
+        var out: [RenderUnit] = []
+        var i = 0
+        while i < items.count {
+            let m = items[i]
+            guard let album = m.albumID else {
+                out.append(.single(m))
+                i += 1
+                continue
+            }
+            // Lookahead while same album + same sender (avoid merging
+            // through a different sender's interjection).
+            var j = i + 1
+            while j < items.count,
+                  items[j].albumID == album,
+                  items[j].senderUIN == m.senderUIN {
+                j += 1
+            }
+            let run = Array(items[i..<j])
+            if run.count > 1 {
+                out.append(.album(id: album, items: run))
+            } else {
+                out.append(.single(m))
+            }
+            i = j
+        }
+        return out
     }
 
     func senderNickname(_ uin: Int) -> String {

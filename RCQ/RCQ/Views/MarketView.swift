@@ -379,6 +379,7 @@ struct MarketView: View {
         }
         refreshing = false
     }
+
 }
 
 // MARK: - Listing row
@@ -525,7 +526,12 @@ private struct ListingRow: View {
 
 // MARK: - Listing detail sheet
 
-private struct MarketListingDetailSheet: View {
+/// Listing detail sheet. Not `private` — `ContactListView` presents
+/// this standalone (without the surrounding `MarketView`) when a
+/// share-to-chat deep link lands, so the user sees just the item's
+/// shutter slide up rather than the full market shutter + the item
+/// shutter on top of it.
+struct MarketListingDetailSheet: View {
     let listing: MarketplaceListing
     let onBought: () async -> Void
     let onCancelled: () async -> Void
@@ -536,6 +542,8 @@ private struct MarketListingDetailSheet: View {
     @StateObject private var items = ItemsService.shared
     @State private var busy: Bool = false
     @State private var alertMessage: String?
+    @State private var showForwardPicker: Bool = false
+    @State private var shareAlertMessage: String?
 
     private var isMine: Bool { listing.sellerUIN == auth.ownUIN }
     private var canAfford: Bool { items.wallet.tokens >= listing.priceTokens }
@@ -567,9 +575,36 @@ private struct MarketListingDetailSheet: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Both share buttons cluster on the leading edge so
+                // they read as one "share" intent split between
+                // in-app and OS share. Paperplane first (in-app
+                // send → main use case among RCQ contacts), then
+                // ShareLink for the universal-link path.
+                ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 14) {
+                        Button { showForwardPicker = true } label: {
+                            Image(systemName: "paperplane")
+                        }
+                        if let shareURL = Self.webShareURL(for: listing) {
+                            ShareLink(item: shareURL) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("common.done".localized) { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showForwardPicker) {
+                ForwardPickerSheet(
+                    message: Self.sharePreviewMessage(for: listing),
+                    onPick: { destination in
+                        showForwardPicker = false
+                        Task { await shareTo(destination) }
+                    },
+                    onCancel: { showForwardPicker = false },
+                )
             }
             .alert("market.alert.title".localized,
                    isPresented: Binding(
@@ -578,6 +613,59 @@ private struct MarketListingDetailSheet: View {
                    ),
                    actions: { Button("common.ok".localized, role: .cancel) {} },
                    message: { Text(alertMessage ?? "") })
+            .alert("market.share.toast.title".localized,
+                   isPresented: Binding(
+                    get: { shareAlertMessage != nil },
+                    set: { if !$0 { shareAlertMessage = nil } }
+                   ),
+                   actions: { Button("common.ok".localized, role: .cancel) {} },
+                   message: { Text(shareAlertMessage ?? "") })
+        }
+    }
+
+    /// Universal-link form of the listing URL. Returned as `URL?`
+    /// because the rare construction failure (malformed listing id)
+    /// shouldn't crash the sheet.
+    private static func webShareURL(for listing: MarketplaceListing) -> URL? {
+        URL(string: "https://rcq.app/m/\(listing.id)")
+    }
+
+    /// Custom-scheme variant — what we paste into the chat text body
+    /// when shared via the Forward picker. The receiver's parser
+    /// matches this exact shape, so anything tweaked here MUST be
+    /// kept in lockstep with `MarketLinkParser.parse(_:)`.
+    private static func chatShareBody(for listing: MarketplaceListing) -> String {
+        "rcq://market/\(listing.id)"
+    }
+
+    /// Synthetic `Message` for the forward-picker's header preview.
+    /// The picker only uses this for the "Forward this message to…"
+    /// title — its body / list logic doesn't read message kind.
+    private static func sharePreviewMessage(for listing: MarketplaceListing) -> Message {
+        Message(
+            thread: .peer(uin: 0),
+            senderUIN: 0,
+            isFromMe: true,
+            kind: .text,
+            text: chatShareBody(for: listing),
+        )
+    }
+
+    private func shareTo(_ destination: ForwardPickerSheet.Destination) async {
+        let body = Self.chatShareBody(for: listing)
+        do {
+            switch destination {
+            case .contact(let c):
+                try await MessageService.shared.send(text: body, to: c)
+            case .group(let g):
+                try await MessageService.shared.send(text: body, to: g)
+            }
+            shareAlertMessage = "market.share.toast.sent".localized
+        } catch {
+            shareAlertMessage = String(
+                format: "market.share.toast.error".localized,
+                error.localizedDescription,
+            )
         }
     }
 
@@ -1081,7 +1169,7 @@ private struct UinListingRow: View {
     }
 }
 
-private struct UinMarketListingDetailSheet: View {
+struct UinMarketListingDetailSheet: View {
     let listing: UinMarketplaceListing
     let onBought: () async -> Void
     let onCancelled: () async -> Void
@@ -1091,6 +1179,8 @@ private struct UinMarketListingDetailSheet: View {
     @StateObject private var items = ItemsService.shared
     @State private var busy: Bool = false
     @State private var alertMessage: String?
+    @State private var showForwardPicker: Bool = false
+    @State private var shareAlertMessage: String?
 
     private var isMine: Bool {
         listing.sellerUIN == AuthService.shared.ownUIN
@@ -1224,10 +1314,39 @@ private struct UinMarketListingDetailSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    HStack(spacing: 14) {
+                        Button { showForwardPicker = true } label: {
+                            Image(systemName: "paperplane")
+                        }
+                        if let shareURL = Self.webShareURL(for: listing) {
+                            ShareLink(item: shareURL) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                 }
             }
+            .sheet(isPresented: $showForwardPicker) {
+                ForwardPickerSheet(
+                    message: Self.sharePreviewMessage(for: listing),
+                    onPick: { destination in
+                        showForwardPicker = false
+                        Task { await shareTo(destination) }
+                    },
+                    onCancel: { showForwardPicker = false },
+                )
+            }
+            .alert("uin_listing.share.toast.title".localized,
+                   isPresented: Binding(
+                    get: { shareAlertMessage != nil },
+                    set: { if !$0 { shareAlertMessage = nil } }
+                   ),
+                   actions: { Button("common.ok".localized, role: .cancel) {} },
+                   message: { Text(shareAlertMessage ?? "") })
             .alert("market.alert.title".localized,
                    isPresented: Binding(
                     get: { alertMessage != nil },
@@ -1275,6 +1394,42 @@ private struct UinMarketListingDetailSheet: View {
             alertMessage = "market.error.not_active".localized
         case .other(let m):
             alertMessage = m
+        }
+    }
+
+    private static func webShareURL(for listing: UinMarketplaceListing) -> URL? {
+        URL(string: "https://rcq.app/ul/\(listing.id)")
+    }
+
+    private static func chatShareBody(for listing: UinMarketplaceListing) -> String {
+        "rcq://uin-listing/\(listing.id)"
+    }
+
+    private static func sharePreviewMessage(for listing: UinMarketplaceListing) -> Message {
+        Message(
+            thread: .peer(uin: 0),
+            senderUIN: 0,
+            isFromMe: true,
+            kind: .text,
+            text: chatShareBody(for: listing),
+        )
+    }
+
+    private func shareTo(_ destination: ForwardPickerSheet.Destination) async {
+        let body = Self.chatShareBody(for: listing)
+        do {
+            switch destination {
+            case .contact(let c):
+                try await MessageService.shared.send(text: body, to: c)
+            case .group(let g):
+                try await MessageService.shared.send(text: body, to: g)
+            }
+            shareAlertMessage = "uin_listing.share.toast.sent".localized
+        } catch {
+            shareAlertMessage = String(
+                format: "uin_listing.share.toast.error".localized,
+                error.localizedDescription,
+            )
         }
     }
 }

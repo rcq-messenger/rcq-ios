@@ -65,18 +65,13 @@ struct VideoBubble: View {
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isUploading, !didFailUpload, thumb != nil else { return }
-            Task { await play() }
+            // Route through the album viewer (single-item album) so
+            // standalone video shares the same chrome and gestures
+            // as multi-item albums — same close + save buttons,
+            // swipe-down dismiss, swipe-paging stub.
+            AlbumViewerPresenter.present(items: [message], initialIndex: 0)
         }
         .onAppear { decodeThumb() }
-        .fullScreenCover(item: Binding(
-            get: { playerURL.map { PlayableURL(url: $0) } },
-            set: { playerURL = $0?.url }
-        )) { wrap in
-            VideoPlayerSheet(url: wrap.url, onClose: {
-                playerURL = nil
-                try? FileManager.default.removeItem(at: wrap.url)
-            })
-        }
     }
 
     private var uploadRing: some View {

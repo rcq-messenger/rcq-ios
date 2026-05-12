@@ -85,6 +85,7 @@ struct ChatPreviewView: View {
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
+                        // allowsHitTesting on the inner stack only — keeps the ScrollView pan working.
                         LazyVStack(alignment: .leading, spacing: 6) {
                             ForEach(Array(recent), id: \.id) { msg in
                                 ChatPreviewBubble(
@@ -96,6 +97,7 @@ struct ChatPreviewView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
+                        .allowsHitTesting(false)
                         Color.clear
                             .frame(height: 1)
                             .id(Self.bottomAnchorID)
@@ -181,6 +183,13 @@ private struct ChatPreviewBubble: View {
     let message: Message
     let senderNickname: String
 
+    private var isPureMedia: Bool {
+        switch message.kind {
+        case .photo, .video: return message.text.isEmpty
+        default: return false
+        }
+    }
+
     var body: some View {
         if message.kind == .systemNotice {
             HStack {
@@ -206,12 +215,17 @@ private struct ChatPreviewBubble: View {
                         }
                         .foregroundColor(Theme.Color.textSecondary)
                     }
-                    bubbleBody
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius)
-                                .fill(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        )
+                    if isPureMedia {
+                        // Media clips itself — extra bubble fill would leave a colored strip around the image.
+                        bubbleBody
+                    } else {
+                        bubbleBody
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius)
+                                    .fill(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+                            )
+                    }
                     if !message.reactions.isEmpty {
                         previewReactions
                     }

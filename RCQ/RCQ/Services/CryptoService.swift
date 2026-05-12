@@ -32,8 +32,8 @@ struct PeerBundle {
 /// Plaintext shipped inside the encrypted envelope. Server never sees it.
 enum Envelope: Codable, Hashable {
     case text(id: UUID, text: String, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
-    case photo(id: UUID, mediaID: String, mediaKey: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
-    case video(id: UUID, mediaID: String, mediaKey: String, thumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case photo(id: UUID, mediaID: String, mediaKey: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
+    case video(id: UUID, mediaID: String, mediaKey: String, thumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
     case voice(id: UUID, mediaID: String, mediaKey: String, durationSec: Double, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     case deleteForEveryone(targetID: UUID)
     case systemNotice(id: UUID, text: String)
@@ -46,13 +46,14 @@ enum Envelope: Codable, Hashable {
     case edit(targetID: UUID, text: String)
     /// Paywalled photo. `mediaKey` is escrowed per-recipient via `/premium/contents`
     /// and only released after a paid unlock. `blurThumbnailB64` is the locked preview.
-    case premiumPhoto(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
-    case premiumVideo(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case premiumPhoto(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
+    case premiumVideo(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
+        case albumID = "album"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -65,7 +66,7 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .photo(let id, let mediaID, let key, let caption, let ttl, let fwd, let reply):
+        case .photo(let id, let mediaID, let key, let caption, let ttl, let fwd, let reply, let album):
             try c.encode("photo", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -74,7 +75,8 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .video(let id, let mediaID, let key, let thumb, let dur, let caption, let ttl, let fwd, let reply):
+            try c.encodeIfPresent(album, forKey: .albumID)
+        case .video(let id, let mediaID, let key, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album):
             try c.encode("video", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -85,6 +87,7 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
+            try c.encodeIfPresent(album, forKey: .albumID)
         case .voice(let id, let mediaID, let key, let dur, let ttl, let fwd, let reply):
             try c.encode("voice", forKey: .kind)
             try c.encode(id, forKey: .id)
@@ -118,7 +121,7 @@ enum Envelope: Codable, Hashable {
             try c.encode("edit", forKey: .kind)
             try c.encode(target, forKey: .targetID)
             try c.encode(s, forKey: .text)
-        case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let ttl, let fwd, let reply):
+        case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let ttl, let fwd, let reply, let album):
             try c.encode("premium_photo", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -128,7 +131,8 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let ttl, let fwd, let reply):
+            try c.encodeIfPresent(album, forKey: .albumID)
+        case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album):
             try c.encode("premium_video", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -139,6 +143,7 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
+            try c.encodeIfPresent(album, forKey: .albumID)
         }
     }
 
@@ -162,7 +167,8 @@ enum Envelope: Codable, Hashable {
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
+                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
             )
         case "video":
             self = .video(
@@ -174,7 +180,8 @@ enum Envelope: Codable, Hashable {
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
+                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
             )
         case "voice":
             self = .voice(
@@ -218,7 +225,8 @@ enum Envelope: Codable, Hashable {
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
+                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
             )
         case "premium_video":
             self = .premiumVideo(
@@ -230,7 +238,8 @@ enum Envelope: Codable, Hashable {
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
+                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
             )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")

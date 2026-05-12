@@ -14,7 +14,12 @@ struct PoolBrowserView: View {
         return ItemSection.allCases
             .compactMap { sec in
                 guard let list = grouped[sec], !list.isEmpty else { return nil }
-                return (sec, list.sorted { $0.rarity.rollWeight < $1.rarity.rollWeight })
+                // Sort by base per-pull drop weight (descending). The
+                // catalog row carries a `rarity` field but it's a
+                // legacy default — the actual rarity is rolled
+                // INDEPENDENTLY per pull (see `RARITY_ROLL_WEIGHTS`
+                // backend-side), so sorting by it would mislead.
+                return (sec, list.sorted { $0.perPullChance > $1.perPullChance })
             }
     }
 
@@ -32,6 +37,9 @@ struct PoolBrowserView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         if let cat = items.catalog, cat.scrollDropChance > 0 {
                             gemsSection(catalog: cat)
+                        }
+                        if let cat = items.catalog {
+                            rarityDistributionSection(catalog: cat)
                         }
                         ForEach(kindsBySection, id: \.0) { (section, kinds) in
                             VStack(alignment: .leading, spacing: 6) {
@@ -94,7 +102,7 @@ struct PoolBrowserView: View {
                     } label: {
                         Image(systemName: "music.note")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(kind.rarity.color)
+                            .foregroundColor(Theme.Color.textSecondary)
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -105,33 +113,22 @@ struct PoolBrowserView: View {
                     )
                     .padding(6)
                 }
-                VStack {
-                    HStack {
-                        Spacer()
-                        Circle()
-                            .fill(kind.rarity.color)
-                            .frame(width: 6, height: 6)
-                            .padding(3)
-                    }
-                    Spacer()
-                }
+                // The previous per-row rarity dot + LEGENDARY/EPIC/...
+                // label implied "this kind drops at this rarity only".
+                // It doesn't — rarity is rolled independently per
+                // drop (see `rarityDistributionSection`). Removed
+                // both visuals so users don't lock into the wrong
+                // mental model.
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(ItemDisplay.name(for: kind.id))
                     .font(.callout)
                     .foregroundColor(Theme.Color.textPrimary)
-                HStack(spacing: 6) {
-                    Text(kind.rarity.label.uppercased())
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(kind.rarity.color)
-                        .tracking(1.5)
-                    if let cap = kind.limit {
-                        Text("·").foregroundColor(Theme.Color.textMono)
-                        Text(String(format: "pool.cap".localized, cap))
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Theme.Color.textMono)
-                    }
+                if let cap = kind.limit {
+                    Text(String(format: "pool.cap".localized, cap))
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.Color.textMono)
                 }
             }
             Spacer(minLength: 0)
@@ -145,6 +142,49 @@ struct PoolBrowserView: View {
         .padding(.horizontal, 8)
         .background(Theme.Color.bgSecondary.opacity(0.5))
         .cornerRadius(6)
+    }
+
+    @ViewBuilder
+    private func rarityDistributionSection(catalog: ItemCatalog) -> some View {
+        // Rarity is rolled independently of the kind that dropped, so
+        // surface that as its own section. Without this users assumed
+        // each kind only dropped at its catalog-default rarity (the
+        // old per-row badge), which was wrong.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("pool.rarity.section".localized.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .tracking(2)
+                Spacer()
+            }
+            Text("pool.rarity.hint".localized)
+                .font(.caption2)
+                .foregroundColor(Theme.Color.textSecondary)
+                .padding(.bottom, 2)
+            VStack(spacing: 4) {
+                ForEach(ItemRarity.allCases, id: \.self) { rarity in
+                    let weight = catalog.rarityWeights[rarity.rawValue] ?? 0
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(rarity.color)
+                            .frame(width: 8, height: 8)
+                        Text(rarity.label.uppercased())
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(rarity.color)
+                            .tracking(1.5)
+                        Spacer()
+                        Text(String(format: "%.1f%%", weight))
+                            .font(Theme.Font.monoSmall)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .background(Theme.Color.bgSecondary.opacity(0.5))
+                    .cornerRadius(6)
+                }
+            }
+        }
     }
 
     @ViewBuilder

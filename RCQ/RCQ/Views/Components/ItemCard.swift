@@ -15,11 +15,13 @@ struct ItemCard: View {
             Group {
                 if let kind {
                     if kind.section == .voices {
-                        // Voice packs are .mp3 files; rendering would hit the cube placeholder.
+                        // Heavy padding so the tall `music.note` glyph reads as an icon, not a tile-filling shape.
                         Image(systemName: "music.note")
-                            .font(.system(size: 28, weight: .semibold))
+                            .resizable()
+                            .scaledToFit()
+                            .fontWeight(.semibold)
                             .foregroundColor(item.rarity.color)
-                            .padding(8)
+                            .padding(22)
                     } else {
                         ItemAssetImage(
                             bundleSubdir: assetSubdir(for: kind),

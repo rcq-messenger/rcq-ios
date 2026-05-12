@@ -27,6 +27,9 @@ struct SettingsView: View {
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
+    // Foundation toggles — UI-only until routing + billing land.
+    @AppStorage("rcq.network.vpn_enabled") private var vpnEnabled: Bool = false
+    @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -162,10 +165,94 @@ struct SettingsView: View {
                         }
                         .tint(Theme.Color.accent)
                         Toggle(isOn: $minisEnabled) {
-                            Text("settings.minis.toggle".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.minis.toggle".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.minis.toggle.footer".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
                         }
                         .tint(Theme.Color.accent)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    Section {
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .foregroundColor(Theme.Color.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.network.proxy".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.network.proxy.footer".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $vpnEnabled)
+                                .labelsHidden()
+                                .tint(Theme.Color.accent)
+                                .disabled(true)
+                        }
+                        HStack {
+                            Image(systemName: "clock.badge.checkmark")
+                                .foregroundColor(Theme.Color.textSecondary)
+                            Text("settings.network.coming_soon".localized)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(Theme.Color.textSecondary)
+                            Spacer()
+                        }
+                    } header: {
+                        Text("settings.network".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    Section {
+                        HStack(alignment: .firstTextBaseline) {
+                            Image(systemName: "internaldrive")
+                                .foregroundColor(Theme.Color.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.traffic.used".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text(String(format: "settings.traffic.used.value".localized, 0))
+                                    .font(.system(.callout, design: .monospaced))
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("settings.traffic.spent".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                HStack(spacing: 3) {
+                                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                                        .frame(width: 12, height: 12)
+                                    Text("0")
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                }
+                            }
+                        }
+                        Toggle(isOn: $payForLargeFiles) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.traffic.pay_large".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.traffic.pay_large.footer".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .disabled(true)
+                        HStack {
+                            Image(systemName: "clock.badge.checkmark")
+                                .foregroundColor(Theme.Color.textSecondary)
+                            Text("settings.network.coming_soon".localized)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(Theme.Color.textSecondary)
+                            Spacer()
+                        }
+                    } header: {
+                        Text("settings.traffic".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 

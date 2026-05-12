@@ -42,6 +42,11 @@ struct UserProfile: Codable, Hashable {
     /// Hides every call affordance in the caller's own UI when set
     /// to `"nobody"`.
     var callPolicy: String?
+    /// Owner-only echo of the read-receipts setting. iOS uses the
+    /// cached `@AppStorage("rcq.privacy.readReceiptsVisibility")`
+    /// for the send-time gate so MessageService doesn't have to
+    /// round-trip `/users/me/info` on every read.
+    var readReceiptsVisibility: String?
     /// Snapshot of the user's currently-equipped pet — drives the
     /// small overlay GIF on the status icon throughout the UI
     /// (contact rows, profile header, group info). Always returned;
@@ -64,6 +69,7 @@ struct UserProfile: Codable, Hashable {
         case groupInvitePolicy = "group_invite_policy"
         case tradePolicy = "trade_policy"
         case callPolicy = "call_policy"
+        case readReceiptsVisibility = "read_receipts_visibility"
         case equippedPet = "equipped_pet"
     }
 }

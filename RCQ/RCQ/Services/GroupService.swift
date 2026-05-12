@@ -109,6 +109,26 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// Admin / owner — swap the uploaded avatar. Pass `nil` for both
+    /// fields to clear (the server treats empty strings as "remove"
+    /// because Pydantic can't distinguish "field absent" from "field
+    /// = null" otherwise).
+    func setAvatar(groupID: Int, mediaID: String?, keyBase64: String?) async throws {
+        struct Body: Encodable {
+            let avatar_media_id: String
+            let avatar_media_key: String
+        }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "PATCH",
+            "/groups/\(groupID)",
+            body: Body(
+                avatar_media_id: mediaID ?? "",
+                avatar_media_key: keyBase64 ?? "",
+            ),
+        )
+        upsert(g)
+    }
+
     /// Lightweight info for a non-member — used by AddContactView's
     /// "join by group id" path so the user sees the price + member
     /// count BEFORE committing to the wallet hit.

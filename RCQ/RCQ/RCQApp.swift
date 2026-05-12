@@ -137,6 +137,11 @@ struct RootView: View {
         ZStack {
             mainContent
             GameMinisOverlayHost()
+            // In-app message banner sits above everything except
+            // fullScreenCover modals (calls / audio room) so a new
+            // chat-B message can interrupt chat-A reading without
+            // collapsing the navigation stack.
+            MessageBannerHost()
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
@@ -152,6 +157,12 @@ struct RootView: View {
         Task { @MainActor in
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+            // If we were inside an audio room when the app went to the
+            // background, re-handshake the room state. The WS reconnect
+            // doesn't carry the room subscription, so the server's
+            // roster + the chat-list counts otherwise stay stale until
+            // the user manually refreshes.
+            AudioRoomService.shared.restoreOnForeground()
         }
     }
 

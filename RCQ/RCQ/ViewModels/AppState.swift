@@ -15,8 +15,20 @@ final class AppState: ObservableObject {
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     @Published var pendingOpenChatUIN: Int? = nil
+    @Published var pendingOpenGroupID: Int? = nil
     @Published var pendingOpenPending: Bool = false
     @Published var pendingOpenTrades: Bool = false
+    /// Set when the user taps an outbid in-app banner — the
+    /// `GameMinisOverlayHost` consumes it and flips the auction full-
+    /// screen cover on.
+    @Published var pendingOpenUinAuction: Bool = false
+    /// Set by the deep-link parser when a share-to-chat market URL
+    /// (`rcq://market/{id}` or `https://rcq.app/m/{id}`) lands. The
+    /// MarketView consumes it on appear and opens the detail sheet
+    /// for that listing.
+    @Published var pendingOpenMarketListingID: String? = nil
+    /// Mirror of `pendingOpenMarketListingID` for the UIN marketplace.
+    @Published var pendingOpenUinListingID: String? = nil
 
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
@@ -30,6 +42,22 @@ final class AppState: ObservableObject {
             }
             return
         }
+        if url.scheme == "rcq", url.host == "uin-listing" {
+            let id = url.pathComponents.last ?? ""
+            if !id.isEmpty {
+                pendingOpenUinListingID = id
+            }
+            return
+        }
+        if url.scheme == "rcq", url.host == "market" {
+            // `rcq://market/{listing_id}` — opens the marketplace
+            // and presents the listing detail sheet for the id.
+            let id = url.pathComponents.last ?? ""
+            if !id.isEmpty {
+                pendingOpenMarketListingID = id
+            }
+            return
+        }
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
@@ -37,6 +65,30 @@ final class AppState: ObservableObject {
             let uinStr = url.pathComponents[2]
             if let uin = Int(uinStr), uin > 0 {
                 pendingAddUIN = uin
+            }
+            return
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "m" {
+            // `https://rcq.app/m/{listing_id}` — same target as the
+            // `rcq://` variant, used by the OS share-sheet / web
+            // pasteboard paths where a custom scheme would be
+            // unhelpful (browser refuses to redirect to it).
+            let id = url.pathComponents[2]
+            if !id.isEmpty {
+                pendingOpenMarketListingID = id
+            }
+            return
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "ul" {
+            let id = url.pathComponents[2]
+            if !id.isEmpty {
+                pendingOpenUinListingID = id
             }
             return
         }
@@ -212,8 +264,12 @@ final class AppState: ObservableObject {
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
         pendingOpenChatUIN = nil
+        pendingOpenGroupID = nil
         pendingOpenPending = false
         pendingOpenTrades = false
+        pendingOpenUinAuction = false
+        pendingOpenMarketListingID = nil
+        pendingOpenUinListingID = nil
         pendingAddUIN = nil
 
         let nickname = AuthService.shared.nickname
@@ -276,8 +332,12 @@ final class AppState: ObservableObject {
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
         pendingOpenChatUIN = nil
+        pendingOpenGroupID = nil
         pendingOpenPending = false
         pendingOpenTrades = false
+        pendingOpenUinAuction = false
+        pendingOpenMarketListingID = nil
+        pendingOpenUinListingID = nil
         pendingAddUIN = nil
 
         await AuthService.shared.wipeLocalIdentity()
@@ -303,6 +363,13 @@ final class AppState: ObservableObject {
         case .opened:
             // Drain offline queue on every (re)connect.
             Task { await MessageService.shared.fetchOfflineQueue() }
+            // Re-sync audio room subscription if we were inside one.
+            // Skipped the unconditional contact refresh that used to
+            // live here — presence diffs come in via WS events, so
+            // polling on every reconnect just added flicker when the
+            // watchdog tripped over a slow round-trip and tore down
+            // a healthy socket.
+            AudioRoomService.shared.restoreOnForeground()
 
         case .closed:
             Task {
@@ -339,23 +406,35 @@ final class AppState: ObservableObject {
                 if case .peer(let uin) = thread { return uin }
                 return nil
             }()
-            SoundService.shared.playIncoming(fromUIN: sender, thread: thread)
+            // Prefer the snippet of the message we just appended; fall
+            // back to a generic localized "new message" if for some
+            // reason the thread is empty (control envelope that
+            // somehow flagged isNewContent — defensive).
+            let latest = MessageStore.shared.messages(for: thread).last
+            let preview = latest?.previewSnippet ?? "chat.banner.new_message".localized
             let title: String
-            let body: String
             switch thread {
             case .peer(let uin):
                 ContactService.shared.incrementUnread(for: uin)
-                let nickname = ContactService.shared.contacts.first(where: { $0.uin == uin })?.nickname ?? String(uin)
-                title = nickname
-                body = "New message"
+                title = ContactService.shared.contacts.first(where: { $0.uin == uin })?.nickname ?? String(uin)
             case .group(let id):
                 GroupService.shared.incrementUnread(id)
-                let groupName = GroupService.shared.find(id)?.name ?? "Group"
-                title = groupName
-                body = "New message"
+                title = GroupService.shared.find(id)?.name ?? "Group"
+            }
+            let bannerShown = MessageBannerService.shared.tryPresent(
+                thread: thread, title: title, body: preview,
+            )
+            // Sound is tied to banner visibility — silent when the
+            // user is already in the chat (the message just appears
+            // in the open thread, no need for a chime) and silent
+            // when the app is backgrounded (APNs alert sound fires
+            // instead). `playIncoming` still respects per-thread
+            // mute on top of this gate.
+            if bannerShown {
+                SoundService.shared.playIncoming(fromUIN: sender, thread: thread)
             }
             NotificationService.shared.presentIfBackgrounded(
-                title: title, body: body, threadKey: "\(thread.kindString)-\(thread.rawKey)"
+                title: title, body: preview, threadKey: "\(thread.kindString)-\(thread.rawKey)"
             )
 
         case .typing(let from, let active):

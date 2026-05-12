@@ -22,6 +22,15 @@ final class HiLoService: ObservableObject {
     @Published private(set) var canLower: Bool = false
     @Published private(set) var active: Bool = false
 
+    /// True while a /guess or /cashout HTTP call is in flight. Drives
+    /// button disable in the view so the user can't fire two
+    /// concurrent guesses — which used to race the response handler
+    /// and look like "the choice stage froze" (one tap registers, the
+    /// next 1-2 taps queue up extra HTTP requests, the server walks
+    /// through cards while the iOS state hasn't caught up yet, so the
+    /// buttons appear stuck on the previous card).
+    @Published private(set) var inFlight: Bool = false
+
     /// Outcome banner data — set when a guess loses or a /cashout
     /// settles. Cleared on next /start. Drives the result overlay.
     @Published var lastResult: HiLoOutcome?
@@ -48,6 +57,9 @@ final class HiLoService: ObservableObject {
     }
 
     func start(bet: Int) async {
+        guard !inFlight else { return }
+        inFlight = true
+        defer { inFlight = false }
         struct Body: Encodable { let bet: Int }
         do {
             let snap: HiLoState = try await APIClient.shared.request(
@@ -63,6 +75,12 @@ final class HiLoService: ObservableObject {
     }
 
     func guess(_ direction: HiLoDirection) async {
+        // Hard guard against double-fire — even if the view's
+        // `.disabled` flag flips on a frame late, a second tap can
+        // squeeze through and start a parallel HTTP request.
+        guard !inFlight else { return }
+        inFlight = true
+        defer { inFlight = false }
         struct Body: Encodable { let direction: String }
         do {
             let raw = try await APIClient.shared.rawRequest(
@@ -119,6 +137,9 @@ final class HiLoService: ObservableObject {
     }
 
     func cashout() async {
+        guard !inFlight else { return }
+        inFlight = true
+        defer { inFlight = false }
         do {
             let raw = try await APIClient.shared.rawRequest("POST", "/hilo/cashout")
             guard let dict = try JSONSerialization.jsonObject(with: raw) as? [String: Any] else { return }

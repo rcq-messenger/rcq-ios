@@ -125,22 +125,22 @@ class NotificationService: UNNotificationServiceExtension {
         switch decrypted.envelope {
         case .text(_, let text, _, _, _):
             content.body = text.isEmpty ? "Message" : text
-        case .photo(_, _, _, let caption, _, _, _):
+        case .photo(_, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📷 Photo" : "📷 \(cap)"
-        case .video(_, _, _, _, _, let caption, _, _, _):
+        case .video(_, _, _, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "🎬 Video" : "🎬 \(cap)"
         case .voice:
             content.body = "🎤 Voice message"
-        case .premiumPhoto(_, _, let price, _, let caption, _, _, _):
+        case .premiumPhoto(_, _, let price, _, let caption, _, _, _, _):
             // Always include the price so the recipient sees the
             // tap-cost up front in the notification surface — same
             // as Telegram's "Premium content (X stars)" preview.
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             let label = cap.isEmpty ? "Premium photo" : "Premium photo: \(cap)"
             content.body = "🔒 \(label) — \(price)"
-        case .premiumVideo(_, _, let price, _, _, let caption, _, _, _):
+        case .premiumVideo(_, _, let price, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             let label = cap.isEmpty ? "Premium video" : "Premium video: \(cap)"
             content.body = "🔒 \(label) — \(price)"
@@ -162,16 +162,28 @@ class NotificationService: UNNotificationServiceExtension {
     /// lookup misses, so the user always sees readable text.
     private func applyLocalizedPushBody(kind: String, to content: UNMutableNotificationContent) {
         let key: String
+        // Outbid pushes localize both title + body — every other kind
+        // keeps the server-set sender nickname as title.
+        var titleKey: String? = nil
         switch kind {
         case "contact_request":           key = "push.contact_request.body"
         case "contact_response_accepted": key = "push.contact_response_accepted.body"
         case "trade_received_gift":       key = "push.trade_received.gift.body"
         case "trade_received_offer":      key = "push.trade_received.offer.body"
+        case "uin_auction_outbid":
+            key = "push.uin_auction_outbid.body"
+            titleKey = "push.uin_auction_outbid.title"
         default: return
         }
         let localized = Self.pushLocalized(key)
         if !localized.isEmpty && localized != key {
             content.body = localized
+        }
+        if let titleKey {
+            let localizedTitle = Self.pushLocalized(titleKey)
+            if !localizedTitle.isEmpty && localizedTitle != titleKey {
+                content.title = localizedTitle
+            }
         }
     }
 

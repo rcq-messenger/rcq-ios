@@ -8,8 +8,13 @@ import SwiftUI
 /// from the bottom edge — same affordance as iMessage's `+` menu.
 struct AttachmentPickerSheet: View {
     let isRandom: Bool
-    let onPhoto: () -> Void
-    let onVideo: () -> Void
+    /// Hide the Premium row even outside random chat — used in groups
+    /// where only the owner can post paid content.
+    var premiumDisabled: Bool = false
+    /// Combined photo+video gallery picker — replaces the prior split
+    /// "Photo" / "Video" rows. Single row reads cleaner and matches
+    /// the system Photos picker which itself shows both kinds.
+    let onMedia: () -> Void
     let onCamera: () -> Void
     let onPremium: () -> Void
 
@@ -44,14 +49,9 @@ struct AttachmentPickerSheet: View {
     private var rows: [Row] {
         var items: [Row] = [
             Row(
-                title: "chat.attach.photo".localized,
-                icon: "photo.on.rectangle",
-                action: onPhoto
-            ),
-            Row(
-                title: "chat.attach.video".localized,
-                icon: "video",
-                action: onVideo
+                title: "chat.attach.gallery".localized,
+                icon: "photo.on.rectangle.angled",
+                action: onMedia
             ),
             Row(
                 title: "chat.attach.camera".localized,
@@ -59,7 +59,7 @@ struct AttachmentPickerSheet: View {
                 action: onCamera
             ),
         ]
-        if !isRandom {
+        if !isRandom && !premiumDisabled {
             items.append(Row(
                 title: "chat.attach.premium".localized,
                 icon: "lock.fill",

@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -42,6 +43,28 @@ struct ChatView: View {
     }
     @State private var showScrollToBottom: Bool = false
     @State private var forwardTarget: Message?
+    /// Drives the ForwardPickerSheet for multi-select forwarding. The
+    /// sheet only needs a non-nil "anchor" message to render its
+    /// preview — we hand it the first selected message and dispatch
+    /// `vm.forwardSelected(...)` on pick instead of the single-msg
+    /// path used by `forwardTarget`.
+    @State private var multiForwardAnchor: Message?
+    @State private var deleteSelectionPrompt: Bool = false
+    /// Action queued by the attach menu, fired in the sheet's
+    /// `onDismiss` instead of mid-presentation. iOS 26 silently drops
+    /// a `.sheet` that's flipped on while another sheet is still
+    /// dismissing, so we wait for the actual teardown completion.
+    @State private var pendingAttachAction: AttachAction?
+
+    enum AttachAction { case media, camera, premium }
+
+    /// Identifiable wrapper for the fullscreen album viewer's
+    /// `.fullScreenCover(item:)`.
+    struct AlbumViewerContext: Identifiable {
+        let id = UUID()
+        let items: [Message]
+        let initialIndex: Int
+    }
 
     private var replyAllowed: Bool { true }
     @State private var now = Date()
@@ -102,13 +125,17 @@ struct ChatView: View {
                     onReply: {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            vm.replyTarget = copy
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                vm.replyTarget = copy
+                            }
                         }
                     },
                     onEdit: {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            vm.startEdit(copy)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                vm.startEdit(copy)
+                            }
                         }
                     },
                     onForward: {
@@ -133,6 +160,14 @@ struct ChatView: View {
                             Task { await prepareEvidenceReport(for: copy) }
                         }
                     } : nil,
+                    onSelect: {
+                        let copy = target
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                vm.enterSelection(seeding: copy.id)
+                            }
+                        }
+                    },
                 )
                 .zIndex(50)
             }
@@ -146,9 +181,17 @@ struct ChatView: View {
                 if case .randomPeer(let peer) = vm.target {
                     randomCTAStrip(peer: peer)
                 }
-                if let inGroup = vm.target.broadcastReadOnly(viewerUIN: AuthService.shared.ownUIN) {
+                if vm.isSelecting {
+                    selectionActionBar
+                } else if let inGroup = vm.target.broadcastReadOnly(viewerUIN: AuthService.shared.ownUIN) {
                     broadcastReadOnlyHint(group: inGroup)
                 } else {
+                    if !vm.pendingMedia.isEmpty {
+                        // No explicit background — tiles float over the
+                        // chat content so the strip reads as a draft
+                        // tray rather than a docked panel.
+                        pendingMediaStrip
+                    }
                     inputBar
                 }
                 if showEmojiPanel {
@@ -195,57 +238,29 @@ struct ChatView: View {
         }
         // Pickers go through UIKit (ImperativePicker) — hosting a PHPicker sheet inside the
         // random-chat fullScreenCover triggers an iOS 26 cascade-dismiss bug.
-        .sheet(isPresented: $showAttachmentMenu) {
+        .sheet(isPresented: $showAttachmentMenu, onDismiss: handleAttachDismiss) {
             AttachmentPickerSheet(
                 isRandom: { if case .randomPeer = vm.target { return true } else { return false } }(),
-                onPhoto: {
-                    showAttachmentMenu = false
-                    ImperativePicker.pickImages(limit: 5) { images in
-                        Task {
-                            for img in images {
-                                // Bail on first error so a size-cap failure doesn't stack per image.
-                                if let err = await vm.sendPhoto(img) {
-                                    videoError = err
-                                    break
-                                }
-                            }
-                        }
+                // Premium in groups is owner-only — server enforces it,
+                // but hide the menu row for non-owners so they don't
+                // get a 403 after picking media.
+                premiumDisabled: {
+                    if case .group(let g) = vm.target {
+                        return g.ownerUIN != AuthService.shared.ownUIN
                     }
-                },
-                onVideo: {
+                    return false
+                }(),
+                onMedia: {
+                    pendingAttachAction = .media
                     showAttachmentMenu = false
-                    ImperativePicker.pickVideo { url in
-                        guard let url else { return }
-                        Task {
-                            if let err = await vm.sendVideo(from: url) {
-                                videoError = err
-                            }
-                        }
-                    }
                 },
                 onCamera: {
+                    pendingAttachAction = .camera
                     showAttachmentMenu = false
-                    ImperativePicker.captureFromCamera(mode: .both) { captured in
-                        guard let captured else { return }
-                        Task {
-                            switch captured {
-                            case .photo(let img):
-                                if let err = await vm.sendPhoto(img) {
-                                    videoError = err
-                                }
-                            case .video(let url):
-                                if let err = await vm.sendVideo(from: url) {
-                                    videoError = err
-                                }
-                            }
-                        }
-                    }
                 },
                 onPremium: {
+                    pendingAttachAction = .premium
                     showAttachmentMenu = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        showPremiumComposer = true
-                    }
                 }
             )
             .presentationDetents([.height(280)])
@@ -299,11 +314,17 @@ struct ChatView: View {
         }
         .onAppear {
             vm.onAppear()
+            // Tell the in-app banner service which chat is on-screen
+            // so a same-thread arrival doesn't show a redundant banner.
+            MessageBannerService.shared.setActive(vm.target.thread)
             Task { await tradesSvc.refreshAll() }
             Task {
                 if itemsSvc.catalog == nil { await itemsSvc.refreshCatalog() }
                 if itemsSvc.items.isEmpty { await itemsSvc.refreshInventory() }
             }
+        }
+        .onDisappear {
+            MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
         }
         .sheet(isPresented: $showTrade) {
             if case .peer(let snapshot) = vm.target {
@@ -422,19 +443,31 @@ struct ChatView: View {
         case .group(let snapshot):
             let live = groupSvc.find(snapshot.id) ?? snapshot
             Button { showInfo = true } label: {
-                VStack(spacing: 0) {
-                    Text(live.name)
-                        .font(.system(.subheadline, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(1)
-                    Text(String(
-                        format: (live.members.count == 1
-                            ? "contact_list.members_one"
-                            : "contact_list.members_many").localized,
-                        live.members.count
-                    ))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Color.textMono)
+                HStack(spacing: 8) {
+                    GroupAvatarView(
+                        mediaID: live.avatarMediaID,
+                        keyBase64: live.avatarMediaKey,
+                        size: 24,
+                        glyphSize: 11,
+                    )
+                    VStack(spacing: 0) {
+                        Text(live.name)
+                            .font(.system(.subheadline, weight: .semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(1)
+                        Text(String(
+                            format: (live.members.count == 1
+                                ? "contact_list.members_one"
+                                : "contact_list.members_many").localized,
+                            live.members.count
+                        ))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Theme.Color.textMono)
+                    }
+                    // Mirror peer-header layout: a trailing 24pt clear
+                    // spacer balances the leading avatar so the title
+                    // text stays centred under the nav bar.
+                    Color.clear.frame(width: 24, height: 1)
                 }
                 .contentShape(Rectangle())
             }
@@ -611,16 +644,23 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(vm.grouped().enumerated()), id: \.offset) { _, group in
                         DateDivider(label: group.label)
-                        ForEach(group.items) { msg in
-                            MessageRow(
+                        ForEach(vm.collapsedAlbums(group.items)) { unit in
+                            switch unit {
+                            case .album(_, let items):
+                                albumRow(items: items)
+                            case .single(let msg):
+                                MessageRow(
                                 message: msg,
                                 showSender: vm.target.thread.isGroup && !msg.isFromMe,
                                 senderNickname: vm.senderNickname(msg.senderUIN),
                                 displayBody: vm.displayText(for: msg),
                                 isTranslated: vm.isTranslated(msg),
                                 isHighlighted: flashHighlightID == msg.id,
+                                isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
+                                showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
                                 onLongPress: {
+                                    if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                     UIApplication.shared.sendAction(
                                         #selector(UIResponder.resignFirstResponder),
@@ -631,8 +671,17 @@ struct ChatView: View {
                                     }
                                 },
                                 onDoubleTapLike: {
+                                    if vm.isSelecting {
+                                        UISelectionFeedbackGenerator().selectionChanged()
+                                        vm.toggleSelection(msg.id)
+                                        return
+                                    }
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     vm.toggleReaction("good", on: msg)
+                                },
+                                onTapWhenSelecting: {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    vm.toggleSelection(msg.id)
                                 },
                                 onTapReplyQuote: { targetID in
                                     guard vm.messages.contains(where: { $0.id == targetID }) else { return }
@@ -650,7 +699,9 @@ struct ChatView: View {
                                 },
                                 onSwipeReply: {
                                     let copy = msg
-                                    vm.replyTarget = copy
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                        vm.replyTarget = copy
+                                    }
                                 }
                             )
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
@@ -667,6 +718,7 @@ struct ChatView: View {
                             .animation(.easeInOut(duration: 0.3), value: vm.fadingOutIDs.contains(msg.id))
                             .transition(.opacity)
                             .id(msg.id)
+                            }
                         }
                     }
                     if let trade = pendingTradeWithPeer {
@@ -741,16 +793,7 @@ struct ChatView: View {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            .onChange(of: vm.replyTarget?.id) { _ in
-                withAnimation(.easeOut(duration: 0.22)) {
-                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                }
-            }
-            .onChange(of: vm.editingTarget?.id) { _ in
-                withAnimation(.easeOut(duration: 0.22)) {
-                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                }
-            }
+            // Deliberately no scroll on reply / edit context appearance — felt jumpy.
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 isKeyboardVisible = true
                 if showEmojiPanel {
@@ -905,7 +948,9 @@ struct ChatView: View {
 
     private var inputBar: some View {
         let trimmed = vm.input.trimmingCharacters(in: .whitespaces)
-        let showSend = !trimmed.isEmpty
+        // Pending media on its own is a sendable message — show the
+        // send button even when the caption is empty.
+        let showSend = !trimmed.isEmpty || !vm.pendingMedia.isEmpty
         return HStack(alignment: .bottom, spacing: 8) {
             if voiceRecorder.isRecording {
                 recordingPill
@@ -996,25 +1041,17 @@ struct ChatView: View {
             .padding(.leading, 14)
             .padding(.trailing, 4)
         }
+        // RoundedRectangle for every state — Capsule made the
+        // composer look like an over-inflated bubble once the text
+        // wrapped past one line (the pill ends curved by half the
+        // height, which read as wrong at 4+ rows).
         .background(
-            Group {
-                if hasContext {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.regularMaterial)
-                } else {
-                    Capsule().fill(.regularMaterial)
-                }
-            }
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.regularMaterial)
         )
         .overlay(
-            Group {
-                if hasContext {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                } else {
-                    Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                }
-            }
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
         )
         // No explicit .animation here — callers already wrap replyTarget/editingTarget assignments in withAnimation.
     }
@@ -1023,6 +1060,12 @@ struct ChatView: View {
     private func inlineReplyContext(_ message: Message) -> some View {
         let snippet = Self.replyPreview(for: message)
         let author = vm.senderNickname(message.senderUIN)
+        let market = (message.kind == .text)
+            ? MarketLinkParser.parse(message.text)
+            : nil
+        let uinShare = (message.kind == .text && market == nil)
+            ? UinLinkParser.parse(message.text)
+            : nil
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Theme.Color.accent)
@@ -1035,14 +1078,22 @@ struct ChatView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
                     .lineLimit(1)
-                Text(snippet)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .lineLimit(1)
+                if let market {
+                    MarketReplyMiniCard(listingID: market.listingID)
+                } else if let uinShare {
+                    UinReplyMiniCard(listingID: uinShare.listingID)
+                } else {
+                    Text(snippet)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
             Button {
-                vm.replyTarget = nil
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    vm.replyTarget = nil
+                }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
@@ -1073,7 +1124,9 @@ struct ChatView: View {
             }
             Spacer(minLength: 4)
             Button {
-                vm.cancelEdit()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    vm.cancelEdit()
+                }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
@@ -1085,8 +1138,196 @@ struct ChatView: View {
         .padding(.vertical, 6)
     }
 
+    @ViewBuilder
+    private func albumRow(items: [Message]) -> some View {
+        AlbumRowView(
+            items: items,
+            isInGroupChat: vm.target.thread.isGroup,
+            senderNickname: vm.senderNickname(items.first!.senderUIN),
+            isSelecting: vm.isSelecting,
+            isSelected: items.allSatisfy { vm.selectedIDs.contains($0.id) },
+            onTapTile: { tappedIdx in
+                if vm.isSelecting {
+                    let allSelected = items.allSatisfy { vm.selectedIDs.contains($0.id) }
+                    if allSelected {
+                        for m in items { vm.toggleSelection(m.id) }
+                    } else {
+                        for m in items where !vm.selectedIDs.contains(m.id) {
+                            vm.toggleSelection(m.id)
+                        }
+                    }
+                    return
+                }
+                // Direct UIKit-presenter call — earlier we routed
+                // through `openedAlbum` state + .onChange but the
+                // SwiftUI optional-id change wasn't reliably firing
+                // the change handler on iOS 26.
+                AlbumViewerPresenter.present(
+                    items: items,
+                    initialIndex: tappedIdx
+                )
+            },
+            onLongPress: {
+                if vm.isSelecting { return }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder),
+                    to: nil, from: nil, for: nil
+                )
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    actionTarget = items.first!
+                }
+            },
+            onSwipeReply: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    vm.replyTarget = items.first!
+                }
+            }
+        )
+        .id(items.first!.id)
+    }
+
+    @ViewBuilder
+    private var selectionActionBar: some View {
+        let count = vm.selectedIDs.count
+        let canDelete = count > 0
+        let canForward = count > 0 && !vm.selectedMessagesContainNonForwardable
+        return HStack(spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { vm.cancelSelection() }
+            } label: {
+                Text("chat.selection.cancel".localized)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+            Text(String(format: "chat.selection.title".localized, count))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.Color.textSecondary)
+            Spacer(minLength: 0)
+            if canForward {
+                Button {
+                    multiForwardAnchor = vm.firstSelectedMessage
+                } label: {
+                    Image(systemName: "arrowshape.turn.up.right.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+            }
+            Button {
+                deleteSelectionPrompt = true
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(canDelete ? .red : Theme.Color.divider)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canDelete)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Theme.Color.bgSecondary)
+        .confirmationDialog(
+            String(format: "chat.selection.delete".localized, count),
+            isPresented: $deleteSelectionPrompt,
+            titleVisibility: .visible
+        ) {
+            Button("chat.action.delete_for_me".localized, role: .destructive) {
+                vm.deleteSelectedForMe()
+            }
+            if vm.selectionAllRetractable {
+                Button("chat.action.delete_for_everyone".localized, role: .destructive) {
+                    Task { await vm.deleteSelectedForEveryone() }
+                }
+            }
+            Button("common.cancel".localized, role: .cancel) {}
+        }
+        .sheet(item: $multiForwardAnchor) { anchor in
+            ForwardPickerSheet(message: anchor) { destination in
+                multiForwardAnchor = nil
+                Task {
+                    switch destination {
+                    case .contact(let c): await vm.forwardSelected(toContact: c)
+                    case .group(let g):   await vm.forwardSelected(toGroup: g)
+                    }
+                }
+            } onCancel: { multiForwardAnchor = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var pendingMediaStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(vm.pendingMedia) { item in
+                    pendingMediaTile(item)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func pendingMediaTile(_ item: ChatViewModel.PendingMediaItem) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                switch item {
+                case .photo(_, let img):
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                case .video(_, _, let thumb):
+                    ZStack {
+                        if let t = thumb {
+                            Image(uiImage: t)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Theme.Color.bgSecondary
+                        }
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                case .gif(_, let data, _):
+                    // Animate the GIF right in the pending tile so the
+                    // user sees what they're about to send. Same
+                    // renderer as the inline bubble path.
+                    AnimatedGIFView(data: data, contentMode: .fill)
+                }
+            }
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            Button {
+                vm.removePendingMedia(item.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 4, y: -4)
+        }
+    }
+
     private var sendButton: some View {
-        Button { Task { await vm.send() } } label: {
+        Button {
+            Task {
+                if !vm.pendingMedia.isEmpty {
+                    if let err = await vm.sendPendingMediaWithCaption() {
+                        videoError = err
+                    }
+                } else {
+                    await vm.send()
+                }
+            }
+        } label: {
             Image(systemName: "paperplane.fill")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.white)
@@ -1096,6 +1337,84 @@ struct ChatView: View {
                 .background(Circle().fill(Theme.Color.accent))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Drains the pending attach action AFTER the menu sheet has
+    /// fully torn down. The media picker is presented via UIKit
+    /// (`UnifiedMediaPickerPresenter`) instead of a SwiftUI `.sheet`
+    /// because iOS 26 silently drops a sheet-after-sheet chain. The
+    /// other actions are imperative anyway (UIImagePicker), so they
+    /// avoid the bug naturally.
+    private func handleAttachDismiss() {
+        let action = pendingAttachAction
+        pendingAttachAction = nil
+        DispatchQueue.main.async {
+            switch action {
+            case .media:
+                UnifiedMediaPickerPresenter.present(
+                    limit: vm.pendingMediaSlotsLeft,
+                    onDone: { items in
+                        Task { @MainActor in
+                            for item in items {
+                                switch item {
+                                case .photo(let img):
+                                    vm.queuePendingPhotos([img])
+                                case .video(let url):
+                                    let thumb = await Self.makeVideoThumbnail(url: url)
+                                    vm.queuePendingVideo(url: url, thumbnail: thumb)
+                                case .gif(let data, let preview):
+                                    vm.queuePendingGIF(data: data, preview: preview)
+                                }
+                            }
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder),
+                                to: nil, from: nil, for: nil
+                            )
+                        }
+                    }
+                )
+            case .camera:
+                ImperativePicker.captureFromCamera(mode: .both) { captured in
+                    guard let captured else { return }
+                    Task { @MainActor in
+                        switch captured {
+                        case .photo(let img):
+                            vm.queuePendingPhotos([img])
+                        case .video(let url):
+                            let thumb = await Self.makeVideoThumbnail(url: url)
+                            vm.queuePendingVideo(url: url, thumbnail: thumb)
+                        case .gif:
+                            // Camera capture never produces GIFs, but
+                            // the enum case must be handled to satisfy
+                            // exhaustiveness.
+                            break
+                        }
+                    }
+                }
+            case .premium:
+                showPremiumComposer = true
+            case .none:
+                break
+            }
+        }
+    }
+
+    /// Off-thread first-frame extraction for video preview thumbs.
+    /// Best-effort: a generation failure just means we render a
+    /// placeholder play-icon over the gray tile.
+    fileprivate static func makeVideoThumbnail(url: URL) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: url)
+            let gen = AVAssetImageGenerator(asset: asset)
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 200, height: 200)
+            do {
+                let cg = try gen.copyCGImage(at: .zero, actualTime: nil)
+                return UIImage(cgImage: cg)
+            } catch {
+                return nil
+            }
+        }.value
     }
 
     private var micButton: some View {
@@ -1349,9 +1668,12 @@ private struct MessageRow: View {
     let displayBody: String
     let isTranslated: Bool
     let isHighlighted: Bool
+    var isSelected: Bool = false
+    var showSelectionAffordance: Bool = false
     let onTapReaction: (String) -> Void
     let onLongPress: () -> Void
     let onDoubleTapLike: () -> Void
+    var onTapWhenSelecting: (() -> Void)? = nil
     let onTapReplyQuote: (UUID) -> Void
     let onSwipeReply: () -> Void
 
@@ -1365,7 +1687,36 @@ private struct MessageRow: View {
     private static let swipeTriggerDistance: CGFloat = 60
     private static let swipeMaxDistance: CGFloat = 80
 
+    @ViewBuilder
     var body: some View {
+        if showSelectionAffordance {
+            selectableRow
+        } else {
+            primaryBody
+        }
+    }
+
+    private var selectableRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 20))
+                .foregroundColor(isSelected ? Theme.Color.accent : Theme.Color.textSecondary)
+                .padding(.leading, 6)
+            primaryBody
+                .allowsHitTesting(false)
+        }
+        .background(
+            Rectangle()
+                .fill(isSelected ? Theme.Color.accent.opacity(0.10) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTapWhenSelecting?()
+        }
+    }
+
+    @ViewBuilder
+    private var primaryBody: some View {
         if message.kind == .systemNotice {
             HStack {
                 Spacer()
@@ -1542,8 +1893,9 @@ private struct MessageRow: View {
                                 .font(.caption2)
                                 .foregroundColor(Theme.Color.textSecondary)
                                 .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.vertical, 2)
                     .padding(.horizontal, 4)
@@ -1634,6 +1986,21 @@ private struct MessageRow: View {
                         .cornerRadius(Theme.Metrics.bubbleRadius)
                     if isTranslated { translatedFooter }
                 }
+            }
+        } else if let share = MarketLinkParser.parse(message.text) {
+            // Share-to-chat market link — full card preview takes the
+            // place of plain text so the recipient sees the item
+            // before tapping. The card itself routes the tap into
+            // `AppState.handle(deepLink:)` so it opens the listing
+            // detail sheet.
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+                MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
+                if isTranslated { translatedFooter }
+            }
+        } else if let share = UinLinkParser.parse(message.text) {
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+                UinLinkBubble(listingID: share.listingID, rawURL: share.url)
+                if isTranslated { translatedFooter }
             }
         } else {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {

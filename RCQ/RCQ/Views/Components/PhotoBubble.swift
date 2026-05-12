@@ -6,8 +6,16 @@ struct PhotoBubble: View {
     var maxWidth: CGFloat = 240
     /// Pin frame to this size and `.scaledToFill` — used by premium flow so locked/unlocked render at matching dimensions.
     var forcedSize: CGSize? = nil
+    /// Skip both the built-in tap-to-fullscreen and the fullScreenCover.
+    /// Album tiles set this so their parent owns the tap (and routes
+    /// it to the album-wide viewer with paging).
+    var disableTap: Bool = false
 
     @State private var image: UIImage?
+    /// Decrypted bytes — populated alongside `image` so we can detect
+    /// `"GIF8"` magic and render via `AnimatedGIFView` while still
+    /// using `image` as the first-frame fallback for the layout.
+    @State private var gifData: Data?
     @State private var loading = true
     @State private var fullscreen = false
     @StateObject private var progress = MediaProgressStore.shared
@@ -19,23 +27,24 @@ struct PhotoBubble: View {
     var body: some View {
         Group {
             if let image {
-                if let size = forcedSize {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: size.width, height: size.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .onTapGesture { fullscreen = true }
-                } else {
-                    // Fixed 4:3 frame across all states avoids bubble-resize when image lands.
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: maxWidth, height: maxWidth * 0.75)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .contentShape(Rectangle())
-                        .onTapGesture { fullscreen = true }
+                let frameSize: CGSize = forcedSize ?? CGSize(width: maxWidth, height: maxWidth * 0.75)
+                Group {
+                    if let gifData, AnimatedGIFView.isGIF(gifData) {
+                        // GIF path — animated frames from the
+                        // decrypted bytes. UIImage layout is preserved
+                        // so the bubble doesn't reflow when the GIF
+                        // bundle is being decoded.
+                        AnimatedGIFView(data: gifData, contentMode: .fill)
+                    } else {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    }
                 }
+                .frame(width: frameSize.width, height: frameSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+                .modifier(TapToFullscreen(enabled: !disableTap, message: message))
             } else if didFailUpload {
                 failedPlaceholder
             } else if isUploading {
@@ -48,9 +57,6 @@ struct PhotoBubble: View {
         }
         // Re-run on mediaID change so the placeholder flips to the real photo post-upload.
         .task(id: message.mediaID ?? "") { await load() }
-        .fullScreenCover(isPresented: $fullscreen) {
-            if let image { FullscreenPhotoViewer(image: image) { fullscreen = false } }
-        }
     }
 
     private var isUploading: Bool {
@@ -116,8 +122,12 @@ struct PhotoBubble: View {
         guard let raw = message.mediaID else { loading = false; return }
         let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { loading = false; return }
-        let img = await MediaService.shared.loadImage(mediaID: parts[0], keyBase64: parts[1])
-        self.image = img
+        if let (img, data) = await MediaService.shared.loadImageWithData(
+            mediaID: parts[0], keyBase64: parts[1],
+        ) {
+            self.image = img
+            self.gifData = AnimatedGIFView.isGIF(data) ? data : nil
+        }
         self.loading = false
     }
 
@@ -210,6 +220,26 @@ final class PhotoSaveDelegate: NSObject {
         DispatchQueue.main.async { self.onComplete(state) }
         if let contextInfo {
             Unmanaged<PhotoSaveDelegate>.fromOpaque(contextInfo).release()
+        }
+    }
+}
+
+/// Conditionally routes a tap into `AlbumViewerPresenter` (single-
+/// item album) so standalone photos use the same viewer as albums —
+/// same swipe-down dismiss, same close + save chrome. When
+/// `enabled = false`, taps fall through to the parent (album tiles
+/// own the routing themselves).
+private struct TapToFullscreen: ViewModifier {
+    let enabled: Bool
+    let message: Message
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onTapGesture {
+                AlbumViewerPresenter.present(items: [message], initialIndex: 0)
+            }
+        } else {
+            content
         }
     }
 }

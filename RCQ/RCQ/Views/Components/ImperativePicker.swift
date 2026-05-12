@@ -51,6 +51,34 @@ enum ImperativePicker {
         presenter.present(picker, animated: true)
     }
 
+    /// Mixed photo+video picker. Returned items preserve order; videos
+    /// are copied off the system temp URL the same way `pickVideo`
+    /// does, so the upload pipeline can safely delete its source.
+    static func pickMedia(
+        limit: Int,
+        onPick: @escaping ([CapturedMedia]) -> Void
+    ) {
+        guard let presenter = topViewController() else {
+            onPick([])
+            return
+        }
+        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        // No filter == show everything in Photos. `.any(of: [.images,
+        // .videos])` is supposed to do the same on iOS 15+ but in
+        // practice it sometimes silently hides the videos tab on
+        // certain library configs / iOS builds, so we just leave the
+        // filter unset.
+        cfg.selectionLimit = limit
+        // `.compatible` for video-friendly transcode; `.current` is
+        // image-tuned and can drop video representations entirely.
+        cfg.preferredAssetRepresentationMode = .compatible
+        let picker = PHPickerViewController(configuration: cfg)
+        let coord = MixedCoordinator(onPick: onPick)
+        picker.delegate = coord
+        objc_setAssociatedObject(picker, &Self.coordKey, coord, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        presenter.present(picker, animated: true)
+    }
+
     static func pickVideo(onPick: @escaping (URL?) -> Void) {
         guard let presenter = topViewController() else {
             onPick(nil)
@@ -86,6 +114,13 @@ enum ImperativePicker {
 enum CapturedMedia {
     case photo(UIImage)
     case video(URL)
+    /// Animated GIF preserved through the picker without JPEG
+    /// recompression. `data` is the raw GIF bytes (uploaded as-is by
+    /// `MediaService.uploadGIF`); `preview` is the first frame for
+    /// pending-row thumbnails. Most consumer sites fall through to the
+    /// preview when they don't need animation — only the chat send
+    /// path and the inline bubble actually look at `data`.
+    case gif(data: Data, preview: UIImage)
 }
 
 private final class CameraCoordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
@@ -141,6 +176,53 @@ private final class ImageCoordinator: NSObject, PHPickerViewControllerDelegate {
             }
         }
         group.notify(queue: .main) { [onPick] in onPick(collected) }
+    }
+}
+
+private final class MixedCoordinator: NSObject, PHPickerViewControllerDelegate {
+    let onPick: ([CapturedMedia]) -> Void
+    init(onPick: @escaping ([CapturedMedia]) -> Void) { self.onPick = onPick }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard !results.isEmpty else { onPick([]); return }
+        let movieType = UTType.movie.identifier
+        // Index keeps the user's selection order despite async loads
+        // completing in a non-deterministic order.
+        var indexed: [(Int, CapturedMedia)] = []
+        let lock = NSLock()
+        let group = DispatchGroup()
+        for (i, r) in results.enumerated() {
+            let provider = r.itemProvider
+            if provider.hasItemConformingToTypeIdentifier(movieType) {
+                group.enter()
+                provider.loadFileRepresentation(forTypeIdentifier: movieType) { url, _ in
+                    defer { group.leave() }
+                    guard let url else { return }
+                    let copy = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("rcq-pick-\(UUID().uuidString).\(url.pathExtension)")
+                    do {
+                        if FileManager.default.fileExists(atPath: copy.path) {
+                            try FileManager.default.removeItem(at: copy)
+                        }
+                        try FileManager.default.copyItem(at: url, to: copy)
+                        lock.lock(); indexed.append((i, .video(copy))); lock.unlock()
+                    } catch {}
+                }
+            } else if provider.canLoadObject(ofClass: UIImage.self) {
+                group.enter()
+                provider.loadObject(ofClass: UIImage.self) { obj, _ in
+                    defer { group.leave() }
+                    if let img = obj as? UIImage {
+                        lock.lock(); indexed.append((i, .photo(img))); lock.unlock()
+                    }
+                }
+            }
+        }
+        group.notify(queue: .main) { [onPick] in
+            let ordered = indexed.sorted { $0.0 < $1.0 }.map { $0.1 }
+            onPick(ordered)
+        }
     }
 }
 

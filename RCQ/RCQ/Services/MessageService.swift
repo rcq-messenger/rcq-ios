@@ -48,7 +48,7 @@ final class MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -60,7 +60,8 @@ final class MessageService {
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -80,7 +81,50 @@ final class MessageService {
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: local.id, thread: .peer(uin: contact.uin), mediaID: combined)
             try? await self.sendEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo),
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
+                to: contact, localID: local.id
+            )
+        }
+    }
+
+    /// Send an animated GIF preserving its raw bytes (no JPEG
+    /// recompression). Envelope is `.photo` — the receiver detects the
+    /// `"GIF8"` magic on the decrypted blob and renders via
+    /// `AnimatedGIFView`. Mirrors `sendPhoto` otherwise.
+    func sendGIF(data: Data, preview: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+        let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
+        let local = Message(
+            thread: .peer(uin: contact.uin),
+            senderUIN: ownUIN,
+            isFromMe: true,
+            kind: .photo,
+            text: caption ?? "",
+            mediaID: nil,
+            ttlSeconds: ttl,
+            replyToID: replyTo?.id,
+            replyToSnippet: replyTo?.snippet,
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
+        )
+        MessageStore.shared.append(local)
+        MediaProgressStore.shared.begin(local.id)
+        Task { [weak self] in
+            guard let self else { return }
+            let upload: MediaService.UploadResult
+            do {
+                upload = try await MediaService.shared.uploadGIF(data: data) { p in
+                    MediaProgressStore.shared.set(local.id, value: p)
+                }
+            } catch {
+                MediaProgressStore.shared.clear(local.id)
+                MessageStore.shared.updateState(messageID: local.id, thread: .peer(uin: contact.uin), state: .failed)
+                return
+            }
+            MediaProgressStore.shared.clear(local.id)
+            let combined = upload.mediaID + "|" + upload.keyBase64
+            MessageStore.shared.updateMediaID(messageID: local.id, thread: .peer(uin: contact.uin), mediaID: combined)
+            try? await self.sendEnvelope(
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
                 to: contact, localID: local.id
             )
         }
@@ -133,7 +177,7 @@ final class MessageService {
         }
     }
 
-    func sendVideo(processed: VideoProcessor.Output, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendVideo(processed: VideoProcessor.Output, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -147,7 +191,8 @@ final class MessageService {
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -175,7 +220,8 @@ final class MessageService {
                     durationSec: processed.durationSec,
                     caption: caption,
                     ttl: ttl,
-                    replyTo: replyTo
+                    replyTo: replyTo,
+                    albumID: albumID
                 ),
                 to: contact, localID: local.id
             )
@@ -366,7 +412,7 @@ final class MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
             senderUIN: ownUIN,
@@ -376,7 +422,8 @@ final class MessageService {
             mediaID: nil,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         RandomChatService.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -394,7 +441,44 @@ final class MessageService {
         let combined = upload.mediaID + "|" + upload.keyBase64
         RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
         try await sendRandomEnvelope(
-            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo),
+            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID),
+            to: peer,
+            localID: local.id
+        )
+    }
+
+    /// Random-chat GIF send. Same envelope shape as `sendPhoto`; the
+    /// raw bytes flow through `uploadGIF`.
+    func sendGIF(data: Data, preview: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+        let local = Message(
+            thread: .peer(uin: peer.uin),
+            senderUIN: ownUIN,
+            isFromMe: true,
+            kind: .photo,
+            text: caption ?? "",
+            mediaID: nil,
+            replyToID: replyTo?.id,
+            replyToSnippet: replyTo?.snippet,
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
+        )
+        RandomChatService.shared.append(local)
+        MediaProgressStore.shared.begin(local.id)
+        let upload: MediaService.UploadResult
+        do {
+            upload = try await MediaService.shared.uploadGIF(data: data) { p in
+                MediaProgressStore.shared.set(local.id, value: p)
+            }
+        } catch {
+            MediaProgressStore.shared.clear(local.id)
+            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
+            throw error
+        }
+        MediaProgressStore.shared.clear(local.id)
+        let combined = upload.mediaID + "|" + upload.keyBase64
+        RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
+        try await sendRandomEnvelope(
+            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID),
             to: peer,
             localID: local.id
         )
@@ -441,7 +525,7 @@ final class MessageService {
         )
     }
 
-    func sendVideo(processed: VideoProcessor.Output, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendVideo(processed: VideoProcessor.Output, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
             senderUIN: ownUIN,
@@ -453,7 +537,8 @@ final class MessageService {
             durationSec: processed.durationSec,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         RandomChatService.shared.append(local)
         defer { try? FileManager.default.removeItem(at: processed.url) }
@@ -478,7 +563,8 @@ final class MessageService {
                 thumbnailB64: processed.thumbnailB64,
                 durationSec: processed.durationSec,
                 caption: caption,
-                replyTo: replyTo
+                replyTo: replyTo,
+                albumID: albumID
             ),
             to: peer,
             localID: local.id
@@ -531,7 +617,7 @@ final class MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
             thread: .group(id: group.id),
@@ -542,7 +628,8 @@ final class MessageService {
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -562,7 +649,47 @@ final class MessageService {
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
             try? await self.sendGroupEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo),
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
+                to: group, localID: local.id
+            )
+        }
+    }
+
+    /// Group GIF send. Same envelope shape as `sendPhoto`; raw bytes
+    /// flow through `uploadGIF`.
+    func sendGIF(data: Data, preview: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
+        let local = Message(
+            thread: .group(id: group.id),
+            senderUIN: ownUIN,
+            isFromMe: true,
+            kind: .photo,
+            text: caption ?? "",
+            ttlSeconds: ttl,
+            replyToID: replyTo?.id,
+            replyToSnippet: replyTo?.snippet,
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
+        )
+        MessageStore.shared.append(local)
+        MediaProgressStore.shared.begin(local.id)
+        Task { [weak self] in
+            guard let self else { return }
+            let upload: MediaService.UploadResult
+            do {
+                upload = try await MediaService.shared.uploadGIF(data: data) { p in
+                    MediaProgressStore.shared.set(local.id, value: p)
+                }
+            } catch {
+                MediaProgressStore.shared.clear(local.id)
+                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
+                return
+            }
+            MediaProgressStore.shared.clear(local.id)
+            let combined = upload.mediaID + "|" + upload.keyBase64
+            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
+            try? await self.sendGroupEnvelope(
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
                 to: group, localID: local.id
             )
         }
@@ -614,7 +741,7 @@ final class MessageService {
         }
     }
 
-    func sendVideo(processed: VideoProcessor.Output, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
+    func sendVideo(processed: VideoProcessor.Output, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
             thread: .group(id: group.id),
@@ -628,7 +755,8 @@ final class MessageService {
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
+            replyToAuthorName: replyTo?.authorName,
+            albumID: albumID
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -656,7 +784,8 @@ final class MessageService {
                     durationSec: processed.durationSec,
                     caption: caption,
                     ttl: ttl,
-                    replyTo: replyTo
+                    replyTo: replyTo,
+                    albumID: albumID
                 ),
                 to: group, localID: local.id
             )
@@ -701,10 +830,16 @@ final class MessageService {
     }
 
     private func uploadPremiumKeys(
-        contentID: UUID, mediaKeyB64: String, recipients: [PremiumRecipient], price: Int
+        contentID: UUID, mediaKeyB64: String, recipients: [PremiumRecipient], price: Int,
+        groupID: Int? = nil
     ) async throws {
         struct RecipientKey: Encodable { let uin: Int; let wrapped_key: String }
-        struct Body: Encodable { let id: String; let price_tokens: Int; let recipient_keys: [RecipientKey] }
+        struct Body: Encodable {
+            let id: String
+            let price_tokens: Int
+            let recipient_keys: [RecipientKey]
+            let group_id: Int?
+        }
         struct Out: Decodable { let id: String }
 
         let wrapped: [RecipientKey] = try recipients.map { r in
@@ -717,7 +852,8 @@ final class MessageService {
             body: Body(
                 id: contentID.uuidString.lowercased(),
                 price_tokens: price,
-                recipient_keys: wrapped
+                recipient_keys: wrapped,
+                group_id: groupID
             )
         )
     }
@@ -763,11 +899,13 @@ final class MessageService {
             MessageStore.shared.updateMediaID(messageID: messageID, thread: target.thread, mediaID: combined)
             // POST wrapped keys before the envelope so a racing /unlock finds the row.
             do {
+                let gid: Int? = if case .group(let g) = target { g.id } else { nil }
                 try await self.uploadPremiumKeys(
                     contentID: messageID,
                     mediaKeyB64: upload.keyBase64,
                     recipients: recipients,
-                    price: price
+                    price: price,
+                    groupID: gid
                 )
             } catch {
                 MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
@@ -835,11 +973,13 @@ final class MessageService {
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: messageID, thread: target.thread, mediaID: combined)
             do {
+                let gid: Int? = if case .group(let g) = target { g.id } else { nil }
                 try await self.uploadPremiumKeys(
                     contentID: messageID,
                     mediaKeyB64: upload.keyBase64,
                     recipients: recipients,
-                    price: price
+                    price: price,
+                    groupID: gid
                 )
             } catch {
                 MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
@@ -906,6 +1046,14 @@ final class MessageService {
         switch target {
         case .peer(let contact):
             MessageStore.shared.markRead(messageIDs: ids, thread: .peer(uin: contact.uin))
+            // Privacy gate — "nobody" suppresses every outbound
+            // receipt; the local read-state still lands so the
+            // user's own bubble chrome updates. "contacts" /
+            // "everyone" both send: peer chats are reached only
+            // through the contact list, so "contacts" is the same
+            // observable behaviour as "everyone".
+            let policy = UserDefaults.standard.string(forKey: "rcq.privacy.readReceiptsVisibility") ?? "everyone"
+            guard policy != "nobody" else { return }
             do {
                 try await sendEnvelope(.readReceipt(targetIDs: ids), to: contact, localID: nil)
             } catch { }
@@ -1122,12 +1270,12 @@ final class MessageService {
     static func messageID(in envelope: Envelope) -> UUID? {
         switch envelope {
         case .text(let id, _, _, _, _): return id
-        case .photo(let id, _, _, _, _, _, _): return id
-        case .video(let id, _, _, _, _, _, _, _, _): return id
+        case .photo(let id, _, _, _, _, _, _, _): return id
+        case .video(let id, _, _, _, _, _, _, _, _, _): return id
         case .voice(let id, _, _, _, _, _, _): return id
         case .systemNotice(let id, _): return id
-        case .premiumPhoto(let id, _, _, _, _, _, _, _): return id
-        case .premiumVideo(let id, _, _, _, _, _, _, _, _): return id
+        case .premiumPhoto(let id, _, _, _, _, _, _, _, _): return id
+        case .premiumVideo(let id, _, _, _, _, _, _, _, _, _): return id
         default: return nil
         }
     }
@@ -1181,7 +1329,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, let reply):
+                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, let reply, let album):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1193,11 +1341,12 @@ final class MessageService {
                         deliveryState: .delivered,
                         replyToID: reply?.id,
                         replyToSnippet: reply?.snippet,
-                        replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply)
+                        replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply),
+                        albumID: album
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, let reply):
+                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, let reply, let album):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1211,7 +1360,8 @@ final class MessageService {
                         durationSec: dur,
                         replyToID: reply?.id,
                         replyToSnippet: reply?.snippet,
-                        replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply)
+                        replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply),
+                        albumID: album
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
@@ -1274,7 +1424,7 @@ final class MessageService {
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName
                 ))
-            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply):
+            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply, let album):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1289,9 +1439,10 @@ final class MessageService {
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
-                    replyToAuthorName: reply?.authorName
+                    replyToAuthorName: reply?.authorName,
+                    albumID: album
                 ))
-            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let fwd, let reply):
+            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1308,7 +1459,8 @@ final class MessageService {
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
-                    replyToAuthorName: reply?.authorName
+                    replyToAuthorName: reply?.authorName,
+                    albumID: album
                 ))
             case .voice(let id, let mediaID, let mediaKey, let dur, let envTTL, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
@@ -1357,7 +1509,7 @@ final class MessageService {
                     sentAt: ws.serverTime,
                     deliveryState: .delivered
                 ))
-            case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let envTTL, let fwd, let reply):
+            case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let envTTL, let fwd, let reply, let album):
                 // Empty key half (`<id>|`) keeps the media renderer's split parser happy until unlock.
                 inserted = MessageStore.shared.append(Message(
                     id: id,
@@ -1376,9 +1528,10 @@ final class MessageService {
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName,
                     premiumPriceTokens: price,
-                    premiumUnlocked: false
+                    premiumUnlocked: false,
+                    albumID: album
                 ))
-            case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let envTTL, let fwd, let reply):
+            case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1397,7 +1550,8 @@ final class MessageService {
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName,
                     premiumPriceTokens: price,
-                    premiumUnlocked: false
+                    premiumUnlocked: false,
+                    albumID: album
                 ))
             }
             os_log(

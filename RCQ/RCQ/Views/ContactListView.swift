@@ -29,6 +29,12 @@ struct ContactListView: View {
     @State private var showSearch = false
     @State private var showInventory = false
     @State private var showTradesList = false
+    /// Loaded listing for the share-to-chat deep-link path. When set,
+    /// `.sheet(item:)` slides up `MarketListingDetailSheet` directly
+    /// — NOT wrapped in MarketView. The user reported the previous
+    /// "full market shutter → item shutter on top" stacked-sheet
+    /// look as confusing; this skips straight to the item.
+    @State private var deepLinkListing: MarketplaceListing? = nil
     @State private var collapsedGroups = false
     @State private var previewTarget: ChatTarget?
     /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
@@ -39,6 +45,7 @@ struct ContactListView: View {
     @State private var collapsedArchive = true
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
+    @State private var deepLinkUinListing: UinMarketplaceListing? = nil
     @State private var refreshAttemptedFor: Set<Int> = []
     @State private var petPreview: PetPreviewTarget?
     @State private var tradeWithContact: Contact?
@@ -284,7 +291,62 @@ struct ContactListView: View {
                     Task { @MainActor in await trades.refreshAll() }
                 }
             }
+            .onChange(of: appState.pendingOpenGroupID) { _ in
+                tryOpenPendingGroup()
+            }
+            .onChange(of: groups.groups) { _ in
+                tryOpenPendingGroup()
+            }
+            .onChange(of: appState.pendingOpenMarketListingID) { newValue in
+                guard let id = newValue else { return }
+                appState.pendingOpenMarketListingID = nil
+                Task {
+                    if let listing = await MarketService.shared.fetchListing(id: id) {
+                        await MainActor.run { deepLinkListing = listing }
+                    }
+                }
+            }
+            .onChange(of: appState.pendingOpenUinListingID) { newValue in
+                guard let id = newValue else { return }
+                appState.pendingOpenUinListingID = nil
+                Task {
+                    if let listing = await MarketService.shared.fetchUinListing(id: id) {
+                        await MainActor.run { deepLinkUinListing = listing }
+                    }
+                }
+            }
+            .sheet(item: $deepLinkUinListing) { listing in
+                UinMarketListingDetailSheet(
+                    listing: listing,
+                    onBought: { deepLinkUinListing = nil },
+                    onCancelled: { },
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $deepLinkListing) { listing in
+                MarketListingDetailSheet(
+                    listing: listing,
+                    onBought: { deepLinkListing = nil },
+                    onCancelled: { },
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
         }
+    }
+
+    private func tryOpenPendingGroup() {
+        guard let id = appState.pendingOpenGroupID else { return }
+        guard let group = groups.groups.first(where: { $0.id == id }) else {
+            // Group list hasn't loaded yet — leave the flag set; the
+            // `onChange(of: groups.groups)` hook retries when it does.
+            return
+        }
+        appState.pendingOpenGroupID = nil
+        showInventory = false
+        trades.freshIncoming = nil
+        path.append(group)
     }
 
     private func tryOpenPendingChat() {
@@ -526,7 +588,13 @@ struct ContactListView: View {
                             )
                     }
                     ForEach(favContacts) { contact in
-                        ContactRow(contact: contact, onTapPet: { showPetPreview(for: contact) })
+                        let group = stories.group(forUIN: contact.uin)
+                        ContactRow(
+                            contact: contact,
+                            onTapPet: { showPetPreview(for: contact) },
+                            storyGroup: group,
+                            onTapStory: group == nil ? nil : { openStoryViewer(forUIN: contact.uin) }
+                        )
                             .contentShape(Rectangle())
                             .onTapGesture { path.append(contact) }
                             .scaleEffect(pressedRowID == "fav-peer:\(contact.uin)" ? 0.96 : 1.0)
@@ -1219,6 +1287,14 @@ private struct ContactRow: View {
                             .font(.caption2.italic())
                             .foregroundColor(Theme.Color.textSecondary)
                             .lineLimit(1)
+                    } else if contact.status == .offline,
+                              let last = contact.lastSeen {
+                        // Server already gates this by visibility — null
+                        // means hidden, online users get null too.
+                        Text("· \(String(format: "contact.last_seen".localized, Self.relativeLastSeen(last)))")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -1261,6 +1337,36 @@ private struct ContactRow: View {
             icon
         }
     }
+
+    /// Coarse "last seen" buckets — minutes / hours / days. Anything
+    /// over a week falls back to a localised short date so the row
+    /// doesn't read "9999h ago" for long-dormant contacts.
+    fileprivate static func relativeLastSeen(_ date: Date) -> String {
+        let secs = Int(-date.timeIntervalSinceNow)
+        if secs < 60 { return "contact.last_seen.just_now".localized }
+        let mins = secs / 60
+        if mins < 60 {
+            return String(format: "contact.last_seen.minutes".localized, mins)
+        }
+        let hours = mins / 60
+        if hours < 24 {
+            return String(format: "contact.last_seen.hours".localized, hours)
+        }
+        let days = hours / 24
+        if days < 7 {
+            return String(format: "contact.last_seen.days".localized, days)
+        }
+        return DateFormatter.lastSeenLong.string(from: date)
+    }
+}
+
+private extension DateFormatter {
+    static let lastSeenLong: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
 }
 
 /// Identifiable wrapper so the deep-link UIN drives a `.sheet(item:)` presentation.
@@ -1305,11 +1411,12 @@ private struct GroupRow: View {
                 // both 28pt) — only the inner glyph shrinks. Smaller
                 // glyph reads as breathing-room around the icon, not
                 // as a smaller marker.
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Theme.Color.accent))
+                GroupAvatarView(
+                    mediaID: group.avatarMediaID,
+                    keyBase64: group.avatarMediaKey,
+                    size: 28,
+                    glyphSize: 12,
+                )
                 if let count = groups.unread[group.id], count > 0 {
                     Text("\(count)")
                         .font(.system(size: 9, weight: .bold))

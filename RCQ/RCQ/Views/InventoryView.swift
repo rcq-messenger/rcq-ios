@@ -13,6 +13,7 @@ struct InventoryView: View {
     @State private var showGames = false
     @State private var showMarket = false
     @State private var showMemorial = false
+    @State private var showOwnedUINs = false
     @State private var detailItem: Item?
     @State private var lastError: String?
 
@@ -117,6 +118,14 @@ struct InventoryView: View {
                                 systemImage: "leaf.fill"
                             )
                         }
+                        Button {
+                            showOwnedUINs = true
+                        } label: {
+                            Label(
+                                "uin_auction.owned.title".localized,
+                                systemImage: "number.circle.fill"
+                            )
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                             .foregroundColor(Theme.Color.accent)
@@ -175,6 +184,10 @@ struct InventoryView: View {
             }
             .sheet(isPresented: $showMemorial) {
                 PetMemorialFromInventorySheet()
+                    .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showOwnedUINs) {
+                OwnedUINsSheet()
                     .presentationDetents([.large])
             }
             .sheet(item: $detailItem) { item in
@@ -519,7 +532,16 @@ struct InventoryView: View {
     private var selectActionBar: some View {
         HStack(spacing: 0) {
             Button {
-                let visibleIDs = Set(filteredItems.map { $0.id })
+                // Skip equipped items — Select All is wired to the
+                // bulk-disassemble button, and accidentally torching
+                // the pet you're wearing was a real footgun. Toggle
+                // semantics stay the same: a second tap when every
+                // candidate is already selected clears it.
+                let visibleIDs = Set(
+                    filteredItems
+                        .filter { !$0.equipped }
+                        .map { $0.id }
+                )
                 if selected.isSuperset(of: visibleIDs) {
                     selected.subtract(visibleIDs)
                 } else {

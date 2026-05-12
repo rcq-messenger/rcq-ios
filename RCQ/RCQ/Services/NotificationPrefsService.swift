@@ -17,12 +17,14 @@ final class NotificationPrefsService: ObservableObject {
         var tradesFromContacts: Bool
         var tradesFromStrangers: Bool
         var mutedUINs: [Int]
+        var mutedGroupIDs: [Int]
 
         static let defaults = Prefs(
             contactRequests: true,
             tradesFromContacts: true,
             tradesFromStrangers: false,
-            mutedUINs: []
+            mutedUINs: [],
+            mutedGroupIDs: []
         )
 
         enum CodingKeys: String, CodingKey {
@@ -30,6 +32,31 @@ final class NotificationPrefsService: ObservableObject {
             case tradesFromContacts = "trades_from_contacts"
             case tradesFromStrangers = "trades_from_strangers"
             case mutedUINs = "muted_uins"
+            case mutedGroupIDs = "muted_group_ids"
+        }
+
+        init(
+            contactRequests: Bool,
+            tradesFromContacts: Bool,
+            tradesFromStrangers: Bool,
+            mutedUINs: [Int],
+            mutedGroupIDs: [Int]
+        ) {
+            self.contactRequests = contactRequests
+            self.tradesFromContacts = tradesFromContacts
+            self.tradesFromStrangers = tradesFromStrangers
+            self.mutedUINs = mutedUINs
+            self.mutedGroupIDs = mutedGroupIDs
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            contactRequests = try c.decode(Bool.self, forKey: .contactRequests)
+            tradesFromContacts = try c.decode(Bool.self, forKey: .tradesFromContacts)
+            tradesFromStrangers = try c.decode(Bool.self, forKey: .tradesFromStrangers)
+            mutedUINs = try c.decode([Int].self, forKey: .mutedUINs)
+            // Older servers don't return the field; treat as empty.
+            mutedGroupIDs = (try? c.decode([Int].self, forKey: .mutedGroupIDs)) ?? []
         }
     }
 
@@ -61,6 +88,7 @@ final class NotificationPrefsService: ObservableObject {
                 let trades_from_contacts: Bool?
                 let trades_from_strangers: Bool?
                 let muted_uins: [Int]?
+                let muted_group_ids: [Int]?
             }
             let _: Prefs = try await APIClient.shared.request(
                 "PUT", "/users/me/push-preferences",
@@ -68,7 +96,8 @@ final class NotificationPrefsService: ObservableObject {
                     contact_requests: next.contactRequests,
                     trades_from_contacts: next.tradesFromContacts,
                     trades_from_strangers: next.tradesFromStrangers,
-                    muted_uins: next.mutedUINs
+                    muted_uins: next.mutedUINs,
+                    muted_group_ids: next.mutedGroupIDs
                 )
             )
         } catch {
@@ -94,6 +123,17 @@ final class NotificationPrefsService: ObservableObject {
             var set = Set(current.mutedUINs)
             if muted { set.insert(uin) } else { set.remove(uin) }
             current.mutedUINs = Array(set).sorted()
+        }
+    }
+
+    /// Per-group mute. Server's `is_group_muted` reads this list and
+    /// suppresses APNs alerts for offline group recipients; messages
+    /// still queue, so the user sees them on next /queue fetch.
+    func setGroupMuted(_ groupID: Int, muted: Bool) async {
+        await update { current in
+            var set = Set(current.mutedGroupIDs)
+            if muted { set.insert(groupID) } else { set.remove(groupID) }
+            current.mutedGroupIDs = Array(set).sorted()
         }
     }
 

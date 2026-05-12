@@ -4,3 +4,5 @@
 "push.contact_response_accepted.body" = "принял вашу заявку в контакты";
 "push.trade_received.gift.body" = "прислал вам подарок";
 "push.trade_received.offer.body" = "прислал предложение обмена";
+"push.uin_auction_outbid.title" = "Аукцион UIN";
+"push.uin_auction_outbid.body" = "Вашу ставку перебили — загляните в аукцион.";

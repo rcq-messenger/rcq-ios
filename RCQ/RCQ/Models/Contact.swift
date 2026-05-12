@@ -26,6 +26,10 @@ struct Contact: Identifiable, Hashable, Codable {
     /// the small overlay GIF on top of their status icon in lists.
     /// Populated from server's `equipped_pet` field; null = no pet.
     var equippedPet: EquippedPet?
+    /// Server-gated by the contact's `last_seen_visibility`; null
+    /// when the contact is currently online (status conveys that),
+    /// or when they've hidden it. Use `relativeLastSeen()` to render.
+    var lastSeen: Date?
 
     var id: Int { uin }
 
@@ -38,6 +42,7 @@ struct Contact: Identifiable, Hashable, Codable {
         case signalIdentityKey = "signal_identity_key"
         case gender
         case equippedPet = "equipped_pet"
+        case lastSeen = "last_seen"
     }
 
     /// Synthetic "Saved Messages" peer — the user's own UIN dressed up
@@ -60,7 +65,8 @@ struct Contact: Identifiable, Hashable, Codable {
             signalIdentityKey: nil,
             gender: nil,
             unread: 0,
-            equippedPet: nil
+            equippedPet: nil,
+            lastSeen: nil
         )
     }
 }

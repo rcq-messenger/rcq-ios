@@ -8,9 +8,26 @@ struct CrashMiniBubble: View {
     private static let presets: [Int] = [10, 25, 50, 100, 250, 500]
     @State private var betIndex: Int = 1
 
+    var isDocked: Bool = false
     var openFull: () -> Void = {}
 
     var body: some View {
+        Group {
+            if isDocked {
+                dockedTab
+            } else {
+                fullBubble
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: svc.phase)
+        .onLongPressGesture(minimumDuration: 0.35) { openFull() }
+        // Double-tap is the primary expand-to-full-game gesture per
+        // user request; long-press kept as a fallback.
+        .onTapGesture(count: 2) { openFull() }
+    }
+
+    @ViewBuilder
+    private var fullBubble: some View {
         HStack(spacing: 8) {
             Button {
                 svc.hideMini()
@@ -44,8 +61,33 @@ struct CrashMiniBubble: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
         )
-        .animation(.easeInOut(duration: 0.25), value: svc.phase)
-        .onLongPressGesture(minimumDuration: 0.35) { openFull() }
+    }
+
+    @ViewBuilder
+    private var dockedTab: some View {
+        ZStack {
+            Capsule()
+                .fill(backgroundTint)
+            Capsule()
+                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+            // During the running phase, replace the rocket with the
+            // live multiplier — keeps the docked tab informative.
+            switch svc.phase {
+            case .running:
+                TimelineView(.periodic(from: .now, by: 0.1)) { ctx in
+                    let m = svc.projectedMultiplier(at: ctx.date)
+                    Text(String(format: "%.1f×", m))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+            default:
+                Image(systemName: "rocket.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        }
     }
 
     private var backgroundTint: Color {

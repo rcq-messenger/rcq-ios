@@ -99,7 +99,8 @@ final class MessageStore: ObservableObject {
             replyToAuthorName: m.replyToAuthorName,
             editedAt: editedAt,
             premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: m.premiumUnlocked
+            premiumUnlocked: m.premiumUnlocked,
+            albumID: m.albumID
         )
         threads[thread] = t
         MessageDB.shared.updateText(id: messageID, text: newText, editedAt: editedAt)
@@ -131,7 +132,8 @@ final class MessageStore: ObservableObject {
             replyToAuthorName: m.replyToAuthorName,
             editedAt: m.editedAt,
             premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: true
+            premiumUnlocked: true,
+            albumID: m.albumID
         )
         t[idx] = updated
         threads[thread] = t
@@ -160,7 +162,8 @@ final class MessageStore: ObservableObject {
             replyToAuthorName: m.replyToAuthorName,
             editedAt: m.editedAt,
             premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: m.premiumUnlocked
+            premiumUnlocked: m.premiumUnlocked,
+            albumID: m.albumID
         )
         threads[thread] = t
         MessageDB.shared.updateMediaID(id: messageID, mediaID: mediaID)

@@ -7,3 +7,5 @@
 "push.contact_response_accepted.body" = "accepted your contact request";
 "push.trade_received.gift.body" = "sent you a gift";
 "push.trade_received.offer.body" = "sent you a trade offer";
+"push.uin_auction_outbid.title" = "UIN Auction";
+"push.uin_auction_outbid.body" = "You were outbid — check the auction.";

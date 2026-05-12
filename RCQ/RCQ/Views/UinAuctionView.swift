@@ -19,6 +19,18 @@ struct UinAuctionView: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 content
             }
+            // Insufficient-balance pill rides above the toolbar as a
+            // free-floating chrome element. Putting it inside the
+            // bottomBar `ToolbarItemGroup` makes iOS 26 wrap it in a
+            // system bubble (the toolbar item background style).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if svc.active != nil && !walletCoversMinBid {
+                    insufficientBottomPill
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.clear)
+                }
+            }
             // simultaneousGesture coexists with ScrollView pan; plain onTapGesture gets swallowed.
             .simultaneousGesture(
                 TapGesture().onEnded {
@@ -48,10 +60,6 @@ struct UinAuctionView: View {
                     Button { showOwned = true } label: {
                         Label("uin_auction.owned.title".localized,
                               systemImage: "tray.full.fill")
-                    }
-                    Spacer()
-                    if svc.active != nil && !walletCoversMinBid {
-                        insufficientBottomPill
                     }
                     Spacer()
                     Button { showRecent = true } label: {
@@ -466,7 +474,10 @@ private struct RecentWinnersSheet: View {
 
 // MARK: - Owned UINs sheet (inventory)
 
-private struct OwnedUINsSheet: View {
+/// Not `private` — `InventoryView`'s toolbar menu reuses this sheet so
+/// the user can manage their won UINs without having to navigate to
+/// the auction screen.
+struct OwnedUINsSheet: View {
     @StateObject private var svc = UinAuctionService.shared
     @StateObject private var items = ItemsService.shared
     @Environment(\.dismiss) private var dismiss
@@ -664,7 +675,7 @@ private struct UinAuctionRulesSheet: View {
 
 // MARK: - Sell owned UIN on marketplace
 
-private struct SellOwnedUinSheet: View {
+struct SellOwnedUinSheet: View {
     let uin: Int
     let tier: String
     let onListed: () -> Void

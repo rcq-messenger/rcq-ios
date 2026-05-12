@@ -213,14 +213,14 @@ struct ItemDetailSheet: View {
                 specDivider
                 specRow(label: "market.spec.purity".localized) {
                     HStack(spacing: 6) {
-                        Text(String(format: "%.2f×", item.purity))
-                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Theme.Color.textPrimary)
                         if let pur = item.purityTier {
                             Text(pur)
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(item.rarity.color)
                         }
+                        Text(String(format: "%.2f×", item.purity))
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
                     }
                 }
             }

@@ -7,28 +7,16 @@ struct AboutSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var headerLogoAngle: Double = 0
 
-    // TODO: replace placeholder addresses with real receive addresses before release.
+    // Real addresses pending — for now we ship the row layout with
+    // empty addresses so it visibly reads as "coming soon" rather
+    // than tempting anyone to send funds into the void of a mock
+    // string. `DonationRow` swaps the address line for a dash and
+    // greys out the copy / QR buttons when `address` is empty.
     private let donations: [DonationAddress] = [
-        DonationAddress(
-            ticker: "BTC", network: "Bitcoin",
-            address: "bc1qmockbtc0xreviewlayoutonly1234567890abcd", // mock
-            assetName: "crypto_btc"
-        ),
-        DonationAddress(
-            ticker: "ETH", network: "Ethereum",
-            address: "0xMockEthereumAddressForLayoutPreview000000",  // mock
-            assetName: "crypto_eth"
-        ),
-        DonationAddress(
-            ticker: "SOL", network: "Solana",
-            address: "MockSolanaPubkeyLayoutOnlyDoNotSendFunds111", // mock
-            assetName: "crypto_sol"
-        ),
-        DonationAddress(
-            ticker: "TON", network: "TON",
-            address: "EQMockTonAddressLayoutOnlyDoNotSendFundsHere",  // mock
-            assetName: "crypto_ton"
-        ),
+        DonationAddress(ticker: "BTC", network: "Bitcoin", address: "", assetName: "crypto_btc"),
+        DonationAddress(ticker: "ETH", network: "Ethereum", address: "", assetName: "crypto_eth"),
+        DonationAddress(ticker: "SOL", network: "Solana", address: "", assetName: "crypto_sol"),
+        DonationAddress(ticker: "TON", network: "TON", address: "", assetName: "crypto_ton"),
     ]
 
     var body: some View {
@@ -192,7 +180,7 @@ private struct DonationRow: View {
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(donation.network).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                    Text(truncated(donation.address))
+                    Text(donation.address.isEmpty ? "—" : truncated(donation.address))
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textSecondary)
                         .lineLimit(1)
@@ -212,6 +200,8 @@ private struct DonationRow: View {
                         .foregroundColor(copied ? Theme.Color.accent : Theme.Color.textSecondary)
                         .font(.system(size: 18))
                 }
+                .disabled(donation.address.isEmpty)
+                .opacity(donation.address.isEmpty ? 0.35 : 1)
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { showQR.toggle() }
                 } label: {
@@ -219,8 +209,10 @@ private struct DonationRow: View {
                         .foregroundColor(Theme.Color.textSecondary)
                         .font(.system(size: 18))
                 }
+                .disabled(donation.address.isEmpty)
+                .opacity(donation.address.isEmpty ? 0.35 : 1)
             }
-            if showQR {
+            if showQR && !donation.address.isEmpty {
                 if let img = QRCode.image(from: donation.address) {
                     Image(uiImage: img)
                         .interpolation(.none)

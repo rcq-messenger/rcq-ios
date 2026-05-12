@@ -90,6 +90,34 @@ final class MarketService: ObservableObject {
         }
     }
 
+    /// Single-listing fetch used by `MarketLinkBubble` (the rich card
+    /// rendered for a `rcq://market/{id}` URL embedded in a chat
+    /// message) and by the deep-link open path. Returns nil for 404,
+    /// network failure, or any other non-200 — callers fall back to
+    /// the plain URL bubble in that case.
+    func fetchListing(id: String) async -> MarketplaceListing? {
+        do {
+            let listing: MarketplaceListing = try await APIClient.shared.request(
+                "GET", "/market/listings/\(id)"
+            )
+            return listing
+        } catch {
+            return nil
+        }
+    }
+
+    /// Parallel of `fetchListing(id:)` for the UIN marketplace.
+    func fetchUinListing(id: String) async -> UinMarketplaceListing? {
+        do {
+            let listing: UinMarketplaceListing = try await APIClient.shared.request(
+                "GET", "/market/uin-listings/\(id)"
+            )
+            return listing
+        } catch {
+            return nil
+        }
+    }
+
     enum ListResult {
         case success(MarketplaceListing)
         case alreadyListed

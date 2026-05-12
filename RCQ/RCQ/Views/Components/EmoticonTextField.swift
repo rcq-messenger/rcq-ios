@@ -27,8 +27,16 @@ struct EmoticonTextField: UIViewRepresentable {
         tv.textContainer.lineBreakMode = .byWordWrapping
         tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        // Auto-grow with content; coordinator enables scrolling once content exceeds maxHeight.
-        tv.isScrollEnabled = false
+        // Scrolling is always on — the SwiftUI binding still drives
+        // the frame height via `sizeThatFits` measured in
+        // `measureHeight`, so the textView "auto-grows" up to
+        // `maxHeight` and starts scrolling content past it. Leaving
+        // `isScrollEnabled = false` until overflow used to leave the
+        // cursor drifting below the visible bounds whenever content
+        // outgrew the animating frame faster than SwiftUI could
+        // catch up — symptom was "after Enter, typed text becomes
+        // invisible and scrolling doesn't work".
+        tv.isScrollEnabled = true
         tv.placeholder = placeholder
         tv.placeholderColor = UIColor(Theme.Color.textSecondary)
         tv.allowedSendCallback = nil
@@ -46,6 +54,7 @@ struct EmoticonTextField: UIViewRepresentable {
             let attr = context.coordinator.attributed(from: text)
             uiView.attributedText = attr
             uiView.selectedRange = NSRange(location: attr.length, length: 0)
+            uiView.scrollRangeToVisible(uiView.selectedRange)
         }
         uiView.refreshPlaceholderVisibility()
         // Re-measure here covers the empty-on-send path where textViewDidChange won't fire.
@@ -171,10 +180,12 @@ struct EmoticonTextField: UIViewRepresentable {
                 tv.selectedRange = NSRange(location: restoredCursor, length: 0)
             }
             tv.refreshPlaceholderVisibility()
-            let needsScroll = tv.contentSize.height > parent.maxHeight
-            if tv.isScrollEnabled != needsScroll {
-                tv.isScrollEnabled = needsScroll
-            }
+            // Always keep the caret in view — frame animations on the
+            // SwiftUI side can lag the cursor by a frame or two, and
+            // when content exceeds maxHeight we need to actively scroll
+            // to the caret since UITextView's auto-scroll only kicks
+            // in on character entry, not on Enter-driven newlines.
+            tv.scrollRangeToVisible(tv.selectedRange)
             measureHeight()
         }
 

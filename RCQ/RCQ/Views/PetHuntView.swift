@@ -9,6 +9,7 @@ struct PetHuntView: View {
     @State private var showInfo: Bool = false
     @State private var showZonePicker: Bool = false
     @State private var showMemorial: Bool = false
+    @State private var showInventory: Bool = false
     @State private var claimingFlash: Bool = false
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -56,6 +57,16 @@ struct PetHuntView: View {
                 MemorialSheet()
                     .presentationDetents([.large])
             }
+            .fullScreenCover(isPresented: $showInventory, onDismiss: {
+                // Re-pull pet-hunt state after the inventory closes —
+                // the user might have just equipped a different pet,
+                // and without this refresh the Hunt screen would
+                // keep showing the previous active pet until the
+                // user manually relaunched the view.
+                Task { await svc.refreshState() }
+            }) {
+                InventoryView()
+            }
             .sheet(item: $svc.lastResult) { result in
                 HuntResultSheet(result: result) {
                     svc.acknowledgeResult()
@@ -80,6 +91,15 @@ struct PetHuntView: View {
         }
     }
 
+    /// Markdown-parsed empty-state body. `AttributedString(markdown:)`
+    /// throws when the localized template has no markdown, so we fall
+    /// back to a plain attributed string in that case to avoid an
+    /// empty Text.
+    private var emptyStateBody: AttributedString {
+        let raw = "pet_hunt.empty.no_pet.body".localized
+        return (try? AttributedString(markdown: raw)) ?? AttributedString(raw)
+    }
+
     private var noPetEmptyState: some View {
         VStack(spacing: 18) {
             Spacer()
@@ -90,11 +110,23 @@ struct PetHuntView: View {
                 .font(.system(.headline, weight: .semibold))
                 .foregroundColor(Theme.Color.textPrimary)
                 .multilineTextAlignment(.center)
-            Text("pet_hunt.empty.no_pet.body".localized)
+            // Markdown-parsed so the "inventory" word becomes a
+            // tappable link (accent-tinted). Open URL intercept below
+            // catches `rcq://inventory` and flips the fullScreenCover
+            // without the user having to leave the Hunt screen.
+            Text(emptyStateBody)
                 .font(.callout)
                 .foregroundColor(Theme.Color.textSecondary)
+                .tint(Theme.Color.accent)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 36)
+                .environment(\.openURL, OpenURLAction { url in
+                    if url.scheme == "rcq" && url.host == "inventory" {
+                        showInventory = true
+                        return .handled
+                    }
+                    return .systemAction
+                })
             Spacer()
             Button {
                 showMemorial = true
@@ -115,6 +147,7 @@ struct PetHuntView: View {
                 petSpecTable
                 accumulatorCard
                 huntButton
+                inventoryLink
                 memorialLink
                 Spacer(minLength: 24)
             }
@@ -401,6 +434,28 @@ struct PetHuntView: View {
             .cornerRadius(14)
         }
         .disabled(!canHunt)
+        .buttonStyle(.plain)
+    }
+
+    private var inventoryLink: some View {
+        Button {
+            showInventory = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "archivebox.fill")
+                    .foregroundColor(Theme.Color.textSecondary)
+                Text("pet_hunt.cta.open_inventory".localized)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textSecondary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            .padding(14)
+            .background(Theme.Color.bgSecondary)
+            .cornerRadius(10)
+        }
         .buttonStyle(.plain)
     }
 

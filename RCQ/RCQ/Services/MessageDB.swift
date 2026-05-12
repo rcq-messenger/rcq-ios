@@ -36,6 +36,11 @@ final class MessageRecord: NSManagedObject {
     /// True once local user has a usable media key (sender always true,
     /// recipients flip after paid unlock).
     @NSManaged var premiumUnlocked: Bool
+    /// Same id on every photo/video shipped together so the renderer
+    /// can group them into a Telegram-style album cluster. Nil for
+    /// stand-alone messages and any media coming from an older client
+    /// that didn't know about albumID.
+    @NSManaged var albumID: UUID?
 }
 
 @MainActor
@@ -104,6 +109,7 @@ final class MessageDB {
             attr("editedAt",           .dateAttributeType, optional: true),
             attr("premiumPriceTokens", .integer64AttributeType),
             attr("premiumUnlocked",    .booleanAttributeType),
+            attr("albumID",            .UUIDAttributeType, optional: true),
         ]
         let model = NSManagedObjectModel()
         model.entities = [entity]
@@ -231,6 +237,7 @@ final class MessageDB {
         row.editedAt = msg.editedAt
         row.premiumPriceTokens = Int64(msg.premiumPriceTokens ?? 0)
         row.premiumUnlocked = msg.premiumUnlocked
+        row.albumID = msg.albumID
     }
 
     private static func toModel(_ row: MessageRecord) -> Message {
@@ -256,7 +263,8 @@ final class MessageDB {
             replyToAuthorName: (row.replyToAuthorName?.isEmpty == false) ? row.replyToAuthorName : nil,
             editedAt: row.editedAt,
             premiumPriceTokens: row.premiumPriceTokens > 0 ? Int(row.premiumPriceTokens) : nil,
-            premiumUnlocked: row.premiumUnlocked
+            premiumUnlocked: row.premiumUnlocked,
+            albumID: row.albumID
         )
     }
 

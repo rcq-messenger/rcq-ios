@@ -17,6 +17,7 @@
 "settings.sound" = "Sound";
 "settings.sound.toggle" = "System sounds";
 "settings.minis.toggle" = "Game minis";
+"settings.minis.toggle.footer" = "Show floating Crash and UIN auction widgets on the chat list so you can keep an eye on a round or a bid without staying inside the game.";
 "settings.language" = "Language";
 "settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
 
@@ -40,11 +41,25 @@
 "settings.privacy.group_invites.desc" = "Who can add you to groups. \"Contacts only\" — mutual friends only; \"Nobody\" blocks invites entirely.";
 "settings.privacy.trade_offers.desc" = "Who can send you trades and gifts. \"Nobody\" blocks every incoming offer, including free gifts.";
 "settings.privacy.calls.desc" = "Who can call you. \"Nobody\" hides every call button in chats and menus; \"Contacts\" allows mutual friends only.";
-"settings.privacy.footer.short" = "Last seen, gender, group invites, trade offers, calls.";
+"settings.privacy.footer.short" = "Last seen, gender, group invites, trade offers, calls, read receipts.";
 "settings.privacy.calls" = "Calls from";
+"settings.privacy.read_receipts" = "Read receipts to";
+"settings.privacy.read_receipts.desc" = "When you read a message, your contact sees the second checkmark. \"Nobody\" turns this off — you'll still see when others read yours.";
 
 "settings.inventory.public" = "Public inventory";
 "settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
+
+"settings.network" = "Privacy & network";
+"settings.network.proxy" = "Route traffic through proxy";
+"settings.network.proxy.footer" = "Hides your IP from peers; jetons cover relay cost.";
+"settings.network.coming_soon" = "Coming soon";
+
+"settings.traffic" = "File traffic";
+"settings.traffic.used" = "Used this month";
+"settings.traffic.used.value" = "%d MB";
+"settings.traffic.spent" = "Spent";
+"settings.traffic.pay_large" = "Pay jetons for files > 25 MB";
+"settings.traffic.pay_large.footer" = "Large files cost jetons based on size. Rate appears here when enabled.";
 
 "settings.history" = "History";
 "settings.history.clear" = "Clear all chat history";
@@ -185,6 +200,8 @@
 "hood_banner.duration.7d" = "7 days";
 "hood_banner.composer.title" = "New";
 "hood_banner.composer.publish" = "Post";
+"hood_banner.composer.intro_title" = "What is a Hood Banner?";
+"hood_banner.composer.intro_body" = "A paid local classified visible only to people in your hood (a ~1.2 km area). Sell, hire, invite, announce — anyone nearby sees it at the bottom of People Nearby. Stays up from 1 hour to 7 days depending on the price.";
 "hood_banner.composer.text_label" = "TEXT";
 "hood_banner.composer.photo_label" = "PHOTO";
 "hood_banner.composer.photo_pick" = "Attach a photo";
@@ -257,6 +274,14 @@
 "market.detail.cancelled" = "Listing cancelled";
 "market.detail.sold_to" = "Bought by %@";
 "market.alert.title" = "Market";
+"market.share.cta_open" = "Open in market →";
+"market.share.toast.title" = "Share";
+"market.share.toast.sent" = "Sent to the chat.";
+"market.share.toast.error" = "Couldn't send: %@";
+"uin_listing.share.cta_open" = "Open in market →";
+"uin_listing.share.toast.title" = "Share";
+"uin_listing.share.toast.sent" = "Sent to the chat.";
+"uin_listing.share.toast.error" = "Couldn't send: %@";
 "market.spec.owner" = "Owner";
 "market.spec.tier" = "Tier";
 "market.spec.level" = "Level";
@@ -350,6 +375,11 @@
 "chat.composer.placeholder" = "Write a message…";
 "chat.action.reply" = "Reply";
 "chat.action.forward" = "Forward";
+"chat.action.select" = "Select";
+"chat.selection.delete" = "Delete (%d)";
+"chat.selection.forward" = "Forward (%d)";
+"chat.selection.cancel" = "Cancel";
+"chat.selection.title" = "%d selected";
 "chat.action.copy" = "Copy";
 "chat.action.translate" = "Translate";
 "chat.action.edit" = "Edit";
@@ -390,6 +420,12 @@
 "chat.menu.end_session" = "End session";
 "chat.typing" = "%@ is typing…";
 "chat.attach.title" = "Attach";
+"chat.attach.gallery" = "Photo or Video";
+"chat.album.count" = "%d items";
+"media_picker.title" = "Photos & Videos";
+"media_picker.send" = "Add (%d)";
+"media_picker.denied" = "RCQ doesn't have access to your photo library. Enable it in Settings to attach photos and videos.";
+"media_picker.open_settings" = "Open Settings";
 "chat.attach.photo" = "Photo";
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Camera";
@@ -507,6 +543,14 @@
 "chat.random.you" = "You";
 
 "chat.preview.no_messages" = "No messages yet";
+"chat.preview.deleted" = "Message deleted";
+"chat.preview.photo" = "📷 Photo";
+"chat.preview.video" = "🎬 Video";
+"chat.preview.voice" = "🎤 Voice";
+"chat.preview.premium_photo" = "🔒 Premium photo";
+"chat.preview.premium_video" = "🔒 Premium video";
+"chat.preview.generic" = "Message";
+"chat.banner.new_message" = "New message";
 
 /* ── Call screen ──────────────────────────────────────────── */
 
@@ -560,6 +604,9 @@
 "group.add.section.others" = "Other users";
 "group.add.error.blocked" = "The group owner has blocked this user.";
 "group.add.error.generic" = "Couldn't add: %@";
+"group.avatar.change" = "Change avatar";
+"group.avatar.remove" = "Remove avatar";
+"group.avatar.upload_error" = "Couldn't upload avatar: %@";
 
 /* ── Share-my-RCQ card ────────────────────────────────────── */
 
@@ -611,6 +658,12 @@
 "about.contact.website" = "Website";
 "about.contact.faq" = "FAQ";
 "about.contact.github" = "Source code (iOS)";
+
+"contact.last_seen" = "last seen %@";
+"contact.last_seen.just_now" = "just now";
+"contact.last_seen.minutes" = "%dm ago";
+"contact.last_seen.hours" = "%dh ago";
+"contact.last_seen.days" = "%dd ago";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
@@ -1243,8 +1296,11 @@
 "pet_hunt.send" = "SEND TO HUNT";
 "pet_hunt.hunts_left" = "%d / %d hunts left today";
 "pet_hunt.cta.open_memorial" = "Memorial";
+"pet_hunt.cta.open_inventory" = "Inventory";
+"pool.rarity.section" = "Rarity roll";
+"pool.rarity.hint" = "Rarity is rolled independently of the kind that drops — any pet, smiley pack, or voice can land at any rarity at the chances below.";
 "pet_hunt.empty.no_pet.title" = "No pet equipped";
-"pet_hunt.empty.no_pet.body" = "Equip a pet from your inventory to start earning passive jetons.";
+"pet_hunt.empty.no_pet.body" = "Equip a pet from your [inventory](rcq://inventory) to start earning passive jetons.";
 "pet_hunt.accumulator.title" = "In buffer";
 "pet_hunt.spec.daily_yield" = "Jetons / day";
 "pet_hunt.spec.daily_gems" = "Gems / day";
@@ -1316,6 +1372,8 @@
 "uin_auction.error.already_lead" = "You're already the leader";
 "uin_auction.error.ended" = "Auction ended";
 "uin_auction.outbid_refund" = "You've been outbid. %d tokens refunded.";
+"uin_auction.banner.outbid.title" = "Outbid on UIN auction";
+"uin_auction.banner.outbid.body" = "You were outbid — %d tokens refunded. Tap to rebid.";
 "uin_auction.celebrate.won" = "🏆 You won UIN %d! Activate it from inventory.";
 "uin_auction.recent.title" = "Recent winners";
 "uin_auction.recent.empty" = "No completed auctions yet";

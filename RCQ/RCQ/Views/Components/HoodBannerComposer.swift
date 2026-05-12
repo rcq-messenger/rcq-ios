@@ -28,6 +28,7 @@ struct HoodBannerComposer: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
                     VStack(spacing: 18) {
+                        intro
                         textField
                         photoBlock
                         durationPicker
@@ -72,6 +73,20 @@ struct HoodBannerComposer: View {
                 Task { await loadAndUploadPhoto(newItem) }
             }
         }
+    }
+
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("hood_banner.composer.intro_title".localized)
+                .font(.callout.weight(.semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            Text("hood_banner.composer.intro_body".localized)
+                .font(.footnote)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var textField: some View {
@@ -237,8 +252,10 @@ struct HoodBannerComposer: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.10))
         .cornerRadius(10)
     }

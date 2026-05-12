@@ -20,6 +20,11 @@ struct PrivacySettingsView: View {
     /// re-fetching `/users/me/info` on every render.
     @State private var callPolicy: String = "everyone"
     @AppStorage("rcq.privacy.callPolicy") private var callPolicyCache: String = "everyone"
+    /// Mirrored to `@AppStorage("rcq.privacy.readReceiptsVisibility")`
+    /// so `MessageService.markRead` can suppress outbound receipts
+    /// without re-fetching `/users/me/info` per read.
+    @State private var readReceiptsVisibility: String = "everyone"
+    @AppStorage("rcq.privacy.readReceiptsVisibility") private var readReceiptsCache: String = "everyone"
 
     var body: some View {
         NavigationStack {
@@ -91,6 +96,22 @@ struct PrivacySettingsView: View {
                         Text("settings.privacy.calls.desc".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
+                    Section {
+                        scopePicker(
+                            title: "settings.privacy.read_receipts".localized,
+                            selection: $readReceiptsVisibility,
+                            field: "read_receipts_visibility"
+                        )
+                        .onChange(of: readReceiptsVisibility) { newValue in
+                            // MessageService reads this on every
+                            // markRead — mirror immediately so the
+                            // gate flips without a round-trip.
+                            readReceiptsCache = newValue
+                        }
+                    } footer: {
+                        Text("settings.privacy.read_receipts.desc".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -134,6 +155,10 @@ struct PrivacySettingsView: View {
             if let v = p.callPolicy {
                 callPolicy = v
                 callPolicyCache = v
+            }
+            if let v = p.readReceiptsVisibility {
+                readReceiptsVisibility = v
+                readReceiptsCache = v
             }
             gender = p.gender ?? ""
         } catch {

@@ -6,27 +6,53 @@ struct AuctionMiniBubble: View {
     @StateObject private var svc = UinAuctionService.shared
 
     @State private var bidText: String = ""
+    var isDocked: Bool = false
     var openFull: () -> Void = {}
 
     var body: some View {
         if let auction = svc.active {
-            VStack(spacing: 0) {
-                timerStrip(auction: auction)
-                mainRow(auction: auction)
+            Group {
+                if isDocked {
+                    dockedTab
+                } else {
+                    VStack(spacing: 0) {
+                        timerStrip(auction: auction)
+                        mainRow(auction: auction)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(svc.iAmHighBidder ? Theme.Color.accent : Color.red)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                    )
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(svc.iAmHighBidder ? Theme.Color.accent : Color.red)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-            )
             .animation(.easeInOut(duration: 0.2), value: svc.iAmHighBidder)
             .onLongPressGesture(minimumDuration: 0.35) { openFull() }
+            // Double-tap is the primary "expand to full game" gesture
+            // per user request — long-press kept as a fallback.
+            .onTapGesture(count: 2) { openFull() }
             .onAppear { seedBidText() }
             .onChange(of: svc.minNextBid) { _ in seedBidText() }
+        }
+    }
+
+    /// Compact tab shown when the bubble is docked off-screen — a
+    /// vertical capsule with the auction icon. Double-tap still opens
+    /// the full screen, single tap (handled by FloatingMini) un-docks.
+    @ViewBuilder
+    private var dockedTab: some View {
+        ZStack {
+            Capsule()
+                .fill(svc.iAmHighBidder ? Theme.Color.accent : Color.red)
+            Capsule()
+                .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+            Image(systemName: "hammer.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
         }
     }
 

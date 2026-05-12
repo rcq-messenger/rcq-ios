@@ -8,6 +8,7 @@
 "settings.sound" = "Звук";
 "settings.sound.toggle" = "Системные звуки";
 "settings.minis.toggle" = "Миниатюры игр";
+"settings.minis.toggle.footer" = "Показывать плавающие виджеты Crash и аукциона UIN на главном экране, чтобы следить за раундом или ставкой не возвращаясь в игру.";
 "settings.language" = "Язык";
 "settings.language.footer" = "Выберите язык интерфейса. Переводы добавляются постепенно — отсутствующие строки временно отображаются на английском.";
 
@@ -31,11 +32,25 @@
 "settings.privacy.group_invites.desc" = "Кто может добавлять вас в группы. \"Только контакты\" — только взаимные друзья; \"Никто\" блокирует приглашения целиком.";
 "settings.privacy.trade_offers.desc" = "Кто может присылать вам обмены и подарки. \"Никто\" блокирует все входящие предложения, включая бесплатные подарки.";
 "settings.privacy.calls.desc" = "Кто может вам звонить. \"Никто\" прячет все кнопки звонков в чатах и меню; \"Только контакты\" разрешает только взаимным друзьям.";
-"settings.privacy.footer.short" = "Время онлайн, пол, приглашения, обмены, звонки.";
+"settings.privacy.footer.short" = "Время онлайн, пол, приглашения, обмены, звонки, отчёты о прочтении.";
 "settings.privacy.calls" = "Звонить могут";
+"settings.privacy.read_receipts" = "Отчёты о прочтении";
+"settings.privacy.read_receipts.desc" = "Когда вы открываете сообщение, у собеседника появляется вторая галочка. \"Никто\" выключает отправку — вы по-прежнему видите, когда читают ваши сообщения.";
 
 "settings.inventory.public" = "Открытый инвентарь";
 "settings.inventory.public.footer" = "Другие пользователи RCQ смогут просматривать ваши предметы из вашего профиля. Выкл — инвентарь приватный. Тот же тумблер, что и иконка-глаз в инвентаре.";
+
+"settings.network" = "Приватность и сеть";
+"settings.network.proxy" = "Маршрутизировать через прокси";
+"settings.network.proxy.footer" = "Скрывает IP от собеседников; жетоны покрывают relay.";
+"settings.network.coming_soon" = "Скоро";
+
+"settings.traffic" = "Трафик файлов";
+"settings.traffic.used" = "Использовано за месяц";
+"settings.traffic.used.value" = "%d МБ";
+"settings.traffic.spent" = "Потрачено";
+"settings.traffic.pay_large" = "Платить жетонами за файлы > 25 МБ";
+"settings.traffic.pay_large.footer" = "Большие файлы тарифицируются по размеру. Ставка появится здесь после включения.";
 
 "settings.history" = "История";
 "settings.history.clear" = "Очистить всю переписку";
@@ -176,6 +191,8 @@
 "hood_banner.duration.7d" = "7 дней";
 "hood_banner.composer.title" = "Новое";
 "hood_banner.composer.publish" = "Пост";
+"hood_banner.composer.intro_title" = "Что такое объявление в районе?";
+"hood_banner.composer.intro_body" = "Платное локальное объявление, видимое только людям в твоём районе (зона ~1.2 км). Продай, найми, позови, расскажи — все рядом увидят его внизу экрана «Рядом». Висит от 1 часа до 7 дней в зависимости от цены.";
 "hood_banner.composer.text_label" = "ТЕКСТ";
 "hood_banner.composer.photo_label" = "ФОТО";
 "hood_banner.composer.photo_pick" = "Прикрепить фото";
@@ -248,6 +265,14 @@
 "market.detail.cancelled" = "Лот снят";
 "market.detail.sold_to" = "Купил: %@";
 "market.alert.title" = "Маркет";
+"market.share.cta_open" = "Открыть на маркете →";
+"market.share.toast.title" = "Поделиться";
+"market.share.toast.sent" = "Отправлено в чат.";
+"market.share.toast.error" = "Не удалось отправить: %@";
+"uin_listing.share.cta_open" = "Открыть на маркете →";
+"uin_listing.share.toast.title" = "Поделиться";
+"uin_listing.share.toast.sent" = "Отправлено в чат.";
+"uin_listing.share.toast.error" = "Не удалось отправить: %@";
 "market.spec.owner" = "Владелец";
 "market.spec.tier" = "Редкость";
 "market.spec.level" = "Уровень";
@@ -341,6 +366,11 @@
 "chat.composer.placeholder" = "Напишите сообщение…";
 "chat.action.reply" = "Ответить";
 "chat.action.forward" = "Переслать";
+"chat.action.select" = "Выбрать";
+"chat.selection.delete" = "Удалить (%d)";
+"chat.selection.forward" = "Переслать (%d)";
+"chat.selection.cancel" = "Отмена";
+"chat.selection.title" = "Выбрано: %d";
 "chat.action.copy" = "Копировать";
 "chat.action.translate" = "Перевести";
 "chat.action.edit" = "Редактировать";
@@ -381,6 +411,12 @@
 "chat.menu.end_session" = "Завершить сессию";
 "chat.typing" = "%@ печатает…";
 "chat.attach.title" = "Прикрепить";
+"chat.attach.gallery" = "Фото или видео";
+"chat.album.count" = "%d шт";
+"media_picker.title" = "Фото и видео";
+"media_picker.send" = "Добавить (%d)";
+"media_picker.denied" = "У RCQ нет доступа к фото. Разреши его в Настройках чтобы прикреплять фото и видео.";
+"media_picker.open_settings" = "Открыть Настройки";
 "chat.attach.photo" = "Фото";
 "chat.attach.video" = "Видео";
 "chat.attach.camera" = "Камера";
@@ -498,6 +534,14 @@
 "chat.random.you" = "Вы";
 
 "chat.preview.no_messages" = "Сообщений пока нет";
+"chat.preview.deleted" = "Сообщение удалено";
+"chat.preview.photo" = "📷 Фото";
+"chat.preview.video" = "🎬 Видео";
+"chat.preview.voice" = "🎤 Голосовое";
+"chat.preview.premium_photo" = "🔒 Премиум-фото";
+"chat.preview.premium_video" = "🔒 Премиум-видео";
+"chat.preview.generic" = "Сообщение";
+"chat.banner.new_message" = "Новое сообщение";
 
 /* ── Экран звонка ─────────────────────────────────────────── */
 
@@ -551,6 +595,9 @@
 "group.add.section.others" = "Другие пользователи";
 "group.add.error.blocked" = "Создатель группы заблокировал этого пользователя.";
 "group.add.error.generic" = "Не удалось добавить: %@";
+"group.avatar.change" = "Сменить аватар";
+"group.avatar.remove" = "Убрать аватар";
+"group.avatar.upload_error" = "Не удалось загрузить аватар: %@";
 
 /* ── Карточка «Поделиться RCQ» ────────────────────────────── */
 
@@ -602,6 +649,12 @@
 "about.contact.website" = "Сайт";
 "about.contact.faq" = "FAQ";
 "about.contact.github" = "Исходный код (iOS)";
+
+"contact.last_seen" = "был в сети %@";
+"contact.last_seen.just_now" = "только что";
+"contact.last_seen.minutes" = "%d мин назад";
+"contact.last_seen.hours" = "%d ч назад";
+"contact.last_seen.days" = "%d дн назад";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
@@ -1234,8 +1287,11 @@
 "pet_hunt.send" = "ОТПРАВИТЬ НА ОХОТУ";
 "pet_hunt.hunts_left" = "%d / %d охот сегодня";
 "pet_hunt.cta.open_memorial" = "Мемориал";
+"pet_hunt.cta.open_inventory" = "Инвентарь";
+"pool.rarity.section" = "Редкость";
+"pool.rarity.hint" = "Редкость роллится независимо от выпавшего предмета — любой пет, пак смайлов или звук может оказаться любого тира с шансами ниже.";
 "pet_hunt.empty.no_pet.title" = "Питомец не снаряжён";
-"pet_hunt.empty.no_pet.body" = "Снаряди питомца из инвентаря чтобы начать пассивный фарм жетонов.";
+"pet_hunt.empty.no_pet.body" = "Снаряди питомца из [инвентаря](rcq://inventory) чтобы начать пассивный фарм жетонов.";
 "pet_hunt.accumulator.title" = "В буфере";
 "pet_hunt.spec.daily_yield" = "Жетонов / день";
 "pet_hunt.spec.daily_gems" = "Гемов / день";
@@ -1307,6 +1363,8 @@
 "uin_auction.error.already_lead" = "Ты уже лидер";
 "uin_auction.error.ended" = "Аукцион закончился";
 "uin_auction.outbid_refund" = "Тебя перебили. Возврат %d жетонов.";
+"uin_auction.banner.outbid.title" = "Перебили ставку";
+"uin_auction.banner.outbid.body" = "Тебя перебили — возврат %d жетонов. Нажми, чтобы поднять ставку.";
 "uin_auction.celebrate.won" = "🏆 Ты выиграл UIN %d! Активируй его в инвентаре.";
 "uin_auction.recent.title" = "Прошлые лоты";
 "uin_auction.recent.empty" = "Завершённых аукционов пока нет";

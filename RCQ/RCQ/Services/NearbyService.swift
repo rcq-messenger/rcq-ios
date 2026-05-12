@@ -32,12 +32,19 @@ final class NearbyService: NSObject, ObservableObject {
 
     private let manager = CLLocationManager()
     private var refreshTimer: Timer?
+    /// Number of one-shot retries we've done for the current start cycle —
+    /// CoreLocation often fires `kCLErrorLocationUnknown` once before a
+    /// real fix arrives; retrying a few times is far more reliable than
+    /// surfacing the first transient failure.
+    private var requestRetries = 0
+    private static let maxRequestRetries = 2
     private var cancellables = Set<AnyCancellable>()
 
     override private init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        print("[Nearby] init: auth=\(Self.authString(manager.authorizationStatus))")
         WebSocketService.shared.events
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
@@ -74,6 +81,7 @@ final class NearbyService: NSObject, ObservableObject {
         guard ttlSeconds >= 5 * 60 else { return }
         switch state {
         case .pending, .active:
+            print("[Nearby] start: ignored, state=\(state)")
             return
         default:
             break
@@ -81,16 +89,57 @@ final class NearbyService: NSObject, ObservableObject {
         lastRequestedTTL = ttlSeconds
         state = .pending
         let auth = manager.authorizationStatus
+        print("[Nearby] start: auth=\(Self.authString(auth)) ttl=\(Int(ttlSeconds))s")
         switch auth {
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
-            manager.requestLocation()
+            beginLocationFix()
         case .denied, .restricted:
             state = .denied
         @unknown default:
             state = .denied
         }
+    }
+
+    private static func authString(_ s: CLAuthorizationStatus) -> String {
+        switch s {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .authorizedAlways: return "always"
+        case .authorizedWhenInUse: return "whenInUse"
+        @unknown default: return "unknown(\(s.rawValue))"
+        }
+    }
+
+    /// Maps-style: try the system-cached fix first for instant feedback,
+    /// else ask CoreLocation for a fresh one. `requestLocation()` is the
+    /// original code path and matches what worked before; we just retry
+    /// it on transient `kCLErrorLocationUnknown` rather than failing fast.
+    private func beginLocationFix() {
+        requestRetries = 0
+        if let cached = manager.location {
+            let age = Date().timeIntervalSince(cached.timestamp)
+            print("[Nearby] cache present age=\(Int(age))s acc=\(cached.horizontalAccuracy)")
+            if age < 5 * 60, cached.horizontalAccuracy > 0 {
+                consume(fix: cached)
+                return
+            }
+        } else {
+            print("[Nearby] cache nil — requesting fresh fix")
+        }
+        manager.requestLocation()
+    }
+
+    private func consume(fix loc: CLLocation) {
+        let bucket = Geohash.encode(
+            lat: loc.coordinate.latitude,
+            lon: loc.coordinate.longitude,
+            length: 6
+        )
+        print("[Nearby] fix lat=\(loc.coordinate.latitude) lon=\(loc.coordinate.longitude) acc=\(loc.horizontalAccuracy) → bucket=\(bucket)")
+        Task { await self.postCheckin(bucketID: bucket, ttl: self.lastRequestedTTL) }
     }
 
     func forceReset() {
@@ -243,11 +292,13 @@ final class NearbyService: NSObject, ObservableObject {
 
 extension NearbyService: CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let auth = manager.authorizationStatus
         Task { @MainActor in
-            switch manager.authorizationStatus {
+            print("[Nearby] auth changed → \(Self.authString(auth)) state=\(self.state)")
+            switch auth {
             case .authorizedWhenInUse, .authorizedAlways:
                 if case .pending = self.state {
-                    manager.requestLocation()
+                    self.beginLocationFix()
                 }
             case .denied, .restricted:
                 self.state = .denied
@@ -258,24 +309,44 @@ extension NearbyService: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.first else { return }
-        let bucket = Geohash.encode(
-            lat: loc.coordinate.latitude,
-            lon: loc.coordinate.longitude,
-            length: 6
-        )
-        print("[Nearby] fix lat=\(loc.coordinate.latitude) lon=\(loc.coordinate.longitude) → bucket=\(bucket)")
+        print("[Nearby] didUpdateLocations: \(locations.count) — \(locations.map { "acc=\($0.horizontalAccuracy) age=\(Int(-$0.timestamp.timeIntervalSinceNow))s" }.joined(separator: ", "))")
+        guard let loc = locations.last(where: { $0.horizontalAccuracy > 0 }) else { return }
         Task { @MainActor in
-            await self.postCheckin(bucketID: bucket, ttl: self.lastRequestedTTL)
+            guard case .pending = self.state else { return }
+            self.consume(fix: loc)
         }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let ns = error as NSError
+        print("[Nearby] didFail: domain=\(ns.domain) code=\(ns.code) — \(ns.localizedDescription)")
         Task { @MainActor in
-            // Delegate fires spurious permission-related errors sometimes.
-            if case .pending = self.state {
-                self.state = .error("Couldn't get your location.")
+            guard case .pending = self.state else { return }
+            // kCLErrorLocationUnknown is documented as transient — Apple
+            // says to keep trying. We retry the one-shot a couple times
+            // (with a small delay to let CoreLocation settle) before
+            // giving up. Other codes (denied/network) are hard-fails.
+            if ns.domain == kCLErrorDomain,
+               ns.code == CLError.locationUnknown.rawValue,
+               self.requestRetries < Self.maxRequestRetries {
+                self.requestRetries += 1
+                let attempt = self.requestRetries
+                print("[Nearby] retry \(attempt)/\(Self.maxRequestRetries) after locationUnknown")
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if case .pending = self.state {
+                    manager.requestLocation()
+                }
+                return
             }
+            // Final attempt: fall back to whatever cache CoreLocation has
+            // accumulated during retries — even a coarse fix is better
+            // than failing for a 1.2km tile.
+            if let last = manager.location, last.horizontalAccuracy > 0 {
+                print("[Nearby] giving up retries — using cached fix acc=\(last.horizontalAccuracy)")
+                self.consume(fix: last)
+                return
+            }
+            self.state = .error("Couldn't get your location.")
         }
     }
 }

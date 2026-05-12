@@ -14,6 +14,11 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// Tokens charged on `POST /groups/{id}/join`. NULL/0 = free.
     /// Owner gets `floor(price × 0.95)`; the 5% delta burns.
     var entryPriceTokens: Int? = nil
+    /// Uploaded group avatar — encrypted blob id + per-blob AES key
+    /// (base64). Both NULL = no custom avatar, fall back to the
+    /// generic person.3 glyph.
+    var avatarMediaID: String? = nil
+    var avatarMediaKey: String? = nil
     var createdAt: Date
     var members: [RCQGroupMember]
 
@@ -23,6 +28,8 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case avatarSeed = "avatar_seed"
         case postPolicy = "post_policy"
         case entryPriceTokens = "entry_price_tokens"
+        case avatarMediaID = "avatar_media_id"
+        case avatarMediaKey = "avatar_media_key"
         case createdAt = "created_at"
         case members
     }
@@ -35,6 +42,8 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.avatarSeed = try c.decode(Int.self, forKey: .avatarSeed)
         self.postPolicy = (try? c.decodeIfPresent(String.self, forKey: .postPolicy)) ?? "all"
         self.entryPriceTokens = try? c.decodeIfPresent(Int.self, forKey: .entryPriceTokens)
+        self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
+        self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)
         self.members = try c.decode([RCQGroupMember].self, forKey: .members)
     }

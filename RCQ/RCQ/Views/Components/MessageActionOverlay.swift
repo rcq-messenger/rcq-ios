@@ -18,6 +18,7 @@ struct MessageActionOverlay: View {
     let onDeleteForEveryone: () -> Void
     let onDismiss: () -> Void
     var onReport: (() -> Void)? = nil
+    var onSelect: (() -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
 
@@ -121,6 +122,12 @@ struct MessageActionOverlay: View {
                 if canForward {
                     actionRow("chat.action.forward".localized, icon: "arrowshape.turn.up.right", destructive: false) {
                         onForward(); onDismiss()
+                    }
+                    rowDivider
+                }
+                if let onSelect {
+                    actionRow("chat.action.select".localized, icon: "checkmark.circle", destructive: false) {
+                        onSelect(); onDismiss()
                     }
                     rowDivider
                 }

@@ -73,6 +73,25 @@ final class WebSocketService: ObservableObject {
     }
 
     @Published private(set) var isConnected: Bool = false
+
+    /// Wall-clock time of the most recent inbound frame (any kind —
+    /// pong, presence, envelope...). Drives the staleness watchdog:
+    /// if more than `staleThreshold` seconds pass with the socket
+    /// notionally "open" but nothing coming in, we treat it as silently
+    /// dead and force-reconnect. iOS occasionally suspends a
+    /// `URLSessionWebSocketTask` without firing the failure callback —
+    /// classic symptom is "messages I send go nowhere, no error".
+    ///
+    /// Threshold tuning: ping every 25s + 90s threshold = 3 missed
+    /// pong rounds before we declare the socket dead. The previous
+    /// 50s threshold was too tight — a single slow round-trip (cell
+    /// network handoff, brief NAT pause) flapped the watchdog and
+    /// disconnected healthy sockets, which downstream propagated as
+    /// audio-room participant flicker and contact-presence flicker.
+    private var lastFrameAt: Date = .distantPast
+    private var staleWatchdog: Timer?
+    private static let staleThreshold: TimeInterval = 90
+    private static let pingInterval: TimeInterval = 25
     let events = PassthroughSubject<Event, Never>()
 
     private var task: URLSessionWebSocketTask?
@@ -111,8 +130,10 @@ final class WebSocketService: ObservableObject {
         task.resume()
         isConnected = true
         reconnectAttempt = 0
+        lastFrameAt = Date()
         events.send(.opened)
         startPingTimer()
+        startStaleWatchdog()
         receiveLoop()
     }
 
@@ -125,6 +146,8 @@ final class WebSocketService: ObservableObject {
         isConnected = false
         pingTimer?.invalidate()
         pingTimer = nil
+        staleWatchdog?.invalidate()
+        staleWatchdog = nil
     }
 
     private func scheduleReconnect() {
@@ -184,14 +207,47 @@ final class WebSocketService: ObservableObject {
         guard let task else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let str = String(data: data, encoding: .utf8) else { return }
-        task.send(.string(str)) { _ in }
+        task.send(.string(str)) { [weak self] error in
+            guard error != nil else { return }
+            // Send errors mean the socket is dead even if the
+            // failure callback on `receive` hasn't fired yet (iOS
+            // suspends the task in a half-state). Treat as
+            // disconnect — the scheduled reconnect will bring it
+            // back. Without this, sends silently drop until
+            // something else triggers the failure path.
+            Task { @MainActor in self?.handleDisconnect() }
+        }
     }
 
     private func startPingTimer() {
         pingTimer?.invalidate()
-        pingTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
+        pingTimer = Timer.scheduledTimer(withTimeInterval: Self.pingInterval, repeats: true) { [weak self] _ in
             // Timer's RunLoop callback is nonisolated; `send` is main-isolated.
             Task { @MainActor in self?.send(["type": "ping"]) }
+        }
+    }
+
+    /// Watchdog timer that watches `lastFrameAt`. If no inbound frame
+    /// (incl. pongs) has arrived for `staleThreshold` seconds we
+    /// assume the socket is dead in a way iOS hasn't told us about,
+    /// and we tear down + reconnect. Server pings every ~25s, so a
+    /// 50s threshold tolerates one missed round.
+    private func startStaleWatchdog() {
+        staleWatchdog?.invalidate()
+        // Check at half the ping interval so we don't sit on a stale
+        // socket for nearly a full ping cycle.
+        staleWatchdog = Timer.scheduledTimer(
+            withTimeInterval: Self.pingInterval / 2,
+            repeats: true,
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                guard self.isConnected else { return }
+                let elapsed = Date().timeIntervalSince(self.lastFrameAt)
+                if elapsed > Self.staleThreshold {
+                    self.handleDisconnect()
+                }
+            }
         }
     }
 
@@ -212,6 +268,11 @@ final class WebSocketService: ObservableObject {
     }
 
     private func handle(_ msg: URLSessionWebSocketTask.Message) {
+        // Any inbound frame proves the socket is alive — refresh the
+        // watchdog's "last seen" stamp before we even look at the
+        // payload. Pong frames especially: they're the only inbound
+        // traffic during a quiet stretch.
+        lastFrameAt = Date()
         let data: Data
         switch msg {
         case .data(let d): data = d
@@ -438,13 +499,18 @@ final class WebSocketService: ObservableObject {
             events.send(.uinAuctionStarted(auction: auction))
 
         case "uin_auction_bid":
+            // Only the structural fields are required. `ends_at` falls
+            // back to "now" if the ISO parse fails so the live bid list
+            // keeps updating even when the server timestamp format
+            // drifts (was dropping bids silently when fractional-second
+            // formatting hit an iOS edge case).
             guard let auctionID = dict["auction_id"] as? Int,
                   let amount = dict["amount"] as? Int,
                   let bidderUIN = dict["bidder_uin"] as? Int,
                   let highBid = dict["high_bid"] as? Int,
-                  let highBidderUIN = dict["high_bidder_uin"] as? Int,
-                  let endsAtStr = dict["ends_at"] as? String,
-                  let endsAt = parseISO(endsAtStr) else { return }
+                  let highBidderUIN = dict["high_bidder_uin"] as? Int
+            else { return }
+            let endsAt = (dict["ends_at"] as? String).flatMap(parseISO) ?? Date()
             let nick = (dict["bidder_nickname"] as? String) ?? String(bidderUIN)
             let extended = (dict["extended"] as? Bool) ?? false
             events.send(.uinAuctionBid(
@@ -640,11 +706,18 @@ final class WebSocketService: ObservableObject {
     }
 
     private func handleDisconnect() {
+        // Idempotent — repeated calls from the multiple disconnect
+        // signal sources (receive failure, send failure, watchdog)
+        // shouldn't queue multiple reconnects.
+        guard isConnected || task != nil else { return }
         isConnected = false
         events.send(.closed)
+        task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         pingTimer?.invalidate()
         pingTimer = nil
+        staleWatchdog?.invalidate()
+        staleWatchdog = nil
         if shouldStayConnected {
             scheduleReconnect()
         }
