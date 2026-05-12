@@ -8,6 +8,90 @@ struct ChatView: View {
     @StateObject private var appState = AppState.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
+
+    /// Member roster for the active group target, or `[]` for 1:1 chats.
+    /// Drives @mention rendering + the composer's mention picker.
+    private var currentGroupMembers: [RCQGroupMember] {
+        guard case .group(let snapshot) = vm.target else { return [] }
+        return (groupSvc.find(snapshot.id) ?? snapshot).members
+    }
+
+    /// `@partial` token at the tail of the composer input — drives the
+    /// mention picker. Walks back from input end; bails as soon as it
+    /// hits whitespace, so `Hey @bob hi @al` resolves to `al`, not `bob`.
+    private var activeMentionQuery: (range: NSRange, partial: String)? {
+        guard !currentGroupMembers.isEmpty else { return nil }
+        let ns = vm.input as NSString
+        var i = ns.length
+        while i > 0 {
+            let scalar = Unicode.Scalar(ns.character(at: i - 1))
+            if let s = scalar, s == "@" {
+                let after = ns.substring(from: i)
+                let valid = after.unicodeScalars.allSatisfy { $0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == "_" }
+                if valid {
+                    return (range: NSRange(location: i - 1, length: ns.length - i + 1), partial: after)
+                }
+                return nil
+            }
+            if let s = scalar, s.properties.isWhitespace { return nil }
+            i -= 1
+        }
+        return nil
+    }
+
+    private var mentionCandidates: [RCQGroupMember] {
+        guard let q = activeMentionQuery else { return [] }
+        let partial = q.partial.lowercased()
+        let me = AuthService.shared.ownUIN
+        return Array(
+            currentGroupMembers
+                .filter { $0.uin != me }
+                .filter { partial.isEmpty || $0.nickname.lowercased().contains(partial) }
+                .prefix(8)
+        )
+    }
+
+    @ViewBuilder
+    private var mentionPicker: some View {
+        let candidates = mentionCandidates
+        if !candidates.isEmpty {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(candidates) { m in
+                        Button { selectMention(m) } label: {
+                            HStack(spacing: 8) {
+                                StatusIcon(status: m.status, size: 20)
+                                Text(m.nickname)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Text(String(m.uin))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundColor(Theme.Color.textMono)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: 200)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func selectMention(_ m: RCQGroupMember) {
+        guard let q = activeMentionQuery else { return }
+        let ns = vm.input as NSString
+        vm.input = ns.replacingCharacters(in: q.range, with: "@\(m.nickname) ")
+    }
     @StateObject private var randomChat = RandomChatService.shared
     @StateObject private var calls = CallService.shared
     @StateObject private var chatSettings = ChatSettingsStore.shared
@@ -192,6 +276,7 @@ struct ChatView: View {
                         // tray rather than a docked panel.
                         pendingMediaStrip
                     }
+                    mentionPicker
                     inputBar
                 }
                 if showEmojiPanel {
@@ -702,7 +787,8 @@ struct ChatView: View {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                                         vm.replyTarget = copy
                                     }
-                                }
+                                },
+                                currentGroupMembers: currentGroupMembers
                             )
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
@@ -1676,6 +1762,7 @@ private struct MessageRow: View {
     var onTapWhenSelecting: (() -> Void)? = nil
     let onTapReplyQuote: (UUID) -> Void
     let onSwipeReply: () -> Void
+    var currentGroupMembers: [RCQGroupMember] = []
 
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
@@ -1951,7 +2038,7 @@ private struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PhotoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody)
+                    EmoticonText(text: displayBody, members: currentGroupMembers)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -1962,7 +2049,7 @@ private struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 VideoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody)
+                    EmoticonText(text: displayBody, members: currentGroupMembers)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -1980,7 +2067,7 @@ private struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PremiumLockedBubble(message: message, onUnlock: { askUnlock(message) }, size: size)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody)
+                    EmoticonText(text: displayBody, members: currentGroupMembers)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -2004,7 +2091,7 @@ private struct MessageRow: View {
             }
         } else {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                EmoticonText(text: displayBody)
+                EmoticonText(text: displayBody, members: currentGroupMembers)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)

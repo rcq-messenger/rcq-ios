@@ -46,6 +46,7 @@ struct ContactListView: View {
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
     @State private var deepLinkUinListing: UinMarketplaceListing? = nil
+    @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
     @State private var refreshAttemptedFor: Set<Int> = []
     @State private var petPreview: PetPreviewTarget?
     @State private var tradeWithContact: Contact?
@@ -314,6 +315,18 @@ struct ContactListView: View {
                         await MainActor.run { deepLinkUinListing = listing }
                     }
                 }
+            }
+            .onChange(of: appState.pendingOpenUserProfile) { newValue in
+                guard let uin = newValue else { return }
+                appState.pendingOpenUserProfile = nil
+                deepLinkProfileUIN = DeepLinkUIN(uin: uin)
+            }
+            .sheet(item: $deepLinkProfileUIN) { wrap in
+                NavigationStack {
+                    UserInfoView(uin: wrap.uin, isOwn: wrap.uin == AuthService.shared.ownUIN)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .sheet(item: $deepLinkUinListing) { listing in
                 UinMarketListingDetailSheet(

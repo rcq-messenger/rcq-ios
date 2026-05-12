@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
     @Published var pendingOpenMarketListingID: String? = nil
     /// Mirror of `pendingOpenMarketListingID` for the UIN marketplace.
     @Published var pendingOpenUinListingID: String? = nil
+    /// Tap target for @mentions in group chat. ContactListView shows
+    /// `UserInfoView` for the UIN as a sheet.
+    @Published var pendingOpenUserProfile: Int? = nil
 
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
@@ -270,6 +273,7 @@ final class AppState: ObservableObject {
         pendingOpenUinAuction = false
         pendingOpenMarketListingID = nil
         pendingOpenUinListingID = nil
+        pendingOpenUserProfile = nil
         pendingAddUIN = nil
 
         let nickname = AuthService.shared.nickname
@@ -338,6 +342,7 @@ final class AppState: ObservableObject {
         pendingOpenUinAuction = false
         pendingOpenMarketListingID = nil
         pendingOpenUinListingID = nil
+        pendingOpenUserProfile = nil
         pendingAddUIN = nil
 
         await AuthService.shared.wipeLocalIdentity()

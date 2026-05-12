@@ -145,7 +145,6 @@ struct ItemDetailSheet: View {
                             ext: ext(kind),
                         )
                         .frame(width: 110, height: 110)
-                        .modifier(PetBreathIf(kind.section == .pets))
                     }
                 }
             }

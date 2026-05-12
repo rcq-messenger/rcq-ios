@@ -24,12 +24,6 @@ struct OnboardingView: View {
                 hero: .statusRow,
             ),
             Page(
-                kicker: "onboard.chat.kicker".localized,
-                title: "onboard.chat.title".localized,
-                body: "onboard.chat.body".localized,
-                hero: .gif("smile"),
-            ),
-            Page(
                 kicker: "onboard.nearby.kicker".localized,
                 title: "onboard.nearby.title".localized,
                 body: "onboard.nearby.body".localized,
@@ -45,7 +39,7 @@ struct OnboardingView: View {
                 kicker: "onboard.pets.kicker".localized,
                 title: "onboard.pets.title".localized,
                 body: "onboard.pets.body".localized,
-                hero: .gif("pet9"),
+                hero: .gif("pet1"),
             ),
             Page(
                 kicker: "onboard.trade.kicker".localized,

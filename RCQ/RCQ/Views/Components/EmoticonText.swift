@@ -1,13 +1,19 @@
 import SwiftUI
 
-/// Renders text with inline animated GIF emoticons. Falls back to the
-/// literal shortcode when the asset isn't bundled.
+/// Renders text with inline animated GIF emoticons + @nickname mentions
+/// against a group member roster. Falls back to plain text for unmatched
+/// emoticon shortcodes / unresolved mentions.
 struct EmoticonText: View {
     let text: String
     var font: Font = Theme.Font.bubble
     var color: Color = Theme.Color.textPrimary
     var emoticonSize: CGFloat = 22
     var lineSpacing: CGFloat = 2
+    /// Group members used to resolve `@nickname` mentions. Pass [] for
+    /// 1:1 chats — mentions stay as plain text there.
+    var members: [RCQGroupMember] = []
+    /// Tap action on a resolved mention; default opens the user profile.
+    var onMentionTap: ((Int) -> Void)? = nil
 
     var body: some View {
         // VStack of per-line FlowLayouts so user newlines drive real breaks.
@@ -44,6 +50,13 @@ struct EmoticonText: View {
             } else {
                 Text(code).font(font).foregroundColor(color)
             }
+        case .mention(let nickname, let uin):
+            Text("@\(nickname)")
+                .font(font)
+                .foregroundColor(Theme.Color.accent)
+                .onTapGesture {
+                    (onMentionTap ?? { AppState.shared.pendingOpenUserProfile = $0 })(uin)
+                }
         }
     }
 
@@ -72,32 +85,61 @@ struct EmoticonText: View {
     private var lines: [[Run]] {
         var out: [[Run]] = []
         for line in text.components(separatedBy: "\n") {
-            var lineRuns: [Run] = []
-            for token in Emoticons.tokenize(line) {
-                switch token {
-                case .text(let s):
-                    var current = ""
-                    for ch in s {
-                        if ch.isWhitespace {
-                            if !current.isEmpty { lineRuns.append(.text(current)); current = "" }
-                            lineRuns.append(.text(String(ch)))
-                        } else {
-                            current.append(ch)
-                        }
-                    }
-                    if !current.isEmpty { lineRuns.append(.text(current)) }
-                case .emoticon(let asset, let code):
-                    lineRuns.append(.emoticon(asset: asset, code: code))
-                }
-            }
-            out.append(lineRuns)
+            out.append(runs(in: line))
         }
         return out
+    }
+
+    private func runs(in line: String) -> [Run] {
+        // Split the line by mention spans first — each span becomes a
+        // .mention run, the gaps run through the existing emoticon
+        // tokenizer + whitespace splitter.
+        let mentions = members.isEmpty ? [] : MentionParser.mentions(in: line, members: members)
+        if mentions.isEmpty { return runsFromTokens(in: line) }
+        let ns = line as NSString
+        var cursor = 0
+        var out: [Run] = []
+        for m in mentions {
+            if m.range.location > cursor {
+                let gap = ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                out.append(contentsOf: runsFromTokens(in: gap))
+            }
+            out.append(.mention(nickname: m.nickname, uin: m.uin))
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length {
+            let tail = ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
+            out.append(contentsOf: runsFromTokens(in: tail))
+        }
+        return out
+    }
+
+    private func runsFromTokens(in segment: String) -> [Run] {
+        var lineRuns: [Run] = []
+        for token in Emoticons.tokenize(segment) {
+            switch token {
+            case .text(let s):
+                var current = ""
+                for ch in s {
+                    if ch.isWhitespace {
+                        if !current.isEmpty { lineRuns.append(.text(current)); current = "" }
+                        lineRuns.append(.text(String(ch)))
+                    } else {
+                        current.append(ch)
+                    }
+                }
+                if !current.isEmpty { lineRuns.append(.text(current)) }
+            case .emoticon(let asset, let code):
+                lineRuns.append(.emoticon(asset: asset, code: code))
+            }
+        }
+        return lineRuns
     }
 
     private enum Run: Hashable {
         case text(String)
         case emoticon(asset: String, code: String)
+        case mention(nickname: String, uin: Int)
     }
 }
 

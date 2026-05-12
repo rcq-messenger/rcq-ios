@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// KOLOBOK emoticon table extracted from the Adium pack's Emoticons.plist.
-/// Tokenizer matches longest shortcodes first, so entries sort by length at runtime.
+/// KOLOBOK emoticon table. Only `:asset:` codes — short text shortcuts
+/// like `:)` or `8-)` are intentionally NOT parsed (they tripped on
+/// legit text contexts: `8-)` in math, `:/` in URLs, etc). Picker
+/// inserts the `:asset:` form directly so users still get visual
+/// emoticons without typing-time auto-replace.
 enum Emoticons {
     struct Entry: Hashable {
         let code: String
@@ -11,40 +14,39 @@ enum Emoticons {
 
     static let entries: [Entry] = {
         var raw: [Entry] = []
-        func add(_ asset: String, _ name: String, _ codes: [String]) {
-            for c in codes { raw.append(Entry(code: c, asset: asset, name: name)) }
+        func add(_ asset: String, _ name: String) {
+            raw.append(Entry(code: ":\(asset):", asset: asset, name: name))
         }
 
-        add("smile",      "Happy",            [":-)", ":)", "=)", ":smile:"])
-        add("sad",        "Sad",              [":-(", ":("])
-        add("wink",       "Winking",          [";-)", ";)"])
-        add("blum",       "Tongue",           [":-P", ":P", ":-p", ":p"])
-        add("tease",      "Joking",           ["*JOKINGLY*"])
-        add("cray",       "Crying",           [":'(", ":'((", ":(("])
-        add("air_kiss",   "Kissed",           ["*KISSED*"])
-        add("kiss2",      "Kiss",             [":-*", ":*"])
-        add("blush",      "Embarrassed",      [":-[", ":["])
-        add("angel",      "Angel",            ["O:-)", "O:)"])
-        add("secret",     "Silent",           [":-X", ":X"])
-        add("wacko",      "Confused",         [":-$", ":$"])
-        add("aggressive", "Angry",            [">:o", ">:O"])
-        add("biggrin",    "Laughing",         [":-D", ":D", ":))", ":-))"])
-        add("nea",        "Pensive",          [":-\\", ":\\", ":/", ":-/"])
-        add("shok",       "Shocked",          [":-O", ":O", ":-o", ":o", ":-0", ":0", "=-O"])
-        add("dirol",      "Cool",             ["8-)", "8)", "B-)", "B)"])
-        add("dance",      "Headphones",       ["[:-}", "[:-)", "[:}", "[:)"])
-        add("boredom",    "Yawning",          ["*TIRED*"])
-        add("bad",        "Sick",             [":-!", ":!"])
-        add("stop",       "Stop",             ["*STOP*"])
-        add("kissing",    "Two Kissing",      ["*KISSING*", ":**:"])
-        add("diablo",     "Devil",            ["]:->", "]:>", ">:)", ">:-)", "}:->"])
-        add("give_rose",  "Red Rose",         ["@}->--", "@>->--", "@>->-", "@}->-", "@}-:--"])
-        add("bomb",       "Bomb",             ["@="])
-        add("good",       "Thumbs Up",        ["*THUMBS UP*"])
-        add("drinks",     "Drink",            ["*DRINK*"])
-        add("heart",      "In Love",          ["*IN LOVE*", "<3"])
+        add("smile",      "Happy")
+        add("sad",        "Sad")
+        add("wink",       "Winking")
+        add("blum",       "Tongue")
+        add("tease",      "Joking")
+        add("cray",       "Crying")
+        add("air_kiss",   "Kissed")
+        add("kiss2",      "Kiss")
+        add("blush",      "Embarrassed")
+        add("angel",      "Angel")
+        add("secret",     "Silent")
+        add("wacko",      "Confused")
+        add("aggressive", "Angry")
+        add("biggrin",    "Laughing")
+        add("nea",        "Pensive")
+        add("shok",       "Shocked")
+        add("dirol",      "Cool")
+        add("dance",      "Headphones")
+        add("boredom",    "Yawning")
+        add("bad",        "Sick")
+        add("stop",       "Stop")
+        add("kissing",    "Two Kissing")
+        add("diablo",     "Devil")
+        add("give_rose",  "Red Rose")
+        add("bomb",       "Bomb")
+        add("good",       "Thumbs Up")
+        add("drinks",     "Drink")
+        add("heart",      "In Love")
 
-        // Longest first so a shorter prefix doesn't clip a longer shortcode.
         return raw.sorted { $0.code.count > $1.code.count }
     }()
 
