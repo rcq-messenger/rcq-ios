@@ -32,6 +32,7 @@ struct ItemCard: View {
                             ext: assetExt(for: kind),
                         )
                         .padding(8)
+                        .modifier(PetBreathIf(kind.section == .pets))
                     }
                 } else {
                     Image(systemName: "cube")

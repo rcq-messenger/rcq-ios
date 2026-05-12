@@ -52,6 +52,7 @@ struct PetPreviewSheet: View {
                 GIFImage(name: basename)
                     .frame(width: 144, height: 144)
                     .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                    .breathingPet()
             } else {
                 Image(systemName: "pawprint.fill")
                     .font(.system(size: 58))

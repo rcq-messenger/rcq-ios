@@ -34,6 +34,7 @@ struct StatusWithPet: View {
             GIFImage(name: basename)
                 .shadow(color: .black.opacity(0.30),
                         radius: size * 0.06, x: 0, y: size * 0.04)
+                .breathingPet()
         }
     }
 
