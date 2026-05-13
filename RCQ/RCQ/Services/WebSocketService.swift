@@ -14,6 +14,7 @@ final class WebSocketService: ObservableObject {
         case typing(fromUIN: Int, active: Bool)
         case contactRequest(id: Int, fromUIN: Int, nickname: String)
         case contactResponse(requestID: Int, accepted: Bool, peerUIN: Int)
+        case contactRemoved(peerUIN: Int)
         case groupChanged(group: RCQGroup)
         case groupDeleted(groupID: Int)
         case randomMatch(peer: RandomPeer)
@@ -308,6 +309,10 @@ final class WebSocketService: ObservableObject {
                   let accepted = dict["accepted"] as? Bool,
                   let peer = dict["to_uin"] as? Int else { return }
             events.send(.contactResponse(requestID: id, accepted: accepted, peerUIN: peer))
+
+        case "contact_removed":
+            guard let peer = dict["peer_uin"] as? Int else { return }
+            events.send(.contactRemoved(peerUIN: peer))
 
         case "group_created", "group_membership_changed":
             guard let groupDict = dict["group"] as? [String: Any],

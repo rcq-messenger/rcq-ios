@@ -1403,6 +1403,12 @@ final class MessageService {
                 }
                 return nil
             }
+            // User removed this contact (ICQ-style mutual delete). Server
+            // can't filter sealed messages by sender; we silently drop on
+            // ingest so no banner, no sound, no chat-list reappearance.
+            if RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+                return nil
+            }
 
             // TTL precedence: envelope ttl wins, else local thread setting.
             let localTTL = ChatSettingsStore.shared.ttl(for: thread)

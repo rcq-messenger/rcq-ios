@@ -262,6 +262,7 @@ final class AppState: ObservableObject {
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        RemovedContactsStore.shared.wipe()
         SignalProtocolDB.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
@@ -332,6 +333,7 @@ final class AppState: ObservableObject {
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        RemovedContactsStore.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -456,6 +458,13 @@ final class AppState: ObservableObject {
 
         case .contactResponse(_, let accepted, _):
             if accepted { Task { await ContactService.shared.refresh() } }
+
+        case .contactRemoved(let peer):
+            // Peer removed us from their contacts (ICQ-style mutual delete).
+            // Drop them from our local list so the UI updates instantly;
+            // we deliberately do NOT add them to RemovedContactsStore here
+            // — the deleter, not the deleted, decides who to filter.
+            ContactService.shared.removeLocal(peer)
 
         case .groupChanged(let group):
             GroupService.shared.upsert(group)

@@ -252,6 +252,9 @@ targets:
       # without re-running libsignal — preventing the dual-decrypt
       # ratchet hazard. File-backed App Group storage.
       - path: RCQ/Services/PushDecryptCache.swift
+      # ICQ-style mutual-delete filter. NSE checks before rewriting
+      # the alert so removed contacts never trigger a banner / sound.
+      - path: RCQ/Services/RemovedContactsStore.swift
     resources:
       # Apple-required privacy manifest for the NSE bundle. Distinct
       # file from the main app's because Apple validates each binary

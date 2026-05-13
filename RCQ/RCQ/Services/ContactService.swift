@@ -79,9 +79,19 @@ final class ContactService: ObservableObject {
             "DELETE", "/contacts/\(uin)"
         )
         contacts.removeAll { $0.uin == uin }
-        // Drop any persisted unread for the removed peer too — they
-        // shouldn't reappear with stale counts if the user re-adds
-        // them later.
+        UnreadStore.shared.clearPeer(uin)
+        // Sealed sender means the server can't drop future messages
+        // from this UIN — record it locally so MessageService and the
+        // NSE silently filter them out.
+        RemovedContactsStore.shared.add(uin)
+    }
+
+    /// Drop a UIN from the local cache only — used when the peer side
+    /// initiated the removal (`contact_removed` WS event). We don't
+    /// add to RemovedContactsStore here: the deleter, not the deleted,
+    /// decides who to filter.
+    func removeLocal(_ uin: Int) {
+        contacts.removeAll { $0.uin == uin }
         UnreadStore.shared.clearPeer(uin)
     }
 

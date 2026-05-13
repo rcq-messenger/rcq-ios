@@ -84,6 +84,14 @@ class NotificationService: UNNotificationServiceExtension {
             os_log("decrypted OK: from=%d kind=%{public}@",
                    log: Self.log, type: .default,
                    decrypted.senderUIN, envelopeKind(decrypted.envelope))
+            // ICQ-style mutual remove: if the user previously dropped this
+            // contact, silently suppress the push. PushDecryptCache stays
+            // un-touched so the main app's MessageService.ingest can also
+            // re-evaluate (and double-drop) when it sees the envelope.
+            if RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+                contentHandler(UNNotificationContent())
+                return
+            }
             PushDecryptCache.store(
                 ciphertextB64: envB64,
                 senderUIN: decrypted.senderUIN,
