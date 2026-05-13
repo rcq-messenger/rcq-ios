@@ -154,8 +154,17 @@ struct CreateOrJoinAudioRoomSheet: View {
             case .join:
                 room = try await rooms.join(byKey: key.trimmingCharacters(in: .whitespaces))
             }
-            onResolved(room)
+            // Sheet → fullScreenCover handoff: kick the sheet first,
+            // wait for its dismissal to finish, THEN trigger enter().
+            // Doing both in the same render cycle made SwiftUI dismiss
+            // the cover right after presenting it (the cover and the
+            // sheet's tail animation collided) — testers reported the
+            // room screen "closes immediately while count shows 1".
             dismiss()
+            let captured = room
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                onResolved(captured)
+            }
         } catch {
             self.error = (mode == .create
                 ? "audio_room.sheet.error.create"
