@@ -322,6 +322,7 @@ struct LootboxView: View {
         case .scroll(let count):
             rolling = false
             pendingOutcome = nil
+            SoundService.shared.play(.lootboxOpen)
             revealTarget = .scroll(count: count)
         case .none:
             rolling = false
@@ -333,6 +334,13 @@ struct LootboxView: View {
         rolling = false
         guard let outcome = pendingOutcome else { return }
         pendingOutcome = nil
+        // Play the reveal sound HERE rather than in the overlay's
+        // .onAppear. With skipSpin + rapid Repeat taps, fullScreenCover
+        // sometimes coalesces nil→item back-to-back transitions into
+        // a single presentation cycle and .onAppear doesn't refire,
+        // dropping the sound. Firing it at state-change time guarantees
+        // one play per reveal regardless of cover lifecycle.
+        SoundService.shared.play(.lootboxOpen)
         switch outcome {
         case .item(let item): revealTarget = .item(item)
         case .scroll(let count): revealTarget = .scroll(count: count)
@@ -465,7 +473,9 @@ private struct RevealOverlay: View {
             .padding(.bottom, 24)
         }
         .onAppear {
-            SoundService.shared.play(.lootboxOpen)
+            // Sound now plays from LootboxView.revealPending() — keeping
+            // it here too would double-fire on the path that *does* hit
+            // onAppear (normal slow spin).
             withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) {
                 appeared = true
             }
@@ -569,7 +579,6 @@ private struct ScrollRevealOverlay: View {
             .padding(.bottom, 24)
         }
         .onAppear {
-            SoundService.shared.play(.lootboxOpen)
             withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) {
                 appeared = true
             }
