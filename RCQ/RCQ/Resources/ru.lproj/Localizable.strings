@@ -1298,7 +1298,7 @@
 "pet_hunt.spec.hourly_rate" = "Жетонов / час";
 
 /* Pet Hunt — info */
-"pet_hunt.info.title" = "Как работает Pet Hunt";
+"pet_hunt.info.title" = "Как работает";
 "pet_hunt.info.passive.title" = "Пассивный фарм";
 "pet_hunt.info.passive.body" = "Снаряжённый питомец зарабатывает жетоны 24/7. Чем выше редкость, уровень и чистота — тем больше доход. Буфер копится максимум 24 часа — забирай ежедневно или потеряешь излишек.";
 "pet_hunt.info.zones.title" = "Зоны охоты";

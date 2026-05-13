@@ -1307,7 +1307,7 @@
 "pet_hunt.spec.hourly_rate" = "Jetons / hour";
 
 /* Pet Hunt — info sheet */
-"pet_hunt.info.title" = "How Pet Hunt works";
+"pet_hunt.info.title" = "How it works";
 "pet_hunt.info.passive.title" = "Passive farming";
 "pet_hunt.info.passive.body" = "Your equipped pet earns jetons 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours — claim daily or you lose the overflow.";
 "pet_hunt.info.zones.title" = "Hunt zones";

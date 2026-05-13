@@ -208,15 +208,17 @@ final class WebSocketService: ObservableObject {
         guard let task else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: obj),
               let str = String(data: data, encoding: .utf8) else { return }
+        let issuedTask = task
         task.send(.string(str)) { [weak self] error in
             guard error != nil else { return }
-            // Send errors mean the socket is dead even if the
-            // failure callback on `receive` hasn't fired yet (iOS
-            // suspends the task in a half-state). Treat as
-            // disconnect — the scheduled reconnect will bring it
-            // back. Without this, sends silently drop until
-            // something else triggers the failure path.
-            Task { @MainActor in self?.handleDisconnect() }
+            // Ignore send-failures from a task we've since rotated away
+            // from. Without this guard, calling connect() while another
+            // send was in flight would fire handleDisconnect on the new
+            // (healthy) task — the old reconnect storm origin.
+            Task { @MainActor in
+                guard let self, self.task === issuedTask else { return }
+                self.handleDisconnect()
+            }
         }
     }
 
@@ -254,9 +256,15 @@ final class WebSocketService: ObservableObject {
 
     private func receiveLoop() {
         guard let task else { return }
+        let issuedTask = task
         task.receive { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
+                // Ignore the cancellation echo of a task we've since
+                // rotated away from. Without this, a connect() rotation
+                // mid-flight would have the cancelled task's receive
+                // failure call handleDisconnect on the new healthy task.
+                guard self.task === issuedTask else { return }
                 switch result {
                 case .failure:
                     self.handleDisconnect()

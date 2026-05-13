@@ -148,20 +148,20 @@ struct RootView: View {
         }
     }
 
-    /// Force-reconnect WS on foreground; iOS suspended URLSession may leave
-    /// `isConnected == true` long after the socket goes silent.
+    /// Foreground transition: only forces a fresh WS if the watchdog
+    /// thinks the socket is silently dead. Calling connect() blindly
+    /// every time scenePhase fires .active was producing a reconnect
+    /// storm — connect() cancels any in-flight task, and scenePhase
+    /// can flip multiple times during a single sheet/cover transition.
     private func handleScenePhase(_ phase: ScenePhase) {
         guard phase == .active, appState.booted else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         Task { @MainActor in
-            let baseURL = APIClient.shared.baseURL
-            WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
-            // If we were inside an audio room when the app went to the
-            // background, re-handshake the room state. The WS reconnect
-            // doesn't carry the room subscription, so the server's
-            // roster + the chat-list counts otherwise stay stale until
-            // the user manually refreshes.
+            if !WebSocketService.shared.isConnected {
+                let baseURL = APIClient.shared.baseURL
+                WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+            }
             AudioRoomService.shared.restoreOnForeground()
         }
     }

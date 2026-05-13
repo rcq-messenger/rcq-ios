@@ -379,13 +379,15 @@ final class AppState: ObservableObject {
             AudioRoomService.shared.restoreOnForeground()
 
         case .closed:
-            Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard let uin = AuthService.shared.ownUIN,
-                      let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
-                let baseURL = APIClient.shared.baseURL
-                WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
-            }
+            // No-op. WebSocketService has its own scheduleReconnect()
+            // with exponential backoff that fires from handleDisconnect.
+            // We used to ALSO schedule a 2s sleeper here that called
+            // connect() — every .closed queued one, the Tasks accumulated,
+            // and each one cancelled the in-flight WS task on fire. Result
+            // was a 1-second reconnect storm (1300+ open/close per 20 min
+            // from a single tester). Leave the reconnect entirely to
+            // WebSocketService.
+            break
 
         case .accountBurned:
             // Suppressed during migration — see `migratingAccount`.

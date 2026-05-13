@@ -20,6 +20,9 @@ struct InventoryView: View {
     @State private var rarityFilter: ItemRarity?
     @State private var selectMode: Bool = false
     @State private var selected: Set<String> = []
+    /// Smileys + voices collapsed by default — pets are the headline
+    /// section, the others are noise unless the user explicitly drills in.
+    @State private var collapsedSections: Set<ItemSection> = [.smileys, .voices]
     @State private var confirmingBulk: Bool = false
     @State private var bulkResultBanner: DisassembleYield? = nil
     @State private var loading: Bool = true
@@ -434,14 +437,38 @@ struct InventoryView: View {
                     .filter { itemSection($0) == section }
                     .sorted { $0.rarity.rollWeight < $1.rarity.rollWeight }
                 if !bucket.isEmpty {
+                    let isCollapsed = collapsedSections.contains(section)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(section.displayName)
-                            .font(Theme.Font.statusLabel)
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .textCase(.uppercase)
-                        LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(bucket) { item in
-                                tile(item: item)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                if isCollapsed {
+                                    collapsedSections.remove(section)
+                                } else {
+                                    collapsedSections.insert(section)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(section.displayName)
+                                    .font(Theme.Font.statusLabel)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                    .textCase(.uppercase)
+                                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                Text("(\(bucket.count))")
+                                    .font(Theme.Font.statusLabel)
+                                    .foregroundColor(Theme.Color.textMono)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if !isCollapsed {
+                            LazyVGrid(columns: columns, spacing: 6) {
+                                ForEach(bucket) { item in
+                                    tile(item: item)
+                                }
                             }
                         }
                     }

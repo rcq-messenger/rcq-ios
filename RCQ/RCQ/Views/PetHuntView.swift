@@ -147,8 +147,10 @@ struct PetHuntView: View {
                 petSpecTable
                 accumulatorCard
                 huntButton
-                inventoryLink
-                memorialLink
+                HStack(spacing: 10) {
+                    inventoryLink
+                    memorialLink
+                }
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 16)
@@ -447,11 +449,9 @@ struct PetHuntView: View {
                 Text("pet_hunt.cta.open_inventory".localized)
                     .font(.callout)
                     .foregroundColor(Theme.Color.textSecondary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
             .padding(14)
             .background(Theme.Color.bgSecondary)
             .cornerRadius(10)
@@ -470,11 +470,9 @@ struct PetHuntView: View {
                 Text("pet_hunt.cta.open_memorial".localized)
                     .font(.callout)
                     .foregroundColor(Theme.Color.textSecondary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
             }
+            .frame(maxWidth: .infinity)
             .padding(14)
             .background(Theme.Color.bgSecondary)
             .cornerRadius(10)
