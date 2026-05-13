@@ -222,6 +222,7 @@ struct StoryViewerView: View {
                     } label: {
                         Label("story.viewer.delete".localized, systemImage: "trash")
                     }
+                    .tint(.red)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 18, weight: .semibold))

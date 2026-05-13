@@ -51,11 +51,8 @@ private struct BannerCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: bubbleGlyph)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
+            avatar
                 .frame(width: 32, height: 32)
-                .background(Circle().fill(Theme.Color.accent))
             VStack(alignment: .leading, spacing: 2) {
                 Text(banner.title)
                     .font(.system(.subheadline, weight: .semibold))
@@ -100,6 +97,27 @@ private struct BannerCard: View {
                     }
                 }
         )
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        switch banner.target {
+        case .thread(.group(let id)):
+            // Use the group's own avatar when available; falls back
+            // to the generic person.3 glyph inside GroupAvatarView.
+            let snapshot = GroupService.shared.find(id)
+            GroupAvatarView(
+                mediaID: snapshot?.avatarMediaID,
+                keyBase64: snapshot?.avatarMediaKey,
+                size: 32,
+            )
+        default:
+            Image(systemName: bubbleGlyph)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Theme.Color.accent))
+        }
     }
 
     private var bubbleGlyph: String {

@@ -160,12 +160,12 @@ private enum DestinationRow {
 
     static func group(_ g: RCQGroup) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "person.3.fill")
-                .font(.system(size: 16))
-                .foregroundColor(.white)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Theme.Color.accent))
-                .frame(width: 36)
+            GroupAvatarView(
+                mediaID: g.avatarMediaID,
+                keyBase64: g.avatarMediaKey,
+                size: 28,
+            )
+            .frame(width: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(g.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
                 Text("\(g.members.count) member\(g.members.count == 1 ? "" : "s")")
