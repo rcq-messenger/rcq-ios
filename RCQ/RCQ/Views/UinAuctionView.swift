@@ -486,6 +486,7 @@ struct OwnedUINsSheet: View {
     @State private var activating: Bool = false
     @State private var alertMessage: String?
     @State private var sellTarget: OwnedUIN?
+    @State private var removeTarget: Int?
 
     var body: some View {
         NavigationStack {
@@ -521,6 +522,14 @@ struct OwnedUINsSheet: View {
                                         Label(
                                             "uin_auction.owned.sell".localized,
                                             systemImage: "tag"
+                                        )
+                                    }
+                                    Button(role: .destructive) {
+                                        removeTarget = o.uin
+                                    } label: {
+                                        Label(
+                                            "uin_auction.owned.remove".localized,
+                                            systemImage: "trash"
                                         )
                                     }
                                 } label: {
@@ -570,6 +579,28 @@ struct OwnedUINsSheet: View {
                 Button("common.cancel".localized, role: .cancel) {}
             } message: {
                 Text("uin_auction.owned.confirm.message".localized)
+            }
+            .confirmationDialog(
+                String(format: "uin_auction.owned.remove.confirm.title".localized, removeTarget ?? 0),
+                isPresented: Binding(
+                    get: { removeTarget != nil },
+                    set: { if !$0 { removeTarget = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("uin_auction.owned.remove.confirm.button".localized, role: .destructive) {
+                    if let target = removeTarget {
+                        Task {
+                            let ok = await svc.removeOwned(uin: target)
+                            if !ok {
+                                alertMessage = "uin_auction.owned.remove.error".localized
+                            }
+                            removeTarget = nil
+                        }
+                    }
+                }
+                Button("common.cancel".localized, role: .cancel) { removeTarget = nil }
+            } message: {
+                Text("uin_auction.owned.remove.confirm.message".localized)
             }
             .alert("uin_auction.alert.title".localized,
                    isPresented: Binding(

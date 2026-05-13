@@ -1383,6 +1383,11 @@
 "uin_auction.owned.empty" = "No won UINs yet. Win an auction!";
 "uin_auction.owned.activate" = "Activate";
 "uin_auction.owned.sell" = "Sell on marketplace";
+"uin_auction.owned.remove" = "Remove from inventory";
+"uin_auction.owned.remove.confirm.title" = "Remove UIN #%d?";
+"uin_auction.owned.remove.confirm.message" = "This is irreversible. The UIN goes back to the pool and could be reissued to someone else.";
+"uin_auction.owned.remove.confirm.button" = "Remove";
+"uin_auction.owned.remove.error" = "Couldn't remove the UIN. Try again in a moment.";
 "uin_auction.owned.confirm.title" = "Make UIN %d yours?";
 "uin_auction.owned.confirm.message" = "Runs the migration. Contacts, inventory and wallet move onto the new UIN. Your current UIN is preserved in inventory — you can swap back for 99 tokens. Local chats are wiped. Costs 99 tokens.";
 "uin_auction.owned.confirm.button" = "Activate (%d)";

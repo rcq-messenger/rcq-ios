@@ -1374,6 +1374,11 @@
 "uin_auction.owned.empty" = "Пока нет выигранных UIN'ов. Победи в аукционе!";
 "uin_auction.owned.activate" = "Активировать";
 "uin_auction.owned.sell" = "Продать на маркете";
+"uin_auction.owned.remove" = "Удалить из инвентаря";
+"uin_auction.owned.remove.confirm.title" = "Удалить UIN #%d?";
+"uin_auction.owned.remove.confirm.message" = "Это необратимо. UIN вернётся в общий пул и может достаться кому-то другому.";
+"uin_auction.owned.remove.confirm.button" = "Удалить";
+"uin_auction.owned.remove.error" = "Не удалось удалить UIN. Попробуй через минуту.";
 "uin_auction.owned.confirm.title" = "Сделать UIN %d своим?";
 "uin_auction.owned.confirm.message" = "Запустится миграция. Контакты, инвентарь и кошелёк перейдут на новый UIN. Текущий UIN сохранится в инвентаре — можно будет вернуться обратно за 99 жетонов. Чаты на этом устройстве будут стёрты. Стоит 99 жетонов.";
 "uin_auction.owned.confirm.button" = "Активировать (%d)";

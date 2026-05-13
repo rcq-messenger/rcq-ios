@@ -103,6 +103,23 @@ final class UinAuctionService: ObservableObject {
         }
     }
 
+    /// Drop a UIN from this account's inventory. Use for tossing the
+    /// leftover default UIN after a migration onto a premium one. Server
+    /// hard-deletes the OwnedUin row; the UIN returns to the allocator
+    /// pool, so this is one-way.
+    func removeOwned(uin target: Int) async -> Bool {
+        do {
+            let _: EmptyResponse = try await APIClient.shared.request(
+                "DELETE", "/uin/owned/\(target)"
+            )
+            owned.removeAll { $0.uin == target }
+            return true
+        } catch {
+            print("[UinAuctionService] removeOwned failed: \(error)")
+            return false
+        }
+    }
+
     func refreshRecent() async {
         do {
             let list: [UinAuctionRecentWinner] = try await APIClient.shared.request(
