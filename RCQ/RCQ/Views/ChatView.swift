@@ -1837,7 +1837,12 @@ private struct MessageRow: View {
                                 onDoubleTapLike()
                             }
                             .onLongPressGesture(
-                                minimumDuration: 0.18,
+                                // 0.18s was catching scroll-decel finger lingers
+                                // as long-press, stopping the scroll. Telegram-
+                                // grade feel is ~0.4s — leaves headroom for
+                                // natural scroll pauses without losing the
+                                // "press to act" cue.
+                                minimumDuration: 0.4,
                                 pressing: { isPressing in
                                     bubblePressed = isPressing
                                 },
@@ -1868,11 +1873,18 @@ private struct MessageRow: View {
             .contentShape(Rectangle())
             // simultaneousGesture (not .gesture) so iOS's screen-edge back-swipe keeps working.
             .simultaneousGesture(
-                DragGesture(minimumDistance: 18)
+                // minimumDistance: 25 (was 18). Lets the ScrollView's pan
+                // win small vertical drifts without our gesture even
+                // activating — fewer accidental "scroll caught on a
+                // message" cancellations during long scrolls.
+                DragGesture(minimumDistance: 25)
                     .onChanged { value in
                         guard !message.deletedForEveryone, message.kind != .systemNotice else { return }
-                        // Leading-edge drags belong to iOS's interactive-pop gesture.
-                        if value.startLocation.x < 32 {
+                        // Leading-edge drags belong to iOS's interactive-pop
+                        // gesture. 60pt buffer (was 32) so the back-swipe
+                        // doesn't fight our reply-swipe when the user
+                        // starts a hair right of the edge.
+                        if value.startLocation.x < 60 {
                             if swipeOffset != 0 { swipeOffset = 0 }
                             swipeArmed = false
                             return
