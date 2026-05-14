@@ -49,8 +49,8 @@
 "settings.traffic.used" = "Использовано за месяц";
 "settings.traffic.used.value" = "%d МБ";
 "settings.traffic.spent" = "Потрачено";
-"settings.traffic.pay_large" = "Платить жетонами за файлы > 25 МБ";
-"settings.traffic.pay_large.footer" = "Большие файлы тарифицируются по размеру. Ставка появится здесь после включения.";
+"settings.traffic.pay_large" = "Платить жетонами за файлы > 50 МБ";
+"settings.traffic.pay_large.footer" = "До 50 МБ — бесплатно. Сверху 1 жетон за каждые 10 МБ — без лимита, пока есть жетоны.";
 
 "settings.history" = "История";
 "settings.history.clear" = "Очистить всю переписку";
@@ -140,6 +140,14 @@
 "common.send" = "Отправить";
 "common.search" = "Поиск";
 "common.error" = "Ошибка";
+"common.error.insufficient" = "Недостаточно жетонов";
+"common.error.already_done" = "Уже выполнено";
+"common.error.session_ended" = "Сессия завершилась — попробуй в следующем раунде";
+"common.error.conflict" = "Конфликт — попробуй ещё раз";
+"common.error.gone" = "Не найдено";
+"common.error.rate_limited" = "Слишком много запросов — замедлись";
+"common.error.server" = "Серверная заминка — попробуй через секунду";
+"common.error.network" = "Сетевая ошибка — попробуй ещё раз";
 
 /* ── Stories ──────────────────────────────────────────────── */
 
@@ -421,6 +429,15 @@
 "chat.attach.video" = "Видео";
 "chat.attach.camera" = "Камера";
 "chat.attach.premium" = "Платный контент";
+"chat.attach.document" = "Файл";
+"chat.attach.location" = "Геопозиция";
+"chat.location.title" = "Выбери место";
+"chat.location.send" = "Отправить";
+"chat.location.open_in" = "Открыть в";
+"chat.location.open.apple" = "Apple Maps";
+"chat.location.open.google" = "Google Maps";
+"chat.location.copy" = "Скопировать координаты";
+"chat.file.pay_required" = "Файлы больше 50 МБ требуют тогл «Платить за файлы» в настройках.";
 
 "chat.translate.title" = "Перевод";
 "chat.translate.section.original" = "Оригинал";
@@ -538,6 +555,8 @@
 "chat.preview.photo" = "📷 Фото";
 "chat.preview.video" = "🎬 Видео";
 "chat.preview.voice" = "🎤 Голосовое";
+"chat.preview.file" = "Файл";
+"chat.preview.location" = "Геопозиция";
 "chat.preview.premium_photo" = "🔒 Премиум-фото";
 "chat.preview.premium_video" = "🔒 Премиум-видео";
 "chat.preview.generic" = "Сообщение";
@@ -771,6 +790,7 @@
 "profile.audience.last_7" = "· за 7 дней";
 "profile.cta.propose_trade" = "Предложить обмен";
 "profile.cta.view_inventory" = "Открыть инвентарь";
+"profile.cta.reset_session" = "Сбросить защищённую сессию";
 "profile.cta.share_my_rcq" = "Поделиться RCQ";
 "profile.cta.save" = "Сохранить";
 "profile.cta.saving" = "Сохраняем…";
@@ -889,6 +909,7 @@
 "pool.gems.section" = "Гемы";
 "pool.gems.title" = "Связка гемов";
 "pool.gems.range" = "%d–%d гемов за выпадение";
+"pool.pack.contents" = "СОДЕРЖИМОЕ ПАКА · %d";
 "public_inventory.title" = "Предметы %@";
 "public_inventory.empty" = "%@ ещё не открывал коробки.";
 "public_inventory.private.title" = "Инвентарь скрыт";
@@ -1199,7 +1220,12 @@
 "crash.result.next_in" = "Следующий раунд через %d сек";
 "crash.banner.cashed" = "Забрал %.2fx · +%d жетонов";
 "crash.error.betting_closed" = "Ставки уже закрыты";
-"crash.error.cashout_too_late" = "Не успел — крах раньше";
+"crash.error.cashout_too_late" = "Не успел — раунд крашнулся ровно когда ты нажал. Ставка сгорела.";
+"crash.error.already_cashed" = "Ты уже забрал в этом раунде";
+"crash.error.already_bet" = "Ты уже сделал ставку в этом раунде";
+"crash.error.no_bet" = "В этом раунде ставки нет";
+"crash.error.insufficient" = "Недостаточно жетонов";
+"crash.error.network" = "Сетевая ошибка — попробуй ещё раз";
 
 "crash.rules.title" = "Правила Crash";
 "crash.rules.how.title" = "Как играть";

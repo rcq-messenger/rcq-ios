@@ -12,7 +12,7 @@ struct ItemAssetImage: View {
     var body: some View {
         if let url = Bundle.main.url(forResource: filename, withExtension: ext) {
             if ext.lowercased() == "gif" {
-                AnimatedGIFImage(url: url)
+                AnimatedGIFImage(url: url, speed: Self.speed(forFilename: filename))
             } else if let img = UIImage(contentsOfFile: url.path) {
                 Image(uiImage: img)
                     .resizable()
@@ -26,6 +26,19 @@ struct ItemAssetImage: View {
         }
     }
 
+    /// Per-asset playback speed. Default 1× preserves the artist-set
+    /// frame timing. Pets read sluggish at their authored timing —
+    /// 1.3× lands them in "alive idle" without crossing into jittery.
+    /// Filename pattern is `pet1.gif ... pet10.gif`.
+    private static func speed(forFilename name: String) -> Double {
+        if name.hasPrefix("pet"),
+           name.dropFirst(3).allSatisfy({ $0.isNumber }),
+           !name.dropFirst(3).isEmpty {
+            return 1.3
+        }
+        return 1.0
+    }
+
     private var placeholder: some View {
         Image(systemName: "cube")
             .font(.system(size: 18, weight: .light))
@@ -37,14 +50,18 @@ struct ItemAssetImage: View {
 /// — TimelineView pauses off-screen and resumes on re-show, no UIView lifecycle to manage.
 struct AnimatedGIFImage: View {
     let url: URL
+    /// 1× = native GIF timing. Higher values shorten the loop period;
+    /// used to give pets a livelier idle (see `ItemAssetImage.speed`).
+    var speed: Double = 1.0
 
     var body: some View {
         if let frames = AnimatedGIFCache.shared.frames(for: url),
            !frames.images.isEmpty {
+            let duration = max(0.05, frames.duration / max(0.1, speed))
             TimelineView(.animation) { ctx in
                 let elapsed = ctx.date.timeIntervalSince1970
-                let phase = elapsed.truncatingRemainder(dividingBy: frames.duration)
-                let progress = phase / frames.duration
+                let phase = elapsed.truncatingRemainder(dividingBy: duration)
+                let progress = phase / duration
                 let raw = Int(progress * Double(frames.images.count))
                 let idx = max(0, min(frames.images.count - 1, raw))
                 Image(uiImage: frames.images[idx])

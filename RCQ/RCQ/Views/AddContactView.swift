@@ -547,6 +547,9 @@ struct PendingRequestsView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("common.close".localized) { dismiss() } }
             }
+            .navigationDestination(for: Int.self) { uin in
+                UserInfoView(uin: uin, isOwn: false)
+            }
         }
         .presentationDetents([.fraction(0.32), .large])
         .presentationDragIndicator(.visible)
@@ -555,9 +558,14 @@ struct PendingRequestsView: View {
     private func requestRow(_ req: ContactService.PendingRequest) -> some View {
         // `String(req.from_uin)` bypasses Text's locale-aware grouping separators.
         VStack(alignment: .leading, spacing: 8) {
-            Text(String(format: "pending.row.body".localized, req.nickname, String(req.from_uin)))
-                .font(.body)
-                .foregroundColor(Theme.Color.textPrimary)
+            NavigationLink(value: req.from_uin) {
+                Text(String(format: "pending.row.body".localized, req.nickname, String(req.from_uin)))
+                    .font(.body)
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
             HStack(spacing: 12) {
                 Button("pending.cta.accept".localized) {
                     Task { try? await contacts.respond(requestID: req.id, accept: true) }

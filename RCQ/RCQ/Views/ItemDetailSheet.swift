@@ -41,8 +41,7 @@ struct ItemDetailSheet: View {
                     hero
                     statsBlock
                     if let kind, kind.appliesAs != .none {
-                        KindContentsView(kindID: kind.id, horizontalInset: 18)
-                            .padding(.horizontal, -18)
+                        KindContentsView(kindID: kind.id, horizontalInset: 0)
                     }
                     if !readOnly {
                         actionRow

@@ -58,8 +58,8 @@
 "settings.traffic.used" = "Used this month";
 "settings.traffic.used.value" = "%d MB";
 "settings.traffic.spent" = "Spent";
-"settings.traffic.pay_large" = "Pay jetons for files > 25 MB";
-"settings.traffic.pay_large.footer" = "Large files cost jetons based on size. Rate appears here when enabled.";
+"settings.traffic.pay_large" = "Pay jetons for files > 50 MB";
+"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 jeton per 10 MB — no size limit while you have jetons.";
 
 "settings.history" = "History";
 "settings.history.clear" = "Clear all chat history";
@@ -143,6 +143,14 @@
 "common.next" = "Next";
 "common.back" = "Back";
 "common.error" = "Error";
+"common.error.insufficient" = "Not enough jetons";
+"common.error.already_done" = "Already done";
+"common.error.session_ended" = "Session ended — try the next round";
+"common.error.conflict" = "Conflict — try again";
+"common.error.gone" = "Not found";
+"common.error.rate_limited" = "Too many requests — slow down";
+"common.error.server" = "Server hiccup — try again in a moment";
+"common.error.network" = "Connection hiccup — try again";
 
 /* ── Stories ──────────────────────────────────────────────── */
 
@@ -430,6 +438,15 @@
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Camera";
 "chat.attach.premium" = "Premium content";
+"chat.attach.document" = "Document";
+"chat.attach.location" = "Location";
+"chat.location.title" = "Pick a location";
+"chat.location.send" = "Send";
+"chat.location.open_in" = "Open in";
+"chat.location.open.apple" = "Apple Maps";
+"chat.location.open.google" = "Google Maps";
+"chat.location.copy" = "Copy coordinates";
+"chat.file.pay_required" = "Files over 50 MB need the Pay-for-files toggle in Settings.";
 
 "chat.translate.title" = "Translation";
 "chat.translate.section.original" = "Original";
@@ -547,6 +564,8 @@
 "chat.preview.photo" = "📷 Photo";
 "chat.preview.video" = "🎬 Video";
 "chat.preview.voice" = "🎤 Voice";
+"chat.preview.file" = "File";
+"chat.preview.location" = "Location";
 "chat.preview.premium_photo" = "🔒 Premium photo";
 "chat.preview.premium_video" = "🔒 Premium video";
 "chat.preview.generic" = "Message";
@@ -780,6 +799,7 @@
 "profile.audience.last_7" = "· last 7 days";
 "profile.cta.propose_trade" = "Propose trade";
 "profile.cta.view_inventory" = "View their inventory";
+"profile.cta.reset_session" = "Reset secure session";
 "profile.cta.share_my_rcq" = "Share my RCQ";
 "profile.cta.save" = "Save";
 "profile.cta.saving" = "Saving…";
@@ -898,6 +918,7 @@
 "pool.gems.section" = "Gems";
 "pool.gems.title" = "Gem bundle";
 "pool.gems.range" = "%d–%d gems per drop";
+"pool.pack.contents" = "PACK CONTENTS · %d";
 "public_inventory.title" = "%@'s items";
 "public_inventory.empty" = "%@ hasn't opened any boxes yet.";
 "public_inventory.private.title" = "Inventory is private";
@@ -1208,7 +1229,12 @@
 "crash.result.next_in" = "Next round in %d s";
 "crash.banner.cashed" = "Cashed %.2fx · +%d tokens";
 "crash.error.betting_closed" = "Bets already closed";
-"crash.error.cashout_too_late" = "Too late — already crashed";
+"crash.error.cashout_too_late" = "Too late — the round crashed just as your tap arrived. Bet is forfeit.";
+"crash.error.already_cashed" = "You've already cashed out this round";
+"crash.error.already_bet" = "You've already bet this round";
+"crash.error.no_bet" = "You have no bet in this round";
+"crash.error.insufficient" = "Not enough jetons";
+"crash.error.network" = "Connection hiccup — try again";
 
 "crash.rules.title" = "Crash rules";
 "crash.rules.how.title" = "How to play";

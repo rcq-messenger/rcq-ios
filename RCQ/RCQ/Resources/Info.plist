@@ -22,6 +22,10 @@
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>RCQ uses Bluetooth to discover and chat with people physically nearby — no internet required. Direction-finding is off; data stays on the local radio link.</string>
 	<key>NSBonjourServices</key>

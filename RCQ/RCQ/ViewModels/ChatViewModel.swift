@@ -351,6 +351,8 @@ final class ChatViewModel: ObservableObject {
         case .photo: raw = message.text.isEmpty ? "📷 Photo" : "📷 \(message.text)"
         case .video: raw = message.text.isEmpty ? "🎬 Video" : "🎬 \(message.text)"
         case .voice: raw = "🎤 Voice"
+        case .file:  raw = "📎 \(message.fileName ?? "File")"
+        case .location: raw = "📍 Location"
         case .premiumPhoto: raw = "🔒 Premium photo"
         case .premiumVideo: raw = "🔒 Premium video"
         default:     raw = message.text.isEmpty ? "Message" : message.text
@@ -366,6 +368,70 @@ final class ChatViewModel: ObservableObject {
             case .peer(let c):       try await MessageService.shared.sendVoice(fileURL: fileURL, durationSec: durationSec, to: c, replyTo: reply)
             case .group(let g):      try await MessageService.shared.sendVoice(fileURL: fileURL, durationSec: durationSec, to: g, replyTo: reply)
             case .randomPeer(let p): try await MessageService.shared.sendVoice(fileURL: fileURL, durationSec: durationSec, toRandom: p, replyTo: reply)
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Static pinned location — coordinates picked via map sheet, sent
+    /// inside the envelope (no encrypted blob path). Random-chat is
+    /// gated upstream by the attach menu hiding the row entirely.
+    func sendLocation(latitude: Double, longitude: Double) async -> String? {
+        let reply = consumeReplyContext()
+        do {
+            switch target {
+            case .peer(let c):
+                try await MessageService.shared.sendLocation(
+                    latitude: latitude, longitude: longitude,
+                    to: c, replyTo: reply,
+                )
+            case .group(let g):
+                try await MessageService.shared.sendLocation(
+                    latitude: latitude, longitude: longitude,
+                    to: g, replyTo: reply,
+                )
+            case .randomPeer:
+                break
+            }
+            return nil
+        } catch {
+            return APIErrorPresenter.friendly(error)
+        }
+    }
+
+    /// Arbitrary file (PDF / DOCX / ZIP / …). Random-chat is gated upstream
+    /// in the attach menu so this method only has to route 1:1 and groups.
+    ///
+    /// Files above 25 MB require the "Pay for files" toggle (Settings) —
+    /// without it we block here so the server's 402 doesn't surface as
+    /// a generic upload failure.
+    func sendFile(fileURL: URL, fileName: String, mime: String, sizeBytes: Int) async -> String? {
+        let payEnabled = UserDefaults.standard.bool(forKey: "rcq.network.pay_for_large_files")
+        let payJetons = MediaService.jetonCost(forBytes: sizeBytes)
+        if payJetons > 0 && !payEnabled {
+            return "chat.file.pay_required".localized
+        }
+        let reply = consumeReplyContext()
+        do {
+            switch target {
+            case .peer(let c):
+                try await MessageService.shared.sendFile(
+                    fileURL: fileURL, fileName: fileName, mime: mime, sizeBytes: sizeBytes,
+                    payJetons: payJetons,
+                    to: c, replyTo: reply
+                )
+            case .group(let g):
+                try await MessageService.shared.sendFile(
+                    fileURL: fileURL, fileName: fileName, mime: mime, sizeBytes: sizeBytes,
+                    payJetons: payJetons,
+                    to: g, replyTo: reply
+                )
+            case .randomPeer:
+                // Document attaches are hidden from random-chat — defensive
+                // no-op in case the call site ever leaks past that gate.
+                break
             }
             return nil
         } catch {

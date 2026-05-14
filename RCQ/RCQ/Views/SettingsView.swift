@@ -30,6 +30,7 @@ struct SettingsView: View {
     // Foundation toggles — UI-only until routing + billing land.
     @AppStorage("rcq.network.vpn_enabled") private var vpnEnabled: Bool = false
     @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles: Bool = false
+    @State private var trafficUsage: MediaService.TrafficUsage?
 
     var body: some View {
         NavigationStack {
@@ -214,7 +215,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("settings.traffic.used".localized)
                                     .foregroundColor(Theme.Color.textPrimary)
-                                Text(String(format: "settings.traffic.used.value".localized, 0))
+                                Text(usedMBString)
                                     .font(.system(.callout, design: .monospaced))
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
@@ -226,7 +227,7 @@ struct SettingsView: View {
                                 HStack(spacing: 3) {
                                     ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                                         .frame(width: 12, height: 12)
-                                    Text("0")
+                                    Text("\(trafficUsage?.jetonsSpent ?? 0)")
                                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                         .foregroundColor(Theme.Color.textPrimary)
                                 }
@@ -242,15 +243,6 @@ struct SettingsView: View {
                             }
                         }
                         .tint(Theme.Color.accent)
-                        .disabled(true)
-                        HStack {
-                            Image(systemName: "clock.badge.checkmark")
-                                .foregroundColor(Theme.Color.textSecondary)
-                            Text("settings.network.coming_soon".localized)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundColor(Theme.Color.textSecondary)
-                            Spacer()
-                        }
                     } header: {
                         Text("settings.traffic".localized)
                     }
@@ -480,7 +472,21 @@ struct SettingsView: View {
                     Text(migrationAlert ?? "")
                 }
             )
+            .task {
+                trafficUsage = await MediaService.shared.fetchTrafficUsage()
+            }
         }
+    }
+
+    /// "23.4 MB" — formatted from `trafficUsage.bytesUsed` for the
+    /// Settings readout. Same `ByteCountFormatter` as the file bubble
+    /// so units line up across the app.
+    private var usedMBString: String {
+        let bytes = trafficUsage?.bytesUsed ?? 0
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useMB, .useGB]
+        f.countStyle = .file
+        return f.string(fromByteCount: Int64(bytes))
     }
 
     @ViewBuilder

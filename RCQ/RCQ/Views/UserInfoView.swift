@@ -1,3 +1,4 @@
+import LibSignalClient
 import SwiftUI
 
 struct UserInfoView: View {
@@ -134,6 +135,12 @@ struct UserInfoView: View {
                     showInventory = true
                 } label: {
                     Label("profile.cta.view_inventory".localized, systemImage: "shippingbox")
+                }
+                Divider()
+                Button {
+                    resetSecureSession(uin: p.uin)
+                } label: {
+                    Label("profile.cta.reset_session".localized, systemImage: "key.fill")
                 }
                 Divider()
                 UserSafetyActions(
@@ -394,5 +401,20 @@ struct UserInfoView: View {
             AuthService.shared.updateNicknameLocal(updated.nickname)
         } catch { }
         saving = false
+    }
+
+    /// Drop the local libsignal session for this peer so the next
+    /// outbound message bootstraps a fresh session against their
+    /// CURRENT prekey bundle. Used when a peer reinstalls / re-
+    /// registers and the sender's cached session points at stale
+    /// identity keys — symptom is "messages go from sim to phone
+    /// fine, but phone → sim arrives as ciphertext that decrypts to
+    /// garbage and gets dropped silently". After a reset, the next
+    /// /messages/sealed hits `processPreKeyBundle` again and the
+    /// chain is healthy.
+    private func resetSecureSession(uin: Int) {
+        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
+        SignalProtocolStores.shared.deleteSession(for: addr)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

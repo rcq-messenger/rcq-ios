@@ -17,9 +17,9 @@ struct Contact: Identifiable, Hashable, Codable {
     /// Stage 2-only and senders fall back to v=1 ECIES.
     var signalIdentityKey: String?
     /// Gender icon hint. Server has already applied the contact's
-    /// `gender_visibility` setting; null = hide. Same shape as
-    /// `NearbyPerson.gender` and `HoodMessage.gender` so the
-    /// rendering helper can take any of them.
+    /// `gender_visibility` setting; null = hide. The icon-rendering
+    /// helper accepts this alongside `NearbyPerson.gender` and
+    /// `HoodMessage.gender`, which carry the same string values.
     var gender: String?
     var unread: Int = 0
     /// Tiny snapshot of the contact's currently-equipped pet — drives

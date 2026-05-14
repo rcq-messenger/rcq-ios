@@ -28,8 +28,8 @@ struct UserProfile: Codable, Hashable {
     /// `/users/me` or `/users/{ownUIN}/info` so the Settings picker
     /// can display the current choice without a separate request.
     var lastSeenVisibility: String?
-    /// Owner-only echo, same shape as `lastSeenVisibility`. Drives
-    /// who can see `gender` on the profile.
+    /// Owner-only echo, follows the `lastSeenVisibility` tri-state.
+    /// Gates who can see `gender` on the profile.
     var genderVisibility: String?
     /// Owner-only echo of the group-invite policy.
     /// `everyone` (default) / `contacts` / `nobody`.

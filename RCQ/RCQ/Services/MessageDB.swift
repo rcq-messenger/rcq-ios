@@ -41,6 +41,17 @@ final class MessageRecord: NSManagedObject {
     /// stand-alone messages and any media coming from an older client
     /// that didn't know about albumID.
     @NSManaged var albumID: UUID?
+    /// File attachment metadata — only populated for `.file` kind.
+    @NSManaged var fileName: String?
+    @NSManaged var fileMime: String?
+    /// `0` = unknown / not-a-file. Stored as Int64 so the CoreData
+    /// schema doesn't need an optional-numeric wrapper; the model
+    /// layer normalises back to `Int?`.
+    @NSManaged var fileSizeBytes: Int64
+    /// Lat/lng for `.location` rows. Optional because every other
+    /// kind has them as nil. Doubles map cleanly to CoreData.
+    @NSManaged var latitude: NSNumber?
+    @NSManaged var longitude: NSNumber?
 }
 
 @MainActor
@@ -64,8 +75,32 @@ final class MessageDB {
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
 
+        var loadFailed = false
         container.loadPersistentStores { _, err in
-            if let err { print("[MessageDB] load failed: \(err)") }
+            if let err {
+                print("[MessageDB] load failed: \(err)")
+                loadFailed = true
+            }
+        }
+        // If lightweight migration choked (mismatched model vs. on-disk
+        // schema after a recent attribute add), every subsequent save
+        // would crash — the store is wedged but the container thinks
+        // it's loaded. Nuke the SQLite + retry once so the user lands
+        // in a working empty-history state instead of a hard crash loop.
+        // History loss is the price; the alternative is "uninstall the
+        // app" which is strictly worse for testers.
+        if loadFailed {
+            let dir = storeURL.deletingLastPathComponent()
+            let base = storeURL.lastPathComponent
+            // SQLite also writes -shm and -wal sidecars; ditch all three
+            // so the next attempt doesn't try to re-attach a half-broken
+            // journal.
+            for name in [base, base + "-shm", base + "-wal"] {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+            }
+            container.loadPersistentStores { _, err in
+                if let err { print("[MessageDB] reset still failed: \(err)") }
+            }
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
         self.container = container
@@ -74,11 +109,23 @@ final class MessageDB {
     // MARK: - schema
 
     private static func buildModel() -> NSManagedObjectModel {
-        func attr(_ name: String, _ type: NSAttributeType, optional: Bool = false) -> NSAttributeDescription {
+        func attr(
+            _ name: String,
+            _ type: NSAttributeType,
+            optional: Bool = false,
+            defaultValue: Any? = nil,
+        ) -> NSAttributeDescription {
             let a = NSAttributeDescription()
             a.name = name
             a.attributeType = type
             a.isOptional = optional
+            // CoreData lightweight migration REQUIRES either `optional`
+            // or a default value when adding a new non-optional
+            // attribute to an existing store. Pre-v8 attributes get
+            // away without one because they were created with the store
+            // — anything appended later must declare a default or the
+            // migration fails on first load and every save() crashes.
+            if let defaultValue { a.defaultValue = defaultValue }
             return a
         }
 
@@ -110,6 +157,11 @@ final class MessageDB {
             attr("premiumPriceTokens", .integer64AttributeType),
             attr("premiumUnlocked",    .booleanAttributeType),
             attr("albumID",            .UUIDAttributeType, optional: true),
+            attr("fileName",           .stringAttributeType, optional: true),
+            attr("fileMime",           .stringAttributeType, optional: true),
+            attr("fileSizeBytes",      .integer64AttributeType, defaultValue: 0),
+            attr("latitude",           .doubleAttributeType, optional: true),
+            attr("longitude",          .doubleAttributeType, optional: true),
         ]
         let model = NSManagedObjectModel()
         model.entities = [entity]
@@ -238,6 +290,11 @@ final class MessageDB {
         row.premiumPriceTokens = Int64(msg.premiumPriceTokens ?? 0)
         row.premiumUnlocked = msg.premiumUnlocked
         row.albumID = msg.albumID
+        row.fileName = msg.fileName
+        row.fileMime = msg.fileMime
+        row.fileSizeBytes = Int64(msg.fileSizeBytes ?? 0)
+        row.latitude = msg.latitude.map { NSNumber(value: $0) }
+        row.longitude = msg.longitude.map { NSNumber(value: $0) }
     }
 
     private static func toModel(_ row: MessageRecord) -> Message {
@@ -264,7 +321,12 @@ final class MessageDB {
             editedAt: row.editedAt,
             premiumPriceTokens: row.premiumPriceTokens > 0 ? Int(row.premiumPriceTokens) : nil,
             premiumUnlocked: row.premiumUnlocked,
-            albumID: row.albumID
+            albumID: row.albumID,
+            fileName: (row.fileName?.isEmpty == false) ? row.fileName : nil,
+            fileMime: (row.fileMime?.isEmpty == false) ? row.fileMime : nil,
+            fileSizeBytes: row.fileSizeBytes > 0 ? Int(row.fileSizeBytes) : nil,
+            latitude: row.latitude?.doubleValue,
+            longitude: row.longitude?.doubleValue
         )
     }
 

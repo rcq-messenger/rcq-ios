@@ -4,7 +4,7 @@ import SwiftUI
 /// past four entries. All five tri-state policies (last-seen /
 /// gender / group invites / trade offers / calls) load from
 /// `/users/me/info` on appear and write through PUT `/users/me`
-/// on change. Defaults mirror the server-side column defaults so
+/// on change. Local defaults match the server's column defaults so
 /// a render before the GET completes doesn't flicker through a
 /// wrong-looking value.
 struct PrivacySettingsView: View {

@@ -1,7 +1,7 @@
 import Foundation
 
-/// A single marketplace listing — shape mirrors the backend
-/// `ListingOut` schema. Snapshots the item's rarity/level/purity at
+/// A single marketplace listing — decodes the backend's
+/// `ListingOut` row. Snapshots the item's rarity/level/purity at
 /// listing time so the browse tile renders without a separate
 /// `/items/{id}` round-trip per row.
 struct MarketplaceListing: Codable, Identifiable, Hashable {

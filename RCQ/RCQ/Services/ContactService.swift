@@ -41,6 +41,14 @@ final class ContactService: ObservableObject {
             var nickMap: [Int: String] = [:]
             for c in list { nickMap[c.uin] = c.nickname }
             NicknameCache.setAll(nickMap)
+            // Any UIN we'd previously dropped via `remove()` but that's
+            // now back in our contact list means a re-add happened.
+            // Clearing the filter so their future messages render
+            // again — otherwise the recipient gets locally-filtered
+            // sealed envelopes forever after a single remove + re-add
+            // round-trip and "iPhone → sim doesn't arrive" becomes
+            // permanent until reinstall.
+            for c in list { RemovedContactsStore.shared.remove(c.uin) }
         } catch {
             // Keep current cached state on failure.
         }
@@ -63,6 +71,10 @@ final class ContactService: ObservableObject {
         let _: EmptyResponse = try await APIClient.shared.request(
             "POST", "/contacts/request", body: Body(to_uin: uin)
         )
+        // Re-add intent. Clear the local "I removed them" filter so
+        // their messages stop being dropped on ingest even before the
+        // server's auto-accept WS event lands.
+        RemovedContactsStore.shared.remove(uin)
     }
 
     func respond(requestID: Int, accept: Bool) async throws {
@@ -93,6 +105,43 @@ final class ContactService: ObservableObject {
     func removeLocal(_ uin: Int) {
         contacts.removeAll { $0.uin == uin }
         UnreadStore.shared.clearPeer(uin)
+    }
+
+    /// Auto-surface an unknown sender so their messages appear in the
+    /// chat list. Sealed sender + a removed/missing mutual contact
+    /// row means messages from this UIN land in MessageStore but the
+    /// chat-list cell never renders because the UI is contact-driven.
+    /// This synthesizes a local Contact row from the peer's public
+    /// profile so the thread surfaces without forcing a mutual handshake.
+    /// Idempotent — bails fast if the contact already exists.
+    func upsertStranger(uin: Int) async {
+        if contacts.contains(where: { $0.uin == uin }) { return }
+        if RemovedContactsStore.shared.contains(uin) { return }
+        do {
+            let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
+            await MainActor.run {
+                guard !self.contacts.contains(where: { $0.uin == uin }) else { return }
+                let contact = Contact(
+                    uin: p.uin,
+                    nickname: p.nickname,
+                    status: p.status,
+                    statusMessage: p.statusMessage,
+                    blocked: false,
+                    identityKey: p.identityKey,
+                    signingKey: p.signingKey,
+                    signalIdentityKey: p.signalIdentityKey,
+                    gender: nil,
+                    unread: 0,
+                    equippedPet: p.equippedPet,
+                    lastSeen: nil,
+                )
+                self.contacts.append(contact)
+            }
+        } catch {
+            // Fall through silently — the message is still saved in
+            // MessageStore. Worst case the thread just doesn't render
+            // until the next refresh; tighter than crashing the path.
+        }
     }
 
     func toggleBlock(_ uin: Int) async throws {

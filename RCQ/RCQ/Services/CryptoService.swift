@@ -35,6 +35,8 @@ enum Envelope: Codable, Hashable {
     case photo(id: UUID, mediaID: String, mediaKey: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
     case video(id: UUID, mediaID: String, mediaKey: String, thumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
     case voice(id: UUID, mediaID: String, mediaKey: String, durationSec: Double, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case file(id: UUID, mediaID: String, mediaKey: String, fileName: String, mime: String, sizeBytes: Int, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case location(id: UUID, lat: Double, lng: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     case deleteForEveryone(targetID: UUID)
     case systemNotice(id: UUID, text: String)
     case readReceipt(targetIDs: [UUID])
@@ -54,6 +56,11 @@ enum Envelope: Codable, Hashable {
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
+        case fileName = "fname"
+        case mime
+        case sizeBytes = "size"
+        case lat
+        case lng
     }
 
     func encode(to encoder: Encoder) throws {
@@ -94,6 +101,27 @@ enum Envelope: Codable, Hashable {
             try c.encode(mediaID, forKey: .mediaID)
             try c.encode(key, forKey: .mediaKey)
             try c.encode(dur, forKey: .durationSec)
+            try c.encodeIfPresent(ttl, forKey: .ttl)
+            try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
+            try c.encodeIfPresent(reply, forKey: .replyTo)
+        case .file(let id, let mediaID, let key, let fname, let mime, let size, let caption, let ttl, let fwd, let reply):
+            try c.encode("file", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(mediaID, forKey: .mediaID)
+            try c.encode(key, forKey: .mediaKey)
+            try c.encode(fname, forKey: .fileName)
+            try c.encode(mime, forKey: .mime)
+            try c.encode(size, forKey: .sizeBytes)
+            try c.encodeIfPresent(caption, forKey: .caption)
+            try c.encodeIfPresent(ttl, forKey: .ttl)
+            try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
+            try c.encodeIfPresent(reply, forKey: .replyTo)
+        case .location(let id, let lat, let lng, let caption, let ttl, let fwd, let reply):
+            try c.encode("location", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(lat, forKey: .lat)
+            try c.encode(lng, forKey: .lng)
+            try c.encodeIfPresent(caption, forKey: .caption)
             try c.encodeIfPresent(ttl, forKey: .ttl)
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
@@ -189,6 +217,29 @@ enum Envelope: Codable, Hashable {
                 mediaID: try c.decode(String.self, forKey: .mediaID),
                 mediaKey: try c.decode(String.self, forKey: .mediaKey),
                 durationSec: try c.decode(Double.self, forKey: .durationSec),
+                ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+            )
+        case "file":
+            self = .file(
+                id: try c.decode(UUID.self, forKey: .id),
+                mediaID: try c.decode(String.self, forKey: .mediaID),
+                mediaKey: try c.decode(String.self, forKey: .mediaKey),
+                fileName: try c.decode(String.self, forKey: .fileName),
+                mime: try c.decode(String.self, forKey: .mime),
+                sizeBytes: try c.decode(Int.self, forKey: .sizeBytes),
+                caption: try c.decodeIfPresent(String.self, forKey: .caption),
+                ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
+                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
+            )
+        case "location":
+            self = .location(
+                id: try c.decode(UUID.self, forKey: .id),
+                lat: try c.decode(Double.self, forKey: .lat),
+                lng: try c.decode(Double.self, forKey: .lng),
+                caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)

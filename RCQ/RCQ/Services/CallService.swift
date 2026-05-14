@@ -202,7 +202,7 @@ final class CallService: ObservableObject {
         }
     }
 
-    /// Inbound call delivered via VoIP push; mirrors the WS path but skips the SwiftUI ringer.
+    /// Inbound call delivered via VoIP push; same accept/decline pipeline as the WS path, just without the SwiftUI ringer.
     func handleVoIPIncoming(callKitUUID: UUID, callID: String, fromUIN: Int, nickname: String, media: CallMedia, sdp: String) {
         guard !state.isActive else {
             CallProvider.shared.reportEnded(callID: callID, reason: .declinedElsewhere)

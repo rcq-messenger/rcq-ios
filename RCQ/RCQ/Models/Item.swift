@@ -83,7 +83,7 @@ struct Item: Codable, Identifiable, Hashable {
     }
 
     /// Derived showcase value (used by the public leaderboard later).
-    /// Same shape the IX project uses: rarity_base × purity × (1 + level/9).
+    /// Formula: rarity_base × purity × (1 + level/9).
     /// Mint multiplier on capped kinds is applied via `mintMultiplier`.
     func showcaseValue(catalog: ItemCatalog) -> Int {
         let base = catalog.rarityBaseValue[rarity] ?? 1
@@ -94,8 +94,8 @@ struct Item: Codable, Identifiable, Hashable {
     }
 }
 
-/// Same mint-multiplier curve as IX `Artifact.mintMultiplier`. Higher
-/// for the first few mints; flattens to 1× past #25.
+/// Mint-multiplier curve. Higher for the first few mints; flattens
+/// to 1× past #25.
 func mintMultiplier(for mintNumber: Int?) -> Double {
     guard let m = mintNumber else { return 1.0 }
     if m == 1 { return 5.0 }
@@ -112,7 +112,7 @@ extension Item {
         return "#\(m)"
     }
     /// Vanity slot markers — surfaced as a "Lucky Mint" pill on the
-    /// public profile. Mirrors the spec from `lootbox-plan.md`.
+    /// public profile. Follows the table in `lootbox-plan.md`.
     /// `#1` is the only marker with an English flourish ("FIRST")
     /// in the original spec; routed through localization so the
     /// other locales can pick the right word ("Первый" in ru). The

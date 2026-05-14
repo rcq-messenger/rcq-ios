@@ -4,7 +4,8 @@ import os.log
 
 /// Hi-Lo state holder. Solo per-user game — no WS broadcast, all
 /// state lives on the server and is mirrored here from REST replies.
-/// Same shape as `CrashService` so the view layer feels consistent.
+/// Public surface parallels `CrashService` so the view
+/// layer feels consistent.
 @MainActor
 final class HiLoService: ObservableObject {
     static let shared = HiLoService()
@@ -70,7 +71,7 @@ final class HiLoService: ObservableObject {
             // Optimistic wallet hint — server already deducted.
             ItemsService.shared.applyWalletDelta(tokens: -bet)
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 
@@ -132,7 +133,7 @@ final class HiLoService: ObservableObject {
             multiplier = mult
             recomputeChainOdds()
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 
@@ -159,7 +160,7 @@ final class HiLoService: ObservableObject {
             }
             SoundService.shared.play(.hiloWin)
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 

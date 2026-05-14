@@ -40,11 +40,12 @@ final class LanguageManager: ObservableObject {
         version &+= 1
     }
 
-    /// Mirror the active language to the App Group so the NSE (separate
-    /// process) localizes pushes against the same language the user picked.
-    /// Writes BOTH a flat file (source of truth) and App Group UserDefaults
-    /// — cfprefsd routinely detaches the shared suite, after which writes
-    /// stop propagating to the NSE; the file is rock-solid.
+    /// Hand the active language code over to the App Group so the NSE
+    /// (separate process) localizes pushes against the same language the
+    /// user picked. Writes BOTH a flat file (source of truth) and App
+    /// Group UserDefaults — cfprefsd routinely detaches the shared
+    /// suite, after which writes stop propagating to the NSE; the file
+    /// is rock-solid.
     private func mirrorToAppGroup() {
         let code = current.rawValue
         try? code.data(using: .utf8)?.write(

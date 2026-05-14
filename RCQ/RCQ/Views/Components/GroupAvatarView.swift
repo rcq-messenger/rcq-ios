@@ -13,6 +13,24 @@ struct GroupAvatarView: View {
 
     private var resolvedGlyph: CGFloat { glyphSize ?? size * 0.42 }
 
+    init(mediaID: String?, keyBase64: String?, size: CGFloat, glyphSize: CGFloat? = nil) {
+        self.mediaID = mediaID
+        self.keyBase64 = keyBase64
+        self.size = size
+        self.glyphSize = glyphSize
+        // Seed @State from the decrypted cache so the first render frame
+        // already has the avatar when it's hot — otherwise the entrance
+        // animation flashes the fallback glyph while the async .task
+        // path catches up. Most callers (group rows, header) have already
+        // loaded this exact avatar before MessageBannerHost renders.
+        let seed: UIImage? = {
+            guard let id = mediaID, !id.isEmpty,
+                  let key = keyBase64, !key.isEmpty else { return nil }
+            return MediaService.shared.cachedImage(mediaID: id, keyBase64: key)
+        }()
+        self._image = State(initialValue: seed)
+    }
+
     var body: some View {
         ZStack {
             Circle().fill(Theme.Color.accent)

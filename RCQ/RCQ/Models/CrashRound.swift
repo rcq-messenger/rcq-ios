@@ -1,7 +1,7 @@
 import Foundation
 
-/// Crash game phase. Mirrors the server's `_Round.state` string field
-/// (`"betting"` / `"running"` / `"crashed"`).
+/// Crash game phase — the three string values the server stamps into
+/// `_Round.state` (`"betting"` / `"running"` / `"crashed"`).
 enum CrashPhase: String, Codable {
     case betting
     case running

@@ -334,23 +334,36 @@ struct LootboxView: View {
         rolling = false
         guard let outcome = pendingOutcome else { return }
         pendingOutcome = nil
-        // Play the reveal sound HERE rather than in the overlay's
-        // .onAppear. With skipSpin + rapid Repeat taps, fullScreenCover
-        // sometimes coalesces nil→item back-to-back transitions into
-        // a single presentation cycle and .onAppear doesn't refire,
-        // dropping the sound. Firing it at state-change time guarantees
-        // one play per reveal regardless of cover lifecycle.
         SoundService.shared.play(.lootboxOpen)
-        switch outcome {
-        case .item(let item): revealTarget = .item(item)
-        case .scroll(let count): revealTarget = .scroll(count: count)
+        let next: RevealTarget = {
+            switch outcome {
+            case .item(let item): return .item(item)
+            case .scroll(let count): return .scroll(count: count)
+            }
+        }()
+        // Stale cover still bound — force a nil → item transition.
+        // The delay must outrun SwiftUI's fullScreenCover dismiss
+        // animation (≈0.5s), otherwise the next presentation is
+        // silently dropped and the user sees no curtain for this pull
+        // (item just lands in history while the open screen stays put).
+        if revealTarget != nil {
+            revealTarget = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                revealTarget = next
+            }
+        } else {
+            revealTarget = next
         }
     }
 
     @MainActor
     private func repeatPull() {
         revealTarget = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        // 0.6s covers fullScreenCover's dismiss animation in full —
+        // shorter gaps race the dismiss and the next reveal can be
+        // dropped by SwiftUI, especially on the skipSpin path where
+        // the new outcome lands within ~50ms of the API response.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             Task { await rollOnce() }
         }
     }

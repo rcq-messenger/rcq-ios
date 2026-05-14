@@ -5,10 +5,10 @@ import Foundation
 /// the small overlay GIF on top of the status icon plus the
 /// `PetPreviewSheet` when another user taps that overlay.
 ///
-/// Kept intentionally minimal — just enough to render the GIF and
-/// route to a public detail view. The full `Item` (with temper level,
-/// purity, history) is fetched on demand via `GET /items/{id}` if the
-/// preview sheet's "View details" CTA is used.
+/// Minimal — just enough to render the GIF and route to a public
+/// detail view. The full `Item` (with temper level, purity, history)
+/// is fetched on demand via `GET /items/{id}` if the preview sheet's
+/// "View details" CTA is used.
 struct EquippedPet: Codable, Hashable {
     let instanceID: String
     let kindID: String
@@ -18,7 +18,7 @@ struct EquippedPet: Codable, Hashable {
     let rarity: ItemRarity
     /// Mint slot the pet was rolled into. Server uses these for
     /// vanity badges (#1 / #100 / #777 / #1000 / #10000) on the
-    /// public showcase; client mirrors them on the preview sheet.
+    /// public showcase; client renders the same badges on the preview sheet.
     /// Optional: uncapped kinds (no `limit` on KindRow) don't get
     /// minted into a slot at all, so the field is null in the JSON.
     /// A non-optional decode here would fail the whole /contacts

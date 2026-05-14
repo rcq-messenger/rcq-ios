@@ -8,9 +8,8 @@ import Foundation
 /// different number than the server rolls against; both halves must
 /// be updated together.
 ///
-/// Adapted verbatim from IX `Artifact.enhancement*` constants. Same
-/// Fibonacci-like cost ramp, same near-Russian-roulette chance curve
-/// at the high end.
+/// Fibonacci-like cost ramp paired with a near-Russian-roulette
+/// chance curve at the high end.
 enum TemperTables {
     static let maxLevel: Int = 9
 

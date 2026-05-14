@@ -88,6 +88,16 @@ struct InventoryView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: loading)
+            // Animate ForEach diffs in the grid so dismantled items
+            // fade out + reflow into their neighbours instead of
+            // popping. Watches the inventory size (no per-id hashing
+            // each body pass) — fires once per add/remove batch.
+            .animation(.easeInOut(duration: 0.3), value: items.items.count)
+            // Banner enter/exit gets its own animation context so the
+            // top yield toast slides + fades smoothly in BOTH
+            // directions, even when the clearing happens from an
+            // asyncAfter outside a withAnimation block.
+            .animation(.easeInOut(duration: 0.4), value: bulkResultBanner)
             .navigationTitle(selectMode ? "common.confirm".localized : "inventory.title".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -560,10 +570,10 @@ struct InventoryView: View {
         HStack(spacing: 0) {
             Button {
                 // Skip equipped items — Select All is wired to the
-                // bulk-disassemble button, and accidentally torching
-                // the pet you're wearing was a real footgun. Toggle
-                // semantics stay the same: a second tap when every
-                // candidate is already selected clears it.
+                // bulk-disassemble button, and accidentally disassembling
+                // the equipped pet was an easy mistake. Toggle semantics
+                // stay the same: a second tap when every candidate is
+                // already selected clears it.
                 let visibleIDs = Set(
                     filteredItems
                         .filter { !$0.equipped }
@@ -624,10 +634,10 @@ struct InventoryView: View {
             Spacer()
         }
         .padding(.top, 12)
-        .transition(.asymmetric(
-            insertion: .move(edge: .top).combined(with: .opacity),
-            removal: .opacity,
-        ))
+        // Same transition both ways — toast slides + fades on removal
+        // so it doesn't blink out. Plain `.opacity` for removal was the
+        // "abrupt disappear" everyone hated.
+        .transition(.move(edge: .top).combined(with: .opacity))
         .allowsHitTesting(false)
     }
 
@@ -637,13 +647,14 @@ struct InventoryView: View {
         guard !toKill.isEmpty else { return }
         let yield = await items.disassembleBulk(toKill)
         if let yield {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
-                bulkResultBanner = yield
-            }
+            // The parent's `.animation(value: bulkResultBanner)` drives
+            // both directions of the toast transition, so a plain set
+            // is enough — wrapping in `withAnimation` was overriding
+            // the parent curve and shipping different ease in/out
+            // timings for insertion vs removal.
+            bulkResultBanner = yield
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-                withAnimation(.easeOut(duration: 0.45)) {
-                    bulkResultBanner = nil
-                }
+                bulkResultBanner = nil
             }
         }
         exitSelectMode()

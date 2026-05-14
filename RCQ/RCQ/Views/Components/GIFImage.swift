@@ -7,7 +7,7 @@ import UIKit
 /// Pure SwiftUI renderer driven by `TimelineView(.animation)` —
 /// frame index is derived from wall-clock time modulo the gif's
 /// total duration. No `UIImageView.animationImages` lifecycle to
-/// babysit, so the renderer survives:
+/// track, so the renderer survives:
 ///   - Form / List cell recycling on scroll
 ///   - Sheet / fullScreenCover dismiss without manual self-heal
 ///   - App background → foreground (TimelineView resumes ticks
@@ -34,10 +34,11 @@ struct GIFImage: View {
 
     var body: some View {
         if let bundle = Self.cachedFrames(for: name), !bundle.frames.isEmpty {
+            let duration = max(0.05, bundle.duration / Self.playbackSpeed(for: name))
             TimelineView(.animation) { ctx in
                 let elapsed = ctx.date.timeIntervalSince1970
-                let phase = elapsed.truncatingRemainder(dividingBy: bundle.duration)
-                let progress = phase / bundle.duration
+                let phase = elapsed.truncatingRemainder(dividingBy: duration)
+                let progress = phase / duration
                 let raw = Int(progress * Double(bundle.frames.count))
                 let idx = max(0, min(bundle.frames.count - 1, raw))
                 Image(uiImage: bundle.frames[idx])
@@ -56,6 +57,18 @@ struct GIFImage: View {
         } else {
             Color.clear
         }
+    }
+
+    /// Pet sprites (`pet1.gif`…`pet10.gif`) read sluggish at their
+    /// authored frame timing — 1.3× lands them in "alive idle" without
+    /// crossing into jittery. Everything else plays at 1×.
+    private static func playbackSpeed(for name: String) -> Double {
+        if name.hasPrefix("pet"),
+           !name.dropFirst(3).isEmpty,
+           name.dropFirst(3).allSatisfy({ $0.isNumber }) {
+            return 1.3
+        }
+        return 1.0
     }
 
     // MARK: - frame cache

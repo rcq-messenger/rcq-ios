@@ -3,7 +3,7 @@ import SwiftUI
 /// Bottom sheet that appears on long-press of a message bubble. Top row: six
 /// classic KOLOBOK emoticons used as reactions. Bottom: delete actions.
 ///
-/// We deliberately avoid Apple's built-in `.contextMenu` because reactions need
+/// Avoid Apple's built-in `.contextMenu` here — reactions need
 /// to render as the actual animated GIFs, and Menu's `Label(image:)` only finds
 /// assets in `Assets.xcassets`. The bundle holds loose `.gif` resources, so a
 /// custom sheet wins.

@@ -6,7 +6,8 @@ import Foundation
 /// when refreshing, `max(local, server)` so an in-flight grant
 /// (e.g. `/tokens/buy-pack` response that just landed) isn't clobbered
 /// by a concurrent `GET /me/inventory` that hadn't seen the grant yet.
-/// Mirrors the "max-policy" pattern from IX `refreshCurrentMember`.
+/// "Max-policy" refresh: keep whichever balance is higher so a
+/// just-arrived grant survives a stale snapshot reply.
 struct Wallet: Codable, Equatable, Hashable {
     var tokens: Int
     var scrolls: Int

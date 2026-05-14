@@ -107,7 +107,7 @@ final class CrashService: ObservableObject {
                body?.contains("already") == true {
                 return nil
             }
-            lastError = error.localizedDescription
+            lastError = Self.friendlyBetError(error)
             return nil
         }
     }
@@ -132,9 +132,59 @@ final class CrashService: ObservableObject {
             SoundService.shared.play(.crashCashout)
             return reply.multiplier
         } catch {
-            lastError = error.localizedDescription
+            lastError = Self.friendlyCashoutError(error)
             return nil
         }
+    }
+
+    /// Maps API errors to user-readable strings. The server returns
+    /// short English tags ("round not active", "round not running",
+    /// "too late, already crashed", "no bet", "insufficient gems") —
+    /// all real outcomes the player needs to recognise. We surface
+    /// localised text instead of the raw tag.
+    ///
+    /// Special case: a cashout that lands after the round transitioned
+    /// to `crashed` (the round-loop hit `crashed` before the request
+    /// arrived) is semantically identical to "too late, already
+    /// crashed" — bet is forfeit. Mapping both 409 variants to the
+    /// same `cashout_too_late` string so the player gets one clear
+    /// explanation instead of guessing what "round not running" means.
+    static func friendlyCashoutError(_ error: Error) -> String {
+        if let apiErr = error as? APIError, case .http(let status, let body) = apiErr {
+            let raw = body ?? ""
+            if status == 409 {
+                if raw.contains("already crashed")
+                    || raw.contains("not running")
+                    || raw.contains("not active") {
+                    return "crash.error.cashout_too_late".localized
+                }
+                if raw.contains("already cashed") {
+                    return "crash.error.already_cashed".localized
+                }
+            }
+            if status == 404 && raw.contains("no bet") {
+                return "crash.error.no_bet".localized
+            }
+        }
+        return "crash.error.network".localized
+    }
+
+    static func friendlyBetError(_ error: Error) -> String {
+        if let apiErr = error as? APIError, case .http(let status, let body) = apiErr {
+            let raw = body ?? ""
+            if status == 409 {
+                if raw.contains("not active") || raw.contains("betting closed") {
+                    return "crash.error.betting_closed".localized
+                }
+                if raw.contains("already bet") {
+                    return "crash.error.already_bet".localized
+                }
+            }
+            if status == 402 {
+                return "crash.error.insufficient".localized
+            }
+        }
+        return "crash.error.network".localized
     }
 
     /// Live multiplier projection. Capped at the server's crash hint

@@ -2,10 +2,14 @@ import LinkPresentation
 import SwiftUI
 import UIKit
 
-/// Link preview underneath a text bubble. Uses `LinkPresentation` for OG metadata; renders nothing on failure.
+/// Link preview underneath a text bubble. Uses `LinkPresentation` for
+/// OG metadata; renders nothing on failure. Compact Telegram-style
+/// layout — small square thumbnail on the leading edge, title + host
+/// stacked on the trailing side — so the card hugs the bubble width
+/// instead of swelling to a full-screen-wide banner.
 struct LinkPreviewCard: View {
     let url: URL
-    var maxWidth: CGFloat = 260
+    var maxWidth: CGFloat = 220
 
     @State private var metadata: LPLinkMetadata?
     @State private var status: Status = .loading
@@ -32,27 +36,27 @@ struct LinkPreviewCard: View {
         Button {
             UIApplication.shared.open(url)
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
                 if m.imageProvider != nil || m.iconProvider != nil {
                     LinkImageView(metadata: m)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 130)
-                        .clipped()
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.title ?? url.absoluteString)
-                        .font(.system(.subheadline, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     Text(url.host ?? "")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
         .background(Theme.Color.bgSecondary.opacity(0.7))

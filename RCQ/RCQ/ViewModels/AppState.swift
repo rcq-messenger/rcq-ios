@@ -463,9 +463,9 @@ final class AppState: ObservableObject {
 
         case .contactRemoved(let peer):
             // Peer removed us from their contacts (ICQ-style mutual delete).
-            // Drop them from our local list so the UI updates instantly;
-            // we deliberately do NOT add them to RemovedContactsStore here
-            // — the deleter, not the deleted, decides who to filter.
+            // Drop them from our local list so the UI updates instantly.
+            // Skip RemovedContactsStore here — the deleter, not the deleted,
+            // decides who to filter.
             ContactService.shared.removeLocal(peer)
 
         case .groupChanged(let group):

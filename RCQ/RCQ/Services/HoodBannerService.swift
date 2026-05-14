@@ -102,7 +102,7 @@ final class HoodBannerService: ObservableObject {
             )
             bannersByBucket[bucket]?.removeAll { $0.id == bannerID }
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 
@@ -112,7 +112,7 @@ final class HoodBannerService: ObservableObject {
                 "POST", "/hood/banners/\(bannerID)/report"
             )
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 

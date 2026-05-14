@@ -17,6 +17,13 @@ struct AttachmentPickerSheet: View {
     let onMedia: () -> Void
     let onCamera: () -> Void
     let onPremium: () -> Void
+    /// Document picker (PDF / DOCX / ZIP / arbitrary blobs). Hidden in
+    /// random-chat where strangers shouldn't lob unknown files at each
+    /// other.
+    let onDocument: () -> Void
+    /// Pick a point on the map → send as a `.location` message.
+    /// Also hidden in random-chat for the same reason.
+    let onLocation: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,6 +66,18 @@ struct AttachmentPickerSheet: View {
                 action: onCamera
             ),
         ]
+        if !isRandom {
+            items.append(Row(
+                title: "chat.attach.document".localized,
+                icon: "doc.fill",
+                action: onDocument
+            ))
+            items.append(Row(
+                title: "chat.attach.location".localized,
+                icon: "mappin.and.ellipse",
+                action: onLocation
+            ))
+        }
         if !isRandom && !premiumDisabled {
             items.append(Row(
                 title: "chat.attach.premium".localized,

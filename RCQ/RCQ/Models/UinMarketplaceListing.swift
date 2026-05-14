@@ -1,8 +1,8 @@
 import Foundation
 
 /// Fixed-price marketplace listing for a UIN sitting in someone's
-/// `OwnedUin` inventory. Wire shape mirrors the backend
-/// `UinListingOut` schema. Parallel surface to `MarketplaceListing`
+/// `OwnedUin` inventory. Decodes the backend's `UinListingOut`
+/// payload. Parallel surface to `MarketplaceListing`
 /// (item-for-tokens) — kept as its own model so neither carries
 /// nullable columns from the other.
 ///

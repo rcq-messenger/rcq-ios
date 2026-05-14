@@ -7,22 +7,41 @@ import UIKit
 final class MediaService {
     static let shared = MediaService()
 
-    /// Mirrors backend `MAX_BLOB_SIZE`.
-    nonisolated static let maxBlobBytes: Int = 25 * 1024 * 1024
+    /// Matches backend `MAX_BLOB_SIZE`. The user-facing rule is "as
+    /// long as you have jetons" — this is just the safety backstop.
+    nonisolated static let maxBlobBytes: Int = 2 * 1024 * 1024 * 1024
+    /// Free-tier ceiling. Covers most casual shares.
+    nonisolated static let freeTierBytes: Int = 50 * 1024 * 1024
+
+    /// Per-file jeton cost above the free tier. 1 jeton per started
+    /// 10 MB block above the 50 MB free ceiling. MUST stay in sync
+    /// with `_jeton_cost_for` in `backend/app/routers/media.py` —
+    /// server re-checks the price and 400s on mismatch.
+    nonisolated static func jetonCost(forBytes size: Int) -> Int {
+        guard size > freeTierBytes else { return 0 }
+        let over = size - freeTierBytes
+        let block = 10 * 1024 * 1024
+        return Int((over + block - 1) / block)
+    }
 
     /// LRU image cache. Previously a plain `[String: UIImage]` that
     /// nuked the WHOLE thing via `removeAll()` once it hit a 60-entry
     /// limit, which is what the user saw as "media re-downloads every
     /// time I scroll" — 61 unique photos in a busy thread torched
     /// everything, so the next render of the first 60 went straight
-    /// back to the network. NSCache evicts one-at-a-time (LRU-ish)
-    /// AND drops under memory pressure for free.
+    /// back to the network. NSCache evicts one-at-a-time (approximately
+    /// LRU) AND drops under memory pressure for free.
     ///
     /// Decryption keys live alongside the message, NOT here, so a
     /// cache wipe never re-charges the user for premium media — we
     /// just re-fetch the encrypted blob and re-decrypt with the same
     /// stored key.
-    private let decryptedCache: NSCache<NSString, UIImage> = {
+    /// `nonisolated(unsafe)` because NSCache is internally thread-safe
+    /// (Apple-documented) but the Foundation overlay doesn't mark it
+    /// `Sendable`. We want `cachedImage(...)` peeks from SwiftUI View
+    /// inits to avoid an actor hop. The reference is `let`-bound so
+    /// there's no race on the reference itself.
+    nonisolated(unsafe) private let decryptedCache: NSCache<NSString, UIImage> = {
         let c = NSCache<NSString, UIImage>()
         c.countLimit = 300
         return c
@@ -139,8 +158,16 @@ final class MediaService {
         return UploadResult(mediaID: out.media_id, keyBase64: keyB64)
     }
 
-    /// Encrypt + upload an arbitrary file (used for video).
-    func uploadFile(at fileURL: URL, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
+    /// Encrypt + upload an arbitrary file (used for video + documents).
+    /// `payJetons` is the price the caller agreed to for this upload —
+    /// 0 for free-tier (≤25 MB) blobs, the per-file cost for paid
+    /// uploads. Server re-validates against its own size→price
+    /// formula and rejects with `priceMismatch` if they disagree.
+    func uploadFile(
+        at fileURL: URL,
+        payJetons: Int = 0,
+        onProgress: ((Double) -> Void)? = nil,
+    ) async throws -> UploadResult {
         // Pre-flight on raw size before encrypting; AES-GCM tag overhead is negligible at the cap.
         if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
            let rawSize = attrs[.size] as? Int,
@@ -156,17 +183,82 @@ final class MediaService {
         if combined.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: combined.count)
         }
-        struct UploadOut: Decodable { let media_id: String; let size: Int }
+        struct UploadOut: Decodable {
+            let media_id: String
+            let size: Int
+            let jetons_charged: Int?
+            let wallet_tokens: Int?
+        }
+        var fields: [String: String] = [:]
+        if payJetons > 0 { fields["pay_jetons"] = String(payJetons) }
         let out: UploadOut = try await APIClient.shared.uploadBlob(
             "/media/upload",
             field: "blob",
             filename: fileURL.lastPathComponent,
             contentType: "application/octet-stream",
             data: combined,
-            onProgress: onProgress
+            extraFields: fields,
+            onProgress: onProgress,
         )
         let keyB64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
+        // Reflect the server-issued wallet balance immediately so the
+        // Settings readout + composer don't have to re-sync.
+        if let newBalance = out.wallet_tokens {
+            await MainActor.run { ItemsService.shared.setWalletTokens(newBalance) }
+        }
         return UploadResult(mediaID: out.media_id, keyBase64: keyB64)
+    }
+
+    /// Current-month traffic snapshot for the Settings readout.
+    func fetchTrafficUsage() async -> TrafficUsage? {
+        struct Out: Decodable {
+            let year_month: String
+            let bytes_used: Int
+            let jetons_spent: Int
+        }
+        do {
+            let out: Out = try await APIClient.shared.request("GET", "/media/usage")
+            return TrafficUsage(
+                yearMonth: out.year_month,
+                bytesUsed: out.bytes_used,
+                jetonsSpent: out.jetons_spent,
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    struct TrafficUsage: Equatable {
+        let yearMonth: String
+        let bytesUsed: Int
+        let jetonsSpent: Int
+    }
+
+    /// Download + decrypt the blob and return raw plaintext bytes. Used
+    /// by the file bubble's QuickLook open: caller writes bytes to a
+    /// temp file with the original filename so QL infers the type from
+    /// the extension. Hits the in-memory data cache when warm so a
+    /// re-tap inside the same chat session is instant.
+    func fetchDecrypted(mediaID: String, keyBase64: String) async -> Data? {
+        let cacheKey = (mediaID + ":" + keyBase64) as NSString
+        if let hit = decryptedDataCache.object(forKey: cacheKey) {
+            return hit as Data
+        }
+        do {
+            let blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+            guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
+            let plain: Data? = await Task.detached(priority: .userInitiated) {
+                let key = SymmetricKey(data: keyBytes)
+                guard let box = try? AES.GCM.SealedBox(combined: blob),
+                      let plain = try? AES.GCM.open(box, using: key) else { return nil }
+                return plain
+            }.value
+            guard let plain else { return nil }
+            decryptedDataCache.setObject(plain as NSData, forKey: cacheKey, cost: plain.count)
+            return plain
+        } catch {
+            return nil
+        }
     }
 
     /// Download + decrypt to a temp file. AVPlayer needs a URL. Caller deletes the file.
@@ -184,6 +276,19 @@ final class MediaService {
         } catch {
             return nil
         }
+    }
+
+    /// Synchronous cache peek. Used by views that want to render the
+    /// first frame already populated when the image is hot in cache —
+    /// otherwise the async `.task` path runs and the fallback glyph
+    /// flashes through the entrance animation. Returns nil on miss;
+    /// caller still kicks off `loadImage` to fill on miss.
+    ///
+    /// `nonisolated` because NSCache itself is thread-safe and we want
+    /// to call this from SwiftUI `init`s without an actor hop.
+    nonisolated func cachedImage(mediaID: String, keyBase64: String) -> UIImage? {
+        let cacheKey = (mediaID + ":" + keyBase64) as NSString
+        return decryptedCache.object(forKey: cacheKey)
     }
 
     /// Fetch + decrypt + cache. Decrypt and JPEG decode run off-main to keep the SwiftUI runloop responsive.

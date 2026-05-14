@@ -183,10 +183,17 @@ actor APIClient {
         contentType: String,
         data blob: Data,
         authenticated: Bool = false,
+        extraFields: [String: String] = [:],
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> T {
         let boundary = "----RCQBoundary\(UUID().uuidString)"
         var body = Data()
+        for (name, value) in extraFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append(value.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"\(field)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
@@ -196,7 +203,11 @@ actor APIClient {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if authenticated, let token {
+        // Always attach the bearer when available — the server uses it
+        // for traffic-pay accounting on big uploads. Anonymous uploads
+        // (no token set) still pass; the server just falls through to
+        // the free-tier path.
+        if let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         let localDecoder = self.decoder

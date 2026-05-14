@@ -14,8 +14,8 @@ final class MessageBannerService: ObservableObject {
     @Published private(set) var current: Banner?
 
     /// Set by ChatView on appear / cleared on disappear. Banners for
-    /// the active thread are dropped on the floor (user already sees
-    /// the message arrive).
+    /// the active thread are skipped (user already sees the message
+    /// arrive).
     private var activeThread: ThreadID?
     private var dismissTask: Task<Void, Never>?
 

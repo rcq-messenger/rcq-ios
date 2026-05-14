@@ -3,8 +3,7 @@ import Foundation
 /// Per-pack emoticon manifest. Each cosmetic-smileys kind ships a
 /// fixed list of (asset, name, primary shortcode) entries. Equipping
 /// the pack adds these on top of the default Kolobok palette — no
-/// replacement, no exclusivity. Mirrors the user's stated rule for
-/// smiley packs.
+/// replacement, no exclusivity, per the smiley-pack rule.
 ///
 /// When a new smiley pack is added on the server, register its kind
 /// id and the contained gif filenames here so the client can surface

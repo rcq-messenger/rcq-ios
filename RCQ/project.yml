@@ -77,6 +77,12 @@ targets:
           - remote-notification
           - voip
           - audio
+        # Schemes we openURL — required by iOS' privacy gate (without
+        # this, `canOpenURL` returns false even when the target app
+        # is installed). `comgooglemaps` lets the location bubble
+        # offer "Open in Google Maps" when the user has the app.
+        LSApplicationQueriesSchemes:
+          - comgooglemaps
         # Encryption export compliance. RCQ ships standard E2E
         # messaging crypto (libsignal: AES-GCM, X25519, Ed25519, HKDF)
         # — non-exempt under US BIS rules but qualifies for the

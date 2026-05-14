@@ -19,7 +19,7 @@ struct PremiumLockedBubble: View {
         self.message = message
         self.onUnlock = onUnlock
         self.size = size
-        // Init-bake the locked state so already-unlocked sender bubbles never paint a blur frame.
+        // Resolve the locked state at init so already-unlocked sender bubbles never paint a blur frame.
         let unlocked = message.premiumUnlocked
         _currentBlur = State(initialValue: unlocked ? 0 : Self.lockedBlur)
         _overlayOpacity = State(initialValue: unlocked ? 0 : 1)

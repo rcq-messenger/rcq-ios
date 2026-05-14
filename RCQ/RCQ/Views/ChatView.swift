@@ -103,6 +103,7 @@ struct ChatView: View {
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
     @State private var showPremiumComposer: Bool = false
+    @State private var showLocationPicker: Bool = false
     @State private var showTTLPicker = false
     @State private var showTrade = false
     @State private var showTrades = false
@@ -140,7 +141,7 @@ struct ChatView: View {
     /// dismissing, so we wait for the actual teardown completion.
     @State private var pendingAttachAction: AttachAction?
 
-    enum AttachAction { case media, camera, premium }
+    enum AttachAction { case media, camera, premium, document, location }
 
     /// Identifiable wrapper for the fullscreen album viewer's
     /// `.fullScreenCover(item:)`.
@@ -346,6 +347,14 @@ struct ChatView: View {
                 onPremium: {
                     pendingAttachAction = .premium
                     showAttachmentMenu = false
+                },
+                onDocument: {
+                    pendingAttachAction = .document
+                    showAttachmentMenu = false
+                },
+                onLocation: {
+                    pendingAttachAction = .location
+                    showAttachmentMenu = false
                 }
             )
             .presentationDetents([.height(280)])
@@ -370,6 +379,19 @@ struct ChatView: View {
             )
             .presentationDetents([.fraction(0.4), .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLocationPicker) {
+            LocationPickerSheet(
+                onSend: { coord in
+                    showLocationPicker = false
+                    Task { @MainActor in
+                        if let err = await vm.sendLocation(latitude: coord.latitude, longitude: coord.longitude) {
+                            videoError = err
+                        }
+                    }
+                },
+                onCancel: { showLocationPicker = false },
+            )
         }
         .confirmationDialog(
             "chat.menu.disappearing".localized,
@@ -879,7 +901,7 @@ struct ChatView: View {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            // Deliberately no scroll on reply / edit context appearance — felt jumpy.
+            // No scroll on reply / edit context appearance — felt jumpy.
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
                 isKeyboardVisible = true
                 if showEmojiPanel {
@@ -986,6 +1008,8 @@ struct ChatView: View {
         case .photo: raw = message.text.isEmpty ? "📷 \("chat.attach.photo".localized)" : "📷 \(message.text)"
         case .video: raw = message.text.isEmpty ? "🎬 \("chat.attach.video".localized)" : "🎬 \(message.text)"
         case .voice: raw = "🎤 Voice"
+        case .file:  raw = "📎 \(message.fileName ?? "chat.attach.document".localized)"
+        case .location: raw = "📍 \("chat.preview.location".localized)"
         case .premiumPhoto: raw = "🔒 \("chat.premium.preview_photo".localized)"
         case .premiumVideo: raw = "🔒 \("chat.premium.preview_video".localized)"
         default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
@@ -1088,8 +1112,7 @@ struct ChatView: View {
     }
 
     private var pillField: some View {
-        let hasContext = (vm.replyTarget != nil) || (vm.editingTarget != nil)
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             if let reply = vm.replyTarget {
                 inlineReplyContext(reply)
                 Divider()
@@ -1273,7 +1296,6 @@ struct ChatView: View {
         .id(items.first!.id)
     }
 
-    @ViewBuilder
     private var selectionActionBar: some View {
         let count = vm.selectedIDs.count
         let canDelete = count > 0
@@ -1479,6 +1501,23 @@ struct ChatView: View {
                 }
             case .premium:
                 showPremiumComposer = true
+            case .document:
+                DocumentPickerPresenter.present(
+                    onPick: { picked in
+                        Task { @MainActor in
+                            if let err = await vm.sendFile(
+                                fileURL: picked.url,
+                                fileName: picked.fileName,
+                                mime: picked.mime,
+                                sizeBytes: picked.sizeBytes,
+                            ) {
+                                videoError = err
+                            }
+                        }
+                    }
+                )
+            case .location:
+                showLocationPicker = true
             case .none:
                 break
             }
@@ -2073,6 +2112,30 @@ private struct MessageRow: View {
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                 .cornerRadius(Theme.Metrics.bubbleRadius)
+        } else if message.kind == .file {
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+                FileBubble(message: message)
+                    .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+                    .cornerRadius(Theme.Metrics.bubbleRadius)
+                if !displayBody.isEmpty {
+                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+                        .cornerRadius(Theme.Metrics.bubbleRadius)
+                    if isTranslated { translatedFooter }
+                }
+            }
+        } else if message.kind == .location {
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+                LocationBubble(message: message)
+                if !displayBody.isEmpty {
+                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+                        .cornerRadius(Theme.Metrics.bubbleRadius)
+                    if isTranslated { translatedFooter }
+                }
+            }
         } else if message.kind == .premiumPhoto || message.kind == .premiumVideo {
             // Same component handles locked + unlocked so the unlock transition is an in-place blur dissolve.
             let size = Self.premiumBubbleSize(thumbnailB64: message.thumbnailB64)

@@ -1,9 +1,9 @@
 import Foundation
 
-/// One premium-UIN auction round. Wire model lines up 1:1 with the
-/// FastAPI `AuctionOut`. The numbers field is a 6-9 digit Int (or
-/// 4-5 digit when premium); we keep it as `Int` since UINs always
-/// fit in 32 bits comfortably.
+/// One premium-UIN auction round. Decodes the FastAPI `AuctionOut`
+/// payload. The numbers field is a 6-9 digit Int (or 4-5 digit when
+/// premium); we keep it as `Int` since UINs always fit in 32 bits
+/// comfortably.
 struct UinAuction: Identifiable, Hashable, Codable {
     let id: Int
     let uin: Int

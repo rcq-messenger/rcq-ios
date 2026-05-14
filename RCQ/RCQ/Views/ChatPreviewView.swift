@@ -30,42 +30,39 @@ struct ChatPreviewView: View {
             case .peer(let snapshot):
                 let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
                 StatusIcon(status: live.status, size: 22)
-                    .floatingShadow()
                 VStack(spacing: 0) {
                     Text(live.nickname)
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                        .floatingShadow()
                     Text(String(live.uin))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(Theme.Color.textMono)
-                        .floatingShadow()
                 }
-                Color.clear.frame(width: 22, height: 1)
             case .group(let snapshot):
                 let live = groupSvc.find(snapshot.id) ?? snapshot
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(Theme.Color.accent)
-                    .frame(width: 22, height: 22)
-                    .floatingShadow()
+                GroupAvatarView(
+                    mediaID: live.avatarMediaID,
+                    keyBase64: live.avatarMediaKey,
+                    size: 22,
+                )
                 VStack(spacing: 0) {
                     Text(live.name)
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                        .floatingShadow()
                     Text("\(live.members.count) member\(live.members.count == 1 ? "" : "s")")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(Theme.Color.textMono)
-                        .floatingShadow()
                 }
-                Color.clear.frame(width: 22, height: 1)
             case .randomPeer:
                 EmptyView()
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
     }
 
     @ViewBuilder
@@ -168,14 +165,6 @@ private struct PreviewFrame: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-private extension View {
-    func floatingShadow() -> some View {
-        self
-            .shadow(color: .black.opacity(0.30), radius: 6, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.18), radius: 1, x: 0, y: 0.5)
     }
 }
 

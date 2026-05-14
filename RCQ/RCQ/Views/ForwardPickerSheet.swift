@@ -6,9 +6,9 @@ import SwiftUI
 /// offline). Tap one and the sheet dismisses; the caller fires the
 /// actual `MessageService.forward(...)`.
 ///
-/// We deliberately reuse the existing avatar/row layout from the
-/// main contact list so the picker reads as the same surface, just
-/// in a sheet instead of a navigation stack.
+/// Reuses the avatar/row layout from the main contact list so the
+/// picker reads as the same surface, just in a sheet instead of a
+/// navigation stack.
 struct ForwardPickerSheet: View {
     /// What we're about to forward. Only used here for a short header
     /// preview ("Forward this message to…"). The actual forward

@@ -63,7 +63,7 @@ final class LimboService: ObservableObject {
             }
             SoundService.shared.play(won ? .limboWin : .limboLose)
         } catch {
-            lastError = error.localizedDescription
+            lastError = APIErrorPresenter.friendly(error)
         }
     }
 

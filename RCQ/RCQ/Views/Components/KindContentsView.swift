@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Horizontal preview of a cosmetic pack's contents. Renders one
+/// Vertical grid preview of a cosmetic pack's contents. Renders one
 /// thumbnail per pack entry — animated GIF tiles play live so users
 /// see exactly what they're getting before they equip / open. Used
 /// in:
@@ -8,13 +8,9 @@ import SwiftUI
 ///   - ItemDetailSheet (over the action row, when the item is a
 ///     cosmetic pack)
 ///
-/// Edge-to-edge layout: this view assumes its parent has applied
-/// `.padding(.horizontal, horizontalInset)` to peer content, then
-/// negated that padding around this view (`.padding(.horizontal,
-/// -horizontalInset)`) so the scroll content can bleed past the
-/// gutter. The inner HStack re-applies that same inset so the first
-/// and last tiles still line up with peer rows. Title text is
-/// padded the same way.
+/// Grid uses `LazyVGrid` with an adaptive column track so packs of
+/// 30+ stickers wrap onto multiple rows instead of trailing off the
+/// screen edge in a single horizontal strip.
 ///
 /// Empty for non-pack kinds (relics, founders) — caller should
 /// branch on `appliesAs` and not render this for them.
@@ -22,8 +18,7 @@ struct KindContentsView: View {
     let kindID: String
     let entries: [CosmeticPacks.Entry]
     /// Match the caller's outer `.padding(.horizontal, …)` so the
-    /// title + first tile align with peer content while the scroll
-    /// itself can drift past the screen edges.
+    /// title + first tile align with peer content.
     var horizontalInset: CGFloat = 18
 
     init(kindID: String, horizontalInset: CGFloat = 18) {
@@ -32,24 +27,26 @@ struct KindContentsView: View {
         self.horizontalInset = horizontalInset
     }
 
+    private static let columns: [GridItem] = [
+        GridItem(.adaptive(minimum: 64, maximum: 80), spacing: 6, alignment: .top),
+    ]
+
     var body: some View {
         if entries.isEmpty {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text("PACK CONTENTS · \(entries.count)")
+                Text(String(format: "pool.pack.contents".localized, entries.count))
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(Theme.Color.textSecondary)
                     .tracking(2)
                     .padding(.leading, horizontalInset)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(entries, id: \.asset) { entry in
-                            tile(entry)
-                        }
+                LazyVGrid(columns: Self.columns, alignment: .leading, spacing: 10) {
+                    ForEach(entries, id: \.asset) { entry in
+                        tile(entry)
                     }
-                    .padding(.horizontal, horizontalInset)
                 }
+                .padding(.horizontal, horizontalInset)
             }
         }
     }
@@ -72,6 +69,5 @@ struct KindContentsView: View {
                 .foregroundColor(Theme.Color.textMono)
                 .lineLimit(1)
         }
-        .frame(width: 64)
     }
 }

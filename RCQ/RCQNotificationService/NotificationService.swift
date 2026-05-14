@@ -141,6 +141,12 @@ class NotificationService: UNNotificationServiceExtension {
             content.body = cap.isEmpty ? "🎬 Video" : "🎬 \(cap)"
         case .voice:
             content.body = "🎤 Voice message"
+        case .file(_, _, _, let fname, _, _, let caption, _, _, _):
+            let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
+            content.body = cap.isEmpty ? "📎 \(fname)" : "📎 \(fname) — \(cap)"
+        case .location(_, _, _, let caption, _, _, _):
+            let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
+            content.body = cap.isEmpty ? "📍 Location" : "📍 Location — \(cap)"
         case .premiumPhoto(_, _, let price, _, let caption, _, _, _, _):
             // Always include the price so the recipient sees the
             // tap-cost up front in the notification surface — same
@@ -289,6 +295,8 @@ class NotificationService: UNNotificationServiceExtension {
         case .photo:            return "photo"
         case .video:            return "video"
         case .voice:            return "voice"
+        case .file:             return "file"
+        case .location:         return "location"
         case .deleteForEveryone: return "delete"
         case .systemNotice:     return "system"
         case .readReceipt:      return "read"

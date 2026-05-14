@@ -11,6 +11,8 @@ enum MessageKind: String, Codable {
     case photo
     case video
     case voice             // m4a/AAC blob, durationSec = recording length
+    case file              // arbitrary attachment (pdf/docx/zip/…), filename+mime in Message
+    case location          // static lat/lng pinned location; coords on Message
     case systemNotice      // join/leave/rename, rendered as centred line
     case deleteForEveryone // tombstone
     case premiumPhoto      // paywalled photo — unlock via /premium/contents/{id}/unlock
@@ -68,7 +70,7 @@ struct Message: Identifiable, Hashable, Codable {
     /// survives the original being deleted (quote stays, tap-to-scroll
     /// stops working).
     var replyToID: UUID?
-    /// Inline preview of the replied-to message, baked at compose time.
+    /// Inline preview of the replied-to message, captured at compose time.
     var replyToSnippet: String?
     var replyToAuthorName: String?
     /// Last `.edit` envelope timestamp. Nil = never edited.
@@ -83,6 +85,20 @@ struct Message: Identifiable, Hashable, Codable {
     /// together, nil for stand-alone messages. Renderer groups
     /// consecutive same-album messages into a Telegram-style cluster.
     var albumID: UUID?
+    /// File-attachment metadata — populated only for `.file` kind.
+    /// `fileName` is the user-visible name (with extension).
+    /// `fileMime` is the MIME type as reported by the picker, used to
+    /// pick the right open-with renderer on the receiving side.
+    /// `fileSizeBytes` is the plaintext size before encryption.
+    var fileName: String?
+    var fileMime: String?
+    var fileSizeBytes: Int?
+    /// Coordinates for `.location` messages. Both nil for any other
+    /// kind. `nil`-meaning is "no location attached" — receivers
+    /// gracefully render a placeholder if a `.location` row somehow
+    /// drops in without both.
+    var latitude: Double?
+    var longitude: Double?
 
     init(
         id: UUID = UUID(),
@@ -107,7 +123,12 @@ struct Message: Identifiable, Hashable, Codable {
         editedAt: Date? = nil,
         premiumPriceTokens: Int? = nil,
         premiumUnlocked: Bool = false,
-        albumID: UUID? = nil
+        albumID: UUID? = nil,
+        fileName: String? = nil,
+        fileMime: String? = nil,
+        fileSizeBytes: Int? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil
     ) {
         self.id = id
         self.thread = thread
@@ -132,5 +153,10 @@ struct Message: Identifiable, Hashable, Codable {
         self.premiumPriceTokens = premiumPriceTokens
         self.premiumUnlocked = premiumUnlocked
         self.albumID = albumID
+        self.fileName = fileName
+        self.fileMime = fileMime
+        self.fileSizeBytes = fileSizeBytes
+        self.latitude = latitude
+        self.longitude = longitude
     }
 }

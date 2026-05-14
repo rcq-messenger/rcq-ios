@@ -11,7 +11,7 @@ import Foundation
 /// reopens it — the message is still there in the chat (MessageDB
 /// rehydrates) but the contact list has no badge.
 ///
-/// We deliberately key by UIN / group id rather than ThreadID so the
+/// Key by UIN / group id rather than ThreadID so the
 /// stored map stays JSON-friendly (UserDefaults can persist
 /// `[String: Int]` directly). The dictionary is small (one entry per
 /// unread thread, cleared when the user opens the chat) so we just

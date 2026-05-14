@@ -14,8 +14,8 @@ import UIKit
 /// card with a real `ScrollView` inside (because we're rendering inside
 /// a normal SwiftUI parent now, not the static contextMenu slot), an
 /// action list directly below, and a tap-outside-to-dismiss material
-/// scrim. Stays put when touched. Scrolls. Same shape as
-/// `MessageActionOverlay` — the in-chat sibling.
+/// scrim. Stays put when touched. Scrolls. Sibling of the in-chat
+/// `MessageActionOverlay`, same construction.
 struct ContactPreviewOverlay: View {
     let target: ChatTarget
     let actions: [ContextAction]

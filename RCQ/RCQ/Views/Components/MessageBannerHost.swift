@@ -1,11 +1,11 @@
 import SwiftUI
 
 /// Top-of-screen overlay that renders whatever `MessageBannerService`
-/// currently has live. Mounted into RootView's ZStack so it floats
-/// above the NavigationStack and any sheet that isn't fullScreenCover.
+/// currently has live. Mounted in a dedicated UIWindow via
+/// `BannerWindowController` so it floats above fullScreenCovers and
+/// sheets in the main scene.
 struct MessageBannerHost: View {
     @StateObject private var service = MessageBannerService.shared
-    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         VStack {
@@ -27,18 +27,25 @@ struct MessageBannerHost: View {
     }
 
     private func routeTap(banner: MessageBannerService.Banner) {
-        service.dismiss(banner.id)
+        // Apply the navigation intent BEFORE dismissing — dismissing
+        // tears BannerCard out of the hierarchy, which can cancel any
+        // state mutation that runs after. Also reach AppState.shared
+        // directly: this view lives in a separate UIWindow, so the
+        // env-object chain is independent of the main scene and using
+        // the singleton dodges any environment-lookup ambiguity.
+        let app = AppState.shared
         switch banner.target {
         case .thread(let t):
             switch t {
             case .peer(let uin):
-                appState.pendingOpenChatUIN = uin
+                app.pendingOpenChatUIN = uin
             case .group(let id):
-                appState.pendingOpenGroupID = id
+                app.pendingOpenGroupID = id
             }
         case .auction:
-            appState.pendingOpenUinAuction = true
+            app.pendingOpenUinAuction = true
         }
+        service.dismiss(banner.id)
     }
 }
 
@@ -79,7 +86,11 @@ private struct BannerCard: View {
         .offset(y: dragOffset)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
-        .gesture(
+        // `simultaneousGesture` so the drag doesn't shadow the tap —
+        // a plain `.gesture(...)` after `.onTapGesture` makes SwiftUI
+        // run the gestures exclusively and the tap loses, which is
+        // why "tapping the in-app banner did nothing".
+        .simultaneousGesture(
             DragGesture(minimumDistance: 4)
                 .onChanged { value in
                     // Only react to upward drags — pulling down would

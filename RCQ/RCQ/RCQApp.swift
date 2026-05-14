@@ -134,14 +134,14 @@ struct RootView: View {
 
     var body: some View {
         // Root ZStack hosts game mini-bubbles so they persist across nav.
+        // The MessageBannerHost is NOT mounted here — it lives in its
+        // own UIWindow via BannerWindowController so it floats above
+        // .fullScreenCover and .sheet modals (inventory, roulette, audio
+        // room, etc.). The previous in-ZStack mount was invisible the
+        // moment a fullScreenCover came up.
         ZStack {
             mainContent
             GameMinisOverlayHost()
-            // In-app message banner sits above everything except
-            // fullScreenCover modals (calls / audio room) so a new
-            // chat-B message can interrupt chat-A reading without
-            // collapsing the navigation stack.
-            MessageBannerHost()
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
@@ -154,7 +154,14 @@ struct RootView: View {
     /// storm — connect() cancels any in-flight task, and scenePhase
     /// can flip multiple times during a single sheet/cover transition.
     private func handleScenePhase(_ phase: ScenePhase) {
-        guard phase == .active, appState.booted else { return }
+        guard phase == .active else { return }
+        // Banner-overlay window install needs the scene to be live,
+        // so we defer it to the first .active phase rather than
+        // didFinishLaunching. Idempotent — subsequent calls no-op.
+        // Also fires before boot completes (during OnboardingView),
+        // which is fine — no banners can fire pre-boot anyway.
+        BannerWindowController.shared.install()
+        guard appState.booted else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         Task { @MainActor in

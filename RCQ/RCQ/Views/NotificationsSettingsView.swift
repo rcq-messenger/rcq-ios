@@ -1,15 +1,15 @@
 import SwiftUI
 
 /// Per-category push toggles + the muted-senders list. Backed by
-/// `NotificationPrefsService` (which mirrors the server's
-/// `push_preferences` JSONB column). Toggles are optimistic — flip
+/// `NotificationPrefsService`, which writes through to the server's
+/// `push_preferences` JSONB column. Toggles are optimistic — flip
 /// here, server catches up async; on failure server keeps the old
 /// value and the next refresh re-syncs the UI down.
 ///
-/// Sealed-sender messages (1:1 + group) are deliberately absent
-/// from the toggle list — the server can't filter them by sender
-/// without unwrapping the seal, and a global "no message pushes"
-/// switch is what iOS Settings → Notifications already provides.
+/// Sealed-sender messages (1:1 + group) stay out of this list —
+/// the server can't filter them by sender without unwrapping the
+/// seal, and a global "no message pushes" switch is what iOS
+/// Settings → Notifications already provides.
 struct NotificationsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var prefs = NotificationPrefsService.shared

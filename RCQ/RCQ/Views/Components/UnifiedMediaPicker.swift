@@ -315,7 +315,7 @@ struct UnifiedMediaPicker: View {
 }
 
 /// Single grid cell — thumbnail + duration badge for video + a
-/// numbered selection indicator that mirrors the user's pick order.
+/// numbered selection indicator showing the user's pick order.
 private struct MediaThumb: View {
     let asset: PHAsset
     let selectionIndex: Int?
