@@ -49,7 +49,10 @@ struct Message: Identifiable, Hashable, Codable {
     let kind: MessageKind
     let text: String
     /// Server media id. Bytes are encrypted, fetched + decrypted on demand.
-    let mediaID: String?
+    /// `var` (not `let`) so optimistic-send paths can patch in the
+    /// real id once the upload settles, without rebuilding the whole
+    /// struct and risking a dropped field.
+    var mediaID: String?
     let sentAt: Date
     var deliveryState: DeliveryState
     var receivedWhileAway: Bool

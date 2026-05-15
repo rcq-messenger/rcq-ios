@@ -132,7 +132,15 @@ class NotificationService: UNNotificationServiceExtension {
 
         switch decrypted.envelope {
         case .text(_, let text, _, _, _):
-            content.body = text.isEmpty ? "Message" : text
+            if text.isEmpty {
+                content.body = "Message"
+            } else if Self.isMarketShareURL(text) {
+                content.body = "🛍️ Shared a marketplace item"
+            } else if Self.isUinShareURL(text) {
+                content.body = "#️⃣ Shared a UIN listing"
+            } else {
+                content.body = text
+            }
         case .photo(_, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📷 Photo" : "📷 \(cap)"
@@ -307,6 +315,41 @@ class NotificationService: UNNotificationServiceExtension {
         case .premiumPhoto:     return "premium_photo"
         case .premiumVideo:     return "premium_video"
         }
+    }
+
+    /// Inline mirror of the in-app `MarketLinkParser` — NSE is a
+    /// separate target and can't import the main app's view code, so
+    /// the URL-shape check is duplicated here. Both `rcq://market/<id>`
+    /// (deep link) and `https://rcq.app/m/<id>` (web link) qualify.
+    private static func isMarketShareURL(_ body: String) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+        if url.scheme == "rcq" && url.host == "market" {
+            return !(url.pathComponents.last ?? "").isEmpty
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "m" {
+            return true
+        }
+        return false
+    }
+
+    /// Inline mirror of `UinLinkParser` — see note above.
+    private static func isUinShareURL(_ body: String) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+        if url.scheme == "rcq" && url.host == "uin-listing" {
+            return !(url.pathComponents.last ?? "").isEmpty
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "ul" {
+            return true
+        }
+        return false
     }
 
     override func serviceExtensionTimeWillExpire() {

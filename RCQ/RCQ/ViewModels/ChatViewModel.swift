@@ -261,8 +261,8 @@ final class ChatViewModel: ObservableObject {
             switch item {
             case .photo(_, let img):
                 err = await sendPhoto(img, caption: cap, albumID: album)
-            case .video(_, let url, _):
-                err = await sendVideo(from: url, caption: cap, albumID: album)
+            case .video(_, let url, let thumb):
+                err = await sendVideo(from: url, previewThumbnail: thumb, caption: cap, albumID: album)
             case .gif(_, let data, let preview):
                 err = await sendGIF(data: data, preview: preview, caption: cap, albumID: album)
             }
@@ -439,15 +439,40 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func sendVideo(from sourceURL: URL, caption: String? = nil, albumID: UUID? = nil) async -> String? {
+    func sendVideo(
+        from sourceURL: URL,
+        previewThumbnail: UIImage? = nil,
+        caption: String? = nil,
+        albumID: UUID? = nil,
+    ) async -> String? {
         let reply = consumeReplyContext()
+        // Picker-strip thumbnail (small JPEG) ships down so the bubble
+        // pops in instantly with a real preview while VideoProcessor
+        // (compression, full-thumbnail extraction) catches up in the
+        // background. Empty-string sentinel = "no preview yet, render
+        // the placeholder tile for now".
+        let previewB64: String = previewThumbnail
+            .flatMap { ImageCompressor.compress($0, maxSide: 200, quality: 0.7) }
+            .map { $0.base64EncodedString() } ?? ""
         do {
-            let processed = try await VideoProcessor.process(sourceURL: sourceURL)
-            try? FileManager.default.removeItem(at: sourceURL)
             switch target {
-            case .peer(let c):       try await MessageService.shared.sendVideo(processed: processed, to: c, caption: caption, replyTo: reply, albumID: albumID)
-            case .group(let g):      try await MessageService.shared.sendVideo(processed: processed, to: g, caption: caption, replyTo: reply, albumID: albumID)
-            case .randomPeer(let p): try await MessageService.shared.sendVideo(processed: processed, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
+            case .peer(let c):
+                try await MessageService.shared.sendVideo(
+                    from: sourceURL, previewThumbnailB64: previewB64,
+                    to: c, caption: caption, replyTo: reply, albumID: albumID,
+                )
+            case .group(let g):
+                try await MessageService.shared.sendVideo(
+                    from: sourceURL, previewThumbnailB64: previewB64,
+                    to: g, caption: caption, replyTo: reply, albumID: albumID,
+                )
+            case .randomPeer(let p):
+                // Random-chat keeps the legacy pre-process flow — single
+                // ephemeral peer, lower bar for "feels instant", and the
+                // thread is throwaway anyway.
+                let processed = try await VideoProcessor.process(sourceURL: sourceURL)
+                try? FileManager.default.removeItem(at: sourceURL)
+                try await MessageService.shared.sendVideo(processed: processed, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
             }
             return nil
         } catch let err as VideoProcessor.Failure {

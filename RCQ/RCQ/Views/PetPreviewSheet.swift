@@ -119,8 +119,8 @@ struct PetPreviewSheet: View {
                 specDivider
                 specRow(label: "market.spec.essence".localized) {
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .bold))
+                        ItemAssetImage(bundleSubdir: "Items", filename: "essence", ext: "png")
+                            .frame(width: 14, height: 14)
                         Text("\(essence)")
                             .font(.system(size: 15, weight: .bold, design: .monospaced))
                     }

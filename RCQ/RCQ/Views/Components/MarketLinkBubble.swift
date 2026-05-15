@@ -119,8 +119,8 @@ struct MarketLinkBubble: View {
                 }
                 if essence > 0 {
                     HStack(spacing: 3) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
+                        ItemAssetImage(bundleSubdir: "Items", filename: "essence", ext: "png")
+                            .frame(width: 11, height: 11)
                         Text("\(essence)")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                     }

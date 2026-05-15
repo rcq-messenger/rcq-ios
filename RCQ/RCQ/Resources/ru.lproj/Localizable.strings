@@ -557,6 +557,8 @@
 "chat.preview.voice" = "🎤 Голосовое";
 "chat.preview.file" = "Файл";
 "chat.preview.location" = "Геопозиция";
+"chat.preview.market_item" = "Предмет с маркета";
+"chat.preview.uin_listing" = "Лот UIN";
 "chat.preview.premium_photo" = "🔒 Премиум-фото";
 "chat.preview.premium_video" = "🔒 Премиум-видео";
 "chat.preview.generic" = "Сообщение";

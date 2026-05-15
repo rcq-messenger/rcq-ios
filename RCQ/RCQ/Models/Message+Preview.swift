@@ -9,7 +9,18 @@ extension Message {
         if deletedForEveryone { return "chat.preview.deleted".localized }
         let raw: String
         switch kind {
-        case .text:         raw = text
+        case .text:
+            // Market / UIN share links land as `.text` kind with just
+            // the URL in the body — render a friendly summary so the
+            // chat list / in-app banner / push body don't display
+            // `https://rcq.app/m/<id>` as the message preview.
+            if Self.isMarketShareURL(text) {
+                raw = "🛍️ \("chat.preview.market_item".localized)"
+            } else if Self.isUinShareURL(text) {
+                raw = "#️⃣ \("chat.preview.uin_listing".localized)"
+            } else {
+                raw = text
+            }
         case .photo:        raw = text.isEmpty ? "chat.preview.photo".localized : "📷 \(text)"
         case .video:        raw = text.isEmpty ? "chat.preview.video".localized : "🎬 \(text)"
         case .voice:        raw = "chat.preview.voice".localized
@@ -21,5 +32,35 @@ extension Message {
         }
         if raw.count <= 80 { return raw }
         return raw.prefix(80) + "…"
+    }
+
+    private static func isMarketShareURL(_ body: String) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+        if url.scheme == "rcq" && url.host == "market" {
+            return !(url.pathComponents.last ?? "").isEmpty
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "m" {
+            return true
+        }
+        return false
+    }
+
+    private static func isUinShareURL(_ body: String) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+        if url.scheme == "rcq" && url.host == "uin-listing" {
+            return !(url.pathComponents.last ?? "").isEmpty
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "ul" {
+            return true
+        }
+        return false
     }
 }

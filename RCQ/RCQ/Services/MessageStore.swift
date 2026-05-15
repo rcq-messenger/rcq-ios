@@ -116,55 +116,34 @@ final class MessageStore: ObservableObject {
         // mediaID format on receive: "<server_media_id>|" — splice key into the second segment.
         let baseMediaID = (m.mediaID ?? "").components(separatedBy: "|").first ?? ""
         let newMediaID = baseMediaID + "|" + mediaKeyB64
-        let updated = Message(
-            id: m.id, thread: m.thread, senderUIN: m.senderUIN,
-            isFromMe: m.isFromMe, kind: m.kind, text: m.text,
-            mediaID: newMediaID, sentAt: m.sentAt,
-            deliveryState: m.deliveryState, receivedWhileAway: m.receivedWhileAway,
-            deletedForEveryone: m.deletedForEveryone,
-            reactions: m.reactions,
-            thumbnailB64: m.thumbnailB64,
-            durationSec: m.durationSec,
-            ttlSeconds: m.ttlSeconds,
-            forwardedFromName: m.forwardedFromName,
-            replyToID: m.replyToID,
-            replyToSnippet: m.replyToSnippet,
-            replyToAuthorName: m.replyToAuthorName,
-            editedAt: m.editedAt,
-            premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: true,
-            albumID: m.albumID
-        )
-        t[idx] = updated
+        t[idx].mediaID = newMediaID
+        t[idx].premiumUnlocked = true
         threads[thread] = t
         MessageDB.shared.updatePremiumUnlocked(id: messageID, mediaID: newMediaID)
+    }
+
+    /// Patch in the canonical thumbnail + durationSec once VideoProcessor
+    /// finishes. Used by the optimistic-send path: bubble appears
+    /// instantly with the picker's quick first-frame thumb, then the
+    /// processed thumbnail (and the real durationSec) lands a few
+    /// seconds later when compression is done.
+    func updateVideoMeta(messageID: UUID, thread: ThreadID, thumbnailB64: String, durationSec: Double) {
+        guard var t = threads[thread],
+              let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
+        t[idx].thumbnailB64 = thumbnailB64
+        t[idx].durationSec = durationSec
+        threads[thread] = t
+        MessageDB.shared.updateVideoMeta(id: messageID, thumbnailB64: thumbnailB64, durationSec: durationSec)
     }
 
     /// Patch in the server media id once the upload finishes.
     func updateMediaID(messageID: UUID, thread: ThreadID, mediaID: String) {
         guard var t = threads[thread],
               let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
-        let m = t[idx]
-        // CRITICAL: pass through ALL fields — premium fields default to false/0 if dropped.
-        t[idx] = Message(
-            id: m.id, thread: m.thread, senderUIN: m.senderUIN,
-            isFromMe: m.isFromMe, kind: m.kind, text: m.text,
-            mediaID: mediaID, sentAt: m.sentAt,
-            deliveryState: m.deliveryState, receivedWhileAway: m.receivedWhileAway,
-            deletedForEveryone: m.deletedForEveryone,
-            reactions: m.reactions,
-            thumbnailB64: m.thumbnailB64,
-            durationSec: m.durationSec,
-            ttlSeconds: m.ttlSeconds,
-            forwardedFromName: m.forwardedFromName,
-            replyToID: m.replyToID,
-            replyToSnippet: m.replyToSnippet,
-            replyToAuthorName: m.replyToAuthorName,
-            editedAt: m.editedAt,
-            premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: m.premiumUnlocked,
-            albumID: m.albumID
-        )
+        // In-place mutation preserves every field automatically — the
+        // pre-`var mediaID` rebuild path silently dropped fileName /
+        // fileMime / lat / lng on file + location bubbles.
+        t[idx].mediaID = mediaID
         threads[thread] = t
         MessageDB.shared.updateMediaID(id: messageID, mediaID: mediaID)
     }

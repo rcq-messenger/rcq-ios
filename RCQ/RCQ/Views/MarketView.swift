@@ -450,8 +450,8 @@ private struct ListingRow: View {
                 rarityBadge
                 if essence > 0 {
                     HStack(spacing: 2) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
+                        ItemAssetImage(bundleSubdir: "Items", filename: "essence", ext: "png")
+                            .frame(width: 11, height: 11)
                         Text("\(essence)")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                     }
@@ -743,8 +743,8 @@ struct MarketListingDetailSheet: View {
                 specDivider
                 specRow(label: "market.spec.essence".localized) {
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .bold))
+                        ItemAssetImage(bundleSubdir: "Items", filename: "essence", ext: "png")
+                            .frame(width: 14, height: 14)
                         Text("\(essence)")
                             .font(.system(size: 15, weight: .bold, design: .monospaced))
                     }
@@ -1132,7 +1132,7 @@ private struct UinListingRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 // `Text(verbatim:)` so the UIN renders without a thousands separator.
                 HStack(spacing: 8) {
-                    Text(verbatim: "#\(listing.uin)")
+                    Text(verbatim: "\(listing.uin)")
                         .font(.system(.body, design: .monospaced).weight(.semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                     Text(tierLabel)
@@ -1218,7 +1218,7 @@ struct UinMarketListingDetailSheet: View {
                     VStack(spacing: 18) {
                         VStack(spacing: 6) {
                             // `Text(verbatim:)` so the UIN doesn't get a thousands separator.
-                            Text(verbatim: "#\(listing.uin)")
+                            Text(verbatim: "\(listing.uin)")
                                 .font(.system(.largeTitle, design: .monospaced).weight(.bold))
                                 .foregroundColor(Theme.Color.textPrimary)
                             Text(tierLabel.uppercased())

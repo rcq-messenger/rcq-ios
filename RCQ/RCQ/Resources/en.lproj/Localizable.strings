@@ -566,6 +566,8 @@
 "chat.preview.voice" = "🎤 Voice";
 "chat.preview.file" = "File";
 "chat.preview.location" = "Location";
+"chat.preview.market_item" = "Marketplace item";
+"chat.preview.uin_listing" = "UIN listing";
 "chat.preview.premium_photo" = "🔒 Premium photo";
 "chat.preview.premium_video" = "🔒 Premium video";
 "chat.preview.generic" = "Message";

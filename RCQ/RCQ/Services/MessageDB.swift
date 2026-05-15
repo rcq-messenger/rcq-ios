@@ -206,6 +206,13 @@ final class MessageDB {
         save()
     }
 
+    func updateVideoMeta(id: UUID, thumbnailB64: String, durationSec: Double) {
+        guard let row = find(id: id) else { return }
+        row.thumbnailB64 = thumbnailB64
+        row.durationSec = durationSec
+        save()
+    }
+
     func updateText(id: UUID, text: String, editedAt: Date) {
         guard let row = find(id: id) else { return }
         row.text = text

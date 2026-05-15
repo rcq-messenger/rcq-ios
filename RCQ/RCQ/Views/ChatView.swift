@@ -914,6 +914,17 @@ struct ChatView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 isKeyboardVisible = false
+                // Re-anchor only when the user was already pinned to
+                // the bottom — yanking a scrolled-up reader down on
+                // keyboard dismiss is hostile. Without this scroll
+                // the freshly-sent message can end up "stuck above
+                // an empty band" when the keyboard goes away, because
+                // ScrollView preserves contentOffset across the
+                // safe-area inset change.
+                guard !showScrollToBottom else { return }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                }
             }
             // Three-pass retry covers LazyVStack's lazy realization without overlapping keyboard-rise.
             .task {
@@ -2027,12 +2038,24 @@ private struct MessageRow: View {
                                     .foregroundColor(Theme.Color.accent)
                                     .lineLimit(1)
                             }
-                            Text(snippet)
-                                .font(.caption2)
-                                .foregroundColor(Theme.Color.textSecondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
+                            // If the quoted snippet is a market / UIN
+                            // share URL, render the actual item card
+                            // instead of the raw `rcq.app/m/<id>` text.
+                            // Composer already shows the card when
+                            // composing the reply — the bubble side
+                            // had been left as plain text.
+                            if let market = MarketLinkParser.parse(snippet) {
+                                MarketReplyMiniCard(listingID: market.listingID)
+                            } else if let uinShare = UinLinkParser.parse(snippet) {
+                                UinReplyMiniCard(listingID: uinShare.listingID)
+                            } else {
+                                Text(snippet)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                     .padding(.vertical, 2)

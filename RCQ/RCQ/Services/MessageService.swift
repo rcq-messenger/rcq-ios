@@ -276,7 +276,21 @@ final class MessageService {
         )
     }
 
-    func sendVideo(processed: VideoProcessor.Output, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    /// Optimistic-render send. The bubble appears in the chat the
+    /// instant the user taps Send — pre-populated with the picker's
+    /// quick first-frame thumbnail. VideoProcessor (compression) +
+    /// upload run inside the spawned Task; the bubble's canonical
+    /// thumbnail and duration are patched in when processing finishes,
+    /// then the real mediaID lands when the upload settles.
+    /// `previewThumbnailB64` is the picker's strip preview JPEG, base64.
+    func sendVideo(
+        from sourceURL: URL,
+        previewThumbnailB64: String,
+        to contact: Contact,
+        caption: String? = nil,
+        replyTo: ReplyContext? = nil,
+        albumID: UUID? = nil,
+    ) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -285,8 +299,8 @@ final class MessageService {
             kind: .video,
             text: caption ?? "",
             mediaID: nil,
-            thumbnailB64: processed.thumbnailB64,
-            durationSec: processed.durationSec,
+            thumbnailB64: previewThumbnailB64.isEmpty ? nil : previewThumbnailB64,
+            durationSec: 0,
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
@@ -297,7 +311,19 @@ final class MessageService {
         MediaProgressStore.shared.begin(local.id)
         Task { [weak self] in
             guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: processed.url) }
+            defer { try? FileManager.default.removeItem(at: sourceURL) }
+            let processed: VideoProcessor.Output
+            do {
+                processed = try await VideoProcessor.process(sourceURL: sourceURL)
+            } catch {
+                MediaProgressStore.shared.clear(local.id)
+                MessageStore.shared.updateState(messageID: local.id, thread: .peer(uin: contact.uin), state: .failed)
+                return
+            }
+            MessageStore.shared.updateVideoMeta(
+                messageID: local.id, thread: .peer(uin: contact.uin),
+                thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
+            )
             let upload: MediaService.UploadResult
             do {
                 upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
@@ -932,7 +958,14 @@ final class MessageService {
         )
     }
 
-    func sendVideo(processed: VideoProcessor.Output, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    func sendVideo(
+        from sourceURL: URL,
+        previewThumbnailB64: String,
+        to group: RCQGroup,
+        caption: String? = nil,
+        replyTo: ReplyContext? = nil,
+        albumID: UUID? = nil,
+    ) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
             thread: .group(id: group.id),
@@ -941,8 +974,8 @@ final class MessageService {
             kind: .video,
             text: caption ?? "",
             mediaID: nil,
-            thumbnailB64: processed.thumbnailB64,
-            durationSec: processed.durationSec,
+            thumbnailB64: previewThumbnailB64.isEmpty ? nil : previewThumbnailB64,
+            durationSec: 0,
             ttlSeconds: ttl,
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
@@ -953,7 +986,19 @@ final class MessageService {
         MediaProgressStore.shared.begin(local.id)
         Task { [weak self] in
             guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: processed.url) }
+            defer { try? FileManager.default.removeItem(at: sourceURL) }
+            let processed: VideoProcessor.Output
+            do {
+                processed = try await VideoProcessor.process(sourceURL: sourceURL)
+            } catch {
+                MediaProgressStore.shared.clear(local.id)
+                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
+                return
+            }
+            MessageStore.shared.updateVideoMeta(
+                messageID: local.id, thread: .group(id: group.id),
+                thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
+            )
             let upload: MediaService.UploadResult
             do {
                 upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
