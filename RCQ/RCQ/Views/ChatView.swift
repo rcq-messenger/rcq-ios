@@ -914,15 +914,22 @@ struct ChatView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 isKeyboardVisible = false
+            }
+            // `Did` not `Will` — by the time the keyboard has fully
+            // animated out, the safe-area inset has dropped + the
+            // ScrollView's viewport has grown to its full height. A
+            // `scrollTo(.bottom)` issued at WillHide computes its
+            // destination against the still-shrunken viewport and
+            // settles on the same offset, so visually nothing moves
+            // and the user is left with an empty band below the last
+            // message until they tap the chat. Defer to DidHide
+            // and the anchor lands on the actual new bottom.
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
                 // Re-anchor only when the user was already pinned to
                 // the bottom — yanking a scrolled-up reader down on
-                // keyboard dismiss is hostile. Without this scroll
-                // the freshly-sent message can end up "stuck above
-                // an empty band" when the keyboard goes away, because
-                // ScrollView preserves contentOffset across the
-                // safe-area inset change.
+                // keyboard dismiss is hostile.
                 guard !showScrollToBottom else { return }
-                withAnimation(.easeOut(duration: 0.25)) {
+                withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
