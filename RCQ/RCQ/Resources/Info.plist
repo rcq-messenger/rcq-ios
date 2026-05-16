@@ -34,13 +34,17 @@
 		<string>_rcq-radio._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>RCQ needs the camera for video calls.</string>
+	<string>RCQ needs the camera for video calls and to take photos and videos to share in chats.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Radio Chat needs the local network to discover other RCQ users on the same Bluetooth/Wi-Fi mesh. Nothing leaves your device through the internet on this surface.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used only to find other RCQ users near you while People Nearby is on. Your exact coordinates stay on this device — only a coarse area tag is shared.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>RCQ needs the microphone for voice and video calls.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>RCQ saves photos you choose to download from a chat into your camera roll.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RCQ needs access to your photos and videos so you can attach them to a chat message.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

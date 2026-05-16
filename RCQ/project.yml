@@ -50,8 +50,15 @@ targets:
         CFBundleName: RCQ
         UILaunchScreen:
           UIColorName: BootBackground
-        NSCameraUsageDescription: "RCQ needs the camera for video calls."
+        NSCameraUsageDescription: "RCQ needs the camera for video calls and to take photos and videos to share in chats."
         NSMicrophoneUsageDescription: "RCQ needs the microphone for voice and video calls."
+        # Photos library — required by the gallery picker (attach a
+        # photo / video to a chat message). iOS' TCC kills the app on
+        # the first read attempt if these keys are missing, which is
+        # what was happening for the sender as soon as they tapped
+        # the gallery icon in the composer.
+        NSPhotoLibraryUsageDescription: "RCQ needs access to your photos and videos so you can attach them to a chat message."
+        NSPhotoLibraryAddUsageDescription: "RCQ saves photos you choose to download from a chat into your camera roll."
         # People Nearby — opt-in only. We never read raw GPS to the
         # server; the client computes a coarse area hash (level-6
         # geohash, ~1km tile) and sends only the hash. No background
