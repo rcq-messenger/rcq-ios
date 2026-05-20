@@ -6,17 +6,13 @@ struct GroupInfoView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var groups = GroupService.shared
     @StateObject private var contacts = ContactService.shared
-    @State private var renameDraft: String = ""
     @State private var showAddMember = false
     @State private var confirmLeave = false
     @State private var error: String?
     @State private var viewInfoForUIN: Int?
     @State private var actionMember: RCQGroupMember?
     @State private var petPreview: PetPreviewTarget?
-    @State private var entryPriceText: String = ""
-    @State private var showAvatarPicker = false
-    @State private var avatarUploading = false
-    @State private var confirmAvatarRemove = false
+    @State private var showSettings = false
 
     private var currentGroup: RCQGroup {
         groups.find(group.id) ?? group
@@ -39,9 +35,20 @@ struct GroupInfoView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
-                    section(String(format: "group.section.members".localized, currentGroup.members.count)) {
-                        ForEach(currentGroup.members) { m in
-                            memberRow(m)
+                    descriptionBlock
+                    // Roster hidden by the owner → everyone but the
+                    // owner sees just the count, not who's in it.
+                    if currentGroup.membersHidden && !amOwner {
+                        section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+                            Text("group.members.hidden".localized)
+                                .font(.callout)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                    } else {
+                        section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+                            ForEach(currentGroup.members) { m in
+                                memberRow(m)
+                            }
                         }
                     }
                     // Paid groups: only owner can invite (free invites
@@ -57,9 +64,6 @@ struct GroupInfoView: View {
                                     .foregroundColor(Theme.Color.textPrimary)
                             }
                         }
-                    }
-                    if amOwner {
-                        ownerSettingsBlock
                     }
                     Button(role: .destructive) {
                         confirmLeave = true
@@ -83,6 +87,21 @@ struct GroupInfoView: View {
         }
         .navigationTitle("group.title".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canEditChrome {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            GroupSettingsSheet(groupID: currentGroup.id)
+        }
         .sheet(isPresented: $showAddMember) {
             AddGroupMemberView(group: currentGroup)
         }
@@ -129,76 +148,37 @@ struct GroupInfoView: View {
             }
             Button("common.cancel".localized, role: .cancel) {}
         }
-        .onAppear {
-            renameDraft = currentGroup.name
+    }
+
+    /// Read-only group description — shown to every member when the
+    /// owner/admin has set one. Editing now lives in GroupSettingsSheet.
+    @ViewBuilder
+    private var descriptionBlock: some View {
+        if let desc = currentGroup.description, !desc.isEmpty {
+            section("group.section.description".localized) {
+                Text(desc)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                GroupAvatarView(
-                    mediaID: currentGroup.avatarMediaID,
-                    keyBase64: currentGroup.avatarMediaKey,
-                    size: 56,
-                    glyphSize: 26,
-                )
-                if avatarUploading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 56, height: 56)
-                        .background(Circle().fill(Color.black.opacity(0.4)))
-                } else if canEditChrome {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.white, Theme.Color.accent)
-                        .background(Circle().fill(Theme.Color.bgPrimary))
-                        .offset(x: 2, y: 2)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard canEditChrome, !avatarUploading else { return }
-                if currentGroup.avatarMediaID != nil {
-                    // Existing avatar — let the user pick between
-                    // replacing it and clearing it back to the
-                    // placeholder.
-                    confirmAvatarRemove = true
-                } else {
-                    showAvatarPicker = true
-                }
-            }
-            .confirmationDialog(
-                "group.avatar.change".localized,
-                isPresented: $confirmAvatarRemove,
-                titleVisibility: .visible,
-            ) {
-                Button("group.avatar.change".localized) {
-                    showAvatarPicker = true
-                }
-                Button("group.avatar.remove".localized, role: .destructive) {
-                    Task { await removeAvatar() }
-                }
-                Button("common.cancel".localized, role: .cancel) {}
-            }
-            .sheet(isPresented: $showAvatarPicker) {
-                PhotoPicker(selectionLimit: 1) { images in
-                    showAvatarPicker = false
-                    guard let img = images.first else { return }
-                    Task { await uploadAvatar(img) }
-                }
-            }
-
+            // Avatar + name are read-only here; editing moved into
+            // GroupSettingsSheet (the gear button).
+            GroupAvatarView(
+                mediaID: currentGroup.avatarMediaID,
+                keyBase64: currentGroup.avatarMediaKey,
+                size: 56,
+                glyphSize: 26,
+            )
             VStack(alignment: .leading, spacing: 4) {
-                if amOwner {
-                    TextField("", text: $renameDraft, onCommit: {
-                        Task { await rename() }
-                    })
+                Text(currentGroup.name)
                     .font(.title3.bold())
                     .foregroundColor(Theme.Color.textPrimary)
-                } else {
-                    Text(currentGroup.name).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
-                }
                 Text(String(
                     format: "group.created".localized,
                     DateFormatter.localizedString(
@@ -227,94 +207,6 @@ struct GroupInfoView: View {
         }
     }
 
-    @ViewBuilder
-    private var ownerSettingsBlock: some View {
-        section("group.section.settings".localized) {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("group.settings.post_policy".localized.uppercased())
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundColor(Theme.Color.textSecondary)
-                    Picker(
-                        "group.settings.post_policy".localized,
-                        selection: Binding(
-                            get: { currentGroup.postPolicy },
-                            set: { newValue in
-                                Task {
-                                    try? await groups.setPostPolicy(
-                                        groupID: currentGroup.id,
-                                        policy: newValue,
-                                    )
-                                }
-                            }
-                        )
-                    ) {
-                        Text("group.settings.post_policy.all".localized).tag("all")
-                        Text("group.settings.post_policy.owner_only".localized).tag("owner_only")
-                    }
-                    .pickerStyle(.segmented)
-                    Text("group.settings.post_policy.hint".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                Divider().background(Theme.Color.divider)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("group.settings.entry_price".localized.uppercased())
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundColor(Theme.Color.textSecondary)
-                    HStack(spacing: 8) {
-                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                            .frame(width: 18, height: 18)
-                        TextField(
-                            "0",
-                            text: Binding(
-                                get: { entryPriceText },
-                                set: { newValue in
-                                    entryPriceText = newValue.filter { $0.isNumber }
-                                }
-                            ),
-                        )
-                        .keyboardType(.numberPad)
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        Spacer()
-                        Button("common.save".localized) {
-                            Task { await commitEntryPrice() }
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
-                        .disabled(!entryPriceDirty)
-                    }
-                    Text("group.settings.entry_price.hint".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-            }
-        }
-        .onAppear {
-            entryPriceText = currentGroup.entryPriceTokens.map(String.init) ?? ""
-        }
-    }
-
-    private var entryPriceDirty: Bool {
-        let parsed = Int(entryPriceText) ?? 0
-        let current = currentGroup.entryPriceTokens ?? 0
-        return parsed != current
-    }
-
-    private func commitEntryPrice() async {
-        let parsed = max(0, Int(entryPriceText) ?? 0)
-        do {
-            try await groups.setEntryPrice(
-                groupID: currentGroup.id,
-                priceTokens: parsed,
-            )
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
 
     private func memberRow(_ m: RCQGroupMember) -> some View {
         let isMe = m.uin == AuthService.shared.ownUIN
@@ -376,42 +268,6 @@ struct GroupInfoView: View {
         case "owner": return "group.role.owner".localized
         case "admin": return "group.role.admin".localized
         default:      return raw.capitalized
-        }
-    }
-
-    private func rename() async {
-        let trimmed = renameDraft.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != currentGroup.name else { return }
-        do { try await groups.rename(groupID: currentGroup.id, name: trimmed) }
-        catch { self.error = error.localizedDescription }
-    }
-
-    private func uploadAvatar(_ image: UIImage) async {
-        avatarUploading = true
-        defer { avatarUploading = false }
-        do {
-            let result = try await MediaService.shared.uploadImage(image)
-            try await groups.setAvatar(
-                groupID: currentGroup.id,
-                mediaID: result.mediaID,
-                keyBase64: result.keyBase64,
-            )
-        } catch {
-            self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)
-        }
-    }
-
-    private func removeAvatar() async {
-        avatarUploading = true
-        defer { avatarUploading = false }
-        do {
-            try await groups.setAvatar(
-                groupID: currentGroup.id,
-                mediaID: nil,
-                keyBase64: nil,
-            )
-        } catch {
-            self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)
         }
     }
 

@@ -265,8 +265,22 @@ private struct ChatPreviewBubble: View {
                     .font(.callout)
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(1)
+            case .poll:
+                // Mini-card for `.poll` in the long-press preview —
+                // chat-row's `PollBubble` is too heavy for a preview
+                // snapshot (it triggers a /polls/{id} fetch + bar
+                // rendering). Just show the question + a chart glyph.
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                        .foregroundColor(Theme.Color.accent)
+                    Text(PollPayload.decode(from: message.text)?.question
+                         ?? message.previewSnippet)
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .lineLimit(4)
+                }
             default:
-                Text(message.text.isEmpty ? "Message" : message.text)
+                Text(message.previewSnippet)
                     .font(.callout)
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(8)

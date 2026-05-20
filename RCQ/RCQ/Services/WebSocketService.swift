@@ -62,6 +62,7 @@ final class WebSocketService: ObservableObject {
         case crashRoundEnd(roundID: String, crashPoint: Double, seed: String, cashouts: [CrashCashoutEvent])
         case crashCashout(roundID: String, uin: Int, nickname: String?, multiplier: Double, payout: Int)
         case crashBetPlaced(roundID: String, uin: Int, nickname: String?, amount: Int, betsCount: Int)
+        case reputationChanged(targetUIN: Int, amount: Int, newTotal: Int, anonymous: Bool, donorUIN: Int?)
         case accountBurned
     }
 
@@ -295,6 +296,20 @@ final class WebSocketService: ObservableObject {
         switch type {
         case "account_burned":
             events.send(.accountBurned)
+
+        case "reputation_changed":
+            guard let target = dict["target_uin"] as? Int,
+                  let amount = dict["amount"] as? Int,
+                  let newTotal = dict["new_total"] as? Int else { return }
+            let anonymous = dict["anonymous"] as? Bool ?? false
+            let donor = dict["donor_uin"] as? Int
+            events.send(.reputationChanged(
+                targetUIN: target,
+                amount: amount,
+                newTotal: newTotal,
+                anonymous: anonymous,
+                donorUIN: donor
+            ))
 
         case "presence":
             guard let uin = dict["uin"] as? Int,

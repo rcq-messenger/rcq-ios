@@ -31,6 +31,10 @@ struct UserProfile: Codable, Hashable {
     /// Owner-only echo, follows the `lastSeenVisibility` tri-state.
     /// Gates who can see `gender` on the profile.
     var genderVisibility: String?
+    /// Owner-only echo of the profile-card visibility setting. Same
+    /// tri-state. Server strips first_name/last_name/age/city/etc.
+    /// for outsiders who don't pass the gate.
+    var profileVisibility: String?
     /// Owner-only echo of the group-invite policy.
     /// `everyone` (default) / `contacts` / `nobody`.
     var groupInvitePolicy: String?
@@ -47,6 +51,13 @@ struct UserProfile: Codable, Hashable {
     /// for the send-time gate so MessageService doesn't have to
     /// round-trip `/users/me/info` on every read.
     var readReceiptsVisibility: String?
+    /// Social reputation counter. `nil` on the wire means "hidden
+    /// by the target's privacy setting" — UI omits the row in that
+    /// case. The "Give reputation" button stays available regardless
+    /// of visibility because the grant endpoint doesn't gate on it.
+    var reputation: Int?
+    /// Owner-only echo of `reputation_visibility` for Settings.
+    var reputationVisibility: String?
     /// Snapshot of the user's currently-equipped pet — drives the
     /// small overlay GIF on the status icon throughout the UI
     /// (contact rows, profile header, group info). Always returned;
@@ -66,10 +77,13 @@ struct UserProfile: Codable, Hashable {
         case lastSeen = "last_seen"
         case lastSeenVisibility = "last_seen_visibility"
         case genderVisibility = "gender_visibility"
+        case profileVisibility = "profile_visibility"
         case groupInvitePolicy = "group_invite_policy"
         case tradePolicy = "trade_policy"
         case callPolicy = "call_policy"
         case readReceiptsVisibility = "read_receipts_visibility"
+        case reputation
+        case reputationVisibility = "reputation_visibility"
         case equippedPet = "equipped_pet"
     }
 }

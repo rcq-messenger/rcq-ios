@@ -7,6 +7,9 @@ struct PoolBrowserView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var packPreview: ItemKind?
+    /// Same key LootboxView writes — the pool odds reflect the
+    /// pet-boost slider position the user set on the main screen.
+    @AppStorage("rcq.lootbox.pet_boost") private var petBoost: Double = 0
 
     private var kindsBySection: [(ItemSection, [ItemKind])] {
         guard let catalog = items.catalog else { return [] }
@@ -35,6 +38,13 @@ struct PoolBrowserView: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        if petBoost > 0 {
+                            Text(String(format: "pool.boost_note".localized,
+                                        Int((petBoost * 100).rounded())))
+                                .font(.caption2)
+                                .foregroundColor(Theme.Color.accent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if let cat = items.catalog, cat.scrollDropChance > 0 {
                             gemsSection(catalog: cat)
                         }
@@ -49,7 +59,7 @@ struct PoolBrowserView: View {
                                         .foregroundColor(Theme.Color.textSecondary)
                                         .tracking(2)
                                     Spacer()
-                                    Text(String(format: "pool.section_share".localized, (items.catalog?.sectionWeights[section.rawValue] ?? 0) * itemShare))
+                                    Text(String(format: "pool.section_share".localized, sectionShare(section)))
                                         .font(Theme.Font.monoSmall)
                                         .foregroundColor(Theme.Color.textMono)
                                 }
@@ -132,9 +142,10 @@ struct PoolBrowserView: View {
                 }
             }
             Spacer(minLength: 0)
-            // perPullChance is conditional on an item dropping; multiply
-            // by itemShare for overall (post-gem-roll) probability.
-            Text(String(format: "%.1f%%", kind.perPullChance * itemShare))
+            // Boosted per-kind chance (conditional on an item dropping)
+            // × itemShare for the overall post-gem-roll probability.
+            // Reflects the pet-boost slider set on the main screen.
+            Text(String(format: "%.1f%%", kindChance(kind)))
                 .font(Theme.Font.monoSmall)
                 .foregroundColor(Theme.Color.textSecondary)
         }
@@ -227,6 +238,18 @@ struct PoolBrowserView: View {
             .background(Theme.Color.bgSecondary.opacity(0.5))
             .cornerRadius(6)
         }
+    }
+
+    /// Section share % at the current boost, post-scroll-roll.
+    private func sectionShare(_ section: ItemSection) -> Double {
+        guard let cat = items.catalog else { return 0 }
+        return (cat.boostedSectionWeights(petBoost)[section.rawValue] ?? 0) * itemShare
+    }
+
+    /// Per-kind overall drop % at the current boost.
+    private func kindChance(_ kind: ItemKind) -> Double {
+        guard let cat = items.catalog else { return 0 }
+        return cat.boostedPerKindChance(kind.id, boost: petBoost) * itemShare
     }
 
     private func stem(_ k: ItemKind) -> String {

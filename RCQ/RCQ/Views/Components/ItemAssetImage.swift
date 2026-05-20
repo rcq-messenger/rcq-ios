@@ -80,21 +80,46 @@ struct AnimatedGIFImage: View {
 private final class AnimatedGIFCache {
     static let shared = AnimatedGIFCache()
 
-    struct Frames {
+    /// Reference type so it can live in `NSCache` (which only stores
+    /// class instances). The decoded `UIImage` frame array is the
+    /// expensive part — fully decompressed bitmaps, several MB per
+    /// multi-frame GIF.
+    final class Frames {
         let images: [UIImage]
         let duration: TimeInterval
+        /// Approximate decoded byte cost — sum of each frame's
+        /// bitmap size. Fed to `NSCache.totalCostLimit` so eviction
+        /// is weighted by real memory footprint, not frame count.
+        let cost: Int
+        init(images: [UIImage], duration: TimeInterval) {
+            self.images = images
+            self.duration = duration
+            self.cost = images.reduce(0) { acc, img in
+                let px = Int(img.size.width * img.scale * img.size.height * img.scale)
+                return acc + px * 4   // 4 bytes/px RGBA
+            }
+        }
     }
 
-    private var cache: [URL: Frames] = [:]
-    private let lock = NSLock()
+    // NSCache (was a plain Dictionary) so the OS evicts decoded GIF
+    // frames under memory pressure. The previous unbounded dict
+    // retained every distinct item GIF's decompressed frames for the
+    // whole process lifetime — ~30 lootbox opens of distinct kinds
+    // accumulated enough resident bitmap memory to get the app
+    // jetsam-killed. countLimit caps entries; totalCostLimit caps
+    // aggregate decoded bytes (~96 MB). Mirrors GIFImage /
+    // AnimatedGIFView which already use NSCache.
+    private let cache: NSCache<NSURL, Frames> = {
+        let c = NSCache<NSURL, Frames>()
+        c.countLimit = 48
+        c.totalCostLimit = 96 * 1024 * 1024
+        return c
+    }()
 
     func frames(for url: URL) -> Frames? {
-        lock.lock()
-        if let hit = cache[url] {
-            lock.unlock()
+        if let hit = cache.object(forKey: url as NSURL) {
             return hit
         }
-        lock.unlock()
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let count = CGImageSourceGetCount(src)
         guard count > 0 else { return nil }
@@ -107,9 +132,7 @@ private final class AnimatedGIFCache {
         }
         if total < 0.05 { total = TimeInterval(count) * 0.1 }
         let frames = Frames(images: images, duration: total)
-        lock.lock()
-        cache[url] = frames
-        lock.unlock()
+        cache.setObject(frames, forKey: url as NSURL, cost: frames.cost)
         return frames
     }
 

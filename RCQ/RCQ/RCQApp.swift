@@ -1,6 +1,59 @@
+import CoreMotion
 import SwiftUI
 import UIKit
 import UserNotifications
+
+extension Notification.Name {
+    /// Posted by `ShakeMotionDetector` whenever the accelerometer
+    /// magnitude crosses the shake threshold. Wiring lives in
+    /// `RCQApp.RootView.onReceive` for Bug Bounty.
+    static let rcqDeviceShook = Notification.Name("rcq.device.shook")
+    /// Posted when a `reputation_changed` WS event lands. Open
+    /// profile sheets observe this to splice in the new total
+    /// without a refetch. `userInfo["target_uin"]`, `["amount"]`,
+    /// `["new_total"]`.
+    static let rcqReputationChanged = Notification.Name("rcq.reputation.changed")
+}
+
+/// Accelerometer-based shake detector. Used instead of `motionEnded`
+/// + UIWindow swizzling, which crashed in TF release builds (recursive
+/// swizzled-method dispatch under the App-lifecycle hosting). CoreMotion
+/// is deterministic and doesn't care who owns first responder — the
+/// raw accelerometer is always available while the app is foregrounded.
+///
+/// Threshold of 2.5 g picks up a deliberate shake while filtering
+/// out walking / handing the phone over. 1-second cooldown stops a
+/// continued shake gesture from spamming notifications.
+@MainActor
+final class ShakeMotionDetector {
+    static let shared = ShakeMotionDetector()
+    private let manager = CMMotionManager()
+    private var lastFired: Date = .distantPast
+    private static let threshold: Double = 2.5
+    private static let cooldown: TimeInterval = 1.0
+
+    func start() {
+        guard manager.isAccelerometerAvailable, !manager.isAccelerometerActive else { return }
+        manager.accelerometerUpdateInterval = 1.0 / 20.0  // 20 Hz — plenty for shake detection
+        manager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
+            guard let self, let d = data else { return }
+            let m = sqrt(d.acceleration.x * d.acceleration.x
+                       + d.acceleration.y * d.acceleration.y
+                       + d.acceleration.z * d.acceleration.z)
+            guard m > Self.threshold else { return }
+            let now = Date()
+            guard now.timeIntervalSince(self.lastFired) > Self.cooldown else { return }
+            self.lastFired = now
+            NotificationCenter.default.post(name: .rcqDeviceShook, object: nil)
+        }
+    }
+
+    func stop() {
+        if manager.isAccelerometerActive {
+            manager.stopAccelerometerUpdates()
+        }
+    }
+}
 
 /// UIKit adapter for APNs callbacks + notification taps that SwiftUI
 /// doesn't expose. Wired via UIApplicationDelegateAdaptor.
@@ -109,6 +162,10 @@ struct RCQApp: App {
         _ = VoIPPushService.shared
         _ = CallProvider.shared
         _ = LanguageManager.shared
+        // Boot the accelerometer-based shake detector. Posts
+        // `.rcqDeviceShook` notifications when the device crosses the
+        // shake threshold; consumed by RootView for Bug Bounty.
+        ShakeMotionDetector.shared.start()
     }
 
     var body: some Scene {
@@ -131,6 +188,7 @@ struct RootView: View {
     @StateObject private var ws = WebSocketService.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("rcq.onboarded") private var didOnboard: Bool = false
+    @State private var showShakeBugBounty: Bool = false
 
     var body: some View {
         // Root ZStack hosts game mini-bubbles so they persist across nav.
@@ -146,6 +204,20 @@ struct RootView: View {
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
         }
+        // Shake-to-report. Wired at the root so any surface (chat,
+        // inventory, game minis, settings, etc.) can summon Bug
+        // Bounty by physically shaking the device. Delivered as a
+        // `.rcqDeviceShook` notification from the UIWindow swizzle
+        // — works regardless of who currently owns first responder
+        // (text fields, hosting controllers, etc.). Earlier
+        // responder-chain implementation broke in TF release where
+        // UIHostingController claimed first responder before our
+        // invisible VC could.
+        .onReceive(NotificationCenter.default.publisher(for: .rcqDeviceShook)) { _ in
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            showShakeBugBounty = true
+        }
+        .sheet(isPresented: $showShakeBugBounty) { BugBountySheet() }
     }
 
     /// Foreground transition: only forces a fresh WS if the watchdog

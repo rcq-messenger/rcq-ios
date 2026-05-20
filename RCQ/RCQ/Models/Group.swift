@@ -5,6 +5,9 @@ import Foundation
 struct RCQGroup: Identifiable, Hashable, Codable {
     let id: Int
     var name: String
+    /// Owner/admin-set free-text description. Nil when unset —
+    /// Group Info hides the blurb and the join sheet skips the row.
+    var description: String? = nil
     var ownerUIN: Int
     var avatarSeed: Int
     /// `"all"` (everyone can post) or `"owner_only"` (broadcast mode).
@@ -14,6 +17,14 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// Tokens charged on `POST /groups/{id}/join`. NULL/0 = free.
     /// Owner gets `floor(price × 0.95)`; the 5% delta burns.
     var entryPriceTokens: Int? = nil
+    /// Closed groups can only be entered via an owner-issued
+    /// invite (or marketplace purchase). The share-to-friend deep
+    /// link 403s on `/join`. Toggle is owner-only in Group Settings.
+    var isClosed: Bool = false
+    /// When true, the member roster is hidden in Group Info from
+    /// everyone but the owner. Display-only — `members` still
+    /// arrives (needed for per-recipient group encryption).
+    var membersHidden: Bool = false
     /// Uploaded group avatar — encrypted blob id + per-blob AES key
     /// (base64). Both NULL = no custom avatar, fall back to the
     /// generic person.3 glyph.
@@ -23,11 +34,13 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     var members: [RCQGroupMember]
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, description
         case ownerUIN = "owner_uin"
         case avatarSeed = "avatar_seed"
         case postPolicy = "post_policy"
         case entryPriceTokens = "entry_price_tokens"
+        case isClosed = "is_closed"
+        case membersHidden = "members_hidden"
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
         case createdAt = "created_at"
@@ -38,10 +51,13 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decode(Int.self, forKey: .id)
         self.name = try c.decode(String.self, forKey: .name)
+        self.description = try? c.decodeIfPresent(String.self, forKey: .description)
         self.ownerUIN = try c.decode(Int.self, forKey: .ownerUIN)
         self.avatarSeed = try c.decode(Int.self, forKey: .avatarSeed)
         self.postPolicy = (try? c.decodeIfPresent(String.self, forKey: .postPolicy)) ?? "all"
         self.entryPriceTokens = try? c.decodeIfPresent(Int.self, forKey: .entryPriceTokens)
+        self.isClosed = (try? c.decodeIfPresent(Bool.self, forKey: .isClosed)) ?? false
+        self.membersHidden = (try? c.decodeIfPresent(Bool.self, forKey: .membersHidden)) ?? false
         self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)

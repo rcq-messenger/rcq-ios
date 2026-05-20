@@ -168,6 +168,9 @@ class NotificationService: UNNotificationServiceExtension {
             content.body = "🔒 \(label) — \(price)"
         case .systemNotice(_, let text):
             content.body = text.isEmpty ? "System notice" : text
+        case .poll(_, _, let question, _, _, _):
+            let q = question.trimmingCharacters(in: .whitespaces)
+            content.body = q.isEmpty ? "📊 New poll" : "📊 \(q)"
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit:
             content.body = "Message"
         }
@@ -314,6 +317,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .edit:             return "edit"
         case .premiumPhoto:     return "premium_photo"
         case .premiumVideo:     return "premium_video"
+        case .poll:             return "poll"
         }
     }
 

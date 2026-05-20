@@ -16,6 +16,7 @@ struct ItemDetailSheet: View {
     @State private var history: [ItemHistoryEvent] = []
     @State private var historyLoading = true
     @State private var copiedUIN: Int? = nil
+    @State private var showSystemInfo = false
 
     private var kind: ItemKind? {
         items.catalog?.kind(by: item.kindID)
@@ -40,11 +41,18 @@ struct ItemDetailSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     hero
                     statsBlock
-                    if let kind, kind.appliesAs != .none {
-                        KindContentsView(kindID: kind.id, horizontalInset: 0)
-                    }
                     if !readOnly {
                         actionRow
+                    }
+                    // Pack contents sit BELOW the action buttons and
+                    // ABOVE history, collapsed by default — a 30-tile
+                    // sticker pack used to push the buttons off-screen.
+                    if let kind, kind.appliesAs != .none {
+                        KindContentsView(
+                            kindID: kind.id,
+                            horizontalInset: 0,
+                            collapsible: true,
+                        )
                     }
                     historyBlock
                 }
@@ -56,10 +64,24 @@ struct ItemDetailSheet: View {
             .navigationTitle(displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                // Done moved to the leading slot; trailing now holds
+                // the info button (game-style — tap for a mini-FAQ on
+                // how the item system works).
+                ToolbarItem(placement: .topBarLeading) {
                     Button("common.done".localized) { dismiss() }
                         .foregroundColor(Theme.Color.accent)
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSystemInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                }
+            }
+            .sheet(isPresented: $showSystemInfo) {
+                ItemSystemInfoSheet()
             }
             .sheet(isPresented: $showTemper) {
                 TemperConfirmSheet(item: live, onComplete: { outcome in

@@ -162,9 +162,18 @@ final class TradesService: ObservableObject {
             if !incoming.contains(where: { $0.id == trade.id }) {
                 incoming.insert(trade, at: 0)
             }
-            freshIncoming = trade
-            SoundService.shared.playIncoming(fromUIN: trade.fromUIN, thread: nil)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            // The instant pop-up sheet is opt-out: when the user
+            // disabled real-time trade pop-ups in Settings the offer
+            // still lands in the trades list + as an InlineTradeCard
+            // in the chat thread, just without interrupting them.
+            // Default true (key absent → object(forKey:) is nil).
+            let popupEnabled = (UserDefaults.standard.object(
+                forKey: "rcq.trades.realtime_popup") as? Bool) ?? true
+            if popupEnabled {
+                freshIncoming = trade
+                SoundService.shared.playIncoming(fromUIN: trade.fromUIN, thread: nil)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
 
         case .tradeAccepted(let trade):
             outgoing.removeAll { $0.id == trade.id }

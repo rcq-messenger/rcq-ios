@@ -50,6 +50,13 @@ enum Envelope: Codable, Hashable {
     /// and only released after a paid unlock. `blurThumbnailB64` is the locked preview.
     case premiumPhoto(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
     case premiumVideo(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
+    /// Group poll announcement. The server-side `pollID` lets every
+    /// recipient hit `/polls/{id}/vote` directly; the question +
+    /// option labels travel here (encrypted lane), invisible to the
+    /// server. `singleChoice` and `anonymous` are also surfaced so a
+    /// client that loses connection to /polls can still render the
+    /// bubble correctly.
+    case poll(id: UUID, pollID: Int, question: String, options: [String], singleChoice: Bool, anonymous: Bool)
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
@@ -61,6 +68,11 @@ enum Envelope: Codable, Hashable {
         case sizeBytes = "size"
         case lat
         case lng
+        case pollID = "poll"
+        case question = "q"
+        case options = "opts"
+        case singleChoice = "sc"
+        case anonymous = "anon"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -172,6 +184,14 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
             try c.encodeIfPresent(album, forKey: .albumID)
+        case .poll(let id, let pollID, let question, let options, let singleChoice, let anonymous):
+            try c.encode("poll", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(pollID, forKey: .pollID)
+            try c.encode(question, forKey: .question)
+            try c.encode(options, forKey: .options)
+            try c.encode(singleChoice, forKey: .singleChoice)
+            try c.encode(anonymous, forKey: .anonymous)
         }
     }
 
@@ -291,6 +311,15 @@ enum Envelope: Codable, Hashable {
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
                 albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
+            )
+        case "poll":
+            self = .poll(
+                id: try c.decode(UUID.self, forKey: .id),
+                pollID: try c.decode(Int.self, forKey: .pollID),
+                question: try c.decode(String.self, forKey: .question),
+                options: try c.decode([String].self, forKey: .options),
+                singleChoice: try c.decode(Bool.self, forKey: .singleChoice),
+                anonymous: try c.decode(Bool.self, forKey: .anonymous)
             )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")

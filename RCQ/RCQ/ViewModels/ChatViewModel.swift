@@ -25,6 +25,19 @@ final class ChatViewModel: ObservableObject {
     /// Cancel button on the selection action bar.
     @Published var isSelecting: Bool = false
     @Published var selectedIDs: Set<UUID> = []
+    /// Set when a queued upload would cross the 50 MB free-tier and
+    /// the user has the "Pay for big files" toggle OFF. ChatView
+    /// presents `PaidTrafficConfirmSheet` against this. Confirming
+    /// flips the toggle and re-runs the original send via `retry`.
+    @Published var pendingPaidUpload: PaidUploadRequest?
+
+    struct PaidUploadRequest: Identifiable {
+        let id = UUID()
+        let plaintextBytes: Int
+        let jetonsRequired: Int
+        /// Re-runs the send the user originally attempted.
+        let retry: () async -> String?
+    }
 
     enum PendingMediaItem: Identifiable {
         case photo(id: UUID, image: UIImage)
@@ -139,6 +152,24 @@ final class ChatViewModel: ObservableObject {
         translatedTexts[message.id] != nil
     }
 
+    /// Drop a specific text payload into the chat without going
+    /// through the composer's `input` buffer — used by the
+    /// share-group picker which already has the canonical URL in
+    /// hand. Reply context is intentionally not consumed (a
+    /// share-as-reply is a contrived flow; the composer's reply
+    /// strip stays for the next manual message).
+    func sendText(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            switch target {
+            case .peer(let c):       try await MessageService.shared.send(text: trimmed, to: c)
+            case .group(let g):      try await MessageService.shared.send(text: trimmed, to: g)
+            case .randomPeer(let p): try await MessageService.shared.send(text: trimmed, toRandom: p)
+            }
+        } catch { }
+    }
+
     func send() async {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if case .randomPeer = target {
@@ -236,9 +267,41 @@ final class ChatViewModel: ObservableObject {
     /// the first error encountered, or nil. The composer text and
     /// pending list are cleared once dispatch starts so the user sees
     /// the queue empty out immediately.
+    /// Returns the largest paid-tier jeton cost across the queued
+    /// videos (the worst-case bill if the user enables paid traffic
+    /// and sends everything). nil if no item exceeds the free tier.
+    private func paidQueueCost(for queue: [PendingMediaItem]) -> (bytes: Int, jetons: Int)? {
+        var maxBytes = 0
+        for item in queue {
+            if case .video(_, let url, _) = item,
+               let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+               let size = attrs[.size] as? Int {
+                maxBytes = max(maxBytes, size)
+            }
+        }
+        let cost = MediaService.jetonCost(forBytes: maxBytes)
+        return cost > 0 ? (maxBytes, cost) : nil
+    }
+
     @discardableResult
     func sendPendingMediaWithCaption() async -> String? {
         guard !pendingMedia.isEmpty else { return nil }
+        // Gate paid uploads BEFORE consuming the queue — if the user
+        // declines the prompt, the pending strip stays intact so
+        // they can drop the heavy clip and resend.
+        let payEnabled = UserDefaults.standard.bool(forKey: "rcq.network.pay_for_large_files")
+        if !payEnabled, let cost = paidQueueCost(for: pendingMedia) {
+            await MainActor.run {
+                self.pendingPaidUpload = PaidUploadRequest(
+                    plaintextBytes: cost.bytes,
+                    jetonsRequired: cost.jetons,
+                    retry: { [weak self] in
+                        await self?.sendPendingMediaWithCaption()
+                    },
+                )
+            }
+            return nil
+        }
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let queue = pendingMedia
         pendingMedia = []
@@ -355,6 +418,12 @@ final class ChatViewModel: ObservableObject {
         case .location: raw = "📍 Location"
         case .premiumPhoto: raw = "🔒 Premium photo"
         case .premiumVideo: raw = "🔒 Premium video"
+        case .poll:
+            // `.poll` stores the full PollPayload as JSON in `text`
+            // — the reply strip rendered the raw braces / option
+            // labels until we pulled out the question here.
+            let q = PollPayload.decode(from: message.text)?.question ?? "Poll"
+            raw = "📊 \(q)"
         default:     raw = message.text.isEmpty ? "Message" : message.text
         }
         if raw.count <= 80 { return raw }
@@ -411,7 +480,21 @@ final class ChatViewModel: ObservableObject {
         let payEnabled = UserDefaults.standard.bool(forKey: "rcq.network.pay_for_large_files")
         let payJetons = MediaService.jetonCost(forBytes: sizeBytes)
         if payJetons > 0 && !payEnabled {
-            return "chat.file.pay_required".localized
+            await MainActor.run {
+                self.pendingPaidUpload = PaidUploadRequest(
+                    plaintextBytes: sizeBytes,
+                    jetonsRequired: payJetons,
+                    retry: { [weak self] in
+                        await self?.sendFile(
+                            fileURL: fileURL,
+                            fileName: fileName,
+                            mime: mime,
+                            sizeBytes: sizeBytes,
+                        )
+                    },
+                )
+            }
+            return nil
         }
         let reply = consumeReplyContext()
         do {

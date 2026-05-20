@@ -7,7 +7,10 @@ import UIKit
 final class MessageService {
     static let shared = MessageService()
 
-    private var crypto: CryptoService!
+    // Internal (not private) so the per-target extensions (Group /
+    // Random / Premium living in sibling files) can reach the
+    // shared crypto handle. `final class` means no subclass leakage.
+    var crypto: CryptoService!
     private(set) var ownUIN: Int = 0
 
     private static let log = OSLog(subsystem: "app.rcq.client", category: "MessageService")
@@ -29,6 +32,8 @@ final class MessageService {
     // MARK: - sending (1:1)
 
     func send(text: String, to contact: Contact, replyTo: ReplyContext? = nil) async throws {
+        SmokeTracker.shared.tick(.sendMessage1to1)
+        if replyTo != nil { SmokeTracker.shared.tick(.replyToMessage) }
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -49,6 +54,7 @@ final class MessageService {
     }
 
     func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+        SmokeTracker.shared.tick(.sendPhoto)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -92,6 +98,7 @@ final class MessageService {
     /// `"GIF8"` magic on the decrypted blob and renders via
     /// `AnimatedGIFView`. Mirrors `sendPhoto` otherwise.
     func sendGIF(data: Data, preview: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+        SmokeTracker.shared.tick(.sendGif)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -132,6 +139,7 @@ final class MessageService {
 
     /// Consumes the `.m4a` at `fileURL` (deleted on success or failure).
     func sendVoice(fileURL: URL, durationSec: Double, to contact: Contact, replyTo: ReplyContext? = nil) async throws {
+        SmokeTracker.shared.tick(.sendVoice)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -249,6 +257,7 @@ final class MessageService {
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
     ) async throws {
+        SmokeTracker.shared.tick(.sendLocation)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -291,6 +300,7 @@ final class MessageService {
         replyTo: ReplyContext? = nil,
         albumID: UUID? = nil,
     ) async throws {
+        SmokeTracker.shared.tick(.sendVideo)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -324,9 +334,17 @@ final class MessageService {
                 messageID: local.id, thread: .peer(uin: contact.uin),
                 thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
             )
+            // Compute the paid-tier cost from the PROCESSED video's
+            // plaintext size. Without this, uploads above 50 MB hit
+            // the server's price-check with `pay_jetons=0` and 400.
+            // The ChatViewModel gates the queue BEFORE this point so
+            // we only get here with the user's consent (or a free
+            // file).
+            let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
+            let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
+                upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -500,542 +518,6 @@ final class MessageService {
         )
     }
 
-    // MARK: - sending (random chat)
-
-    /// Local copy lives in `RandomChatService.messages` (in-memory, ephemeral).
-    func send(text: String, toRandom peer: RandomPeer, replyTo: ReplyContext? = nil) async throws {
-        let local = Message(
-            thread: .peer(uin: peer.uin),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .text,
-            text: text,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
-        )
-        RandomChatService.shared.append(local)
-
-        let bundle = PeerBundle(uin: peer.uin, identityKey: peer.identityKey, signingKey: peer.signingKey)
-        let blob = try crypto.encrypt(envelope: .text(id: local.id, text: text, replyTo: replyTo), for: bundle)
-
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
-        struct Out: Decodable { let delivered: Bool; let queued: Bool }
-
-        do {
-            let out: Out = try await APIClient.shared.request(
-                "POST", "/messages/sealed",
-                body: Body(to_uin: peer.uin, envelope_type: "message", payload: blob),
-                authenticated: false
-            )
-            let next: DeliveryState = out.delivered ? .delivered : (out.queued ? .sent : .failed)
-            RandomChatService.shared.updateState(messageID: local.id, to: next)
-            SoundService.shared.play(.messageSent)
-        } catch {
-            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
-            throw error
-        }
-    }
-
-    func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        let local = Message(
-            thread: .peer(uin: peer.uin),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .photo,
-            text: caption ?? "",
-            mediaID: nil,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        RandomChatService.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        let upload: MediaService.UploadResult
-        do {
-            upload = try await MediaService.shared.uploadImage(image) { p in
-                MediaProgressStore.shared.set(local.id, value: p)
-            }
-        } catch {
-            MediaProgressStore.shared.clear(local.id)
-            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
-            throw error
-        }
-        MediaProgressStore.shared.clear(local.id)
-        let combined = upload.mediaID + "|" + upload.keyBase64
-        RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
-        try await sendRandomEnvelope(
-            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID),
-            to: peer,
-            localID: local.id
-        )
-    }
-
-    /// Random-chat GIF send. Same envelope shape as `sendPhoto`; the
-    /// raw bytes flow through `uploadGIF`.
-    func sendGIF(data: Data, preview: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        let local = Message(
-            thread: .peer(uin: peer.uin),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .photo,
-            text: caption ?? "",
-            mediaID: nil,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        RandomChatService.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        let upload: MediaService.UploadResult
-        do {
-            upload = try await MediaService.shared.uploadGIF(data: data) { p in
-                MediaProgressStore.shared.set(local.id, value: p)
-            }
-        } catch {
-            MediaProgressStore.shared.clear(local.id)
-            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
-            throw error
-        }
-        MediaProgressStore.shared.clear(local.id)
-        let combined = upload.mediaID + "|" + upload.keyBase64
-        RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
-        try await sendRandomEnvelope(
-            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID),
-            to: peer,
-            localID: local.id
-        )
-    }
-
-    func sendVoice(fileURL: URL, durationSec: Double, toRandom peer: RandomPeer, replyTo: ReplyContext? = nil) async throws {
-        let local = Message(
-            thread: .peer(uin: peer.uin),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .voice,
-            text: "",
-            mediaID: nil,
-            durationSec: durationSec,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-        )
-        RandomChatService.shared.append(local)
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        MediaProgressStore.shared.begin(local.id)
-        let upload: MediaService.UploadResult
-        do {
-            upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
-                MediaProgressStore.shared.set(local.id, value: p)
-            }
-        } catch {
-            MediaProgressStore.shared.clear(local.id)
-            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
-            throw error
-        }
-        MediaProgressStore.shared.clear(local.id)
-        let combined = upload.mediaID + "|" + upload.keyBase64
-        RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
-        try await sendRandomEnvelope(
-            .voice(
-                id: local.id,
-                mediaID: upload.mediaID, mediaKey: upload.keyBase64,
-                durationSec: durationSec,
-                replyTo: replyTo
-            ),
-            to: peer,
-            localID: local.id
-        )
-    }
-
-    func sendVideo(processed: VideoProcessor.Output, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        let local = Message(
-            thread: .peer(uin: peer.uin),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .video,
-            text: caption ?? "",
-            mediaID: nil,
-            thumbnailB64: processed.thumbnailB64,
-            durationSec: processed.durationSec,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        RandomChatService.shared.append(local)
-        defer { try? FileManager.default.removeItem(at: processed.url) }
-        MediaProgressStore.shared.begin(local.id)
-        let upload: MediaService.UploadResult
-        do {
-            upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
-                MediaProgressStore.shared.set(local.id, value: p)
-            }
-        } catch {
-            MediaProgressStore.shared.clear(local.id)
-            RandomChatService.shared.updateState(messageID: local.id, to: .failed)
-            throw error
-        }
-        MediaProgressStore.shared.clear(local.id)
-        let combined = upload.mediaID + "|" + upload.keyBase64
-        RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
-        try await sendRandomEnvelope(
-            .video(
-                id: local.id,
-                mediaID: upload.mediaID, mediaKey: upload.keyBase64,
-                thumbnailB64: processed.thumbnailB64,
-                durationSec: processed.durationSec,
-                caption: caption,
-                replyTo: replyTo,
-                albumID: albumID
-            ),
-            to: peer,
-            localID: local.id
-        )
-    }
-
-    private func sendRandomEnvelope(_ envelope: Envelope, to peer: RandomPeer, localID: UUID?) async throws {
-        let bundle = PeerBundle(uin: peer.uin, identityKey: peer.identityKey, signingKey: peer.signingKey)
-        let blob = try crypto.encrypt(envelope: envelope, for: bundle)
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
-        struct Out: Decodable { let delivered: Bool; let queued: Bool }
-        do {
-            let out: Out = try await APIClient.shared.request(
-                "POST", "/messages/sealed",
-                body: Body(to_uin: peer.uin, envelope_type: "message", payload: blob),
-                authenticated: false
-            )
-            if let localID {
-                let next: DeliveryState = out.delivered ? .delivered : (out.queued ? .sent : .failed)
-                RandomChatService.shared.updateState(messageID: localID, to: next)
-            }
-            playSentSound(for: envelope)
-        } catch {
-            if let localID {
-                RandomChatService.shared.updateState(messageID: localID, to: .failed)
-            }
-            throw error
-        }
-    }
-
-    // MARK: - sending (group)
-
-    func send(text: String, to group: RCQGroup, replyTo: ReplyContext? = nil) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .text,
-            text: text,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName
-        )
-        MessageStore.shared.append(local)
-        // Detach — fan-out is N×crypto rounds, would otherwise hang the composer.
-        Task { [weak self] in
-            try? await self?.sendGroupEnvelope(.text(id: local.id, text: text, ttl: ttl, replyTo: replyTo), to: group, localID: local.id)
-        }
-    }
-
-    func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .photo,
-            text: caption ?? "",
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        Task { [weak self] in
-            guard let self else { return }
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadImage(image) { p in
-                    MediaProgressStore.shared.set(local.id, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(local.id)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
-            try? await self.sendGroupEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
-                to: group, localID: local.id
-            )
-        }
-    }
-
-    /// Group GIF send. Same envelope shape as `sendPhoto`; raw bytes
-    /// flow through `uploadGIF`.
-    func sendGIF(data: Data, preview: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .photo,
-            text: caption ?? "",
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        Task { [weak self] in
-            guard let self else { return }
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadGIF(data: data) { p in
-                    MediaProgressStore.shared.set(local.id, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(local.id)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
-            try? await self.sendGroupEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
-                to: group, localID: local.id
-            )
-        }
-    }
-
-    func sendVoice(fileURL: URL, durationSec: Double, to group: RCQGroup, replyTo: ReplyContext? = nil) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .voice,
-            text: "",
-            mediaID: nil,
-            durationSec: durationSec,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        Task { [weak self] in
-            guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
-                    MediaProgressStore.shared.set(local.id, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(local.id)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
-            try? await self.sendGroupEnvelope(
-                .voice(
-                    id: local.id,
-                    mediaID: upload.mediaID, mediaKey: upload.keyBase64,
-                    durationSec: durationSec,
-                    ttl: ttl,
-                    replyTo: replyTo
-                ),
-                to: group, localID: local.id
-            )
-        }
-    }
-
-    func sendFile(
-        fileURL: URL,
-        fileName: String,
-        mime: String,
-        sizeBytes: Int,
-        payJetons: Int = 0,
-        to group: RCQGroup,
-        caption: String? = nil,
-        replyTo: ReplyContext? = nil,
-    ) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .file,
-            text: caption ?? "",
-            mediaID: nil,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            fileName: fileName,
-            fileMime: mime,
-            fileSizeBytes: sizeBytes,
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        Task { [weak self] in
-            guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL, payJetons: payJetons) { p in
-                    MediaProgressStore.shared.set(local.id, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(local.id)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
-            try? await self.sendGroupEnvelope(
-                .file(
-                    id: local.id,
-                    mediaID: upload.mediaID, mediaKey: upload.keyBase64,
-                    fileName: fileName, mime: mime, sizeBytes: sizeBytes,
-                    caption: caption,
-                    ttl: ttl,
-                    replyTo: replyTo
-                ),
-                to: group, localID: local.id
-            )
-        }
-    }
-
-    func sendLocation(
-        latitude: Double,
-        longitude: Double,
-        to group: RCQGroup,
-        caption: String? = nil,
-        replyTo: ReplyContext? = nil,
-    ) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .location,
-            text: caption ?? "",
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            latitude: latitude,
-            longitude: longitude,
-        )
-        MessageStore.shared.append(local)
-        try await sendGroupEnvelope(
-            .location(
-                id: local.id,
-                lat: latitude, lng: longitude,
-                caption: caption,
-                ttl: ttl,
-                replyTo: replyTo
-            ),
-            to: group, localID: local.id
-        )
-    }
-
-    func sendVideo(
-        from sourceURL: URL,
-        previewThumbnailB64: String,
-        to group: RCQGroup,
-        caption: String? = nil,
-        replyTo: ReplyContext? = nil,
-        albumID: UUID? = nil,
-    ) async throws {
-        let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
-        let local = Message(
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .video,
-            text: caption ?? "",
-            mediaID: nil,
-            thumbnailB64: previewThumbnailB64.isEmpty ? nil : previewThumbnailB64,
-            durationSec: 0,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(local.id)
-        Task { [weak self] in
-            guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: sourceURL) }
-            let processed: VideoProcessor.Output
-            do {
-                processed = try await VideoProcessor.process(sourceURL: sourceURL)
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MessageStore.shared.updateVideoMeta(
-                messageID: local.id, thread: .group(id: group.id),
-                thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
-            )
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
-                    MediaProgressStore.shared.set(local.id, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(local.id)
-                MessageStore.shared.updateState(messageID: local.id, thread: .group(id: group.id), state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(local.id)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
-            try? await self.sendGroupEnvelope(
-                .video(
-                    id: local.id,
-                    mediaID: upload.mediaID, mediaKey: upload.keyBase64,
-                    thumbnailB64: processed.thumbnailB64,
-                    durationSec: processed.durationSec,
-                    caption: caption,
-                    ttl: ttl,
-                    replyTo: replyTo,
-                    albumID: albumID
-                ),
-                to: group, localID: local.id
-            )
-        }
-    }
-
-    func deleteForEveryone(message: Message, in group: RCQGroup) async throws {
-        // Local drop first — fan-out is too slow to animate against.
-        MessageStore.shared.deleteLocal(messageID: message.id, thread: .group(id: group.id))
-        try await sendGroupEnvelope(
-            .deleteForEveryone(targetID: message.id), to: group, localID: nil
-        )
-    }
-
     // MARK: - premium content (paywalled media)
 
     private struct PremiumRecipient {
@@ -1195,9 +677,11 @@ final class MessageService {
         Task { [weak self] in
             guard let self else { return }
             defer { try? FileManager.default.removeItem(at: processed.url) }
+            let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
+            let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
+                upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
                     MediaProgressStore.shared.set(messageID, value: p)
                 }
             } catch {
@@ -1307,6 +791,8 @@ final class MessageService {
         let me = ownUIN
         let current = message.reactions[me]
         let newAsset: String? = (current == asset) ? nil : asset
+        // Auto-tick only when SETTING a reaction (not when toggling off).
+        if newAsset != nil { SmokeTracker.shared.tick(.sendReaction) }
         if case .randomPeer = target {
             RandomChatService.shared.applyReaction(targetID: message.id, uin: me, asset: newAsset)
         } else {
@@ -1379,7 +865,7 @@ final class MessageService {
         }
     }
 
-    private func sendGroupEnvelope(_ envelope: Envelope, to group: RCQGroup, localID: UUID?) async throws {
+    func sendGroupEnvelope(_ envelope: Envelope, to group: RCQGroup, localID: UUID?) async throws {
         // Per-member encrypt (skipping self) — keeps sealed-sender intact
         // at the cost of N session encrypts vs one Sender-Keys groupEncrypt.
         struct Entry: Encodable { let to_uin: Int; let payload: String }
@@ -1512,13 +998,14 @@ final class MessageService {
         case .systemNotice(let id, _): return id
         case .premiumPhoto(let id, _, _, _, _, _, _, _, _): return id
         case .premiumVideo(let id, _, _, _, _, _, _, _, _, _): return id
+        case .poll(let id, _, _, _, _, _): return id
         default: return nil
         }
     }
 
-    private func playSentSound(for envelope: Envelope) {
+    func playSentSound(for envelope: Envelope) {
         switch envelope {
-        case .text, .photo, .voice, .premiumPhoto, .premiumVideo: SoundService.shared.play(.messageSent)
+        case .text, .photo, .voice, .premiumPhoto, .premiumVideo, .poll: SoundService.shared.play(.messageSent)
         default: break
         }
     }
@@ -1862,6 +1349,30 @@ final class MessageService {
                     premiumPriceTokens: price,
                     premiumUnlocked: false,
                     albumID: album
+                ))
+            case .poll(let id, let pollID, let question, let options, let singleChoice, let anonymous):
+                // Bubble keeps the question + options + flags as a
+                // small JSON blob inside `text` — the renderer parses
+                // it via `PollPayload.decode`. Server-side vote
+                // tallies fetched on demand via /polls/{pollID}.
+                let payload = PollPayload(
+                    question: question,
+                    options: options,
+                    singleChoice: singleChoice,
+                    anonymous: anonymous
+                )
+                let encoded = (try? JSONEncoder().encode(payload))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? question
+                inserted = MessageStore.shared.append(Message(
+                    id: id,
+                    thread: thread,
+                    senderUIN: decrypted.senderUIN,
+                    isFromMe: decrypted.senderUIN == ownUIN,
+                    kind: .poll, text: encoded,
+                    sentAt: ws.serverTime,
+                    deliveryState: .delivered,
+                    receivedWhileAway: ws.offline,
+                    pollID: pollID
                 ))
             case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album):
                 inserted = MessageStore.shared.append(Message(

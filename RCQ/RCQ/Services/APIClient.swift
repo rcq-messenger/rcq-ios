@@ -19,7 +19,12 @@ actor APIClient {
 
     static let prodBaseURL = "https://api.rcq.app"
 
-    nonisolated let baseURL: URL = APIClient.defaultBaseURL()
+    /// Computed (not stored) so UserDefaults changes — namely the
+    /// censorship-fallback `rcq.proxyURL` flipped from Settings —
+    /// take effect on the next request without an app relaunch. The
+    /// nonisolated marker keeps existing call sites
+    /// (`APIClient.shared.baseURL`) drop-in.
+    nonisolated var baseURL: URL { APIClient.defaultBaseURL() }
     private var token: String?
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -96,7 +101,19 @@ actor APIClient {
         return count > 0 ? (mutable as String) : nil
     }
 
+    /// `rcq.proxyURL` wins when set — Settings exposes a free-form
+    /// override the user enables when `api.rcq.app` is blocked
+    /// (typically a Cloudflare Worker URL we publish out-of-band).
+    /// `rcq.baseURL` is the dev / closed-beta override pointing at
+    /// staging. Falls back to prod when neither is set. Trailing
+    /// slash is stripped so `baseURL.appendingPathComponent` works.
     private static func defaultBaseURL() -> URL {
+        if let proxy = UserDefaults.standard.string(forKey: "rcq.proxyURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !proxy.isEmpty,
+           let url = URL(string: proxy) {
+            return url
+        }
         if let override = UserDefaults.standard.string(forKey: "rcq.baseURL"),
            let url = URL(string: override) {
             return url
@@ -290,6 +307,66 @@ actor APIClient {
             throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
         }
         return try decoder.decode(T.self, from: data)
+    }
+}
+
+// MARK: - Reputation
+
+struct ReputationGrantOut: Decodable {
+    let targetUIN: Int
+    let targetReputation: Int
+    let donorBalance: Int
+
+    enum CodingKeys: String, CodingKey {
+        case targetUIN = "target_uin"
+        case targetReputation = "target_reputation"
+        case donorBalance = "donor_balance"
+    }
+}
+
+/// `grantReputation` returns this on failure — already-localized
+/// error string so call sites just display `.message` to the user.
+struct ReputationGrantError: Error {
+    let message: String
+}
+
+extension APIClient {
+    /// Grant `amount` reputation to `targetUIN`, burning `amount` jettons
+    /// from the caller's wallet. Returns the post-grant authoritative
+    /// totals on success, or a human-readable error string on failure
+    /// (already mapped from the typed server error codes).
+    func grantReputation(
+        targetUIN: Int,
+        amount: Int,
+        anonymous: Bool
+    ) async -> Result<ReputationGrantOut, ReputationGrantError> {
+        struct Body: Encodable {
+            let target_uin: Int
+            let amount: Int
+            let anonymous: Bool
+        }
+        do {
+            let out: ReputationGrantOut = try await request(
+                "POST", "/reputation/grant",
+                body: Body(target_uin: targetUIN, amount: amount, anonymous: anonymous),
+            )
+            return .success(out)
+        } catch APIError.http(402, let body) {
+            // Server distinguishes insufficient_tokens, but a single
+            // "not enough jettons" line covers the only case where we
+            // hit 402 from this path (the wallet check is the only
+            // gate). Carry the typed code through for future error UI.
+            _ = body
+            return .failure(.init(message: "reputation.give.error_insufficient".localized))
+        } catch APIError.http(404, _) {
+            return .failure(.init(message: "reputation.give.error_target_missing".localized))
+        } catch APIError.http(429, _) {
+            return .failure(.init(message: "reputation.give.error_rate_limited".localized))
+        } catch APIError.http(400, let body) where (body ?? "").contains("self_grant") {
+            return .failure(.init(message: "reputation.give.error_self".localized))
+        } catch {
+            return .failure(.init(message: "reputation.give.error_generic".localized))
+        }
     }
 }
 

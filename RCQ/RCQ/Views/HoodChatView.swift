@@ -86,7 +86,10 @@ struct HoodChatView: View {
                     }
                 }
             }
-            .task { await service.join(bucket: bucket) }
+            .task {
+                SmokeTracker.shared.tick(.visitHood)
+                await service.join(bucket: bucket)
+            }
             // leave() drops the subscription so other viewers' bucket_count badge ticks down.
             .onDisappear { service.leave() }
             .sheet(item: $profileTarget) { target in

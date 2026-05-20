@@ -52,6 +52,13 @@ final class MessageRecord: NSManagedObject {
     /// kind has them as nil. Doubles map cleanly to CoreData.
     @NSManaged var latitude: NSNumber?
     @NSManaged var longitude: NSNumber?
+    /// Server-side poll id for `.poll` messages. `0` for non-poll
+    /// rows; the model layer normalises back to `Int?`. Without
+    /// this, polls restored from CoreData lost their server id and
+    /// the bubble couldn't close / refetch tallies — the Close
+    /// button rendered but the tap silently no-op'd because
+    /// `message.pollID` was nil.
+    @NSManaged var pollID: Int64
 }
 
 @MainActor
@@ -162,6 +169,10 @@ final class MessageDB {
             attr("fileSizeBytes",      .integer64AttributeType, defaultValue: 0),
             attr("latitude",           .doubleAttributeType, optional: true),
             attr("longitude",          .doubleAttributeType, optional: true),
+            // `0` default keeps lightweight migration happy on
+            // existing stores — non-poll rows just hold 0, the
+            // model layer surfaces it as nil.
+            attr("pollID",             .integer64AttributeType, defaultValue: 0),
         ]
         let model = NSManagedObjectModel()
         model.entities = [entity]
@@ -302,6 +313,7 @@ final class MessageDB {
         row.fileSizeBytes = Int64(msg.fileSizeBytes ?? 0)
         row.latitude = msg.latitude.map { NSNumber(value: $0) }
         row.longitude = msg.longitude.map { NSNumber(value: $0) }
+        row.pollID = Int64(msg.pollID ?? 0)
     }
 
     private static func toModel(_ row: MessageRecord) -> Message {
@@ -333,7 +345,8 @@ final class MessageDB {
             fileMime: (row.fileMime?.isEmpty == false) ? row.fileMime : nil,
             fileSizeBytes: row.fileSizeBytes > 0 ? Int(row.fileSizeBytes) : nil,
             latitude: row.latitude?.doubleValue,
-            longitude: row.longitude?.doubleValue
+            longitude: row.longitude?.doubleValue,
+            pollID: row.pollID > 0 ? Int(row.pollID) : nil
         )
     }
 

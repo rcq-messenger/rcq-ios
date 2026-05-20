@@ -32,7 +32,13 @@ enum VideoProcessor {
     }
 
     static let maxDurationSec: Double = 120
-    static let maxBytes: Int = 30 * 1024 * 1024
+    // Compressed-size cap — matches the absolute network ceiling
+    // enforced by `MediaService.maxBlobBytes`. Was 30 MB historically,
+    // which silently rejected anything heavier even when the user
+    // had paid traffic enabled — the `PaidTrafficConfirmSheet` now
+    // handles oversize-vs-budget at the queue level, so the only
+    // remaining job here is the absolute "too big to network" guard.
+    static let maxBytes: Int = 2 * 1024 * 1024 * 1024
 
     static func process(sourceURL: URL) async throws -> Output {
         let asset = AVURLAsset(url: sourceURL)

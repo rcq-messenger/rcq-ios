@@ -17,6 +17,14 @@ struct LootboxView: View {
     @State private var pendingOutcome: PullOutcome?
     @State private var carouselKinds: [ItemKind] = []
     @AppStorage("rcq.lootbox.skip_spin") private var skipSpin: Bool = false
+    /// Pet-boost slider position [0,1] — persists so the user's
+    /// preference survives across opens + app launches.
+    @AppStorage("rcq.lootbox.pet_boost") private var petBoost: Double = 0
+
+    /// Token cost for the next pull at the current boost.
+    private var currentPullCost: Int {
+        items.catalog?.boostedPullCost(petBoost) ?? (items.catalog?.pullCost ?? 2)
+    }
 
     // ID of an item pulled but not yet revealed; hidden from history until reveal lands.
     private var inFlightID: String? {
@@ -64,7 +72,7 @@ struct LootboxView: View {
                 RevealOverlay(
                     item: item,
                     catalog: items.catalog,
-                    canRepeat: items.wallet.tokens > 0,
+                    canRepeat: items.wallet.tokens >= currentPullCost,
                     onDismiss: { revealTarget = nil },
                     onCloseToInventory: {
                         revealTarget = nil
@@ -75,7 +83,7 @@ struct LootboxView: View {
             case .scroll(let count):
                 ScrollRevealOverlay(
                     count: count,
-                    canRepeat: items.wallet.tokens > 0,
+                    canRepeat: items.wallet.tokens >= currentPullCost,
                     onDismiss: { revealTarget = nil },
                     onCloseToInventory: {
                         revealTarget = nil
@@ -160,12 +168,24 @@ struct LootboxView: View {
 
             availabilityRow
 
+            petBoostPanel
+
             VStack(spacing: 4) {
+                let canAfford = items.wallet.tokens >= currentPullCost
                 Button {
-                    Task { await rollOnce() }
+                    // When the boosted price is out of reach, the tap
+                    // routes to the token shop instead of being inert —
+                    // a disabled button gave no feedback and read as a
+                    // bug ("выкрутил ползунок, жму Pull, ничего").
+                    if canAfford {
+                        Task { await rollOnce() }
+                    } else {
+                        showShop = true
+                    }
                 } label: {
-                    let canAfford = items.wallet.tokens >= (items.catalog?.pullCost ?? 2)
-                    Text((rolling ? "lootbox.button.pulling" : "lootbox.button.pull").localized)
+                    Text((rolling
+                          ? "lootbox.button.pulling"
+                          : (canAfford ? "lootbox.button.pull" : "lootbox.button.need_tokens")).localized)
                         .font(.system(.body, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -175,17 +195,55 @@ struct LootboxView: View {
                                     : Theme.Color.divider)
                         .cornerRadius(8)
                 }
-                .disabled(items.wallet.tokens < (items.catalog?.pullCost ?? 2) || rolling)
+                .disabled(rolling)
                 HStack(spacing: 4) {
                     ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                         .frame(width: 14, height: 14)
-                    Text(String(format: "lootbox.cost.per_open".localized, items.catalog?.pullCost ?? 2))
+                    Text(String(format: "lootbox.cost.per_open".localized, currentPullCost))
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
+                        .foregroundColor(petBoost > 0 ? Theme.Color.accent : Theme.Color.textSecondary)
                     Spacer()
                 }
                 .padding(.leading, 4)
             }
+        }
+    }
+
+    /// Pet-boost slider — drags pet drop-odds up (and the price with
+    /// them). Re-weights the drop CATEGORY only; item rarity is rolled
+    /// separately and untouched. Live %/price readout is mirrored
+    /// client-side from the catalog constants; the server recomputes
+    /// authoritatively on open.
+    @ViewBuilder
+    private var petBoostPanel: some View {
+        if let catalog = items.catalog {
+            let petChance = catalog.boostedPetChance(petBoost)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.Color.accent)
+                    Text("lootbox.boost.title".localized)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .tracking(1.5)
+                    Spacer()
+                    Text(String(format: "lootbox.boost.chance".localized,
+                                Int((petChance * 100).rounded())))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Color.accent)
+                }
+                Slider(value: $petBoost, in: 0...1)
+                    .tint(Theme.Color.accent)
+                    .disabled(rolling)
+                Text("lootbox.boost.hint".localized)
+                    .font(.system(size: 10))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(Theme.Color.bgSecondary)
+            .cornerRadius(8)
         }
     }
 
@@ -194,13 +252,13 @@ struct LootboxView: View {
             HStack(spacing: 4) {
                 Text("lootbox.remaining".localized)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.Color.accent)
+                    .foregroundColor(Theme.Color.textSecondary)
                     .tracking(2)
                 ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
                     .frame(width: 16, height: 16)
-                Text("×\(items.wallet.tokens)")
+                Text("\(items.wallet.tokens)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.Color.accent)
+                    .foregroundColor(Theme.Color.textPrimary)
             }
             Spacer(minLength: 4)
             Button {
@@ -293,11 +351,10 @@ struct LootboxView: View {
 
     @MainActor
     private func rollOnce() async {
-        let cost = items.catalog?.pullCost ?? 2
-        guard items.wallet.tokens >= cost, !rolling else { return }
+        guard items.wallet.tokens >= currentPullCost, !rolling else { return }
         guard !carouselKinds.isEmpty else { return }
         rolling = true
-        let outcome = await items.openPull()
+        let outcome = await items.openPull(boost: petBoost)
         switch outcome {
         case .item(let item):
             if let idx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) {

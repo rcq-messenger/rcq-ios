@@ -24,12 +24,21 @@ struct SettingsView: View {
     @State private var showPrivacy = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
+    @State private var showProxyURL = false
+    @State private var showDailyQA = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
+    @AppStorage("rcq.trades.realtime_popup") private var tradeRealtimePopup: Bool = true
     // Foundation toggles — UI-only until routing + billing land.
     @AppStorage("rcq.network.vpn_enabled") private var vpnEnabled: Bool = false
     @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles: Bool = false
+    // Free-form proxy URL — when non-empty, APIClient routes every
+    // request through it (HTTPS API + WebSocket). Used when the
+    // primary `api.rcq.app` domain is blocked. The user copies a
+    // Worker URL from our published fallbacks (rcq.app/proxy or
+    // chat banner) and pastes it here.
+    @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
     @State private var trafficUsage: MediaService.TrafficUsage?
 
     var body: some View {
@@ -175,36 +184,54 @@ struct SettingsView: View {
                             }
                         }
                         .tint(Theme.Color.accent)
+                        Toggle(isOn: $tradeRealtimePopup) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.trades.realtime".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.trades.realtime.footer".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
                     Section {
-                        HStack(alignment: .firstTextBaseline) {
-                            Image(systemName: "shield.lefthalf.filled")
-                                .foregroundColor(Theme.Color.accent)
-                            VStack(alignment: .leading, spacing: 2) {
+                        Button {
+                            showProxyURL = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "shield.lefthalf.filled")
+                                    .foregroundColor(Theme.Color.accent)
+                                    .frame(width: 24)
                                 Text("settings.network.proxy".localized)
                                     .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.network.proxy.footer".localized)
+                                Spacer()
+                                Text(proxyURL.isEmpty
+                                     ? "settings.network.proxy.unset".localized
+                                     : proxyURL)
+                                    .font(.caption2.monospaced())
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Image(systemName: "chevron.right")
                                     .font(.caption2)
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
-                            Spacer()
-                            Toggle("", isOn: $vpnEnabled)
-                                .labelsHidden()
-                                .tint(Theme.Color.accent)
-                                .disabled(true)
-                        }
-                        HStack {
-                            Image(systemName: "clock.badge.checkmark")
-                                .foregroundColor(Theme.Color.textSecondary)
-                            Text("settings.network.coming_soon".localized)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundColor(Theme.Color.textSecondary)
-                            Spacer()
                         }
                     } header: {
                         Text("settings.network".localized)
+                    } footer: {
+                        // Explanatory copy lives in the footer so it
+                        // wraps freely without fighting the Form row's
+                        // line-clamp. Mentions what the field does
+                        // and where to get a URL when the user
+                        // actually needs it (we publish proxy URLs
+                        // out-of-band via the landing page + News
+                        // when blocking gets active).
+                        Text("settings.network.proxy.footer".localized)
+                            .font(.caption2)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -234,17 +261,20 @@ struct SettingsView: View {
                             }
                         }
                         Toggle(isOn: $payForLargeFiles) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.traffic.pay_large".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.traffic.pay_large.footer".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
+                            Text("settings.traffic.pay_large".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
                         }
                         .tint(Theme.Color.accent)
                     } header: {
                         Text("settings.traffic".localized)
+                    } footer: {
+                        // Section footer renders the multi-line
+                        // explanation. Putting it inside the Toggle
+                        // label clamped to a single truncated line
+                        // even with `fixedSize` — the Form row's
+                        // intrinsic height fights the text wrap.
+                        Text("settings.traffic.pay_large.footer".localized)
+                            .font(.caption2)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -341,36 +371,7 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     #endif
 
-                    Section {
-                        Button {
-                            showAbout = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "info.circle").foregroundColor(Theme.Color.accent)
-                                Text("settings.account.about".localized).foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Text(appVersion)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button {
-                            showBugBounty = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "ladybug.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.account.bug_bounty".localized).foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
+                    aboutAndBugBountySection
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -386,6 +387,8 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
+            .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
+            .sheet(isPresented: $showDailyQA) { DailyQASheet() }
             .sheet(isPresented: $showShop) {
                 BuyTokensSheet()
                     .presentationDetents([.medium, .large])
@@ -476,6 +479,13 @@ struct SettingsView: View {
                 trafficUsage = await MediaService.shared.fetchTrafficUsage()
             }
         }
+        // Apply the active theme to the Settings sheet itself. A
+        // `.sheet` is its own presentation context and does NOT
+        // inherit the root's `.preferredColorScheme`, so flipping the
+        // theme picker used to restyle the app behind the sheet but
+        // leave the Settings window on the old scheme until reopened.
+        // `theme` is observed, so this re-applies live on every flip.
+        .preferredColorScheme(theme.theme.colorScheme)
     }
 
     /// "23.4 MB" — formatted from `trafficUsage.bytesUsed` for the
@@ -501,6 +511,57 @@ struct SettingsView: View {
                     .foregroundColor(Theme.Color.accent)
             }
         }
+    }
+
+    /// Extracted to keep `body` under the Swift type-checker's
+    /// complexity ceiling. The Form's other 10+ sections were already
+    /// hovering at the limit; folding the bug-bounty section plus the
+    /// `BountyCreditsCard` into one closure pushed it over.
+    @ViewBuilder
+    private var aboutAndBugBountySection: some View {
+        Section {
+            Button {
+                showAbout = true
+            } label: {
+                HStack {
+                    Image(systemName: "info.circle").foregroundColor(Theme.Color.accent)
+                    Text("settings.account.about".localized).foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(appVersion)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            Button {
+                showBugBounty = true
+            } label: {
+                HStack {
+                    Image(systemName: "ladybug.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.account.bug_bounty".localized).foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            BountyCreditsCard()
+            Button {
+                showDailyQA = true
+            } label: {
+                HStack {
+                    Image(systemName: "checklist").foregroundColor(Theme.Color.accent)
+                    Text("smoke.title".localized).foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     @ViewBuilder

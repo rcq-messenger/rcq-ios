@@ -106,15 +106,19 @@ final class ItemsService: ObservableObject {
 
     // MARK: - Pull
 
-    /// Open one box. Returns either an item or a scroll bundle.
+    /// Open one box. `boost` is the pet-boost slider position [0,1] —
+    /// raises pet odds + price. Returns either an item or a scroll
+    /// bundle.
     @discardableResult
-    func openPull() async -> PullOutcome? {
-        let cost = catalog?.pullCost ?? 2
+    func openPull(boost: Double = 0) async -> PullOutcome? {
+        let cost = catalog?.boostedPullCost(boost) ?? (catalog?.pullCost ?? 2)
         guard wallet.tokens >= cost else { return nil }
+        SmokeTracker.shared.tick(.openLootbox)
+        struct OpenPullBody: Encodable { let boost: Double }
         do {
             let res: PullResultResponse = try await APIClient.shared.request(
                 "POST", "/pulls/open",
-                body: EmptyBody(),
+                body: OpenPullBody(boost: boost),
             )
             self.wallet = res.wallet
             switch res.outcome {

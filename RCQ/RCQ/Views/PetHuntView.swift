@@ -418,18 +418,25 @@ struct PetHuntView: View {
             VStack(spacing: 4) {
                 Text("pet_hunt.send".localized)
                     .font(.system(.headline, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(canHunt ? .white : Theme.Color.textPrimary.opacity(0.55))
                 Text(String(format: "pet_hunt.hunts_left".localized, huntsLeft, svc.state?.huntsPerDay ?? 3))
                     .font(.caption.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(canHunt ? .white.opacity(0.85) : Theme.Color.textSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(
+                // Inactive state used `Theme.Color.divider` (very pale)
+                // — on light backgrounds the whole button visually
+                // disappeared and white text on near-white sat
+                // invisible. Swap to a muted brown gradient (same hue
+                // family as the active state, ~40% saturation) so the
+                // shape stays obvious and the disabled-vs-enabled
+                // distinction reads from contrast rather than presence.
                 LinearGradient(
                     colors: canHunt
                         ? [Color(hex: 0xD9923A), Color(hex: 0xB8702A)]
-                        : [Theme.Color.divider, Theme.Color.divider],
+                        : [Color(hex: 0xB89880).opacity(0.55), Color(hex: 0x8E715D).opacity(0.55)],
                     startPoint: .top, endPoint: .bottom,
                 )
             )

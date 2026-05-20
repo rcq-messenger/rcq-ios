@@ -338,6 +338,8 @@ struct JoinGroupSheet: View {
             alertMessage = String(format: "join_group.error.insufficient".localized, req, have)
         case .blocked:
             alertMessage = "join_group.error.blocked".localized
+        case .closed:
+            alertMessage = "group_join.closed_hint".localized
         case .other(let m):
             alertMessage = m.isEmpty ? "join_group.error.generic".localized : m
         }

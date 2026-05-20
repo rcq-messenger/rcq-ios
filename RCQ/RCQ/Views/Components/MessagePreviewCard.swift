@@ -62,13 +62,22 @@ struct MessagePreviewCard: View {
                     size: CGSize(width: 240, height: 240),
                 )
             case .voice:
-                // Voice message in long-press preview. Reuse the chat
-                // row's voice bubble so the user sees the same waveform
-                // + duration they're acting on.
+                // Voice message in long-press preview. `VoiceBubble`
+                // brings its own bubble background (waveform inset on
+                // a tinted rounded rect), so we render it raw — the
+                // earlier extra `.padding + .background + .cornerRadius`
+                // wrapper produced a bubble-inside-bubble nested look
+                // not present on the real chat row.
                 VoiceBubble(message: message)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                    .cornerRadius(Theme.Metrics.bubbleRadius)
+            case .poll:
+                // The full `PollBubble` would trigger a /polls/{id}
+                // fetch + tap-to-vote scaffolding inside a read-only
+                // preview — too heavy. Render a compact card with
+                // just the question, the type chip, and the option
+                // labels so the user recognises what they
+                // long-pressed without the raw JSON the default
+                // `text` branch would otherwise show.
+                pollSummary
             default:
                 EmoticonText(text: message.text)
                     .lineLimit(6)
@@ -77,5 +86,43 @@ struct MessagePreviewCard: View {
                     .cornerRadius(Theme.Metrics.bubbleRadius)
             }
         }
+    }
+
+    @ViewBuilder
+    private var pollSummary: some View {
+        let payload = PollPayload.decode(from: message.text)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .foregroundColor(Theme.Color.accent)
+                Text(payload?.singleChoice ?? true
+                     ? "poll.header.single".localized
+                     : "poll.header.multi".localized)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+            }
+            Text(payload?.question ?? "chat.preview.poll".localized)
+                .font(.body.weight(.semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let options = payload?.options {
+                ForEach(Array(options.enumerated()), id: \.offset) { _, label in
+                    HStack(spacing: 6) {
+                        Image(systemName: "circle")
+                            .foregroundColor(Theme.Color.textSecondary)
+                        Text(label)
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius))
     }
 }

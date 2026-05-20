@@ -27,52 +27,91 @@ struct MessageActionOverlay: View {
     ]
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.regularMaterial)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { onDismiss() }
+        // Telegram-style overlay: bubble "lifts" to a comfortable
+        // position with reactions strip pinned ABOVE it and actions
+        // menu BELOW. For long messages we used to render the bubble
+        // at its natural height in a centered VStack, which pushed
+        // either the reactions strip off the top or the actions menu
+        // off the bottom — testers couldn't see either. Clamping the
+        // bubble's slot to ~45% of available height with internal
+        // scrolling keeps both anchors on-screen for any message
+        // length.
+        GeometryReader { geo in
+            let safeHeight = geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
+            // Reserve enough room for the two anchor panels + label
+            // + spacing; the bubble takes whatever's left of the
+            // ~45% budget, with a floor so short messages don't get
+            // squished.
+            let bubbleMaxHeight = max(140, safeHeight * 0.45)
+            ZStack {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onDismiss() }
 
-            VStack(spacing: 10) {
-                reactionsPanel
-                VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                    Text(senderNickname)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
-                    MessagePreviewCard(message: message)
+                VStack(spacing: 10) {
+                    reactionsPanel
+                    ScrollView {
+                        VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
+                            Text(senderNickname)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Theme.Color.accent)
+                                // Truncate long group nicknames so a
+                                // 30-char handle doesn't wrap to two
+                                // lines and break the 45% height budget
+                                // calculated above.
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            MessagePreviewCard(message: message)
+                        }
+                        .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
+                    }
+                    .frame(maxHeight: bubbleMaxHeight)
+                    actionsPanel
+                        .frame(width: 260)
                 }
-                .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
-                actionsPanel
-                    .frame(width: 260)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
         }
     }
 
     // MARK: - reactions
 
     private var reactionsPanel: some View {
-        HStack(spacing: 2) {
-            ForEach(Self.assets, id: \.self) { asset in
-                Button {
-                    onReact(asset)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onDismiss()
-                } label: {
-                    ZStack {
-                        if message.reactions.values.contains(asset) {
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(Theme.Color.accent.opacity(0.3))
+        // ScrollView would happily expand to the parent's full width
+        // (was: pill stretched edge-to-edge on every device). Wrap in
+        // an HStack with `fixedSize` on horizontal so the ScrollView
+        // sizes to its CONTENT and only kicks scrolling when the row
+        // genuinely overflows (small width + Dynamic Type). The
+        // outer cap of 320pt prevents the pill from ballooning past
+        // a comfortable reading width even when content fits.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(Self.assets, id: \.self) { asset in
+                    Button {
+                        onReact(asset)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onDismiss()
+                    } label: {
+                        ZStack {
+                            if message.reactions.values.contains(asset) {
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(Theme.Color.accent.opacity(0.3))
+                            }
+                            GIFImage(name: asset)
+                                .frame(width: 30, height: 30)
                         }
-                        GIFImage(name: asset)
-                            .frame(width: 30, height: 30)
+                        .frame(width: 42, height: 42)
                     }
-                    .frame(width: 42, height: 42)
                 }
             }
+            .padding(.horizontal, 6).padding(.vertical, 4)
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+        .frame(maxWidth: 320)
+        .fixedSize(horizontal: true, vertical: false)
         .background(panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: 26))
         .shadow(color: .black.opacity(0.18), radius: 14, y: 4)

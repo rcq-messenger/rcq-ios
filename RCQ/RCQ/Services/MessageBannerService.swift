@@ -27,6 +27,9 @@ final class MessageBannerService: ObservableObject {
     enum Target: Equatable {
         case thread(ThreadID)
         case auction
+        // Reputation grants — no tap routing; the banner is informational
+        // ("you received +N reputation"). Tap dismisses, that's it.
+        case reputation
     }
 
     struct Banner: Identifiable, Equatable {

@@ -14,6 +14,7 @@ struct InventoryView: View {
     @State private var showMarket = false
     @State private var showMemorial = false
     @State private var showOwnedUINs = false
+    @State private var showLeaderboard = false
     @State private var detailItem: Item?
     @State private var lastError: String?
 
@@ -47,6 +48,7 @@ struct InventoryView: View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 Theme.Color.bgPrimary.ignoresSafeArea()
+                    .onAppear { SmokeTracker.shared.tick(.openInventory) }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         walletPanel
@@ -169,6 +171,10 @@ struct InventoryView: View {
                             }
                         }
                     }
+                    Button { showLeaderboard = true } label: {
+                        Label("inventory.menu.leaderboard".localized,
+                              systemImage: "trophy.fill")
+                    }
                     Spacer()
                 }
             }
@@ -201,6 +207,10 @@ struct InventoryView: View {
             }
             .sheet(isPresented: $showOwnedUINs) {
                 OwnedUINsSheet()
+                    .presentationDetents([.large])
+            }
+            .sheet(isPresented: $showLeaderboard) {
+                ReputationLeaderboardView()
                     .presentationDetents([.large])
             }
             .sheet(item: $detailItem) { item in

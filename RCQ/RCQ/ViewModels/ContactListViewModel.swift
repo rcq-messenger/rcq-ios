@@ -4,7 +4,11 @@ import Foundation
 @MainActor
 final class ContactListViewModel: ObservableObject {
     @Published var collapsedOnline: Bool = false
-    @Published var collapsedOffline: Bool = false
+    // Offline collapses by default — testers' feedback was that the
+    // long list of offline contacts pushed groups + audio rooms
+    // off-screen on first open. Online stays expanded so the
+    // "who's around right now" surface reads as live.
+    @Published var collapsedOffline: Bool = true
     /// Set once the first `refresh()` resolves. Gates the empty-state
     /// CTA so a cold launch with non-empty contacts doesn't flash the
     /// "Add contact" placeholder for one frame before the contacts

@@ -264,7 +264,12 @@ struct UinAuctionView: View {
     private func bidComposerBlock(_ a: UinAuction) -> some View {
         let canAfford = walletCoversMinBid
         let parsedBid = Int(bidInput.trimmingCharacters(in: .whitespaces)) ?? 0
-        let validBid = parsedBid >= svc.minNextBid && parsedBid <= items.wallet.tokens
+        // `parsedBid > 0` guards the window where `minNextBid` is
+        // still 0 (auction payload not loaded) — without it an empty
+        // field counted as a valid 0-token bid and the button armed.
+        let validBid = parsedBid > 0
+            && parsedBid >= svc.minNextBid
+            && parsedBid <= items.wallet.tokens
         return HStack(spacing: 10) {
             TextField(String(format: "uin_auction.bid_placeholder".localized, svc.minNextBid),
                       text: $bidInput)
@@ -377,6 +382,15 @@ struct UinAuctionView: View {
     // MARK: - actions
 
     private func place(bid: Int) async {
+        // Guard an empty / zero amount up front — without this the
+        // server bounced `amount: 0` with a raw HTTP 422 Pydantic
+        // dump shown verbatim in the alert. Can happen when the bid
+        // button isn't disabled yet (e.g. `minNextBid` still 0
+        // before the auction payload lands).
+        guard bid > 0 else {
+            alertMessage = "uin_auction.error.no_amount".localized
+            return
+        }
         let result = await svc.placeBid(amount: bid)
         switch result {
         case .success:

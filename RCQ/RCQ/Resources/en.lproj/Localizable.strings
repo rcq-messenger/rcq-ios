@@ -18,10 +18,13 @@
 "settings.sound.toggle" = "System sounds";
 "settings.minis.toggle" = "Game minis";
 "settings.minis.toggle.footer" = "Show floating Crash and UIN auction widgets on the chat list so you can keep an eye on a round or a bid without staying inside the game.";
+"settings.trades.realtime" = "Real-time trade pop-ups";
+"settings.trades.realtime.footer" = "When on, an incoming trade opens immediately. Off — trades wait quietly in the Trades window and in the chat with the sender.";
 "settings.language" = "Language";
 "settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
 
 "settings.privacy" = "Privacy";
+"settings.privacy.profile" = "Profile visible to";
 "settings.privacy.last_seen" = "Last seen visible to";
 "settings.privacy.gender" = "Gender";
 "settings.privacy.gender_visible" = "Gender visible to";
@@ -35,6 +38,7 @@
 "settings.privacy.scope.contacts" = "Contacts only";
 "settings.privacy.scope.nobody" = "Nobody";
 "settings.privacy.footer" = "Last seen — who sees your online timestamp. Gender — opt-in info that respects its own visibility scope. Group invites — \"Contacts only\" lets people in your contacts add you to groups; \"Nobody\" blocks unsolicited adds entirely. Trade offers — same shape; \"Nobody\" blocks every incoming trade including gifts. Calls — \"Nobody\" hides every call button in the app; \"Contacts\" only allows calls between mutual contacts.";
+"settings.privacy.profile.desc" = "Who can see your name, age, city, country, interests, homepage, and \"about\" text. Nickname, UIN, online status, and equipped pet stay visible to everyone — those are needed for chat to work.";
 "settings.privacy.last_seen.desc" = "Who can see your online timestamp. \"Nobody\" hides it entirely.";
 "settings.privacy.gender_visible.desc" = "Who can see the Gender field on your profile and next to your nickname in lists.";
 "settings.privacy.gender_visible.desc.empty" = "Pick a gender on your profile first — there's nothing to hide otherwise.";
@@ -45,21 +49,68 @@
 "settings.privacy.calls" = "Calls from";
 "settings.privacy.read_receipts" = "Read receipts to";
 "settings.privacy.read_receipts.desc" = "When you read a message, your contact sees the second checkmark. \"Nobody\" turns this off — you'll still see when others read yours.";
+"settings.privacy.reputation" = "Reputation visible to";
+"settings.privacy.reputation.desc" = "Who can see your reputation counter on your profile. Anyone can still grant you reputation — visibility only hides the running total.";
+
+"profile.reputation.label" = "reputation";
+"profile.reputation.give_short" = "Give";
+"profile.reputation.give_long" = "Give reputation";
+
+"reputation.give.title" = "Give reputation";
+"reputation.give.body" = "Spend tokens to give %@ +N reputation. Tokens are burned — they don't go to the recipient.";
+"reputation.give.amount_suffix" = "tokens → reputation";
+"reputation.give.balance" = "Balance: %d tokens";
+"reputation.give.anonymous" = "Send anonymously";
+"reputation.give.send" = "Send";
+"reputation.give.cancel" = "Cancel";
+"reputation.give.error_min" = "Minimum is %d tokens per gift.";
+"reputation.give.error_insufficient" = "Not enough tokens.";
+"reputation.give.error_target_missing" = "That user doesn't exist.";
+"reputation.give.error_rate_limited" = "Too many gifts — try again in a minute.";
+"reputation.give.error_self" = "You can't grant reputation to yourself.";
+"reputation.give.error_generic" = "Couldn't send the gift. Try again.";
+
+"reputation.toast.title" = "+%d reputation";
+"reputation.toast.body_anonymous" = "Anonymous gift";
+"reputation.toast.body_from" = "From UIN %d";
+
+"reputation.leaderboard.title" = "Leaderboard";
+"reputation.leaderboard.empty" = "Nobody on the board yet. Be the first.";
+"reputation.leaderboard.stat_ranked" = "ranked";
+"reputation.leaderboard.stat_total" = "total reputation";
+"reputation.leaderboard.stat_you" = "your rank";
+"reputation.info.title" = "About the leaderboard";
+"reputation.info.intro" = "Reputation is a public mark of trust other players give you. Here's how the board works.";
+"reputation.info.b1" = "The board ranks the top 100 players by total reputation received.";
+"reputation.info.b2" = "Anyone can grant you reputation by spending tokens on your profile — 1 token = 1 point.";
+"reputation.info.b3" = "If you set reputation visibility to Contacts or Nobody, you're hidden from the board entirely.";
+"reputation.info.b4" = "Reputation carries over when you migrate to a new UIN.";
+
+"reputation.history.title" = "Reputation history";
+"reputation.history.tab_received" = "Received";
+"reputation.history.tab_sent" = "Sent";
+"reputation.history.empty_received" = "No gifts received yet.";
+"reputation.history.empty_sent" = "You haven't given any reputation yet.";
+"reputation.history.anonymous" = "Anonymous";
+"reputation.history.amount_suffix" = "reputation";
+
+"inventory.menu.leaderboard" = "Leaderboard";
 
 "settings.inventory.public" = "Public inventory";
 "settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
 
 "settings.network" = "Privacy & network";
-"settings.network.proxy" = "Route traffic through proxy";
-"settings.network.proxy.footer" = "Hides your IP from peers; jetons cover relay cost.";
+"settings.network.proxy" = "Proxy URL";
+"settings.network.proxy.unset" = "Not set";
+"settings.network.proxy.footer" = "Leave empty for direct connection to api.rcq.app. If your network blocks RCQ, paste a proxy URL here — all chat + media traffic will route through it. We'll publish working URLs through our channels when blocking starts.";
 "settings.network.coming_soon" = "Coming soon";
 
 "settings.traffic" = "File traffic";
 "settings.traffic.used" = "Used this month";
 "settings.traffic.used.value" = "%d MB";
 "settings.traffic.spent" = "Spent";
-"settings.traffic.pay_large" = "Pay jetons for files > 50 MB";
-"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 jeton per 10 MB — no size limit while you have jetons.";
+"settings.traffic.pay_large" = "Pay tokens for files > 50 MB";
+"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 token per 10 MB — no size limit while you have tokens.";
 
 "settings.history" = "History";
 "settings.history.clear" = "Clear all chat history";
@@ -80,6 +131,7 @@
 "bug_bounty.how.b1" = "Describe the issue specifically: steps to reproduce, what you expected, what you got, your iOS version.";
 "bug_bounty.how.b2" = "We review reports manually. Validated bugs are paid in tokens per the table below.";
 "bug_bounty.how.b3" = "Duplicates of already-known bugs are not paid — be original.";
+"bug_bounty.how.b4" = "Rewards accrue as credits now and convert to tokens on release day.";
 "bug_bounty.section.tiers" = "TIERS";
 "bug_bounty.tier.critical" = "Critical (security / e2ee bypass / wallet)";
 "bug_bounty.tier.high" = "High (data leak / crash / economy)";
@@ -95,6 +147,107 @@
 "bug_bounty.alert.title" = "Bug Bounty";
 "bug_bounty.error.no_identity" = "Sign in first.";
 "bug_bounty.error.generic" = "Couldn't send: %@";
+"bug_bounty.error.attach" = "Couldn't attach: %@";
+"bug_bounty.attach.hint" = "Attach screenshots or a short clip — up to 3 files.";
+"bug_bounty.attach.cta" = "Add";
+
+"bounty_credits.title" = "Bug bounty credits";
+"bounty_credits.pending_suffix" = "unlocked at launch";
+"bounty_credits.loading" = "Loading your credits…";
+"bounty_credits.error" = "Couldn't load credits.";
+"bounty_credits.empty" = "No credits yet — find a bug or complete a daily checklist.";
+"bounty_credits.unlock_hint" = "Credits convert to tokens on launch day.";
+"bounty_credits.more" = "+ %d more…";
+"bounty_credits.see_all" = "View all (%d)";
+"bounty_credits.history_title" = "Bounty history";
+"bounty_credits.source.bug_bounty" = "Bug bounty";
+"bounty_credits.source.daily_qa" = "Daily checklist";
+
+"smoke.title" = "Daily QA";
+"smoke.progress" = "%d of %d done today";
+"smoke.loading" = "Loading today's checklist…";
+"smoke.error" = "Couldn't load today's checklist.";
+"smoke.reward_hint" = "Finish all today → +%d tokens in credits.";
+"smoke.minted" = "+%d tokens credited — see you tomorrow.";
+"smoke.item.send_message_1to1" = "Send a 1:1 message";
+"smoke.item.send_message_group" = "Send a message in a group";
+"smoke.item.open_lootbox" = "Open a lootbox";
+"smoke.item.send_gif" = "Send a GIF";
+"smoke.item.send_sticker" = "Send a sticker";
+"smoke.item.send_photo" = "Send a photo";
+"smoke.item.send_video" = "Send a video";
+"smoke.item.send_voice" = "Record a voice message";
+"smoke.item.send_location" = "Send a location pin";
+"smoke.item.place_crash_bet" = "Place a Crash bet";
+"smoke.item.play_hilo" = "Play a HiLo round";
+"smoke.item.play_limbo" = "Play a Limbo round";
+"smoke.item.visit_hood" = "Open your Hood chat";
+"smoke.item.drop_hood_banner" = "Drop a Hood banner";
+"smoke.item.create_audio_room" = "Create an audio room";
+"smoke.item.join_audio_room" = "Join an audio room";
+"smoke.item.pet_hunt" = "Send a pet to hunt";
+"smoke.item.buy_market" = "Buy something on the market";
+"smoke.item.list_market" = "List something on the market";
+"smoke.item.watch_story" = "Watch a story";
+"smoke.item.post_story" = "Post a story";
+"smoke.item.update_profile" = "Update your profile";
+"smoke.item.switch_theme" = "Switch the app theme";
+"smoke.item.open_inventory" = "Open your inventory";
+"smoke.item.send_reaction" = "React to a message";
+"smoke.item.reply_to_message" = "Reply to a message";
+
+"chat.attach.poll" = "Poll";
+"chat.attach.share_group" = "Invite";
+
+"share_group.title" = "Share a group";
+"share_group.empty" = "You're not a member of any groups yet.";
+"share_group.closed_tag" = "closed";
+
+"group_share.members" = "%d members";
+"group_share.free" = "Free to join";
+"group_share.closed_badge" = "Invite-only";
+
+"group_join.title" = "Join group";
+"group_join.loading" = "Loading…";
+"group_join.button" = "Join";
+"group_join.open_button" = "Open";
+"group_join.closed_button" = "Invite-only";
+"group_join.price_suffix" = "to join";
+"group_join.owner" = "Owner: %@";
+"group_join.owner_label" = "Owner";
+"group_join.closed_hint" = "This group is invite-only. Ask the owner to add you.";
+"group_join.insufficient" = "Need %d tokens, you have %d.";
+"group_join.error.generic" = "Couldn't load this group.";
+"group_join.error.blocked" = "The owner has blocked you from this group.";
+
+"group.settings.closed" = "Closed group";
+"group.settings.closed.hint" = "Only invitations from the owner add new members. The shared link still shows a preview but can't auto-join.";
+
+"paid_traffic.title" = "Pay for traffic?";
+"paid_traffic.body" = "This file is %@ — bigger than the free 50 MB cap. Enable paid traffic in Settings to send it.";
+"paid_traffic.price_suffix" = "this file";
+"paid_traffic.enable" = "Enable paid traffic";
+"paid_traffic.cancel" = "Cancel";
+"poll.compose.title" = "New poll";
+"poll.compose.question_header" = "QUESTION";
+"poll.compose.question_placeholder" = "What's the question?";
+"poll.compose.options_header" = "OPTIONS";
+"poll.compose.option_placeholder" = "Option %d";
+"poll.compose.add_option" = "Add option";
+"poll.compose.multi" = "Allow multiple answers";
+"poll.compose.anonymous" = "Anonymous votes";
+"poll.compose.flags_footer" = "Anonymous: the group can't see who voted for what. Multi: each member can pick several options.";
+"poll.compose.send" = "Send";
+"poll.header.single" = "Poll · single choice";
+"poll.header.multi" = "Poll · multiple choice";
+"poll.header.anonymous" = "anonymous";
+"poll.header.closed" = "closed";
+"poll.footer.total_votes" = "%d votes";
+"poll.row.more_voters" = "+%d more";
+"poll.footer.close" = "Close poll";
+"poll.error.parse" = "Couldn't read this poll.";
+"poll.error.vote" = "Couldn't save your vote.";
+"poll.error.close" = "Couldn't close.";
 
 "contact_list.ctx.report" = "Report";
 
@@ -114,7 +267,7 @@
 "settings.account.burn.confirm" = "Delete permanently";
 "settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone — they keep no link to your new identity. This cannot be undone.";
 "settings.account.burn.tally" = "%d items, %d tokens, %d gems";
-"settings.account.burn.message_inventory" = "Permanently deleting will destroy this account AND every collectible on it: %@. There's no recovery, no transfer to a new UIN — relics, founders, packs, currencies all gone. If you wanted to keep them, trade or gift them to another account first, then come back to delete.";
+"settings.account.burn.message_inventory" = "Permanently deleting will destroy this account AND every collectible on it: %@. There's no recovery, no transfer to a new UIN — pets, voices, packs, currencies all gone. If you wanted to keep them, trade or gift them to another account first, then come back to delete.";
 
 "settings.link_web" = "Link Web";
 "settings.share.message" = "Add me on RCQ — %@ (%d)";
@@ -143,7 +296,7 @@
 "common.next" = "Next";
 "common.back" = "Back";
 "common.error" = "Error";
-"common.error.insufficient" = "Not enough jetons";
+"common.error.insufficient" = "Not enough tokens";
 "common.error.already_done" = "Already done";
 "common.error.session_ended" = "Session ended — try the next round";
 "common.error.conflict" = "Conflict — try again";
@@ -354,6 +507,11 @@
 "contact_list.menu.search" = "Search";
 "contact_list.menu.saved" = "Saved Messages";
 "contact_list.menu.post_story" = "Post a story";
+"contact_list.menu.news" = "News";
+
+"news.title" = "News";
+"news.empty" = "No news yet.\nNew posts will appear here.";
+"news.gallery.failed" = "Couldn't load image.";
 "contact_list.saved_messages" = "Saved Messages";
 "contact_list.status_picker" = "Status";
 "contact_list.create_first_group" = "Create your first group";
@@ -437,7 +595,7 @@
 "chat.attach.photo" = "Photo";
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Camera";
-"chat.attach.premium" = "Premium content";
+"chat.attach.premium" = "Paid";
 "chat.attach.document" = "Document";
 "chat.attach.location" = "Location";
 "chat.location.title" = "Pick a location";
@@ -568,6 +726,8 @@
 "chat.preview.location" = "Location";
 "chat.preview.market_item" = "Marketplace item";
 "chat.preview.uin_listing" = "UIN listing";
+"chat.preview.group_invite" = "Group invite";
+"chat.preview.poll" = "Poll";
 "chat.preview.premium_photo" = "🔒 Premium photo";
 "chat.preview.premium_video" = "🔒 Premium video";
 "chat.preview.generic" = "Message";
@@ -596,12 +756,23 @@
 "group.section.members" = "Members (%d)";
 "group.section.manage" = "Manage";
 "group.section.settings" = "Settings";
+"group.section.description" = "Description";
+"group.description.placeholder" = "What is this group about?";
+"group.description.hint" = "Shown in Group Info";
 "group.settings.post_policy" = "Who can post";
 "group.settings.post_policy.all" = "Everyone";
 "group.settings.post_policy.owner_only" = "Owner only";
 "group.settings.post_policy.hint" = "In owner-only mode members can read but can't post.";
 "group.settings.entry_price" = "Entry price in tokens";
 "group.settings.entry_price.hint" = "0 = free. A 5% marketplace fee is withheld from every payment; the rest goes to the owner.";
+"group.settings.name" = "Group name";
+"group.settings.photo" = "Group photo";
+"group.settings.change_photo" = "Change photo";
+"group.settings.hide_members" = "Hide member list";
+"group.settings.hide_members.hint" = "Only you see who's in the group. Everyone else sees just the member count in Group Info.";
+"group.members.hidden" = "The member list is hidden by the owner.";
+"group.avatar.remove.confirm" = "Remove the group photo?";
+"group.unavailable" = "Group unavailable.";
 "group.compose.broadcast_only" = "Only the owner can post";
 "group.error.join_payment" = "Couldn't pay group entry";
 "group.cta.add_member" = "Add member";
@@ -667,7 +838,8 @@
 
 "about.title" = "About RCQ";
 "about.tagline" = "Same soul, modern crypto.";
-"about.body" = "RCQ is free forever. No ads, no data collection, no phone number. If you like what we're building — buy us a coffee.";
+"about.body" = "RCQ is free forever. No ads, no data collection, no phone number.";
+"about.stats.users" = "people on RCQ";
 "about.privacy.section" = "PRIVACY";
 "about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
 "about.privacy.b2" = "Sealed sender — server can't link who messages whom.";
@@ -849,7 +1021,7 @@
 "inventory.confirm.yield" = "You'll get: %d scrolls + %d tokens";
 "inventory.toast.gems" = "+%d";
 "inventory.empty.title" = "Inventory is empty";
-"inventory.empty.body" = "Open your first box — inside there's a smiley pack, a relic, or a handful of gems.";
+"inventory.empty.body" = "Open your first box — inside there's a smiley pack, a voice, a pet, or a handful of gems.";
 "inventory.tokens" = "Tokens";
 "inventory.gems" = "Gems";
 "inventory.button.open" = "Open";
@@ -863,13 +1035,18 @@
 "lootbox.title" = "Lootbox";
 "lootbox.kicker" = "OPEN A BOX";
 "lootbox.heading" = "Inside";
-"lootbox.subhead" = "A smiley pack, a relic, or a handful of gems.";
+"lootbox.subhead" = "A smiley pack, a voice, a pet, or a handful of gems.";
 "lootbox.view_pool" = "VIEW POOL";
 "lootbox.remaining" = "REMAINING";
 "lootbox.buy_more" = "BUY MORE";
 "lootbox.button.pull" = "Pull";
 "lootbox.button.pulling" = "Pulling…";
+"lootbox.button.need_tokens" = "Not enough — get tokens";
 "lootbox.cost.per_open" = "%d per open";
+"lootbox.boost.title" = "PET BOOST";
+"lootbox.boost.chance" = "pet chance %d%%";
+"lootbox.boost.hint" = "Slide up for a higher chance of pets instead of smileys and sounds. It only changes what kind of item drops — not its rarity — and raises the price per open.";
+"pool.boost_note" = "Odds shown with pet boost at %d%%.";
 "lootbox.recent" = "RECENT";
 "lootbox.recent.empty" = "Your last openings will appear here.";
 "lootbox.reveal.you_pulled" = "YOU PULLED";
@@ -900,6 +1077,21 @@
 "item.equipped" = "Equipped";
 "item.history.title" = "HISTORY";
 "item.history.loading" = "Loading…";
+
+"item.faq.title" = "How items work";
+"item.faq.intro" = "Every item you pull has hidden stats that decide how rare and how valuable it is. Here's what each one means.";
+"item.faq.rarity.title" = "Rarity";
+"item.faq.rarity.body" = "The item's quality tier — from Common up to Legendary. Rarity sets the item's colour and the range its Essence is rolled from: a Legendary always starts worth far more than a Common. Rarity never changes after the pull.";
+"item.faq.essence.title" = "Essence";
+"item.faq.essence.body" = "The item's score — a points value. Final Essence = base value × mint bonus × enhancement level × purity, so a higher rarity, a better purity roll, or more enhancement levels all push it up.";
+"item.faq.purity.title" = "Purity";
+"item.faq.purity.body" = "A hidden multiplier (0.6×–1.4×) rolled the moment the item drops. Two items of the same kind and rarity can be worth noticeably different amounts purely because one rolled higher purity. It's fixed at drop and can't be changed.";
+"item.faq.enhance.title" = "Enhancement";
+"item.faq.enhance.body" = "Spend Gems to raise an item's level (+1, +2 … up to +9). Each level multiplies its Essence. But every attempt has a burn chance that grows as the level climbs — the first levels are safe, the last ones are near-Russian-roulette. A failed attempt destroys the item. High risk, high reward.";
+"item.faq.disassemble.title" = "Disassemble";
+"item.faq.disassemble.body" = "Break an item down for good in exchange for Gems and a few Tokens. Use it on duplicates and junk to fund enhancement on the items you actually want to keep. Disassembling is permanent.";
+"item.faq.equip.title" = "Equip";
+"item.faq.equip.body" = "Equipping makes an item active: a pet appears as a small companion over your status icon everywhere in the app — and an equipped pet passively earns tokens over time; cosmetic packs unlock their content for use. An equipped item can't be sold or disassembled until you unequip it.";
 "item.history.empty" = "No journal yet.";
 "item.history.copied" = "Copied #%d";
 "item.history.action.drop" = "Dropped from a box";
@@ -1235,7 +1427,7 @@
 "crash.error.already_cashed" = "You've already cashed out this round";
 "crash.error.already_bet" = "You've already bet this round";
 "crash.error.no_bet" = "You have no bet in this round";
-"crash.error.insufficient" = "Not enough jetons";
+"crash.error.insufficient" = "Not enough tokens";
 "crash.error.network" = "Connection hiccup — try again";
 
 "crash.rules.title" = "Crash rules";
@@ -1314,10 +1506,10 @@
 "games.uin_auction.title" = "UIN Auction";
 "games.uin_auction.body" = "One UIN per hour. Bid wars to the last second.";
 "games.pets_hunt.title" = "Hunt";
-"games.pets_hunt.body" = "Your equipped pet earns jetons passively. Risk it on hunts for big rewards.";
+"games.pets_hunt.body" = "Your equipped pet earns tokens passively. Risk it on hunts for big rewards.";
 
 /* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "%d jetons / day at full uptime";
+"pet_hunt.daily_yield" = "%d tokens / day at full uptime";
 "pet_hunt.daily_gems" = "%d gems / day at full uptime";
 "pet_hunt.cap_reached" = "Buffer full — claim now or yield is lost";
 "pet_hunt.claim" = "Claim";
@@ -1328,16 +1520,16 @@
 "pool.rarity.section" = "Rarity roll";
 "pool.rarity.hint" = "Rarity is rolled independently of the kind that drops — any pet, smiley pack, or voice can land at any rarity at the chances below.";
 "pet_hunt.empty.no_pet.title" = "No pet equipped";
-"pet_hunt.empty.no_pet.body" = "Equip a pet from your [inventory](rcq://inventory) to start earning passive jetons.";
+"pet_hunt.empty.no_pet.body" = "Equip a pet from your [inventory](rcq://inventory) to start earning passive tokens.";
 "pet_hunt.accumulator.title" = "In buffer";
-"pet_hunt.spec.daily_yield" = "Jetons / day";
+"pet_hunt.spec.daily_yield" = "Tokens / day";
 "pet_hunt.spec.daily_gems" = "Gems / day";
-"pet_hunt.spec.hourly_rate" = "Jetons / hour";
+"pet_hunt.spec.hourly_rate" = "Tokens / hour";
 
 /* Pet Hunt — info sheet */
 "pet_hunt.info.title" = "How it works";
 "pet_hunt.info.passive.title" = "Passive farming";
-"pet_hunt.info.passive.body" = "Your equipped pet earns jetons 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours — claim daily or you lose the overflow.";
+"pet_hunt.info.passive.body" = "Your equipped pet earns tokens 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours — claim daily or you lose the overflow.";
 "pet_hunt.info.zones.title" = "Hunt zones";
 "pet_hunt.info.zones.body" = "Three daily hunts let you risk your pet for bigger rewards. Forest is safe, Mountain is risky, Cave is hardcore. Stronger pets succeed more often AND survive failure more often.";
 "pet_hunt.info.death.title" = "Permadeath";
@@ -1347,13 +1539,13 @@
 "pet_hunt.zone_picker.title" = "Choose hunt";
 "pet_hunt.zone_picker.intro" = "Bigger reward, bigger risk. Your pet quality changes the actual numbers.";
 "pet_hunt.zone.forest" = "Forest";
-"pet_hunt.zone.forest.reward" = "Jetons 3–8 × stats + gems 0–2";
+"pet_hunt.zone.forest.reward" = "Tokens 3–8 × stats + gems 0–2";
 "pet_hunt.zone.forest.risk" = "Safe — only minor wounds, no death";
 "pet_hunt.zone.mountain" = "Mountain";
-"pet_hunt.zone.mountain.reward" = "Jetons 8–20 × stats + gems 1–4";
+"pet_hunt.zone.mountain.reward" = "Tokens 8–20 × stats + gems 1–4";
 "pet_hunt.zone.mountain.risk" = "Risky — wounds common, rare deaths";
 "pet_hunt.zone.cave" = "Cave";
-"pet_hunt.zone.cave.reward" = "Jetons 20–50 × stats + gems 2–7";
+"pet_hunt.zone.cave.reward" = "Tokens 20–50 × stats + gems 2–7";
 "pet_hunt.zone.cave.risk" = "Hardcore — frequent wounds, real death risk";
 
 /* Pet Hunt — result */
@@ -1396,6 +1588,7 @@
 "uin_auction.waiting.title" = "Preparing the next lot…";
 "uin_auction.waiting.body" = "A new auction starts in a few seconds. Legendary UINs drop occasionally — stick around.";
 "uin_auction.error.bid_too_low" = "Min bid is %d tokens";
+"uin_auction.error.no_amount" = "Enter a bid amount first.";
 "uin_auction.error.insufficient" = "Need %d tokens, have %d";
 "uin_auction.error.already_lead" = "You're already the leader";
 "uin_auction.error.ended" = "Auction ended";

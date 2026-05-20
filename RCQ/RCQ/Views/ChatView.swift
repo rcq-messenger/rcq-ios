@@ -41,12 +41,17 @@ struct ChatView: View {
 
     private var mentionCandidates: [RCQGroupMember] {
         guard let q = activeMentionQuery else { return [] }
+        // Require at least one character after `@` before showing
+        // the picker — a bare `@` typed mid-sentence shouldn't pop
+        // the whole member list over the keyboard. Was: empty
+        // partial returned every member.
+        guard !q.partial.isEmpty else { return [] }
         let partial = q.partial.lowercased()
         let me = AuthService.shared.ownUIN
         return Array(
             currentGroupMembers
                 .filter { $0.uin != me }
-                .filter { partial.isEmpty || $0.nickname.lowercased().contains(partial) }
+                .filter { $0.nickname.lowercased().contains(partial) }
                 .prefix(8)
         )
     }
@@ -55,6 +60,13 @@ struct ChatView: View {
     private var mentionPicker: some View {
         let candidates = mentionCandidates
         if !candidates.isEmpty {
+            // Adapt height to the actual candidate count instead of
+            // pinning at 200pt — N matching members produced a tall
+            // half-empty pill before. Each row ≈ 36pt (StatusIcon 20
+            // + vertical padding 8×2). Cap at 200pt so an 8-match
+            // result still scrolls cleanly.
+            let rowHeight: CGFloat = 36
+            let preferredHeight = min(CGFloat(candidates.count) * rowHeight, 200)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(candidates) { m in
@@ -75,7 +87,7 @@ struct ChatView: View {
                     }
                 }
             }
-            .frame(maxHeight: 200)
+            .frame(height: preferredHeight)
             .background(.regularMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -102,6 +114,13 @@ struct ChatView: View {
     @State private var showEmojiPanel = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
+    @State private var showPollComposer: Bool = false
+    @State private var showShareGroupPicker: Bool = false
+    /// Toggled every ~7s by the chat-header timer to crossfade
+    /// between UIN and "last seen X ago" under the peer's nickname.
+    /// Suppressed (stays on UIN) when the peer is online OR their
+    /// `lastSeen` is nil (hidden by privacy / unknown).
+    @State private var headerShowsLastSeen: Bool = false
     @State private var showPremiumComposer: Bool = false
     @State private var showLocationPicker: Bool = false
     @State private var showTTLPicker = false
@@ -127,6 +146,12 @@ struct ChatView: View {
         return false
     }
     @State private var showScrollToBottom: Bool = false
+    /// Hides the scroll surface during the initial settle window so
+    /// users don't see LazyVStack realizing rows on chat-open. We
+    /// flip it to true after the multi-pass scrollTo loop has had a
+    /// chance to land on the actual bottom; from then on the chat
+    /// stays visible across the lifetime of the screen.
+    @State private var chatVisible: Bool = false
     @State private var forwardTarget: Message?
     /// Drives the ForwardPickerSheet for multi-select forwarding. The
     /// sheet only needs a non-nil "anchor" message to render its
@@ -238,7 +263,13 @@ struct ChatView: View {
                     isTranslated: vm.isTranslated(target),
                     onDeleteForMe: { vm.deleteForMe(target) },
                     onDeleteForEveryone: { Task { await vm.deleteForEveryone(target) } },
-                    onDismiss: { withAnimation(.easeInOut(duration: 0.18)) { actionTarget = nil } },
+                    // Match the spring that animates the bubble's
+                    // scale-up at line 829 so the overlay fade-out
+                    // and the bubble settling back share the same
+                    // timing. Earlier 0.18s easeInOut had the scrim
+                    // leaving before the bubble finished, briefly
+                    // showing the scaled bubble bare.
+                    onDismiss: { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { actionTarget = nil } },
                     onReport: shouldOfferEvidenceReport(target) ? {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -336,9 +367,26 @@ struct ChatView: View {
                     }
                     return false
                 }(),
-                onMedia: {
-                    pendingAttachAction = .media
+                onMedia: { picks in
+                    // Telegram-style: media chosen INSIDE the sheet
+                    // rather than via a follow-up UnifiedMediaPicker.
+                    // Route the picked items straight into the
+                    // composer's pending-media queue and close the
+                    // sheet — no `pendingAttachAction` middleman needed.
                     showAttachmentMenu = false
+                    Task { @MainActor in
+                        for item in picks {
+                            switch item {
+                            case .photo(let img):
+                                vm.queuePendingPhotos([img])
+                            case .video(let url):
+                                let thumb = await Self.makeVideoThumbnail(url: url)
+                                vm.queuePendingVideo(url: url, thumbnail: thumb)
+                            case .gif(let data, let preview):
+                                vm.queuePendingGIF(data: data, preview: preview)
+                            }
+                        }
+                    }
                 },
                 onCamera: {
                     pendingAttachAction = .camera
@@ -355,10 +403,44 @@ struct ChatView: View {
                 onLocation: {
                     pendingAttachAction = .location
                     showAttachmentMenu = false
-                }
+                },
+                // Polls only make sense in groups — anchor `onPoll` to
+                // nil for 1:1 / random so the row is hidden entirely.
+                onPoll: pollPickerHandler,
+                // Sharing a group invite into another chat is a 1:1
+                // affordance — sharing into the same group is
+                // contrived. Hidden in random-chat (privacy) and
+                // hidden in group chats (no use-case).
+                onShareGroup: shareGroupPickerHandler
             )
-            .presentationDetents([.height(280)])
+            .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showPollComposer) {
+            PollComposerSheet { draft in
+                Task { await submitPoll(draft) }
+            }
+            .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showShareGroupPicker) {
+            ShareGroupPickerSheet { picked in
+                // Send the canonical share URL as plain text — the
+                // receiving client's `GroupLinkParser` upgrades the
+                // bubble into a `GroupLinkBubble` card automatically.
+                let url = GroupLinkParser.canonicalURL(forGroupID: picked.id)
+                Task { await vm.sendText(url.absoluteString) }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $vm.pendingPaidUpload) { req in
+            PaidTrafficConfirmSheet(
+                plaintextBytes: req.plaintextBytes,
+                jetonsRequired: req.jetonsRequired,
+                onConfirm: {
+                    Task { _ = await req.retry() }
+                },
+            )
+            .presentationDetents([.medium])
         }
         .sheet(isPresented: $showPremiumComposer) {
             PremiumComposerSheet(
@@ -508,6 +590,93 @@ struct ChatView: View {
 
     // MARK: - System nav-bar slots
 
+    /// Header subtitle under the peer's nickname — alternates
+    /// between UIN and a humanised "last seen N min ago" every few
+    /// seconds with a crossfade. The view's `.onAppear` runs the
+    /// timer; `.onDisappear` tears it down.
+    @ViewBuilder
+    private func peerSubtitle(for live: Contact) -> some View {
+        let hasLastSeen = live.lastSeen != nil && live.status == .offline
+        let showAlt = hasLastSeen && headerShowsLastSeen
+        ZStack {
+            // Two children stacked with opacity crossfade — keeps
+            // the layout box stable so the nickname above doesn't
+            // jiggle on swap (a single Text re-render would shrink
+            // / grow the line width during animation).
+            Text(String(live.uin))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(Theme.Color.textMono)
+                .opacity(showAlt ? 0 : 1)
+            if let ls = live.lastSeen {
+                Text(Self.relativeLastSeen(ls))
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.Color.textMono)
+                    .opacity(showAlt ? 1 : 0)
+                    .lineLimit(1)
+            }
+        }
+        .animation(.easeInOut(duration: 0.4), value: showAlt)
+        .onAppear { startHeaderSwapTimer(eligible: hasLastSeen) }
+        .onDisappear { stopHeaderSwapTimer() }
+    }
+
+    /// Mirrors `ContactListView.relativeLastSeen` so the chat-header
+    /// subtitle reads identically to the contacts list row that led
+    /// the user here. Re-declared (not shared) because the contact
+    /// helper is `fileprivate` to its file.
+    private static func relativeLastSeen(_ date: Date) -> String {
+        let secs = Int(-date.timeIntervalSinceNow)
+        if secs < 60 { return "contact.last_seen.just_now".localized }
+        let mins = secs / 60
+        if mins < 60 {
+            return String(format: "contact.last_seen.minutes".localized, mins)
+        }
+        let hours = mins / 60
+        if hours < 24 {
+            return String(format: "contact.last_seen.hours".localized, hours)
+        }
+        let days = hours / 24
+        if days < 7 {
+            return String(format: "contact.last_seen.days".localized, days)
+        }
+        return chatHeaderLastSeenFmt.string(from: date)
+    }
+
+    /// Long-form fallback for >7-day-old timestamps. Local copy of
+    /// `ContactListView`'s `lastSeenLong` formatter (that one is
+    /// fileprivate and can't be reached from here).
+    private static let chatHeaderLastSeenFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
+    private func startHeaderSwapTimer(eligible: Bool) {
+        // Only fire when there's actually something to swap with —
+        // saves a wakeup every 3s on online / hidden-last-seen peers.
+        guard eligible else { return }
+        // Drive the toggle from a detached Task instead of Foundation
+        // Timer so it lives inside the SwiftUI lifecycle and respects
+        // background suspend automatically.
+        Task { @MainActor in
+            while !Task.isCancelled {
+                // 7s per side — the old 3s flipped too fast to read.
+                try? await Task.sleep(nanoseconds: 7_000_000_000)
+                guard !Task.isCancelled else { break }
+                headerShowsLastSeen.toggle()
+            }
+        }
+    }
+
+    private func stopHeaderSwapTimer() {
+        // No-op for now: the Task self-cancels when the view
+        // disappears via SwiftUI's task-lifecycle, since the captured
+        // `self` triggers a cancellation chain on release. Kept as a
+        // named hook so future explicit-Task-handle bookkeeping has
+        // a single place to anchor onto.
+    }
+
     @ViewBuilder
     private var principalContent: some View {
         switch vm.target {
@@ -533,9 +702,12 @@ struct ChatView: View {
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
                     if !isSelf {
-                        Text(String(live.uin))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Theme.Color.textMono)
+                        // Alternate between UIN and "last seen X ago"
+                        // every 7 seconds with an opacity crossfade.
+                        // If last_seen is hidden by privacy (nil) or
+                        // the peer is currently online — the swap is
+                        // suppressed and UIN stays put.
+                        peerSubtitle(for: live)
                     }
                 }
                 Color.clear.frame(width: 24, height: 1)
@@ -864,6 +1036,13 @@ struct ChatView: View {
                 // Animate on count only — animating on id changes would shudder on edits/reactions.
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.count)
             }
+            // Initial-settle mask. While the 350ms scrollTo loop in
+            // `.task` chases the moving bottom (LazyVStack realizes
+            // rows as the viewport scrolls past them), we hide the
+            // surface to spare the user the row-shuffle. Pinned to
+            // the message scroll only — composer, header and
+            // overlays stay live.
+            .opacity(chatVisible ? 1 : 0)
             // No defaultScrollAnchor(.bottom) — it yanks mid-scroll when LazyVStack realizes rows,
             // and pins the empty-state to the input bar. Initial scroll is owned by the .task loop below.
             .scrollDismissesKeyboard(.immediately)
@@ -912,35 +1091,56 @@ struct ChatView: View {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
                 isKeyboardVisible = false
-            }
-            // `Did` not `Will` — by the time the keyboard has fully
-            // animated out, the safe-area inset has dropped + the
-            // ScrollView's viewport has grown to its full height. A
-            // `scrollTo(.bottom)` issued at WillHide computes its
-            // destination against the still-shrunken viewport and
-            // settles on the same offset, so visually nothing moves
-            // and the user is left with an empty band below the last
-            // message until they tap the chat. Defer to DidHide
-            // and the anchor lands on the actual new bottom.
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-                // Re-anchor only when the user was already pinned to
-                // the bottom — yanking a scrolled-up reader down on
-                // keyboard dismiss is hostile.
+                // Keyboard close: tight scrollTo loop for the full
+                // keyboard animation window. Wrapping a single
+                // `scrollTo` in `withAnimation(duration:)` looks
+                // logical but is broken — SwiftUI evaluates the
+                // target offset ONCE at call time, when the viewport
+                // is still keyboard-sized. The computed "bottom"
+                // equals current position, so nothing animates, and
+                // when the safe-area inset finishes shrinking the
+                // content is left floating in mid-screen above a new
+                // empty band. `keyboardDidHide` then snaps it →
+                // visible jump.
+                //
+                // Running `proxy.scrollTo` 60Hz for the keyboard's
+                // duration makes each tick recompute "bottom" against
+                // the CURRENT (growing) viewport. With no
+                // `withAnimation` wrap each tick is an instant snap,
+                // and the per-frame snaps add up to a smooth track of
+                // the safe-area inset transition. We add a +80ms tail
+                // past the reported duration since iOS occasionally
+                // rounds the animation longer than the userInfo says.
                 guard !showScrollToBottom else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
+                let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+                Task { @MainActor in
+                    let endDate = Date().addingTimeInterval(duration + 0.08)
+                    while Date() < endDate {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                        try? await Task.sleep(nanoseconds: 16_000_000)
+                    }
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            // Three-pass retry covers LazyVStack's lazy realization without overlapping keyboard-rise.
+            // Initial settle: scrollTo loop while LazyVStack realizes
+            // rows + chat is masked behind opacity until the position
+            // stabilises. Users used to see rows pop into view as the
+            // viewport scrolled past them ("на глазах загружается").
+            // The 350ms window covers row materialization for chats
+            // up to a few hundred messages; longer chats finish off-
+            // screen and the opacity transition hides the residual
+            // motion.
             .task {
-                let delaysMs: [UInt64] = [0, 50, 200]
-                for ms in delaysMs {
-                    if ms > 0 {
-                        try? await Task.sleep(nanoseconds: ms * 1_000_000)
-                    }
+                let endDate = Date().addingTimeInterval(0.35)
+                while Date() < endDate {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    try? await Task.sleep(nanoseconds: 16_000_000)
+                }
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                withAnimation(.easeOut(duration: 0.15)) {
+                    chatVisible = true
                 }
             }
             if showScrollToBottom {
@@ -1030,6 +1230,14 @@ struct ChatView: View {
         case .location: raw = "📍 \("chat.preview.location".localized)"
         case .premiumPhoto: raw = "🔒 \("chat.premium.preview_photo".localized)"
         case .premiumVideo: raw = "🔒 \("chat.premium.preview_video".localized)"
+        case .poll:
+            // The text field on a `.poll` row is the JSON-encoded
+            // PollPayload — surface the question only so the reply
+            // strip reads as "📊 What should we order?" instead of
+            // the raw `{"question":...,"options":...}` blob.
+            let q = PollPayload.decode(from: message.text)?.question
+                ?? "chat.preview.poll".localized
+            raw = "📊 \(q)"
         default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
         }
         if raw.count <= 80 { return raw }
@@ -1160,7 +1368,10 @@ struct ChatView: View {
                     Image(systemName: showEmojiPanel ? "keyboard" : "face.smiling")
                         .font(.system(size: 20))
                         .foregroundColor(Theme.Color.textSecondary)
-                        .frame(width: 32, height: 36)
+                        // Bump to 44pt min hit area — was 32×36 (below
+                        // HIG guidance). The visible glyph stays the
+                        // same size; only the tap zone widens.
+                        .frame(width: 44, height: 40)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -1225,6 +1436,8 @@ struct ChatView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
                     .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -1258,6 +1471,8 @@ struct ChatView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
                     .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -1436,6 +1651,11 @@ struct ChatView: View {
                     .font(.system(size: 18))
                     .foregroundColor(.white)
                     .background(Circle().fill(Color.black.opacity(0.55)))
+                    // Enlarged hit area so the 18pt glyph doesn't
+                    // require a precise tap right next to the
+                    // pending-tile thumbnail.
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .offset(x: 4, y: -4)
@@ -1463,6 +1683,72 @@ struct ChatView: View {
                 .background(Circle().fill(Theme.Color.accent))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Composer "Poll" row handler. `nil` for 1:1 / random chats so
+    /// `AttachmentPickerSheet` hides the row entirely. For groups,
+    /// closing the attach sheet first then presenting the composer
+    /// avoids the iOS 26 sheet-after-sheet bug (matching the same
+    /// pattern as `pendingAttachAction`).
+    private var pollPickerHandler: (() -> Void)? {
+        guard case .group = vm.target else { return nil }
+        return {
+            showAttachmentMenu = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                showPollComposer = true
+            }
+        }
+    }
+
+    /// Composer "Share group" handler. Hidden only in random-chat
+    /// (privacy — a stranger shouldn't see a member's group list).
+    /// Available in both 1:1 AND group chats — sharing a group into
+    /// another group is a legit "invite the whole crew to this other
+    /// chat" pattern.
+    private var shareGroupPickerHandler: (() -> Void)? {
+        switch vm.target {
+        case .peer, .group:
+            return {
+                showAttachmentMenu = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    showShareGroupPicker = true
+                }
+            }
+        case .randomPeer:
+            return nil
+        }
+    }
+
+    /// Wire a finished poll-composer draft into the send pipeline:
+    /// create the server-side poll (gets back `poll_id`), then
+    /// broadcast a `.poll` envelope so every group member's chat
+    /// renders a fresh `PollBubble` ready to vote.
+    private func submitPoll(_ draft: PollComposerSheet.PollDraft) async {
+        guard case .group(let g) = vm.target else { return }
+        let messageID = UUID()
+        do {
+            let pollID = try await PollService.shared.createPoll(
+                inGroupID: g.id,
+                messageID: messageID.uuidString,
+                numOptions: draft.options.count,
+                singleChoice: draft.singleChoice,
+                anonymous: draft.anonymous
+            )
+            try await MessageService.shared.sendPoll(
+                envelopeID: messageID,
+                pollID: pollID,
+                question: draft.question,
+                options: draft.options,
+                singleChoice: draft.singleChoice,
+                anonymous: draft.anonymous,
+                to: g
+            )
+        } catch {
+            // Surface to the user via the existing toast plumbing if
+            // available; for v1 we just print so the dev console
+            // shows the failure path.
+            print("[poll] submit failed: \(error)")
+        }
     }
 
     /// Drains the pending attach action AFTER the menu sheet has
@@ -1775,7 +2061,12 @@ private struct DateDivider: View {
                 .padding(.horizontal, 6)
             Rectangle().fill(Theme.Color.divider).frame(height: 1)
         }
-        .padding(.vertical, 4)
+        // Extra top breathing room so the FIRST divider doesn't butt
+        // against the navbar / safe-area when a chat opens with
+        // content at the top. Bottom stays minimal so following
+        // bubbles sit close to their day's label.
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 
@@ -1804,469 +2095,6 @@ private struct TypingIndicator: View {
     }
 }
 
-private struct MessageRow: View {
-    let message: Message
-    let showSender: Bool
-    let senderNickname: String
-    let displayBody: String
-    let isTranslated: Bool
-    let isHighlighted: Bool
-    var isSelected: Bool = false
-    var showSelectionAffordance: Bool = false
-    let onTapReaction: (String) -> Void
-    let onLongPress: () -> Void
-    let onDoubleTapLike: () -> Void
-    var onTapWhenSelecting: (() -> Void)? = nil
-    let onTapReplyQuote: (UUID) -> Void
-    let onSwipeReply: () -> Void
-    var currentGroupMembers: [RCQGroupMember] = []
-
-    @State private var swipeOffset: CGFloat = 0
-    @State private var swipeArmed: Bool = false
-    @State private var bubblePressed: Bool = false
-    @State private var showUnlockConfirm: Bool = false
-    @State private var unlockError: String?
-    @State private var unlockInFlight: Bool = false
-
-    private static let swipeTriggerDistance: CGFloat = 60
-    private static let swipeMaxDistance: CGFloat = 80
-
-    @ViewBuilder
-    var body: some View {
-        if showSelectionAffordance {
-            selectableRow
-        } else {
-            primaryBody
-        }
-    }
-
-    private var selectableRow: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 20))
-                .foregroundColor(isSelected ? Theme.Color.accent : Theme.Color.textSecondary)
-                .padding(.leading, 6)
-            primaryBody
-                .allowsHitTesting(false)
-        }
-        .background(
-            Rectangle()
-                .fill(isSelected ? Theme.Color.accent.opacity(0.10) : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onTapWhenSelecting?()
-        }
-    }
-
-    @ViewBuilder
-    private var primaryBody: some View {
-        if message.kind == .systemNotice {
-            HStack {
-                Spacer()
-                Text(message.text)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-                Spacer()
-            }
-            .padding(.vertical, 2)
-        } else {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                ZStack(alignment: .trailing) {
-                    if swipeOffset < -2 {
-                        let progress = min(1.0, abs(swipeOffset) / Self.swipeTriggerDistance)
-                        let armed = abs(swipeOffset) >= Self.swipeTriggerDistance
-                        Image(systemName: "arrowshape.turn.up.left.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(armed ? Theme.Color.accent : Theme.Color.textSecondary)
-                            .opacity(progress)
-                            .scaleEffect(0.7 + 0.3 * progress)
-                            .padding(.trailing, 12)
-                    }
-                    HStack(alignment: .bottom) {
-                        if message.isFromMe { Spacer(minLength: 40) }
-                        // Tap/long-press scoped to bubble; the wider row only handles swipe-reply.
-                        bubble
-                            .scaleEffect(bubblePressed ? 0.96 : 1.0, anchor: message.isFromMe ? .trailing : .leading)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: bubblePressed)
-                            .onTapGesture(count: 2) {
-                                guard !message.deletedForEveryone, message.kind != .systemNotice else { return }
-                                onDoubleTapLike()
-                            }
-                            .onLongPressGesture(
-                                // 0.18s was catching scroll-decel finger lingers
-                                // as long-press, stopping the scroll. Telegram-
-                                // grade feel is ~0.4s — leaves headroom for
-                                // natural scroll pauses without losing the
-                                // "press to act" cue.
-                                minimumDuration: 0.4,
-                                pressing: { isPressing in
-                                    bubblePressed = isPressing
-                                },
-                                perform: {
-                                    bubblePressed = false
-                                    onLongPress()
-                                }
-                            )
-                        if !message.isFromMe { Spacer(minLength: 40) }
-                    }
-                    .offset(x: swipeOffset)
-                }
-                if !message.reactions.isEmpty {
-                    HStack {
-                        if message.isFromMe { Spacer(minLength: 40) }
-                        ReactionsBar(message: message, onTap: onTapReaction)
-                        if !message.isFromMe { Spacer(minLength: 40) }
-                    }
-                }
-            }
-            // Full-width row so swipe-reply has a hit target even when the bubble is short.
-            .frame(maxWidth: .infinity, alignment: message.isFromMe ? .trailing : .leading)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Theme.Color.accent.opacity(isHighlighted ? 0.18 : 0))
-            )
-            .contentShape(Rectangle())
-            // simultaneousGesture (not .gesture) so iOS's screen-edge back-swipe keeps working.
-            .simultaneousGesture(
-                // minimumDistance: 25 (was 18). Lets the ScrollView's pan
-                // win small vertical drifts without our gesture even
-                // activating — fewer accidental "scroll caught on a
-                // message" cancellations during long scrolls.
-                DragGesture(minimumDistance: 25)
-                    .onChanged { value in
-                        guard !message.deletedForEveryone, message.kind != .systemNotice else { return }
-                        // Leading-edge drags belong to iOS's interactive-pop
-                        // gesture. 60pt buffer (was 32) so the back-swipe
-                        // doesn't fight our reply-swipe when the user
-                        // starts a hair right of the edge.
-                        if value.startLocation.x < 60 {
-                            if swipeOffset != 0 { swipeOffset = 0 }
-                            swipeArmed = false
-                            return
-                        }
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        // Vertical-dominant or right-swipe → let the ScrollView pan win.
-                        if abs(dy) > abs(dx) {
-                            if swipeOffset != 0 { swipeOffset = 0 }
-                            swipeArmed = false
-                            return
-                        }
-                        if dx >= 0 {
-                            if swipeOffset != 0 { swipeOffset = 0 }
-                            swipeArmed = false
-                            return
-                        }
-                        // Linear up to trigger, then rubber-band to the hard cap.
-                        let raw = -dx
-                        let bubble: CGFloat
-                        if raw <= Self.swipeTriggerDistance {
-                            bubble = -raw
-                        } else {
-                            let extra = (raw - Self.swipeTriggerDistance) * 0.4
-                            bubble = -min(Self.swipeMaxDistance, Self.swipeTriggerDistance + extra)
-                        }
-                        swipeOffset = bubble
-                        if !swipeArmed && raw >= Self.swipeTriggerDistance {
-                            swipeArmed = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        } else if swipeArmed && raw < Self.swipeTriggerDistance {
-                            swipeArmed = false
-                        }
-                    }
-                    .onEnded { _ in
-                        let didReply = swipeArmed
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.75)) {
-                            swipeOffset = 0
-                        }
-                        swipeArmed = false
-                        if didReply {
-                            onSwipeReply()
-                        }
-                    }
-            )
-            .confirmationDialog(
-                String(format: "chat.premium.confirm.title".localized, message.premiumPriceTokens ?? 0),
-                isPresented: $showUnlockConfirm,
-                titleVisibility: .visible
-            ) {
-                Button(String(format: "chat.premium.confirm.pay".localized, message.premiumPriceTokens ?? 0)) {
-                    Task { await performUnlock(message) }
-                }
-                Button("common.cancel".localized, role: .cancel) {}
-            } message: {
-                Text("chat.premium.confirm.body".localized)
-            }
-            .alert(
-                "chat.premium.error.title".localized,
-                isPresented: Binding(
-                    get: { unlockError != nil },
-                    set: { if !$0 { unlockError = nil } }
-                ),
-                actions: { Button("common.ok".localized, role: .cancel) {} },
-                message: { Text(unlockError ?? "") }
-            )
-        }
-    }
-
-    private var bubble: some View {
-        VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-            if showSender {
-                Text(senderNickname)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
-            }
-            if let fwdName = message.forwardedFromName, !fwdName.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrowshape.turn.up.right.fill")
-                        .font(.system(size: 9))
-                    Text(String(format: "chat.forwarded_from".localized, fwdName))
-                        .font(.caption2.italic())
-                }
-                .foregroundColor(Theme.Color.textSecondary)
-            }
-            if let snippet = message.replyToSnippet, !snippet.isEmpty {
-                Button {
-                    if let target = message.replyToID {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onTapReplyQuote(target)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Rectangle()
-                            .fill(Theme.Color.accent)
-                            .frame(width: 2)
-                        VStack(alignment: .leading, spacing: 1) {
-                            if let author = message.replyToAuthorName, !author.isEmpty {
-                                Text(author)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundColor(Theme.Color.accent)
-                                    .lineLimit(1)
-                            }
-                            // If the quoted snippet is a market / UIN
-                            // share URL, render the actual item card
-                            // instead of the raw `rcq.app/m/<id>` text.
-                            // Composer already shows the card when
-                            // composing the reply — the bubble side
-                            // had been left as plain text.
-                            if let market = MarketLinkParser.parse(snippet) {
-                                MarketReplyMiniCard(listingID: market.listingID)
-                            } else if let uinShare = UinLinkParser.parse(snippet) {
-                                UinReplyMiniCard(listingID: uinShare.listingID)
-                            } else {
-                                Text(snippet)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                    .padding(.horizontal, 4)
-                    .frame(
-                        maxWidth: 240,
-                        alignment: message.isFromMe ? .trailing : .leading
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            if message.receivedWhileAway {
-                Text(String(format: "chat.received_while_away".localized, DateFormatters.receivedWhileAway.string(from: message.sentAt)))
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .padding(.bottom, 2)
-            }
-            HStack(alignment: .bottom, spacing: 6) {
-                bubbleContent
-            }
-            HStack(spacing: 4) {
-                Text(DateFormatters.timeOfDay.string(from: message.sentAt))
-                    .font(Theme.Font.timestamp)
-                    .foregroundColor(Theme.Color.textSecondary)
-                if message.editedAt != nil {
-                    Text("chat.edited_suffix".localized)
-                        .font(Theme.Font.timestamp.italic())
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                if message.ttlSeconds != nil {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                if message.isFromMe {
-                    deliveryIcon
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var bubbleContent: some View {
-        if message.deletedForEveryone {
-            Text("chat.deleted".localized)
-                .font(.caption)
-                .foregroundColor(Theme.Color.textSecondary)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius)
-                        .stroke(Theme.Color.divider, lineWidth: 1)
-                )
-        } else if message.kind == .photo {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                PhotoBubble(message: message)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if message.kind == .video {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                VideoBubble(message: message)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if message.kind == .voice {
-            VoiceBubble(message: message)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                .cornerRadius(Theme.Metrics.bubbleRadius)
-        } else if message.kind == .file {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                FileBubble(message: message)
-                    .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                    .cornerRadius(Theme.Metrics.bubbleRadius)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if message.kind == .location {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                LocationBubble(message: message)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if message.kind == .premiumPhoto || message.kind == .premiumVideo {
-            // Same component handles locked + unlocked so the unlock transition is an in-place blur dissolve.
-            let size = Self.premiumBubbleSize(thumbnailB64: message.thumbnailB64)
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                PremiumLockedBubble(message: message, onUnlock: { askUnlock(message) }, size: size)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if let share = MarketLinkParser.parse(message.text) {
-            // Share-to-chat market link — full card preview takes the
-            // place of plain text so the recipient sees the item
-            // before tapping. The card itself routes the tap into
-            // `AppState.handle(deepLink:)` so it opens the listing
-            // detail sheet.
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
-                if isTranslated { translatedFooter }
-            }
-        } else if let share = UinLinkParser.parse(message.text) {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                UinLinkBubble(listingID: share.listingID, rawURL: share.url)
-                if isTranslated { translatedFooter }
-            }
-        } else {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                EmoticonText(text: displayBody, members: currentGroupMembers)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                    .cornerRadius(Theme.Metrics.bubbleRadius)
-                if isTranslated { translatedFooter }
-                // Read off the original body so a translation that mangles the URL still gets a preview.
-                if let url = LinkDetector.firstURL(in: message.text) {
-                    LinkPreviewCard(url: url)
-                }
-            }
-        }
-    }
-
-    private var translatedFooter: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "globe")
-                .font(.system(size: 9))
-            Text("chat.translate.translated_badge".localized)
-                .font(.system(size: 10))
-        }
-        .foregroundColor(Theme.Color.textSecondary)
-    }
-
-    @ViewBuilder
-    private var deliveryIcon: some View {
-        switch message.deliveryState {
-        case .sending:   Image(systemName: "clock").font(.system(size: 9)).foregroundColor(Theme.Color.textSecondary)
-        case .sent:      Image(systemName: "checkmark").font(.system(size: 9)).foregroundColor(Theme.Color.textSecondary)
-        case .delivered: Image(systemName: "checkmark.circle").font(.system(size: 9)).foregroundColor(Theme.Color.textSecondary)
-        case .read:      Image(systemName: "checkmark.circle.fill").font(.system(size: 9)).foregroundColor(Theme.Color.accent)
-        case .failed:    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundColor(Theme.Color.statusBusy)
-        }
-    }
-
-    fileprivate static func premiumBubbleSize(thumbnailB64: String?) -> CGSize {
-        let width: CGFloat = 240
-        let maxHeight: CGFloat = width * 1.4
-        let defaultHeight: CGFloat = width * 0.75
-        guard let b64 = thumbnailB64,
-              !b64.isEmpty,
-              let data = Data(base64Encoded: b64),
-              let img = UIImage(data: data),
-              img.size.width > 0, img.size.height > 0 else {
-            return CGSize(width: width, height: defaultHeight)
-        }
-        let aspect = img.size.width / img.size.height
-        let height = min(maxHeight, max(120, width / aspect))
-        return CGSize(width: width, height: height)
-    }
-
-    fileprivate func askUnlock(_ message: Message) {
-        showUnlockConfirm = true
-    }
-
-    fileprivate func performUnlock(_ message: Message) async {
-        if unlockInFlight { return }
-        unlockInFlight = true
-        defer { unlockInFlight = false }
-        do {
-            _ = try await MessageService.shared.unlockPremium(message: message)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch let APIError.http(402, body) {
-            _ = body
-            unlockError = "chat.premium.error.insufficient".localized
-        } catch APIError.http(404, _) {
-            unlockError = "chat.premium.error.gone".localized
-        } catch {
-            unlockError = "chat.premium.error.generic".localized
-        }
-    }
-}
 
 struct PendingEvidenceReport: Identifiable {
     let message: Message

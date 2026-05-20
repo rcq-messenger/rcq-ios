@@ -54,7 +54,16 @@ struct EmoticonTextField: UIViewRepresentable {
             let attr = context.coordinator.attributed(from: text)
             uiView.attributedText = attr
             uiView.selectedRange = NSRange(location: attr.length, length: 0)
-            uiView.scrollRangeToVisible(uiView.selectedRange)
+            // Defer the scroll — see commentary in textViewDidChange.
+            DispatchQueue.main.async { [weak uiView] in
+                guard let uiView else { return }
+                guard let position = uiView.selectedTextRange?.start else { return }
+                let caret = uiView.caretRect(for: position)
+                guard !caret.isNull && !caret.isInfinite && caret.height > 0 else { return }
+                var visible = caret
+                visible.size.height += 12
+                uiView.scrollRectToVisible(visible, animated: false)
+            }
         }
         uiView.refreshPlaceholderVisibility()
         // Re-measure here covers the empty-on-send path where textViewDidChange won't fire.
@@ -185,7 +194,23 @@ struct EmoticonTextField: UIViewRepresentable {
             // when content exceeds maxHeight we need to actively scroll
             // to the caret since UITextView's auto-scroll only kicks
             // in on character entry, not on Enter-driven newlines.
-            tv.scrollRangeToVisible(tv.selectedRange)
+            //
+            // `scrollRangeToVisible(selectedRange)` used to do this
+            // synchronously, but it runs against the OLD layout when
+            // the attributedText was just rebuilt (emoticon swap path)
+            // — the textview's caret could end up below the visible
+            // bottom and never come back. Defer to the next runloop
+            // so the layout pass finalises, then scroll to the
+            // explicit caret rect with some breathing room below.
+            DispatchQueue.main.async { [weak tv] in
+                guard let tv else { return }
+                guard let position = tv.selectedTextRange?.start else { return }
+                let caret = tv.caretRect(for: position)
+                guard !caret.isNull && !caret.isInfinite && caret.height > 0 else { return }
+                var visible = caret
+                visible.size.height += 12  // pad so the cursor doesn't hug the bottom edge
+                tv.scrollRectToVisible(visible, animated: false)
+            }
             measureHeight()
         }
 

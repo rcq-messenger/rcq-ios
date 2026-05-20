@@ -10,14 +10,16 @@ extension Message {
         let raw: String
         switch kind {
         case .text:
-            // Market / UIN share links land as `.text` kind with just
-            // the URL in the body — render a friendly summary so the
-            // chat list / in-app banner / push body don't display
-            // `https://rcq.app/m/<id>` as the message preview.
+            // Market / UIN / group share links land as `.text` kind
+            // with just the URL in the body — render a friendly
+            // summary so the chat list / in-app banner / push body /
+            // in-chat reply-strip don't display the raw URL.
             if Self.isMarketShareURL(text) {
                 raw = "🛍️ \("chat.preview.market_item".localized)"
             } else if Self.isUinShareURL(text) {
                 raw = "#️⃣ \("chat.preview.uin_listing".localized)"
+            } else if Self.isGroupShareURL(text) {
+                raw = "👥 \("chat.preview.group_invite".localized)"
             } else {
                 raw = text
             }
@@ -28,6 +30,15 @@ extension Message {
         case .location:     raw = "📍 \("chat.preview.location".localized)"
         case .premiumPhoto: raw = "chat.preview.premium_photo".localized
         case .premiumVideo: raw = "chat.preview.premium_video".localized
+        case .poll:
+            // `.poll` messages store the full PollPayload (question +
+            // options + flags) as JSON in `text`. Pull out the
+            // question for a humane preview — the JSON blob itself
+            // was previously rendering as raw braces / quotes in
+            // reply strips and chat-preview snippets.
+            let question = PollPayload.decode(from: text)?.question
+                ?? "chat.preview.poll".localized
+            raw = "📊 \(question)"
         default:            raw = text.isEmpty ? "chat.preview.generic".localized : text
         }
         if raw.count <= 80 { return raw }
@@ -44,6 +55,21 @@ extension Message {
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "m" {
+            return true
+        }
+        return false
+    }
+
+    private static func isGroupShareURL(_ body: String) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
+        if url.scheme == "rcq" && url.host == "group" {
+            return !(url.pathComponents.last ?? "").isEmpty
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "g" {
             return true
         }
         return false

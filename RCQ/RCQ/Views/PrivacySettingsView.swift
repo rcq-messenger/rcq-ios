@@ -13,6 +13,7 @@ struct PrivacySettingsView: View {
     @State private var lastSeenVisibility: String = "everyone"
     @State private var gender: String = ""
     @State private var genderVisibility: String = "nobody"
+    @State private var profileVisibility: String = "everyone"
     @State private var groupInvitePolicy: String = "everyone"
     @State private var tradePolicy: String = "everyone"
     /// Mirrored to `@AppStorage("rcq.privacy.callPolicy")` so
@@ -25,6 +26,7 @@ struct PrivacySettingsView: View {
     /// without re-fetching `/users/me/info` per read.
     @State private var readReceiptsVisibility: String = "everyone"
     @AppStorage("rcq.privacy.readReceiptsVisibility") private var readReceiptsCache: String = "everyone"
+    @State private var reputationVisibility: String = "everyone"
 
     var body: some View {
         NavigationStack {
@@ -36,6 +38,16 @@ struct PrivacySettingsView: View {
                     // picker instead of dumping all five descriptions
                     // in one bottom block. Reads top-down, no need to
                     // hunt for the right paragraph.
+                    Section {
+                        scopePicker(
+                            title: "settings.privacy.profile".localized,
+                            selection: $profileVisibility,
+                            field: "profile_visibility"
+                        )
+                    } footer: {
+                        Text("settings.privacy.profile.desc".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
                     Section {
                         scopePicker(
                             title: "settings.privacy.last_seen".localized,
@@ -112,6 +124,16 @@ struct PrivacySettingsView: View {
                         Text("settings.privacy.read_receipts.desc".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
+                    Section {
+                        scopePicker(
+                            title: "settings.privacy.reputation".localized,
+                            selection: $reputationVisibility,
+                            field: "reputation_visibility"
+                        )
+                    } footer: {
+                        Text("settings.privacy.reputation.desc".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -150,6 +172,7 @@ struct PrivacySettingsView: View {
             let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
             if let v = p.lastSeenVisibility { lastSeenVisibility = v }
             if let v = p.genderVisibility { genderVisibility = v }
+            if let v = p.profileVisibility { profileVisibility = v }
             if let v = p.groupInvitePolicy { groupInvitePolicy = v }
             if let v = p.tradePolicy { tradePolicy = v }
             if let v = p.callPolicy {
@@ -160,6 +183,7 @@ struct PrivacySettingsView: View {
                 readReceiptsVisibility = v
                 readReceiptsCache = v
             }
+            if let v = p.reputationVisibility { reputationVisibility = v }
             gender = p.gender ?? ""
         } catch {
             // Soft-fail — the picker write paths still work, the

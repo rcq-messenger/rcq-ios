@@ -17,6 +17,7 @@ enum MessageKind: String, Codable {
     case deleteForEveryone // tombstone
     case premiumPhoto      // paywalled photo — unlock via /premium/contents/{id}/unlock
     case premiumVideo
+    case poll              // group poll: pollID + JSON-encoded {question, options, ...} in `text`
 }
 
 enum ThreadID: Hashable, Codable {
@@ -102,6 +103,10 @@ struct Message: Identifiable, Hashable, Codable {
     /// drops in without both.
     var latitude: Double?
     var longitude: Double?
+    /// Server-side poll id for `.poll` messages. Drives the
+    /// vote/close round-trips. The actual question + options live
+    /// in `text` as JSON (PollPayload). Nil for other kinds.
+    var pollID: Int?
 
     init(
         id: UUID = UUID(),
@@ -131,7 +136,8 @@ struct Message: Identifiable, Hashable, Codable {
         fileMime: String? = nil,
         fileSizeBytes: Int? = nil,
         latitude: Double? = nil,
-        longitude: Double? = nil
+        longitude: Double? = nil,
+        pollID: Int? = nil
     ) {
         self.id = id
         self.thread = thread
@@ -161,5 +167,6 @@ struct Message: Identifiable, Hashable, Codable {
         self.fileSizeBytes = fileSizeBytes
         self.latitude = latitude
         self.longitude = longitude
+        self.pollID = pollID
     }
 }

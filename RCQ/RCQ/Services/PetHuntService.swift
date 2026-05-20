@@ -48,6 +48,7 @@ final class PetHuntService: ObservableObject {
     @discardableResult
     func sendHunt(zone: HuntZone) async -> HuntResult? {
         guard !sending else { return nil }
+        SmokeTracker.shared.tick(.petHunt)
         sending = true
         defer { sending = false }
         do {

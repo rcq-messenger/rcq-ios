@@ -63,7 +63,7 @@ struct AlbumRowView: View {
             HStack {
                 if isFromMe { Spacer(minLength: 40) }
                 VStack(alignment: isFromMe ? .trailing : .leading, spacing: 4) {
-                    if isInGroupChat && !isFromMe {
+                    if isInGroupChat && !isFromMe && !senderNickname.isEmpty {
                         Text(senderNickname)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(Theme.Color.accent)
@@ -79,10 +79,15 @@ struct AlbumRowView: View {
                     // bubble so visually it still reads as a separate
                     // chat message.
                     if let caption = items.last?.text, !caption.isEmpty {
+                        // Caption text alignment matches the outgoing-
+                        // vs-incoming side so a multi-line caption on
+                        // a right-pinned bubble doesn't read flush-left
+                        // inside a right-edge bubble. Mirrors the row
+                        // alignment of the surrounding VStack.
                         Text(caption)
                             .font(.body)
                             .foregroundColor(Theme.Color.textPrimary)
-                            .multilineTextAlignment(.leading)
+                            .multilineTextAlignment(isFromMe ? .trailing : .leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)

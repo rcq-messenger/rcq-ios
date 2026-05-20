@@ -14,7 +14,13 @@ final class ThemeManager: ObservableObject {
     static let shared = ThemeManager()
 
     @Published var theme: AppTheme {
-        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "rcq.theme") }
+        didSet {
+            UserDefaults.standard.set(theme.rawValue, forKey: "rcq.theme")
+            // Only tick on a real switch (init's didSet doesn't fire).
+            if oldValue != theme {
+                SmokeTracker.shared.tick(.switchTheme)
+            }
+        }
     }
 
     private init() {

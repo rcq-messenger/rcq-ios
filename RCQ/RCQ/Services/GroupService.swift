@@ -89,6 +89,16 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// Owner/admin — set the free-text group description. Pass an
+    /// empty string to clear it (server treats empty as "remove").
+    func setDescription(groupID: Int, description: String) async throws {
+        struct Body: Encodable { let description: String }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "PATCH", "/groups/\(groupID)", body: Body(description: description)
+        )
+        upsert(g)
+    }
+
     /// Owner-only — flip the broadcast mode. `"all"` lets everyone
     /// post, `"owner_only"` makes the group a one-way channel.
     func setPostPolicy(groupID: Int, policy: String) async throws {
@@ -105,6 +115,27 @@ final class GroupService: ObservableObject {
         struct Body: Encodable { let entry_price_tokens: Int }
         let g: RCQGroup = try await APIClient.shared.request(
             "PATCH", "/groups/\(groupID)", body: Body(entry_price_tokens: priceTokens)
+        )
+        upsert(g)
+    }
+
+    /// Owner-only — flip `is_closed`. Closed groups reject self-join
+    /// (the share-to-friend deep link 403s); only an owner-issued
+    /// invite (the `add_member` endpoint) inserts membership.
+    func setIsClosed(groupID: Int, isClosed: Bool) async throws {
+        struct Body: Encodable { let is_closed: Bool }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "PATCH", "/groups/\(groupID)", body: Body(is_closed: isClosed)
+        )
+        upsert(g)
+    }
+
+    /// Owner-only — hide the member roster in Group Info from
+    /// everyone but the owner.
+    func setMembersHidden(groupID: Int, hidden: Bool) async throws {
+        struct Body: Encodable { let members_hidden: Bool }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "PATCH", "/groups/\(groupID)", body: Body(members_hidden: hidden)
         )
         upsert(g)
     }
@@ -184,7 +215,41 @@ final class GroupService: ObservableObject {
         case success(RCQGroup)
         case insufficientTokens(required: Int, have: Int)
         case blocked
+        /// Group is closed — share-to-friend recipients can preview
+        /// but not self-join. Owner has to invite them explicitly.
+        case closed
         case other(String)
+    }
+
+    /// Mirror of backend `GroupPreviewOut`. Powers the share-card and
+    /// the join sheet — both fetch this for a group the viewer isn't
+    /// (yet) a member of.
+    struct GroupPreview: Codable, Hashable {
+        let id: Int
+        let name: String
+        /// Group description blurb — nil when the owner hasn't set one.
+        let description: String?
+        let memberCount: Int
+        let entryPriceTokens: Int?
+        let isClosed: Bool
+        let ownerUIN: Int
+        let ownerNickname: String?
+        /// Avatar fields mirror the standard `GroupOut` shape so a
+        /// non-member sees the real group picture on the share-card.
+        /// Both nil for legacy groups without an uploaded avatar.
+        let avatarMediaID: String?
+        let avatarMediaKey: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, description
+            case memberCount = "member_count"
+            case entryPriceTokens = "entry_price_tokens"
+            case isClosed = "is_closed"
+            case ownerUIN = "owner_uin"
+            case ownerNickname = "owner_nickname"
+            case avatarMediaID = "avatar_media_id"
+            case avatarMediaKey = "avatar_media_key"
+        }
     }
 
     func join(groupID: Int) async -> JoinResult {
@@ -203,10 +268,28 @@ final class GroupService: ObservableObject {
                 return .insufficientTokens(required: req, have: have)
             }
             return .other("group.error.join_payment".localized)
-        } catch APIError.http(403, _) {
+        } catch APIError.http(403, let body) {
+            // 403 from /join now covers two distinct cases: caller is
+            // blocked by the owner, OR the group is closed and only
+            // accepts owner-issued invitations. Decode `detail.code`
+            // to surface the right sheet copy.
+            if (body ?? "").contains("group_closed") {
+                return .closed
+            }
             return .blocked
         } catch {
             return .other(error.localizedDescription)
+        }
+    }
+
+    func fetchPreview(groupID: Int) async -> GroupPreview? {
+        do {
+            let out: GroupPreview = try await APIClient.shared.request(
+                "GET", "/groups/\(groupID)/preview"
+            )
+            return out
+        } catch {
+            return nil
         }
     }
 

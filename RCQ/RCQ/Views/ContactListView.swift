@@ -14,6 +14,7 @@ struct ContactListView: View {
     @StateObject private var trades = TradesService.shared
     @StateObject private var items = ItemsService.shared
     @StateObject private var stories = StoryService.shared
+    @StateObject private var news = NewsService.shared
 
     @State private var showAddContact = false
     @State private var showProfile = false
@@ -40,6 +41,7 @@ struct ContactListView: View {
     /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
     @State private var pressedRowID: String?
     @State private var showStoryComposer = false
+    @State private var showNews = false
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
@@ -241,6 +243,7 @@ struct ContactListView: View {
                 await audioRooms.refresh()
                 await stories.refresh()
                 await trades.refreshAll()
+                await news.refresh()
                 // Cold-launch replay: RCQAppDelegate sets these flags before mount, so onChange misses them.
                 if appState.pendingOpenTrades {
                     showTradesList = true
@@ -259,6 +262,34 @@ struct ContactListView: View {
             }
             .sheet(isPresented: $showTradesList) {
                 TradesListView()
+            }
+            .sheet(isPresented: $showNews) {
+                NewsSheet()
+            }
+            .sheet(item: Binding(
+                get: { appState.pendingJoinGroupID.map(JoinGroupTrigger.init) },
+                set: { newValue in appState.pendingJoinGroupID = newValue?.id }
+            )) { trigger in
+                GroupJoinSheet(
+                    groupID: trigger.id,
+                    onJoined: { joined in
+                        // After a successful join, refresh local groups
+                        // and route the user straight into the group chat.
+                        Task { @MainActor in
+                            groups.upsert(joined)
+                            appState.pendingOpenGroupID = joined.id
+                            tryOpenPendingGroup()
+                        }
+                    },
+                    onOpenOwner: { ownerUIN in
+                        // Owner tap reuses the global profile-preview
+                        // path — same affordance as a nickname tap
+                        // anywhere else in the app.
+                        appState.pendingJoinGroupID = nil
+                        deepLinkProfileUIN = DeepLinkUIN(uin: ownerUIN)
+                    },
+                )
+                .presentationDetents([.medium, .large])
             }
             .onChange(of: appState.pendingAddUIN) { newValue in
                 if let uin = newValue {
@@ -504,6 +535,23 @@ struct ContactListView: View {
             } label: {
                 Label("contact_list.menu.post_story".localized, systemImage: "camera.badge.ellipsis")
             }
+            Button {
+                showNews = true
+            } label: {
+                // Menu label paints the unread count alongside the
+                // News icon — the ellipsis dot tells the user
+                // "something's new", and this row tells them how
+                // many. SwiftUI Menu doesn't accept overlays on
+                // Label/Button content, so we encode the count
+                // into the title text itself (matches how iOS Mail
+                // formats unread).
+                if news.unreadCount > 0 {
+                    Label("\("contact_list.menu.news".localized)  •  \(news.unreadCount)",
+                          systemImage: "newspaper")
+                } else {
+                    Label("contact_list.menu.news".localized, systemImage: "newspaper")
+                }
+            }
             if let ownUIN = auth.ownUIN {
                 Button {
                     let saved = Contact.savedMessagesSelf(ownUIN: ownUIN)
@@ -513,8 +561,20 @@ struct ContactListView: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .foregroundColor(Theme.Color.textPrimary)
+            // Red dot indicator when unread news posts are
+            // available. Overlay'd at the top-right so the ellipsis
+            // glyph stays clean and the dot reads as a status badge.
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "ellipsis")
+                    .foregroundColor(Theme.Color.textPrimary)
+                if news.hasUnread {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
+                        .offset(x: 6, y: -4)
+                }
+            }
         }
     }
 
@@ -1384,6 +1444,7 @@ private extension DateFormatter {
 
 /// Identifiable wrapper so the deep-link UIN drives a `.sheet(item:)` presentation.
 private struct DeepLinkUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
+private struct JoinGroupTrigger: Identifiable, Hashable { let id: Int }
 
 /// Identifiable wrapper for `.fullScreenCover(item:)` driving the
 /// story viewer. Carries the index into `StoryService.feed` of the

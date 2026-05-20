@@ -44,6 +44,9 @@ struct MessageBannerHost: View {
             }
         case .auction:
             app.pendingOpenUinAuction = true
+        case .reputation:
+            // No routing — informational banner. Tap = dismiss.
+            break
         }
         service.dismiss(banner.id)
     }
@@ -122,6 +125,13 @@ private struct BannerCard: View {
                 keyBase64: snapshot?.avatarMediaKey,
                 size: 32,
             )
+        case .reputation:
+            // Reputation banners use the rep.png asset, not an SF
+            // Symbol — same icon as the profile counter + leaderboard.
+            ItemAssetImage(bundleSubdir: "Items", filename: "rep", ext: "gif")
+                .frame(width: 20, height: 20)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Theme.Color.accent.opacity(0.15)))
         default:
             Image(systemName: bubbleGlyph)
                 .font(.system(size: 16, weight: .semibold))
@@ -140,6 +150,8 @@ private struct BannerCard: View {
             }
         case .auction:
             return "hammer.fill"
+        case .reputation:
+            return "star.fill"
         }
     }
 }

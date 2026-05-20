@@ -16,6 +16,10 @@ final class AppState: ObservableObject {
     @Published var pendingAddUIN: Int? = nil
     @Published var pendingOpenChatUIN: Int? = nil
     @Published var pendingOpenGroupID: Int? = nil
+    /// Drives the `GroupJoinSheet` when a user taps a shared-group
+    /// card from chat. Same deep-link mechanism as the marketplace +
+    /// UIN-share flows; cleared by the sheet when it dismisses.
+    @Published var pendingJoinGroupID: Int? = nil
     @Published var pendingOpenPending: Bool = false
     @Published var pendingOpenTrades: Bool = false
     /// Set when the user taps an outbid in-app banner — the
@@ -92,6 +96,26 @@ final class AppState: ObservableObject {
             let id = url.pathComponents[2]
             if !id.isEmpty {
                 pendingOpenUinListingID = id
+            }
+            return
+        }
+        // Group share — `rcq://group/<id>` (custom scheme from in-app
+        // taps on the share-card) or `https://rcq.app/g/<id>` (the
+        // text-paste / browser path). Both route to the same
+        // `pendingJoinGroupID`; the JoinSheet handles already-member
+        // by jumping the user straight into the group chat instead.
+        if url.scheme == "rcq", url.host == "group" {
+            if let last = url.pathComponents.last, let gid = Int(last), gid > 0 {
+                pendingJoinGroupID = gid
+            }
+            return
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "g" {
+            if let gid = Int(url.pathComponents[2]), gid > 0 {
+                pendingJoinGroupID = gid
             }
             return
         }
@@ -395,13 +419,22 @@ final class AppState: ObservableObject {
             Task { await self.burnAccount() }
 
         case .presence(let uin, let status, let message):
-            let wasOnline = ContactService.shared.contacts.first(where: { $0.uin == uin })?.status != .offline
+            let contact = ContactService.shared.contacts.first(where: { $0.uin == uin })
+            let wasOnline = contact?.status != .offline
             ContactService.shared.updatePresence(uin: uin, status: status, statusMessage: message)
             GroupService.shared.updateMemberPresence(uin: uin, status: status)
-            if status == .offline && wasOnline {
-                SoundService.shared.play(.contactOffline, thread: .peer(uin: uin))
-            } else if status != .offline && !wasOnline {
-                SoundService.shared.play(.contactOnline, thread: .peer(uin: uin))
+            // Online/offline chime ONLY for actual contacts. A
+            // presence event also arrives for users we merely share
+            // a group with — chiming on every group co-member's
+            // come-and-go was noise the user asked to kill. (It also
+            // had a bug: a non-contact resolved `wasOnline` to true
+            // via the nil-compare, so their going-offline chimed.)
+            if contact != nil {
+                if status == .offline && wasOnline {
+                    SoundService.shared.play(.contactOffline, thread: .peer(uin: uin))
+                } else if status != .offline && !wasOnline {
+                    SoundService.shared.play(.contactOnline, thread: .peer(uin: uin))
+                }
             }
 
         case .envelope(let env):
@@ -474,6 +507,35 @@ final class AppState: ObservableObject {
         case .groupDeleted(let id):
             GroupService.shared.purge(id)
             MessageStore.shared.clearThread(.group(id: id))
+
+        case .reputationChanged(let target, let amount, let newTotal, let anonymous, let donor):
+            // We only receive this WS event when WE are the target,
+            // so the toast wording assumes "you received". Anonymous
+            // donations show without a UIN; non-anonymous include
+            // the donor's UIN so the recipient can thank them.
+            let title = String(format: "reputation.toast.title".localized, amount)
+            let body: String
+            if anonymous {
+                body = "reputation.toast.body_anonymous".localized
+            } else if let donor {
+                body = String(format: "reputation.toast.body_from".localized, donor)
+            } else {
+                body = "reputation.toast.body_anonymous".localized
+            }
+            MessageBannerService.shared.tryPresentSystem(
+                title: title, body: body, target: .reputation
+            )
+            // Broadcast to any open profile view so it can splice
+            // the new total in without a refetch.
+            NotificationCenter.default.post(
+                name: .rcqReputationChanged,
+                object: nil,
+                userInfo: [
+                    "target_uin": target,
+                    "amount": amount,
+                    "new_total": newTotal,
+                ]
+            )
 
 		case .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction,
              .randomMatch, .randomEnd,
