@@ -443,12 +443,12 @@ struct MessageRow: View {
             onTapJeton?()
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: "hands.clap.fill")
-                    .font(.system(size: 10))
+                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                    .frame(width: 14, height: 14)
                 Text("\(jetonTotal)")
                     .font(.caption2.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
             }
-            .foregroundColor(Theme.Color.accent)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Capsule().fill(Theme.Color.accent.opacity(0.15)))

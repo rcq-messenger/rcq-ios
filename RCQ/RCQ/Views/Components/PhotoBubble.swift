@@ -16,7 +16,11 @@ struct PhotoBubble: View {
     /// `"GIF8"` magic and render via `AnimatedGIFView` while still
     /// using `image` as the first-frame fallback for the layout.
     @State private var gifData: Data?
-    @State private var loading = true
+    /// True only after a load with a real mediaID genuinely failed to
+    /// decrypt. Kept distinct from "still loading" so the window
+    /// between mediaID arriving (upload done) and the decrypt
+    /// finishing does not flash the error triangle.
+    @State private var loadFailed = false
     @State private var fullscreen = false
     @StateObject private var progress = MediaProgressStore.shared
 
@@ -49,10 +53,10 @@ struct PhotoBubble: View {
                 failedPlaceholder
             } else if isUploading {
                 uploadingPlaceholder
-            } else if loading {
-                placeholder(systemName: "photo")
-            } else {
+            } else if loadFailed {
                 placeholder(systemName: "exclamationmark.triangle")
+            } else {
+                placeholder(systemName: "photo")
             }
         }
         // Re-run on mediaID change so the placeholder flips to the real photo post-upload.
@@ -119,16 +123,18 @@ struct PhotoBubble: View {
     }
 
     private func load() async {
-        guard let raw = message.mediaID else { loading = false; return }
+        loadFailed = false
+        guard let raw = message.mediaID else { return }
         let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { loading = false; return }
+        guard parts.count == 2 else { loadFailed = true; return }
         if let (img, data) = await MediaService.shared.loadImageWithData(
             mediaID: parts[0], keyBase64: parts[1],
         ) {
             self.image = img
             self.gifData = AnimatedGIFView.isGIF(data) ? data : nil
+        } else {
+            loadFailed = true
         }
-        self.loading = false
     }
 
 }

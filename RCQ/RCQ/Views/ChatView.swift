@@ -145,6 +145,10 @@ struct ChatView: View {
     @State private var composerHeight: CGFloat = 36
     @StateObject private var voiceRecorder = VoiceRecorder.shared
     private static let voiceCancelOffset: CGFloat = 60
+    /// Kinds whose caption/text can be edited. Must stay in sync with
+    /// the editable set in `MessageStore.applyEdit`.
+    private static let editableKinds: [MessageKind] =
+        [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
     @State private var micDragOffset: CGFloat = 0
     @State private var voiceCancelArmed: Bool = false
     @State private var voicePermissionDenied: Bool = false
@@ -241,8 +245,8 @@ struct ChatView: View {
                     canDeleteForEveryone: target.isFromMe,
                     canReply: replyAllowed,
                     canEdit: target.isFromMe
-                        && target.kind == .text
-                        && !target.deletedForEveryone,
+                        && !target.deletedForEveryone
+                        && Self.editableKinds.contains(target.kind),
                     onReact: { asset in vm.toggleReaction(asset, on: target) },
                     onJetonReact: jetonEligible(target) ? {
                         let copy = target
