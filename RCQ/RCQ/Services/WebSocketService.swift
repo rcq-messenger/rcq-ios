@@ -63,6 +63,7 @@ final class WebSocketService: ObservableObject {
         case crashCashout(roundID: String, uin: Int, nickname: String?, multiplier: Double, payout: Int)
         case crashBetPlaced(roundID: String, uin: Int, nickname: String?, amount: Int, betsCount: Int)
         case reputationChanged(targetUIN: Int, amount: Int, newTotal: Int, anonymous: Bool, donorUIN: Int?)
+        case jetonReact(groupID: Int, messageID: String, totalJetons: Int, reactorUIN: Int, amount: Int)
         case accountBurned
     }
 
@@ -108,6 +109,13 @@ final class WebSocketService: ObservableObject {
 
     private init() {}
 
+    private static func makeSession() -> URLSession {
+        guard let proxy = SingBoxTransport.proxyDictionary() else { return .shared }
+        let cfg = URLSessionConfiguration.default
+        cfg.connectionProxyDictionary = proxy
+        return URLSession(configuration: cfg)
+    }
+
     func connect(uin: Int, token: String, baseURL: URL) {
         shouldStayConnected = true
         lastUIN = uin
@@ -126,6 +134,8 @@ final class WebSocketService: ObservableObject {
         if comp.scheme == "https" { comp.scheme = "wss" }
         comp.queryItems = [URLQueryItem(name: "token", value: token)]
         guard let url = comp.url else { return }
+
+        session = Self.makeSession()
 
         let task = session.webSocketTask(with: url)
         self.task = task
@@ -150,6 +160,10 @@ final class WebSocketService: ObservableObject {
         pingTimer = nil
         staleWatchdog?.invalidate()
         staleWatchdog = nil
+    }
+
+    func pingNow() {
+        send(["type": "ping"])
     }
 
     private func scheduleReconnect() {
@@ -309,6 +323,18 @@ final class WebSocketService: ObservableObject {
                 newTotal: newTotal,
                 anonymous: anonymous,
                 donorUIN: donor
+            ))
+
+        case "jeton_react":
+            guard let gid = dict["group_id"] as? Int,
+                  let mid = dict["message_id"] as? String,
+                  let total = dict["total_jetons"] as? Int else { return }
+            events.send(.jetonReact(
+                groupID: gid,
+                messageID: mid,
+                totalJetons: total,
+                reactorUIN: dict["reactor_uin"] as? Int ?? 0,
+                amount: dict["amount"] as? Int ?? 0
             ))
 
         case "presence":

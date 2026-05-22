@@ -98,7 +98,10 @@ struct PollBubble: View {
     private var memberNicks: [Int: String] {
         if case .group(let gid) = message.thread,
            let g = GroupService.shared.groups.first(where: { $0.id == gid }) {
-            return Dictionary(uniqueKeysWithValues: g.members.map { ($0.uin, $0.nickname) })
+            return Dictionary(
+                g.members.map { ($0.uin, $0.nickname) },
+                uniquingKeysWith: { first, _ in first }
+            )
         }
         return [:]
     }

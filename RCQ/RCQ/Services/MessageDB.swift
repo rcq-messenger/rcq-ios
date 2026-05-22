@@ -1,4 +1,5 @@
 import CoreData
+import CryptoKit
 import Foundation
 
 /// On-device message history. Server never persists plaintext — all
@@ -65,16 +66,50 @@ final class MessageRecord: NSManagedObject {
 final class MessageDB {
     static let shared = MessageDB()
 
-    private let container: NSPersistentContainer
+    private static let sentinel = "\u{1}\u{1}RCQE"
+
+    private var dataKey: SymmetricKey?
+    private var decoyMode: Bool = false
+
+    private var container: NSPersistentContainer
     private var ctx: NSManagedObjectContext { container.viewContext }
 
     private init() {
-        let model = MessageDB.buildModel()
-        let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
+        container = MessageDB.makeContainer(decoy: false)
+    }
 
+    func configure(decoy: Bool, dataKey: SymmetricKey?) {
+        self.dataKey = dataKey
+        if decoy != decoyMode {
+            decoyMode = decoy
+            container = MessageDB.makeContainer(decoy: decoy)
+        }
+    }
+
+    // MARK: - store files
+
+    private static func storeURL(decoy: Bool) -> URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
-        let storeURL = baseURL.appendingPathComponent("rcq-history-v8.sqlite")
+        let name = decoy ? "rcq-history-decoy-v8.sqlite" : "rcq-history-v8.sqlite"
+        return baseURL.appendingPathComponent(name)
+    }
+
+    static func destroyDecoyStore() {
+        let url = storeURL(decoy: true)
+        let dir = url.deletingLastPathComponent()
+        let base = url.lastPathComponent
+        for name in [base, base + "-shm", base + "-wal"] {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
+
+    private static let model: NSManagedObjectModel = buildModel()
+
+    private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
+        let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
+
+        let storeURL = MessageDB.storeURL(decoy: decoy)
         let desc = NSPersistentStoreDescription(url: storeURL)
         desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
         desc.shouldAddStoreAsynchronously = false
@@ -110,7 +145,39 @@ final class MessageDB {
             }
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
-        self.container = container
+        return container
+    }
+
+    // MARK: - field encryption
+
+    private func encField(_ s: String?) -> String? {
+        guard let s else { return nil }
+        guard dataKey != nil else { return s }
+        if s.hasPrefix(Self.sentinel) { return s }
+        return seal(s) ?? s
+    }
+
+    private func decField(_ s: String?) -> String? {
+        guard let s else { return nil }
+        guard s.hasPrefix(Self.sentinel) else { return s }
+        return unseal(s)
+    }
+
+    private func seal(_ plain: String) -> String? {
+        guard let dataKey, let pt = plain.data(using: .utf8),
+              let box = try? AES.GCM.seal(pt, using: dataKey),
+              let combined = box.combined else { return nil }
+        return Self.sentinel + combined.base64EncodedString()
+    }
+
+    private func unseal(_ stored: String) -> String {
+        guard let dataKey else { return "" }
+        let b64 = String(stored.dropFirst(Self.sentinel.count))
+        guard let combined = Data(base64Encoded: b64),
+              let box = try? AES.GCM.SealedBox(combined: combined),
+              let pt = try? AES.GCM.open(box, using: dataKey),
+              let s = String(data: pt, encoding: .utf8) else { return "" }
+        return s
     }
 
     // MARK: - schema
@@ -185,14 +252,14 @@ final class MessageDB {
         let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
         req.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: true)]
         let rows = (try? ctx.fetch(req)) ?? []
-        return rows.map(Self.toModel)
+        return rows.map(toModel)
     }
 
     func insert(_ msg: Message) {
         // Idempotent — CoreData has no implicit unique constraint on `id`.
         if find(id: msg.id) != nil { return }
         let row = MessageRecord(context: ctx)
-        Self.apply(msg, to: row)
+        apply(msg, to: row)
         save()
     }
 
@@ -204,7 +271,7 @@ final class MessageDB {
 
     func updateMediaID(id: UUID, mediaID: String) {
         guard let row = find(id: id) else { return }
-        row.mediaID = mediaID
+        row.mediaID = encField(mediaID)
         save()
     }
 
@@ -212,28 +279,28 @@ final class MessageDB {
     /// flips `premiumUnlocked` so re-launches render without re-charging.
     func updatePremiumUnlocked(id: UUID, mediaID: String) {
         guard let row = find(id: id) else { return }
-        row.mediaID = mediaID
+        row.mediaID = encField(mediaID)
         row.premiumUnlocked = true
         save()
     }
 
     func updateVideoMeta(id: UUID, thumbnailB64: String, durationSec: Double) {
         guard let row = find(id: id) else { return }
-        row.thumbnailB64 = thumbnailB64
+        row.thumbnailB64 = encField(thumbnailB64)
         row.durationSec = durationSec
         save()
     }
 
     func updateText(id: UUID, text: String, editedAt: Date) {
         guard let row = find(id: id) else { return }
-        row.text = text
+        row.text = encField(text) ?? ""
         row.editedAt = editedAt
         save()
     }
 
     func updateReactions(id: UUID, reactions: [Int: String]) {
         guard let row = find(id: id) else { return }
-        row.reactionsJSON = Self.encodeReactions(reactions)
+        row.reactionsJSON = encField(Self.encodeReactions(reactions)) ?? "{}"
         save()
     }
 
@@ -269,6 +336,26 @@ final class MessageDB {
         save()
     }
 
+    // MARK: - encrypt / decrypt migration
+
+    func reencryptAllRows(toPlaintext: Bool = false) async {
+        guard dataKey != nil else { return }
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        let rows = (try? ctx.fetch(req)) ?? []
+        for row in rows {
+            let transform: (String?) -> String? = toPlaintext ? decField : encField
+            row.text             = transform(row.text) ?? ""
+            row.mediaID          = transform(row.mediaID)
+            row.thumbnailB64     = transform(row.thumbnailB64)
+            row.reactionsJSON    = transform(row.reactionsJSON) ?? "{}"
+            row.forwardedFromName = transform(row.forwardedFromName)
+            row.replyToSnippet   = transform(row.replyToSnippet)
+            row.replyToAuthorName = transform(row.replyToAuthorName)
+            row.fileName         = transform(row.fileName)
+        }
+        save()
+    }
+
     // MARK: - helpers
 
     private func find(id: UUID) -> MessageRecord? {
@@ -283,32 +370,32 @@ final class MessageDB {
         do { try ctx.save() } catch { print("[MessageDB] save failed: \(error)") }
     }
 
-    private static func apply(_ msg: Message, to row: MessageRecord) {
+    private func apply(_ msg: Message, to row: MessageRecord) {
         row.id = msg.id
         row.threadKind = msg.thread.kindString
         row.threadKey = Int64(msg.thread.rawKey)
         row.senderUIN = Int64(msg.senderUIN)
         row.isFromMe = msg.isFromMe
         row.kind = msg.kind.rawValue
-        row.text = msg.text
-        row.mediaID = msg.mediaID
+        row.text = encField(msg.text) ?? ""
+        row.mediaID = encField(msg.mediaID)
         row.sentAt = msg.sentAt
         row.deliveryState = msg.deliveryState.rawValue
         row.receivedWhileAway = msg.receivedWhileAway
         row.deletedForEveryone = msg.deletedForEveryone
-        row.reactionsJSON = encodeReactions(msg.reactions)
-        row.thumbnailB64 = msg.thumbnailB64
+        row.reactionsJSON = encField(Self.encodeReactions(msg.reactions)) ?? "{}"
+        row.thumbnailB64 = encField(msg.thumbnailB64)
         row.durationSec = msg.durationSec
         row.ttlSeconds = Int64(msg.ttlSeconds ?? 0)
-        row.forwardedFromName = msg.forwardedFromName
+        row.forwardedFromName = encField(msg.forwardedFromName)
         row.replyToID = msg.replyToID
-        row.replyToSnippet = msg.replyToSnippet
-        row.replyToAuthorName = msg.replyToAuthorName
+        row.replyToSnippet = encField(msg.replyToSnippet)
+        row.replyToAuthorName = encField(msg.replyToAuthorName)
         row.editedAt = msg.editedAt
         row.premiumPriceTokens = Int64(msg.premiumPriceTokens ?? 0)
         row.premiumUnlocked = msg.premiumUnlocked
         row.albumID = msg.albumID
-        row.fileName = msg.fileName
+        row.fileName = encField(msg.fileName)
         row.fileMime = msg.fileMime
         row.fileSizeBytes = Int64(msg.fileSizeBytes ?? 0)
         row.latitude = msg.latitude.map { NSNumber(value: $0) }
@@ -316,32 +403,36 @@ final class MessageDB {
         row.pollID = Int64(msg.pollID ?? 0)
     }
 
-    private static func toModel(_ row: MessageRecord) -> Message {
-        Message(
+    private func toModel(_ row: MessageRecord) -> Message {
+        let fwd = decField(row.forwardedFromName)
+        let replySnippet = decField(row.replyToSnippet)
+        let replyAuthor = decField(row.replyToAuthorName)
+        let fileName = decField(row.fileName)
+        return Message(
             id: row.id,
             thread: ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey)),
             senderUIN: Int(row.senderUIN),
             isFromMe: row.isFromMe,
             kind: MessageKind(rawValue: row.kind) ?? .text,
-            text: row.text,
-            mediaID: row.mediaID,
+            text: decField(row.text) ?? "",
+            mediaID: decField(row.mediaID),
             sentAt: row.sentAt,
             deliveryState: DeliveryState(rawValue: row.deliveryState) ?? .delivered,
             receivedWhileAway: row.receivedWhileAway,
             deletedForEveryone: row.deletedForEveryone,
-            reactions: decodeReactions(row.reactionsJSON),
-            thumbnailB64: row.thumbnailB64,
+            reactions: Self.decodeReactions(decField(row.reactionsJSON) ?? "{}"),
+            thumbnailB64: decField(row.thumbnailB64),
             durationSec: row.durationSec,
             ttlSeconds: row.ttlSeconds > 0 ? Int(row.ttlSeconds) : nil,
-            forwardedFromName: (row.forwardedFromName?.isEmpty == false) ? row.forwardedFromName : nil,
+            forwardedFromName: (fwd?.isEmpty == false) ? fwd : nil,
             replyToID: row.replyToID,
-            replyToSnippet: (row.replyToSnippet?.isEmpty == false) ? row.replyToSnippet : nil,
-            replyToAuthorName: (row.replyToAuthorName?.isEmpty == false) ? row.replyToAuthorName : nil,
+            replyToSnippet: (replySnippet?.isEmpty == false) ? replySnippet : nil,
+            replyToAuthorName: (replyAuthor?.isEmpty == false) ? replyAuthor : nil,
             editedAt: row.editedAt,
             premiumPriceTokens: row.premiumPriceTokens > 0 ? Int(row.premiumPriceTokens) : nil,
             premiumUnlocked: row.premiumUnlocked,
             albumID: row.albumID,
-            fileName: (row.fileName?.isEmpty == false) ? row.fileName : nil,
+            fileName: (fileName?.isEmpty == false) ? fileName : nil,
             fileMime: (row.fileMime?.isEmpty == false) ? row.fileMime : nil,
             fileSizeBytes: row.fileSizeBytes > 0 ? Int(row.fileSizeBytes) : nil,
             latitude: row.latitude?.doubleValue,

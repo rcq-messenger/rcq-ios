@@ -27,6 +27,22 @@ struct PrivacySettingsView: View {
     @State private var readReceiptsVisibility: String = "everyone"
     @AppStorage("rcq.privacy.readReceiptsVisibility") private var readReceiptsCache: String = "everyone"
     @State private var reputationVisibility: String = "everyone"
+    @AppStorage("rcq.requirePINForItems") private var requirePINForItems = false
+
+    @StateObject private var itemsSvc = ItemsService.shared
+    @State private var showPINSettings = false
+    @State private var showProxyURL = false
+    @State private var showDiagnostics = false
+    @State private var showShop = false
+    @State private var confirmMigrate = false
+    @State private var migrating = false
+    @State private var migrationAlert: String?
+    @State private var trafficUsage: MediaService.TrafficUsage?
+    @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles = false
+    @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
+    private let migrationCost: Int = 99
+
+    private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
 
     var body: some View {
         NavigationStack {
@@ -134,18 +150,282 @@ struct PrivacySettingsView: View {
                         Text("settings.privacy.reputation.desc".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
+                    Section {
+                        Toggle(isOn: $requirePINForItems) {
+                            Text("settings.privacy.item_pin".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
+                        }
+                        .tint(Theme.Color.accent)
+                        .disabled(!pinConfigured)
+                    } footer: {
+                        Text(pinConfigured
+                             ? "settings.privacy.item_pin.desc".localized
+                             : "settings.privacy.item_pin.desc.no_pin".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    securitySection
+                    inventorySection
+                    networkSection
+                    trafficSection
+                    migrationSection
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("settings.privacy".localized)
+            .navigationTitle("settings.privacy_network".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                 }
             }
+            .sheet(isPresented: $showPINSettings) { PINSettingsView() }
+            .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
+            .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
+            .sheet(isPresented: $showShop) {
+                BuyTokensSheet()
+                    .presentationDetents([.medium, .large])
+            }
+            .confirmationDialog(
+                "settings.migrate.confirm.title".localized,
+                isPresented: $confirmMigrate,
+                titleVisibility: .visible,
+            ) {
+                Button("settings.migrate.confirm.button".localized) {
+                    Task {
+                        migrating = true
+                        let result = await AppState.shared.migrateAccount()
+                        migrating = false
+                        switch result {
+                        case .success(let newUIN):
+                            migrationAlert = String(format: "settings.migrate.success".localized, newUIN)
+                        case .insufficientTokens(let required, let have):
+                            migrationAlert = String(
+                                format: "settings.migrate.error.insufficient".localized,
+                                required, have,
+                            )
+                        case .cooldown:
+                            migrationAlert = "settings.migrate.error.cooldown".localized
+                        case .other(let msg):
+                            migrationAlert = msg.isEmpty ? "settings.migrate.error.generic".localized : msg
+                        }
+                    }
+                }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: {
+                Text("settings.migrate.confirm.message".localized)
+            }
+            .alert(
+                "settings.migrate.alert.title".localized,
+                isPresented: Binding(
+                    get: { migrationAlert != nil },
+                    set: { if !$0 { migrationAlert = nil } },
+                ),
+                actions: {
+                    Button("common.ok".localized, role: .cancel) {
+                        migrationAlert = nil
+                        dismiss()
+                    }
+                },
+                message: {
+                    Text(migrationAlert ?? "")
+                }
+            )
             .task { await loadVisibility() }
+            .task {
+                trafficUsage = await MediaService.shared.fetchTrafficUsage()
+            }
         }
+    }
+
+    // MARK: - moved sections (PIN / inventory / network / traffic / migration)
+
+    @ViewBuilder
+    private var securitySection: some View {
+        if !PanicPINService.shared.isDecoy {
+            Section {
+                Button {
+                    showPINSettings = true
+                } label: {
+                    HStack {
+                        Image(systemName: "lock.shield.fill")
+                            .foregroundColor(Theme.Color.accent)
+                        Text("settings.panic_pin".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Text(PanicPINService.shared.isConfigured
+                             ? "settings.panic_pin.on".localized
+                             : "settings.panic_pin.off".localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+            } footer: {
+                Text("settings.panic_pin.footer".localized)
+            }
+            .listRowBackground(Theme.Color.bgSecondary)
+        }
+    }
+
+    private var inventorySection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { itemsSvc.inventoryPublic },
+                set: { newValue in
+                    Task { await itemsSvc.setInventoryPublic(newValue) }
+                },
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.inventory.public".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("settings.inventory.public.footer".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .tint(Theme.Color.accent)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    private var networkSection: some View {
+        Section {
+            Button {
+                showProxyURL = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "eye.slash")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    Text("settings.network.stealth".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(proxyURL.isEmpty
+                         ? "settings.network.proxy.unset".localized
+                         : proxyURL)
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            Button {
+                showDiagnostics = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "stethoscope")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    Text("settings.network.diag".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+        } header: {
+            Text("settings.masking".localized)
+        } footer: {
+            Text("settings.network.proxy.intro".localized)
+                .font(.caption2)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    private var trafficSection: some View {
+        Section {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: "internaldrive")
+                    .foregroundColor(Theme.Color.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.traffic.used".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text(usedMBString)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("settings.traffic.spent".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    HStack(spacing: 3) {
+                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                            .frame(width: 12, height: 12)
+                        Text("\(trafficUsage?.jetonsSpent ?? 0)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                }
+            }
+            Toggle(isOn: $payForLargeFiles) {
+                Text("settings.traffic.pay_large".localized)
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            .tint(Theme.Color.accent)
+        } header: {
+            Text("settings.traffic".localized)
+        } footer: {
+            Text("settings.traffic.pay_large.footer".localized)
+                .font(.caption2)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    private var migrationSection: some View {
+        Section {
+            let canAfford = itemsSvc.wallet.tokens >= migrationCost
+            Button {
+                if canAfford {
+                    confirmMigrate = true
+                } else {
+                    showShop = true
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.uturn.right.circle")
+                        .foregroundColor(canAfford ? Theme.Color.accent : Theme.Color.textSecondary)
+                    Text(migrating
+                        ? "settings.migrate.busy".localized
+                        : (canAfford
+                            ? "settings.migrate.label".localized
+                            : "settings.migrate.label.need_tokens".localized)
+                    )
+                    .foregroundColor(canAfford ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+                    Spacer()
+                    if migrating {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        HStack(spacing: 3) {
+                            ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
+                                .frame(width: 12, height: 12)
+                            Text("\(migrationCost)")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(canAfford ? Theme.Color.textSecondary : Color.red)
+                        }
+                    }
+                }
+            }
+            .disabled(migrating)
+        } footer: {
+            Text("settings.migrate.footer".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    private var usedMBString: String {
+        let bytes = trafficUsage?.bytesUsed ?? 0
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useMB, .useGB]
+        f.countStyle = .file
+        return f.string(fromByteCount: Int64(bytes))
     }
 
     @ViewBuilder

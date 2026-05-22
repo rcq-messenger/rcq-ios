@@ -70,12 +70,19 @@ final class CrashService: ObservableObject {
     // ── Public surface ──────────────────────────────────────────────
 
     func refresh() async {
-        do {
-            let snapshot: CrashStateSnapshot = try await APIClient.shared
-                .request("GET", "/crash/state")
-            apply(snapshot)
-        } catch {
-            log.error("crash refresh failed: \(error.localizedDescription)")
+        for attempt in 0..<3 {
+            if Task.isCancelled { return }
+            do {
+                let snapshot: CrashStateSnapshot = try await APIClient.shared
+                    .request("GET", "/crash/state")
+                apply(snapshot)
+                return
+            } catch {
+                log.error("crash refresh failed (attempt \(attempt + 1)): \(error.localizedDescription)")
+                if attempt < 2 {
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                }
+            }
         }
     }
 

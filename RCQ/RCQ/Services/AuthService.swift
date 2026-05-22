@@ -88,6 +88,18 @@ final class AuthService: ObservableObject {
         KeychainStore.setString(KeychainStore.Keys.nickname, nick)
     }
 
+    func applyDecoyIdentity(uin: Int, nickname: String) {
+        self.ownUIN = uin
+        self.nickname = nickname
+    }
+
+    func restoreRealIdentity() {
+        if let s = KeychainStore.string(KeychainStore.Keys.uin), let u = Int(s) {
+            ownUIN = u
+        }
+        nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
+    }
+
     /// Hard reset — wipes Keychain, in-memory state, and API token.
     /// Used by the "Burn account" flow.
     func wipeLocalIdentity() async {

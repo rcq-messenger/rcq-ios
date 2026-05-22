@@ -456,7 +456,6 @@ final class MessageService {
 
     // MARK: - editing
 
-    /// v1 supports text bubbles only — callers must gate.
     func edit(message: Message, newText: String, to contact: Contact) async throws {
         let now = Date()
         let thread = ThreadID.peer(uin: contact.uin)
@@ -1308,6 +1307,11 @@ final class MessageService {
                     targetID: targetID, thread: thread,
                     uin: decrypted.senderUIN, asset: asset
                 )
+                if asset != nil, decrypted.senderUIN != ownUIN,
+                   MessageStore.shared.messages(for: thread)
+                       .first(where: { $0.id == targetID })?.isFromMe == true {
+                    ReactionInboxStore.shared.mark(thread)
+                }
             case .bounce(let targetID):
                 MessageStore.shared.updateState(messageID: targetID, thread: thread, state: .failed)
             case .visit(let at):
@@ -1423,6 +1427,7 @@ final class MessageService {
     }
 
     func fetchOfflineQueue() async {
+        if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
         struct Row: Decodable {
             let id: Int
             let envelope_type: String
@@ -1445,14 +1450,15 @@ final class MessageService {
                 guard let outcome = ingest(envelope: env) else { continue }
                 // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
                 guard outcome.isNewContent else { continue }
+                let viewing = MessageBannerService.shared.isViewing(outcome.thread)
                 switch outcome.thread {
                 case .peer(let uin):
                     if !ContactService.shared.contacts.contains(where: { $0.uin == uin }) {
                         sawUnknownPeer = true
                     }
-                    ContactService.shared.incrementUnread(for: uin)
+                    if !viewing { ContactService.shared.incrementUnread(for: uin) }
                 case .group(let id):
-                    GroupService.shared.incrementUnread(id)
+                    if !viewing { GroupService.shared.incrementUnread(id) }
                 }
             }
             if sawUnknownPeer {

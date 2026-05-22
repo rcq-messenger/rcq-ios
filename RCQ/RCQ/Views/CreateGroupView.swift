@@ -101,7 +101,15 @@ struct CreateGroupView: View {
             onCreated(g)
             dismiss()
         } catch {
-            self.error = String(format: "create_group.error".localized, error.localizedDescription)
+            self.error = Self.friendlyCreateError(error)
         }
+    }
+
+    private static func friendlyCreateError(_ error: Error) -> String {
+        if let apiErr = error as? APIError, case .http(403, let body) = apiErr,
+           (body ?? "").contains("invite") {
+            return "create_group.error.invites_blocked".localized
+        }
+        return String(format: "create_group.error".localized, APIErrorPresenter.friendly(error))
     }
 }

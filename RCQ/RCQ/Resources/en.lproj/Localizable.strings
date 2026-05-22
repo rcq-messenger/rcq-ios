@@ -24,6 +24,7 @@
 "settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
 
 "settings.privacy" = "Privacy";
+"settings.privacy_network" = "Privacy & network";
 "settings.privacy.profile" = "Profile visible to";
 "settings.privacy.last_seen" = "Last seen visible to";
 "settings.privacy.gender" = "Gender";
@@ -100,9 +101,24 @@
 "settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
 
 "settings.network" = "Privacy & network";
-"settings.network.proxy" = "Proxy URL";
-"settings.network.proxy.unset" = "Not set";
-"settings.network.proxy.footer" = "Leave empty for direct connection to api.rcq.app. If your network blocks RCQ, paste a proxy URL here — all chat + media traffic will route through it. We'll publish working URLs through our channels when blocking starts.";
+"settings.network.proxy" = "Connection & bypass";
+"settings.network.title" = "Network";
+"settings.masking" = "Masking";
+"settings.network.stealth" = "Stealth mode";
+"settings.network.diag" = "Connection diagnostics";
+"diag.title" = "Connection diagnostics";
+"diag.run" = "Run";
+"settings.network.proxy.unset" = "Automatic";
+"settings.network.proxy.intro" = "RCQ connects to the server directly. If that server is blocked on your network, the app automatically switches to a built-in backup route — you don't need to do anything.";
+"settings.network.proxy.status.direct" = "Connection: direct";
+"settings.network.proxy.status.auto" = "Connection: built-in proxy (the server was blocked)";
+"settings.network.proxy.status.manual" = "Connection: manual proxy";
+"settings.network.proxy.manual_label" = "Manual override";
+"settings.network.proxy.placeholder" = "https://example.workers.dev";
+"settings.network.proxy.footer" = "Advanced — usually leave empty. Paste your own proxy or Cloudflare Worker URL to force all chat + media traffic through it. Empty means the automatic behaviour above stays in charge.";
+"settings.network.singbox.label" = "Obfuscated transport (beta)";
+"settings.network.singbox.note" = "Routes all traffic through an encrypted, hard-to-detect tunnel built into the app — no separate VPN needed. Turn this on if the app won't connect on your network.";
+"settings.network.singbox.status.on" = "Obfuscated transport: on";
 "settings.network.coming_soon" = "Coming soon";
 
 "settings.traffic" = "File traffic";
@@ -553,6 +569,19 @@
 "chat.action.delete_for_me" = "Delete for me";
 "chat.action.delete_for_everyone" = "Delete for everyone";
 "chat.action.react" = "React";
+"chat.action.jeton" = "Send jetons";
+
+"jeton.react.body" = "Send jetons to %@. They go straight to the message author's wallet.";
+"jeton.react.amount_suffix" = "jetons";
+"jeton.react.balance" = "Balance: %d tokens";
+"jeton.react.send" = "Send";
+"jeton.react.error_min" = "Minimum is %d jeton.";
+"jeton.react.error_insufficient" = "Not enough tokens.";
+"jeton.react.error_target_missing" = "That user doesn't exist.";
+"jeton.react.error_rate_limited" = "Too many reactions — try again in a minute.";
+"jeton.react.error_not_member" = "You're not a member of this group.";
+"jeton.react.error_self" = "You can't send jetons to your own message.";
+"jeton.react.error_generic" = "Couldn't send jetons. Try again.";
 "chat.action.report_content" = "Report content";
 
 /* Report with evidence — long-press on a media bubble */
@@ -674,6 +703,7 @@
 "create_group.cta.create" = "Create";
 "create_group.cta.creating" = "Creating…";
 "create_group.error" = "Couldn't create: %@";
+"create_group.error.invites_blocked" = "Some of the selected people don't accept group invites. Remove them and try again.";
 
 "settings.notifications" = "Notifications";
 "notifs.title" = "Notifications";
@@ -1626,3 +1656,91 @@
 "last_seen.day_one" = "%d day ago";
 "last_seen.day_few" = "%d days ago";
 "last_seen.day_many" = "%d days ago";
+
+/* Panic-PIN (duress protection) */
+"settings.panic_pin" = "Security PIN";
+"settings.panic_pin.on" = "On";
+"settings.panic_pin.off" = "Off";
+"settings.panic_pin.footer" = "A PIN that locks the app and encrypts your message history on this device.";
+"panic_pin.lock.title" = "Enter PIN";
+"panic_pin.settings.title" = "Security PIN";
+"panic_pin.settings.section" = "App PIN";
+"panic_pin.settings.footer" = "Your message history on this device is encrypted with a key derived from this PIN. The PIN is asked at launch and after the app has been in the background. It protects against a coerced unlock or someone glancing at your phone — not against a forensic lab: your identity keys and server-side metadata still exist.";
+"panic_pin.setup.action" = "Set up a PIN";
+"panic_pin.setup.footer" = "Once set, the app locks and your message history is encrypted on this device with a key derived from the PIN.";
+"panic_pin.change.action" = "Change PIN";
+"panic_pin.entry.hint" = "At least 4 digits.";
+"panic_pin.reauth.title" = "Enter your current PIN";
+"panic_pin.reauth.hint" = "Confirm it's you before changing PIN settings.";
+"panic_pin.reauth.wrong" = "Wrong PIN. Try again.";
+"pin_verify.hint" = "Enter your Security PIN.";
+"pin_verify.wrong" = "Wrong PIN. Try again.";
+"pin_verify.title.send_items" = "Confirm sending items";
+"pin_verify.title.archive" = "Unlock archived contacts";
+"settings.privacy.item_pin" = "Require PIN to send items";
+"settings.privacy.item_pin.desc" = "Ask for your Security PIN before any item, gift or trade leaves your account.";
+"settings.privacy.item_pin.desc.no_pin" = "Set up a Security PIN first to enable this.";
+"panic_pin.entry.title.new" = "Choose a PIN";
+"panic_pin.entry.title.wipe" = "Choose a wipe PIN";
+"panic_pin.entry.title.confirm" = "Re-enter the PIN";
+"panic_pin.entry.mismatch" = "PINs didn't match. Try again.";
+"panic_pin.error.title" = "PIN";
+"panic_pin.error.in_use" = "That PIN is already in use. Choose a different one.";
+"panic_pin.error.too_short" = "The PIN is too short.";
+"panic_pin.wipe.section" = "Wipe PIN";
+"panic_pin.wipe.footer" = "An optional second PIN. Entering it at the lock screen permanently destroys all local data on this device and starts a fresh empty account — with no confirmation. Use only if you understand the risk of entering it by accident.";
+"panic_pin.wipe.action" = "Add a wipe PIN";
+"panic_pin.wipe.change" = "Change wipe PIN";
+"panic_pin.wipe.remove" = "Remove wipe PIN";
+"panic_pin.wipe.remove.confirm.title" = "Remove wipe PIN?";
+"panic_pin.wipe.remove.confirm.action" = "Remove";
+"panic_pin.wipe.warning.title" = "This PIN destroys data";
+"panic_pin.wipe.warning.body" = "Entering the wipe PIN at the lock screen permanently erases all messages, contacts and keys on this device and starts a brand-new empty account. There is no confirmation step and no undo. Set it only if you accept the risk of entering it by mistake.";
+"panic_pin.wipe.warning.continue" = "I understand — continue";
+"panic_pin.remove_all.action" = "Turn off Security PIN";
+"panic_pin.remove_all.confirm.title" = "Turn off the PIN?";
+"panic_pin.remove_all.confirm.body" = "The app will no longer lock, and your message history will be decrypted back to plaintext on this device.";
+"panic_pin.remove_all.confirm.action" = "Turn off";
+
+/* Panic-PIN — Face ID add-on */
+"panic_pin.biometric.reason" = "Unlock RCQ";
+"panic_pin.lock.use_biometric" = "Unlock with Face ID";
+"panic_pin.biometric.section" = "Face ID";
+"panic_pin.biometric.toggle" = "Unlock with Face ID";
+"panic_pin.biometric.footer" = "Use Face ID for everyday quick unlock. The PIN stays as a fallback. Note: Face ID is a convenience — it does not protect against being forced to unlock, since someone can hold the phone to your face. For that, use the PIN modes below.";
+"panic_pin.biometric.footer.conflict" = "Face ID can't be used together with a wipe PIN — a biometric unlock can't tell the modes apart, and a forced face-unlock would bypass them. Remove the wipe PIN to enable Face ID.";
+"panic_pin.wipe.footer.biometric" = "Turn off Face ID to set a wipe PIN. The two can't be used together.";
+"panic_pin.error.biometric_conflict" = "Face ID and the wipe PIN can't be enabled at the same time.";
+"panic_pin.error.biometric_failed" = "Couldn't enable Face ID. Try again.";
+
+"panic_pin.lock.locked_out" = "Too many attempts";
+
+/* Panic-PIN — decoy mode */
+"panic_pin.decoy.section" = "Decoy PIN";
+"panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens an empty decoy account that works offline — your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app.";
+"panic_pin.decoy.footer.biometric" = "Turn off Face ID to set a decoy PIN. The two can't be used together — a face-unlock can't open the decoy.";
+"panic_pin.decoy.action" = "Add a decoy PIN";
+"panic_pin.decoy.change" = "Change decoy PIN";
+"panic_pin.decoy.remove" = "Remove decoy PIN";
+"panic_pin.decoy.remove.confirm.title" = "Remove decoy PIN?";
+"panic_pin.decoy.remove.confirm.action" = "Remove";
+"panic_pin.entry.title.decoy" = "Choose a decoy PIN";
+
+/* Voice recording — lock + preview */
+"chat.voice.locked" = "Locked";
+"chat.voice.cancel_armed" = "Release to cancel";
+"chat.voice.cancel_hint" = "Cancel";
+"chat.voice.lock_hint" = "Lock";
+
+/* Onboarding — reworked pages (anonymity / mesh / security PIN) */
+"onboard.anon.kicker" = "ANONYMOUS";
+"onboard.anon.title" = "No phone, no email";
+"onboard.anon.body" = "Your identity is a numeric UIN — nothing else. The account isn't tied to you. Burn it and start over whenever you want.";
+"onboard.mesh.kicker" = "OFFLINE MESH";
+"onboard.mesh.title" = "Chat with no internet";
+"onboard.mesh.body" = "Radio Chat finds people near you over Bluetooth and Wi-Fi Direct. Messages hop device to device — no servers, no cell signal needed.";
+"onboard.pin.kicker" = "SECURITY PIN";
+"onboard.pin.title" = "Locked on your device";
+"onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device — with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
+
+"boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it — try a VPN.";

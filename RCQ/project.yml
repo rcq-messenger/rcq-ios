@@ -59,6 +59,8 @@ targets:
         # the gallery icon in the composer.
         NSPhotoLibraryUsageDescription: "RCQ needs access to your photos and videos so you can attach them to a chat message."
         NSPhotoLibraryAddUsageDescription: "RCQ saves photos you choose to download from a chat into your camera roll."
+        # Optional Face ID / Touch ID unlock for the app Security PIN.
+        NSFaceIDUsageDescription: "RCQ can use Face ID to unlock the app instead of typing your Security PIN."
         # People Nearby — opt-in only. We never read raw GPS to the
         # server; the client computes a coarse area hash (level-6
         # geohash, ~1km tile) and sends only the hash. No background
@@ -232,6 +234,17 @@ targets:
         product: WebRTC
       - package: LibSignalClient
         product: LibSignalClient
+      # Embedded sing-box core for the VLESS+Reality obfuscated
+      # transport (censorship circumvention — works without a system
+      # VPN). gomobile-bound static framework built from the rcqbox/
+      # package in the sing-box source tree. Linked, not embedded —
+      # the binary is a static archive, its symbols fold into the app.
+      - framework: Vendor/Rcqbox.xcframework
+        embed: false
+      # sing-box's Go runtime uses a cgo DNS resolver that references
+      # dns_open / dns_search / dns_free from the system libresolv.
+      # A static archive carries no link deps, so the app must link it.
+      - sdk: libresolv.tbd
       - target: RCQNotificationService
 
   # Notification Service Extension — runs in its own process whenever an

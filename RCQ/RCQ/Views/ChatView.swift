@@ -16,6 +16,16 @@ struct ChatView: View {
         return (groupSvc.find(snapshot.id) ?? snapshot).members
     }
 
+    private var activeGroupID: Int? {
+        if case .group(let g) = vm.target { return g.id }
+        return nil
+    }
+
+    private func jetonEligible(_ msg: Message) -> Bool {
+        guard activeGroupID != nil else { return false }
+        return !msg.isFromMe && !msg.deletedForEveryone && msg.kind != .systemNotice
+    }
+
     /// `@partial` token at the tail of the composer input — drives the
     /// mention picker. Walks back from input end; bails as soon as it
     /// hits whitespace, so `Hey @bob hi @al` resolves to `al`, not `bob`.
@@ -27,7 +37,7 @@ struct ChatView: View {
             let scalar = Unicode.Scalar(ns.character(at: i - 1))
             if let s = scalar, s == "@" {
                 let after = ns.substring(from: i)
-                let valid = after.unicodeScalars.allSatisfy { $0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == "_" }
+                let valid = after.unicodeScalars.allSatisfy { $0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == "_" || $0 == "-" }
                 if valid {
                     return (range: NSRange(location: i - 1, length: ns.length - i + 1), partial: after)
                 }
@@ -179,6 +189,8 @@ struct ChatView: View {
     private var replyAllowed: Bool { true }
     @State private var now = Date()
     @State private var actionTarget: Message?
+    @State private var jetonTarget: Message?
+    @StateObject private var jetonStore = JetonStore.shared
     @State private var evidenceReportTarget: PendingEvidenceReport?
 
     init(target: ChatTarget) {
@@ -232,6 +244,12 @@ struct ChatView: View {
                         && target.kind == .text
                         && !target.deletedForEveryone,
                     onReact: { asset in vm.toggleReaction(asset, on: target) },
+                    onJetonReact: jetonEligible(target) ? {
+                        let copy = target
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            jetonTarget = copy
+                        }
+                    } : nil,
                     onReply: {
                         let copy = target
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -511,6 +529,9 @@ struct ChatView: View {
                 if itemsSvc.catalog == nil { await itemsSvc.refreshCatalog() }
                 if itemsSvc.items.isEmpty { await itemsSvc.refreshInventory() }
             }
+            if let gid = activeGroupID {
+                Task { await jetonStore.loadGroup(gid) }
+            }
         }
         .onDisappear {
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
@@ -527,6 +548,17 @@ struct ChatView: View {
         .sheet(item: $inspectingTrade) { trade in
             SingleTradeSheet(trade: trade)
                 .presentationDetents([.fraction(0.5), .large])
+        }
+        .sheet(item: $jetonTarget) { msg in
+            if let gid = activeGroupID {
+                JetonReactSheet(
+                    groupID: gid,
+                    messageID: msg.id,
+                    targetUIN: msg.senderUIN,
+                    targetNickname: vm.senderNickname(msg.senderUIN),
+                    onSuccess: { _ in }
+                )
+            }
         }
         .onChange(of: vm.messages.last?.id) { _ in
             if let last = vm.messages.last { vm.ackIfVisible(last) }
@@ -938,6 +970,8 @@ struct ChatView: View {
                                 isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
                                 showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
+                                jetonTotal: jetonStore.total(for: msg.id),
+                                onTapJeton: jetonEligible(msg) ? { jetonTarget = msg } : nil,
                                 onLongPress: {
                                     if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1421,10 +1455,13 @@ struct ChatView: View {
                 } else if let uinShare {
                     UinReplyMiniCard(listingID: uinShare.listingID)
                 } else {
-                    Text(snippet)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                        .lineLimit(1)
+                    EmoticonText(
+                        text: snippet,
+                        font: .caption2,
+                        color: Theme.Color.textSecondary,
+                        emoticonSize: 15,
+                        members: currentGroupMembers
+                    )
                 }
             }
             Spacer(minLength: 4)

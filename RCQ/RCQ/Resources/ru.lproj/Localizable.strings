@@ -15,6 +15,7 @@
 "settings.language.footer" = "Выберите язык интерфейса. Переводы добавляются постепенно — отсутствующие строки временно отображаются на английском.";
 
 "settings.privacy" = "Приватность";
+"settings.privacy_network" = "Приватность и сеть";
 "settings.privacy.profile" = "Профиль видят";
 "settings.privacy.last_seen" = "Был в сети — видят";
 "settings.privacy.gender" = "Пол";
@@ -91,9 +92,24 @@
 "settings.inventory.public.footer" = "Другие пользователи RCQ смогут просматривать ваши предметы из вашего профиля. Выкл — инвентарь приватный. Тот же тумблер, что и иконка-глаз в инвентаре.";
 
 "settings.network" = "Приватность и сеть";
-"settings.network.proxy" = "URL прокси";
-"settings.network.proxy.unset" = "Не задан";
-"settings.network.proxy.footer" = "Оставь пустым для прямого подключения к api.rcq.app. Если сеть блокирует RCQ — вставь сюда URL прокси, и весь чат + медиа пойдут через него. Рабочие адреса мы публикуем в наших каналах когда это становится нужно.";
+"settings.network.proxy" = "Подключение и обход";
+"settings.network.title" = "Сеть";
+"settings.masking" = "Маскировка";
+"settings.network.stealth" = "Стелз-режим";
+"settings.network.diag" = "Диагностика связи";
+"diag.title" = "Диагностика связи";
+"diag.run" = "Проверить";
+"settings.network.proxy.unset" = "Автоматически";
+"settings.network.proxy.intro" = "RCQ подключается к серверу напрямую. Если сервер заблокируют в вашей сети, приложение само переключится на встроенный резервный маршрут — делать ничего не нужно.";
+"settings.network.proxy.status.direct" = "Подключение: напрямую";
+"settings.network.proxy.status.auto" = "Подключение: встроенный прокси (сервер был заблокирован)";
+"settings.network.proxy.status.manual" = "Подключение: ручной прокси";
+"settings.network.proxy.manual_label" = "Ручной обход";
+"settings.network.proxy.placeholder" = "https://example.workers.dev";
+"settings.network.proxy.footer" = "Для продвинутых — обычно оставляйте пустым. Вставьте свой прокси или URL Cloudflare Worker, чтобы весь чат + медиа шли через него. Пусто — работает автоматика выше.";
+"settings.network.singbox.label" = "Обфусцированный транспорт (бета)";
+"settings.network.singbox.note" = "Пускает весь трафик через встроенный в приложение зашифрованный туннель, который трудно обнаружить — отдельный VPN не нужен. Включите, если приложение не подключается в вашей сети.";
+"settings.network.singbox.status.on" = "Обфусцированный транспорт: вкл";
 "settings.network.coming_soon" = "Скоро";
 
 "settings.traffic" = "Трафик файлов";
@@ -544,6 +560,19 @@
 "chat.action.delete_for_me" = "Удалить у себя";
 "chat.action.delete_for_everyone" = "Удалить у всех";
 "chat.action.react" = "Реакция";
+"chat.action.jeton" = "Отправить жетоны";
+
+"jeton.react.body" = "Отправьте жетоны для %@. Они сразу попадут в кошелёк автора сообщения.";
+"jeton.react.amount_suffix" = "жетонов";
+"jeton.react.balance" = "Баланс: %d жетонов";
+"jeton.react.send" = "Отправить";
+"jeton.react.error_min" = "Минимум — %d жетон.";
+"jeton.react.error_insufficient" = "Недостаточно жетонов.";
+"jeton.react.error_target_missing" = "Такого пользователя не существует.";
+"jeton.react.error_rate_limited" = "Слишком много реакций — попробуйте через минуту.";
+"jeton.react.error_not_member" = "Вы не состоите в этой группе.";
+"jeton.react.error_self" = "Нельзя отправить жетоны на собственное сообщение.";
+"jeton.react.error_generic" = "Не удалось отправить жетоны. Попробуйте ещё раз.";
 "chat.action.report_content" = "Пожаловаться на контент";
 
 /* Жалоба с прикреплённым контентом — long-press на медиа */
@@ -665,6 +694,7 @@
 "create_group.cta.create" = "Создать";
 "create_group.cta.creating" = "Создаём…";
 "create_group.error" = "Не удалось создать: %@";
+"create_group.error.invites_blocked" = "Кто-то из выбранных не принимает приглашения в группы. Убери их из списка и попробуй снова.";
 
 "settings.notifications" = "Уведомления";
 "notifs.title" = "Уведомления";
@@ -1628,3 +1658,91 @@
 "last_seen.day_one" = "%d день назад";
 "last_seen.day_few" = "%d дня назад";
 "last_seen.day_many" = "%d дней назад";
+
+/* Panic-PIN (защита при принуждении) */
+"settings.panic_pin" = "PIN-код";
+"settings.panic_pin.on" = "Вкл";
+"settings.panic_pin.off" = "Выкл";
+"settings.panic_pin.footer" = "PIN-код блокирует приложение и шифрует историю сообщений на этом устройстве.";
+"panic_pin.lock.title" = "Введите PIN-код";
+"panic_pin.settings.title" = "PIN-код";
+"panic_pin.settings.section" = "PIN приложения";
+"panic_pin.settings.footer" = "История сообщений на этом устройстве шифруется ключом, производным от PIN-кода. PIN запрашивается при запуске и после сворачивания приложения. Он защищает от принудительной разблокировки и беглого осмотра телефона — но не от форензик-лаборатории: ваши ключи и метаданные на сервере по-прежнему существуют.";
+"panic_pin.setup.action" = "Установить PIN-код";
+"panic_pin.setup.footer" = "После установки приложение блокируется, а история сообщений шифруется на этом устройстве ключом, производным от PIN-кода.";
+"panic_pin.change.action" = "Сменить PIN-код";
+"panic_pin.entry.hint" = "Минимум 4 цифры.";
+"panic_pin.reauth.title" = "Введите текущий PIN";
+"panic_pin.reauth.hint" = "Подтвердите, что это вы, перед изменением настроек PIN.";
+"panic_pin.reauth.wrong" = "Неверный PIN. Попробуйте ещё раз.";
+"pin_verify.hint" = "Введите ваш Security PIN.";
+"pin_verify.wrong" = "Неверный PIN. Попробуйте ещё раз.";
+"pin_verify.title.send_items" = "Подтвердите отправку предметов";
+"pin_verify.title.archive" = "Разблокировать архив контактов";
+"settings.privacy.item_pin" = "Запрашивать PIN при отправке предметов";
+"settings.privacy.item_pin.desc" = "Спрашивать Security PIN перед тем, как любой предмет, подарок или обмен покинет ваш аккаунт.";
+"settings.privacy.item_pin.desc.no_pin" = "Сначала задайте Security PIN, чтобы включить это.";
+"panic_pin.entry.title.new" = "Придумайте PIN-код";
+"panic_pin.entry.title.wipe" = "Придумайте PIN для стирания";
+"panic_pin.entry.title.confirm" = "Повторите PIN-код";
+"panic_pin.entry.mismatch" = "PIN-коды не совпали. Попробуйте снова.";
+"panic_pin.error.title" = "PIN-код";
+"panic_pin.error.in_use" = "Этот PIN-код уже используется. Выберите другой.";
+"panic_pin.error.too_short" = "PIN-код слишком короткий.";
+"panic_pin.wipe.section" = "PIN для стирания";
+"panic_pin.wipe.footer" = "Необязательный второй PIN-код. Его ввод на экране блокировки безвозвратно уничтожает все локальные данные на этом устройстве и создаёт новый пустой аккаунт — без подтверждения. Используйте, только если осознаёте риск случайного ввода.";
+"panic_pin.wipe.action" = "Добавить PIN для стирания";
+"panic_pin.wipe.change" = "Сменить PIN для стирания";
+"panic_pin.wipe.remove" = "Удалить PIN для стирания";
+"panic_pin.wipe.remove.confirm.title" = "Удалить PIN для стирания?";
+"panic_pin.wipe.remove.confirm.action" = "Удалить";
+"panic_pin.wipe.warning.title" = "Этот PIN уничтожает данные";
+"panic_pin.wipe.warning.body" = "Ввод PIN для стирания на экране блокировки безвозвратно удаляет все сообщения, контакты и ключи на этом устройстве и создаёт совершенно новый пустой аккаунт. Подтверждения нет, отмены нет. Устанавливайте, только если принимаете риск ошибочного ввода.";
+"panic_pin.wipe.warning.continue" = "Понимаю — продолжить";
+"panic_pin.remove_all.action" = "Отключить PIN-код";
+"panic_pin.remove_all.confirm.title" = "Отключить PIN-код?";
+"panic_pin.remove_all.confirm.body" = "Приложение больше не будет блокироваться, а история сообщений будет расшифрована обратно на этом устройстве.";
+"panic_pin.remove_all.confirm.action" = "Отключить";
+
+/* Panic-PIN — надстройка Face ID */
+"panic_pin.biometric.reason" = "Разблокировать RCQ";
+"panic_pin.lock.use_biometric" = "Войти по Face ID";
+"panic_pin.biometric.section" = "Face ID";
+"panic_pin.biometric.toggle" = "Разблокировка по Face ID";
+"panic_pin.biometric.footer" = "Используйте Face ID для быстрого входа каждый день. PIN-код остаётся запасным вариантом. Важно: Face ID — это удобство, он не защищает от принуждения разблокировать — телефон могут поднести к вашему лицу. Для этого используйте режимы PIN-кода ниже.";
+"panic_pin.biometric.footer.conflict" = "Face ID нельзя использовать вместе с PIN для стирания — биометрия не различает режимы, а принудительная разблокировка по лицу обойдёт их. Удалите PIN для стирания, чтобы включить Face ID.";
+"panic_pin.wipe.footer.biometric" = "Отключите Face ID, чтобы задать PIN для стирания. Вместе они не работают.";
+"panic_pin.error.biometric_conflict" = "Face ID и PIN для стирания нельзя включить одновременно.";
+"panic_pin.error.biometric_failed" = "Не удалось включить Face ID. Попробуйте снова.";
+
+"panic_pin.lock.locked_out" = "Слишком много попыток";
+
+/* Panic-PIN — режим decoy */
+"panic_pin.decoy.section" = "Запасной PIN";
+"panic_pin.decoy.footer" = "Необязательный второй PIN-код. Его ввод на экране блокировки открывает пустой подставной аккаунт, который работает офлайн — ваши настоящие контакты и переписка остаются зашифрованными и недоступными. Используйте, если вас могут заставить разблокировать и показать приложение.";
+"panic_pin.decoy.footer.biometric" = "Отключите Face ID, чтобы задать запасной PIN. Вместе они не работают — вход по лицу не может открыть подставной аккаунт.";
+"panic_pin.decoy.action" = "Добавить запасной PIN";
+"panic_pin.decoy.change" = "Сменить запасной PIN";
+"panic_pin.decoy.remove" = "Удалить запасной PIN";
+"panic_pin.decoy.remove.confirm.title" = "Удалить запасной PIN?";
+"panic_pin.decoy.remove.confirm.action" = "Удалить";
+"panic_pin.entry.title.decoy" = "Придумайте запасной PIN";
+
+/* Голосовое — фиксация + превью */
+"chat.voice.locked" = "Зафиксировано";
+"chat.voice.cancel_armed" = "Отпустите для отмены";
+"chat.voice.cancel_hint" = "Отмена";
+"chat.voice.lock_hint" = "Зафиксировать";
+
+/* Онбординг — переработанные страницы (анонимность / mesh / PIN) */
+"onboard.anon.kicker" = "АНОНИМНО";
+"onboard.anon.title" = "Без телефона и почты";
+"onboard.anon.body" = "Ваша личность — числовой UIN, и больше ничего. Аккаунт ничем не привязан к вам. В любой момент можно сжечь его и начать заново.";
+"onboard.mesh.kicker" = "ОФЛАЙН-СЕТЬ";
+"onboard.mesh.title" = "Общение без интернета";
+"onboard.mesh.body" = "Радиочат находит людей рядом по Bluetooth и Wi-Fi Direct. Сообщения идут от устройства к устройству — без серверов и без сигнала сети.";
+"onboard.pin.kicker" = "PIN-КОД";
+"onboard.pin.title" = "Защита на устройстве";
+"onboard.pin.body" = "PIN блокирует приложение и шифрует историю переписки прямо на устройстве — с Face ID по желанию, плюс запасной и стирающий PIN на случай принуждения.";
+
+"boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ — попробуйте VPN.";

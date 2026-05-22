@@ -21,6 +21,7 @@ final class ContactService: ObservableObject {
     private init() {}
 
     func refresh() async {
+        if PanicPINService.shared.isDecoy { return }
         do {
             var list: [Contact] = try await APIClient.shared.request("GET", "/contacts")
             // Server doesn't track per-client unread counts (privacy
@@ -179,5 +180,10 @@ final class ContactService: ObservableObject {
         contacts = []
         pendingRequests = []
         UnreadStore.shared.wipeAll()
+    }
+
+    func clearForDecoy() {
+        contacts = []
+        pendingRequests = []
     }
 }

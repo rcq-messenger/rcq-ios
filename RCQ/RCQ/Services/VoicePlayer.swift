@@ -42,6 +42,11 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         Task { await load(messageID: messageID, mediaToken: mediaToken) }
     }
 
+    func playLocal(id: UUID, url: URL) {
+        fileCache[id] = url
+        toggle(messageID: id, mediaToken: nil)
+    }
+
     func stop() {
         player?.stop()
         player = nil

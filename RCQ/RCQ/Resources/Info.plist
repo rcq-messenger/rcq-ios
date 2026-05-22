@@ -35,6 +35,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>RCQ needs the camera for video calls and to take photos and videos to share in chats.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>RCQ can use Face ID to unlock the app instead of typing your Security PIN.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Radio Chat needs the local network to discover other RCQ users on the same Bluetooth/Wi-Fi mesh. Nothing leaves your device through the internet on this surface.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

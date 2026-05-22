@@ -6,6 +6,7 @@ struct InventoryView: View {
     @StateObject private var items = ItemsService.shared
     @StateObject private var trades = TradesService.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showShop = false
     @State private var showLootbox = false
@@ -42,6 +43,21 @@ struct InventoryView: View {
     private var filteredItems: [Item] {
         guard let r = rarityFilter else { return items.items }
         return items.items.filter { $0.rarity == r }
+    }
+
+    private func runRefresh(initial: Bool) async {
+        if initial || items.items.isEmpty {
+            loading = true
+        }
+        let watchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            if !Task.isCancelled { loading = false }
+        }
+        if items.catalog == nil { await items.refreshCatalog() }
+        await items.refreshInventory()
+        await trades.refreshAll()
+        watchdog.cancel()
+        loading = false
     }
 
     var body: some View {
@@ -180,10 +196,12 @@ struct InventoryView: View {
             }
             .toolbarBackground(.visible, for: .bottomBar)
             .task {
-                if items.catalog == nil { await items.refreshCatalog() }
-                await items.refreshInventory()
-                await trades.refreshAll()
-                loading = false
+                await runRefresh(initial: true)
+            }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active {
+                    Task { await runRefresh(initial: false) }
+                }
             }
             .fullScreenCover(isPresented: $showLootbox) {
                 LootboxView()

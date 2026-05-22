@@ -29,6 +29,7 @@ final class GroupService: ObservableObject {
     }
 
     func refresh() async {
+        if PanicPINService.shared.isDecoy { return }
         do {
             let list: [RCQGroup] = try await APIClient.shared.request("GET", "/groups")
             self.groups = list
@@ -336,6 +337,11 @@ final class GroupService: ObservableObject {
 
     /// Local cache reset used by the burn flow.
     func wipe() {
+        groups = []
+        unread = [:]
+    }
+
+    func clearForDecoy() {
         groups = []
         unread = [:]
     }

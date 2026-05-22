@@ -68,6 +68,12 @@ RCQ/Vendor/libsignal/Cargo.lock.local
 RCQ/Vendor/libsignal/swift/libsignal_ffi.xcframework/*/libsignal_ffi.a
 RCQ/Vendor/libsignal/swift/libsignal_ffi.xcframework/*-simulator/libsignal_ffi.a
 
+# ── Prebuilt Rcqbox (sing-box transport) xcframework ──────────────
+# gomobile-built binary; the simulator slice alone is ~101MB, past
+# GitHub's 100MB single-file limit. Build artifact, not source —
+# excluded with the same posture as the libsignal binaries above.
+RCQ/Vendor/Rcqbox.xcframework/
+
 # ── Secrets / local env ───────────────────────────────────────────
 # Belt-and-suspenders against accidental commit. We deliberately
 # don't HAVE any of these in iOS today (everything secret lives on

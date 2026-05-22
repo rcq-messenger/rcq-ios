@@ -103,9 +103,14 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         Task { @MainActor in
+            let panic = PanicPINService.shared
+            if panic.isLocked || panic.isDecoy {
+                completionHandler([])
+                return
+            }
             await MessageService.shared.fetchOfflineQueue()
+            completionHandler([.banner, .sound, .badge, .list])
         }
-        completionHandler([.banner, .sound, .badge, .list])
     }
 
     /// Tap handler. Drains the offline queue and routes to the surface
@@ -157,6 +162,7 @@ struct RCQApp: App {
     @StateObject private var themeManager = ThemeManager.shared
 
     init() {
+        UserDefaults.standard.removeObject(forKey: "rcq.singbox.activePort")
         // Eager-touch so PushKit + LanguageManager (App Group mirror) are
         // initialised before any push reaches the NSE.
         _ = VoIPPushService.shared
@@ -175,7 +181,6 @@ struct RCQApp: App {
                 .environmentObject(themeManager)
                 .preferredColorScheme(themeManager.theme.colorScheme)
                 .tint(Theme.Color.accent)
-                .task { await appState.boot() }
                 .onOpenURL { url in appState.handle(deepLink: url) }
         }
     }
@@ -186,9 +191,13 @@ struct RootView: View {
     @StateObject private var calls = CallService.shared
     @StateObject private var audioRooms = AudioRoomService.shared
     @StateObject private var ws = WebSocketService.shared
+    @StateObject private var panicPIN = PanicPINService.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("rcq.onboarded") private var didOnboard: Bool = false
     @State private var showShakeBugBounty: Bool = false
+    @State private var backgroundedAt: Date?
+
+    private static let relockGrace: TimeInterval = 30
 
     var body: some View {
         // Root ZStack hosts game mini-bubbles so they persist across nav.
@@ -199,7 +208,20 @@ struct RootView: View {
         // moment a fullScreenCover came up.
         ZStack {
             mainContent
-            GameMinisOverlayHost()
+            if !panicPIN.isLocked {
+                GameMinisOverlayHost()
+            }
+            if panicPIN.isConfigured && scenePhase != .active {
+                privacyCover
+            }
+        }
+        .task(id: panicPIN.lockState) {
+            guard panicPIN.lockState == .unlocked else { return }
+            if appState.booted {
+                await appState.resumeAfterUnlock()
+            } else {
+                await appState.boot()
+            }
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
@@ -226,29 +248,51 @@ struct RootView: View {
     /// storm — connect() cancels any in-flight task, and scenePhase
     /// can flip multiple times during a single sheet/cover transition.
     private func handleScenePhase(_ phase: ScenePhase) {
+        if phase == .background {
+            if panicPIN.isConfigured { backgroundedAt = Date() }
+            return
+        }
         guard phase == .active else { return }
+
+        if panicPIN.isConfigured, !panicPIN.isLocked, let since = backgroundedAt,
+           Date().timeIntervalSince(since) > Self.relockGrace {
+            panicPIN.lock()
+        }
+        backgroundedAt = nil
+
         // Banner-overlay window install needs the scene to be live,
         // so we defer it to the first .active phase rather than
         // didFinishLaunching. Idempotent — subsequent calls no-op.
         // Also fires before boot completes (during OnboardingView),
         // which is fine — no banners can fire pre-boot anyway.
         BannerWindowController.shared.install()
-        guard appState.booted else { return }
+        guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         Task { @MainActor in
             if !WebSocketService.shared.isConnected {
                 let baseURL = APIClient.shared.baseURL
                 WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+            } else {
+                WebSocketService.shared.pingNow()
             }
             AudioRoomService.shared.restoreOnForeground()
+        }
+    }
+
+    private var privacyCover: some View {
+        ZStack {
+            Theme.Color.bgPrimary.ignoresSafeArea()
+            LogoMark(size: 96).opacity(0.5)
         }
     }
 
     @ViewBuilder
     private var mainContent: some View {
         Group {
-            if !didOnboard {
+            if panicPIN.isLocked {
+                PINLockView()
+            } else if !didOnboard {
                 OnboardingView { didOnboard = true }
             } else if appState.booted {
                 ContactListView()

@@ -45,6 +45,8 @@ struct ContactListView: View {
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
+    @State private var archiveUnlocked = false
+    @State private var showArchivePINGate = false
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
     @State private var deepLinkUinListing: UinMarketplaceListing? = nil
@@ -53,6 +55,7 @@ struct ContactListView: View {
     @State private var petPreview: PetPreviewTarget?
     @State private var tradeWithContact: Contact?
     @State private var reportContact: Contact?
+    @AppStorage("rcq.singbox.activePort") private var singboxActivePort: Int = 0
 
     var body: some View {
         // Preview overlay must sit at the root so it can cover the bottom safeAreaInset bar.
@@ -170,6 +173,12 @@ struct ContactListView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
             .sheet(isPresented: $showPending) { PendingRequestsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showArchivePINGate) {
+                PINVerifySheet(title: "pin_verify.title.archive".localized) {
+                    archiveUnlocked = true
+                    collapsedArchive = false
+                }
+            }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRoulette) { RouletteView() }
             .fullScreenCover(isPresented: $showInventory) { InventoryView() }
@@ -513,7 +522,16 @@ struct ContactListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Color.clear.frame(width: 26, height: 1)
+            Group {
+                if singboxActivePort > 0 {
+                    Image(systemName: "eye.slash.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundColor(Theme.Color.accent)
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(width: 26, height: 26)
         }
     }
 
@@ -603,6 +621,7 @@ struct ContactListView: View {
                     count: vm.offline.count,
                     collapsed: vm.collapsedOffline,
                     rows: vm.offline,
+                    unreadBadge: vm.offlineUnreadContacts,
                     toggle: { vm.collapsedOffline.toggle() }
                 )
                 archiveSection
@@ -841,6 +860,10 @@ struct ContactListView: View {
     /// Archived contacts + groups, hidden in a collapsed disclosure at
     /// the bottom of the list. Hidden entirely when nothing's archived
     /// so the chrome doesn't take up space.
+    private var archiveLocked: Bool {
+        PanicPINService.shared.isConfigured && !archiveUnlocked
+    }
+
     @ViewBuilder
     private var archiveSection: some View {
         let archivedGroups = groups.groups.filter { archive.contains(group: $0.id) }
@@ -848,9 +871,18 @@ struct ContactListView: View {
         let total = archivedGroups.count + archivedContacts.count
         if total > 0 {
             VStack(spacing: 0) {
-                Button { collapsedArchive.toggle() } label: {
+                Button {
+                    if archiveLocked {
+                        showArchivePINGate = true
+                    } else {
+                        collapsedArchive.toggle()
+                        if collapsedArchive && PanicPINService.shared.isConfigured {
+                            archiveUnlocked = false
+                        }
+                    }
+                } label: {
                     HStack(spacing: 6) {
-                        CollapseChevron(collapsed: collapsedArchive)
+                        CollapseChevron(collapsed: collapsedArchive || archiveLocked)
                         Text("contact_list.section.archive".localized.uppercased())
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Theme.Color.textSecondary)
@@ -858,11 +890,16 @@ struct ContactListView: View {
                             .font(.system(size: 11))
                             .foregroundColor(Theme.Color.textSecondary)
                         Spacer()
+                        if archiveLocked {
+                            Image(systemName: "key.fill")
+                                .foregroundColor(Theme.Color.accent)
+                                .font(.system(size: 13))
+                        }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(Theme.Color.bgSecondary.opacity(0.7))
                 }
-                if !collapsedArchive {
+                if !collapsedArchive && !archiveLocked {
                     ForEach(archivedGroups) { group in
                         GroupRow(group: group)
                             .contentShape(Rectangle())
@@ -962,7 +999,8 @@ struct ContactListView: View {
     }
 
     private func section(
-        title: String, count: Int, collapsed: Bool, rows: [Contact], toggle: @escaping () -> Void
+        title: String, count: Int, collapsed: Bool, rows: [Contact],
+        unreadBadge: Int = 0, toggle: @escaping () -> Void
     ) -> some View {
         VStack(spacing: 0) {
             Button(action: toggle) {
@@ -978,6 +1016,17 @@ struct ContactListView: View {
                         .font(.system(size: 11))
                         .foregroundColor(Theme.Color.textSecondary)
                     Spacer()
+                    if unreadBadge > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "envelope.badge.fill")
+                                .font(.system(size: 9))
+                            Text("\(unreadBadge)")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.Color.statusBusy))
+                    }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .background(Theme.Color.bgSecondary.opacity(0.7))
@@ -1316,9 +1365,14 @@ private struct ContactRow: View {
     var storyGroup: StoryGroup? = nil
     var onTapStory: (() -> Void)? = nil
     @ObservedObject private var sound = SoundService.shared
+    @ObservedObject private var reactionInbox = ReactionInboxStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .peer(uin: contact.uin))
+    }
+
+    private var hasReaction: Bool {
+        reactionInbox.has(.peer(uin: contact.uin))
     }
 
     var body: some View {
@@ -1372,6 +1426,11 @@ private struct ContactRow: View {
                 }
             }
             Spacer()
+            if hasReaction {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.pink)
+            }
             if let storyGroup, let onTapStory {
                 // Rightmost: circular thumbnail with segmented ring
                 // for stories. Wrapped in a Button so the tap
@@ -1472,9 +1531,14 @@ private struct GroupRow: View {
     let group: RCQGroup
     @StateObject private var groups = GroupService.shared
     @ObservedObject private var sound = SoundService.shared
+    @ObservedObject private var reactionInbox = ReactionInboxStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .group(id: group.id))
+    }
+
+    private var hasReaction: Bool {
+        reactionInbox.has(.group(id: group.id))
     }
 
     var body: some View {
@@ -1527,6 +1591,11 @@ private struct GroupRow: View {
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }
             Spacer()
+            if hasReaction {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.pink)
+            }
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)

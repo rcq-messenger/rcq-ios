@@ -18,10 +18,13 @@ enum MentionParser {
     /// plain text).
     static func mentions(in text: String, members: [RCQGroupMember]) -> [Match] {
         guard !text.isEmpty, !members.isEmpty else { return [] }
-        let lookup = Dictionary(uniqueKeysWithValues: members.map { ($0.nickname.lowercased(), $0.uin) })
+        let lookup = Dictionary(
+            members.map { ($0.nickname.lowercased(), $0.uin) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let ns = text as NSString
         var out: [Match] = []
-        let pattern = try? NSRegularExpression(pattern: "@([\\p{L}\\p{N}_]+)")
+        let pattern = try? NSRegularExpression(pattern: "@([\\p{L}\\p{N}_-]+)")
         pattern?.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
             guard let m, m.numberOfRanges >= 2 else { return }
             let nickRange = m.range(at: 1)

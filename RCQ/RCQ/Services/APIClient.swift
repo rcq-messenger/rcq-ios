@@ -19,6 +19,8 @@ actor APIClient {
 
     static let prodBaseURL = "https://api.rcq.app"
 
+    static let builtInProxyURL = "https://gateway.app-edge-relay.workers.dev"
+
     /// Computed (not stored) so UserDefaults changes — namely the
     /// censorship-fallback `rcq.proxyURL` flipped from Settings —
     /// take effect on the next request without an app relaunch. The
@@ -26,15 +28,17 @@ actor APIClient {
     /// (`APIClient.shared.baseURL`) drop-in.
     nonisolated var baseURL: URL { APIClient.defaultBaseURL() }
     private var token: String?
-    private let session: URLSession
+    private var session: URLSession
+    private var probeSession: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
+    enum BaseReachability { case primary, proxy, unreachable }
+
     init() {
-        let cfg = URLSessionConfiguration.default
-        cfg.waitsForConnectivity = true
-        cfg.timeoutIntervalForRequest = 20
-        self.session = URLSession(configuration: cfg)
+        let proxy = SingBoxTransport.proxyDictionary()
+        self.session = Self.makeMainSession(proxy: proxy)
+        self.probeSession = Self.makeProbeSession(proxy: proxy)
 
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .custom(Self.parseDateForExternal)
@@ -43,6 +47,29 @@ actor APIClient {
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
         self.encoder = enc
+    }
+
+    private static func makeMainSession(proxy: [String: Any]?) -> URLSession {
+        let cfg = URLSessionConfiguration.default
+        cfg.waitsForConnectivity = true
+        cfg.timeoutIntervalForRequest = 20
+        if let proxy { cfg.connectionProxyDictionary = proxy }
+        return URLSession(configuration: cfg)
+    }
+
+    private static func makeProbeSession(proxy: [String: Any]?) -> URLSession {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.waitsForConnectivity = false
+        cfg.timeoutIntervalForRequest = 6
+        cfg.timeoutIntervalForResource = 8
+        if let proxy { cfg.connectionProxyDictionary = proxy }
+        return URLSession(configuration: cfg)
+    }
+
+    func applyTransportProxy() {
+        let proxy = SingBoxTransport.proxyDictionary()
+        self.session = Self.makeMainSession(proxy: proxy)
+        self.probeSession = Self.makeProbeSession(proxy: proxy)
     }
 
     private static let dateFormatters: [DateFormatter] = {
@@ -118,7 +145,63 @@ actor APIClient {
            let url = URL(string: override) {
             return url
         }
+        if UserDefaults.standard.bool(forKey: "rcq.autoProxyActive"),
+           let url = URL(string: builtInProxyURL) {
+            return url
+        }
         return URL(string: prodBaseURL)!
+    }
+
+    private static var hasManualProxy: Bool {
+        let p = UserDefaults.standard.string(forKey: "rcq.proxyURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return !(p ?? "").isEmpty
+    }
+
+    @discardableResult
+    func refreshActiveBase() async -> BaseReachability {
+        if Self.hasManualProxy {
+            return await probe(Self.defaultBaseURL().absoluteString) ? .proxy : .unreachable
+        }
+        let key = "rcq.autoProxyActive"
+
+        if UserDefaults.standard.bool(forKey: key) {
+            if await probe(Self.builtInProxyURL) {
+                Task.detached { [weak self] in
+                    guard let self else { return }
+                    if await self.probe(Self.prodBaseURL) {
+                        UserDefaults.standard.set(false, forKey: key)
+                    }
+                }
+                return .proxy
+            }
+            if await probe(Self.prodBaseURL) {
+                UserDefaults.standard.set(false, forKey: key)
+                return .primary
+            }
+            return .unreachable
+        }
+
+        if await probe(Self.prodBaseURL) { return .primary }
+        if await probe(Self.builtInProxyURL) {
+            UserDefaults.standard.set(true, forKey: key)
+            print("[APIClient] primary unreachable — switched to built-in proxy")
+            return .proxy
+        }
+        return .unreachable
+    }
+
+    private func probe(_ base: String) async -> Bool {
+        guard let url = URL(string: base + "/health") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 6
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        do {
+            let (_, resp) = try await probeSession.data(for: req)
+            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+        } catch {
+            return false
+        }
     }
 
     func setToken(_ token: String?) { self.token = token }
@@ -367,6 +450,71 @@ extension APIClient {
         } catch {
             return .failure(.init(message: "reputation.give.error_generic".localized))
         }
+    }
+}
+
+// MARK: - Jeton reactions
+
+struct JetonReactOut: Decodable {
+    let messageID: String
+    let totalJetons: Int
+    let reactorBalance: Int
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "message_id"
+        case totalJetons = "total_jetons"
+        case reactorBalance = "reactor_balance"
+    }
+}
+
+struct JetonTotalRow: Decodable {
+    let messageID: String
+    let totalJetons: Int
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "message_id"
+        case totalJetons = "total_jetons"
+    }
+}
+
+struct JetonReactError: Error {
+    let message: String
+}
+
+extension APIClient {
+    func jetonReact(
+        groupID: Int,
+        messageID: String,
+        targetUIN: Int,
+        amount: Int
+    ) async -> Result<JetonReactOut, JetonReactError> {
+        struct Body: Encodable {
+            let target_uin: Int
+            let amount: Int
+        }
+        do {
+            let out: JetonReactOut = try await request(
+                "POST", "/groups/\(groupID)/messages/\(messageID)/jeton-react",
+                body: Body(target_uin: targetUIN, amount: amount)
+            )
+            return .success(out)
+        } catch APIError.http(402, _) {
+            return .failure(.init(message: "jeton.react.error_insufficient".localized))
+        } catch APIError.http(404, _) {
+            return .failure(.init(message: "jeton.react.error_target_missing".localized))
+        } catch APIError.http(429, _) {
+            return .failure(.init(message: "jeton.react.error_rate_limited".localized))
+        } catch APIError.http(403, _) {
+            return .failure(.init(message: "jeton.react.error_not_member".localized))
+        } catch APIError.http(400, let body) where (body ?? "").contains("self_react") {
+            return .failure(.init(message: "jeton.react.error_self".localized))
+        } catch {
+            return .failure(.init(message: "jeton.react.error_generic".localized))
+        }
+    }
+
+    func fetchGroupJetons(groupID: Int) async throws -> [JetonTotalRow] {
+        try await request("GET", "/groups/\(groupID)/jetons")
     }
 }
 

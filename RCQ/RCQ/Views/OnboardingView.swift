@@ -18,40 +18,34 @@ struct OnboardingView: View {
                 hero: .logo,
             ),
             Page(
+                kicker: "onboard.anon.kicker".localized,
+                title: "onboard.anon.title".localized,
+                body: "onboard.anon.body".localized,
+                hero: .symbol("number.circle.fill"),
+            ),
+            Page(
+                kicker: "onboard.mesh.kicker".localized,
+                title: "onboard.mesh.title".localized,
+                body: "onboard.mesh.body".localized,
+                hero: .symbol("antenna.radiowaves.left.and.right"),
+            ),
+            Page(
+                kicker: "onboard.chat.kicker".localized,
+                title: "onboard.chat.title".localized,
+                body: "onboard.chat.body".localized,
+                hero: .symbol("lock.fill"),
+            ),
+            Page(
+                kicker: "onboard.pin.kicker".localized,
+                title: "onboard.pin.title".localized,
+                body: "onboard.pin.body".localized,
+                hero: .symbol("lock.shield.fill"),
+            ),
+            Page(
                 kicker: "onboard.status.kicker".localized,
                 title: "onboard.status.title".localized,
                 body: "onboard.status.body".localized,
                 hero: .statusRow,
-            ),
-            Page(
-                kicker: "onboard.nearby.kicker".localized,
-                title: "onboard.nearby.title".localized,
-                body: "onboard.nearby.body".localized,
-                hero: .symbol("location.viewfinder"),
-            ),
-            Page(
-                kicker: "onboard.calls.kicker".localized,
-                title: "onboard.calls.title".localized,
-                body: "onboard.calls.body".localized,
-                hero: .symbol("video.circle.fill"),
-            ),
-            Page(
-                kicker: "onboard.pets.kicker".localized,
-                title: "onboard.pets.title".localized,
-                body: "onboard.pets.body".localized,
-                hero: .gif("pet1"),
-            ),
-            Page(
-                kicker: "onboard.trade.kicker".localized,
-                title: "onboard.trade.title".localized,
-                body: "onboard.trade.body".localized,
-                hero: .symbol("arrow.left.arrow.right.circle.fill"),
-            ),
-            Page(
-                kicker: "onboard.privacy.kicker".localized,
-                title: "onboard.privacy.title".localized,
-                body: "onboard.privacy.body".localized,
-                hero: .symbol("eye.slash.fill"),
             ),
         ]
     }

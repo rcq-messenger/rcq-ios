@@ -28,6 +28,12 @@ struct TradeProposeView: View {
     @State private var sentBanner = false
     @State private var errorMessage: String?
     @State private var showGiftConfirm: Bool = false
+    @State private var showItemPINGate: Bool = false
+
+    private var itemPINRequired: Bool {
+        UserDefaults.standard.bool(forKey: "rcq.requirePINForItems")
+            && PanicPINService.shared.isConfigured
+    }
 
     private var isGiftShape: Bool {
         hasOffered && !hasRequested
@@ -342,7 +348,9 @@ struct TradeProposeView: View {
     private var sendBar: some View {
         HStack(spacing: 10) {
             Button {
-                if isGiftShape {
+                if itemPINRequired {
+                    showItemPINGate = true
+                } else if isGiftShape {
                     showGiftConfirm = true
                 } else {
                     Task { await send() }
@@ -370,6 +378,11 @@ struct TradeProposeView: View {
                 format: "trade.gift_confirm.body".localized,
                 recipientNickname
             ))
+        }
+        .sheet(isPresented: $showItemPINGate) {
+            PINVerifySheet(title: "pin_verify.title.send_items".localized) {
+                Task { await send() }
+            }
         }
     }
 

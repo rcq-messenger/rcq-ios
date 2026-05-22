@@ -16,6 +16,8 @@ struct MessageRow: View {
     var isSelected: Bool = false
     var showSelectionAffordance: Bool = false
     let onTapReaction: (String) -> Void
+    var jetonTotal: Int = 0
+    var onTapJeton: (() -> Void)? = nil
     let onLongPress: () -> Void
     let onDoubleTapLike: () -> Void
     var onTapWhenSelecting: (() -> Void)? = nil
@@ -114,10 +116,15 @@ struct MessageRow: View {
                     }
                     .offset(x: swipeOffset)
                 }
-                if !message.reactions.isEmpty {
-                    HStack {
+                if !message.reactions.isEmpty || jetonTotal > 0 {
+                    HStack(spacing: 4) {
                         if message.isFromMe { Spacer(minLength: 40) }
-                        ReactionsBar(message: message, onTap: onTapReaction)
+                        if !message.reactions.isEmpty {
+                            ReactionsBar(message: message, onTap: onTapReaction)
+                        }
+                        if jetonTotal > 0 {
+                            jetonPill
+                        }
                         if !message.isFromMe { Spacer(minLength: 40) }
                     }
                 }
@@ -216,9 +223,14 @@ struct MessageRow: View {
     private var bubble: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
             if showSender {
-                Text(senderNickname)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
+                Button {
+                    AppState.shared.pendingOpenUserProfile = message.senderUIN
+                } label: {
+                    Text(senderNickname)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(Theme.Color.accent)
+                }
+                .buttonStyle(.plain)
             }
             if let fwdName = message.forwardedFromName, !fwdName.isEmpty {
                 HStack(spacing: 4) {
@@ -262,12 +274,13 @@ struct MessageRow: View {
                             } else if let uinShare = UinLinkParser.parse(snippet) {
                                 UinReplyMiniCard(listingID: uinShare.listingID)
                             } else {
-                                Text(snippet)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                EmoticonText(
+                                    text: snippet,
+                                    font: .caption2,
+                                    color: Theme.Color.textSecondary,
+                                    emoticonSize: 15,
+                                    members: currentGroupMembers
+                                )
                             }
                         }
                     }
@@ -423,6 +436,25 @@ struct MessageRow: View {
                 }
             }
         }
+    }
+
+    private var jetonPill: some View {
+        Button {
+            onTapJeton?()
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "hands.clap.fill")
+                    .font(.system(size: 10))
+                Text("\(jetonTotal)")
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundColor(Theme.Color.accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Theme.Color.accent.opacity(0.15)))
+        }
+        .buttonStyle(.plain)
+        .disabled(onTapJeton == nil)
     }
 
     private var translatedFooter: some View {

@@ -63,6 +63,10 @@ final class MessageBannerService: ObservableObject {
         }
     }
 
+    func isViewing(_ thread: ThreadID) -> Bool {
+        activeThread == thread
+    }
+
     /// Decide whether to surface a banner for the given thread. Returns
     /// `true` when the banner was shown; the caller uses the return value
     /// to gate the incoming-sound effect so audio + visual stay in sync.

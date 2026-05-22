@@ -16,7 +16,9 @@ final class MessageStore: ObservableObject {
     private var sweepTimer: Timer?
 
     private init() {
-        rehydrate()
+        if PanicPINService.shared.lockState == .unlocked {
+            rehydrate()
+        }
         sweepExpired()
         startSweepTimer()
     }
@@ -24,6 +26,16 @@ final class MessageStore: ObservableObject {
     private func rehydrate() {
         let all = MessageDB.shared.fetchAll()
         threads = Dictionary(grouping: all, by: { $0.thread })
+    }
+
+    func reloadFromDB() {
+        rehydrate()
+        sweepExpired()
+    }
+
+    func clearInMemory() {
+        threads = [:]
+        fadingOutIDs = []
     }
 
     private func startSweepTimer() {
@@ -82,7 +94,8 @@ final class MessageStore: ObservableObject {
               let idx = t.firstIndex(where: { $0.id == messageID })
         else { return }
         let m = t[idx]
-        guard m.kind == .text, !m.deletedForEveryone else { return }
+        let editableKinds: [MessageKind] = [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
+        guard editableKinds.contains(m.kind), !m.deletedForEveryone else { return }
         t[idx] = Message(
             id: m.id, thread: m.thread, senderUIN: m.senderUIN,
             isFromMe: m.isFromMe, kind: m.kind, text: newText,

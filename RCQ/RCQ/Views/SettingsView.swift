@@ -11,35 +11,17 @@ struct SettingsView: View {
     @State private var confirmClearHistory = false
     @State private var confirmBurn = false
     @State private var burning = false
-    @State private var confirmMigrate = false
-    @State private var migrating = false
-    @State private var migrationAlert: String?
-    @State private var showShop = false
-
-    // Mirrors `routers/migrate.py:MIGRATION_TOKEN_COST`.
-    private let migrationCost: Int = 99
     @State private var showAbout = false
     @State private var showBugBounty = false
     @State private var showLinkWeb = false
     @State private var showPrivacy = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
-    @State private var showProxyURL = false
     @State private var showDailyQA = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
     @AppStorage("rcq.trades.realtime_popup") private var tradeRealtimePopup: Bool = true
-    // Foundation toggles — UI-only until routing + billing land.
-    @AppStorage("rcq.network.vpn_enabled") private var vpnEnabled: Bool = false
-    @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles: Bool = false
-    // Free-form proxy URL — when non-empty, APIClient routes every
-    // request through it (HTTPS API + WebSocket). Used when the
-    // primary `api.rcq.app` domain is blocked. The user copies a
-    // Worker URL from our published fallbacks (rcq.app/proxy or
-    // chat banner) and pastes it here.
-    @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
-    @State private var trafficUsage: MediaService.TrafficUsage?
 
     var body: some View {
         NavigationStack {
@@ -112,7 +94,7 @@ struct SettingsView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "lock.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.privacy".localized)
+                                Text("settings.privacy_network".localized)
                                     .foregroundColor(Theme.Color.textPrimary)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -159,21 +141,6 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
 
                     Section {
-                        Toggle(isOn: Binding(
-                            get: { itemsSvc.inventoryPublic },
-                            set: { newValue in
-                                Task { await itemsSvc.setInventoryPublic(newValue) }
-                            },
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.inventory.public".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.inventory.public.footer".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        .tint(Theme.Color.accent)
                         Toggle(isOn: $minisEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("settings.minis.toggle".localized)
@@ -197,87 +164,6 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    Section {
-                        Button {
-                            showProxyURL = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "shield.lefthalf.filled")
-                                    .foregroundColor(Theme.Color.accent)
-                                    .frame(width: 24)
-                                Text("settings.network.proxy".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Text(proxyURL.isEmpty
-                                     ? "settings.network.proxy.unset".localized
-                                     : proxyURL)
-                                    .font(.caption2.monospaced())
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    } header: {
-                        Text("settings.network".localized)
-                    } footer: {
-                        // Explanatory copy lives in the footer so it
-                        // wraps freely without fighting the Form row's
-                        // line-clamp. Mentions what the field does
-                        // and where to get a URL when the user
-                        // actually needs it (we publish proxy URLs
-                        // out-of-band via the landing page + News
-                        // when blocking gets active).
-                        Text("settings.network.proxy.footer".localized)
-                            .font(.caption2)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section {
-                        HStack(alignment: .firstTextBaseline) {
-                            Image(systemName: "internaldrive")
-                                .foregroundColor(Theme.Color.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.traffic.used".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text(usedMBString)
-                                    .font(.system(.callout, design: .monospaced))
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("settings.traffic.spent".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                HStack(spacing: 3) {
-                                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                                        .frame(width: 12, height: 12)
-                                    Text("\(trafficUsage?.jetonsSpent ?? 0)")
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(Theme.Color.textPrimary)
-                                }
-                            }
-                        }
-                        Toggle(isOn: $payForLargeFiles) {
-                            Text("settings.traffic.pay_large".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                    } header: {
-                        Text("settings.traffic".localized)
-                    } footer: {
-                        // Section footer renders the multi-line
-                        // explanation. Putting it inside the Toggle
-                        // label clamped to a single truncated line
-                        // even with `fixedSize` — the Form row's
-                        // intrinsic height fights the text wrap.
-                        Text("settings.traffic.pay_large.footer".localized)
-                            .font(.caption2)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
                     Section("settings.history".localized) {
                         Button(role: .destructive) {
                             confirmClearHistory = true
@@ -287,46 +173,6 @@ struct SettingsView: View {
                                 Text("settings.history.clear".localized)
                             }
                         }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section {
-                        // If wallet can't cover fee, redirect to shop instead of disabling the row.
-                        let canAfford = itemsSvc.wallet.tokens >= migrationCost
-                        Button {
-                            if canAfford {
-                                confirmMigrate = true
-                            } else {
-                                showShop = true
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.uturn.right.circle")
-                                    .foregroundColor(canAfford ? Theme.Color.accent : Theme.Color.textSecondary)
-                                Text(migrating
-                                    ? "settings.migrate.busy".localized
-                                    : (canAfford
-                                        ? "settings.migrate.label".localized
-                                        : "settings.migrate.label.need_tokens".localized)
-                                )
-                                .foregroundColor(canAfford ? Theme.Color.textPrimary : Theme.Color.textSecondary)
-                                Spacer()
-                                if migrating {
-                                    ProgressView().scaleEffect(0.7)
-                                } else {
-                                    HStack(spacing: 3) {
-                                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                                            .frame(width: 12, height: 12)
-                                        Text("\(migrationCost)")
-                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(canAfford ? Theme.Color.textSecondary : Color.red)
-                                    }
-                                }
-                            }
-                        }
-                        .disabled(migrating)
-                    } footer: {
-                        Text("settings.migrate.footer".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -387,12 +233,7 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
-            .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
             .sheet(isPresented: $showDailyQA) { DailyQASheet() }
-            .sheet(isPresented: $showShop) {
-                BuyTokensSheet()
-                    .presentationDetents([.medium, .large])
-            }
             .sheet(isPresented: $showLinkWeb) {
                 LinkWebView()
                     .presentationDetents([.height(360), .large])
@@ -430,54 +271,6 @@ struct SettingsView: View {
             } message: {
                 Text(burnMessage)
             }
-            .confirmationDialog(
-                "settings.migrate.confirm.title".localized,
-                isPresented: $confirmMigrate,
-                titleVisibility: .visible,
-            ) {
-                Button("settings.migrate.confirm.button".localized) {
-                    Task {
-                        migrating = true
-                        let result = await AppState.shared.migrateAccount()
-                        migrating = false
-                        switch result {
-                        case .success(let newUIN):
-                            migrationAlert = String(format: "settings.migrate.success".localized, newUIN)
-                        case .insufficientTokens(let required, let have):
-                            migrationAlert = String(
-                                format: "settings.migrate.error.insufficient".localized,
-                                required, have,
-                            )
-                        case .cooldown:
-                            migrationAlert = "settings.migrate.error.cooldown".localized
-                        case .other(let msg):
-                            migrationAlert = msg.isEmpty ? "settings.migrate.error.generic".localized : msg
-                        }
-                    }
-                }
-                Button("common.cancel".localized, role: .cancel) {}
-            } message: {
-                Text("settings.migrate.confirm.message".localized)
-            }
-            .alert(
-                "settings.migrate.alert.title".localized,
-                isPresented: Binding(
-                    get: { migrationAlert != nil },
-                    set: { if !$0 { migrationAlert = nil } },
-                ),
-                actions: {
-                    Button("common.ok".localized, role: .cancel) {
-                        migrationAlert = nil
-                        dismiss()
-                    }
-                },
-                message: {
-                    Text(migrationAlert ?? "")
-                }
-            )
-            .task {
-                trafficUsage = await MediaService.shared.fetchTrafficUsage()
-            }
         }
         // Apply the active theme to the Settings sheet itself. A
         // `.sheet` is its own presentation context and does NOT
@@ -486,17 +279,6 @@ struct SettingsView: View {
         // leave the Settings window on the old scheme until reopened.
         // `theme` is observed, so this re-applies live on every flip.
         .preferredColorScheme(theme.theme.colorScheme)
-    }
-
-    /// "23.4 MB" — formatted from `trafficUsage.bytesUsed` for the
-    /// Settings readout. Same `ByteCountFormatter` as the file bubble
-    /// so units line up across the app.
-    private var usedMBString: String {
-        let bytes = trafficUsage?.bytesUsed ?? 0
-        let f = ByteCountFormatter()
-        f.allowedUnits = [.useMB, .useGB]
-        f.countStyle = .file
-        return f.string(fromByteCount: Int64(bytes))
     }
 
     @ViewBuilder

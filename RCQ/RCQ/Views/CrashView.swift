@@ -62,15 +62,13 @@ struct CrashView: View {
                     .presentationDetents([.medium, .large])
             }
             .task {
-                await svc.refresh()
+                while !Task.isCancelled {
+                    await svc.refresh()
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
             }
             .onAppear {
                 svc.expand()
-                // Re-pull state on every (re)appearance. `.task` fires
-                // only on first mount, so coming back from a backgrounded
-                // app or another tab used to leave the round frozen on
-                // last-known state.
-                Task { await svc.refresh() }
             }
             .onChange(of: scenePhase) { phase in
                 if phase == .active { Task { await svc.refresh() } }

@@ -41,7 +41,18 @@ final class ContactListViewModel: ObservableObject {
     var offline: [Contact] {
         contacts
             .filter { $0.status == .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
-            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
+            .sorted {
+                if ($0.unread > 0) != ($1.unread > 0) { return $0.unread > 0 }
+                return $0.nickname.lowercased() < $1.nickname.lowercased()
+            }
+    }
+
+    var offlineUnreadContacts: Int {
+        contacts.filter {
+            $0.status == .offline
+                && !ArchiveStore.shared.contains(peer: $0.uin)
+                && $0.unread > 0
+        }.count
     }
 
     var archivedContacts: [Contact] {

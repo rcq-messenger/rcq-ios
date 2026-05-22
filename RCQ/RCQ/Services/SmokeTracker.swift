@@ -81,7 +81,7 @@ final class SmokeTracker {
                 // they care. Drop the dedupe entry so a retry can
                 // land later.
                 await MainActor.run {
-                    self?.dedupe.remove(key)
+                    _ = self?.dedupe.remove(key)
                 }
             }
         }

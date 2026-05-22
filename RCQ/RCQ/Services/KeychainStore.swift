@@ -75,5 +75,7 @@ enum KeychainStore {
         /// Raw 32-byte Ed25519 private key for sender-authentication.
         /// Public half lives on the server as `users.signing_key`.
         static let signingPriv = "rcq.signing.priv"
+        static let pinPepper = "rcq.pin.pepper"
+        static let pinAttempts = "rcq.pin.attempts"
     }
 }

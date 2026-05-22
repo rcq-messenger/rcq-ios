@@ -152,6 +152,7 @@ final class AppState: ObservableObject {
     }
 
     private func runOnlineSync() async {
+        guard !PanicPINService.shared.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         let baseURL = APIClient.shared.baseURL
@@ -164,6 +165,24 @@ final class AppState: ObservableObject {
         await MessageService.shared.fetchOfflineQueue()
     }
 
+    private func scheduleTransportRetry() {
+        guard SingBoxTransport.shared.isActive else { return }
+        pendingOnlineSync?.cancel()
+        pendingOnlineSync = Task { [weak self] in
+            for _ in 0..<18 {  // ~3 minutes of 10s retries
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                if Task.isCancelled { return }
+                guard let self, self.isOffline else { return }
+                let reach = await APIClient.shared.refreshActiveBase()
+                if reach != .unreachable {
+                    self.isOffline = false
+                    await self.runOnlineSync()
+                    return
+                }
+            }
+        }
+    }
+
     func boot(suggestedNickname: String? = nil) async {
         // Offline-first path. If we already have a local identity AND no
         // network is available, skip every server-touching call and let
@@ -174,14 +193,48 @@ final class AppState: ObservableObject {
         let cachedToken = KeychainStore.string(KeychainStore.Keys.token)
         let pathSatisfied = pathMonitor.currentPath.status == .satisfied
 
-        if !pathSatisfied, let uin = cachedUIN, cachedToken != nil {
-            isOffline = true
+        if !pathSatisfied || PanicPINService.shared.isDecoy,
+           let uin = cachedUIN, cachedToken != nil {
+            isOffline = !PanicPINService.shared.isDecoy
             MessageService.shared.configure(ownUIN: uin)
             booted = true
             return
         }
 
         do {
+            if SingBoxTransport.isEnabled {
+                do {
+                    try await SingBoxTransport.shared.start()
+                    await APIClient.shared.applyTransportProxy()
+                } catch {
+                    print("[boot] sing-box transport failed to start: \(error)")
+                }
+            }
+            var reach = await APIClient.shared.refreshActiveBase()
+            if reach == .unreachable, !SingBoxTransport.shared.isActive {
+                do {
+                    try await SingBoxTransport.shared.start()
+                    await APIClient.shared.applyTransportProxy()
+                    reach = await APIClient.shared.refreshActiveBase()
+                } catch {
+                    print("[boot] auto sing-box transport failed: \(error)")
+                }
+            }
+            if reach == .unreachable, SingBoxTransport.shared.isActive {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                reach = await APIClient.shared.refreshActiveBase()
+            }
+            if reach == .unreachable {
+                if let uin = cachedUIN, cachedToken != nil {
+                    isOffline = true
+                    MessageService.shared.configure(ownUIN: uin)
+                    booted = true
+                    scheduleTransportRetry()
+                } else {
+                    bootError = "boot.error.unreachable".localized
+                }
+                return
+            }
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,
                   let token = KeychainStore.string(KeychainStore.Keys.token) else {
@@ -287,6 +340,7 @@ final class AppState: ObservableObject {
         NearbyService.shared.wipe()
         NicknameCache.wipe()
         RemovedContactsStore.shared.wipe()
+        ReactionInboxStore.shared.wipe()
         SignalProtocolDB.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
@@ -358,6 +412,7 @@ final class AppState: ObservableObject {
         NearbyService.shared.wipe()
         NicknameCache.wipe()
         RemovedContactsStore.shared.wipe()
+        ReactionInboxStore.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -376,6 +431,29 @@ final class AppState: ObservableObject {
         booted = false
         bootError = nil
         await boot()
+    }
+
+    func performPanicWipe() async {
+        PINVault.destroy()
+        MessageDB.destroyDecoyStore()
+        await burnAccount()
+        PanicPINService.shared.finishWipe()
+    }
+
+    func resumeAfterUnlock() async {
+        guard booted, !PanicPINService.shared.isDecoy else { return }
+        guard let uin = AuthService.shared.ownUIN,
+              let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
+        isOffline = false
+        if !WebSocketService.shared.isConnected {
+            WebSocketService.shared.connect(
+                uin: uin, token: token, baseURL: APIClient.shared.baseURL
+            )
+        }
+        await syncOwnPresenceFromServer(uin: uin)
+        await ContactService.shared.refresh()
+        await GroupService.shared.refresh()
+        await MessageService.shared.fetchOfflineQueue()
     }
 
     private func syncOwnPresenceFromServer(uin: Int) async {
@@ -455,12 +533,13 @@ final class AppState: ObservableObject {
             let latest = MessageStore.shared.messages(for: thread).last
             let preview = latest?.previewSnippet ?? "chat.banner.new_message".localized
             let title: String
+            let viewing = MessageBannerService.shared.isViewing(thread)
             switch thread {
             case .peer(let uin):
-                ContactService.shared.incrementUnread(for: uin)
+                if !viewing { ContactService.shared.incrementUnread(for: uin) }
                 title = ContactService.shared.contacts.first(where: { $0.uin == uin })?.nickname ?? String(uin)
             case .group(let id):
-                GroupService.shared.incrementUnread(id)
+                if !viewing { GroupService.shared.incrementUnread(id) }
                 title = GroupService.shared.find(id)?.name ?? "Group"
             }
             let bannerShown = MessageBannerService.shared.tryPresent(
@@ -551,7 +630,8 @@ final class AppState: ObservableObject {
              .crashCashout, .crashBetPlaced,
              .storyPosted, .storyDeleted,
              .marketplaceListingSold,
-             .uinMarketplaceListingSold:
+             .uinMarketplaceListingSold,
+             .jetonReact:
             // Owned by their respective services that subscribe directly.
             break
         }
