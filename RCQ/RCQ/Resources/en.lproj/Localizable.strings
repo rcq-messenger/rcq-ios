@@ -139,6 +139,30 @@
 "settings.account.burning" = "Deleting…";
 "settings.account.about" = "About RCQ";
 "settings.account.bug_bounty" = "Bug Bounty";
+"settings.account.referral" = "Invite friends";
+"settings.account.referral.footer" = "Invite friends — you both earn jetons.";
+
+"referral.title" = "Invite friends";
+"referral.body" = "Share your link. Once a friend you invited has used RCQ on %d different days, you both get jetons: %d to you, %d to them. Credits unlock at launch, same as bug bounty.";
+"referral.body.generic" = "Invite friends to RCQ and you both earn jetons.";
+"referral.headline" = "+%d jetons for you, +%d for them";
+"referral.subhead" = "When your invitee uses RCQ for %d days, you both earn the reward.";
+"referral.subhead.generic" = "Invite friends — both sides earn jetons.";
+"referral.your_code" = "YOUR CODE";
+"referral.code.copy" = "Copy";
+"referral.code.copied" = "Copied";
+"referral.code_hint" = "This is your UIN. A friend who opens your link signs up with it automatically.";
+"referral.share" = "Share";
+"referral.copy_link" = "Copy link";
+"referral.share.message" = "Join me on RCQ — anonymous messenger, no phone number. My invite code is %d.";
+"referral.stat.invited" = "Invited";
+"referral.stat.activated" = "Activated";
+"referral.stat.credits" = "Jetons earned";
+"referral.load_failed" = "Couldn't load referral stats.";
+"referral.howto.title" = "How it works";
+"referral.howto.step1" = "Your friend opens the link and signs up. Then they need to use RCQ on %d different days.";
+"referral.howto.step2" = "Once activated, you get %d jetons and they get %d.";
+"referral.howto.step3" = "Credits unlock at launch — same pipeline as the bug bounty.";
 
 "bug_bounty.title" = "Bug Bounty";
 "bug_bounty.heading" = "Find a bug — earn tokens";
@@ -724,6 +748,9 @@
 "chat.random.skip_left" = "%d:%02d left";
 "chat.random.stranger" = "Stranger";
 "chat.menu.search_messages" = "Search messages";
+"chat.menu.all_media" = "All media";
+"chat.all_media.title" = "Media";
+"chat.all_media.empty" = "No media in this chat yet.";
 "chat.search.placeholder" = "Search in chat";
 "chat.search.empty.idle" = "Type to search messages in this chat.";
 
@@ -1035,6 +1062,8 @@
 "search.thread.in_named" = "in %@";
 "search.thread.in_uin" = "in #%d";
 "search.thread.in_group" = "in group";
+"search.preview.uin_listing" = "UIN listing";
+"search.preview.group_invite" = "Group invite";
 "pending.title" = "Pending Requests";
 "pending.empty.title" = "No pending requests";
 "pending.empty.body" = "New contact invites will show up here.";
@@ -1192,6 +1221,18 @@
 "trade.gift_confirm.body" = "%@ won't owe you anything in return. If you meant to ask for items or currency back, cancel and add them on the other side first.";
 "trade.gift_confirm.send" = "Send gift";
 "trade.gift_confirm.cancel" = "Cancel";
+"trade.howto.button" = "How trades work";
+"trade.howto.title" = "How trades work";
+"trade.howto.your.title" = "Your offer";
+"trade.howto.your.body" = "Pick items, UINs, jetons, and scrolls to send. Your wallet balance is shown — you can't offer more than you hold.";
+"trade.howto.theirs.title" = "Their side";
+"trade.howto.theirs.body" = "Mark anything you'd like in return. Leave their side empty to send a gift; leave your side empty to ask for something.";
+"trade.howto.kinds.title" = "Trade kind is auto-detected";
+"trade.howto.kinds.body" = "Gift, buy, sell or swap — the chip at the top updates itself based on what each side is offering.";
+"trade.howto.safety.title" = "Nothing is locked up front";
+"trade.howto.safety.body" = "Items stay with their owners until the trade is accepted. Jetons and scrolls aren't escrowed either — you can cancel or re-propose at any time.";
+"trade.howto.accept.title" = "Your partner confirms";
+"trade.howto.accept.body" = "After you send, the other side sees the offer and chooses accept or decline. If anyone no longer owns an item by then, the trade is rejected automatically.";
 "trade.section.your" = "Your offer";
 "trade.section.theirs" = "Their side";
 "trade.note" = "NOTE (OPTIONAL)";

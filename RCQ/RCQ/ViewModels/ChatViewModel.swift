@@ -116,18 +116,27 @@ final class ChatViewModel: ObservableObject {
     }
 
     func onAppear() {
-        switch target {
-        case .peer(let contact): ContactService.shared.clearUnread(for: contact.uin)
-        case .group(let group):  GroupService.shared.clearUnread(group.id)
-        case .randomPeer: break
-        }
-        if case .randomPeer = target { return }
-        Task { await MessageService.shared.markRead(messages: messages, in: target) }
+        markThreadSeen()
     }
 
     func ackIfVisible(_ message: Message) {
         guard !message.isFromMe, message.deliveryState != .read else { return }
-        Task { await MessageService.shared.markRead(messages: [message], in: target) }
+        markThreadSeen()
+    }
+
+    /// Clear every unseen indicator for the active thread. Idempotent.
+    private func markThreadSeen() {
+        switch target {
+        case .peer(let contact):
+            ContactService.shared.clearUnread(for: contact.uin)
+            ReactionInboxStore.shared.clear(.peer(uin: contact.uin))
+        case .group(let group):
+            GroupService.shared.clearUnread(group.id)
+            ReactionInboxStore.shared.clear(.group(id: group.id))
+        case .randomPeer:
+            return
+        }
+        Task { await MessageService.shared.markRead(messages: messages, in: target) }
     }
 
     func toggleReaction(_ asset: String, on message: Message) {

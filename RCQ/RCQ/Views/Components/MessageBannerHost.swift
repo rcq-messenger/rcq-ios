@@ -68,10 +68,14 @@ private struct BannerCard: View {
                     .font(.system(.subheadline, weight: .semibold))
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(1)
-                Text(banner.body)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .lineLimit(2)
+                // EmoticonText so emoticon-only bodies render the
+                // glyph instead of `:shortcode:`.
+                EmoticonText(
+                    text: banner.body,
+                    font: .caption,
+                    color: Theme.Color.textSecondary,
+                    emoticonSize: 15
+                )
             }
             Spacer(minLength: 0)
         }

@@ -63,7 +63,9 @@ final class MediaService {
         return c
     }()
 
-    private init() {}
+    private init() {
+        EncryptedBlobDiskCache.shared.sweep()
+    }
 
     enum Failure: Error, LocalizedError {
         case compressionFailed
@@ -291,6 +293,13 @@ final class MediaService {
         return decryptedCache.object(forKey: cacheKey)
     }
 
+    /// Cached raw decrypted bytes — paired with `cachedImage` so the
+    /// caller can magic-byte detect GIFs.
+    nonisolated func cachedData(mediaID: String, keyBase64: String) -> Data? {
+        let cacheKey = (mediaID + ":" + keyBase64) as NSString
+        return decryptedDataCache.object(forKey: cacheKey) as Data?
+    }
+
     /// Fetch + decrypt + cache. Decrypt and JPEG decode run off-main to keep the SwiftUI runloop responsive.
     func loadImage(mediaID: String, keyBase64: String) async -> UIImage? {
         let cacheKey = (mediaID + ":" + keyBase64) as NSString
@@ -300,8 +309,11 @@ final class MediaService {
             let blob: Data
             if let prefetched = encryptedBlobCache.object(forKey: mediaKey) {
                 blob = prefetched as Data
+            } else if let onDisk = await EncryptedBlobDiskCache.shared.loadBlob(mediaID: mediaID) {
+                blob = onDisk
             } else {
                 blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+                EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
             }
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
             // Off-main: decrypt + decode + force-redraw so UIKit doesn't lazy-decode on first draw on main.
@@ -349,8 +361,11 @@ final class MediaService {
             let blob: Data
             if let prefetched = encryptedBlobCache.object(forKey: mediaKey) {
                 blob = prefetched as Data
+            } else if let onDisk = await EncryptedBlobDiskCache.shared.loadBlob(mediaID: mediaID) {
+                blob = onDisk
             } else {
                 blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+                EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
             }
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
             let result: (UIImage, Data)? = await Task.detached(priority: .userInitiated) {
@@ -390,9 +405,14 @@ final class MediaService {
     func prefetchEncrypted(mediaID: String) async {
         let mediaKey = mediaID as NSString
         if encryptedBlobCache.object(forKey: mediaKey) != nil { return }
+        // Disk-cache hit is enough; loader paths also check disk.
+        if EncryptedBlobDiskCache.shared.cachedBlob(mediaID: mediaID) != nil {
+            return
+        }
         do {
             let blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
             encryptedBlobCache.setObject(blob as NSData, forKey: mediaKey, cost: blob.count)
+            EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
         } catch {
         }
     }

@@ -51,6 +51,8 @@ struct ContactListView: View {
     @State private var deepLinkAddUIN: Int? = nil
     @State private var deepLinkUinListing: UinMarketplaceListing? = nil
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
+    /// Bound by `pendingOpenStickerPack`; opens the pack-peek sheet.
+    @State private var deepLinkStickerPackKind: StickerPackPeek? = nil
     @State private var refreshAttemptedFor: Set<Int> = []
     @State private var petPreview: PetPreviewTarget?
     @State private var tradeWithContact: Contact?
@@ -360,6 +362,14 @@ struct ContactListView: View {
                 guard let uin = newValue else { return }
                 appState.pendingOpenUserProfile = nil
                 deepLinkProfileUIN = DeepLinkUIN(uin: uin)
+            }
+            .onChange(of: appState.pendingOpenStickerPack) { newValue in
+                guard let kindID = newValue else { return }
+                appState.pendingOpenStickerPack = nil
+                deepLinkStickerPackKind = StickerPackPeek(kindID: kindID)
+            }
+            .sheet(item: $deepLinkStickerPackKind) { peek in
+                StickerPackPeekSheet(kindID: peek.kindID)
             }
             .sheet(item: $deepLinkProfileUIN) { wrap in
                 NavigationStack {
@@ -1504,6 +1514,42 @@ private extension DateFormatter {
 /// Identifiable wrapper so the deep-link UIN drives a `.sheet(item:)` presentation.
 private struct DeepLinkUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
 private struct JoinGroupTrigger: Identifiable, Hashable { let id: Int }
+
+/// Identifiable wrapper so the same pack tapped twice re-presents.
+private struct StickerPackPeek: Identifiable, Hashable {
+    let kindID: String
+    var id: String { kindID }
+}
+
+/// Sheet showing the full `KindContentsView` for a tapped pack sticker.
+private struct StickerPackPeekSheet: View {
+    let kindID: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    KindContentsView(kindID: kindID, horizontalInset: 0)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+            .background(Theme.Color.bgPrimary)
+            .navigationTitle(ItemDisplay.name(for: kindID))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("common.done".localized) { dismiss() }
+                        .foregroundColor(Theme.Color.accent)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
 
 /// Identifiable wrapper for `.fullScreenCover(item:)` driving the
 /// story viewer. Carries the index into `StoryService.feed` of the

@@ -177,7 +177,11 @@ struct SearchOverlay: View {
         ForEach(contactHits) { contact in
             Button { onSelectContact(contact) } label: {
                 HStack(spacing: 10) {
-                    StatusIcon(status: contact.status, size: 26)
+                    StatusWithPet(
+                        status: contact.status,
+                        pet: contact.equippedPet,
+                        size: 36,
+                    )
                     VStack(alignment: .leading, spacing: 1) {
                         Text(contact.nickname)
                             .font(Theme.Font.nickname)
@@ -199,10 +203,12 @@ struct SearchOverlay: View {
         ForEach(groupHits) { group in
             Button { onSelectGroup(group) } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "person.3.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(Theme.Color.accent)
-                        .frame(width: 26, height: 26)
+                    GroupAvatarView(
+                        mediaID: group.avatarMediaID,
+                        keyBase64: group.avatarMediaKey,
+                        size: 36,
+                        glyphSize: 18,
+                    )
                     VStack(alignment: .leading, spacing: 1) {
                         Text(group.name)
                             .font(Theme.Font.nickname)
@@ -244,17 +250,9 @@ struct SearchOverlay: View {
                 }
             } label: {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: hit.thread.isGroup ? "person.3.fill" : "bubble.left")
-                        .font(.system(size: 14))
-                        .foregroundColor(Theme.Color.accent)
-                        .frame(width: 22, height: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        // Same emoticon-aware renderer the chat
-                        // bubbles use, so `:)` / `;)` etc. show
-                        // up animated in the search hit instead
-                        // of leaking the raw shortcode through.
-                        EmoticonText(text: hit.message.text, font: .body, emoticonSize: 18)
-                            .lineLimit(2)
+                    threadAvatar(hit.thread)
+                    VStack(alignment: .leading, spacing: 4) {
+                        messageBody(hit.message)
                         Text(threadLabel(hit.thread))
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
@@ -265,6 +263,72 @@ struct SearchOverlay: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    /// Peer/group avatar for a message hit, with bubble fallback.
+    @ViewBuilder
+    private func threadAvatar(_ thread: ThreadID) -> some View {
+        switch thread {
+        case .peer(let uin):
+            if let c = contactSvc.contacts.first(where: { $0.uin == uin }) {
+                StatusWithPet(status: c.status, pet: c.equippedPet, size: 32)
+            } else {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.Color.accent)
+                    .frame(width: 32, height: 32)
+            }
+        case .group(let id):
+            if let g = groupSvc.find(id) {
+                GroupAvatarView(
+                    mediaID: g.avatarMediaID,
+                    keyBase64: g.avatarMediaKey,
+                    size: 32,
+                    glyphSize: 16,
+                )
+            } else {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.Color.accent)
+                    .frame(width: 32, height: 32)
+            }
+        }
+    }
+
+    /// Renders the hit body, replacing a single share-link with a
+    /// rich preview (mirrors the chat-bubble detection).
+    @ViewBuilder
+    private func messageBody(_ message: Message) -> some View {
+        if let share = MarketLinkParser.parse(message.text) {
+            HStack(spacing: 6) {
+                Image(systemName: "cube.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                MarketReplyMiniCard(listingID: share.listingID)
+            }
+        } else if UinLinkParser.parse(message.text) != nil {
+            HStack(spacing: 6) {
+                Image(systemName: "number.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text("search.preview.uin_listing".localized)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+        } else if GroupLinkParser.parse(message.text) != nil {
+            HStack(spacing: 6) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text("search.preview.group_invite".localized)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+        } else {
+            // Same emoticon-aware renderer the chat bubbles use.
+            EmoticonText(text: message.text, font: .body, emoticonSize: 18)
+                .lineLimit(2)
         }
     }
 

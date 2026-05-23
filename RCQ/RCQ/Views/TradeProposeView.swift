@@ -29,6 +29,7 @@ struct TradeProposeView: View {
     @State private var errorMessage: String?
     @State private var showGiftConfirm: Bool = false
     @State private var showItemPINGate: Bool = false
+    @State private var showHowItWorks: Bool = false
 
     private var itemPINRequired: Bool {
         UserDefaults.standard.bool(forKey: "rcq.requirePINForItems")
@@ -158,6 +159,18 @@ struct TradeProposeView: View {
                     Button("common.close".localized) { dismiss() }
                         .foregroundColor(Theme.Color.accent)
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showHowItWorks = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    .accessibilityLabel("trade.howto.button".localized)
+                }
+            }
+            .sheet(isPresented: $showHowItWorks) {
+                TradeHowItWorksSheet()
             }
             .task {
                 await items.refreshInventory()
@@ -476,4 +489,76 @@ struct TradeInvUin: Codable, Hashable, Identifiable {
     let listed: Bool
 
     var id: Int { uin }
+}
+
+/// "How it works" help sheet for the trade composer.
+private struct TradeHowItWorksSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    bullet(
+                        icon: "arrow.up.right.circle.fill",
+                        title: "trade.howto.your.title",
+                        body: "trade.howto.your.body",
+                    )
+                    bullet(
+                        icon: "arrow.down.left.circle.fill",
+                        title: "trade.howto.theirs.title",
+                        body: "trade.howto.theirs.body",
+                    )
+                    bullet(
+                        icon: "gift.fill",
+                        title: "trade.howto.kinds.title",
+                        body: "trade.howto.kinds.body",
+                    )
+                    bullet(
+                        icon: "shield.lefthalf.filled",
+                        title: "trade.howto.safety.title",
+                        body: "trade.howto.safety.body",
+                    )
+                    bullet(
+                        icon: "checkmark.seal.fill",
+                        title: "trade.howto.accept.title",
+                        body: "trade.howto.accept.body",
+                    )
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
+            }
+            .background(Theme.Color.bgPrimary)
+            .navigationTitle("trade.howto.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("common.done".localized) { dismiss() }
+                        .foregroundColor(Theme.Color.accent)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func bullet(icon: String, title: String, body: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundColor(Theme.Color.accent)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.localized)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text(body.localized)
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 }

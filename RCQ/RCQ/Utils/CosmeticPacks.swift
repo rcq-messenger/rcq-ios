@@ -492,4 +492,18 @@ enum CosmeticPacks {
     static var allKindIDs: [String] {
         Array(manifest.keys)
     }
+
+    /// Reverse lookup from an emoticon asset name to its pack kind id.
+    /// Returns nil for default Kolobok glyphs and unknown assets.
+    static func kindID(for asset: String) -> String? {
+        if let hit = _assetToKind { return hit[asset] }
+        var map: [String: String] = [:]
+        for (kindID, entries) in manifest {
+            for e in entries { map[e.asset] = kindID }
+        }
+        _assetToKind = map
+        return map[asset]
+    }
+
+    private static var _assetToKind: [String: String]? = nil
 }

@@ -10,6 +10,7 @@ final class MarketService: ObservableObject {
     /// Current browse window. Replaced wholesale on each refresh.
     @Published private(set) var listings: [MarketplaceListing] = []
     @Published private(set) var total: Int = 0
+    @Published private(set) var isLoadingMore: Bool = false
 
     /// Local user's market listings — active + history.
     @Published private(set) var myListings: [MarketplaceListing] = []
@@ -17,7 +18,27 @@ final class MarketService: ObservableObject {
     /// UIN listings — parallel surface, keyed on `uin: Int`.
     @Published private(set) var uinListings: [UinMarketplaceListing] = []
     @Published private(set) var uinListingsTotal: Int = 0
+    @Published private(set) var isLoadingMoreUins: Bool = false
     @Published private(set) var myUinListings: [UinMarketplaceListing] = []
+
+    private struct ItemPageParams {
+        var rarity: ItemRarity?
+        var section: ItemSection?
+        var kindID: String?
+        var minPrice: Int?
+        var maxPrice: Int?
+        var sort: MarketSort
+        var pageSize: Int
+    }
+    private struct UinPageParams {
+        var tier: String?
+        var minPrice: Int?
+        var maxPrice: Int?
+        var sort: MarketSort
+        var pageSize: Int
+    }
+    private var lastItemParams: ItemPageParams?
+    private var lastUinParams: UinPageParams?
 
     /// Set on browse/buy/sell failure. UI surfaces via `acknowledgeError()`.
     @Published var lastError: String?
@@ -46,28 +67,27 @@ final class MarketService: ObservableObject {
         limit: Int = 50,
         offset: Int = 0
     ) async {
+        let params = ItemPageParams(
+            rarity: rarity, section: section, kindID: kindID,
+            minPrice: minPrice, maxPrice: maxPrice,
+            sort: sort, pageSize: limit,
+        )
         struct BrowseOut: Decodable {
             let listings: [MarketplaceListing]
             let total: Int
         }
-        // APIClient percent-encodes the path — query params MUST go
-        // through `query:`, never appended with `?...` (gets escaped → 404).
-        var query: [String: String] = [
-            "sort": sort.rawValue,
-            "limit": String(limit),
-            "offset": String(offset),
-        ]
-        if let rarity { query["rarity"] = rarity.rawValue }
-        if let section { query["section"] = section.rawValue }
-        if let kindID { query["kind_id"] = kindID }
-        if let minPrice { query["min_price"] = String(minPrice) }
-        if let maxPrice { query["max_price"] = String(maxPrice) }
+        let query = buildItemQuery(params: params, offset: offset)
         do {
             let resp: BrowseOut = try await APIClient.shared.request(
                 "GET", "/market/listings", query: query
             )
-            self.listings = resp.listings
-            self.total = resp.total
+            // offset==0 is a fresh refresh; non-zero is a stale paginate
+            // racing a refresh — drop it.
+            if offset == 0 {
+                self.listings = resp.listings
+                self.total = resp.total
+                self.lastItemParams = params
+            }
         } catch is CancellationError {
             // Stay quiet on cancellation — request was abandoned by us.
             return
@@ -77,6 +97,53 @@ final class MarketService: ObservableObject {
             print("[MarketService] refresh failed: \(error)")
             lastError = "market.error.browse".localized
         }
+    }
+
+    /// Append the next page of items using the filters captured by the
+    /// last `refresh()`. No-op when nothing more to load or already paging.
+    func loadMoreItems() async {
+        guard !isLoadingMore else { return }
+        guard let params = lastItemParams else { return }
+        guard listings.count < total else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        struct BrowseOut: Decodable {
+            let listings: [MarketplaceListing]
+            let total: Int
+        }
+        let query = buildItemQuery(params: params, offset: listings.count)
+        do {
+            let resp: BrowseOut = try await APIClient.shared.request(
+                "GET", "/market/listings", query: query
+            )
+            // De-dup in case a sold/relisted broadcast raced this page.
+            let known = Set(listings.map(\.id))
+            let fresh = resp.listings.filter { !known.contains($0.id) }
+            self.listings.append(contentsOf: fresh)
+            self.total = resp.total
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
+        } catch {
+            print("[MarketService] loadMoreItems failed: \(error)")
+        }
+    }
+
+    private func buildItemQuery(params: ItemPageParams, offset: Int) -> [String: String] {
+        // APIClient percent-encodes the path — query params MUST go
+        // through `query:`, never appended with `?...` (gets escaped → 404).
+        var query: [String: String] = [
+            "sort": params.sort.rawValue,
+            "limit": String(params.pageSize),
+            "offset": String(offset),
+        ]
+        if let r = params.rarity { query["rarity"] = r.rawValue }
+        if let s = params.section { query["section"] = s.rawValue }
+        if let k = params.kindID { query["kind_id"] = k }
+        if let mn = params.minPrice { query["min_price"] = String(mn) }
+        if let mx = params.maxPrice { query["max_price"] = String(mx) }
+        return query
     }
 
     func refreshMine() async {
@@ -238,24 +305,24 @@ final class MarketService: ObservableObject {
         limit: Int = 50,
         offset: Int = 0
     ) async {
+        let params = UinPageParams(
+            tier: tier, minPrice: minPrice, maxPrice: maxPrice,
+            sort: sort, pageSize: limit,
+        )
         struct BrowseOut: Decodable {
             let listings: [UinMarketplaceListing]
             let total: Int
         }
-        var query: [String: String] = [
-            "sort": sort.rawValue,
-            "limit": String(limit),
-            "offset": String(offset),
-        ]
-        if let tier { query["tier"] = tier }
-        if let minPrice { query["min_price"] = String(minPrice) }
-        if let maxPrice { query["max_price"] = String(maxPrice) }
+        let query = buildUinQuery(params: params, offset: offset)
         do {
             let resp: BrowseOut = try await APIClient.shared.request(
                 "GET", "/market/uin-listings", query: query
             )
-            self.uinListings = resp.listings
-            self.uinListingsTotal = resp.total
+            if offset == 0 {
+                self.uinListings = resp.listings
+                self.uinListingsTotal = resp.total
+                self.lastUinParams = params
+            }
         } catch is CancellationError {
             return
         } catch let urlError as URLError where urlError.code == .cancelled {
@@ -264,6 +331,46 @@ final class MarketService: ObservableObject {
             print("[MarketService] refreshUinListings failed: \(error)")
             lastError = "market.error.browse".localized
         }
+    }
+
+    func loadMoreUins() async {
+        guard !isLoadingMoreUins else { return }
+        guard let params = lastUinParams else { return }
+        guard uinListings.count < uinListingsTotal else { return }
+        isLoadingMoreUins = true
+        defer { isLoadingMoreUins = false }
+        struct BrowseOut: Decodable {
+            let listings: [UinMarketplaceListing]
+            let total: Int
+        }
+        let query = buildUinQuery(params: params, offset: uinListings.count)
+        do {
+            let resp: BrowseOut = try await APIClient.shared.request(
+                "GET", "/market/uin-listings", query: query
+            )
+            let known = Set(uinListings.map(\.id))
+            let fresh = resp.listings.filter { !known.contains($0.id) }
+            self.uinListings.append(contentsOf: fresh)
+            self.uinListingsTotal = resp.total
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
+        } catch {
+            print("[MarketService] loadMoreUins failed: \(error)")
+        }
+    }
+
+    private func buildUinQuery(params: UinPageParams, offset: Int) -> [String: String] {
+        var query: [String: String] = [
+            "sort": params.sort.rawValue,
+            "limit": String(params.pageSize),
+            "offset": String(offset),
+        ]
+        if let t = params.tier { query["tier"] = t }
+        if let mn = params.minPrice { query["min_price"] = String(mn) }
+        if let mx = params.maxPrice { query["max_price"] = String(mx) }
+        return query
     }
 
     func refreshMyUinListings() async {
@@ -421,6 +528,10 @@ final class MarketService: ObservableObject {
         myUinListings.removeAll()
         total = 0
         uinListingsTotal = 0
+        lastItemParams = nil
+        lastUinParams = nil
+        isLoadingMore = false
+        isLoadingMoreUins = false
         lastError = nil
         lastSuccessKey = nil
     }

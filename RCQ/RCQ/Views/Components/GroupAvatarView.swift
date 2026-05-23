@@ -10,6 +10,8 @@ struct GroupAvatarView: View {
     var glyphSize: CGFloat? = nil
 
     @State private var image: UIImage?
+    /// Raw bytes only held when the asset is a GIF (for AnimatedGIFView).
+    @State private var gifData: Data?
 
     private var resolvedGlyph: CGFloat { glyphSize ?? size * 0.42 }
 
@@ -23,18 +25,29 @@ struct GroupAvatarView: View {
         // animation flashes the fallback glyph while the async .task
         // path catches up. Most callers (group rows, header) have already
         // loaded this exact avatar before MessageBannerHost renders.
-        let seed: UIImage? = {
-            guard let id = mediaID, !id.isEmpty,
-                  let key = keyBase64, !key.isEmpty else { return nil }
-            return MediaService.shared.cachedImage(mediaID: id, keyBase64: key)
-        }()
-        self._image = State(initialValue: seed)
+        let seedImage: UIImage?
+        let seedGIF: Data?
+        if let id = mediaID, !id.isEmpty,
+           let key = keyBase64, !key.isEmpty {
+            seedImage = MediaService.shared.cachedImage(mediaID: id, keyBase64: key)
+            let cachedData = MediaService.shared.cachedData(mediaID: id, keyBase64: key)
+            seedGIF = (cachedData.map { AnimatedGIFView.isGIF($0) } ?? false) ? cachedData : nil
+        } else {
+            seedImage = nil
+            seedGIF = nil
+        }
+        self._image = State(initialValue: seedImage)
+        self._gifData = State(initialValue: seedGIF)
     }
 
     var body: some View {
         ZStack {
             Circle().fill(Theme.Color.accent)
-            if let image {
+            if let gifData {
+                AnimatedGIFView(data: gifData, contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -60,8 +73,12 @@ struct GroupAvatarView: View {
             let key = keyBase64, !key.isEmpty
         else {
             image = nil
+            gifData = nil
             return
         }
-        image = await MediaService.shared.loadImage(mediaID: id, keyBase64: key)
+        if let pair = await MediaService.shared.loadImageWithData(mediaID: id, keyBase64: key) {
+            image = pair.0
+            gifData = AnimatedGIFView.isGIF(pair.1) ? pair.1 : nil
+        }
     }
 }

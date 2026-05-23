@@ -137,6 +137,7 @@ struct ChatView: View {
     @State private var showTrade = false
     @State private var showTrades = false
     @State private var showInChatSearch = false
+    @State private var showAllMedia = false
     @AppStorage("rcq.privacy.callPolicy") private var callPolicy: String = "everyone"
     @State private var pendingScrollID: UUID?
     @State private var flashHighlightID: UUID?
@@ -553,6 +554,9 @@ struct ChatView: View {
             SingleTradeSheet(trade: trade)
                 .presentationDetents([.fraction(0.5), .large])
         }
+        .sheet(isPresented: $showAllMedia) {
+            AllMediaSheet(messages: vm.messages)
+        }
         .sheet(item: $jetonTarget) { msg in
             if let gid = activeGroupID {
                 JetonReactSheet(
@@ -813,6 +817,11 @@ struct ChatView: View {
                 withAnimation(.easeInOut(duration: 0.18)) { showInChatSearch = true }
             } label: {
                 Label("chat.menu.search_messages".localized, systemImage: "magnifyingglass")
+            }
+            Button {
+                showAllMedia = true
+            } label: {
+                Label("chat.menu.all_media".localized, systemImage: "photo.on.rectangle")
             }
             switch vm.target {
             case .peer(let snapshot):

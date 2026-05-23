@@ -24,6 +24,27 @@ enum ImperativePicker {
         presenter.present(picker, animated: true)
     }
 
+    /// Single-selection picker that preserves animated GIFs. Returns
+    /// `.gif(data:preview:)` when the underlying file is a GIF,
+    /// `.photo(UIImage)` otherwise.
+    static func pickPhotoOrGIF(onPick: @escaping (CapturedMedia?) -> Void) {
+        guard let presenter = topViewController() else {
+            onPick(nil)
+            return
+        }
+        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        cfg.filter = .images
+        cfg.selectionLimit = 1
+        // `.current` keeps the GIF's animation frames; `.compatible`
+        // would re-encode to a single still on some library configs.
+        cfg.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: cfg)
+        let coord = PhotoOrGIFCoordinator(onPick: onPick)
+        picker.delegate = coord
+        objc_setAssociatedObject(picker, &Self.coordKey, coord, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        presenter.present(picker, animated: true)
+    }
+
     enum CameraMode { case photo, video, both }
 
     static func captureFromCamera(mode: CameraMode = .both, onPick: @escaping (CapturedMedia?) -> Void) {
@@ -155,6 +176,45 @@ private final class CameraCoordinator: NSObject, UIImagePickerControllerDelegate
             return
         }
         picker.dismiss(animated: true) { [onPick] in onPick(nil) }
+    }
+}
+
+private final class PhotoOrGIFCoordinator: NSObject, PHPickerViewControllerDelegate {
+    let onPick: (CapturedMedia?) -> Void
+    init(onPick: @escaping (CapturedMedia?) -> Void) { self.onPick = onPick }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else {
+            onPick(nil)
+            return
+        }
+        let gifType = UTType.gif.identifier
+        if provider.hasItemConformingToTypeIdentifier(gifType) {
+            provider.loadDataRepresentation(forTypeIdentifier: gifType) { [onPick] data, _ in
+                guard let data, let preview = UIImage(data: data) else {
+                    DispatchQueue.main.async { onPick(nil) }
+                    return
+                }
+                DispatchQueue.main.async {
+                    onPick(.gif(data: data, preview: preview))
+                }
+            }
+            return
+        }
+        guard provider.canLoadObject(ofClass: UIImage.self) else {
+            onPick(nil)
+            return
+        }
+        provider.loadObject(ofClass: UIImage.self) { [onPick] obj, _ in
+            DispatchQueue.main.async {
+                if let img = obj as? UIImage {
+                    onPick(.photo(img))
+                } else {
+                    onPick(nil)
+                }
+            }
+        }
     }
 }
 

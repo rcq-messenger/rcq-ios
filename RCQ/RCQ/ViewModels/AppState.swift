@@ -36,12 +36,34 @@ final class AppState: ObservableObject {
     /// Tap target for @mentions in group chat. ContactListView shows
     /// `UserInfoView` for the UIN as a sheet.
     @Published var pendingOpenUserProfile: Int? = nil
+    /// Tap target for an inline sticker in chat. ContactListView
+    /// presents the pack-peek sheet on change.
+    @Published var pendingOpenStickerPack: String? = nil
 
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
     private var pendingOnlineSync: Task<Void, Never>?
 
+    /// UserDefaults key for a referral inviter UIN captured before
+    /// register. Consumed by the fresh-register path; ignored for
+    /// existing accounts.
+    static let pendingInviterKey = "rcq.pendingInviterUIN"
+
     func handle(deepLink url: URL) {
+        // Referral link — rcq://r/<uin> or https://rcq.app/r/<uin>.
+        if (url.scheme == "rcq" && url.host == "r"),
+           let last = url.pathComponents.last, let uin = Int(last), uin > 0 {
+            UserDefaults.standard.set(uin, forKey: Self.pendingInviterKey)
+            return
+        }
+        if (url.scheme == "https" || url.scheme == "http"),
+           url.host == "rcq.app",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "r",
+           let uin = Int(url.pathComponents[2]), uin > 0 {
+            UserDefaults.standard.set(uin, forKey: Self.pendingInviterKey)
+            return
+        }
         if url.scheme == "rcq", url.host == "add" {
             let uinStr = url.pathComponents.last ?? ""
             if let uin = Int(uinStr), uin > 0 {
@@ -342,6 +364,7 @@ final class AppState: ObservableObject {
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
         SignalProtocolDB.shared.wipe()
+        EncryptedBlobDiskCache.shared.clear()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -413,6 +436,7 @@ final class AppState: ObservableObject {
         NicknameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
+        EncryptedBlobDiskCache.shared.clear()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -459,7 +483,10 @@ final class AppState: ObservableObject {
     private func syncOwnPresenceFromServer(uin: Int) async {
         do {
             let me: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
-            PresenceService.shared.status = me.status == .offline ? .online : me.status
+            // Coerce a legacy .offline self-row to .online — the picker
+            // can't reach .offline directly.
+            let resolved: UserStatus = (me.status == .offline) ? .online : me.status
+            PresenceService.shared.status = resolved
             PresenceService.shared.statusMessage = me.statusMessage
             AuthService.shared.updateNicknameLocal(me.nickname)
         } catch {

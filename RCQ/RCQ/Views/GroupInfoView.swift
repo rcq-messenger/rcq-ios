@@ -13,6 +13,7 @@ struct GroupInfoView: View {
     @State private var actionMember: RCQGroupMember?
     @State private var petPreview: PetPreviewTarget?
     @State private var showSettings = false
+    @State private var showFullAvatar = false
 
     private var currentGroup: RCQGroup {
         groups.find(group.id) ?? group
@@ -102,6 +103,12 @@ struct GroupInfoView: View {
         .sheet(isPresented: $showSettings) {
             GroupSettingsSheet(groupID: currentGroup.id)
         }
+        .fullScreenCover(isPresented: $showFullAvatar) {
+            FullScreenAvatarView(
+                mediaID: currentGroup.avatarMediaID,
+                keyBase64: currentGroup.avatarMediaKey,
+            )
+        }
         .sheet(isPresented: $showAddMember) {
             AddGroupMemberView(group: currentGroup)
         }
@@ -175,6 +182,12 @@ struct GroupInfoView: View {
                 size: 56,
                 glyphSize: 26,
             )
+            .contentShape(Circle())
+            .onTapGesture {
+                if currentGroup.avatarMediaID != nil {
+                    showFullAvatar = true
+                }
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(currentGroup.name)
                     .font(.title3.bold())

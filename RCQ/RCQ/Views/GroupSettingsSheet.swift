@@ -18,7 +18,6 @@ struct GroupSettingsSheet: View {
     @State private var savingName = false
     @State private var savingDescription = false
     @State private var savingPrice = false
-    @State private var showAvatarPicker = false
     @State private var avatarUploading = false
     @State private var confirmAvatarRemove = false
     @State private var error: String?
@@ -71,13 +70,6 @@ struct GroupSettingsSheet: View {
                 nameDraft = g.name
                 descriptionDraft = g.description ?? ""
                 entryPriceText = g.entryPriceTokens.map(String.init) ?? ""
-            }
-            .sheet(isPresented: $showAvatarPicker) {
-                PhotoPicker(selectionLimit: 1) { images in
-                    showAvatarPicker = false
-                    guard let img = images.first else { return }
-                    Task { await uploadAvatar(img) }
-                }
             }
             .confirmationDialog(
                 "group.avatar.remove.confirm".localized,
@@ -156,17 +148,34 @@ struct GroupSettingsSheet: View {
     private func avatarSection(_ g: RCQGroup) -> some View {
         Section {
             HStack(spacing: 12) {
-                GroupAvatarView(
-                    mediaID: g.avatarMediaID,
-                    keyBase64: g.avatarMediaKey,
-                    size: 44,
-                    glyphSize: 22,
-                )
+                // Tap the avatar itself to change. Pencil glyph reads
+                // as edit affordance.
+                Button {
+                    presentAvatarPicker()
+                } label: {
+                    ZStack(alignment: .bottomTrailing) {
+                        GroupAvatarView(
+                            mediaID: g.avatarMediaID,
+                            keyBase64: g.avatarMediaKey,
+                            size: 44,
+                            glyphSize: 22,
+                        )
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .background(
+                                Circle().fill(Theme.Color.accent)
+                            )
+                            .offset(x: 2, y: 2)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(avatarUploading)
                 if avatarUploading {
                     ProgressView().controlSize(.small)
                 } else {
                     Button("group.settings.change_photo".localized) {
-                        showAvatarPicker = true
+                        presentAvatarPicker()
                     }
                     .foregroundColor(Theme.Color.accent)
                 }
@@ -184,6 +193,24 @@ struct GroupSettingsSheet: View {
             Text("group.settings.photo".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// Single entry point for the photo / GIF picker. Imperative
+    /// present — `.sheet`-hosted PHPicker trips the iOS-26
+    /// cascade-dismiss bug. Same pattern as
+    /// PremiumComposerSheet.launchPhotoPicker.
+    private func presentAvatarPicker() {
+        guard !avatarUploading else { return }
+        ImperativePicker.pickPhotoOrGIF { media in
+            switch media {
+            case .photo(let img):
+                Task { await uploadAvatar(image: img) }
+            case .gif(let data, _):
+                Task { await uploadAvatar(gifData: data) }
+            case .video, .none:
+                break
+            }
+        }
     }
 
     @ViewBuilder
@@ -281,11 +308,24 @@ struct GroupSettingsSheet: View {
         catch { self.error = error.localizedDescription }
     }
 
-    private func uploadAvatar(_ image: UIImage) async {
+    private func uploadAvatar(image: UIImage) async {
         avatarUploading = true
         defer { avatarUploading = false }
         do {
             let res = try await MediaService.shared.uploadImage(image)
+            try await groups.setAvatar(groupID: groupID, mediaID: res.mediaID, keyBase64: res.keyBase64)
+        } catch {
+            self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)
+        }
+    }
+
+    /// GIF avatar — raw-byte upload so frames survive (the still-image
+    /// path JPEG-encodes).
+    private func uploadAvatar(gifData: Data) async {
+        avatarUploading = true
+        defer { avatarUploading = false }
+        do {
+            let res = try await MediaService.shared.uploadGIF(data: gifData)
             try await groups.setAvatar(groupID: groupID, mediaID: res.mediaID, keyBase64: res.keyBase64)
         } catch {
             self.error = String(format: "group.avatar.upload_error".localized, error.localizedDescription)

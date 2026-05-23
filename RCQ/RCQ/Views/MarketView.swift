@@ -265,6 +265,7 @@ struct MarketView: View {
     @ViewBuilder
     private var uinContentScroll: some View {
         let rows = (tab == .browse ? market.uinListings : market.myUinListings)
+        let canPage = tab == .browse && market.uinListings.count < market.uinListingsTotal
         ScrollView {
             LazyVStack(spacing: 8) {
                 if rows.isEmpty && !refreshing {
@@ -276,6 +277,12 @@ struct MarketView: View {
                             UinListingRow(listing: l, isMine: tab == .mine)
                         }
                         .buttonStyle(.plain)
+                    }
+                    if canPage {
+                        ProgressView()
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity)
+                            .task { await market.loadMoreUins() }
                     }
                 }
             }
@@ -307,6 +314,7 @@ struct MarketView: View {
     @ViewBuilder
     private var contentScroll: some View {
         let rows = (tab == .browse ? market.listings : market.myListings)
+        let canPage = tab == .browse && market.listings.count < market.total
         ScrollView {
             LazyVStack(spacing: 8) {
                 if rows.isEmpty && !refreshing {
@@ -318,6 +326,12 @@ struct MarketView: View {
                             ListingRow(listing: l, isMine: tab == .mine)
                         }
                         .buttonStyle(.plain)
+                    }
+                    if canPage {
+                        ProgressView()
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity)
+                            .task { await market.loadMoreItems() }
                     }
                 }
             }

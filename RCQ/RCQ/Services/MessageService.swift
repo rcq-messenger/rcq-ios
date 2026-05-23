@@ -1308,6 +1308,7 @@ final class MessageService {
                     uin: decrypted.senderUIN, asset: asset
                 )
                 if asset != nil, decrypted.senderUIN != ownUIN,
+                   !MessageBannerService.shared.isViewing(thread),
                    MessageStore.shared.messages(for: thread)
                        .first(where: { $0.id == targetID })?.isFromMe == true {
                     ReactionInboxStore.shared.mark(thread)

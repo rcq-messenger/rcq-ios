@@ -130,6 +130,30 @@
 "settings.account.burning" = "Удаляем…";
 "settings.account.about" = "О RCQ";
 "settings.account.bug_bounty" = "Bug Bounty";
+"settings.account.referral" = "Пригласить друзей";
+"settings.account.referral.footer" = "Приглашайте друзей — жетоны получите оба.";
+
+"referral.title" = "Пригласить друзей";
+"referral.body" = "Поделитесь своей ссылкой. Когда приглашённый друг попользуется RCQ в течение %d разных дней, жетоны получите оба: %d вам, %d ему. Кредиты разблокируются на релизе, как в bug bounty.";
+"referral.body.generic" = "Приглашайте друзей в RCQ — жетоны получите оба.";
+"referral.headline" = "+%d жетонов вам, +%d другу";
+"referral.subhead" = "Когда приглашённый попользуется RCQ %d дней — оба получите вознаграждение.";
+"referral.subhead.generic" = "Приглашайте друзей — жетоны получите оба.";
+"referral.your_code" = "ВАШ КОД";
+"referral.code.copy" = "Скопировать";
+"referral.code.copied" = "Скопировано";
+"referral.code_hint" = "Это ваш UIN. Друг, открывший вашу ссылку, регистрируется с ним автоматически.";
+"referral.share" = "Поделиться";
+"referral.copy_link" = "Скопировать ссылку";
+"referral.share.message" = "Заходи в RCQ — анонимный мессенджер без номера телефона. Мой код приглашения: %d.";
+"referral.stat.invited" = "Приглашено";
+"referral.stat.activated" = "Активировано";
+"referral.stat.credits" = "Жетонов начислено";
+"referral.load_failed" = "Не удалось загрузить статистику рефералов.";
+"referral.howto.title" = "Как это работает";
+"referral.howto.step1" = "Друг открывает вашу ссылку и регистрируется. Затем заходит в RCQ %d разных дней.";
+"referral.howto.step2" = "После активации вам начисляется %d жетонов, ему — %d.";
+"referral.howto.step3" = "Кредиты разблокируются на релизе — по тому же принципу, что и bug bounty.";
 
 "bug_bounty.title" = "Bug Bounty";
 "bug_bounty.heading" = "Нашёл баг — получи жетоны";
@@ -715,6 +739,9 @@
 "chat.random.skip_left" = "%d:%02d";
 "chat.random.stranger" = "Незнакомец";
 "chat.menu.search_messages" = "Поиск по чату";
+"chat.menu.all_media" = "Все медиа";
+"chat.all_media.title" = "Медиа";
+"chat.all_media.empty" = "В этом чате пока нет медиа.";
 "chat.search.placeholder" = "Поиск в чате";
 "chat.search.empty.idle" = "Введите запрос, чтобы найти сообщение в этом чате.";
 
@@ -1026,6 +1053,8 @@
 "search.thread.in_named" = "в %@";
 "search.thread.in_uin" = "в #%d";
 "search.thread.in_group" = "в группе";
+"search.preview.uin_listing" = "Предложение UIN";
+"search.preview.group_invite" = "Приглашение в группу";
 "pending.title" = "Заявки в контакты";
 "pending.empty.title" = "Заявок нет";
 "pending.empty.body" = "Новые приглашения появятся здесь.";
@@ -1183,6 +1212,18 @@
 "trade.gift_confirm.body" = "%@ ничего не отдаёт взамен. Если хотели попросить что-то в ответ — отмените и заполните противоположную сторону.";
 "trade.gift_confirm.send" = "Отправить подарок";
 "trade.gift_confirm.cancel" = "Отмена";
+"trade.howto.button" = "Как устроен обмен";
+"trade.howto.title" = "Как устроен обмен";
+"trade.howto.your.title" = "Ваше предложение";
+"trade.howto.your.body" = "Выбираете предметы, UIN'ы, жетоны и свитки, которые отдаёте. Сразу можно увидеть остаток кошелька — больше, чем есть, отдать нельзя.";
+"trade.howto.theirs.title" = "Их сторона";
+"trade.howto.theirs.body" = "Помечаете, что хотите получить от партнёра. Если оставить эту сторону пустой — это подарок. Если оставить пустой свою — вы просите.";
+"trade.howto.kinds.title" = "Тип сделки определяется автоматически";
+"trade.howto.kinds.body" = "Подарок, покупка, продажа или обмен — ярлык вверху обновляется сам, исходя из того, что отмечено с двух сторон.";
+"trade.howto.safety.title" = "Ничего не списывается заранее";
+"trade.howto.safety.body" = "До принятия предложения предметы остаются у владельцев. Жетоны и свитки тоже не блокируются. Можно отменить или предложить заново в любой момент.";
+"trade.howto.accept.title" = "Подтверждение — у партнёра";
+"trade.howto.accept.body" = "После отправки партнёр видит предложение и сам решает — принять или отклонить. Если у кого-то к моменту согласия предмета уже нет, сделка отклоняется автоматически.";
 "trade.section.your" = "Ваше предложение";
 "trade.section.theirs" = "Их сторона";
 "trade.note" = "ЗАПИСКА (НЕОБЯЗАТЕЛЬНО)";

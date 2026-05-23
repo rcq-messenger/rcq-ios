@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var burning = false
     @State private var showAbout = false
     @State private var showBugBounty = false
+    @State private var showReferral = false
     @State private var showLinkWeb = false
     @State private var showPrivacy = false
     @State private var showNotifications = false
@@ -217,6 +218,8 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     #endif
 
+                    referralSection
+
                     aboutAndBugBountySection
                 }
                 .scrollContentBackground(.hidden)
@@ -233,6 +236,7 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
+            .sheet(isPresented: $showReferral) { ReferralSheet() }
             .sheet(isPresented: $showDailyQA) { DailyQASheet() }
             .sheet(isPresented: $showLinkWeb) {
                 LinkWebView()
@@ -293,6 +297,27 @@ struct SettingsView: View {
                     .foregroundColor(Theme.Color.accent)
             }
         }
+    }
+
+    @ViewBuilder
+    private var referralSection: some View {
+        Section {
+            Button {
+                showReferral = true
+            } label: {
+                HStack {
+                    Image(systemName: "gift.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.account.referral".localized).foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+        } footer: {
+            Text("settings.account.referral.footer".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     /// Extracted to keep `body` under the Swift type-checker's

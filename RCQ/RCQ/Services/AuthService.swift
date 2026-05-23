@@ -30,6 +30,7 @@ final class AuthService: ObservableObject {
                 // Fire-and-forget Stage 3 top-up. Failure is non-fatal —
                 // encrypt path falls back to v=1 per peer.
                 try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: uin)
+                UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
                 isReady = true
                 return
             } catch APIError.http(404, _), APIError.http(401, _) {
@@ -55,8 +56,11 @@ final class AuthService: ObservableObject {
             let nickname: String
             let identity_key: String
             let signing_key: String
+            let inviter_uin: Int?
         }
         struct Out: Decodable { let uin: Int; let token: String }
+
+        let inviterUIN = UserDefaults.standard.object(forKey: AppState.pendingInviterKey) as? Int
 
         let out: Out = try await APIClient.shared.request(
             "POST",
@@ -64,9 +68,11 @@ final class AuthService: ObservableObject {
             body: Body(
                 nickname: nick,
                 identity_key: bundle.identityKey,
-                signing_key: bundle.signingKey
+                signing_key: bundle.signingKey,
+                inviter_uin: inviterUIN
             )
         )
+        UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
 
         KeychainStore.setString(KeychainStore.Keys.uin, String(out.uin))
         KeychainStore.setString(KeychainStore.Keys.token, out.token)

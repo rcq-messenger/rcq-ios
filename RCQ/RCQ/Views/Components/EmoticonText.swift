@@ -44,9 +44,19 @@ struct EmoticonText: View {
                     guard img.size.width > 0, img.size.height > 0 else { return 1 }
                     return img.size.width / img.size.height
                 }()
-                GIFImage(name: asset)
+                let packKind = CosmeticPacks.kindID(for: asset)
+                let view = GIFImage(name: asset)
                     .frame(width: emoticonSize * aspect, height: emoticonSize)
                     .accessibilityLabel(code)
+                if let kindID = packKind {
+                    // Pack sticker — tap opens the pack-peek sheet.
+                    view.contentShape(Rectangle())
+                        .onTapGesture {
+                            AppState.shared.pendingOpenStickerPack = kindID
+                        }
+                } else {
+                    view
+                }
             } else {
                 Text(code).font(font).foregroundColor(color)
             }

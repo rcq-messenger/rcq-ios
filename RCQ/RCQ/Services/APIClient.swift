@@ -518,6 +518,37 @@ extension APIClient {
     }
 }
 
+// MARK: - Referrals
+
+struct ReferralStatus: Decodable {
+    /// The caller's own referral code — their UIN.
+    let code: Int
+    let invitedCount: Int
+    let activatedCount: Int
+    let pendingCount: Int
+    let creditsEarned: Int
+    let activationDays: Int
+    let inviterReward: Int
+    let inviteeReward: Int
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case invitedCount = "invited_count"
+        case activatedCount = "activated_count"
+        case pendingCount = "pending_count"
+        case creditsEarned = "credits_earned"
+        case activationDays = "activation_days"
+        case inviterReward = "inviter_reward"
+        case inviteeReward = "invitee_reward"
+    }
+}
+
+extension APIClient {
+    func fetchReferralStatus() async throws -> ReferralStatus {
+        try await request("GET", "/referrals/me")
+    }
+}
+
 struct EmptyResponse: Codable {}
 
 private struct AnyEncodable: Encodable {
