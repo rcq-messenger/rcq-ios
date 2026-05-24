@@ -17,6 +17,10 @@ struct ItemKind: Codable, Identifiable, Hashable {
     let appliesAs: ItemAppliesAs
     let assetRef: String           // "items/coll1/Item1.png"
     let perPullChance: Double      // % within the catalog (server-computed)
+    /// Number of mints already issued for capped kinds. nil for uncapped.
+    /// `remaining = limit - mintedCount`. Old backends omit this; treat
+    /// nil as "unknown" and don't show the remaining badge.
+    let mintedCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, section
@@ -25,6 +29,14 @@ struct ItemKind: Codable, Identifiable, Hashable {
         case appliesAs = "applies_as"
         case assetRef = "asset_ref"
         case perPullChance = "per_pull_chance"
+        case mintedCount = "minted_count"
+    }
+
+    /// Remaining mint slots for capped kinds. nil if uncapped or if the
+    /// server hasn't reported `minted_count` yet (older backend).
+    var remainingMints: Int? {
+        guard let limit, let mintedCount else { return nil }
+        return max(0, limit - mintedCount)
     }
 
     /// Bundle URL for the kind's image. The server stores asset_refs

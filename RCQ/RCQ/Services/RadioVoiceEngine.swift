@@ -125,10 +125,11 @@ final class RadioVoiceEngine {
         do {
             try s.setCategory(
                 .playAndRecord,
-                mode: .voiceChat,
+                mode: .videoChat,
                 options: [.allowBluetoothHFP, .defaultToSpeaker]
             )
             try s.setActive(true)
+            try? s.overrideOutputAudioPort(.speaker)
             print("[RadioVoice] audioSession active — category=\(s.category.rawValue) mode=\(s.mode.rawValue) sampleRate=\(s.sampleRate) inputAvailable=\(s.isInputAvailable)")
         } catch {
             print("[RadioVoice] audioSession setCategory/setActive failed: \(error)")

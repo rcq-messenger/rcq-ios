@@ -20,6 +20,33 @@ struct InventoryView: View {
     @State private var lastError: String?
 
     @State private var rarityFilter: ItemRarity?
+    @State private var levelFilter: LevelBucket?
+
+    /// Temper-level bucket for the second filter row. Splits the 0-9
+    /// range into actionable groups so the chip strip stays short.
+    enum LevelBucket: String, CaseIterable, Hashable {
+        case base       // +0
+        case low        // +1..+3
+        case mid        // +4..+6
+        case high       // +7..+9
+
+        var label: String {
+            switch self {
+            case .base: return "+0"
+            case .low:  return "+1-3"
+            case .mid:  return "+4-6"
+            case .high: return "+7-9"
+            }
+        }
+        func contains(_ level: Int) -> Bool {
+            switch self {
+            case .base: return level == 0
+            case .low:  return (1...3).contains(level)
+            case .mid:  return (4...6).contains(level)
+            case .high: return (7...9).contains(level)
+            }
+        }
+    }
     @State private var selectMode: Bool = false
     @State private var selected: Set<String> = []
     /// Smileys + voices collapsed by default — pets are the headline
@@ -41,8 +68,11 @@ struct InventoryView: View {
     ]
 
     private var filteredItems: [Item] {
-        guard let r = rarityFilter else { return items.items }
-        return items.items.filter { $0.rarity == r }
+        items.items.filter { item in
+            if let r = rarityFilter, item.rarity != r { return false }
+            if let l = levelFilter, !l.contains(item.level) { return false }
+            return true
+        }
     }
 
     private func runRefresh(initial: Bool) async {
@@ -387,21 +417,35 @@ struct InventoryView: View {
     // MARK: - Filters
 
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                chip(label: "rarity.all".localized.uppercased(), color: Theme.Color.accent, isOn: rarityFilter == nil) {
-                    rarityFilter = nil
-                }
-                // rollWeight puts legendary at 0; reverse so chips read common → rare.
-                ForEach(ItemRarity.allCases.sorted { $0.rollWeight > $1.rollWeight }, id: \.self) { r in
-                    chip(label: r.label.uppercased(), color: r.color, isOn: rarityFilter == r) {
-                        rarityFilter = (rarityFilter == r) ? nil : r
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip(label: "rarity.all".localized.uppercased(), color: Theme.Color.accent, isOn: rarityFilter == nil) {
+                        rarityFilter = nil
+                    }
+                    ForEach(ItemRarity.allCases.sorted { $0.rollWeight > $1.rollWeight }, id: \.self) { r in
+                        chip(label: r.label.uppercased(), color: r.color, isOn: rarityFilter == r) {
+                            rarityFilter = (rarityFilter == r) ? nil : r
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 2)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip(label: "inventory.filter.level_all".localized.uppercased(), color: Theme.Color.accent, isOn: levelFilter == nil) {
+                        levelFilter = nil
+                    }
+                    ForEach(LevelBucket.allCases, id: \.self) { b in
+                        chip(label: b.label, color: Theme.Color.textMono, isOn: levelFilter == b) {
+                            levelFilter = (levelFilter == b) ? nil : b
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
+        .padding(.vertical, 2)
     }
 
     private func chip(label: String, color: Color, isOn: Bool, action: @escaping () -> Void) -> some View {

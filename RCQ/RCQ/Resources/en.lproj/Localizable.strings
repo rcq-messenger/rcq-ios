@@ -1173,7 +1173,11 @@
 "pool.title" = "Pool";
 "pool.section_share" = "%.0f%% of pulls";
 "pool.cap" = "cap %d";
+"pool.cap_remaining" = "%d / %d left";
+"inventory.filter.level_all" = "All levels";
 "pool.detail.chance" = "DROP CHANCE  %.2f%%";
+"pool.detail.cap" = "EDITION  %d";
+"pool.detail.cap_remaining" = "%d / %d REMAINING";
 "pool.gems.section" = "Gems";
 "pool.gems.title" = "Gem bundle";
 "pool.gems.range" = "%d–%d gems per drop";

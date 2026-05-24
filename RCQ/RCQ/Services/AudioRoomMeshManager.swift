@@ -352,8 +352,9 @@ final class AudioRoomMeshManager: NSObject {
         do {
             let options: AVAudioSession.CategoryOptions = [.allowBluetoothHFP, .defaultToSpeaker]
             try session.setCategory(AVAudioSession.Category.playAndRecord, with: options)
-            try session.setMode(AVAudioSession.Mode.voiceChat)
+            try session.setMode(AVAudioSession.Mode.videoChat)
             try session.setActive(true)
+            try? session.overrideOutputAudioPort(.speaker)
         } catch {
             print("[AudioRoomMesh] audio session config failed: \(error)")
         }

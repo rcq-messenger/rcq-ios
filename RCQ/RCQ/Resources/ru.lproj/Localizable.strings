@@ -1164,7 +1164,11 @@
 "pool.title" = "Пул";
 "pool.section_share" = "%.0f%% выпадений";
 "pool.cap" = "лимит %d";
+"pool.cap_remaining" = "%d / %d осталось";
+"inventory.filter.level_all" = "Все уровни";
 "pool.detail.chance" = "ШАНС ВЫПАДЕНИЯ  %.2f%%";
+"pool.detail.cap" = "ТИРАЖ  %d";
+"pool.detail.cap_remaining" = "%d / %d ОСТАЛОСЬ";
 "pool.gems.section" = "Гемы";
 "pool.gems.title" = "Связка гемов";
 "pool.gems.range" = "%d–%d гемов за выпадение";

@@ -7,12 +7,12 @@ struct RadioChatView: View {
     @StateObject private var radio = RadioService.shared
     @State private var input: String = ""
     @State private var replyTarget: RadioMessage?
-    // Edge-triggered PTT latch — DragGesture.onChanged fires repeatedly.
+    // Tap-to-toggle PTT. Tap once to start broadcasting, tap again to
+    // stop. Visual mic-fill + red background make the active state hard
+    // to miss so users don't leave a hot mic open by accident.
     @State private var ptt: Bool = false
 
     var body: some View {
-        // Renders inside RadioDiscoveryView's NavigationStack; supplies
-        // its own toolbar items (back / principal title / antenna).
         ZStack {
             Theme.Color.bgPrimary.ignoresSafeArea()
             VStack(spacing: 0) {
@@ -24,6 +24,12 @@ struct RadioChatView: View {
                     replyStrip(reply)
                 }
                 composer
+            }
+        }
+        .onDisappear {
+            if ptt {
+                ptt = false
+                radio.stopTalking()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -217,7 +223,7 @@ struct RadioChatView: View {
 
     // MARK: - Composer
 
-    // Empty input → mic (hold-to-talk PTT). Non-empty input → send.
+    // Empty input → mic (tap-to-toggle PTT). Non-empty input → send.
     private var composer: some View {
         let inputEmpty = input.trimmingCharacters(in: .whitespaces).isEmpty
         return HStack(alignment: .center, spacing: 8) {
@@ -254,37 +260,35 @@ struct RadioChatView: View {
         }
     }
 
-    // DragGesture(minimumDistance: 0) fires onChanged immediately on
-    // touch-down — LongPressGesture can't (waits for minimumDuration).
     private var pttButton: some View {
         let radius: CGFloat = 16
-        return Image(systemName: ptt ? "mic.fill" : "mic")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundColor(ptt ? .white : Theme.Color.accent)
-            .frame(width: 32, height: 32)
-            .background(
-                Circle().fill(ptt ? Color.red : Color.clear)
-            )
-            .scaleEffect(ptt ? 1.08 : 1.0)
-            .animation(.spring(response: 0.18, dampingFraction: 0.7), value: ptt)
-            .contentShape(Circle().inset(by: -radius))
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !ptt {
-                            ptt = true
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            radio.startTalking()
-                        }
-                    }
-                    .onEnded { _ in
-                        if ptt {
-                            ptt = false
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            radio.stopTalking()
-                        }
-                    }
-            )
+        return Button {
+            togglePTT()
+        } label: {
+            Image(systemName: ptt ? "mic.fill" : "mic")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(ptt ? .white : Theme.Color.accent)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle().fill(ptt ? Color.red : Color.clear)
+                )
+                .scaleEffect(ptt ? 1.08 : 1.0)
+                .animation(.spring(response: 0.18, dampingFraction: 0.7), value: ptt)
+                .contentShape(Circle().inset(by: -radius))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func togglePTT() {
+        if ptt {
+            ptt = false
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            radio.stopTalking()
+        } else {
+            ptt = true
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            radio.startTalking()
+        }
     }
 
     private func send() {

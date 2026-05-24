@@ -96,7 +96,7 @@ struct PoolBrowserView: View {
                 if items.catalog == nil { await items.refreshCatalog() }
             }
             .sheet(item: $packPreview) { kind in
-                PackPreviewSheet(kind: kind)
+                PackPreviewSheet(kind: kind, dropChance: kindChance(kind))
                     .presentationDetents([.medium])
             }
         }
@@ -136,9 +136,7 @@ struct PoolBrowserView: View {
                     .font(.callout)
                     .foregroundColor(Theme.Color.textPrimary)
                 if let cap = kind.limit {
-                    Text(String(format: "pool.cap".localized, cap))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.Color.textMono)
+                    capRow(cap: cap, remaining: kind.remainingMints)
                 }
             }
             Spacer(minLength: 0)
@@ -252,6 +250,24 @@ struct PoolBrowserView: View {
         return cat.boostedPerKindChance(kind.id, boost: petBoost) * itemShare
     }
 
+    /// Cap badge with remaining-mint hint when the server has reported
+    /// `minted_count`. Older backends report nil → only the total cap
+    /// shows, no "X / N left" line.
+    @ViewBuilder
+    private func capRow(cap: Int, remaining: Int?) -> some View {
+        if let remaining {
+            Text(String(format: "pool.cap_remaining".localized, remaining, cap))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(remaining <= cap / 10
+                    ? Theme.Color.statusOnline
+                    : Theme.Color.textMono)
+        } else {
+            Text(String(format: "pool.cap".localized, cap))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.Color.textMono)
+        }
+    }
+
     private func stem(_ k: ItemKind) -> String {
         let basename = (k.assetRef as NSString).lastPathComponent
         return (basename as NSString).deletingPathExtension
@@ -264,6 +280,10 @@ struct PoolBrowserView: View {
 
 private struct PackPreviewSheet: View {
     let kind: ItemKind
+    /// Already boost-adjusted and post-gem-roll drop %. Passed in from
+    /// the host so the value reflects the slider position on the main
+    /// lootbox screen, not the static catalog baseline.
+    let dropChance: Double
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -285,10 +305,13 @@ private struct PackPreviewSheet: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         }
-                        Text(String(format: "pool.detail.chance".localized, kind.perPullChance))
+                        Text(String(format: "pool.detail.chance".localized, dropChance))
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundColor(Theme.Color.textSecondary)
                             .tracking(1.5)
+                        if let cap = kind.limit {
+                            capDetailRow(cap: cap, remaining: kind.remainingMints)
+                        }
                         KindContentsView(kindID: kind.id, horizontalInset: 16)
                     }
                     .padding(.vertical, 16)
@@ -332,6 +355,22 @@ private struct PackPreviewSheet: View {
                 )
                 .frame(width: 110, height: 110)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func capDetailRow(cap: Int, remaining: Int?) -> some View {
+        if let remaining {
+            let warn = remaining <= cap / 10
+            Text(String(format: "pool.detail.cap_remaining".localized, remaining, cap))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(warn ? Theme.Color.statusOnline : Theme.Color.textMono)
+                .tracking(1.5)
+        } else {
+            Text(String(format: "pool.detail.cap".localized, cap))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(Theme.Color.textMono)
+                .tracking(1.5)
         }
     }
 
