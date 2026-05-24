@@ -364,18 +364,17 @@ private struct BootSplash: View {
                 HStack(spacing: 6) {
                     if let glyph = statusGlyph {
                         Image(systemName: glyph)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Theme.Color.accent)
                     }
                     Text(statusKey.localized)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .tracking(2)
                         .foregroundColor(Theme.Color.textSecondary)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
                 }
                 .opacity(pulse ? 1.0 : 0.4)
                 .padding(.top, 4)
-                .padding(.horizontal, 24)
                 .animation(.easeInOut(duration: 0.25), value: appState.bootStatus)
                 Spacer()
             }
