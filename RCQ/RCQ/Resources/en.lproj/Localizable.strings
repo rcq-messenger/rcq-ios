@@ -1175,6 +1175,8 @@
 "pool.cap" = "cap %d";
 "pool.cap_remaining" = "%d / %d left";
 "inventory.filter.level_all" = "All levels";
+"settings.privacy.persistent_presence" = "Stay visible when app is closed";
+"settings.privacy.persistent_presence.desc" = "Keep showing your chosen status (Online / Away / DND) to contacts even after you close the app. Contacts will see you as around and reachable; turn off to revert to the standard 'killed app = offline' behavior.";
 "pool.detail.chance" = "DROP CHANCE  %.2f%%";
 "pool.detail.cap" = "EDITION  %d";
 "pool.detail.cap_remaining" = "%d / %d REMAINING";

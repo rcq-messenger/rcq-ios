@@ -11,6 +11,11 @@ struct PrivacySettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var lastSeenVisibility: String = "everyone"
+    /// Opt-in: when ON, the server keeps showing the user's chosen
+    /// status to contacts even after the WS connection has been gone
+    /// past the staleness window. Lets the user appear "around" with
+    /// Online / Away / DND even when the app is not running.
+    @State private var presencePersistent: Bool = false
     @State private var gender: String = ""
     @State private var genderVisibility: String = "nobody"
     @State private var profileVisibility: String = "everyone"
@@ -72,6 +77,19 @@ struct PrivacySettingsView: View {
                         )
                     } footer: {
                         Text("settings.privacy.last_seen.desc".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+                    Section {
+                        Toggle(isOn: $presencePersistent) {
+                            Text("settings.privacy.persistent_presence".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
+                        }
+                        .tint(Theme.Color.accent)
+                        .onChange(of: presencePersistent) { newValue in
+                            Task { await pushBoolField("presence_persistent", newValue) }
+                        }
+                    } footer: {
+                        Text("settings.privacy.persistent_presence.desc".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
@@ -464,11 +482,40 @@ struct PrivacySettingsView: View {
                 readReceiptsCache = v
             }
             if let v = p.reputationVisibility { reputationVisibility = v }
+            if let v = p.presencePersistent { presencePersistent = v }
             gender = p.gender ?? ""
         } catch {
             // Soft-fail — the picker write paths still work, the
             // worst case is the displayed default doesn't match
             // the server until the user picks something.
+        }
+    }
+
+    /// Boolean variant of `pushField` for toggles like
+    /// `presence_persistent`. The server's PUT /users/me handler treats
+    /// missing keys as no-op so the partial payload is safe.
+    private func pushBoolField(_ key: String, _ value: Bool) async {
+        struct Body: Encodable {
+            let key: String
+            let value: Bool
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: DynamicKey.self)
+                try c.encode(value, forKey: DynamicKey(stringValue: key)!)
+            }
+        }
+        struct DynamicKey: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+        do {
+            let _: UserProfile = try await APIClient.shared.request(
+                "PUT", "/users/me",
+                body: Body(key: key, value: value)
+            )
+        } catch {
+            // Soft-fail; user can re-toggle.
         }
     }
 

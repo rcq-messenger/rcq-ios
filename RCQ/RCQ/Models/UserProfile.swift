@@ -58,7 +58,13 @@ struct UserProfile: Codable, Hashable {
     var reputation: Int?
     /// Owner-only echo of `reputation_visibility` for Settings.
     var reputationVisibility: String?
-    /// Snapshot of the user's currently-equipped pet — drives the
+    /// Opt-in flag: when true, the server keeps broadcasting the
+    /// owner's chosen status to contacts even when the WebSocket has
+    /// been gone past the staleness threshold. Lets the user appear
+    /// "around" with their selected status even when the app is not
+    /// running. Owner-only echo, nil for third-party fetches.
+    var presencePersistent: Bool?
+    /// Snapshot of the user's currently-equipped pet, drives the
     /// small overlay GIF on the status icon throughout the UI
     /// (contact rows, profile header, group info). Always returned;
     /// null = no pet equipped.
@@ -84,6 +90,7 @@ struct UserProfile: Codable, Hashable {
         case readReceiptsVisibility = "read_receipts_visibility"
         case reputation
         case reputationVisibility = "reputation_visibility"
+        case presencePersistent = "presence_persistent"
         case equippedPet = "equipped_pet"
     }
 }
