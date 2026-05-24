@@ -8,7 +8,10 @@ final class RelayConfigStore {
     private static let signingPublicKeyB64 =
         "TY834OFcBvtUqHcnVw/QrPBOaEAZo7a1GAmABMhjkT8="
 
-    private static let endpoint = URL(string: "https://relay.rcq.app/v1/config")!
+    private static let endpoints: [URL] = [
+        URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-ios/main/relay-config.json")!,
+        URL(string: "https://relay.rcq.app/v1/config")!,
+    ]
     private static let cacheFile = "relay-config.json"
 
     struct RelayEntry: Codable, Equatable {
@@ -58,17 +61,21 @@ final class RelayConfigStore {
     }
 
     private func refresh() async {
-        var req = URLRequest(url: Self.endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
         let session = URLSession(configuration: .ephemeral)
-        do {
-            let (data, response) = try await session.data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-            guard let payload = Self.verifyAndDecode(data) else { return }
-            let sorted = payload.relays.sorted { $0.priority < $1.priority }
-            cached = sorted
-            Self.saveToDisk(data)
-        } catch {
+        for url in Self.endpoints {
+            var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            do {
+                let (data, response) = try await session.data(for: req)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
+                guard let payload = Self.verifyAndDecode(data) else { continue }
+                let sorted = payload.relays.sorted { $0.priority < $1.priority }
+                cached = sorted
+                Self.saveToDisk(data)
+                return
+            } catch {
+                continue
+            }
         }
     }
 
@@ -123,6 +130,17 @@ final class RelayConfigStore {
 
     private static let bundledFallback: [RelayEntry] = [
         RelayEntry(
+            tag: "relay-do-fra-yandex",
+            server: "165.22.90.214",
+            port: 443,
+            uuid: "2081b3c4-faaa-4cce-a0ab-607197b28237",
+            sni: "www.yandex.ru",
+            publicKey: "n33TZTLNrc6X7jTGrKWex_sk8aIQ6Qqz-eC8lqYMii8",
+            shortID: "aa5d483441e59ac7",
+            flow: "xtls-rprx-vision",
+            priority: 1,
+        ),
+        RelayEntry(
             tag: "relay-oracle-il",
             server: "129.159.143.135",
             port: 443,
@@ -131,7 +149,7 @@ final class RelayConfigStore {
             publicKey: "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
             shortID: "318567678ac9878e",
             flow: "xtls-rprx-vision",
-            priority: 1,
+            priority: 2,
         ),
         RelayEntry(
             tag: "relay-gcp",
@@ -142,7 +160,7 @@ final class RelayConfigStore {
             publicKey: "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw",
             shortID: "b5b8979af1f27aab",
             flow: "xtls-rprx-vision",
-            priority: 2,
+            priority: 3,
         ),
         RelayEntry(
             tag: "relay-aws-sg",
@@ -153,7 +171,7 @@ final class RelayConfigStore {
             publicKey: "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
             shortID: "533142a04b016a00",
             flow: "xtls-rprx-vision",
-            priority: 3,
+            priority: 4,
         ),
     ]
 }

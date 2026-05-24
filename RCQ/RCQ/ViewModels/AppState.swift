@@ -239,7 +239,6 @@ final class AppState: ObservableObject {
                 do {
                     try await SingBoxTransport.shared.start()
                     await APIClient.shared.applyTransportProxy()
-                    bootStatus = .stealthActive
                 } catch {
                     print("[boot] sing-box transport failed to start: \(error)")
                 }
@@ -250,7 +249,6 @@ final class AppState: ObservableObject {
                 do {
                     try await SingBoxTransport.shared.start()
                     await APIClient.shared.applyTransportProxy()
-                    bootStatus = .stealthActive
                     reach = await APIClient.shared.refreshActiveBase()
                 } catch {
                     print("[boot] auto sing-box transport failed: \(error)")
@@ -259,6 +257,9 @@ final class AppState: ObservableObject {
             if reach == .unreachable, SingBoxTransport.shared.isActive {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 reach = await APIClient.shared.refreshActiveBase()
+            }
+            if reach != .unreachable, SingBoxTransport.shared.isActive {
+                bootStatus = .stealthActive
             }
             if reach == .unreachable {
                 if let uin = cachedUIN, cachedToken != nil {
