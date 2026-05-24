@@ -36,26 +36,27 @@ filing a public issue here.
 ## Repository layout
 
 ```
-RCQ/
-├── RCQ/                             # Main app target
-│   ├── Models/                      # Codable wire types + ThreadID / ItemKind / etc.
-│   ├── Services/                    # ContactService, MessageService, AudioRoomService, ...
-│   ├── ViewModels/                  # ChatViewModel, AppState, ...
-│   ├── Views/                       # SwiftUI views (one screen per file mostly)
-│   │   └── Components/              # Reusable cells, sheets, buttons
-│   ├── Utils/                       # Crypto helpers, formatters, image compressor
-│   ├── Resources/
-│   │   ├── Assets.xcassets/         # All artwork (status icons, items, KOLOBOK packs)
-│   │   ├── en.lproj/               # English Localizable.strings
-│   │   ├── ru.lproj/               # Russian Localizable.strings
-│   │   ├── Info.plist
-│   │   └── PrivacyInfo.xcprivacy
-│   └── RCQ.entitlements
-├── Vendor/                          # Vendored dependencies
-│   ├── libsignal/                   # Pinned upstream copy (Rust + Swift bindings)
-│   └── Rcqbox.xcframework          # Embedded sing-box transport framework
-├── RCQNotificationService/          # NSE — decrypts envelope on push receipt
-├── project.yml                      # xcodegen spec — generates RCQ.xcodeproj
+rcq-ios/                             # repo root
+├── RCQ/                             # iOS workspace
+│   ├── RCQ/                         # Main app target
+│   │   ├── Models/                  # Codable wire types + ThreadID / ItemKind / etc.
+│   │   ├── Services/                # ContactService, MessageService, AudioRoomService, ...
+│   │   ├── ViewModels/              # ChatViewModel, AppState, ...
+│   │   ├── Views/                   # SwiftUI views (one screen per file mostly)
+│   │   │   └── Components/          # Reusable cells, sheets, buttons
+│   │   ├── Utils/                   # Crypto helpers, formatters, image compressor
+│   │   ├── Resources/
+│   │   │   ├── Assets.xcassets/     # All artwork (status icons, items, KOLOBOK packs)
+│   │   │   ├── en.lproj/            # English Localizable.strings
+│   │   │   ├── ru.lproj/            # Russian Localizable.strings
+│   │   │   ├── Info.plist
+│   │   │   └── PrivacyInfo.xcprivacy
+│   │   └── RCQ.entitlements
+│   ├── Vendor/                      # Vendored dependencies
+│   │   ├── libsignal/               # Pinned upstream copy (Rust + Swift bindings)
+│   │   └── Rcqbox.xcframework       # Embedded sing-box transport framework
+│   ├── RCQNotificationService/      # NSE — decrypts envelope on push receipt
+│   └── project.yml                  # xcodegen spec — generates RCQ.xcodeproj
 ├── .gitignore
 ├── LICENSE
 ├── NOTICE                           # Third-party attribution
