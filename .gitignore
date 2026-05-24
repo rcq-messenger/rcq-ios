@@ -1,9 +1,9 @@
 # ───────────────────────────────────────────────────────────────────
 # RCQ iOS .gitignore
 # ───────────────────────────────────────────────────────────────────
-# Repo root is `iOS/`. Backend + web-chat live in sibling dirs and
-# are NOT in this repo (backend has hardcoded secrets, see
-# README → "Why backend isn't here").
+# Repository layout: `RCQ/` is the iOS client root. Backend + web-chat
+# live in sibling dirs and are NOT in this repo (backend has hardcoded
+# secrets, see README → "Why backend isn't here").
 
 # ── macOS / Finder ────────────────────────────────────────────────
 .DS_Store

@@ -36,25 +36,30 @@ filing a public issue here.
 ## Repository layout
 
 ```
-iOS/
-├── RCQ/                         # Main app target
-│   ├── Models/                  # Codable wire types + ChatTarget / ItemKind / etc.
-│   ├── Services/                # ContactService, MessageService, AudioRoomService, ...
-│   ├── ViewModels/              # ChatViewModel, AppState, ...
-│   ├── Views/                   # SwiftUI views (one screen per file mostly)
-│   │   └── Components/          # Reusable cells, sheets, buttons
-│   ├── Utils/                   # Crypto helpers, formatters, image compressor
+RCQ/
+├── RCQ/                             # Main app target
+│   ├── Models/                      # Codable wire types + ThreadID / ItemKind / etc.
+│   ├── Services/                    # ContactService, MessageService, AudioRoomService, ...
+│   ├── ViewModels/                  # ChatViewModel, AppState, ...
+│   ├── Views/                       # SwiftUI views (one screen per file mostly)
+│   │   └── Components/              # Reusable cells, sheets, buttons
+│   ├── Utils/                       # Crypto helpers, formatters, image compressor
 │   ├── Resources/
-│   │   ├── Assets.xcassets/     # All artwork (status icons, items, KOLOBOK packs)
-│   │   ├── *.lproj/             # Localizable.strings (en + ru fully translated)
+│   │   ├── Assets.xcassets/         # All artwork (status icons, items, KOLOBOK packs)
+│   │   ├── en.lproj/               # English Localizable.strings
+│   │   ├── ru.lproj/               # Russian Localizable.strings
 │   │   ├── Info.plist
 │   │   └── PrivacyInfo.xcprivacy
-│   ├── Vendor/
-│   │   └── libsignal/           # Pinned upstream copy (Rust + Swift bindings)
 │   └── RCQ.entitlements
-├── RCQNotificationService/      # NSE — decrypts envelope on push receipt
-├── project.yml                  # xcodegen spec — generates RCQ.xcodeproj
-└── README.md                    # this file
+├── Vendor/                          # Vendored dependencies
+│   ├── libsignal/                   # Pinned upstream copy (Rust + Swift bindings)
+│   └── Rcqbox.xcframework          # Embedded sing-box transport framework
+├── RCQNotificationService/          # NSE — decrypts envelope on push receipt
+├── project.yml                      # xcodegen spec — generates RCQ.xcodeproj
+├── .gitignore
+├── LICENSE
+├── NOTICE                           # Third-party attribution
+└── README.md                        # this file
 ```
 
 ---
@@ -75,8 +80,8 @@ cd rcq-ios
 # don't, because each one is >100MB (GitHub's per-file limit).
 # This step takes ~3-5 min depending on your machine.
 cd RCQ/Vendor/libsignal/swift && ./build_ffi.sh --release && cd -
-xcodegen generate            # creates RCQ.xcodeproj from project.yml
-open RCQ.xcodeproj
+cd RCQ && xcodegen generate && cd -   # creates RCQ/RCQ.xcodeproj from project.yml
+open RCQ/RCQ.xcodeproj
 ```
 
 If you don't have the Rust toolchain yet:
@@ -87,7 +92,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 
 Bundle identifier `app.rcq.client` is wired to our Apple Developer
 team. To run on a device under your own team, change
-`PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` and re-run xcodegen.
+`PRODUCT_BUNDLE_IDENTIFIER` in `RCQ/project.yml` and re-run xcodegen.
 
 The app talks to `https://api.rcq.app` by default. To point at a
 local backend during development, set the `rcq.baseURL` UserDefault
@@ -105,8 +110,7 @@ xcrun simctl spawn booted defaults write app.rcq.client \
 **Here:**
 - Every line of UI, networking, encryption-glue, and persistence the
   iOS app runs at runtime.
-- Localization tables (en + ru full; 13 other locales declared but
-  fall back to English).
+- Localization tables (en + ru fully translated).
 - Vendored libsignal source.
 
 **Not here:**
