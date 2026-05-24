@@ -20,6 +20,7 @@ struct MessageActionOverlay: View {
     let onDismiss: () -> Void
     var onReport: (() -> Void)? = nil
     var onSelect: (() -> Void)? = nil
+    var onResend: (() -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
 
@@ -131,6 +132,12 @@ struct MessageActionOverlay: View {
                     onDeleteForEveryone(); onDismiss()
                 }
             } else {
+                if let onResend, message.deliveryState == .failed {
+                    actionRow("chat.action.resend".localized, icon: "arrow.clockwise", destructive: false) {
+                        onResend(); onDismiss()
+                    }
+                    rowDivider
+                }
                 if canReply && canForward {
                     actionRow("chat.action.reply".localized, icon: "arrowshape.turn.up.left", destructive: false) {
                         onReply(); onDismiss()

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 @preconcurrency import Rcqbox
 
 @MainActor
@@ -10,6 +11,7 @@ final class SingBoxTransport {
     private enum Keys {
         static let enabled = "rcq.singbox.enabled"
         static let activePort = "rcq.singbox.activePort"
+        static let lastGoodRelay = "rcq.singbox.lastGoodRelayTag"
     }
 
     private var box: RcqboxBoxService?
@@ -49,6 +51,9 @@ final class SingBoxTransport {
         isActive = true
         UserDefaults.standard.set(Self.localPort, forKey: Keys.activePort)
         print("[SingBoxTransport] started — local proxy 127.0.0.1:\(Self.localPort)")
+        Task.detached(priority: .utility) {
+            await Self.refreshLastGoodInBackground()
+        }
     }
 
     func stop() {
@@ -75,17 +80,115 @@ final class SingBoxTransport {
 
     // MARK: - Config
 
-    private struct Relay {
-        let server = "35.238.53.96"
-        let port = 443
-        let uuid = "8e3b35d3-18a6-406d-9ac6-c5558a806663"
-        let sni = "www.microsoft.com"
-        let publicKey = "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw"
-        let shortID = "b5b8979af1f27aab"
+    typealias Relay = RelayConfigStore.RelayEntry
+
+    private static func orderedRelays() -> [Relay] {
+        let base = RelayConfigStore.shared.currentRelays()
+        guard
+            let tag = UserDefaults.standard.string(forKey: Keys.lastGoodRelay),
+            let idx = base.firstIndex(where: { $0.tag == tag }),
+            idx > 0
+        else { return base }
+        var out = base
+        out.insert(out.remove(at: idx), at: 0)
+        return out
+    }
+
+    private static func refreshLastGoodInBackground() async {
+        let probeOrder = RelayConfigStore.shared.currentRelays()
+        let winner: String? = await withTaskGroup(of: String?.self) { group in
+            for r in probeOrder {
+                group.addTask { await Self.probeTCP(host: r.server, port: r.port) ? r.tag : nil }
+            }
+            for await result in group {
+                if let result {
+                    group.cancelAll()
+                    return result
+                }
+            }
+            return nil
+        }
+        guard let winner else { return }
+        UserDefaults.standard.set(winner, forKey: Keys.lastGoodRelay)
+    }
+
+    private static func probeTCP(host: String, port: Int, timeoutSec: Double = 4) async -> Bool {
+        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            let conn = NWConnection(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(integerLiteral: UInt16(port)),
+                using: .tcp,
+            )
+            let gate = ProbeGate()
+            conn.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    if gate.tryClaim() {
+                        conn.cancel()
+                        cont.resume(returning: true)
+                    }
+                case .failed, .cancelled:
+                    if gate.tryClaim() {
+                        cont.resume(returning: false)
+                    }
+                default: break
+                }
+            }
+            conn.start(queue: .global(qos: .utility))
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeoutSec) {
+                if gate.tryClaim() {
+                    conn.cancel()
+                    cont.resume(returning: false)
+                }
+            }
+        }
+    }
+
+    private final class ProbeGate: @unchecked Sendable {
+        private var claimed = false
+        private let lock = NSLock()
+        func tryClaim() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if claimed { return false }
+            claimed = true
+            return true
+        }
     }
 
     private static func buildConfig(port: Int) -> String {
-        let r = Relay()
+        let ordered = orderedRelays()
+        let outbounds: [[String: Any]] = {
+            var out: [[String: Any]] = []
+            out.append([
+                "type": "urltest",
+                "tag": "out",
+                "outbounds": ordered.map { $0.tag },
+                "url": "https://api.rcq.app/health",
+                "interval": "5m",
+                "tolerance": 50,
+            ])
+            for r in ordered {
+                out.append([
+                    "type": "vless",
+                    "tag": r.tag,
+                    "server": r.server,
+                    "server_port": r.port,
+                    "uuid": r.uuid,
+                    "flow": r.flow,
+                    "tls": [
+                        "enabled": true,
+                        "server_name": r.sni,
+                        "utls": ["enabled": true, "fingerprint": "chrome"],
+                        "reality": [
+                            "enabled": true,
+                            "public_key": r.publicKey,
+                            "short_id": r.shortID,
+                        ],
+                    ],
+                ])
+            }
+            return out
+        }()
         let config: [String: Any] = [
             "log": ["level": "warn"],
             "inbounds": [[
@@ -94,24 +197,7 @@ final class SingBoxTransport {
                 "listen": "127.0.0.1",
                 "listen_port": port,
             ]],
-            "outbounds": [[
-                "type": "vless",
-                "tag": "out",
-                "server": r.server,
-                "server_port": r.port,
-                "uuid": r.uuid,
-                "flow": "xtls-rprx-vision",
-                "tls": [
-                    "enabled": true,
-                    "server_name": r.sni,
-                    "utls": ["enabled": true, "fingerprint": "chrome"],
-                    "reality": [
-                        "enabled": true,
-                        "public_key": r.publicKey,
-                        "short_id": r.shortID,
-                    ],
-                ],
-            ]],
+            "outbounds": outbounds,
         ]
         let data = try! JSONSerialization.data(withJSONObject: config)
         return String(decoding: data, as: UTF8.self)

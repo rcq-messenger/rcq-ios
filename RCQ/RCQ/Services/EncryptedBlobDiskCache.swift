@@ -4,7 +4,7 @@ import Foundation
 /// Blobs are encrypted at rest with a per-blob key held in the
 /// message envelope, not here — leaking the bytes leaks nothing on
 /// its own. LRU-swept against a soft cap.
-final class EncryptedBlobDiskCache {
+final class EncryptedBlobDiskCache: @unchecked Sendable {
     static let shared = EncryptedBlobDiskCache()
 
     static let maxBytes: Int = 500 * 1024 * 1024

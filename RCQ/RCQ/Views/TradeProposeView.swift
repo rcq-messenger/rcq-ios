@@ -265,7 +265,7 @@ struct TradeProposeView: View {
                                 selected.wrappedValue.insert(item.id)
                             }
                         } label: {
-                            ItemCard(item: item)
+                            ItemCard(item: item, showMintOverlay: false)
                                 .overlay(
                                     selected.wrappedValue.contains(item.id)
                                         ? RoundedRectangle(cornerRadius: 6)

@@ -29,6 +29,66 @@ final class MessageService {
         }
     }
 
+    // MARK: - resend (failed messages)
+
+    func resend(_ message: Message, in target: ChatTarget) async {
+        guard message.deliveryState == .failed, message.isFromMe else { return }
+        MessageStore.shared.updateState(messageID: message.id, thread: target.thread, state: .sending)
+
+        let reply: ReplyContext? = {
+            guard let rid = message.replyToID else { return nil }
+            return ReplyContext(
+                id: rid,
+                snippet: message.replyToSnippet ?? "",
+                authorName: message.replyToAuthorName ?? "",
+            )
+        }()
+        let ttl = message.ttlSeconds
+
+        let envelope: Envelope? = {
+            switch message.kind {
+            case .text:
+                return .text(id: message.id, text: message.text, ttl: ttl, replyTo: reply)
+            case .photo, .video, .file, .voice:
+                guard let combined = message.mediaID,
+                      let pipe = combined.firstIndex(of: "|") else { return nil }
+                let mediaID = String(combined[..<pipe])
+                let key = String(combined[combined.index(after: pipe)...])
+                let caption: String? = message.text.isEmpty ? nil : message.text
+                switch message.kind {
+                case .photo:
+                    return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
+                case .video:
+                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec ?? 0, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
+                case .file:
+                    return .file(id: message.id, mediaID: mediaID, mediaKey: key, fileName: message.fileName ?? "file", mime: message.fileMime ?? "application/octet-stream", sizeBytes: message.fileSizeBytes ?? 0, caption: caption, ttl: ttl, replyTo: reply)
+                case .voice:
+                    return .voice(id: message.id, mediaID: mediaID, mediaKey: key, durationSec: message.durationSec ?? 0, ttl: ttl, replyTo: reply)
+                default: return nil
+                }
+            default:
+                return nil
+            }
+        }()
+
+        guard let env = envelope else {
+            MessageStore.shared.updateState(messageID: message.id, thread: target.thread, state: .failed)
+            return
+        }
+
+        do {
+            switch target {
+            case .peer(let contact):
+                try await sendEnvelope(env, to: contact, localID: message.id)
+            case .group(let group):
+                try await sendGroupEnvelope(env, to: group, localID: message.id)
+            case .randomPeer:
+                break
+            }
+        } catch {
+        }
+    }
+
     // MARK: - sending (1:1)
 
     func send(text: String, to contact: Contact, replyTo: ReplyContext? = nil) async throws {

@@ -3,6 +3,8 @@ import SwiftUI
 /// Inventory grid tile: kind asset, rarity dot top-right, mint badge bottom-left, temper +N top-left.
 struct ItemCard: View {
     let item: Item
+    var showMintOverlay: Bool = true
+    var showLevelOverlay: Bool = true
     @StateObject private var items = ItemsService.shared
 
     private var kind: ItemKind? {
@@ -50,7 +52,7 @@ struct ItemCard: View {
                 Spacer()
             }
             .padding(4)
-            if let badge = item.mintBadge {
+            if showMintOverlay, let badge = item.mintBadge {
                 VStack {
                     Spacer()
                     HStack {
@@ -66,7 +68,7 @@ struct ItemCard: View {
                     }
                 }
             }
-            if item.level > 0 {
+            if showLevelOverlay, item.level > 0 {
                 VStack {
                     HStack {
                         Text("+\(item.level)")

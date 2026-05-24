@@ -101,11 +101,11 @@ struct InlineTradeCard: View {
                             Group {
                                 if let onItemTap {
                                     Button { onItemTap(item) } label: {
-                                        ItemCard(item: item)
+                                        ItemCard(item: item, showMintOverlay: false)
                                     }
                                     .buttonStyle(.plain)
                                 } else {
-                                    ItemCard(item: item)
+                                    ItemCard(item: item, showMintOverlay: false)
                                 }
                             }
                             .frame(width: 36, height: 36)

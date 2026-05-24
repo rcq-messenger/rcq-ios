@@ -596,6 +596,10 @@ final class ChatViewModel: ObservableObject {
         MessageStore.shared.append(notice)
     }
 
+    func resend(_ message: Message) async {
+        await MessageService.shared.resend(message, in: target)
+    }
+
     func deleteForMe(_ message: Message) {
         if case .randomPeer = target {
             RandomChatService.shared.deleteMessage(id: message.id)

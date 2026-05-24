@@ -26,6 +26,82 @@ struct ChatView: View {
         return !msg.isFromMe && !msg.deletedForEveryone && msg.kind != .systemNotice
     }
 
+    @ViewBuilder
+    private func actionOverlay(for target: Message) -> some View {
+        let resendCallback: (() -> Void)? = (target.deliveryState == .failed && target.isFromMe)
+            ? { Task { await vm.resend(target) } }
+            : nil
+        let reportCallback: (() -> Void)? = shouldOfferEvidenceReport(target)
+            ? {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    Task { await prepareEvidenceReport(for: copy) }
+                }
+            }
+            : nil
+        let jetonCallback: (() -> Void)? = jetonEligible(target)
+            ? {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    jetonTarget = copy
+                }
+            }
+            : nil
+        MessageActionOverlay(
+            message: target,
+            senderNickname: vm.senderNickname(target.senderUIN),
+            canDeleteForEveryone: target.isFromMe,
+            canReply: replyAllowed,
+            canEdit: target.isFromMe
+                && !target.deletedForEveryone
+                && Self.editableKinds.contains(target.kind),
+            onReact: { asset in vm.toggleReaction(asset, on: target) },
+            onJetonReact: jetonCallback,
+            onReply: {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        vm.replyTarget = copy
+                    }
+                }
+            },
+            onEdit: {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        vm.startEdit(copy)
+                    }
+                }
+            },
+            onForward: {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    forwardTarget = copy
+                }
+            },
+            onTranslate: {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    vm.toggleTranslate(copy)
+                }
+            },
+            isTranslated: vm.isTranslated(target),
+            onDeleteForMe: { vm.deleteForMe(target) },
+            onDeleteForEveryone: { Task { await vm.deleteForEveryone(target) } },
+            onDismiss: { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { actionTarget = nil } },
+            onReport: reportCallback,
+            onSelect: {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        vm.enterSelection(seeding: copy.id)
+                    }
+                }
+            },
+            onResend: resendCallback,
+        )
+    }
+
     /// `@partial` token at the tail of the composer input — drives the
     /// mention picker. Walks back from input end; bails as soon as it
     /// hits whitespace, so `Hey @bob hi @al` resolves to `al`, not `bob`.
@@ -240,75 +316,8 @@ struct ChatView: View {
             }
 
             if let target = actionTarget {
-                MessageActionOverlay(
-                    message: target,
-                    senderNickname: vm.senderNickname(target.senderUIN),
-                    canDeleteForEveryone: target.isFromMe,
-                    canReply: replyAllowed,
-                    canEdit: target.isFromMe
-                        && !target.deletedForEveryone
-                        && Self.editableKinds.contains(target.kind),
-                    onReact: { asset in vm.toggleReaction(asset, on: target) },
-                    onJetonReact: jetonEligible(target) ? {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            jetonTarget = copy
-                        }
-                    } : nil,
-                    onReply: {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                                vm.replyTarget = copy
-                            }
-                        }
-                    },
-                    onEdit: {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                                vm.startEdit(copy)
-                            }
-                        }
-                    },
-                    onForward: {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            forwardTarget = copy
-                        }
-                    },
-                    onTranslate: {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            vm.toggleTranslate(copy)
-                        }
-                    },
-                    isTranslated: vm.isTranslated(target),
-                    onDeleteForMe: { vm.deleteForMe(target) },
-                    onDeleteForEveryone: { Task { await vm.deleteForEveryone(target) } },
-                    // Match the spring that animates the bubble's
-                    // scale-up at line 829 so the overlay fade-out
-                    // and the bubble settling back share the same
-                    // timing. Earlier 0.18s easeInOut had the scrim
-                    // leaving before the bubble finished, briefly
-                    // showing the scaled bubble bare.
-                    onDismiss: { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { actionTarget = nil } },
-                    onReport: shouldOfferEvidenceReport(target) ? {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            Task { await prepareEvidenceReport(for: copy) }
-                        }
-                    } : nil,
-                    onSelect: {
-                        let copy = target
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                vm.enterSelection(seeding: copy.id)
-                            }
-                        }
-                    },
-                )
-                .zIndex(50)
+                actionOverlay(for: target)
+                    .zIndex(50)
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())

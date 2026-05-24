@@ -333,6 +333,23 @@ struct RootView: View {
 
 private struct BootSplash: View {
     @State private var pulse: Bool = false
+    @ObservedObject private var appState = AppState.shared
+
+    private var statusKey: String {
+        switch appState.bootStatus {
+        case .connecting:      return "boot.connecting"
+        case .engagingStealth: return "boot.engaging_stealth"
+        case .stealthActive:   return "boot.stealth_active"
+        }
+    }
+
+    private var statusGlyph: String? {
+        switch appState.bootStatus {
+        case .connecting:      return nil
+        case .engagingStealth: return "shield.lefthalf.filled"
+        case .stealthActive:   return "eye.slash.circle.fill"
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -344,12 +361,22 @@ private struct BootSplash: View {
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .foregroundColor(Theme.Color.textPrimary)
                     .tracking(4)
-                Text("boot.connecting".localized)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .tracking(2)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .opacity(pulse ? 1.0 : 0.4)
-                    .padding(.top, 4)
+                HStack(spacing: 6) {
+                    if let glyph = statusGlyph {
+                        Image(systemName: glyph)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    Text(statusKey.localized)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .tracking(2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .opacity(pulse ? 1.0 : 0.4)
+                .padding(.top, 4)
+                .padding(.horizontal, 24)
+                .animation(.easeInOut(duration: 0.25), value: appState.bootStatus)
                 Spacer()
             }
         }

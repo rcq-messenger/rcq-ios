@@ -271,20 +271,28 @@ private struct PackPreviewSheet: View {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(spacing: 14) {
+                        hero
                         Text(ItemDisplay.name(for: kind.id))
                             .font(.custom("Georgia", size: 22))
                             .foregroundColor(Theme.Color.textPrimary)
-                            .padding(.horizontal, 16)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
                         if let lore = ItemDisplay.lore(for: kind.id) {
                             Text(lore)
-                                .font(.callout.italic())
+                                .font(.footnote)
                                 .foregroundColor(Theme.Color.textSecondary)
-                                .padding(.horizontal, 16)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
                         }
+                        Text(String(format: "pool.detail.chance".localized, kind.perPullChance))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .tracking(1.5)
                         KindContentsView(kindID: kind.id, horizontalInset: 16)
                     }
                     .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -298,5 +306,48 @@ private struct PackPreviewSheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var hero: some View {
+        if kind.section == .voices {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 110, height: 110)
+                Image(systemName: "music.note")
+                    .font(.system(size: 50, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+        } else {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 28)
+                ItemAssetImage(
+                    bundleSubdir: subdir(kind),
+                    filename: stem(kind),
+                    ext: ext(kind),
+                )
+                .frame(width: 110, height: 110)
+            }
+        }
+    }
+
+    private func subdir(_ k: ItemKind) -> String {
+        let trimmed = k.assetRef.hasPrefix("items/")
+            ? String(k.assetRef.dropFirst("items/".count))
+            : k.assetRef
+        let dir = (trimmed as NSString).deletingLastPathComponent
+        return dir.isEmpty ? "Items" : "Items/\(dir)"
+    }
+    private func stem(_ k: ItemKind) -> String {
+        let basename = (k.assetRef as NSString).lastPathComponent
+        return (basename as NSString).deletingPathExtension
+    }
+    private func ext(_ k: ItemKind) -> String {
+        let basename = (k.assetRef as NSString).lastPathComponent
+        return (basename as NSString).pathExtension
     }
 }

@@ -80,7 +80,7 @@ struct TradeSummaryView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(items) { item in
-                                    ItemCard(item: item)
+                                    ItemCard(item: item, showMintOverlay: false)
                                         .frame(width: 56, height: 56)
                                 }
                             }

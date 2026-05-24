@@ -571,6 +571,7 @@
 
 "chat.composer.placeholder" = "Напишите сообщение…";
 "chat.action.reply" = "Ответить";
+"chat.action.resend" = "Отправить заново";
 "chat.action.forward" = "Переслать";
 "chat.action.select" = "Выбрать";
 "chat.selection.delete" = "Удалить (%d)";
@@ -863,6 +864,10 @@
 /* ── Boot / connect ───────────────────────────────────────── */
 
 "boot.connecting" = "соединение…";
+"boot.engaging_stealth" = "обнаружено блокирование — включаем стелс-режим";
+"boot.stealth_active" = "стелс-режим активен";
+"stealth.tooltip.title" = "Стелз-режим";
+"stealth.tooltip.body" = "Соединение идёт через зашифрованный туннель — DPI вашего провайдера не видит, что вы используете RCQ. Включается автоматически, когда мы обнаруживаем блокировку. Никакого VPN включать не нужно — всё работает само.";
 
 /* ── Stranger Mode ──────────────────────────────────────────── */
 
@@ -913,16 +918,16 @@
 "item.lucky.first" = "#1 / Первый";
 
 /* Названия питомцев */
-"item.name.pet_spark"    = "Огонёк";
-"item.name.pet_glitch"   = "Глитчик";
-"item.name.pet_boop"     = "Бяшка";
-"item.name.pet_pixel"    = "Пиксель";
-"item.name.pet_static"   = "Статик";
-"item.name.pet_echo"     = "Эхо";
-"item.name.pet_mist"     = "Туман";
-"item.name.pet_cyber"    = "Кибер";
-"item.name.pet_lune"     = "Лун";
-"item.name.pet_ping"     = "Звяк";
+"item.name.pet_trump"     = "Трамп";
+"item.name.pet_putin"     = "Путин";
+"item.name.pet_jobs"      = "Стив";
+"item.name.pet_kim"       = "Ким";
+"item.name.pet_musk"      = "Илон";
+"item.name.pet_snoop"     = "Снуп";
+"item.name.pet_doge"      = "Доге";
+"item.name.pet_hamster"   = "Хомяк";
+"item.name.pet_black_cat" = "Чёрный Кот";
+"item.name.pet_devil"     = "Бес";
 "item.name.forum_classics" = "Классика форумов";
 
 /* Голосовые паки — звуки уведомлений */
@@ -949,16 +954,16 @@
 "item.lore.voice_pack_10" = "Назначь контакту в его профиле.";
 
 /* Описания питомцев */
-"item.lore.pet_spark"    = "Маленькая искорка, которая никогда не гаснет.";
-"item.lore.pet_glitch"   = "Появился из сбоя в матрице.";
-"item.lore.pet_boop"     = "Любит, когда его трогают за нос.";
-"item.lore.pet_pixel"    = "Состоит из квадратиков, как старая графика.";
-"item.lore.pet_static"   = "Шуршит, когда сигнал слабый.";
-"item.lore.pet_echo"     = "Повторяет всё, что услышит.";
-"item.lore.pet_mist"     = "Появляется и исчезает по утрам.";
-"item.lore.pet_cyber"    = "Из 2077-го по ошибке.";
-"item.lore.pet_lune"     = "Светится только в ночи.";
-"item.lore.pet_ping"     = "Прибегает на каждое уведомление.";
+"item.lore.pet_trump"     = "The best pet. Believe me. Tremendous.";
+"item.lore.pet_putin"     = "Молча смотрит. Тигр на плече.";
+"item.lore.pet_jobs"      = "One more thing.";
+"item.lore.pet_kim"       = "Маленький, но ракеты большие.";
+"item.lore.pet_musk"      = "Купил всё. Едет на Марс.";
+"item.lore.pet_snoop"     = "Snoop dogggg, fo' shizzle.";
+"item.lore.pet_doge"      = "Much pet. Such legend. Very wow.";
+"item.lore.pet_hamster"   = "Тап-тап. Аирдроп скоро. Точно.";
+"item.lore.pet_black_cat" = "Перешёл дорогу — твои проблемы.";
+"item.lore.pet_devil"     = "Шепчет: «ещё одна ставка в крэше».";
 "item.lore.forum_classics" = "Пак классических форумных смайликов.";
 
 /* ── Add contact ──────────────────────────────────────────── */
@@ -1159,6 +1164,7 @@
 "pool.title" = "Пул";
 "pool.section_share" = "%.0f%% выпадений";
 "pool.cap" = "лимит %d";
+"pool.detail.chance" = "ШАНС ВЫПАДЕНИЯ  %.2f%%";
 "pool.gems.section" = "Гемы";
 "pool.gems.title" = "Связка гемов";
 "pool.gems.range" = "%d–%d гемов за выпадение";

@@ -316,13 +316,23 @@ struct LootboxView: View {
 
     private func historyRow(_ item: Item) -> some View {
         HStack(spacing: 10) {
-            ItemCard(item: item)
+            ItemCard(item: item, showMintOverlay: false, showLevelOverlay: false)
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ItemDisplay.name(for: item.kindID))
-                    .font(.callout)
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(ItemDisplay.name(for: item.kindID))
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .lineLimit(1)
+                    if item.level > 0 {
+                        Text("+\(item.level)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.black.opacity(0.55)))
+                    }
+                }
                 HStack(spacing: 6) {
                     Text(item.rarity.label.uppercased())
                         .font(.system(size: 9, weight: .semibold, design: .monospaced))

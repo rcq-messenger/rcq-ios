@@ -580,6 +580,7 @@
 
 "chat.composer.placeholder" = "Write a message…";
 "chat.action.reply" = "Reply";
+"chat.action.resend" = "Send again";
 "chat.action.forward" = "Forward";
 "chat.action.select" = "Select";
 "chat.selection.delete" = "Delete (%d)";
@@ -872,6 +873,10 @@
 /* ── Boot / connect ───────────────────────────────────────── */
 
 "boot.connecting" = "connecting…";
+"boot.engaging_stealth" = "blocking detected — engaging stealth mode";
+"boot.stealth_active" = "stealth mode active";
+"stealth.tooltip.title" = "Stealth Mode";
+"stealth.tooltip.body" = "Your connection is being routed through an encrypted tunnel — your ISP's DPI can't see that you're using RCQ. It engages automatically when we detect blocking. No VPN needed — it just works.";
 
 /* ── Stranger Mode ──────────────────────────────────────────── */
 
@@ -922,16 +927,16 @@
 "item.lucky.first" = "#1 / FIRST";
 
 /* Pet names — slug-keyed */
-"item.name.pet_spark"    = "Spark";
-"item.name.pet_glitch"   = "Glitch";
-"item.name.pet_boop"     = "Boop";
-"item.name.pet_pixel"    = "Pixel";
-"item.name.pet_static"   = "Static";
-"item.name.pet_echo"     = "Echo";
-"item.name.pet_mist"     = "Mist";
-"item.name.pet_cyber"    = "Cyber";
-"item.name.pet_lune"     = "Lune";
-"item.name.pet_ping"     = "Ping";
+"item.name.pet_trump"     = "Trump";
+"item.name.pet_putin"     = "Putin";
+"item.name.pet_jobs"      = "Steve";
+"item.name.pet_kim"       = "Kim";
+"item.name.pet_musk"      = "Elon";
+"item.name.pet_snoop"     = "Snoop";
+"item.name.pet_doge"      = "Doge";
+"item.name.pet_hamster"   = "Hamster";
+"item.name.pet_black_cat" = "Black Cat";
+"item.name.pet_devil"     = "Devil";
 "item.name.forum_classics" = "Forum Classics";
 
 /* Voice packs — notification sounds */
@@ -958,16 +963,16 @@
 "item.lore.voice_pack_10" = "Assign to a contact from their profile.";
 
 /* Pet lore — slug-keyed */
-"item.lore.pet_spark"    = "A tiny spark that never goes out.";
-"item.lore.pet_glitch"   = "Spawned from a glitch in the matrix.";
-"item.lore.pet_boop"     = "Loves a quick boop on the nose.";
-"item.lore.pet_pixel"    = "Made of pixels, like the old days.";
-"item.lore.pet_static"   = "Crackles when the signal is weak.";
-"item.lore.pet_echo"     = "Repeats whatever it hears.";
-"item.lore.pet_mist"     = "Drifts in and out at dawn.";
-"item.lore.pet_cyber"    = "Showed up from 2077 by accident.";
-"item.lore.pet_lune"     = "Glows only at night.";
-"item.lore.pet_ping"     = "Comes running on every ping.";
+"item.lore.pet_trump"     = "The best pet. Believe me. Tremendous.";
+"item.lore.pet_putin"     = "Silent stare. Tiger on the shoulder.";
+"item.lore.pet_jobs"      = "One more thing.";
+"item.lore.pet_kim"       = "Small kid. Big rockets.";
+"item.lore.pet_musk"      = "Bought everything. Off to Mars.";
+"item.lore.pet_snoop"     = "Snoop dogggg, fo' shizzle.";
+"item.lore.pet_doge"      = "Much pet. Such legend. Very wow.";
+"item.lore.pet_hamster"   = "Tap tap. Airdrop soon. Trust.";
+"item.lore.pet_black_cat" = "Crossed your path? Your problem now.";
+"item.lore.pet_devil"     = "Whispers: 'just one more crash bet'.";
 "item.lore.forum_classics" = "A pack of vintage forum-era smileys.";
 
 /* ── Add contact / search ─────────────────────────────────── */
@@ -1168,6 +1173,7 @@
 "pool.title" = "Pool";
 "pool.section_share" = "%.0f%% of pulls";
 "pool.cap" = "cap %d";
+"pool.detail.chance" = "DROP CHANCE  %.2f%%";
 "pool.gems.section" = "Gems";
 "pool.gems.title" = "Gem bundle";
 "pool.gems.range" = "%d–%d gems per drop";

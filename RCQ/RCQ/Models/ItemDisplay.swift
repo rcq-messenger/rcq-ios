@@ -13,10 +13,10 @@ enum ItemDisplay {
     /// the list, the name fall-back is a titleized version of the
     /// slug (visible-but-ugly, surfaces the gap), lore is `nil`.
     private static let knownSlugs: Set<String> = [
-        "pet_spark", "pet_glitch", "pet_boop",
-        "pet_pixel", "pet_static", "pet_echo",
-        "pet_mist", "pet_cyber", "pet_lune",
-        "pet_ping", "forum_classics",
+        "pet_trump", "pet_putin", "pet_jobs", "pet_kim",
+        "pet_musk", "pet_snoop", "pet_doge", "pet_hamster",
+        "pet_black_cat", "pet_devil",
+        "forum_classics",
         "voice_pack_1", "voice_pack_2", "voice_pack_3",
         "voice_pack_4", "voice_pack_5", "voice_pack_6",
         "voice_pack_7", "voice_pack_8", "voice_pack_9",

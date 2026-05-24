@@ -12,6 +12,13 @@ final class AppState: ObservableObject {
     @Published var booted: Bool = false
     @Published var bootError: String? = nil
     @Published var isOffline: Bool = false
+    @Published var bootStatus: BootStatus = .connecting
+
+    enum BootStatus {
+        case connecting
+        case engagingStealth
+        case stealthActive
+    }
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     @Published var pendingOpenChatUIN: Int? = nil
@@ -206,6 +213,8 @@ final class AppState: ObservableObject {
     }
 
     func boot(suggestedNickname: String? = nil) async {
+        RelayConfigStore.shared.refreshInBackground()
+
         // Offline-first path. If we already have a local identity AND no
         // network is available, skip every server-touching call and let
         // the app launch into the local-only surfaces (Radio Chat over
@@ -224,19 +233,24 @@ final class AppState: ObservableObject {
         }
 
         do {
+            bootStatus = .connecting
             if SingBoxTransport.isEnabled {
+                bootStatus = .engagingStealth
                 do {
                     try await SingBoxTransport.shared.start()
                     await APIClient.shared.applyTransportProxy()
+                    bootStatus = .stealthActive
                 } catch {
                     print("[boot] sing-box transport failed to start: \(error)")
                 }
             }
             var reach = await APIClient.shared.refreshActiveBase()
             if reach == .unreachable, !SingBoxTransport.shared.isActive {
+                bootStatus = .engagingStealth
                 do {
                     try await SingBoxTransport.shared.start()
                     await APIClient.shared.applyTransportProxy()
+                    bootStatus = .stealthActive
                     reach = await APIClient.shared.refreshActiveBase()
                 } catch {
                     print("[boot] auto sing-box transport failed: \(error)")

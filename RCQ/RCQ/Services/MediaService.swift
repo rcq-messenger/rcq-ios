@@ -49,7 +49,7 @@ final class MediaService {
     /// Decrypted-plaintext cache. Photo bubble paths use the UIImage
     /// cache; the data cache exists so GIF-aware renderers can
     /// re-stream the animated bytes without a second AES pass.
-    private let decryptedDataCache: NSCache<NSString, NSData> = {
+    nonisolated(unsafe) private let decryptedDataCache: NSCache<NSString, NSData> = {
         let c = NSCache<NSString, NSData>()
         c.countLimit = 300
         c.totalCostLimit = 200 * 1024 * 1024 // 200 MB ceiling on raw bytes

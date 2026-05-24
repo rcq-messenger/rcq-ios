@@ -53,6 +53,7 @@ struct ContactListView: View {
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
     /// Bound by `pendingOpenStickerPack`; opens the pack-peek sheet.
     @State private var deepLinkStickerPackKind: StickerPackPeek? = nil
+    @State private var showStealthInfo: Bool = false
     @State private var refreshAttemptedFor: Set<Int> = []
     @State private var petPreview: PetPreviewTarget?
     @State private var tradeWithContact: Contact?
@@ -371,6 +372,14 @@ struct ContactListView: View {
             .sheet(item: $deepLinkStickerPackKind) { peek in
                 StickerPackPeekSheet(kindID: peek.kindID)
             }
+            .alert(
+                "stealth.tooltip.title".localized,
+                isPresented: $showStealthInfo,
+            ) {
+                Button("common.done".localized, role: .cancel) { showStealthInfo = false }
+            } message: {
+                Text("stealth.tooltip.body".localized)
+            }
             .sheet(item: $deepLinkProfileUIN) { wrap in
                 NavigationStack {
                     UserInfoView(uin: wrap.uin, isOwn: wrap.uin == AuthService.shared.ownUIN)
@@ -534,9 +543,14 @@ struct ContactListView: View {
             .buttonStyle(.plain)
             Group {
                 if singboxActivePort > 0 {
-                    Image(systemName: "eye.slash.circle.fill")
-                        .font(.system(size: 17))
-                        .foregroundColor(Theme.Color.accent)
+                    Button {
+                        showStealthInfo = true
+                    } label: {
+                        Image(systemName: "eye.slash.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     Color.clear
                 }

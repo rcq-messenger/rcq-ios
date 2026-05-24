@@ -376,6 +376,7 @@ struct MarketView: View {
 
     private func reload() async {
         refreshing = true
+        market.wipe()
         switch category {
         case .items:
             await market.refresh(
