@@ -1,0 +1,51 @@
+{
+  "version": 4,
+  "issued_at": "2026-05-24T21:12:47Z",
+  "relays": [
+    {
+      "tag": "relay-do-fra-yandex",
+      "server": "165.22.90.214",
+      "port": 443,
+      "uuid": "2081b3c4-faaa-4cce-a0ab-607197b28237",
+      "sni": "www.yandex.ru",
+      "public_key": "n33TZTLNrc6X7jTGrKWex_sk8aIQ6Qqz-eC8lqYMii8",
+      "short_id": "aa5d483441e59ac7",
+      "priority": 1,
+      "flow": "xtls-rprx-vision"
+    },
+    {
+      "tag": "relay-oracle-il",
+      "server": "129.159.143.135",
+      "port": 443,
+      "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
+      "sni": "www.microsoft.com",
+      "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
+      "short_id": "318567678ac9878e",
+      "priority": 2,
+      "flow": "xtls-rprx-vision"
+    },
+    {
+      "tag": "relay-gcp",
+      "server": "35.238.53.96",
+      "port": 443,
+      "uuid": "8e3b35d3-18a6-406d-9ac6-c5558a806663",
+      "sni": "www.apple.com",
+      "public_key": "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw",
+      "short_id": "b5b8979af1f27aab",
+      "priority": 3,
+      "flow": "xtls-rprx-vision"
+    },
+    {
+      "tag": "relay-aws-sg",
+      "server": "47.129.249.170",
+      "port": 443,
+      "uuid": "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
+      "sni": "www.amazon.com",
+      "public_key": "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
+      "short_id": "533142a04b016a00",
+      "priority": 4,
+      "flow": "xtls-rprx-vision"
+    }
+  ],
+  "sig": "Bsb9A6uoQtYQBp8YjpSrXvLaowdhqldgcfyb1AaHE2b3+xssEnrHamUlbvq2GYX6OcDZkLKJ1rPW9M+0AWD3Dg=="
+}
