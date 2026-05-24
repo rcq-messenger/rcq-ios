@@ -1177,6 +1177,30 @@
 "inventory.filter.level_all" = "All levels";
 "settings.privacy.persistent_presence" = "Stay visible when app is closed";
 "settings.privacy.persistent_presence.desc" = "Keep showing your chosen status (Online / Away / DND) to contacts even after you close the app. Contacts will see you as around and reachable; turn off to revert to the standard 'killed app = offline' behavior.";
+
+/* ── Radio Chat info sheet ─────────────────────────────────── */
+
+"radio.info.title" = "About Radio Chat";
+"radio.info.header.title" = "Local mesh chat";
+"radio.info.header.subtitle" = "Talk to nearby people without a cell connection, without Wi-Fi internet, without any of our servers. Messages travel directly between phones.";
+
+"radio.info.what.title" = "What it is";
+"radio.info.what.body" = "An offline chat layer that works whenever your phones are physically near each other. Useful at festivals, concerts, on a hike, in a basement parking lot, during a power outage, or anywhere mobile internet is blocked, expensive, or just gone.";
+
+"radio.info.how.title" = "How it works";
+"radio.info.how.body" = "Your iPhone discovers other iPhones with RCQ open over Bluetooth and Apple's peer-to-peer Wi-Fi. Once paired, messages move directly from device to device. No SIM card needed, no cell tower needed, no rcq.app server involved.";
+
+"radio.info.range.title" = "Direct range";
+"radio.info.range.body" = "Phone-to-phone, expect 30 to 100 meters in the open and far less through walls. A group of phones can relay for each other to extend the reach a bit, but treat 100 meters as the realistic ceiling for two devices alone.";
+
+"radio.info.wifi.title" = "Big-venue trick";
+"radio.info.wifi.body" = "If everyone is connected to the same Wi-Fi network (including a single mesh covering a whole building or venue), Radio Chat works across the entire Wi-Fi coverage area, not just the 100-meter peer-to-peer radius. So at a conference, a club, a stadium, or a coworking space, you reach everyone in the building.";
+
+"radio.info.privacy.title" = "Privacy";
+"radio.info.privacy.body" = "Nothing leaves the local network. Your sessions are end-to-end encrypted between participants, with a session key the room creator shares as a password. History is in-memory only, the conversation disappears when you close the chat.";
+
+"radio.info.when.title" = "When to use it";
+"radio.info.when.body" = "Coordinate with friends at a noisy event. Pass a quick note to someone in the same building. Stay in touch during a network outage or in a region where mobile data is throttled. Anywhere phones are close and the regular internet path is unavailable, slow, or risky.";
 "pool.detail.chance" = "DROP CHANCE  %.2f%%";
 "pool.detail.cap" = "EDITION  %d";
 "pool.detail.cap_remaining" = "%d / %d REMAINING";

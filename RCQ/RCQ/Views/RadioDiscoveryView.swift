@@ -8,6 +8,7 @@ struct RadioDiscoveryView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showCreateRoom = false
+    @State private var showInfo = false
     @State private var passwordPromptFor: RadioPeer?
     @State private var passwordInput = ""
 
@@ -47,11 +48,19 @@ struct RadioDiscoveryView: View {
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showCreateRoom = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .foregroundColor(Theme.Color.accent)
+                        HStack(spacing: 14) {
+                            Button {
+                                showInfo = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .foregroundColor(Theme.Color.accent)
+                            }
+                            Button {
+                                showCreateRoom = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .foregroundColor(Theme.Color.accent)
+                            }
                         }
                     }
                 }
@@ -63,6 +72,9 @@ struct RadioDiscoveryView: View {
             .sheet(isPresented: $showCreateRoom) {
                 CreateRoomView()
                     .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $showInfo) {
+                RadioInfoSheet()
             }
             .sheet(item: $passwordPromptFor) { peer in
                 passwordPrompt(for: peer)
