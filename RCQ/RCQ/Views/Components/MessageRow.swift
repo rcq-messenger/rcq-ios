@@ -24,6 +24,10 @@ struct MessageRow: View {
     let onTapReplyQuote: (UUID) -> Void
     let onSwipeReply: () -> Void
     var currentGroupMembers: [RCQGroupMember] = []
+    /// Optional aggregate view count for closed-group messages. Nil
+    /// means "no badge" (1:1, open group, or count not yet fetched).
+    /// Renders next to the timestamp as `👁 N`.
+    var viewCount: Int? = nil
 
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
@@ -315,6 +319,15 @@ struct MessageRow: View {
                     Image(systemName: "clock")
                         .font(.system(size: 9))
                         .foregroundColor(Theme.Color.textSecondary)
+                }
+                if let n = viewCount, n > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.fill")
+                            .font(.system(size: 9))
+                        Text("\(n)")
+                            .font(Theme.Font.timestamp)
+                    }
+                    .foregroundColor(Theme.Color.textSecondary)
                 }
                 if message.isFromMe {
                     deliveryIcon

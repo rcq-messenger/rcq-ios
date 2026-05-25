@@ -8,6 +8,7 @@ struct ChatView: View {
     @StateObject private var appState = AppState.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
+    @StateObject private var groupViews = GroupViewsService.shared
 
     /// Member roster for the active group target, or `[]` for 1:1 chats.
     /// Drives @mention rendering + the composer's mention picker.
@@ -19,6 +20,32 @@ struct ChatView: View {
     private var activeGroupID: Int? {
         if case .group(let g) = vm.target { return g.id }
         return nil
+    }
+
+    /// True iff the active chat target is a closed group. View-count
+    /// pings + counters are gated on this, matching the server enforcement.
+    private var activeGroupIsClosed: Bool {
+        guard case .group(let snapshot) = vm.target else { return false }
+        return (groupSvc.find(snapshot.id) ?? snapshot).isClosed
+    }
+
+    /// Returns the cached aggregate view count for a bubble in the
+    /// active closed group, or nil for 1:1 / open-group / not-yet-fetched.
+    private func viewCountForBubble(_ msg: Message) -> Int? {
+        guard activeGroupIsClosed, let gid = activeGroupID else { return nil }
+        return GroupViewsService.shared.count(group: gid, message: msg.id)
+    }
+
+    /// Tells the GroupViewsService we have seen this message. The
+    /// service is idempotent — same message viewed twice this session
+    /// only pings the server once.
+    private func pingViewIfCloseGroup(_ msg: Message) {
+        guard activeGroupIsClosed, let gid = activeGroupID else { return }
+        GroupViewsService.shared.ping(
+            group: gid,
+            message: msg.id,
+            groupIsClosed: true,
+        )
     }
 
     private func jetonEligible(_ msg: Message) -> Bool {
@@ -1080,8 +1107,10 @@ struct ChatView: View {
                                         vm.replyTarget = copy
                                     }
                                 },
-                                currentGroupMembers: currentGroupMembers
+                                currentGroupMembers: currentGroupMembers,
+                                viewCount: viewCountForBubble(msg)
                             )
+                            .onAppear { pingViewIfCloseGroup(msg) }
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
                                      ? 0
@@ -1246,6 +1275,15 @@ struct ChatView: View {
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 withAnimation(.easeOut(duration: 0.15)) {
                     chatVisible = true
+                }
+                // Pull view counts for the currently-loaded window in
+                // closed groups. Skips silently for 1:1 and open groups.
+                if activeGroupIsClosed, let gid = activeGroupID {
+                    await GroupViewsService.shared.refresh(
+                        group: gid,
+                        messages: vm.messages.map { $0.id },
+                        groupIsClosed: true,
+                    )
                 }
             }
             if showScrollToBottom {
