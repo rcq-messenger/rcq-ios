@@ -2,11 +2,13 @@ import Combine
 import CryptoKit
 import Foundation
 import MultipeerConnectivity
+import os.log
 
 @MainActor
 final class RadioService: NSObject, ObservableObject {
     static let shared = RadioService()
 
+    private static let log = OSLog(subsystem: "app.rcq.client.radio", category: "Radio")
     private static let serviceType = "rcq-radio"
     static let maxRoomPeers = 8
 
@@ -20,7 +22,32 @@ final class RadioService: NSObject, ObservableObject {
     @Published private(set) var pendingRoomJoin: RadioRoomMetadata?
     @Published private(set) var messages: [RadioMessage] = []
     @Published private(set) var roster: [String: String] = [:]
-    @Published var pendingInvite: PendingInvite?
+    /// In-flight 1:1 invitation awaiting user decision in the sheet.
+    /// `didSet` auto-declines a leftover invite whose sheet was swipe-
+    /// dismissed (or otherwise nil-assigned outside accept/decline) so
+    /// MC isn't left hanging on a never-called `invitationHandler` —
+    /// previously the inviter side sat in `.connecting` until the 30s
+    /// timeout and then flipped to `.notConnected` ("УШЁЛ"), which is
+    /// exactly the symptom testers reported.
+    @Published var pendingInvite: PendingInvite? {
+        didSet {
+            // Skip the auto-decline when the new value is the same
+            // invite (re-emit during state thrash) or when accept /
+            // decline already routed through `pendingInviteWasHandled`.
+            if pendingInvite == nil,
+               let stale = oldValue,
+               !pendingInviteWasHandled {
+                os_log("pendingInvite dismissed without accept/decline — auto-declining peer=%{public}@",
+                       log: Self.log, type: .info, stale.peerID.displayName)
+                stale.invitationHandler(false, nil)
+            }
+            pendingInviteWasHandled = false
+        }
+    }
+    /// Cleared by `acceptInvite` / `declineInvite` before they reset
+    /// `pendingInvite`; the didSet above uses this to skip the auto-
+    /// decline branch when the user did make an explicit choice.
+    private var pendingInviteWasHandled: Bool = false
     @Published var lastError: String?
     @Published private(set) var isTalking: Bool = false
     @Published private(set) var activeSpeakers: Set<String> = []
@@ -116,7 +143,12 @@ final class RadioService: NSObject, ObservableObject {
     // MARK: - 1:1 invite / accept
 
     func inviteOneToOne(_ peer: RadioPeer) {
-        guard peer.kind == .oneToOne, let session else { return }
+        guard peer.kind == .oneToOne, let session else {
+            os_log("inviteOneToOne: bailing peer=%{public}@ session=%{public}@",
+                   log: Self.log, type: .error,
+                   peer.peerID.displayName, session == nil ? "nil" : "live")
+            return
+        }
         let keys = RadioCrypto.makeEphemeralKeys()
         oneToOneKeys = keys
         var ctx: [String: String] = [:]
@@ -125,11 +157,15 @@ final class RadioService: NSObject, ObservableObject {
         let data = (try? JSONEncoder().encode(ctx)) ?? Data()
         browser?.invitePeer(peer.peerID, to: session, withContext: data, timeout: 30)
         markPeer(peer.peerID, state: .inviting)
+        os_log("inviteOneToOne: sent invite to peer=%{public}@ (ctx %d bytes)",
+               log: Self.log, type: .info, peer.peerID.displayName, data.count)
     }
 
     func acceptInvite(_ invite: PendingInvite) {
         guard let session else {
+            pendingInviteWasHandled = true
             invite.invitationHandler(false, nil)
+            pendingInvite = nil
             return
         }
         if let ctxData = invite.invitationContext,
@@ -144,15 +180,21 @@ final class RadioService: NSObject, ObservableObject {
                 )
             } catch {
                 lastError = "Couldn't derive session key"
+                pendingInviteWasHandled = true
                 invite.invitationHandler(false, nil)
+                pendingInvite = nil
                 return
             }
         }
+        os_log("acceptInvite: peer=%{public}@ accepting", log: Self.log, type: .info, invite.peerID.displayName)
+        pendingInviteWasHandled = true
         invite.invitationHandler(true, session)
         pendingInvite = nil
     }
 
     func declineInvite(_ invite: PendingInvite) {
+        os_log("declineInvite: peer=%{public}@", log: Self.log, type: .info, invite.peerID.displayName)
+        pendingInviteWasHandled = true
         invite.invitationHandler(false, nil)
         pendingInvite = nil
     }
@@ -519,8 +561,12 @@ extension RadioService: MCNearbyServiceAdvertiserDelegate {
         Task { @MainActor in
             switch self.advertiseMode {
             case .off:
+                os_log("advertiser invite REJECTED (mode=off) peer=%{public}@",
+                       log: Self.log, type: .info, peerID.displayName)
                 invitationHandler(false, nil)
             case .oneToOne:
+                os_log("advertiser invite RECEIVED peer=%{public}@ — surfacing sheet",
+                       log: Self.log, type: .info, peerID.displayName)
                 self.pendingInvite = PendingInvite(
                     fromDisplayName: peerID.displayName,
                     peerID: peerID,
@@ -554,6 +600,15 @@ extension RadioService: MCNearbyServiceAdvertiserDelegate {
 extension RadioService: MCSessionDelegate {
     nonisolated func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         Task { @MainActor in
+            let stateName: String
+            switch state {
+            case .connected: stateName = "connected"
+            case .connecting: stateName = "connecting"
+            case .notConnected: stateName = "notConnected"
+            @unknown default: stateName = "unknown"
+            }
+            os_log("MCSession state CHANGE peer=%{public}@ → %{public}@",
+                   log: Self.log, type: .info, peerID.displayName, stateName)
             switch state {
             case .connected:
                 self.markPeer(peerID, state: .connected)
