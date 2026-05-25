@@ -64,6 +64,9 @@ struct UserProfile: Codable, Hashable {
     /// "around" with their selected status even when the app is not
     /// running. Owner-only echo, nil for third-party fetches.
     var presencePersistent: Bool?
+    /// Optional TTL (minutes) for `presencePersistent`. 0/nil = forever.
+    /// Allowed values mirror the iOS picker: 30, 60, 180, 480, 1440.
+    var presenceTTLMinutes: Int?
     /// Snapshot of the user's currently-equipped pet, drives the
     /// small overlay GIF on the status icon throughout the UI
     /// (contact rows, profile header, group info). Always returned;
@@ -91,6 +94,7 @@ struct UserProfile: Codable, Hashable {
         case reputation
         case reputationVisibility = "reputation_visibility"
         case presencePersistent = "presence_persistent"
+        case presenceTTLMinutes = "presence_ttl_minutes"
         case equippedPet = "equipped_pet"
     }
 }

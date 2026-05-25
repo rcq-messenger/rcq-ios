@@ -4,6 +4,10 @@ struct ProxyURLSheet: View {
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
     @AppStorage("rcq.autoProxyActive") private var autoProxyActive: Bool = false
     @AppStorage("rcq.singbox.enabled") private var singboxEnabled: Bool = false
+    /// User opts out of the boot-time auto-engage path — for people
+    /// who route through their own proxy/VPN and don't want our
+    /// embedded sing-box double-encapsulating.
+    @AppStorage("rcq.singbox.autoDisabled") private var singboxAutoDisabled: Bool = false
     @State private var draft: String = ""
     @Environment(\.dismiss) private var dismiss
 
@@ -55,6 +59,17 @@ struct ProxyURLSheet: View {
                             Task { await SingBoxTransport.shared.setEnabled(newValue) }
                         }
                         Text("settings.network.singbox.note".localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Toggle(isOn: $singboxAutoDisabled) {
+                            Text("settings.network.singbox.auto_disable".localized)
+                                .font(.callout)
+                                .foregroundColor(Theme.Color.textPrimary)
+                        }
+                        .tint(Theme.Color.accent)
+                        Text("settings.network.singbox.auto_disable.note".localized)
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

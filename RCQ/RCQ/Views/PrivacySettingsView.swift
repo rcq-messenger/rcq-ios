@@ -16,6 +16,10 @@ struct PrivacySettingsView: View {
     /// past the staleness window. Lets the user appear "around" with
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = false
+    /// Allowed values match the server allow-list: 0 (forever), 30,
+    /// 60, 180, 480, 1440. Picker labels render to the localised
+    /// strings below.
+    @State private var presenceTTLMinutes: Int = 0
     @State private var gender: String = ""
     @State private var genderVisibility: String = "nobody"
     @State private var profileVisibility: String = "everyone"
@@ -81,15 +85,34 @@ struct PrivacySettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
                         Toggle(isOn: $presencePersistent) {
-                            Text("settings.privacy.persistent_presence".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.privacy.persistent_presence".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.privacy.persistent_presence.desc".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
                         }
                         .tint(Theme.Color.accent)
                         .onChange(of: presencePersistent) { newValue in
                             Task { await pushBoolField("presence_persistent", newValue) }
                         }
-                    } footer: {
-                        Text("settings.privacy.persistent_presence.desc".localized)
+                        if presencePersistent {
+                            Picker(selection: $presenceTTLMinutes) {
+                                Text("settings.privacy.presence_ttl.forever".localized).tag(0)
+                                Text("settings.privacy.presence_ttl.30m".localized).tag(30)
+                                Text("settings.privacy.presence_ttl.1h".localized).tag(60)
+                                Text("settings.privacy.presence_ttl.3h".localized).tag(180)
+                                Text("settings.privacy.presence_ttl.8h".localized).tag(480)
+                                Text("settings.privacy.presence_ttl.24h".localized).tag(1440)
+                            } label: {
+                                Text("settings.privacy.presence_ttl".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                            }
+                            .onChange(of: presenceTTLMinutes) { newValue in
+                                Task { await pushIntField("presence_ttl_minutes", newValue) }
+                            }
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
@@ -170,15 +193,24 @@ struct PrivacySettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
                         Toggle(isOn: $requirePINForItems) {
-                            Text("settings.privacy.item_pin".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.privacy.item_pin".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.privacy.item_pin.desc".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
                         }
                         .tint(Theme.Color.accent)
                         .disabled(!pinConfigured)
                     } footer: {
-                        Text(pinConfigured
-                             ? "settings.privacy.item_pin.desc".localized
-                             : "settings.privacy.item_pin.desc.no_pin".localized)
+                        // No-PIN hint stays as a footer — the inline
+                        // description above is the "what does this do"
+                        // line; the footer is the "why is it disabled"
+                        // line and only renders when relevant.
+                        if !pinConfigured {
+                            Text("settings.privacy.item_pin.desc.no_pin".localized)
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -483,11 +515,41 @@ struct PrivacySettingsView: View {
             }
             if let v = p.reputationVisibility { reputationVisibility = v }
             if let v = p.presencePersistent { presencePersistent = v }
+            if let v = p.presenceTTLMinutes { presenceTTLMinutes = v }
             gender = p.gender ?? ""
         } catch {
             // Soft-fail — the picker write paths still work, the
             // worst case is the displayed default doesn't match
             // the server until the user picks something.
+        }
+    }
+
+    /// Int variant — for presence_ttl_minutes and any future numeric
+    /// preference. Same dynamic-key trick as the bool/string variants
+    /// so the server's PUT /users/me partial-update path treats it as
+    /// a single-field set.
+    private func pushIntField(_ key: String, _ value: Int) async {
+        struct Body: Encodable {
+            let key: String
+            let value: Int
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: DynamicKey.self)
+                try c.encode(value, forKey: DynamicKey(stringValue: key)!)
+            }
+        }
+        struct DynamicKey: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+        do {
+            let _: UserProfile = try await APIClient.shared.request(
+                "PUT", "/users/me",
+                body: Body(key: key, value: value)
+            )
+        } catch {
+            // Soft-fail; user can re-pick.
         }
     }
 

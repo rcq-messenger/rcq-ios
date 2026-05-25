@@ -244,7 +244,13 @@ final class AppState: ObservableObject {
                 }
             }
             var reach = await APIClient.shared.refreshActiveBase()
-            if reach == .unreachable, !SingBoxTransport.shared.isActive {
+            // Auto-engage when direct is unreachable — unless the user
+            // explicitly opted out (they route through their own proxy
+            // / VPN and don't want our embedded sing-box on top of
+            // theirs). The explicit toggle still wins above; this
+            // gates only the "fall back when nothing works" branch.
+            let autoDisabled = UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled")
+            if reach == .unreachable, !SingBoxTransport.shared.isActive, !autoDisabled {
                 bootStatus = .engagingStealth
                 do {
                     try await SingBoxTransport.shared.start()

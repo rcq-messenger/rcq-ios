@@ -129,6 +129,8 @@
 "settings.network.proxy.footer" = "Advanced — usually leave empty. Paste your own proxy or Cloudflare Worker URL to force all chat + media traffic through it. Empty means the automatic behaviour above stays in charge.";
 "settings.network.singbox.label" = "Obfuscated transport (beta)";
 "settings.network.singbox.note" = "Routes all traffic through an encrypted, hard-to-detect tunnel built into the app — no separate VPN needed. Turn this on if the app won't connect on your network.";
+"settings.network.singbox.auto_disable" = "Don't engage automatically";
+"settings.network.singbox.auto_disable.note" = "By default the app turns obfuscation on automatically if it can't reach the server directly. If you route your traffic through your own VPN/proxy, enable this so our transport doesn't stack on top of yours.";
 "settings.network.singbox.status.on" = "Obfuscated transport: on";
 "settings.network.coming_soon" = "Coming soon";
 
@@ -1199,8 +1201,15 @@
 "pool.cap" = "cap %d";
 "pool.cap_remaining" = "%d / %d left";
 "inventory.filter.level_all" = "All levels";
-"settings.privacy.persistent_presence" = "Stay visible when app is closed";
-"settings.privacy.persistent_presence.desc" = "Keep showing your chosen status (Online / Away / DND) to contacts even after you close the app. Contacts will see you as around and reachable; turn off to revert to the standard 'killed app = offline' behavior.";
+"settings.privacy.persistent_presence" = "Visibility after exit";
+"settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
+"settings.privacy.presence_ttl" = "How long to stay visible";
+"settings.privacy.presence_ttl.forever" = "Forever";
+"settings.privacy.presence_ttl.30m" = "30 minutes";
+"settings.privacy.presence_ttl.1h" = "1 hour";
+"settings.privacy.presence_ttl.3h" = "3 hours";
+"settings.privacy.presence_ttl.8h" = "8 hours";
+"settings.privacy.presence_ttl.24h" = "24 hours";
 
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 
@@ -1778,8 +1787,8 @@
 "pin_verify.wrong" = "Wrong PIN. Try again.";
 "pin_verify.title.send_items" = "Confirm sending items";
 "pin_verify.title.archive" = "Unlock archived contacts";
-"settings.privacy.item_pin" = "Require PIN to send items";
-"settings.privacy.item_pin.desc" = "Ask for your Security PIN before any item, gift or trade leaves your account.";
+"settings.privacy.item_pin" = "PIN on trade";
+"settings.privacy.item_pin.desc" = "Ask for your Security PIN before sending an item, gift or trade.";
 "settings.privacy.item_pin.desc.no_pin" = "Set up a Security PIN first to enable this.";
 "panic_pin.entry.title.new" = "Choose a PIN";
 "panic_pin.entry.title.wipe" = "Choose a wipe PIN";

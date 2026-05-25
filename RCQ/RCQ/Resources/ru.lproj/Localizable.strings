@@ -120,6 +120,8 @@
 "settings.network.proxy.footer" = "Для продвинутых — обычно оставляйте пустым. Вставьте свой прокси или URL Cloudflare Worker, чтобы весь чат + медиа шли через него. Пусто — работает автоматика выше.";
 "settings.network.singbox.label" = "Обфусцированный транспорт (бета)";
 "settings.network.singbox.note" = "Пускает весь трафик через встроенный в приложение зашифрованный туннель, который трудно обнаружить — отдельный VPN не нужен. Включите, если приложение не подключается в вашей сети.";
+"settings.network.singbox.auto_disable" = "Не включать автоматически";
+"settings.network.singbox.auto_disable.note" = "По умолчанию приложение само включает обфускацию, если не может подключиться напрямую. Если вы пускаете трафик через свой VPN/прокси, включите этот переключатель, чтобы наш транспорт не накладывался поверх вашего.";
 "settings.network.singbox.status.on" = "Обфусцированный транспорт: вкл";
 "settings.network.coming_soon" = "Скоро";
 
@@ -1190,8 +1192,15 @@
 "pool.cap" = "лимит %d";
 "pool.cap_remaining" = "%d / %d осталось";
 "inventory.filter.level_all" = "Все уровни";
-"settings.privacy.persistent_presence" = "Оставаться видимым после выхода";
-"settings.privacy.persistent_presence.desc" = "Контакты будут видеть ваш выбранный статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто. Полезно когда хочется показать что вы рядом и можете ответить, не держа аппку открытой. Выключите чтобы вернуться к стандартному поведению (закрыли аппку, ушли в офлайн).";
+"settings.privacy.persistent_presence" = "Видимость после выхода";
+"settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
+"settings.privacy.presence_ttl" = "Сколько оставаться видимым";
+"settings.privacy.presence_ttl.forever" = "Бессрочно";
+"settings.privacy.presence_ttl.30m" = "30 минут";
+"settings.privacy.presence_ttl.1h" = "1 час";
+"settings.privacy.presence_ttl.3h" = "3 часа";
+"settings.privacy.presence_ttl.8h" = "8 часов";
+"settings.privacy.presence_ttl.24h" = "24 часа";
 
 /* ── Информация о радио-чате ───────────────────────────────── */
 
@@ -1780,8 +1789,8 @@
 "pin_verify.wrong" = "Неверный PIN. Попробуйте ещё раз.";
 "pin_verify.title.send_items" = "Подтвердите отправку предметов";
 "pin_verify.title.archive" = "Разблокировать архив контактов";
-"settings.privacy.item_pin" = "Запрашивать PIN при отправке предметов";
-"settings.privacy.item_pin.desc" = "Спрашивать Security PIN перед тем, как любой предмет, подарок или обмен покинет ваш аккаунт.";
+"settings.privacy.item_pin" = "PIN при трейде";
+"settings.privacy.item_pin.desc" = "Спрашивать Security PIN перед отправкой предмета, подарка или обмена.";
 "settings.privacy.item_pin.desc.no_pin" = "Сначала задайте Security PIN, чтобы включить это.";
 "panic_pin.entry.title.new" = "Придумайте PIN-код";
 "panic_pin.entry.title.wipe" = "Придумайте PIN для стирания";
