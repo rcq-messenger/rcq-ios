@@ -5,8 +5,13 @@
 "settings.title" = "Настройки";
 "settings.appearance" = "Оформление";
 "settings.appearance.theme" = "Тема";
+"settings.appearance.theme.system" = "Авто (как в системе)";
+"settings.appearance.theme.light" = "Светлая";
+"settings.appearance.theme.dark" = "Тёмная";
 "settings.sound" = "Звук";
 "settings.sound.toggle" = "Системные звуки";
+"settings.sound.presence" = "Звук входа/выхода контактов";
+"settings.sound.presence.hint" = "ICQ-style чирик когда контакт онлайн или ушёл. По умолчанию выключено.";
 "settings.minis.toggle" = "Миниатюры игр";
 "settings.minis.toggle.footer" = "Показывать плавающие виджеты Crash и аукциона UIN на главном экране, чтобы следить за раундом или ставкой не возвращаясь в игру.";
 "settings.trades.realtime" = "Всплывающие трейды";
@@ -179,8 +184,9 @@
 "bug_bounty.error.no_identity" = "Войди в аккаунт сначала.";
 "bug_bounty.error.generic" = "Не удалось отправить: %@";
 "bug_bounty.error.attach" = "Не удалось прикрепить: %@";
-"bug_bounty.attach.hint" = "Прикрепи скриншоты или короткое видео — до 3 файлов.";
+"bug_bounty.attach.hint" = "Прикрепи скриншоты или короткое видео, до 3 файлов.";
 "bug_bounty.attach.cta" = "Добавить";
+"bug_bounty.attach.paste" = "Из буфера";
 
 "bounty_credits.title" = "Бонусы за баги";
 "bounty_credits.pending_suffix" = "ждут запуска";

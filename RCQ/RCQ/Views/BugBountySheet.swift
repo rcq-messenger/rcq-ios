@@ -236,10 +236,42 @@ struct BugBountySheet: View {
                     }
                     if attachments.count < Self.maxAttachments {
                         attachButton
+                        if UIPasteboard.general.hasImages {
+                            pasteButton
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// "Paste screenshot" tile — appears next to the + tile when the
+    /// clipboard contains an image. Saves the user a trip to Photos
+    /// just to attach a screenshot they already have on copy.
+    private var pasteButton: some View {
+        Button {
+            guard let img = UIPasteboard.general.image else { return }
+            let att = Attachment(preview: img, mime: "image/jpeg")
+            attachments.append(att)
+            Task { await uploadPhoto(img, attachmentID: att.id) }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text("bug_bounty.attach.paste".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.accent)
+            }
+            .frame(width: 72, height: 72)
+            .background(Theme.Color.bgSecondary)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Theme.Color.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

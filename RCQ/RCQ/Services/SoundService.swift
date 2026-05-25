@@ -78,6 +78,13 @@ final class SoundService: ObservableObject {
         didSet { UserDefaults.standard.set(isEnabled, forKey: "sound.enabled") }
     }
 
+    /// Sub-toggle for contact-online / contact-offline chimes. Default
+    /// off because testers found the constant in-out chatter annoying;
+    /// users who like the ICQ-style presence audio can opt back in.
+    @Published var presenceSoundEnabled: Bool = UserDefaults.standard.object(forKey: "sound.presence_enabled") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(presenceSoundEnabled, forKey: "sound.presence_enabled") }
+    }
+
     @Published private(set) var mutedThreads: Set<String> = Set(
         (UserDefaults.standard.array(forKey: "sound.muted_threads") as? [String]) ?? []
     )
@@ -109,6 +116,9 @@ final class SoundService: ObservableObject {
 
     func play(_ cue: Cue, thread: ThreadID? = nil) {
         guard isEnabled else { return }
+        // Presence chimes ride a separate toggle. Default-off so testers
+        // who hate the in-out chatter aren't forced to mute ALL sounds.
+        if (cue == .contactOnline || cue == .contactOffline) && !presenceSoundEnabled { return }
         if let thread, isMuted(thread: thread) { return }
         if let player = players[cue] {
             player.currentTime = 0

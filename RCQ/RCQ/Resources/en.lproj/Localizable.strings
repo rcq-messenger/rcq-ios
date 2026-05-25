@@ -14,8 +14,13 @@
 "settings.title" = "Settings";
 "settings.appearance" = "Appearance";
 "settings.appearance.theme" = "Theme";
+"settings.appearance.theme.system" = "Auto (system)";
+"settings.appearance.theme.light" = "Light";
+"settings.appearance.theme.dark" = "Dark";
 "settings.sound" = "Sound";
 "settings.sound.toggle" = "System sounds";
+"settings.sound.presence" = "Contact online/offline chime";
+"settings.sound.presence.hint" = "ICQ-style chirp when a contact comes online or leaves. Off by default.";
 "settings.minis.toggle" = "Game minis";
 "settings.minis.toggle.footer" = "Show floating Crash and UIN auction widgets on the chat list so you can keep an eye on a round or a bid without staying inside the game.";
 "settings.trades.realtime" = "Real-time trade pop-ups";
@@ -188,8 +193,9 @@
 "bug_bounty.error.no_identity" = "Sign in first.";
 "bug_bounty.error.generic" = "Couldn't send: %@";
 "bug_bounty.error.attach" = "Couldn't attach: %@";
-"bug_bounty.attach.hint" = "Attach screenshots or a short clip — up to 3 files.";
+"bug_bounty.attach.hint" = "Attach screenshots or a short clip, up to 3 files.";
 "bug_bounty.attach.cta" = "Add";
+"bug_bounty.attach.paste" = "Paste";
 
 "bounty_credits.title" = "Bug bounty credits";
 "bounty_credits.pending_suffix" = "unlocked at launch";

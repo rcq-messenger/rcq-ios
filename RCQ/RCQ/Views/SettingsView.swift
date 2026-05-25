@@ -49,6 +49,17 @@ struct SettingsView: View {
                                 .foregroundColor(Theme.Color.textPrimary)
                         }
                         .tint(Theme.Color.accent)
+                        Toggle(isOn: $sound.presenceSoundEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.sound.presence".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.sound.presence.hint".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .disabled(!sound.isEnabled)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 

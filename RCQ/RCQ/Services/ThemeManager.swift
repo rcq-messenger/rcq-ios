@@ -2,11 +2,24 @@ import Combine
 import SwiftUI
 
 enum AppTheme: String, CaseIterable, Identifiable {
-    case light, dark
+    case system, light, dark
     var id: String { rawValue }
-    var label: String { self == .light ? "Light" : "Dark" }
+    var label: String {
+        switch self {
+        case .system: return "settings.appearance.theme.system".localized
+        case .light:  return "settings.appearance.theme.light".localized
+        case .dark:   return "settings.appearance.theme.dark".localized
+        }
+    }
 
-    var colorScheme: ColorScheme { self == .light ? .light : .dark }
+    /// `nil` for system → SwiftUI inherits the OS-level dark/light setting.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
+        }
+    }
 }
 
 @MainActor
@@ -24,7 +37,10 @@ final class ThemeManager: ObservableObject {
     }
 
     private init() {
-        let stored = UserDefaults.standard.string(forKey: "rcq.theme") ?? AppTheme.light.rawValue
-        self.theme = AppTheme(rawValue: stored) ?? .light
+        // Pre-existing installs have only seen `light`/`dark` written
+        // here; treat any unknown value as `system` to give the new
+        // default (follow OS) to anyone who hadn't explicitly picked.
+        let stored = UserDefaults.standard.string(forKey: "rcq.theme")
+        self.theme = stored.flatMap { AppTheme(rawValue: $0) } ?? .system
     }
 }

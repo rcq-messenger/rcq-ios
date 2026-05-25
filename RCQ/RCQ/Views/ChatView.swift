@@ -1557,6 +1557,12 @@ struct ChatView: View {
                     minHeight: 36, maxHeight: 120,
                     onTextChange: { newValue in
                         if !newValue.isEmpty { vm.notifyTyping() }
+                    },
+                    onImagePaste: { image in
+                        // Pasted screenshot / copied photo flows
+                        // straight into the pending-media queue,
+                        // same path as a gallery pick.
+                        vm.queuePendingPhotos([image])
                     }
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)

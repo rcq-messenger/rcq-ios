@@ -11,6 +11,11 @@ struct EmoticonTextField: UIViewRepresentable {
     var fontSize: CGFloat = 16
     var emoticonSize: CGFloat = 22
     var onTextChange: ((String) -> Void)?
+    /// Optional image-paste handler. Wired by chat / Bug Bounty so a
+    /// screenshot on the clipboard pastes straight into the message
+    /// composer or attachment list — saves users a galley-trip just
+    /// to attach what they already have on copy.
+    var onImagePaste: ((UIImage) -> Void)?
 
     func makeUIView(context: Context) -> EmoticonUITextView {
         let tv = EmoticonUITextView()
@@ -40,6 +45,7 @@ struct EmoticonTextField: UIViewRepresentable {
         tv.placeholder = placeholder
         tv.placeholderColor = UIColor(Theme.Color.textSecondary)
         tv.allowedSendCallback = nil
+        tv.onImagePaste = onImagePaste
         context.coordinator.textView = tv
         let initial = context.coordinator.attributed(from: text)
         tv.attributedText = initial
@@ -48,6 +54,7 @@ struct EmoticonTextField: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: EmoticonUITextView, context: Context) {
+        uiView.onImagePaste = onImagePaste
         // Only re-render when the binding diverges to avoid a feedback loop.
         let current = context.coordinator.plainText(from: uiView.attributedText)
         if current != text {
@@ -309,6 +316,11 @@ final class EmoticonUITextView: UITextView {
         didSet { placeholderLabel.textColor = placeholderColor }
     }
     var allowedSendCallback: (() -> Void)?
+    /// Fires when the user pastes an image (screenshot, copied photo, etc.).
+    /// Wired by the SwiftUI parent — chat composer routes into the pending-media
+    /// queue, Bug Bounty into its attachment list. When set, the system Paste
+    /// menu shows for image-bearing pasteboards even when the field is empty.
+    var onImagePaste: ((UIImage) -> Void)?
 
     private let placeholderLabel = UILabel()
 
@@ -342,5 +354,32 @@ final class EmoticonUITextView: UITextView {
     func refreshPlaceholderVisibility() {
         placeholderLabel.font = font
         placeholderLabel.isHidden = !attributedText.string.isEmpty
+    }
+
+    // MARK: - image paste
+
+    /// Surface the system Paste action when the pasteboard carries an
+    /// image AND we have a handler wired up. UIKit otherwise hides
+    /// Paste on an empty text field unless there's text on the clipboard.
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(UIResponderStandardEditActions.paste(_:)),
+           onImagePaste != nil, UIPasteboard.general.hasImages {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// Intercept the paste action when an image is on the clipboard.
+    /// Routes the image to the parent's handler instead of letting
+    /// UIKit attempt to insert it as a text attachment (which it
+    /// can't render correctly in this composer's NSTextAttachment
+    /// emoticon layout, so the user would see a blank box).
+    override func paste(_ sender: Any?) {
+        let pb = UIPasteboard.general
+        if let handler = onImagePaste, let image = pb.image, pb.hasImages {
+            handler(image)
+            return
+        }
+        super.paste(sender)
     }
 }
