@@ -1194,7 +1194,7 @@
 "inventory.filter.level_all" = "Все уровни";
 "settings.privacy.persistent_presence" = "Видимость после выхода";
 "settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
-"settings.privacy.presence_ttl" = "Сколько оставаться видимым";
+"settings.privacy.presence_ttl" = "Длительность";
 "settings.privacy.presence_ttl.forever" = "Бессрочно";
 "settings.privacy.presence_ttl.30m" = "30 минут";
 "settings.privacy.presence_ttl.1h" = "1 час";

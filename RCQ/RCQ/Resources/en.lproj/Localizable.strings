@@ -1203,7 +1203,7 @@
 "inventory.filter.level_all" = "All levels";
 "settings.privacy.persistent_presence" = "Visibility after exit";
 "settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
-"settings.privacy.presence_ttl" = "How long to stay visible";
+"settings.privacy.presence_ttl" = "Duration";
 "settings.privacy.presence_ttl.forever" = "Forever";
 "settings.privacy.presence_ttl.30m" = "30 minutes";
 "settings.privacy.presence_ttl.1h" = "1 hour";
