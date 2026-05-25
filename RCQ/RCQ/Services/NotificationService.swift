@@ -97,11 +97,17 @@ final class NotificationService: ObservableObject {
         let appState = UIApplication.shared.applicationState
         guard appState != .active else { return }
 
+        // Bump the app-icon badge counter. This path fires when the app
+        // got the message via WebSocket (still alive but backgrounded)
+        // without a corresponding APNs push — so NSE didn't increment.
+        let total = BadgeCounter.increment(threadKey: threadKey)
+
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.threadIdentifier = threadKey
         content.sound = .default
+        content.badge = NSNumber(value: total)
 
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,

@@ -281,6 +281,10 @@ targets:
       # ICQ-style mutual-delete filter. NSE checks before rewriting
       # the alert so removed contacts never trigger a banner / sound.
       - path: RCQ/Services/RemovedContactsStore.swift
+      # App Group-shared unread counter. NSE increments per visible
+      # push, the main app resets per thread on chat open and syncs
+      # the total to `applicationIconBadgeNumber`.
+      - path: RCQ/Services/BadgeCounter.swift
     resources:
       # Apple-required privacy manifest for the NSE bundle. Distinct
       # file from the main app's because Apple validates each binary

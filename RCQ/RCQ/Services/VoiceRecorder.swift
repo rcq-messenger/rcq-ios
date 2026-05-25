@@ -17,10 +17,35 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var url: URL?
     private var tickTimer: Timer?
     private var startedAt: Date?
+    /// Tracks the in-flight `start()` Task so a synchronously-fired
+    /// `finish()` / `cancel()` can wait for setup to complete before
+    /// inspecting recorder state. Without this, a too-fast tap (touch
+    /// down → touch up before the async `start` chain resolves) would
+    /// orphan the recorder: `finish()` saw `recorder == nil` and bailed,
+    /// then `start` finally landed and left `isRecording = true` with no
+    /// gesture able to stop it — every subsequent mic tap was a no-op.
+    private var startTask: Task<Bool, Never>?
 
     private override init() { super.init() }
 
+    /// Idempotent: concurrent calls share the same in-flight Task and
+    /// resolve to the same Bool. Safe to call from a gesture's onChanged
+    /// that may fire multiple times during a single touch.
     func start() async -> Bool {
+        if let existing = startTask {
+            return await existing.value
+        }
+        let task = Task<Bool, Never> { @MainActor in
+            await self.startImpl()
+        }
+        startTask = task
+        let ok = await task.value
+        // Leave startTask set until teardown clears it. `awaitStart()`
+        // and finish/cancel rely on this to detect "start already done".
+        return ok
+    }
+
+    private func startImpl() async -> Bool {
         let granted = await requestPermission()
         guard granted else { return false }
 
@@ -69,8 +94,13 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
-    /// Returns nil if too short to be a valid bubble. Caller cleans up the file.
-    func finish() -> (url: URL, duration: TimeInterval)? {
+    /// Returns nil if too short to be a valid bubble. Caller cleans up
+    /// the file. Awaits any in-flight `start()` first — a fast tap that
+    /// fires onEnded before `startImpl()` finished must still tear down
+    /// the recorder that's about to come up, otherwise it lingers and
+    /// breaks every subsequent mic press.
+    func finish() async -> (url: URL, duration: TimeInterval)? {
+        if let task = startTask { _ = await task.value }
         defer { teardown() }
         guard let r = recorder, let outURL = url else { return nil }
         let duration = startedAt.map { Date().timeIntervalSince($0) } ?? r.currentTime
@@ -83,7 +113,10 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         return (outURL, duration)
     }
 
-    func cancel() {
+    /// Async so a swipe-up cancel after a fast tap waits for the
+    /// in-flight start to land before tearing it down.
+    func cancel() async {
+        if let task = startTask { _ = await task.value }
         if let outURL = url {
             try? FileManager.default.removeItem(at: outURL)
         }
@@ -102,6 +135,7 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isRecording = false
         elapsed = 0
         level = 0
+        startTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 

@@ -171,6 +171,8 @@ final class ContactService: ObservableObject {
 
     func clearUnread(for uin: Int) {
         UnreadStore.shared.clearPeer(uin)
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+        BadgeCounter.syncIcon()
         guard let idx = contacts.firstIndex(where: { $0.uin == uin }) else { return }
         contacts[idx].unread = 0
     }
@@ -180,6 +182,8 @@ final class ContactService: ObservableObject {
         contacts = []
         pendingRequests = []
         UnreadStore.shared.wipeAll()
+        BadgeCounter.resetAll()
+        BadgeCounter.syncIcon()
     }
 
     func clearForDecoy() {

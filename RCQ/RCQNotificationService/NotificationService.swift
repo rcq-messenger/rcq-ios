@@ -128,7 +128,19 @@ class NotificationService: UNNotificationServiceExtension {
         // from the same UIN into a single notification group AND
         // gives the main app's `didReceive` handler a deterministic
         // `peer-<UIN>` token to parse for tap-routing.
-        content.threadIdentifier = "peer-\(decrypted.senderUIN)"
+        let threadKey = "peer-\(decrypted.senderUIN)"
+        content.threadIdentifier = threadKey
+
+        // User-visible envelopes bump the unread counter so the icon
+        // gets a badge. Read receipts / reactions / bounces / edits /
+        // delete-for-everyone do NOT bump — they're plumbing the main
+        // app handles silently. Setting `content.badge` here is what
+        // makes iOS update the icon's red dot; without it iOS leaves
+        // the previous value alone (typically 0).
+        if Self.envelopeIsUserVisible(decrypted.envelope) {
+            let total = BadgeCounter.increment(threadKey: threadKey)
+            content.badge = NSNumber(value: total)
+        }
 
         switch decrypted.envelope {
         case .text(_, let text, _, _, _):
@@ -298,6 +310,21 @@ class NotificationService: UNNotificationServiceExtension {
         }
         let shared = UserDefaults(suiteName: AppGroup.identifier)
         return shared?.string(forKey: "rcq.app_language")
+    }
+
+    /// User-visible envelopes drive the badge counter. Silent envelopes
+    /// (read receipts, reactions, bounces, edits, delete-for-everyone)
+    /// are plumbing — they still come through NSE so the ratchet
+    /// advances in the right process, but they must not inflate the
+    /// unread count.
+    private static func envelopeIsUserVisible(_ envelope: Envelope) -> Bool {
+        switch envelope {
+        case .text, .photo, .video, .voice, .file, .location,
+             .premiumPhoto, .premiumVideo, .systemNotice, .poll:
+            return true
+        case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit:
+            return false
+        }
     }
 
     private func envelopeKind(_ envelope: Envelope) -> String {

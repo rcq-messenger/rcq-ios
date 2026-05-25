@@ -565,6 +565,18 @@ struct ChatView: View {
             // Tell the in-app banner service which chat is on-screen
             // so a same-thread arrival doesn't show a redundant banner.
             MessageBannerService.shared.setActive(vm.target.thread)
+            // Mark this thread as read for badge purposes and sync the
+            // icon to the new total. NSE may have bumped this thread's
+            // counter while we were backgrounded; entering the chat is
+            // the user signal to clear it.
+            let badgeKey: String = {
+                switch vm.target.thread {
+                case .peer(let uin): return BadgeCounter.threadKey(peerUIN: uin)
+                case .group(let id): return BadgeCounter.threadKey(groupID: id)
+                }
+            }()
+            BadgeCounter.reset(threadKey: badgeKey)
+            BadgeCounter.syncIcon()
             Task { await tradesSvc.refreshAll() }
             Task {
                 if itemsSvc.catalog == nil { await itemsSvc.refreshCatalog() }
@@ -2027,10 +2039,16 @@ struct ChatView: View {
                         let armed = voiceCancelArmed
                         micDragOffset = 0
                         voiceCancelArmed = false
-                        if armed {
-                            voiceRecorder.cancel()
-                        } else if let result = voiceRecorder.finish() {
-                            Task {
+                        // Always go through a Task so we can await any
+                        // in-flight `start()` before deciding what to do
+                        // with the recorder. Without this a fast tap
+                        // could fire `finish()` while `startImpl()` was
+                        // still running and leave the recorder orphaned,
+                        // breaking every subsequent mic press.
+                        Task {
+                            if armed {
+                                await voiceRecorder.cancel()
+                            } else if let result = await voiceRecorder.finish() {
                                 if let err = await vm.sendVoice(fileURL: result.url, durationSec: result.duration) {
                                     videoError = err
                                 }

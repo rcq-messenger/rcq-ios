@@ -266,6 +266,13 @@ struct RootView: View {
         // Also fires before boot completes (during OnboardingView),
         // which is fine — no banners can fire pre-boot anyway.
         BannerWindowController.shared.install()
+
+        // NSE may have bumped the unread counter while we were
+        // backgrounded; mirror its current state to the app-icon
+        // badge so the red dot disappears the moment the user
+        // re-enters the app (and reappears if they back out again
+        // with unopened chats).
+        BadgeCounter.syncIcon()
         guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }

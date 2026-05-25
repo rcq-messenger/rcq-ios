@@ -1075,6 +1075,11 @@ final class MessageService {
         let thread: ThreadID
         /// True only for brand-new content; false for dedup, control envelopes, visits.
         let isNewContent: Bool
+        /// True when the NSE already decrypted this envelope and pre-
+        /// populated `PushDecryptCache`. The fetch-queue caller uses
+        /// this to skip a second app-icon badge bump — NSE already
+        /// did it in the extension process.
+        let wasInNSECache: Bool
     }
 
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
@@ -1084,10 +1089,13 @@ final class MessageService {
             // Hand off NSE-decrypted plaintext if present — decrypting v=2
             // twice would advance the Double Ratchet twice and fail.
             let decrypted: DecryptedEnvelope
+            let fromNSE: Bool
             if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
                 decrypted = cached
+                fromNSE = true
             } else {
                 decrypted = try crypto.decrypt(envelopeB64: ws.payload)
+                fromNSE = false
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
 
@@ -1471,7 +1479,7 @@ final class MessageService {
                 ws.offline ? 1 : 0,
                 inserted ? 1 : 0
             )
-            return IngestOutcome(thread: thread, isNewContent: inserted)
+            return IngestOutcome(thread: thread, isNewContent: inserted, wasInNSECache: fromNSE)
         } catch {
             // Common: stale identity_key after peer reinstall/re-register.
             os_log(
@@ -1512,16 +1520,28 @@ final class MessageService {
                 // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
                 guard outcome.isNewContent else { continue }
                 let viewing = MessageBannerService.shared.isViewing(outcome.thread)
+                // BadgeCounter (the app-icon counter) was already bumped
+                // by the NSE for any message the user got a push for.
+                // We only need to bump it here for envelopes that landed
+                // strictly via WebSocket / offline queue without a push.
+                let bumpIcon = !viewing && !outcome.wasInNSECache
                 switch outcome.thread {
                 case .peer(let uin):
                     if !ContactService.shared.contacts.contains(where: { $0.uin == uin }) {
                         sawUnknownPeer = true
                     }
                     if !viewing { ContactService.shared.incrementUnread(for: uin) }
+                    if bumpIcon {
+                        BadgeCounter.increment(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+                    }
                 case .group(let id):
                     if !viewing { GroupService.shared.incrementUnread(id) }
+                    if bumpIcon {
+                        BadgeCounter.increment(threadKey: BadgeCounter.threadKey(groupID: id))
+                    }
                 }
             }
+            BadgeCounter.syncIcon()
             if sawUnknownPeer {
                 await ContactService.shared.refresh()
             }

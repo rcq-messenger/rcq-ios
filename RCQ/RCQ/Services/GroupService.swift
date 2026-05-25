@@ -25,6 +25,8 @@ final class GroupService: ObservableObject {
 
     func clearUnread(_ groupID: Int) {
         UnreadStore.shared.clearGroup(groupID)
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(groupID: groupID))
+        BadgeCounter.syncIcon()
         unread[groupID] = 0
     }
 
