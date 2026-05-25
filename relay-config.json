@@ -1,6 +1,6 @@
 {
-  "version": 7,
-  "issued_at": "2026-05-25T10:13:50Z",
+  "version": 8,
+  "issued_at": "2026-05-25T18:29:40Z",
   "relays": [
     {
       "tag": "relay-do-fra-yandex-hy2",
@@ -25,6 +25,16 @@
       "flow": "xtls-rprx-vision"
     },
     {
+      "tag": "relay-oracle-il-hy2",
+      "proto": "hysteria2",
+      "server": "129.159.143.135",
+      "port": 443,
+      "sni": "www.microsoft.com",
+      "password": "bvuvu74CVsiXdcJazcYphnO5",
+      "obfs_password": "PaEHrZABTk36orhfFON7Jure",
+      "priority": 2
+    },
+    {
       "tag": "relay-oracle-il",
       "proto": "vless",
       "server": "129.159.143.135",
@@ -33,8 +43,18 @@
       "sni": "www.microsoft.com",
       "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
       "short_id": "318567678ac9878e",
-      "priority": 2,
+      "priority": 3,
       "flow": "xtls-rprx-vision"
+    },
+    {
+      "tag": "relay-gcp-hy2",
+      "proto": "hysteria2",
+      "server": "35.238.53.96",
+      "port": 443,
+      "sni": "www.apple.com",
+      "password": "QaY3uT8EmfZxfON65jaT5bSu",
+      "obfs_password": "fLpJ2c211xjnZcP9VNcNpbZP",
+      "priority": 4
     },
     {
       "tag": "relay-gcp",
@@ -45,7 +65,7 @@
       "sni": "www.apple.com",
       "public_key": "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw",
       "short_id": "b5b8979af1f27aab",
-      "priority": 3,
+      "priority": 5,
       "flow": "xtls-rprx-vision"
     },
     {
@@ -57,9 +77,9 @@
       "sni": "www.amazon.com",
       "public_key": "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
       "short_id": "533142a04b016a00",
-      "priority": 4,
+      "priority": 6,
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "X30gkkopucSZXWbszg1XLcfzMd6vCLE3TseZ738DfChscfXHCgae27z/NjuDMTFo8mMXJSL081GHIXY0TKlXAw=="
+  "sig": "4Ln17q+g8AHmETlCji6hJrB3Hv50ZSRFc4D2FLZfThmLI+zv8Gpr5h/zuDVLVRFKbJFeZfc+WHhEpvIEuxYdDQ=="
 }
