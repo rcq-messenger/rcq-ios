@@ -71,6 +71,13 @@ struct ConnectionDiagnosticsView: View {
             value: "enabled=\(SingBoxTransport.isEnabled)  active=\(SingBoxTransport.shared.isActive)  port=\(port)",
             ok: true
         ))
+        if let lastErr = SingBoxTransport.lastStartError {
+            out.append(DiagLine(
+                label: "Transport last error",
+                value: lastErr,
+                ok: false,
+            ))
+        }
         out.append(DiagLine(
             label: "App state",
             value: "offline=\(AppState.shared.isOffline)  ws=\(WebSocketService.shared.isConnected)",

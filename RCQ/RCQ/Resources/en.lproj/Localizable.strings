@@ -876,7 +876,7 @@
 "boot.engaging_stealth" = "stealth mode…";
 "boot.stealth_active" = "stealth active";
 "stealth.tooltip.title" = "Stealth Mode";
-"stealth.tooltip.body" = "Your connection is being routed through an encrypted tunnel — your ISP's DPI can't see that you're using RCQ. It engages automatically when we detect blocking. No VPN needed — it just works.";
+"stealth.tooltip.body" = "Your connection is protected and hidden. If your provider tries to block the connection, we work around it automatically. No VPN needed, it just works.";
 
 /* ── Stranger Mode ──────────────────────────────────────────── */
 

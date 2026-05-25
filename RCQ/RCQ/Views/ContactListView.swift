@@ -543,19 +543,14 @@ struct ContactListView: View {
             .buttonStyle(.plain)
             Group {
                 if singboxActivePort > 0 {
-                    Button {
+                    StealthHeaderBadge {
                         showStealthInfo = true
-                    } label: {
-                        Image(systemName: "eye.slash.circle.fill")
-                            .font(.system(size: 17))
-                            .foregroundColor(Theme.Color.accent)
                     }
-                    .buttonStyle(.plain)
                 } else {
                     Color.clear
                 }
             }
-            .frame(width: 26, height: 26)
+            .frame(width: 22, height: 22)
         }
     }
 
@@ -1718,6 +1713,30 @@ private struct AudioRoomRow: View {
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)
         .background(Theme.Color.bgPrimary)
+    }
+}
+
+/// Small "stealth active" badge in the contact list header. Slow
+/// breathing pulse so the active state catches the eye without
+/// distracting. Tap surfaces the explainer alert.
+private struct StealthHeaderBadge: View {
+    let onTap: () -> Void
+    @State private var pulse: Bool = false
+
+    var body: some View {
+        Button(action: onTap) {
+            Image(systemName: "eye.slash.circle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Color.accent)
+                .scaleEffect(pulse ? 1.08 : 1.0)
+                .opacity(pulse ? 1.0 : 0.85)
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
     }
 }
 

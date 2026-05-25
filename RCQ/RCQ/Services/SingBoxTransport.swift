@@ -12,6 +12,12 @@ final class SingBoxTransport {
         static let enabled = "rcq.singbox.enabled"
         static let activePort = "rcq.singbox.activePort"
         static let lastGoodRelay = "rcq.singbox.lastGoodRelayTag"
+        /// Last error message from `start()`, persisted so the
+        /// diagnostics view can surface it. Cleared on next successful
+        /// start. Without this any sing-box init failure is invisible
+        /// past the splash and there's no signal for "why is stealth
+        /// not engaging".
+        static let lastError = "rcq.singbox.lastError"
     }
 
     private var box: RcqboxBoxService?
@@ -36,27 +42,46 @@ final class SingBoxTransport {
     func start() async throws {
         guard !isActive else { return }
         guard let service = RcqboxBoxService() else {
-            throw NSError(domain: "SingBoxTransport", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "RcqboxBoxService init returned nil"])
+            let err = NSError(domain: "SingBoxTransport", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "RcqboxBoxService init returned nil"])
+            UserDefaults.standard.set(err.localizedDescription, forKey: Keys.lastError)
+            throw err
         }
         let configJSON = Self.buildConfig(port: Self.localPort)
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try service.start(configJSON)
-                    cont.resume()
-                } catch {
-                    cont.resume(throwing: error)
+        do {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try service.start(configJSON)
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
                 }
             }
+        } catch {
+            UserDefaults.standard.set(
+                String(describing: error).prefix(400).description,
+                forKey: Keys.lastError,
+            )
+            throw error
         }
         box = service
         isActive = true
         UserDefaults.standard.set(Self.localPort, forKey: Keys.activePort)
+        UserDefaults.standard.removeObject(forKey: Keys.lastError)
         print("[SingBoxTransport] started — local proxy 127.0.0.1:\(Self.localPort)")
         Task.detached(priority: .utility) {
             await Self.refreshLastGoodInBackground()
         }
+    }
+
+    /// Exposes the last `start()` error string to the diagnostics view.
+    /// Nil when the last start succeeded (or no start has been
+    /// attempted yet).
+    nonisolated static var lastStartError: String? {
+        let s = UserDefaults.standard.string(forKey: Keys.lastError)
+        return (s?.isEmpty ?? true) ? nil : s
     }
 
     func stop() {
