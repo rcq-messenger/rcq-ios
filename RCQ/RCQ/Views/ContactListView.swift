@@ -265,6 +265,17 @@ struct ContactListView: View {
                     showPending = true
                     appState.pendingOpenPending = false
                 }
+                // Cold-launch push-tap navigation: didReceive sets
+                // pendingOpenChatUIN before this view mounts, so the
+                // initial value never triggers `.onChange`. Manually
+                // try once on first appear; the existing onChange
+                // handlers cover hot-launch and contact-list updates.
+                if appState.pendingOpenChatUIN != nil {
+                    tryOpenPendingChat()
+                }
+                if appState.pendingOpenGroupID != nil {
+                    tryOpenPendingGroup()
+                }
             }
             .sheet(isPresented: Binding(
                 get: { trades.freshIncoming != nil },
