@@ -650,8 +650,10 @@
 "chat.album.count" = "%d items";
 "media_picker.title" = "Photos & Videos";
 "media_picker.send" = "Add (%d)";
-"media_picker.denied" = "RCQ doesn't have access to your photo library. Enable it in Settings to attach photos and videos.";
+"media_picker.denied" = "RCQ doesn't have library access. Use the native picker below, or open Settings to grant standing access.";
 "media_picker.open_settings" = "Open Settings";
+"media_picker.native" = "Native picker";
+"media_picker.use_native" = "Open native picker";
 "chat.attach.photo" = "Photo";
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Camera";
@@ -818,6 +820,12 @@
 "group.no_matches" = "No matches. Try the full UIN.";
 "group.title" = "Group";
 "group.section.members" = "Members (%d)";
+"group.section.notifications" = "Notifications";
+"group.notifications.mute" = "Mute notifications";
+"group.notifications.unmute" = "Unmute notifications";
+"group.notifications.muted.hint" = "Messages arrive silently, no banner.";
+"group.notifications.unmuted.hint" = "Messages arrive with sound and banner.";
+"group.members.show_more" = "Show all (+%d)";
 "group.section.manage" = "Manage";
 "group.section.settings" = "Settings";
 "group.section.description" = "Description";

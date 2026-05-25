@@ -26,6 +26,21 @@ enum UnifiedMediaPickerPresenter {
             },
             onCancel: {
                 hostRef?.dismiss(animated: true) { onCancel() }
+            },
+            onSwitchToNative: {
+                // Tear down the in-app picker, then on the next runloop
+                // hand control to the system PHPicker. The two can't
+                // coexist (modal-on-modal trips the iOS 26 dismiss bug
+                // and we'd lose the picks). Native picker delivers
+                // results through the same onDone/onCancel pair so the
+                // caller is none the wiser.
+                hostRef?.dismiss(animated: true) {
+                    DispatchQueue.main.async {
+                        ImperativePicker.pickMedia(limit: limit) { picks in
+                            if picks.isEmpty { onCancel() } else { onDone(picks) }
+                        }
+                    }
+                }
             }
         )
         let host = UIHostingController(rootView: view)
@@ -64,6 +79,12 @@ struct UnifiedMediaPicker: View {
     let limit: Int
     let onDone: ([CapturedMedia]) -> Void
     let onCancel: () -> Void
+    /// Fires when the user taps the "Native" toolbar button. The
+    /// presenter tears this picker down and routes through
+    /// `ImperativePicker.pickMedia` instead so users locked behind
+    /// Limited Photo Access (especially 0-photo grant) have an
+    /// escape hatch that doesn't require a Settings trip.
+    var onSwitchToNative: () -> Void = {}
 
     @State private var assets: [PHAsset] = []
     @State private var selected: [String] = []  // localIdentifier order = pick order
@@ -83,6 +104,18 @@ struct UnifiedMediaPicker: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.cancel".localized) { onCancel() }
+                }
+                // Native PHPicker escape hatch — runs out-of-process,
+                // does NOT require photo-library permission, and shows
+                // every asset regardless of any "Limited Access" pin
+                // the user set. Users who restricted to 0/1 photos
+                // can pick anything from here without a Settings trip.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { onSwitchToNative() } label: {
+                        Image(systemName: "photo.stack")
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    .accessibilityLabel("media_picker.native".localized)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -129,6 +162,20 @@ struct UnifiedMediaPicker: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+            // PHPicker runs out-of-process and doesn't need photo
+            // permission — offer it as the first action so denied
+            // users don't have to make a Settings trip just to send
+            // a single image.
+            Button {
+                onSwitchToNative()
+            } label: {
+                Label("media_picker.use_native".localized, systemImage: "photo.stack")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.Color.accent.opacity(0.15))
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
             Button("media_picker.open_settings".localized) {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)

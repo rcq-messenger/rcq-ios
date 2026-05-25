@@ -6,6 +6,7 @@ struct GroupInfoView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var groups = GroupService.shared
     @StateObject private var contacts = ContactService.shared
+    @StateObject private var sound = SoundService.shared
     @State private var showAddMember = false
     @State private var confirmLeave = false
     @State private var error: String?
@@ -14,6 +15,11 @@ struct GroupInfoView: View {
     @State private var petPreview: PetPreviewTarget?
     @State private var showSettings = false
     @State private var showFullAvatar = false
+    /// Members past the first N are folded behind a "Show all" disclosure
+    /// — on big groups the info screen was unscrollable with every member
+    /// rendered eagerly.
+    @State private var showAllMembers = false
+    private static let memberPreviewLimit: Int = 5
 
     private var currentGroup: RCQGroup {
         groups.find(group.id) ?? group
@@ -37,6 +43,7 @@ struct GroupInfoView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     header
                     descriptionBlock
+                    notificationsSection
                     // Roster hidden by the owner → everyone but the
                     // owner sees just the count, not who's in it.
                     if currentGroup.membersHidden && !amOwner {
@@ -46,11 +53,7 @@ struct GroupInfoView: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                         }
                     } else {
-                        section(String(format: "group.section.members".localized, currentGroup.members.count)) {
-                            ForEach(currentGroup.members) { m in
-                                memberRow(m)
-                            }
-                        }
+                        membersSection
                     }
                     // Paid groups: only owner can invite (free invites
                     // would let anyone bypass the entry-price paywall).
@@ -154,6 +157,69 @@ struct GroupInfoView: View {
                 Task { await leaveOrDelete() }
             }
             Button("common.cancel".localized, role: .cancel) {}
+        }
+    }
+
+    /// Mute group notifications toggle. Hits the same path as the
+    /// long-press menu on a chat row, but surfaces it explicitly here
+    /// because testers reported they couldn't find the long-press
+    /// affordance (and the in-chat header was the wrong place for it).
+    private var notificationsSection: some View {
+        let thread: ThreadID = .group(id: currentGroup.id)
+        let muted = sound.isMuted(thread: thread)
+        return section("group.section.notifications".localized) {
+            Button {
+                sound.toggleMute(thread: thread)
+            } label: {
+                HStack {
+                    Image(systemName: muted ? "bell.slash.fill" : "bell.fill")
+                        .foregroundColor(muted ? Theme.Color.statusBusy : Theme.Color.accent)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(muted ? "group.notifications.unmute" : "group.notifications.mute")
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Text(muted ? "group.notifications.muted.hint" : "group.notifications.unmuted.hint")
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Members section: collapses past `memberPreviewLimit` so a 200+
+    /// member group doesn't make the info screen unscrollable. Hidden
+    /// roster path doesn't reach here.
+    private var membersSection: some View {
+        let visible: [RCQGroupMember] = {
+            if showAllMembers || currentGroup.members.count <= Self.memberPreviewLimit {
+                return currentGroup.members
+            }
+            return Array(currentGroup.members.prefix(Self.memberPreviewLimit))
+        }()
+        let hidden = max(0, currentGroup.members.count - visible.count)
+        return section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+            ForEach(visible) { m in
+                memberRow(m)
+            }
+            if hidden > 0 && !showAllMembers {
+                Button {
+                    withAnimation { showAllMembers = true }
+                } label: {
+                    HStack {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundColor(Theme.Color.accent)
+                            .frame(width: 22)
+                        Text(String(format: "group.members.show_more".localized, hidden))
+                            .foregroundColor(Theme.Color.accent)
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
