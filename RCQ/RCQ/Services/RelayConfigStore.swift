@@ -191,12 +191,21 @@ final class RelayConfigStore {
 
     // MARK: - Bundled fallback
 
-    // NOTE: the hy2 entry for relay-do-fra-yandex was pulled from this
-    // bundled fallback when we discovered Rcqbox.xcframework was built
-    // without `with_quic` — sing-box panics on any hysteria2 outbound
-    // init. Once the framework is rebuilt with QUIC support, restore
-    // the entry here AND in tools/relays.yaml + the signed v7 config.
     private static let bundledFallback: [RelayEntry] = [
+        // Hysteria2 (UDP/443) on the yandex relay — defeats DPI that
+        // matches the Reality TLS handshake. Highest priority so
+        // urltest tries it first on hostile networks. Restored after
+        // Rcqbox.xcframework was rebuilt with `with_quic` tag.
+        RelayEntry(
+            tag: "relay-do-fra-yandex-hy2",
+            server: "165.22.90.214",
+            port: 443,
+            sni: "www.yandex.ru",
+            priority: 0,
+            proto: .hysteria2,
+            password: "JN0qzA4LJfhHPKKN3QHj4eN8",
+            obfsPassword: "jXfGkLToOkTihpeJzDiNf8Bb",
+        ),
         RelayEntry(
             tag: "relay-do-fra-yandex",
             server: "165.22.90.214",

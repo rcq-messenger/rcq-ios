@@ -35,7 +35,10 @@ final class SingBoxTransport {
 
     func start() async throws {
         guard !isActive else { return }
-        let service = RcqboxBoxService()
+        guard let service = RcqboxBoxService() else {
+            throw NSError(domain: "SingBoxTransport", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "RcqboxBoxService init returned nil"])
+        }
         let configJSON = Self.buildConfig(port: Self.localPort)
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -156,14 +159,7 @@ final class SingBoxTransport {
     }
 
     private static func buildConfig(port: Int) -> String {
-        // The bundled Rcqbox.xcframework was built without the
-        // `with_quic` Go tag, so any hysteria2 outbound makes
-        // sing-box panic at start() with "QUIC is not included in
-        // this build". Filter those entries out until the framework
-        // is rebuilt; otherwise a single hy2 entry leaking in via a
-        // cached signed-config from before the v6 rotation would
-        // break stealth for everyone.
-        let ordered = orderedRelays().filter { $0.proto == .vless }
+        let ordered = orderedRelays()
         let outbounds: [[String: Any]] = {
             var out: [[String: Any]] = []
             out.append([
@@ -179,7 +175,7 @@ final class SingBoxTransport {
                 case .vless:
                     out.append(vlessOutbound(for: r))
                 case .hysteria2:
-                    continue  // unreachable — filtered above
+                    out.append(hysteria2Outbound(for: r))
                 }
             }
             return out

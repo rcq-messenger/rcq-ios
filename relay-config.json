@@ -1,7 +1,17 @@
 {
-  "version": 6,
-  "issued_at": "2026-05-25T09:17:01Z",
+  "version": 7,
+  "issued_at": "2026-05-25T10:13:50Z",
   "relays": [
+    {
+      "tag": "relay-do-fra-yandex-hy2",
+      "proto": "hysteria2",
+      "server": "165.22.90.214",
+      "port": 443,
+      "sni": "www.yandex.ru",
+      "password": "JN0qzA4LJfhHPKKN3QHj4eN8",
+      "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
+      "priority": 0
+    },
     {
       "tag": "relay-do-fra-yandex",
       "proto": "vless",
@@ -51,5 +61,5 @@
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "4XzzJUgV6nCnOY+PevqDGs7hTopL5nUjK2F5AqRCMhtYuGNI5DyGLO32garBa3i+t3kOwB4WZSYydmVOd6PBBg=="
+  "sig": "X30gkkopucSZXWbszg1XLcfzMd6vCLE3TseZ738DfChscfXHCgae27z/NjuDMTFo8mMXJSL081GHIXY0TKlXAw=="
 }
