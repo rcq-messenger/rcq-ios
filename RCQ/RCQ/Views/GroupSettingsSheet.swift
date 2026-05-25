@@ -14,9 +14,11 @@ struct GroupSettingsSheet: View {
 
     @State private var nameDraft: String = ""
     @State private var descriptionDraft: String = ""
+    @State private var pinnedDraft: String = ""
     @State private var entryPriceText: String = ""
     @State private var savingName = false
     @State private var savingDescription = false
+    @State private var savingPin = false
     @State private var savingPrice = false
     @State private var avatarUploading = false
     @State private var confirmAvatarRemove = false
@@ -39,6 +41,7 @@ struct GroupSettingsSheet: View {
                     Form {
                         nameSection(g)
                         descriptionSection(g)
+                        pinSection(g)
                         avatarSection(g)
                         if amOwner {
                             audienceSection(g)
@@ -69,6 +72,7 @@ struct GroupSettingsSheet: View {
                 guard let g = currentGroup else { return }
                 nameDraft = g.name
                 descriptionDraft = g.description ?? ""
+                pinnedDraft = g.pinnedText ?? ""
                 entryPriceText = g.entryPriceTokens.map(String.init) ?? ""
             }
             .confirmationDialog(
@@ -140,6 +144,42 @@ struct GroupSettingsSheet: View {
             }
         } header: {
             Text("group.section.description".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    @ViewBuilder
+    private func pinSection(_ g: RCQGroup) -> some View {
+        Section {
+            TextField(
+                "group.pin.placeholder".localized,
+                text: $pinnedDraft,
+                axis: .vertical,
+            )
+            .lineLimit(2...6)
+            .foregroundColor(Theme.Color.textPrimary)
+            HStack {
+                Text("group.pin.hint".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
+                Spacer()
+                Group {
+                    if savingPin {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("common.save".localized) {
+                            Task { await savePin() }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.Color.accent)
+                        .disabled(pinnedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                  == (g.pinnedText ?? ""))
+                    }
+                }
+                .frame(height: 20)
+            }
+        } header: {
+            Text("group.section.pin".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }
@@ -298,6 +338,14 @@ struct GroupSettingsSheet: View {
         defer { savingDescription = false }
         let trimmed = descriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         do { try await groups.setDescription(groupID: groupID, description: trimmed) }
+        catch { self.error = error.localizedDescription }
+    }
+
+    private func savePin() async {
+        savingPin = true
+        defer { savingPin = false }
+        let trimmed = pinnedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        do { try await groups.setPinnedText(groupID: groupID, pinnedText: trimmed) }
         catch { self.error = error.localizedDescription }
     }
 

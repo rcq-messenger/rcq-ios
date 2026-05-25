@@ -25,6 +25,14 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// everyone but the owner. Display-only — `members` still
     /// arrives (needed for per-recipient group encryption).
     var membersHidden: Bool = false
+    /// Pinned plaintext announcement, owner/admin-editable. Nil when
+    /// unset. Rendered as a sticky banner above the chat message list
+    /// so new joiners (who can't see encrypted history) at least see
+    /// the rules / welcome. Server stores plaintext — see backend
+    /// model comment for the rationale.
+    var pinnedText: String? = nil
+    var pinnedAt: Date? = nil
+    var pinnedBy: Int? = nil
     /// Uploaded group avatar — encrypted blob id + per-blob AES key
     /// (base64). Both NULL = no custom avatar, fall back to the
     /// generic person.3 glyph.
@@ -41,6 +49,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case entryPriceTokens = "entry_price_tokens"
         case isClosed = "is_closed"
         case membersHidden = "members_hidden"
+        case pinnedText = "pinned_text"
+        case pinnedAt = "pinned_at"
+        case pinnedBy = "pinned_by"
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
         case createdAt = "created_at"
@@ -58,6 +69,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.entryPriceTokens = try? c.decodeIfPresent(Int.self, forKey: .entryPriceTokens)
         self.isClosed = (try? c.decodeIfPresent(Bool.self, forKey: .isClosed)) ?? false
         self.membersHidden = (try? c.decodeIfPresent(Bool.self, forKey: .membersHidden)) ?? false
+        self.pinnedText = try? c.decodeIfPresent(String.self, forKey: .pinnedText)
+        self.pinnedAt = try? c.decodeIfPresent(Date.self, forKey: .pinnedAt)
+        self.pinnedBy = try? c.decodeIfPresent(Int.self, forKey: .pinnedBy)
         self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)

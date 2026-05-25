@@ -102,6 +102,16 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// Owner/admin — set the sticky pinned announcement. Pass an empty
+    /// string to clear (server flips the column back to NULL).
+    func setPinnedText(groupID: Int, pinnedText: String) async throws {
+        struct Body: Encodable { let pinned_text: String }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "PATCH", "/groups/\(groupID)", body: Body(pinned_text: pinnedText)
+        )
+        upsert(g)
+    }
+
     /// Owner-only — flip the broadcast mode. `"all"` lets everyone
     /// post, `"owner_only"` makes the group a one-way channel.
     func setPostPolicy(groupID: Int, policy: String) async throws {

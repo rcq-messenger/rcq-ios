@@ -379,6 +379,9 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) {
+            pinnedBanner
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
@@ -1466,6 +1469,45 @@ struct ChatView: View {
     private var isStrangerMode: Bool {
         if case .randomPeer = vm.target { return true }
         return false
+    }
+
+    /// Sticky banner above the message list showing the group's pinned
+    /// announcement. Only renders for groups with a non-empty pin.
+    /// New joiners (who can't read encrypted history) see the rules
+    /// the moment they enter the chat.
+    @ViewBuilder
+    private var pinnedBanner: some View {
+        if case .group(let snapshot) = vm.target,
+           let live = groupSvc.find(snapshot.id) ?? Optional(snapshot),
+           let text = live.pinnedText,
+           !text.isEmpty {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("chat.pin.title".localized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.Color.accent)
+                    Text(text)
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Theme.Color.bgSecondary.opacity(0.96))
+            .overlay(
+                Rectangle()
+                    .fill(Theme.Color.divider.opacity(0.5))
+                    .frame(height: 0.5),
+                alignment: .bottom
+            )
+        }
     }
 
     private var inputBar: some View {
