@@ -112,10 +112,12 @@ struct UnifiedMediaPicker: View {
                 // can pick anything from here without a Settings trip.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { onSwitchToNative() } label: {
-                        Image(systemName: "photo.stack")
+                        Label("media_picker.native".localized,
+                              systemImage: "photo.on.rectangle.angled")
+                            .labelStyle(.titleAndIcon)
+                            .font(.subheadline)
                             .foregroundColor(Theme.Color.accent)
                     }
-                    .accessibilityLabel("media_picker.native".localized)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -229,14 +231,24 @@ struct UnifiedMediaPicker: View {
         if status == .notDetermined {
             let granted = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
             await MainActor.run { authStatus = granted }
-            if granted == .authorized || granted == .limited {
-                await fetch()
+            // Limited access has no escape inside our custom grid (the
+            // user can't pick anything beyond their pinned subset).
+            // Hand them straight to PHPickerViewController, which runs
+            // out-of-process and shows the WHOLE library regardless of
+            // permission — explicitly the workflow Apple designed for
+            // this exact case.
+            if granted == .limited {
+                await MainActor.run { onSwitchToNative() }
+                return
             }
+            if granted == .authorized { await fetch() }
         } else {
             await MainActor.run { authStatus = status }
-            if status == .authorized || status == .limited {
-                await fetch()
+            if status == .limited {
+                await MainActor.run { onSwitchToNative() }
+                return
             }
+            if status == .authorized { await fetch() }
         }
     }
 

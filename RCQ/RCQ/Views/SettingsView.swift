@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var burning = false
     @State private var showAbout = false
     @State private var showBugBounty = false
+    @State private var showSoundSheet = false
     @State private var showReferral = false
     @State private var showLinkWeb = false
     @State private var showPrivacy = false
@@ -44,22 +45,22 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
 
                     Section("settings.sound".localized) {
-                        Toggle(isOn: $sound.isEnabled) {
-                            Text("settings.sound.toggle".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                        Toggle(isOn: $sound.presenceSoundEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.sound.presence".localized)
+                        Button {
+                            showSoundSheet = true
+                        } label: {
+                            HStack {
+                                Text("settings.sound.row".localized)
                                     .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.sound.presence.hint".localized)
-                                    .font(.caption)
+                                Spacer()
+                                Text(sound.isEnabled
+                                     ? "settings.sound.row.on".localized
+                                     : "settings.sound.row.off".localized)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
                         }
-                        .tint(Theme.Color.accent)
-                        .disabled(!sound.isEnabled)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -247,6 +248,7 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
+            .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
             .sheet(isPresented: $showReferral) { ReferralSheet() }
             .sheet(isPresented: $showDailyQA) { DailyQASheet() }
             .sheet(isPresented: $showLinkWeb) {

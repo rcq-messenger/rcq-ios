@@ -22,25 +22,38 @@ struct ChatView: View {
         return nil
     }
 
-    /// True iff the active chat target is a closed group. View-count
-    /// pings + counters are gated on this, matching the server enforcement.
-    private var activeGroupIsClosed: Bool {
+    /// View counts are a broadcast-mode affordance: only meaningful
+    /// when ONE person (the owner) is talking and everyone else is a
+    /// passive audience. In a chat where every member can post, an
+    /// eye-count per bubble feels like surveillance, so we gate on
+    /// `post_policy == owner_only`. Whether the group is also closed
+    /// is independent (closed just controls join).
+    private var activeGroupIsBroadcast: Bool {
         guard case .group(let snapshot) = vm.target else { return false }
-        return (groupSvc.find(snapshot.id) ?? snapshot).isClosed
+        return (groupSvc.find(snapshot.id) ?? snapshot).postPolicy == "owner_only"
     }
 
-    /// Returns the cached aggregate view count for a bubble in the
-    /// active closed group, or nil for 1:1 / open-group / not-yet-fetched.
+    /// True iff the active group is broadcast-mode AND this bubble was
+    /// sent by the group's owner. Owner-only broadcasts are the only
+    /// place we render and ping view counts.
+    private func bubbleEligibleForViews(_ msg: Message) -> Bool {
+        guard case .group(let snapshot) = vm.target else { return false }
+        let live = groupSvc.find(snapshot.id) ?? snapshot
+        return live.postPolicy == "owner_only" && msg.senderUIN == live.ownerUIN
+    }
+
+    /// Returns the cached aggregate view count for a bubble in an
+    /// owner-only broadcast group's owner message. Nil everywhere else.
     private func viewCountForBubble(_ msg: Message) -> Int? {
-        guard activeGroupIsClosed, let gid = activeGroupID else { return nil }
+        guard bubbleEligibleForViews(msg), let gid = activeGroupID else { return nil }
         return GroupViewsService.shared.count(group: gid, message: msg.id)
     }
 
-    /// Tells the GroupViewsService we have seen this message. The
-    /// service is idempotent — same message viewed twice this session
-    /// only pings the server once.
+    /// Tells the GroupViewsService we have seen this message. Only fires
+    /// for owner messages in an owner-only broadcast group; otherwise
+    /// silent. The service itself is idempotent per (group, message, viewer).
     private func pingViewIfCloseGroup(_ msg: Message) {
-        guard activeGroupIsClosed, let gid = activeGroupID else { return }
+        guard bubbleEligibleForViews(msg), let gid = activeGroupID else { return }
         GroupViewsService.shared.ping(
             group: gid,
             message: msg.id,
@@ -254,31 +267,10 @@ struct ChatView: View {
     @State private var lastComposerHeight: CGFloat = 36
     @StateObject private var voiceRecorder = VoiceRecorder.shared
     @StateObject private var voicePlayer = VoicePlayer.shared
-    /// Slide-LEFT distance past which a release discards the recording.
-    /// Telegram convention; user's horizontal swipe over the mic.
-    private static let voiceCancelHorizontalOffset: CGFloat = 80
-    /// Slide-UP distance past which a release engages "locked" mode —
-    /// recording continues without the finger held down, and the input
-    /// bar swaps to a stop/cancel control panel.
-    private static let voiceLockOffset: CGFloat = 60
-    /// Legacy name; still used as the visual feedback threshold inside
-    /// the recordingPill. Re-purposed from the old "slide up = cancel"
-    /// semantic to "slide up = lock"; the horizontal swipe now does cancel.
-    private static let voiceCancelOffset: CGFloat = 60
     /// Kinds whose caption/text can be edited. Must stay in sync with
     /// the editable set in `MessageStore.applyEdit`.
     private static let editableKinds: [MessageKind] =
         [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
-    @State private var micDragOffset: CGFloat = 0
-    @State private var micDragWidth: CGFloat = 0
-    @State private var voiceCancelArmed: Bool = false
-    /// Set true mid-gesture when the upward swipe crosses the lock
-    /// threshold. Visual hint only; the lock actually engages on release.
-    @State private var voiceLockArmed: Bool = false
-    /// True after the user has released a slid-up gesture. Recorder
-    /// keeps going; the bar shows `lockedPill` with stop + cancel
-    /// buttons until the user explicitly stops or cancels.
-    @State private var voiceLocked: Bool = false
     /// Finished recording awaiting user's send / re-listen / discard
     /// decision. Non-nil → input bar shows `previewPill`.
     @State private var pendingVoicePreview: PendingVoicePreview?
@@ -1352,13 +1344,24 @@ struct ChatView: View {
                     chatVisible = true
                 }
                 // Pull view counts for the currently-loaded window in
-                // closed groups. Skips silently for 1:1 and open groups.
-                if activeGroupIsClosed, let gid = activeGroupID {
-                    await GroupViewsService.shared.refresh(
-                        group: gid,
-                        messages: vm.messages.map { $0.id },
-                        groupIsClosed: true,
-                    )
+                // broadcast-mode groups only — that's the surface where
+                // view-counts under owner posts are meaningful. Filtered
+                // further to messages by the owner (only those render
+                // an eye-count badge), so we don't ask the server for
+                // counts we'll never show.
+                if activeGroupIsBroadcast, let gid = activeGroupID,
+                   case .group(let snapshot) = vm.target {
+                    let live = groupSvc.find(snapshot.id) ?? snapshot
+                    let ownerMessageIDs = vm.messages
+                        .filter { $0.senderUIN == live.ownerUIN }
+                        .map { $0.id }
+                    if !ownerMessageIDs.isEmpty {
+                        await GroupViewsService.shared.refresh(
+                            group: gid,
+                            messages: ownerMessageIDs,
+                            groupIsClosed: true,
+                        )
+                    }
                 }
             }
             if showScrollToBottom {
@@ -1544,17 +1547,14 @@ struct ChatView: View {
         // Pending media on its own is a sendable message — show the
         // send button even when the caption is empty.
         let showSend = !trimmed.isEmpty || !vm.pendingMedia.isEmpty
-        // Three voice-flow modes preempt the regular composer:
-        // 1. previewPill  — finished clip awaiting send / discard.
-        // 2. lockedPill   — recording continues, no finger held.
-        // 3. recordingPill — finger still down, mid-record.
+        // Two voice-flow modes preempt the regular composer:
+        // 1. previewPill   — finished clip awaiting send / discard.
+        // 2. recordingPill — recording in progress; tap stop → preview.
         let voiceFlowActive = pendingVoicePreview != nil
-            || voiceLocked || voiceRecorder.isRecording
+            || voiceRecorder.isRecording
         return HStack(alignment: .bottom, spacing: 8) {
             if let preview = pendingVoicePreview {
                 previewPill(preview)
-            } else if voiceLocked {
-                lockedPill
             } else if voiceRecorder.isRecording {
                 recordingPill
             } else {
@@ -2128,149 +2128,51 @@ struct ChatView: View {
     }
 
     private var micButton: some View {
-        Image(systemName: "mic.fill")
-            .font(.system(size: 18))
-            .foregroundColor(voiceRecorder.isRecording ? .red : Theme.Color.textPrimary)
-            .frame(width: 36, height: 36)
-            .background {
-                if voiceRecorder.isRecording {
-                    Circle().fill(Color.red.opacity(0.18))
-                } else {
-                    Circle().fill(.regularMaterial)
-                }
+        // Tap-to-start model. The previous drag-based gesture (hold to
+        // record, slide-up to lock, slide-left to cancel) was failing
+        // testers — drag thresholds tripped on incidental release
+        // motion so recordings auto-locked the moment the user lifted
+        // their finger, and the locked pill's stop button was hidden
+        // behind a tap-target that was too small to hit. Simpler: tap
+        // mic to start, big STOP / TRASH buttons in the recording pill
+        // do the work explicitly. No swipes. Everyone understands.
+        Button {
+            Task {
+                let ok = await voiceRecorder.start()
+                if !ok { voicePermissionDenied = true }
             }
-            .overlay(
-                Circle().strokeBorder(
-                    Color.white.opacity(0.08), lineWidth: 0.5
-                )
-            )
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if !voiceRecorder.isRecording && !voiceLocked
-                            && micDragOffset == 0 && micDragWidth == 0 {
-                            // First touch fires the mic permission prompt.
-                            Task {
-                                let ok = await voiceRecorder.start()
-                                if !ok { voicePermissionDenied = true }
-                            }
-                        }
-                        micDragOffset = value.translation.height
-                        micDragWidth = value.translation.width
-                        voiceCancelArmed = value.translation.width < -Self.voiceCancelHorizontalOffset
-                        voiceLockArmed = value.translation.height < -Self.voiceLockOffset
-                    }
-                    .onEnded { _ in
-                        let cancelArmed = voiceCancelArmed
-                        let lockArmed = voiceLockArmed
-                        micDragOffset = 0
-                        micDragWidth = 0
-                        voiceCancelArmed = false
-                        voiceLockArmed = false
-                        // Always go through a Task so we can await any
-                        // in-flight `start()` before deciding what to do
-                        // with the recorder. Without this a fast tap
-                        // could fire `finish()` while `startImpl()` was
-                        // still running and leave the recorder orphaned,
-                        // breaking every subsequent mic press.
-                        Task {
-                            if cancelArmed {
-                                await voiceRecorder.cancel()
-                            } else if lockArmed {
-                                // Lock engages: recording continues with
-                                // no finger needed. Bar switches to
-                                // `lockedPill` until the user taps stop
-                                // (→ preview) or cancel (→ discard).
-                                voiceLocked = true
-                            } else if let result = await voiceRecorder.finish() {
-                                // Default flow: release without lock or
-                                // cancel → go to preview, NOT auto-send.
-                                // The user wants a chance to re-listen
-                                // before committing.
-                                pendingVoicePreview = PendingVoicePreview(
-                                    url: result.url, duration: result.duration
-                                )
-                            }
-                        }
-                    }
-            )
-    }
-
-    private var recordingPill: some View {
-        // Three exclusive visual states: armed-to-cancel (red, "release"),
-        // armed-to-lock (accent, "release to lock"), neutral (hint hints).
-        let textColor: Color = {
-            if voiceCancelArmed { return .red }
-            if voiceLockArmed { return Theme.Color.accent }
-            return Theme.Color.textPrimary
-        }()
-        let hintIcon: String = {
-            if voiceCancelArmed { return "trash.fill" }
-            if voiceLockArmed { return "lock.fill" }
-            return "chevron.up"
-        }()
-        let hintKey: String = {
-            if voiceCancelArmed { return "chat.voice.cancel_armed" }
-            if voiceLockArmed { return "chat.voice.lock_armed" }
-            return "chat.voice.swipe_hints"
-        }()
-        return HStack(spacing: 10) {
-            Circle()
-                .fill(Color.red)
-                .frame(width: 10, height: 10)
-                .opacity(voiceRecorder.elapsed.truncatingRemainder(dividingBy: 1.0) < 0.5 ? 1.0 : 0.4)
-                .animation(.easeInOut(duration: 0.5), value: voiceRecorder.elapsed)
-            Text(formatRecordingDuration(voiceRecorder.elapsed))
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(textColor)
-            Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: hintIcon)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(hintKey.localized)
-                    .font(.caption)
-            }
-            .foregroundColor(
-                voiceCancelArmed ? .red
-                : voiceLockArmed ? Theme.Color.accent
-                : Theme.Color.textSecondary
-            )
+        } label: {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 18))
+                .foregroundColor(Theme.Color.textPrimary)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(.regularMaterial))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                .contentShape(Circle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 36)
-        .background(
-            Capsule().fill(
-                voiceCancelArmed ? Color.red.opacity(0.12)
-                : voiceLockArmed ? Theme.Color.accent.opacity(0.12)
-                : Theme.Color.bgSecondary.opacity(0.6)
-            )
-        )
-        .overlay(
-            Capsule().strokeBorder(
-                Theme.Color.divider.opacity(0.3), lineWidth: 0.5
-            )
-        )
+        .buttonStyle(.plain)
     }
 
-    /// Shown after the user slides up past the lock threshold and lifts
-    /// their finger. Recorder is still running; the bar gives the user
-    /// explicit stop (→ preview) and cancel (→ discard) controls.
-    private var lockedPill: some View {
+    /// Shown while recording is in progress. Big trash + big stop
+    /// buttons — both 44pt tap targets per HIG, both labelled — so the
+    /// user always sees how to abort or finish. No swipe gestures
+    /// anywhere. Stop → preview pill; trash → discard the take.
+    private var recordingPill: some View {
         HStack(spacing: 10) {
             Button {
-                voiceLocked = false
                 Task { await voiceRecorder.cancel() }
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.red)
+                VStack(spacing: 1) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("chat.voice.cancel_hint".localized)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundColor(.red)
+                .frame(width: 56, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Image(systemName: "lock.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Theme.Color.accent)
             Circle()
                 .fill(Color.red)
                 .frame(width: 10, height: 10)
@@ -2281,7 +2183,6 @@ struct ChatView: View {
                 .foregroundColor(Theme.Color.textPrimary)
             Spacer()
             Button {
-                voiceLocked = false
                 Task {
                     if let result = await voiceRecorder.finish() {
                         await MainActor.run {
@@ -2292,15 +2193,21 @@ struct ChatView: View {
                     }
                 }
             } label: {
-                Image(systemName: "stop.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(Theme.Color.accent)
+                VStack(spacing: 1) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 24))
+                    Text("chat.voice.stop_hint".localized)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundColor(Theme.Color.accent)
+                .frame(width: 64, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity, minHeight: 36)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 44)
         .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
         .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
     }
