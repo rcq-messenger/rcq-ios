@@ -14,21 +14,84 @@ final class RelayConfigStore {
     ]
     private static let cacheFile = "relay-config.json"
 
+    /// Wire protocol for a relay. `vless` is the legacy VLESS+Reality
+    /// path (TCP/443 with Reality TLS masquerade). `hysteria2` is the
+    /// QUIC-over-UDP path with Salamander obfuscation, added to defeat
+    /// carriers whose DPI matches the Reality TLS fingerprint.
+    enum RelayProtocol: String, Codable, Equatable {
+        case vless
+        case hysteria2
+    }
+
     struct RelayEntry: Codable, Equatable {
         let tag: String
         let server: String
         let port: Int
-        let uuid: String
         let sni: String
-        let publicKey: String
-        let shortID: String
-        let flow: String
         let priority: Int
+        /// Wire protocol. Defaults to `.vless` so payloads from older
+        /// signers (which omitted the field) keep working.
+        let proto: RelayProtocol
+
+        // VLESS+Reality fields. Populated when `proto == .vless`.
+        let uuid: String?
+        let publicKey: String?
+        let shortID: String?
+        let flow: String?
+
+        // Hysteria2 fields. Populated when `proto == .hysteria2`.
+        let password: String?
+        let obfsPassword: String?
 
         enum CodingKeys: String, CodingKey {
-            case tag, server, port, uuid, sni, flow, priority
+            case tag, server, port, sni, priority, proto, uuid, flow, password
             case publicKey = "public_key"
             case shortID = "short_id"
+            case obfsPassword = "obfs_password"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            tag = try c.decode(String.self, forKey: .tag)
+            server = try c.decode(String.self, forKey: .server)
+            port = try c.decode(Int.self, forKey: .port)
+            sni = try c.decode(String.self, forKey: .sni)
+            priority = try c.decode(Int.self, forKey: .priority)
+            proto = try c.decodeIfPresent(RelayProtocol.self, forKey: .proto) ?? .vless
+            uuid = try c.decodeIfPresent(String.self, forKey: .uuid)
+            publicKey = try c.decodeIfPresent(String.self, forKey: .publicKey)
+            shortID = try c.decodeIfPresent(String.self, forKey: .shortID)
+            flow = try c.decodeIfPresent(String.self, forKey: .flow)
+            password = try c.decodeIfPresent(String.self, forKey: .password)
+            obfsPassword = try c.decodeIfPresent(String.self, forKey: .obfsPassword)
+        }
+
+        init(
+            tag: String,
+            server: String,
+            port: Int,
+            sni: String,
+            priority: Int,
+            proto: RelayProtocol,
+            uuid: String? = nil,
+            publicKey: String? = nil,
+            shortID: String? = nil,
+            flow: String? = nil,
+            password: String? = nil,
+            obfsPassword: String? = nil
+        ) {
+            self.tag = tag
+            self.server = server
+            self.port = port
+            self.sni = sni
+            self.priority = priority
+            self.proto = proto
+            self.uuid = uuid
+            self.publicKey = publicKey
+            self.shortID = shortID
+            self.flow = flow
+            self.password = password
+            self.obfsPassword = obfsPassword
         }
     }
 
@@ -129,49 +192,66 @@ final class RelayConfigStore {
     // MARK: - Bundled fallback
 
     private static let bundledFallback: [RelayEntry] = [
+        // Hysteria2 (UDP/443) on the yandex relay — defeats DPI that
+        // matches the Reality TLS handshake. Highest priority so
+        // urltest tries it first on hostile networks.
+        RelayEntry(
+            tag: "relay-do-fra-yandex-hy2",
+            server: "165.22.90.214",
+            port: 443,
+            sni: "www.yandex.ru",
+            priority: 0,
+            proto: .hysteria2,
+            password: "JN0qzA4LJfhHPKKN3QHj4eN8",
+            obfsPassword: "jXfGkLToOkTihpeJzDiNf8Bb",
+        ),
         RelayEntry(
             tag: "relay-do-fra-yandex",
             server: "165.22.90.214",
             port: 443,
-            uuid: "2081b3c4-faaa-4cce-a0ab-607197b28237",
             sni: "www.yandex.ru",
+            priority: 1,
+            proto: .vless,
+            uuid: "2081b3c4-faaa-4cce-a0ab-607197b28237",
             publicKey: "n33TZTLNrc6X7jTGrKWex_sk8aIQ6Qqz-eC8lqYMii8",
             shortID: "aa5d483441e59ac7",
             flow: "xtls-rprx-vision",
-            priority: 1,
         ),
         RelayEntry(
             tag: "relay-oracle-il",
             server: "129.159.143.135",
             port: 443,
-            uuid: "ff005e0c-175e-4475-a166-eeac88f514e2",
             sni: "www.microsoft.com",
+            priority: 2,
+            proto: .vless,
+            uuid: "ff005e0c-175e-4475-a166-eeac88f514e2",
             publicKey: "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
             shortID: "318567678ac9878e",
             flow: "xtls-rprx-vision",
-            priority: 2,
         ),
         RelayEntry(
             tag: "relay-gcp",
             server: "35.238.53.96",
             port: 443,
-            uuid: "8e3b35d3-18a6-406d-9ac6-c5558a806663",
             sni: "www.apple.com",
+            priority: 3,
+            proto: .vless,
+            uuid: "8e3b35d3-18a6-406d-9ac6-c5558a806663",
             publicKey: "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw",
             shortID: "b5b8979af1f27aab",
             flow: "xtls-rprx-vision",
-            priority: 3,
         ),
         RelayEntry(
             tag: "relay-aws-sg",
             server: "47.129.249.170",
             port: 443,
-            uuid: "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
             sni: "www.amazon.com",
+            priority: 4,
+            proto: .vless,
+            uuid: "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
             publicKey: "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
             shortID: "533142a04b016a00",
             flow: "xtls-rprx-vision",
-            priority: 4,
         ),
     ]
 }

@@ -168,24 +168,12 @@ final class SingBoxTransport {
                 "tolerance": 50,
             ])
             for r in ordered {
-                out.append([
-                    "type": "vless",
-                    "tag": r.tag,
-                    "server": r.server,
-                    "server_port": r.port,
-                    "uuid": r.uuid,
-                    "flow": r.flow,
-                    "tls": [
-                        "enabled": true,
-                        "server_name": r.sni,
-                        "utls": ["enabled": true, "fingerprint": "chrome"],
-                        "reality": [
-                            "enabled": true,
-                            "public_key": r.publicKey,
-                            "short_id": r.shortID,
-                        ],
-                    ],
-                ])
+                switch r.proto {
+                case .vless:
+                    out.append(vlessOutbound(for: r))
+                case .hysteria2:
+                    out.append(hysteria2Outbound(for: r))
+                }
             }
             return out
         }()
@@ -201,5 +189,53 @@ final class SingBoxTransport {
         ]
         let data = try! JSONSerialization.data(withJSONObject: config)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func vlessOutbound(for r: Relay) -> [String: Any] {
+        [
+            "type": "vless",
+            "tag": r.tag,
+            "server": r.server,
+            "server_port": r.port,
+            "uuid": r.uuid ?? "",
+            "flow": r.flow ?? "xtls-rprx-vision",
+            "tls": [
+                "enabled": true,
+                "server_name": r.sni,
+                "utls": ["enabled": true, "fingerprint": "chrome"],
+                "reality": [
+                    "enabled": true,
+                    "public_key": r.publicKey ?? "",
+                    "short_id": r.shortID ?? "",
+                ],
+            ],
+        ]
+    }
+
+    /// Hysteria2 outbound. UDP transport with Salamander obfuscation
+    /// wrapping every QUIC packet so DPI cannot fingerprint the
+    /// handshake. `insecure: true` because the relay carries a self-
+    /// signed certificate; auth is established out-of-band through the
+    /// user password + obfs password rather than via PKI.
+    private static func hysteria2Outbound(for r: Relay) -> [String: Any] {
+        var node: [String: Any] = [
+            "type": "hysteria2",
+            "tag": r.tag,
+            "server": r.server,
+            "server_port": r.port,
+            "password": r.password ?? "",
+            "tls": [
+                "enabled": true,
+                "server_name": r.sni,
+                "insecure": true,
+            ],
+        ]
+        if let obfs = r.obfsPassword, !obfs.isEmpty {
+            node["obfs"] = [
+                "type": "salamander",
+                "password": obfs,
+            ]
+        }
+        return node
     }
 }

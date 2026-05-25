@@ -1,9 +1,20 @@
 {
-  "version": 4,
-  "issued_at": "2026-05-24T21:12:47Z",
+  "version": 5,
+  "issued_at": "2026-05-25T08:38:43Z",
   "relays": [
     {
+      "tag": "relay-do-fra-yandex-hy2",
+      "proto": "hysteria2",
+      "server": "165.22.90.214",
+      "port": 443,
+      "sni": "www.yandex.ru",
+      "password": "JN0qzA4LJfhHPKKN3QHj4eN8",
+      "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
+      "priority": 0
+    },
+    {
       "tag": "relay-do-fra-yandex",
+      "proto": "vless",
       "server": "165.22.90.214",
       "port": 443,
       "uuid": "2081b3c4-faaa-4cce-a0ab-607197b28237",
@@ -15,6 +26,7 @@
     },
     {
       "tag": "relay-oracle-il",
+      "proto": "vless",
       "server": "129.159.143.135",
       "port": 443,
       "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
@@ -26,6 +38,7 @@
     },
     {
       "tag": "relay-gcp",
+      "proto": "vless",
       "server": "35.238.53.96",
       "port": 443,
       "uuid": "8e3b35d3-18a6-406d-9ac6-c5558a806663",
@@ -37,6 +50,7 @@
     },
     {
       "tag": "relay-aws-sg",
+      "proto": "vless",
       "server": "47.129.249.170",
       "port": 443,
       "uuid": "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
@@ -47,5 +61,5 @@
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "Bsb9A6uoQtYQBp8YjpSrXvLaowdhqldgcfyb1AaHE2b3+xssEnrHamUlbvq2GYX6OcDZkLKJ1rPW9M+0AWD3Dg=="
+  "sig": "oDerZjecHu2li5HXZvg5hh/KJjYgMsors4+64rYGEA2uGHYKPlsXxdaMkC4NRXbyJ2tOn584iX1DtQjiCg2IAg=="
 }
