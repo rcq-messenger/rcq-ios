@@ -156,7 +156,14 @@ final class SingBoxTransport {
     }
 
     private static func buildConfig(port: Int) -> String {
-        let ordered = orderedRelays()
+        // The bundled Rcqbox.xcframework was built without the
+        // `with_quic` Go tag, so any hysteria2 outbound makes
+        // sing-box panic at start() with "QUIC is not included in
+        // this build". Filter those entries out until the framework
+        // is rebuilt; otherwise a single hy2 entry leaking in via a
+        // cached signed-config from before the v6 rotation would
+        // break stealth for everyone.
+        let ordered = orderedRelays().filter { $0.proto == .vless }
         let outbounds: [[String: Any]] = {
             var out: [[String: Any]] = []
             out.append([
@@ -172,7 +179,7 @@ final class SingBoxTransport {
                 case .vless:
                     out.append(vlessOutbound(for: r))
                 case .hysteria2:
-                    out.append(hysteria2Outbound(for: r))
+                    continue  // unreachable — filtered above
                 }
             }
             return out
