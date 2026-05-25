@@ -41,12 +41,7 @@ final class SingBoxTransport {
 
     func start() async throws {
         guard !isActive else { return }
-        guard let service = RcqboxBoxService() else {
-            let err = NSError(domain: "SingBoxTransport", code: 1,
-                              userInfo: [NSLocalizedDescriptionKey: "RcqboxBoxService init returned nil"])
-            UserDefaults.standard.set(err.localizedDescription, forKey: Keys.lastError)
-            throw err
-        }
+        let service = RcqboxBoxService()
         let configJSON = Self.buildConfig(port: Self.localPort)
         do {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in

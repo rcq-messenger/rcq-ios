@@ -59,11 +59,11 @@ final class MessageService {
                 case .photo:
                     return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
                 case .video:
-                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec ?? 0, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
+                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
                 case .file:
                     return .file(id: message.id, mediaID: mediaID, mediaKey: key, fileName: message.fileName ?? "file", mime: message.fileMime ?? "application/octet-stream", sizeBytes: message.fileSizeBytes ?? 0, caption: caption, ttl: ttl, replyTo: reply)
                 case .voice:
-                    return .voice(id: message.id, mediaID: mediaID, mediaKey: key, durationSec: message.durationSec ?? 0, ttl: ttl, replyTo: reply)
+                    return .voice(id: message.id, mediaID: mediaID, mediaKey: key, durationSec: message.durationSec, ttl: ttl, replyTo: reply)
                 default: return nil
                 }
             default:
