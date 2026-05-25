@@ -255,6 +255,79 @@ final class MessageDB {
         return rows.map(toModel)
     }
 
+    /// All distinct (kind, key) thread identifiers present in storage.
+    /// Used by `MessageStore.rehydrate` to know which threads need a
+    /// tail window loaded.
+    func fetchThreadIDs() -> [ThreadID] {
+        let req = NSFetchRequest<NSDictionary>(entityName: "MessageRecord")
+        req.resultType = .dictionaryResultType
+        req.returnsDistinctResults = true
+        req.propertiesToFetch = ["threadKind", "threadKey"]
+        guard let rows = try? ctx.fetch(req) else { return [] }
+        var out: [ThreadID] = []
+        for row in rows {
+            guard
+                let kind = row["threadKind"] as? String,
+                let key = (row["threadKey"] as? NSNumber)?.int64Value
+            else { continue }
+            if kind == "peer" {
+                out.append(.peer(uin: Int(key)))
+            } else if kind == "group" {
+                out.append(.group(id: Int(key)))
+            }
+        }
+        return out
+    }
+
+    /// Last `limit` messages for a thread, ordered oldest → newest so
+    /// the caller can append directly to a chat-style list. Pagination
+    /// anchor for older fetches.
+    func fetchRecent(thread: ThreadID, limit: Int) -> [Message] {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = threadPredicate(thread)
+        // Sort DESC then reverse so SQLite uses an index and we still
+        // get the most-recent rows truncated by fetchLimit.
+        req.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: false)]
+        req.fetchLimit = limit
+        let rows = (try? ctx.fetch(req)) ?? []
+        return rows.reversed().map(toModel)
+    }
+
+    /// Older messages strictly before `before`. Used by the chat's
+    /// scroll-up "load earlier" path.
+    func fetchOlder(thread: ThreadID, before: Date, limit: Int) -> [Message] {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            threadPredicate(thread),
+            NSPredicate(format: "sentAt < %@", before as NSDate),
+        ])
+        req.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: false)]
+        req.fetchLimit = limit
+        let rows = (try? ctx.fetch(req)) ?? []
+        return rows.reversed().map(toModel)
+    }
+
+    /// Whether at least one row exists for the thread older than `before`.
+    /// Drives the "show load-more hint at the top" affordance.
+    func hasOlder(thread: ThreadID, before: Date) -> Bool {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            threadPredicate(thread),
+            NSPredicate(format: "sentAt < %@", before as NSDate),
+        ])
+        req.fetchLimit = 1
+        return ((try? ctx.count(for: req)) ?? 0) > 0
+    }
+
+    private func threadPredicate(_ thread: ThreadID) -> NSPredicate {
+        switch thread {
+        case .peer(let uin):
+            return NSPredicate(format: "threadKind == %@ AND threadKey == %d", "peer", Int64(uin))
+        case .group(let id):
+            return NSPredicate(format: "threadKind == %@ AND threadKey == %d", "group", Int64(id))
+        }
+    }
+
     func insert(_ msg: Message) {
         // Idempotent — CoreData has no implicit unique constraint on `id`.
         if find(id: msg.id) != nil { return }

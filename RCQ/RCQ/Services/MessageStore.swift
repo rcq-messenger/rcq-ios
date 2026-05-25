@@ -10,6 +10,16 @@ final class MessageStore: ObservableObject {
     @Published private(set) var threads: [ThreadID: [Message]] = [:]
     /// Rows fading out before removal. `withAnimation` doesn't propagate through the @Published → Combine → @Published chain.
     @Published private(set) var fadingOutIDs: Set<UUID> = []
+    /// Per-thread flag: `true` while at least one older row exists in
+    /// CoreData that hasn't been pulled into the in-memory window yet.
+    /// Drives the ChatView "load earlier" affordance + scroll-up hook.
+    @Published private(set) var hasOlderInDB: [ThreadID: Bool] = [:]
+
+    /// How many rows we keep in memory per thread by default. App
+    /// launch fetches this many for every known thread; ChatView's
+    /// scroll-up gesture extends the window by `loadOlderPageSize`.
+    static let initialWindowSize: Int = 100
+    static let loadOlderPageSize: Int = 50
 
     private static let softDeleteDuration: TimeInterval = 0.32
 
@@ -24,8 +34,48 @@ final class MessageStore: ObservableObject {
     }
 
     private func rehydrate() {
-        let all = MessageDB.shared.fetchAll()
-        threads = Dictionary(grouping: all, by: { $0.thread })
+        // Old path used `fetchAll()` and grouped, which forced every
+        // message ever stored into memory at app launch. That is fine
+        // for users with a few short chats and ruinous for active
+        // groups where 200 members trade thousands of messages a day.
+        // Now we discover the set of threads first and pull only the
+        // most recent `initialWindowSize` for each.
+        var loaded: [ThreadID: [Message]] = [:]
+        var hasMore: [ThreadID: Bool] = [:]
+        for t in MessageDB.shared.fetchThreadIDs() {
+            let tail = MessageDB.shared.fetchRecent(thread: t, limit: Self.initialWindowSize)
+            loaded[t] = tail
+            if let oldest = tail.first {
+                hasMore[t] = MessageDB.shared.hasOlder(thread: t, before: oldest.sentAt)
+            } else {
+                hasMore[t] = false
+            }
+        }
+        threads = loaded
+        hasOlderInDB = hasMore
+    }
+
+    /// Pull the next page of older messages for `thread` from CoreData
+    /// and prepend them to the in-memory window. Returns how many were
+    /// loaded; 0 means we hit the start of history.
+    @discardableResult
+    func loadOlder(for thread: ThreadID) -> Int {
+        guard let current = threads[thread], let oldest = current.first else { return 0 }
+        let older = MessageDB.shared.fetchOlder(
+            thread: thread,
+            before: oldest.sentAt,
+            limit: Self.loadOlderPageSize,
+        )
+        if older.isEmpty {
+            hasOlderInDB[thread] = false
+            return 0
+        }
+        var merged = older
+        merged.append(contentsOf: current)
+        threads[thread] = merged
+        let newOldest = merged.first?.sentAt ?? oldest.sentAt
+        hasOlderInDB[thread] = MessageDB.shared.hasOlder(thread: thread, before: newOldest)
+        return older.count
     }
 
     func reloadFromDB() {

@@ -965,6 +965,47 @@ struct ChatView: View {
 
     // MARK: - messages
 
+    /// Sentinel at the top of the LazyVStack. When older messages exist
+    /// in CoreData beyond the loaded window, the probe materialises a
+    /// short loader row and fires `vm.loadOlder()` the moment it
+    /// appears. After the load, the ScrollViewReader scrolls back to
+    /// the previously-topmost message so the user's eye does not jump.
+    @ViewBuilder
+    private func loadOlderProbe(proxy: ScrollViewProxy) -> some View {
+        if vm.hasOlder {
+            HStack {
+                Spacer()
+                if vm.isLoadingOlder {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .tint(Theme.Color.textSecondary)
+                }
+                Spacer()
+            }
+            .frame(height: 24)
+            .onAppear {
+                let priorTopID = vm.messages.first?.id
+                Task {
+                    let added = await vm.loadOlder()
+                    guard added > 0, let anchor = priorTopID else { return }
+                    // Restore the user's scroll position: the message
+                    // that was at the top before the prepend should now
+                    // sit at the top again, even though there are new
+                    // rows above it.
+                    DispatchQueue.main.async {
+                        var tx = Transaction()
+                        tx.disablesAnimations = true
+                        withTransaction(tx) {
+                            proxy.scrollTo(anchor, anchor: .top)
+                        }
+                    }
+                }
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
     private var messageScroll: some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottomTrailing) {
@@ -975,6 +1016,7 @@ struct ChatView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
+                    loadOlderProbe(proxy: proxy)
                     ForEach(Array(vm.grouped().enumerated()), id: \.offset) { _, group in
                         DateDivider(label: group.label)
                         ForEach(vm.collapsedAlbums(group.items)) { unit in
@@ -1089,8 +1131,12 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
-                // Animate on count only — animating on id changes would shudder on edits/reactions.
-                .animation(.easeInOut(duration: 0.25), value: vm.messages.count)
+                // Animate when a new message lands at the bottom only,
+                // by watching the last id instead of the raw count.
+                // Watching count would also fire when `loadOlder()`
+                // prepends a page of history, causing a stutter for
+                // every prepend.
+                .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
             }
             // Initial-settle mask. While the 350ms scrollTo loop in
             // `.task` chases the moving bottom (LazyVStack realizes
@@ -1115,8 +1161,11 @@ struct ChatView: View {
                     }
                 }
             }
-            .onChange(of: vm.messages.count) { _ in
-                // Re-anchor only if already at bottom — yanking a scrolled-up reader down is hostile.
+            .onChange(of: vm.messages.last?.id) { _ in
+                // Re-anchor only if already at bottom — yanking a
+                // scrolled-up reader down is hostile. Watching the
+                // last id (not count) so `loadOlder()` prepends don't
+                // trip this branch.
                 guard !showScrollToBottom else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }

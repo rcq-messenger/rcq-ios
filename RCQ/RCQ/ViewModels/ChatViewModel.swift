@@ -11,6 +11,14 @@ final class ChatViewModel: ObservableObject {
     @Published var input: String = ""
     @Published var isPeerTyping: Bool = false
     @Published var fadingOutIDs: Set<UUID> = []
+    /// True while older messages exist in CoreData beyond the
+    /// currently-loaded window. ChatView shows a "load earlier" hint
+    /// at the top of the list and triggers `loadOlder()` when the
+    /// user scrolls near it.
+    @Published var hasOlder: Bool = false
+    /// Set while a load-older fetch is in-flight to prevent the
+    /// scroll-trigger from firing multiple times on the same page.
+    @Published var isLoadingOlder: Bool = false
     @Published var replyTarget: Message?
     @Published var editingTarget: Message?
     @Published var translatedTexts: [UUID: String] = [:]
@@ -97,6 +105,10 @@ final class ChatViewModel: ObservableObject {
             self.fadingOutIDs = MessageStore.shared.fadingOutIDs
             MessageStore.shared.$fadingOutIDs
                 .assign(to: &$fadingOutIDs)
+            self.hasOlder = MessageStore.shared.hasOlderInDB[thread] ?? false
+            MessageStore.shared.$hasOlderInDB
+                .map { $0[thread] ?? false }
+                .assign(to: &$hasOlder)
         }
 
         if case .peer(let contact) = target {
@@ -117,6 +129,23 @@ final class ChatViewModel: ObservableObject {
 
     func onAppear() {
         markThreadSeen()
+    }
+
+    /// Pull the next page of older messages from CoreData and prepend
+    /// them to the loaded window. Called when ChatView's scroll
+    /// approaches the top of the list. Returns the count loaded; 0
+    /// means we hit the start of history (ChatView hides the hint).
+    @discardableResult
+    func loadOlder() async -> Int {
+        // .randomPeer does not persist to CoreData; pagination is a
+        // no-op there. Pre-condition also stops re-entrancy from
+        // overlapping scroll callbacks.
+        if case .randomPeer = target { return 0 }
+        if isLoadingOlder { return 0 }
+        if !hasOlder { return 0 }
+        isLoadingOlder = true
+        defer { isLoadingOlder = false }
+        return MessageStore.shared.loadOlder(for: target.thread)
     }
 
     func ackIfVisible(_ message: Message) {
