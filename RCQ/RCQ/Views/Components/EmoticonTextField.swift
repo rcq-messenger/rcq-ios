@@ -25,12 +25,32 @@ struct EmoticonTextField: UIViewRepresentable {
     var caretPlainLocation: Binding<Int>?
 
     func makeUIView(context: Context) -> EmoticonUITextView {
-        let tv = EmoticonUITextView()
+        // Force TextKit 1 — TextKit 2's NSTextAttachmentViewProvider
+        // path doesn't reliably re-attach emoticon views on line wrap
+        // or scroll, leaving "empty space where the smiley used to be"
+        // and reverting the typing font/color to the default UIKit
+        // small-and-black after a newline. TextKit 1 renders
+        // attachments via the layout manager (no viewProvider), which
+        // sidesteps both bugs entirely. We lose the in-composer GIF
+        // animation but the user trade-off is clearly stability —
+        // chat bubbles still animate via their own render path.
+        let storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let textContainer = NSTextContainer(size: .zero)
+        layoutManager.addTextContainer(textContainer)
+        let tv = EmoticonUITextView(frame: .zero, textContainer: textContainer)
         tv.delegate = context.coordinator
         tv.backgroundColor = .clear
         tv.font = UIFont.systemFont(ofSize: fontSize)
         tv.textColor = UIColor(Theme.Color.textPrimary)
         tv.tintColor = UIColor(Theme.Color.accent)
+        // Anchor typingAttributes so a typed character right after an
+        // emoticon attachment doesn't fall through to UIKit's default
+        // (small black, no font set). Without this, hitting Enter
+        // right after a smiley reverted the next line's text to the
+        // system default ("text becomes small and black" report).
+        tv.typingAttributes = Coordinator.baseAttrs(fontSize: fontSize)
         // Center one line of fontSize-pt text inside the minHeight pill.
         let topInset: CGFloat = max(4, (minHeight - fontSize * 1.2) / 2)
         tv.textContainerInset = UIEdgeInsets(top: topInset, left: 6, bottom: topInset, right: 6)
@@ -109,16 +129,24 @@ struct EmoticonTextField: UIViewRepresentable {
 
         // MARK: - text<->attributed conversion
 
-        func attributed(from text: String) -> NSAttributedString {
-            let result = NSMutableAttributedString()
-            let baseAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: parent.fontSize),
+        /// Stable attribute dict for plain text runs and for the
+        /// composer's typingAttributes. Used to anchor font/color so
+        /// the textview doesn't fall back to UIKit defaults after
+        /// typing past an attachment.
+        static func baseAttrs(fontSize: CGFloat) -> [NSAttributedString.Key: Any] {
+            [
+                .font: UIFont.systemFont(ofSize: fontSize),
                 .foregroundColor: UIColor(Theme.Color.textPrimary),
             ]
+        }
+
+        func attributed(from text: String) -> NSAttributedString {
+            let result = NSMutableAttributedString()
+            let attrs = Coordinator.baseAttrs(fontSize: parent.fontSize)
             for token in Emoticons.tokenize(text) {
                 switch token {
                 case .text(let s):
-                    result.append(NSAttributedString(string: s, attributes: baseAttrs))
+                    result.append(NSAttributedString(string: s, attributes: attrs))
                 case .emoticon(let asset, let code):
                     if GIFImage.cachedFrames(for: asset) != nil
                         || GIFImage.cachedImage(for: asset) != nil {
@@ -140,9 +168,16 @@ struct EmoticonTextField: UIViewRepresentable {
                             width: glyphHeight * aspect,
                             height: glyphHeight,
                         )
-                        result.append(NSAttributedString(attachment: att))
+                        // Wrap the attachment with the same base attrs
+                        // so the typingAttributes carry over when the
+                        // caret lands right after the smiley. Without
+                        // this, typing past an emoticon reverted the
+                        // next text run to UIKit default (small/black).
+                        let attStr = NSMutableAttributedString(attachment: att)
+                        attStr.addAttributes(attrs, range: NSRange(location: 0, length: attStr.length))
+                        result.append(attStr)
                     } else {
-                        result.append(NSAttributedString(string: code, attributes: baseAttrs))
+                        result.append(NSAttributedString(string: code, attributes: attrs))
                     }
                 }
             }
@@ -247,6 +282,12 @@ struct EmoticonTextField: UIViewRepresentable {
                 tv.attributedText = rebuilt
                 let restoredCursor = attributedOffset(in: rebuilt, forPlainOffset: plainCursor)
                 tv.selectedRange = NSRange(location: restoredCursor, length: 0)
+                // Setting attributedText resets typingAttributes to
+                // whatever was around the new caret position. If the
+                // caret landed right after an attachment, the attrs
+                // included our base font/color (we wrap attachments
+                // now), so this is mostly belt-and-suspenders.
+                tv.typingAttributes = Coordinator.baseAttrs(fontSize: parent.fontSize)
             }
             tv.refreshPlaceholderVisibility()
             // Always keep the caret in view — frame animations on the

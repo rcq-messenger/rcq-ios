@@ -251,60 +251,72 @@ final class CrashService: ObservableObject {
     // ── Snapshot apply ──────────────────────────────────────────────
 
     private func apply(_ snap: CrashStateSnapshot) {
-        roundID = snap.roundID
-        phase = snap.state
-        seedHash = snap.seedHash
+        // Always update history, betsCount, my* — those are pure
+        // "where are we" facts the snapshot is authoritative for.
         history = snap.history
         cashouts = snap.cashouts
         betsCount = snap.betsCount
         myBetAmount = snap.myBetAmount
         myCashoutMultiplier = snap.myCashoutAt
         myPayout = snap.myPayout
+        seedHash = snap.seedHash
+
+        // Detect a re-apply for the EXACT same round + phase we're
+        // already on. In that case, we DON'T touch bettingStartedAt /
+        // runningStartedAt / crashedAt — those local timestamps drive
+        // the animations, and rewriting them mid-render makes the
+        // countdown jump and the multiplier graph stutter.
+        let sameRound = (snap.roundID == roundID) && (snap.state == phase)
+        roundID = snap.roundID
+        phase = snap.state
+
         switch snap.state {
         case .betting:
-            if let left = snap.bettingSecondsLeft {
-                bettingStartedAt = Date().addingTimeInterval(-(8.0 - left))
-            } else {
-                bettingStartedAt = Date()
+            if !sameRound {
+                if let left = snap.bettingSecondsLeft {
+                    bettingStartedAt = Date().addingTimeInterval(-(8.0 - left))
+                } else {
+                    bettingStartedAt = Date()
+                }
+                bettingSeconds = 8.0
+                runningStartedAt = nil
+                crashInSecondsHint = 0
+                lastCrashPoint = nil
+                lastSeed = nil
+                iLost = false
             }
-            bettingSeconds = 8.0
-            runningStartedAt = nil
-            crashInSecondsHint = 0
-            lastCrashPoint = nil
-            lastSeed = nil
-            iLost = false
         case .running:
-            runningStartedAt = Date().addingTimeInterval(-snap.elapsedSeconds)
-            crashInSecondsHint = snap.crashInSecondsHint ?? 0
-            bettingStartedAt = nil
-            lastCrashPoint = nil
-            lastSeed = nil
+            if !sameRound {
+                runningStartedAt = Date().addingTimeInterval(-snap.elapsedSeconds)
+                crashInSecondsHint = snap.crashInSecondsHint ?? 0
+                bettingStartedAt = nil
+                lastCrashPoint = nil
+                lastSeed = nil
+            }
         case .crashed:
-            runningStartedAt = nil
-            crashInSecondsHint = 0
-            bettingStartedAt = nil
-            lastCrashPoint = snap.lastCrashPoint
-            lastSeed = nil
-            // Anchor to "now"; mid-phase opens show a stale 4s at worst.
-            crashedAt = Date()
-            iLost = snap.myBetAmount != nil && snap.myCashoutAt == nil
+            if !sameRound {
+                runningStartedAt = nil
+                crashInSecondsHint = 0
+                bettingStartedAt = nil
+                lastCrashPoint = snap.lastCrashPoint
+                lastSeed = nil
+                crashedAt = Date()
+                iLost = snap.myBetAmount != nil && snap.myCashoutAt == nil
+            }
         }
     }
 
     // ── WS event dispatch ──────────────────────────────────────────
 
     private func handle(_ event: WebSocketService.Event) {
-        // Only the phase-changing events stamp lastEventAt — those are
-        // the ones a stale snapshot could roll back. .opened is just a
-        // connection cue (no state) and .crashBetPlaced/.crashCashout
-        // mutate side state that a snapshot legitimately refreshes.
-        switch event {
-        case .crashRoundBetting, .crashRoundRunning, .crashRoundEnd:
-            lastEventAt = Date()
-        default: break
-        }
         switch event {
         case .crashRoundBetting(let id, let hash, let bs):
+            // Idempotent — server multi-worker fanout occasionally
+            // re-delivers the same event, and re-resetting bettingStartedAt
+            // would jump the countdown back to 8s mid-round.
+            if id == roundID && phase == .betting { return }
+            lastEventAt = Date()
+            log.info("→ betting round=\(id)")
             roundID = id
             seedHash = hash
             phase = .betting
@@ -324,19 +336,18 @@ final class CrashService: ObservableObject {
             lastSeed = nil
 
         case .crashRoundRunning(let id, let hint):
-            // Old strict guard `id == roundID` silently dropped this
-            // event when the client missed crashRoundBetting (briefly
-            // disconnected) — phase stuck at .betting forever, the
-            // bet button stayed enabled and the user got a 400 "round
-            // not active" when they tapped it. Now: adopt the new
-            // roundID + go to .running. No async refresh from here —
-            // that introduced thrash where snapshot applies raced WS
-            // events and flipped phase back and forth.
+            // Idempotent — re-delivered running event would reset
+            // runningStartedAt to NOW, making the graph jump backward
+            // mid-render. That's exactly the "graph stutters / games
+            // change in front of your eyes" symptom.
+            if id == roundID && phase == .running { return }
+            lastEventAt = Date()
+            log.info("→ running round=\(id) hint=\(hint)")
             if id != roundID {
-                log.notice("crashRoundRunning for unknown round — adopting")
+                // Missed crashRoundBetting for this round (WS gap).
+                // Adopt + wipe per-round side state — the user has no
+                // bet here, no cashouts, etc.
                 roundID = id
-                // Reset state we'd otherwise carry over from the prior
-                // round (myBet etc.) — the user hasn't bet in THIS round.
                 myBetAmount = nil
                 myCashoutMultiplier = nil
                 myPayout = nil
@@ -351,24 +362,27 @@ final class CrashService: ObservableObject {
             runningStartedAt = Date()
             crashInSecondsHint = hint
             bettingStartedAt = nil
-            // Cue only when we have skin in the round.
             if myBetAmount != nil {
                 SoundService.shared.play(.crashRunning)
             }
 
         case .crashRoundEnd(let id, let crash, let seed, let cs):
-            // Always append to history, even when the id doesn't match
-            // our current roundID — happens when the new round's
-            // betting event arrived first; the history strip should
-            // still record the crash that just happened.
+            // Always append to history (dedup by roundID) — even when
+            // it's not the round we're watching, the history strip
+            // should still record it.
             if !history.contains(where: { $0.roundID == id }) {
                 let entry = CrashHistoryEntry(roundID: id, crashPoint: crash)
                 history.append(entry)
                 if history.count > 20 { history.removeFirst(history.count - 20) }
             }
+            // Idempotent — re-delivered end event would push crashedAt
+            // forward, restarting the post-crash linger animation.
+            if id == roundID && phase == .crashed { return }
             // Only flip phase + show the splash if it's for the round
             // the user is currently watching.
             guard id == roundID else { return }
+            lastEventAt = Date()
+            log.info("→ crashed round=\(id) at \(crash)x")
             phase = .crashed
             lastCrashPoint = crash
             lastSeed = seed

@@ -62,10 +62,16 @@ struct CrashView: View {
                     .presentationDetents([.medium, .large])
             }
             .task {
-                while !Task.isCancelled {
-                    await svc.refresh()
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-                }
+                // One-shot refresh on view appear — initial state load
+                // and recovery from any prior chaos. The 5s polling
+                // loop that used to live here was actively harmful:
+                // it raced WS events, applied stale snapshots over
+                // fresh ones, and produced the "graph freezes, games
+                // change in front of eyes" chaos. WS events are now
+                // the source of truth for ongoing state; refresh is
+                // a recovery tool only (here + after a bet rejection
+                // for stale-phase reasons).
+                await svc.refresh()
             }
             .onAppear {
                 svc.expand()

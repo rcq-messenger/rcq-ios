@@ -169,6 +169,37 @@ final class WebSocketService: ObservableObject {
     private func scheduleReconnect() {
         pendingReconnect?.cancel()
         reconnectAttempt += 1
+        // Auto-engage stealth after the WS has failed enough times in
+        // a row that the network is clearly hostile to our WSS upgrade
+        // — typical for carriers whose DPI lets the plain /health probe
+        // through but kills long-lived TLS sockets. The boot-time
+        // auto-engage path (in AppState.boot) only checks HTTP reach,
+        // so this branch catches the cases where direct HTTP looks
+        // fine but the WS layer is blocked. User opt-out
+        // (`rcq.singbox.autoDisabled`) still wins.
+        if reconnectAttempt == 4
+            && !SingBoxTransport.shared.isActive
+            && !UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled") {
+            Task { @MainActor in
+                do {
+                    try await SingBoxTransport.shared.start()
+                    await APIClient.shared.applyTransportProxy()
+                    // Trigger an immediate reconnect rather than wait
+                    // for the backoff tick — the user has already been
+                    // staring at "connecting…" for ~15 s by this point.
+                    self.pendingReconnect?.cancel()
+                    if let uin = self.lastUIN,
+                       let token = self.lastToken,
+                       let base = self.lastBaseURL {
+                        self.connect(uin: uin, token: token, baseURL: base)
+                    }
+                } catch {
+                    // Stealth start failed too — fall through to the
+                    // regular backoff. Persisted error surfaces in
+                    // ConnectionDiagnostics for the user to see.
+                }
+            }
+        }
         // Exponential backoff capped at 30s: 1, 2, 4, 8, 16, 30, 30, ...
         let exponent = min(reconnectAttempt - 1, 5)
         let delay = min(30.0, pow(2.0, Double(exponent)))
