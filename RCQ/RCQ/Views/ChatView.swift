@@ -275,6 +275,12 @@ struct ChatView: View {
     /// decision. Non-nil → input bar shows `previewPill`.
     @State private var pendingVoicePreview: PendingVoicePreview?
     @State private var voicePermissionDenied: Bool = false
+    /// Caret position in the composer, in plain-string units. Mirrored
+    /// from EmoticonTextField via caretPlainLocation. The emoji panel
+    /// splices a shortcode at this index instead of appending to the
+    /// end of input — previously every smiley landed at the end no
+    /// matter where the user had placed the cursor.
+    @State private var composerCaret: Int = 0
 
     /// Wraps a recorded but-not-yet-sent voice clip so the input bar
     /// can offer a play / send / discard preview. `id` doubles as the
@@ -1634,7 +1640,8 @@ struct ChatView: View {
                         // straight into the pending-media queue,
                         // same path as a gallery pick.
                         vm.queuePendingPhotos([image])
-                    }
+                    },
+                    caretPlainLocation: $composerCaret
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)
                 .animation(.easeOut(duration: 0.18), value: composerHeight)
@@ -2336,6 +2343,19 @@ struct ChatView: View {
         .buttonStyle(.plain)
     }
 
+    /// Splice an emoticon shortcode at the current caret position in
+    /// the composer, advancing the caret past the inserted text. Falls
+    /// back to append-at-end when the caret index is out of range (a
+    /// fresh composer that's never been touched, etc.).
+    private func insertEmoticonAtCaret(_ code: String) {
+        let current = vm.input
+        let clamped = max(0, min(composerCaret, current.count))
+        let head = current.prefix(clamped)
+        let tail = current.suffix(current.count - clamped)
+        vm.input = String(head) + code + String(tail)
+        composerCaret = clamped + code.count
+    }
+
     private func grid(for tab: String?, equippedKinds: [ItemKind]) -> some View {
         let entries = emoticonEntries(for: tab, equippedKinds: equippedKinds)
         let cols = [GridItem](repeating: GridItem(.flexible(), spacing: 8), count: 8)
@@ -2343,7 +2363,7 @@ struct ChatView: View {
             LazyVGrid(columns: cols, spacing: 8) {
                 ForEach(entries, id: \.asset) { entry in
                     Button {
-                        vm.input += entry.primaryCode
+                        insertEmoticonAtCaret(entry.primaryCode)
                         emoticonUsage.bump(entry.asset)
                     } label: {
                         if GIFImage.cachedImage(for: entry.asset) != nil {

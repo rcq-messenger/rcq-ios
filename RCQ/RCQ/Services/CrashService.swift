@@ -65,6 +65,12 @@ final class CrashService: ObservableObject {
     /// against WS events, which produced the "round seems to be in
     /// the wrong phase / restarts mid-bet" visual chaos testers saw.
     private var refreshTask: Task<Void, Never>?
+    /// Wallclock of the last WS event we applied. Refresh's apply path
+    /// checks this — if a WS event came in AFTER the snapshot GET
+    /// started, the snapshot is stale and we drop it. WS events carry
+    /// fresher state than a synchronous HTTP poll can, so we always
+    /// prefer them when there's a contest.
+    private var lastEventAt: Date = .distantPast
 
     private init() {
         WebSocketService.shared.events
@@ -77,6 +83,7 @@ final class CrashService: ObservableObject {
 
     func refresh() async {
         refreshTask?.cancel()
+        let startedAt = Date()
         let task = Task<Void, Never> { @MainActor [weak self] in
             guard let self else { return }
             for attempt in 0..<3 {
@@ -85,6 +92,15 @@ final class CrashService: ObservableObject {
                     let snapshot: CrashStateSnapshot = try await APIClient.shared
                         .request("GET", "/crash/state")
                     if Task.isCancelled { return }
+                    // WS event raced ahead of us — its data is newer.
+                    // Discarding the snapshot prevents the classic
+                    // "ws says running, http snapshot says betting,
+                    // UI flips back" thrash that froze the graph mid-
+                    // round for testers.
+                    if self.lastEventAt > startedAt {
+                        self.log.notice("crash refresh dropped: WS event raced past")
+                        return
+                    }
                     self.apply(snapshot)
                     return
                 } catch {
@@ -128,6 +144,16 @@ final class CrashService: ObservableObject {
                 return nil
             }
             lastError = Self.friendlyBetError(error)
+            // "Betting closed" almost always means our local phase is
+            // stale (we still think .betting but server advanced to
+            // .running). Pull a fresh snapshot so the bar reflects
+            // reality before the user taps again.
+            if let apiErr = error as? APIError, case .http(let code, let body) = apiErr,
+               code == 400 || code == 409,
+               body?.contains("not active") == true || body?.contains("not running") == true
+                    || body?.contains("betting closed") == true {
+                Task { [weak self] in await self?.refresh() }
+            }
             return nil
         }
     }
@@ -268,20 +294,17 @@ final class CrashService: ObservableObject {
     // ── WS event dispatch ──────────────────────────────────────────
 
     private func handle(_ event: WebSocketService.Event) {
+        // Only the phase-changing events stamp lastEventAt — those are
+        // the ones a stale snapshot could roll back. .opened is just a
+        // connection cue (no state) and .crashBetPlaced/.crashCashout
+        // mutate side state that a snapshot legitimately refreshes.
+        switch event {
+        case .crashRoundBetting, .crashRoundRunning, .crashRoundEnd:
+            lastEventAt = Date()
+        default: break
+        }
         switch event {
         case .crashRoundBetting(let id, let hash, let bs):
-            // If we never saw the previous round's crashRoundEnd
-            // (multi-worker WS fanout occasionally drops it under
-            // load) we'd otherwise transition betting→running→betting
-            // with no crashed phase in between — graph keeps drawing
-            // past the actual crash and the "X.XXx crashed" red
-            // splash never renders. Detect that here and pull a
-            // fresh snapshot so the missed crash phase still gets a
-            // brief render before the new round begins.
-            if phase == .running && !roundID.isEmpty && id != roundID {
-                log.notice("crashRoundBetting arrived without prior crashRoundEnd — refreshing")
-                Task { [weak self] in await self?.refresh() }
-            }
             roundID = id
             seedHash = hash
             phase = .betting
@@ -302,16 +325,27 @@ final class CrashService: ObservableObject {
 
         case .crashRoundRunning(let id, let hint):
             // Old strict guard `id == roundID` silently dropped this
-            // event when the client missed crashRoundBetting (e.g.
-            // briefly disconnected) — phase stuck at betting forever
-            // and bets placed in this window appeared to "vanish into
-            // a round that never started". Now: accept the event,
-            // adopt the new roundID, and refresh in the background
-            // for the bet / seed / hash details we missed.
+            // event when the client missed crashRoundBetting (briefly
+            // disconnected) — phase stuck at .betting forever, the
+            // bet button stayed enabled and the user got a 400 "round
+            // not active" when they tapped it. Now: adopt the new
+            // roundID + go to .running. No async refresh from here —
+            // that introduced thrash where snapshot applies raced WS
+            // events and flipped phase back and forth.
             if id != roundID {
-                log.notice("crashRoundRunning for unknown round — adopting + refreshing")
+                log.notice("crashRoundRunning for unknown round — adopting")
                 roundID = id
-                Task { [weak self] in await self?.refresh() }
+                // Reset state we'd otherwise carry over from the prior
+                // round (myBet etc.) — the user hasn't bet in THIS round.
+                myBetAmount = nil
+                myCashoutMultiplier = nil
+                myPayout = nil
+                iLost = false
+                cashouts = []
+                participants = []
+                betsCount = 0
+                lastCrashPoint = nil
+                lastSeed = nil
             }
             phase = .running
             runningStartedAt = Date()
@@ -324,10 +358,9 @@ final class CrashService: ObservableObject {
 
         case .crashRoundEnd(let id, let crash, let seed, let cs):
             // Always append to history, even when the id doesn't match
-            // our current roundID — that branch happens when the new
-            // round's betting event arrived first, and the test of
-            // record (history list) should still show the crash that
-            // just happened.
+            // our current roundID — happens when the new round's
+            // betting event arrived first; the history strip should
+            // still record the crash that just happened.
             if !history.contains(where: { $0.roundID == id }) {
                 let entry = CrashHistoryEntry(roundID: id, crashPoint: crash)
                 history.append(entry)

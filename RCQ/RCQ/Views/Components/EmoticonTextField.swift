@@ -16,6 +16,13 @@ struct EmoticonTextField: UIViewRepresentable {
     /// composer or attachment list — saves users a galley-trip just
     /// to attach what they already have on copy.
     var onImagePaste: ((UIImage) -> Void)?
+    /// Two-way binding for the caret position (in plain-string units,
+    /// not attributed-string units — emoticon attachments count as
+    /// their full shortcode length on the way out). Optional so the
+    /// existing call sites don't have to opt in. The chat composer
+    /// wires this so the emoji panel can splice a shortcode at the
+    /// cursor instead of appending to the end of input.
+    var caretPlainLocation: Binding<Int>?
 
     func makeUIView(context: Context) -> EmoticonUITextView {
         let tv = EmoticonUITextView()
@@ -60,7 +67,18 @@ struct EmoticonTextField: UIViewRepresentable {
         if current != text {
             let attr = context.coordinator.attributed(from: text)
             uiView.attributedText = attr
-            uiView.selectedRange = NSRange(location: attr.length, length: 0)
+            // If the parent supplied a caret position (e.g. the emoji
+            // panel just spliced a shortcode mid-string), honour it —
+            // map plain offset to attributed offset. Otherwise default
+            // to end-of-text, matching the pre-binding behaviour.
+            let attrCursor: Int
+            if let wantedPlain = caretPlainLocation?.wrappedValue {
+                let clampedPlain = min(max(0, wantedPlain), text.count)
+                attrCursor = context.coordinator.attributedOffset(in: attr, forPlainOffset: clampedPlain)
+            } else {
+                attrCursor = attr.length
+            }
+            uiView.selectedRange = NSRange(location: attrCursor, length: 0)
             // Defer the scroll — see commentary in textViewDidChange.
             DispatchQueue.main.async { [weak uiView] in
                 guard let uiView else { return }
@@ -179,6 +197,20 @@ struct EmoticonTextField: UIViewRepresentable {
 
         // MARK: - UITextViewDelegate
 
+        /// Mirror the caret position (in plain-string units) back to the
+        /// parent's optional binding so external splicers (emoji panel
+        /// tapped a smiley) can insert at the user's cursor instead of
+        /// the end of input.
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            guard let tv = textView as? EmoticonUITextView else { return }
+            guard let binding = parent.caretPlainLocation else { return }
+            let attrCursor = tv.selectedRange.location
+            let plain = plainOffset(in: tv.attributedText, at: attrCursor)
+            if binding.wrappedValue != plain {
+                binding.wrappedValue = plain
+            }
+        }
+
         /// Workaround for a TextKit 2 oddity: after the user collapses
         /// keyboard + emoji panel and re-taps the field, the
         /// NSTextAttachmentViewProvider views (the emoticon glyphs) can
@@ -253,9 +285,28 @@ struct EmoticonTextField: UIViewRepresentable {
             }
         }
 
+        /// Equality that ignores `NSObject` reference identity for our
+        /// `EmoticonAttachment` instances. The old `a.isEqual(to: b)`
+        /// path always returned false after `attributed(from:)`
+        /// rebuilt the string — every attachment was a fresh allocation
+        /// even when the rendered text was identical — so every
+        /// textViewDidChange tick replaced `attributedText`, which
+        /// re-created TextKit view providers and flashed the GIF
+        /// frames mid-typing (the "smileys flicker on line wrap" bug).
+        /// Comparing by attachment `code` short-circuits the
+        /// no-op rebuild path entirely.
         private func attributedEqual(_ a: NSAttributedString, _ b: NSAttributedString) -> Bool {
             if a.length != b.length { return false }
-            return a.isEqual(to: b)
+            if (a.string as NSString) != (b.string as NSString) { return false }
+            var i = 0
+            while i < a.length {
+                let aAtt = a.attribute(.attachment, at: i, effectiveRange: nil) as? EmoticonAttachment
+                let bAtt = b.attribute(.attachment, at: i, effectiveRange: nil) as? EmoticonAttachment
+                if (aAtt == nil) != (bAtt == nil) { return false }
+                if let aAtt, let bAtt, aAtt.code != bAtt.code { return false }
+                i += 1
+            }
+            return true
         }
     }
 }
