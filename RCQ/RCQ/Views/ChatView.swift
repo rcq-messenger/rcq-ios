@@ -248,14 +248,45 @@ struct ChatView: View {
     @State private var videoError: String?
     @State private var composerHeight: CGFloat = 36
     @StateObject private var voiceRecorder = VoiceRecorder.shared
+    @StateObject private var voicePlayer = VoicePlayer.shared
+    /// Slide-LEFT distance past which a release discards the recording.
+    /// Telegram convention; user's horizontal swipe over the mic.
+    private static let voiceCancelHorizontalOffset: CGFloat = 80
+    /// Slide-UP distance past which a release engages "locked" mode —
+    /// recording continues without the finger held down, and the input
+    /// bar swaps to a stop/cancel control panel.
+    private static let voiceLockOffset: CGFloat = 60
+    /// Legacy name; still used as the visual feedback threshold inside
+    /// the recordingPill. Re-purposed from the old "slide up = cancel"
+    /// semantic to "slide up = lock"; the horizontal swipe now does cancel.
     private static let voiceCancelOffset: CGFloat = 60
     /// Kinds whose caption/text can be edited. Must stay in sync with
     /// the editable set in `MessageStore.applyEdit`.
     private static let editableKinds: [MessageKind] =
         [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
     @State private var micDragOffset: CGFloat = 0
+    @State private var micDragWidth: CGFloat = 0
     @State private var voiceCancelArmed: Bool = false
+    /// Set true mid-gesture when the upward swipe crosses the lock
+    /// threshold. Visual hint only; the lock actually engages on release.
+    @State private var voiceLockArmed: Bool = false
+    /// True after the user has released a slid-up gesture. Recorder
+    /// keeps going; the bar shows `lockedPill` with stop + cancel
+    /// buttons until the user explicitly stops or cancels.
+    @State private var voiceLocked: Bool = false
+    /// Finished recording awaiting user's send / re-listen / discard
+    /// decision. Non-nil → input bar shows `previewPill`.
+    @State private var pendingVoicePreview: PendingVoicePreview?
     @State private var voicePermissionDenied: Bool = false
+
+    /// Wraps a recorded but-not-yet-sent voice clip so the input bar
+    /// can offer a play / send / discard preview. `id` doubles as the
+    /// VoicePlayer key for play-through-the-bubble plumbing.
+    struct PendingVoicePreview: Identifiable, Equatable {
+        let id: UUID = UUID()
+        let url: URL
+        let duration: TimeInterval
+    }
     @State private var isKeyboardVisible: Bool = false
     private var isSelfThread: Bool {
         if case .peer(let snapshot) = vm.target {
@@ -1442,8 +1473,18 @@ struct ChatView: View {
         // Pending media on its own is a sendable message — show the
         // send button even when the caption is empty.
         let showSend = !trimmed.isEmpty || !vm.pendingMedia.isEmpty
+        // Three voice-flow modes preempt the regular composer:
+        // 1. previewPill  — finished clip awaiting send / discard.
+        // 2. lockedPill   — recording continues, no finger held.
+        // 3. recordingPill — finger still down, mid-record.
+        let voiceFlowActive = pendingVoicePreview != nil
+            || voiceLocked || voiceRecorder.isRecording
         return HStack(alignment: .bottom, spacing: 8) {
-            if voiceRecorder.isRecording {
+            if let preview = pendingVoicePreview {
+                previewPill(preview)
+            } else if voiceLocked {
+                lockedPill
+            } else if voiceRecorder.isRecording {
                 recordingPill
             } else {
                 // Stranger mode is text-only — no attach, no voice.
@@ -1452,28 +1493,33 @@ struct ChatView: View {
                 }
                 pillField
             }
-            if isStrangerMode {
-                sendButton
-                    .opacity(showSend ? 1.0 : 0.4)
-                    .disabled(!showSend)
-                    .frame(width: 36, height: 36)
-            } else {
-                ZStack {
-                    if showSend && !voiceRecorder.isRecording {
-                        sendButton
-                            .transition(.opacity.combined(with: .scale(scale: 0.7)))
-                    } else {
-                        micButton
-                            .transition(.opacity.combined(with: .scale(scale: 0.7)))
+            // Trailing button: send arrow (text/media) OR mic (idle).
+            // Hidden entirely while a voice flow owns the bar — those
+            // pills carry their own send / stop / discard controls.
+            if !voiceFlowActive {
+                if isStrangerMode {
+                    sendButton
+                        .opacity(showSend ? 1.0 : 0.4)
+                        .disabled(!showSend)
+                        .frame(width: 36, height: 36)
+                } else {
+                    ZStack {
+                        if showSend {
+                            sendButton
+                                .transition(.opacity.combined(with: .scale(scale: 0.7)))
+                        } else {
+                            micButton
+                                .transition(.opacity.combined(with: .scale(scale: 0.7)))
+                        }
                     }
+                    .frame(width: 36, height: 36)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.78), value: showSend)
                 }
-                .frame(width: 36, height: 36)
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: showSend)
-                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: voiceRecorder.isRecording)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: voiceFlowActive)
     }
 
     private var attachButton: some View {
@@ -2025,7 +2071,8 @@ struct ChatView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        if !voiceRecorder.isRecording && micDragOffset == 0 {
+                        if !voiceRecorder.isRecording && !voiceLocked
+                            && micDragOffset == 0 && micDragWidth == 0 {
                             // First touch fires the mic permission prompt.
                             Task {
                                 let ok = await voiceRecorder.start()
@@ -2033,12 +2080,17 @@ struct ChatView: View {
                             }
                         }
                         micDragOffset = value.translation.height
-                        voiceCancelArmed = value.translation.height < -Self.voiceCancelOffset
+                        micDragWidth = value.translation.width
+                        voiceCancelArmed = value.translation.width < -Self.voiceCancelHorizontalOffset
+                        voiceLockArmed = value.translation.height < -Self.voiceLockOffset
                     }
                     .onEnded { _ in
-                        let armed = voiceCancelArmed
+                        let cancelArmed = voiceCancelArmed
+                        let lockArmed = voiceLockArmed
                         micDragOffset = 0
+                        micDragWidth = 0
                         voiceCancelArmed = false
+                        voiceLockArmed = false
                         // Always go through a Task so we can await any
                         // in-flight `start()` before deciding what to do
                         // with the recorder. Without this a fast tap
@@ -2046,12 +2098,22 @@ struct ChatView: View {
                         // still running and leave the recorder orphaned,
                         // breaking every subsequent mic press.
                         Task {
-                            if armed {
+                            if cancelArmed {
                                 await voiceRecorder.cancel()
+                            } else if lockArmed {
+                                // Lock engages: recording continues with
+                                // no finger needed. Bar switches to
+                                // `lockedPill` until the user taps stop
+                                // (→ preview) or cancel (→ discard).
+                                voiceLocked = true
                             } else if let result = await voiceRecorder.finish() {
-                                if let err = await vm.sendVoice(fileURL: result.url, durationSec: result.duration) {
-                                    videoError = err
-                                }
+                                // Default flow: release without lock or
+                                // cancel → go to preview, NOT auto-send.
+                                // The user wants a chance to re-listen
+                                // before committing.
+                                pendingVoicePreview = PendingVoicePreview(
+                                    url: result.url, duration: result.duration
+                                )
                             }
                         }
                     }
@@ -2059,7 +2121,24 @@ struct ChatView: View {
     }
 
     private var recordingPill: some View {
-        HStack(spacing: 10) {
+        // Three exclusive visual states: armed-to-cancel (red, "release"),
+        // armed-to-lock (accent, "release to lock"), neutral (hint hints).
+        let textColor: Color = {
+            if voiceCancelArmed { return .red }
+            if voiceLockArmed { return Theme.Color.accent }
+            return Theme.Color.textPrimary
+        }()
+        let hintIcon: String = {
+            if voiceCancelArmed { return "trash.fill" }
+            if voiceLockArmed { return "lock.fill" }
+            return "chevron.up"
+        }()
+        let hintKey: String = {
+            if voiceCancelArmed { return "chat.voice.cancel_armed" }
+            if voiceLockArmed { return "chat.voice.lock_armed" }
+            return "chat.voice.swipe_hints"
+        }()
+        return HStack(spacing: 10) {
             Circle()
                 .fill(Color.red)
                 .frame(width: 10, height: 10)
@@ -2067,22 +2146,28 @@ struct ChatView: View {
                 .animation(.easeInOut(duration: 0.5), value: voiceRecorder.elapsed)
             Text(formatRecordingDuration(voiceRecorder.elapsed))
                 .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(voiceCancelArmed ? .red : Theme.Color.textPrimary)
+                .foregroundColor(textColor)
             Spacer()
             HStack(spacing: 4) {
-                Image(systemName: voiceCancelArmed ? "trash.fill" : "chevron.up")
+                Image(systemName: hintIcon)
                     .font(.system(size: 12, weight: .semibold))
-                Text(voiceCancelArmed ? "Release to cancel" : "Slide up to cancel")
+                Text(hintKey.localized)
                     .font(.caption)
             }
-            .foregroundColor(voiceCancelArmed ? .red : Theme.Color.textSecondary)
+            .foregroundColor(
+                voiceCancelArmed ? .red
+                : voiceLockArmed ? Theme.Color.accent
+                : Theme.Color.textSecondary
+            )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, minHeight: 36)
         .background(
             Capsule().fill(
-                voiceCancelArmed ? Color.red.opacity(0.12) : Theme.Color.bgSecondary.opacity(0.6)
+                voiceCancelArmed ? Color.red.opacity(0.12)
+                : voiceLockArmed ? Theme.Color.accent.opacity(0.12)
+                : Theme.Color.bgSecondary.opacity(0.6)
             )
         )
         .overlay(
@@ -2090,6 +2175,115 @@ struct ChatView: View {
                 Theme.Color.divider.opacity(0.3), lineWidth: 0.5
             )
         )
+    }
+
+    /// Shown after the user slides up past the lock threshold and lifts
+    /// their finger. Recorder is still running; the bar gives the user
+    /// explicit stop (→ preview) and cancel (→ discard) controls.
+    private var lockedPill: some View {
+        HStack(spacing: 10) {
+            Button {
+                voiceLocked = false
+                Task { await voiceRecorder.cancel() }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
+            Image(systemName: "lock.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.Color.accent)
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+                .opacity(voiceRecorder.elapsed.truncatingRemainder(dividingBy: 1.0) < 0.5 ? 1.0 : 0.4)
+                .animation(.easeInOut(duration: 0.5), value: voiceRecorder.elapsed)
+            Text(formatRecordingDuration(voiceRecorder.elapsed))
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(Theme.Color.textPrimary)
+            Spacer()
+            Button {
+                voiceLocked = false
+                Task {
+                    if let result = await voiceRecorder.finish() {
+                        await MainActor.run {
+                            pendingVoicePreview = PendingVoicePreview(
+                                url: result.url, duration: result.duration
+                            )
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "stop.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(Theme.Color.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
+        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
+    }
+
+    /// Shown when the user has a finished but-not-yet-sent voice clip.
+    /// Play/pause via the shared VoicePlayer, trash to discard, arrow
+    /// to send. The clip stays in a tmp file until either action; we
+    /// clean up the file on discard.
+    private func previewPill(_ preview: PendingVoicePreview) -> some View {
+        let isThisPlaying = voicePlayer.playingMessageID == preview.id && voicePlayer.isPlaying
+        return HStack(spacing: 10) {
+            Button {
+                voicePlayer.stop()
+                try? FileManager.default.removeItem(at: preview.url)
+                pendingVoicePreview = nil
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.red)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            Button {
+                voicePlayer.playLocal(id: preview.id, url: preview.url)
+            } label: {
+                Image(systemName: isThisPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Theme.Color.bgSecondary.opacity(0.8)))
+            }
+            .buttonStyle(.plain)
+            Text(formatRecordingDuration(
+                isThisPlaying ? voicePlayer.elapsed : preview.duration
+            ))
+            .font(.system(size: 14, design: .monospaced))
+            .foregroundColor(Theme.Color.textPrimary)
+            Spacer()
+            Button {
+                voicePlayer.stop()
+                pendingVoicePreview = nil
+                Task {
+                    if let err = await vm.sendVoice(
+                        fileURL: preview.url, durationSec: preview.duration
+                    ) {
+                        videoError = err
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(Theme.Color.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
+        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
     }
 
     private func formatRecordingDuration(_ secs: TimeInterval) -> String {

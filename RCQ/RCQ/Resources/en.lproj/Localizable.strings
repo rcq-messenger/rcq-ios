@@ -1808,6 +1808,8 @@
 "chat.voice.cancel_armed" = "Release to cancel";
 "chat.voice.cancel_hint" = "Cancel";
 "chat.voice.lock_hint" = "Lock";
+"chat.voice.lock_armed" = "Release to lock";
+"chat.voice.swipe_hints" = "← cancel   ↑ lock";
 
 /* Onboarding — reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANONYMOUS";
