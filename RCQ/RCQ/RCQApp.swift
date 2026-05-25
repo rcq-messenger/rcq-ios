@@ -194,7 +194,6 @@ struct RootView: View {
     @StateObject private var panicPIN = PanicPINService.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("rcq.onboarded") private var didOnboard: Bool = false
-    @State private var showShakeBugBounty: Bool = false
     @State private var backgroundedAt: Date?
 
     private static let relockGrace: TimeInterval = 30
@@ -228,18 +227,18 @@ struct RootView: View {
         }
         // Shake-to-report. Wired at the root so any surface (chat,
         // inventory, game minis, settings, etc.) can summon Bug
-        // Bounty by physically shaking the device. Delivered as a
-        // `.rcqDeviceShook` notification from the UIWindow swizzle
-        // — works regardless of who currently owns first responder
-        // (text fields, hosting controllers, etc.). Earlier
-        // responder-chain implementation broke in TF release where
-        // UIHostingController claimed first responder before our
-        // invisible VC could.
+        // Bounty by physically shaking the device. Routed through
+        // BugBountyPresenter (imperative UIKit) instead of a SwiftUI
+        // `.sheet` because a `.sheet` attached here is shadowed when
+        // the user is inside any other modal (fullScreenCover for
+        // Radio / Audio Room / Random chat, inventory sheets, etc.)
+        // — the binding flipped but the sheet never appeared. Walking
+        // to the top VC and presenting imperatively works regardless
+        // of modal depth.
         .onReceive(NotificationCenter.default.publisher(for: .rcqDeviceShook)) { _ in
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-            showShakeBugBounty = true
+            BugBountyPresenter.present()
         }
-        .sheet(isPresented: $showShakeBugBounty) { BugBountySheet() }
     }
 
     /// Foreground transition: only forces a fresh WS if the watchdog

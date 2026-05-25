@@ -59,6 +59,12 @@ final class CrashService: ObservableObject {
     // ── Internal ────────────────────────────────────────────────────
     private let log = Logger(subsystem: "app.rcq.client", category: "crash")
     private var cancellables = Set<AnyCancellable>()
+    /// Slot for the currently in-flight refresh. New `refresh()` calls
+    /// cancel the previous one — WS reconnect storms used to fire many
+    /// refreshes in parallel, each pulling state and racing apply()
+    /// against WS events, which produced the "round seems to be in
+    /// the wrong phase / restarts mid-bet" visual chaos testers saw.
+    private var refreshTask: Task<Void, Never>?
 
     private init() {
         WebSocketService.shared.events
@@ -70,20 +76,27 @@ final class CrashService: ObservableObject {
     // ── Public surface ──────────────────────────────────────────────
 
     func refresh() async {
-        for attempt in 0..<3 {
-            if Task.isCancelled { return }
-            do {
-                let snapshot: CrashStateSnapshot = try await APIClient.shared
-                    .request("GET", "/crash/state")
-                apply(snapshot)
-                return
-            } catch {
-                log.error("crash refresh failed (attempt \(attempt + 1)): \(error.localizedDescription)")
-                if attempt < 2 {
-                    try? await Task.sleep(nanoseconds: 600_000_000)
+        refreshTask?.cancel()
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            for attempt in 0..<3 {
+                if Task.isCancelled { return }
+                do {
+                    let snapshot: CrashStateSnapshot = try await APIClient.shared
+                        .request("GET", "/crash/state")
+                    if Task.isCancelled { return }
+                    self.apply(snapshot)
+                    return
+                } catch {
+                    self.log.error("crash refresh failed (attempt \(attempt + 1)): \(error.localizedDescription)")
+                    if attempt < 2 {
+                        try? await Task.sleep(nanoseconds: 600_000_000)
+                    }
                 }
             }
         }
+        refreshTask = task
+        await task.value
     }
 
     @discardableResult
@@ -257,6 +270,18 @@ final class CrashService: ObservableObject {
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .crashRoundBetting(let id, let hash, let bs):
+            // If we never saw the previous round's crashRoundEnd
+            // (multi-worker WS fanout occasionally drops it under
+            // load) we'd otherwise transition betting→running→betting
+            // with no crashed phase in between — graph keeps drawing
+            // past the actual crash and the "X.XXx crashed" red
+            // splash never renders. Detect that here and pull a
+            // fresh snapshot so the missed crash phase still gets a
+            // brief render before the new round begins.
+            if phase == .running && !roundID.isEmpty && id != roundID {
+                log.notice("crashRoundBetting arrived without prior crashRoundEnd — refreshing")
+                Task { [weak self] in await self?.refresh() }
+            }
             roundID = id
             seedHash = hash
             phase = .betting
@@ -276,7 +301,18 @@ final class CrashService: ObservableObject {
             lastSeed = nil
 
         case .crashRoundRunning(let id, let hint):
-            guard id == roundID else { return }
+            // Old strict guard `id == roundID` silently dropped this
+            // event when the client missed crashRoundBetting (e.g.
+            // briefly disconnected) — phase stuck at betting forever
+            // and bets placed in this window appeared to "vanish into
+            // a round that never started". Now: accept the event,
+            // adopt the new roundID, and refresh in the background
+            // for the bet / seed / hash details we missed.
+            if id != roundID {
+                log.notice("crashRoundRunning for unknown round — adopting + refreshing")
+                roundID = id
+                Task { [weak self] in await self?.refresh() }
+            }
             phase = .running
             runningStartedAt = Date()
             crashInSecondsHint = hint
@@ -287,6 +323,18 @@ final class CrashService: ObservableObject {
             }
 
         case .crashRoundEnd(let id, let crash, let seed, let cs):
+            // Always append to history, even when the id doesn't match
+            // our current roundID — that branch happens when the new
+            // round's betting event arrived first, and the test of
+            // record (history list) should still show the crash that
+            // just happened.
+            if !history.contains(where: { $0.roundID == id }) {
+                let entry = CrashHistoryEntry(roundID: id, crashPoint: crash)
+                history.append(entry)
+                if history.count > 20 { history.removeFirst(history.count - 20) }
+            }
+            // Only flip phase + show the splash if it's for the round
+            // the user is currently watching.
             guard id == roundID else { return }
             phase = .crashed
             lastCrashPoint = crash
@@ -316,6 +364,9 @@ final class CrashService: ObservableObject {
             }
 
         case .crashCashout(let id, let uin, let nick, let mult, let payout):
+            // Late cashout events for past rounds are harmless — just
+            // drop them silently. Strict guard prevents the in-round
+            // cashout list from growing stale entries.
             guard id == roundID else { return }
             if !cashouts.contains(where: { $0.uin == uin }) {
                 cashouts.append(CrashCashoutEvent(uin: uin, nickname: nick, multiplier: mult, payout: payout))
@@ -336,7 +387,10 @@ final class CrashService: ObservableObject {
 
         case .opened:
             // WS reconnect — pull a fresh snapshot so we don't keep
-            // rendering the stale pre-disconnect round.
+            // rendering the stale pre-disconnect round. `refresh()`
+            // now cancels any in-flight refresh so the storm of
+            // reconnects during a flaky WS doesn't spawn parallel
+            // applies and race against direct WS events.
             Task { [weak self] in await self?.refresh() }
 
         default:

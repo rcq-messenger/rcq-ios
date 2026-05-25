@@ -179,6 +179,27 @@ struct EmoticonTextField: UIViewRepresentable {
 
         // MARK: - UITextViewDelegate
 
+        /// Workaround for a TextKit 2 oddity: after the user collapses
+        /// keyboard + emoji panel and re-taps the field, the
+        /// NSTextAttachmentViewProvider views (the emoticon glyphs) can
+        /// blank out — the text bytes are intact but their attachment
+        /// views fail to re-attach to the layout manager. Re-setting
+        /// attributedText with a freshly-built copy forces TextKit to
+        /// recreate the attachments (and thus fresh view providers),
+        /// which paints them again. We preserve the selected range so
+        /// the caret doesn't jump.
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            guard let tv = textView as? EmoticonUITextView else { return }
+            let plain = plainText(from: tv.attributedText)
+            guard plain.contains(":") else { return }  // no emoticon tokens, nothing to rehydrate
+            let rebuilt = attributed(from: plain)
+            let savedRange = tv.selectedRange
+            tv.attributedText = rebuilt
+            let safeLocation = min(savedRange.location, rebuilt.length)
+            tv.selectedRange = NSRange(location: safeLocation, length: 0)
+            tv.refreshPlaceholderVisibility()
+        }
+
         func textViewDidChange(_ textView: UITextView) {
             guard let tv = textView as? EmoticonUITextView else { return }
             let plain = plainText(from: tv.attributedText)
