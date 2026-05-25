@@ -247,6 +247,11 @@ struct ChatView: View {
     @State private var inspectingTrade: Trade?
     @State private var videoError: String?
     @State private var composerHeight: CGFloat = 36
+    /// Tracks the last seen `composerHeight` so the scroll handler can
+    /// detect SHRINK (send cleared a long draft) vs GROW (typing into
+    /// a wrapping line). Only shrink triggers a re-anchor — growing
+    /// the composer mid-typing already plays nicely with the system.
+    @State private var lastComposerHeight: CGFloat = 36
     @StateObject private var voiceRecorder = VoiceRecorder.shared
     @StateObject private var voicePlayer = VoicePlayer.shared
     /// Slide-LEFT distance past which a release discards the recording.
@@ -1257,6 +1262,30 @@ struct ChatView: View {
             // we don't use defaultScrollAnchor. Duration matches the 0.22s on the safeAreaInset.
             .onChange(of: showEmojiPanel) { _ in
                 withAnimation(.easeOut(duration: 0.22)) {
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                }
+            }
+            // Send-and-clear from a multi-line draft shrinks the composer
+            // from ~90pt back to 36pt, which pulls the bottom safe-area
+            // inset up by the same delta and shifts the visible bottom
+            // of the message list. Keyboard didn't move, so the keyboard
+            // handlers below don't fire. Tick scrollTo for the composer
+            // height-collapse animation window so the bottom anchor
+            // tracks the moving viewport edge instead of jumping at the
+            // tail. Only on SHRINK — grow happens mid-typing and the
+            // natural layout pass handles it without re-anchor.
+            .onChange(of: composerHeight) { newH in
+                let prev = lastComposerHeight
+                lastComposerHeight = newH
+                guard newH < prev - 0.5 else { return }
+                guard !showScrollToBottom else { return }
+                Task { @MainActor in
+                    // .easeOut(0.18) on the composer height + small slack.
+                    let endDate = Date().addingTimeInterval(0.22)
+                    while Date() < endDate {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                        try? await Task.sleep(nanoseconds: 16_000_000)
+                    }
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
