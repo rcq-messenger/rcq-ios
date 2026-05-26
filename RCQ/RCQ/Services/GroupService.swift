@@ -331,6 +331,20 @@ final class GroupService: ObservableObject {
     }
 
     func upsert(_ g: RCQGroup) {
+        // If the server is telling us about a group we're no longer a
+        // member of, purge it instead of adding it back. This fires
+        // right after the leave/remove flow: the server broadcasts a
+        // `group_membership_changed` to every previously-member UIN
+        // (so the iOS client of the just-removed user knows to drop
+        // the group), and the old upsert blindly re-inserted the
+        // group on the leaver's device — they'd leave, see the row
+        // vanish from `groups.remove(...)`, then watch the WS event
+        // put it right back.
+        let myUIN = AuthService.shared.ownUIN
+        if let me = myUIN, !g.members.contains(where: { $0.uin == me }) {
+            groups.removeAll { $0.id == g.id }
+            return
+        }
         if let idx = groups.firstIndex(where: { $0.id == g.id }) {
             groups[idx] = g
         } else {

@@ -359,10 +359,21 @@ struct ChatView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
             messageScroll
+
+            // Pinned announcement floats inside the chat ZStack as a
+            // capsule at the top — this places it BELOW the action
+            // overlay's `.regularMaterial` during long-press (because
+            // both live inside the same ZStack), so the pin reads as
+            // "under the blur" automatically. Previously the pin sat
+            // outside the ZStack via `safeAreaInset(.top)` and stayed
+            // brightly visible above an otherwise-blurred chat.
+            pinnedBanner
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
 
             if showInChatSearch {
                 InChatSearchOverlay(
@@ -397,36 +408,6 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        // Long-press blur extension. The MessageActionOverlay inside
-        // the ZStack covers chat content with `.regularMaterial`, but
-        // the pinned banner (safeAreaInset) and navigation bar (native
-        // NavigationStack chrome) sit OUTSIDE the ZStack and stay
-        // sharp by default. Two fixes:
-        //   1. `.toolbarBackground(.regularMaterial)` switches the nav
-        //      bar's own background to material when actionTarget is
-        //      set, so the nav bar reads as part of the unified blur.
-        //   2. The overlay below the toolbar paints material over the
-        //      safeAreaInset region (pin banner) — that area isn't
-        //      reachable via toolbarBackground.
-        .overlay(alignment: .top) {
-            if actionTarget != nil {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .frame(height: pinChromeBlurHeight)
-                    .frame(maxWidth: .infinity)
-                    .ignoresSafeArea(edges: .top)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-            }
-        }
-        .toolbarBackground(
-            actionTarget != nil ? Material.regular : Material.bar,
-            for: .navigationBar
-        )
-        .toolbarBackground(.visible, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            pinnedBanner
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
@@ -1158,6 +1139,15 @@ struct ChatView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
+                    // Spacer at the top of the scroll content so the
+                    // floating pinned banner (rendered as an overlay
+                    // in the parent ZStack) doesn't sit over the
+                    // first message bubble. Sized to clear the full
+                    // expanded pin; the collapsed strip is shorter
+                    // and leaves a small gap, which is fine.
+                    if hasFloatingPin {
+                        Color.clear.frame(height: 72)
+                    }
                     loadOlderProbe(proxy: proxy)
                     ForEach(Array(vm.grouped().enumerated()), id: \.offset) { _, group in
                         DateDivider(label: group.label)
@@ -1621,23 +1611,24 @@ struct ChatView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Theme.Color.textSecondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.Color.bgSecondary.opacity(0.96))
-            .overlay(
-                Rectangle()
-                    .fill(Theme.Color.divider.opacity(0.5))
-                    .frame(height: 0.5),
-                alignment: .bottom
+            .background(
+                Capsule().fill(Theme.Color.bgSecondary.opacity(0.96))
             )
-            .contentShape(Rectangle())
+            .overlay(
+                Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5)
+            )
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
 
     /// Full banner with title, multi-line text, and a chevron-up
-    /// button that collapses the banner back to a strip.
+    /// button that collapses the banner back to a strip. Rendered
+    /// as a rounded floating panel inside the chat area so the
+    /// long-press action overlay's material naturally covers it.
     private func fullPinBanner(group: RCQGroup, text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "pin.fill")
@@ -1668,37 +1659,33 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Theme.Color.bgSecondary.opacity(0.96))
-        .overlay(
-            Rectangle()
-                .fill(Theme.Color.divider.opacity(0.5))
-                .frame(height: 0.5),
-            alignment: .bottom
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Theme.Color.bgSecondary.opacity(0.96))
         )
-        .contentShape(Rectangle())
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .onTapGesture {
             pinnedExpansion = PinExpansion(text: text)
         }
     }
 
-    /// Height of the top blur strip applied during a long-press, in
-    /// points. Covers safe-area inset + navigation bar (~44pt nav +
-    /// status bar) + the pinned banner if it's currently shown
-    /// (~60pt full / ~28pt collapsed). 140pt is a comfortable
-    /// upper bound that covers all three without leaving a sharp
-    /// strip below the pin.
-    private var pinChromeBlurHeight: CGFloat {
-        let hasPin: Bool = {
-            if case .group(let snap) = vm.target,
-               let live = groupSvc.find(snap.id) ?? Optional(snap),
-               let text = live.pinnedText, !text.isEmpty {
-                return true
-            }
-            return false
-        }()
-        return hasPin ? 200 : 130
+    /// True when the active chat target is a group with a non-empty
+    /// pinned announcement. Used by `messageScroll` to reserve space
+    /// at the top of the LazyVStack so the floating pin capsule
+    /// doesn't overlap the first message row.
+    private var hasFloatingPin: Bool {
+        if case .group(let snap) = vm.target,
+           let live = groupSvc.find(snap.id) ?? Optional(snap),
+           let text = live.pinnedText, !text.isEmpty {
+            return true
+        }
+        return false
     }
 
     private func collapsePin(groupID: Int) {
