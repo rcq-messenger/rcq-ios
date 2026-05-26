@@ -352,11 +352,12 @@ private struct GroupHit: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "person.3.fill")
-                .font(.system(size: 14))
-                .foregroundColor(.white)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Theme.Color.accent))
+            GroupAvatarView(
+                mediaID: group.avatarMediaID,
+                keyBase64: group.avatarMediaKey,
+                size: 28,
+                glyphSize: 14,
+            )
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
                 Text(String(

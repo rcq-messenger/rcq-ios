@@ -273,15 +273,13 @@ struct ChatView: View {
         [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
     /// Non-nil = the pinned-announcement expansion sheet is open.
     @State private var pinnedExpansion: PinExpansion?
-    /// Per-(group, text-hash) set of pins the user has dismissed.
-    /// Stored as @State so SwiftUI's dependency tracker sees the
-    /// membership check in the banner condition; mirrored to
-    /// UserDefaults for persistence across launches. The previous
-    /// implementation read UserDefaults directly inside the condition,
-    /// which SwiftUI does NOT track — invalidating @State alone didn't
-    /// invalidate the read, so the X button looked like it did nothing.
-    @State private var dismissedPinKeys: Set<String> = Set(
-        UserDefaults.standard.stringArray(forKey: "rcq.pin.dismissed_keys") ?? []
+    /// Per-group set of pins the user has COLLAPSED (not dismissed).
+    /// In the collapsed state the banner shrinks to a single-line
+    /// pin-icon strip that the user can tap to expand back. Persisted
+    /// across launches via UserDefaults so the collapse state survives
+    /// app restart but never "permanently" removes the pin.
+    @State private var collapsedPinGroups: Set<Int> = Set(
+        (UserDefaults.standard.array(forKey: "rcq.pin.collapsed_groups") as? [Int]) ?? []
     )
     struct PinExpansion: Identifiable {
         let id = UUID()
@@ -399,16 +397,21 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        // Cover the navigation bar + pinned banner with the same dim
-        // backdrop the action overlay uses inside the chat area, so
-        // those elements look "under the blur" instead of staying
-        // brightly visible above an otherwise-darkened screen.
+        // Long-press blur extension: the MessageActionOverlay inside
+        // the ZStack covers chat content with `.regularMaterial`, but
+        // the navigation bar AND the pinned banner sit OUTSIDE the
+        // ZStack (nav bar from NavigationStack, pin from safeAreaInset),
+        // so they stay sharp by default. Mirror the same material
+        // here as a top overlay so all three areas read as a single
+        // unified blurred backdrop.
         .overlay(alignment: .top) {
             if actionTarget != nil {
-                Color.black.opacity(0.35)
-                    .ignoresSafeArea(edges: .top)
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .frame(height: pinChromeBlurHeight)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 120)
+                    .ignoresSafeArea(edges: .top)
+                    .transition(.opacity)
                     .allowsHitTesting(false)
             }
         }
@@ -1566,43 +1569,52 @@ struct ChatView: View {
     /// Sticky banner above the message list showing the group's pinned
     /// announcement. Only renders for groups with a non-empty pin.
     /// New joiners (who can't read encrypted history) see the rules
-    /// the moment they enter the chat.
+    /// the moment they enter the chat. The X button COLLAPSES the
+    /// banner to a one-line strip that the user can tap to expand
+    /// back; the pin is never destroyed from the user's view —
+    /// they can always get it back.
     @ViewBuilder
     private var pinnedBanner: some View {
         if case .group(let snapshot) = vm.target,
            let live = groupSvc.find(snapshot.id) ?? Optional(snapshot),
            let text = live.pinnedText,
-           !text.isEmpty,
-           !pinDismissedByUser(group: live, text: text) {
-            HStack(alignment: .top, spacing: 10) {
+           !text.isEmpty {
+            if collapsedPinGroups.contains(live.id) {
+                collapsedPinStrip(group: live, text: text)
+            } else {
+                fullPinBanner(group: live, text: text)
+            }
+        }
+    }
+
+    /// One-line strip shown when the user collapsed the pin. Tap
+    /// anywhere expands the banner back to its full form.
+    private func collapsedPinStrip(group: RCQGroup, text: String) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                expandPin(groupID: group.id)
+            }
+        } label: {
+            HStack(spacing: 8) {
                 Image(systemName: "pin.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.Color.accent)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("chat.pin.title".localized)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
-                    Text(text)
-                        .font(.callout)
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("chat.pin.title".localized)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text(text)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer(minLength: 6)
-                Button {
-                    dismissPin(group: live, text: text)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.Color.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.Color.bgSecondary.opacity(0.96))
             .overlay(
                 Rectangle()
@@ -1611,37 +1623,83 @@ struct ChatView: View {
                 alignment: .bottom
             )
             .contentShape(Rectangle())
-            .onTapGesture {
-                pinnedExpansion = PinExpansion(text: text)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Full banner with title, multi-line text, and a chevron-up
+    /// button that collapses the banner back to a strip.
+    private func fullPinBanner(group: RCQGroup, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.Color.accent)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("chat.pin.title".localized)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text(text)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 6)
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    collapsePin(groupID: group.id)
+                }
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Theme.Color.bgSecondary.opacity(0.96))
+        .overlay(
+            Rectangle()
+                .fill(Theme.Color.divider.opacity(0.5))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            pinnedExpansion = PinExpansion(text: text)
         }
     }
 
-    /// Has the user dismissed THIS exact pin text (per group) on this
-    /// device? Keyed by `pinned_text` content so an owner editing the
-    /// pin re-surfaces the banner for everyone who had previously
-    /// dismissed the old text.
-    private func pinDismissedByUser(group: RCQGroup, text: String) -> Bool {
-        dismissedPinKeys.contains(pinDismissKey(groupID: group.id, text: text))
+    /// Height of the top blur strip applied during a long-press, in
+    /// points. Covers safe-area inset + navigation bar (~44pt nav +
+    /// status bar) + the pinned banner if it's currently shown
+    /// (~60pt full / ~28pt collapsed). 140pt is a comfortable
+    /// upper bound that covers all three without leaving a sharp
+    /// strip below the pin.
+    private var pinChromeBlurHeight: CGFloat {
+        let hasPin: Bool = {
+            if case .group(let snap) = vm.target,
+               let live = groupSvc.find(snap.id) ?? Optional(snap),
+               let text = live.pinnedText, !text.isEmpty {
+                return true
+            }
+            return false
+        }()
+        return hasPin ? 200 : 130
     }
 
-    private func dismissPin(group: RCQGroup, text: String) {
-        let key = pinDismissKey(groupID: group.id, text: text)
-        dismissedPinKeys.insert(key)
-        UserDefaults.standard.set(Array(dismissedPinKeys), forKey: "rcq.pin.dismissed_keys")
+    private func collapsePin(groupID: Int) {
+        collapsedPinGroups.insert(groupID)
+        UserDefaults.standard.set(Array(collapsedPinGroups), forKey: "rcq.pin.collapsed_groups")
     }
 
-    private func pinDismissKey(groupID: Int, text: String) -> String {
-        // Hash the text so the key length stays bounded. NOTE:
-        // String.hashValue is randomized per-process so the same text
-        // yields different keys across launches — that's a feature
-        // here: we WANT old dismissals to expire when the app
-        // restarts, so a user who tap-dismisses today still sees the
-        // pin tomorrow (if it hasn't changed). For cross-session
-        // persistence we'd need a stable hash; current behavior is
-        // session-scoped dismiss, which matches tester expectation.
-        let hash = abs(text.hashValue)
-        return "\(groupID).\(hash)"
+    private func expandPin(groupID: Int) {
+        collapsedPinGroups.remove(groupID)
+        UserDefaults.standard.set(Array(collapsedPinGroups), forKey: "rcq.pin.collapsed_groups")
     }
 
     private var inputBar: some View {
