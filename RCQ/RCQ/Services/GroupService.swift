@@ -183,6 +183,10 @@ final class GroupService: ObservableObject {
         let entryPriceTokens: Int?
         let ownerUIN: Int
         let ownerNickname: String?
+        // Server returns these; the search-result row uses them to
+        // paint the actual group avatar instead of the generic glyph.
+        let avatarMediaID: String?
+        let avatarMediaKey: String?
 
         enum CodingKeys: String, CodingKey {
             case id, name
@@ -190,6 +194,8 @@ final class GroupService: ObservableObject {
             case entryPriceTokens = "entry_price_tokens"
             case ownerUIN = "owner_uin"
             case ownerNickname = "owner_nickname"
+            case avatarMediaID = "avatar_media_id"
+            case avatarMediaKey = "avatar_media_key"
         }
     }
 

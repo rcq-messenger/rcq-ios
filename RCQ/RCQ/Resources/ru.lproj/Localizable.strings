@@ -1051,6 +1051,7 @@
 "profile.last_seen" = "Был(а) в сети %@";
 "profile.audience.last_7" = "· за 7 дней";
 "profile.cta.propose_trade" = "Предложить обмен";
+"profile.cta.add_contact" = "Добавить в контакты";
 "profile.cta.view_inventory" = "Открыть инвентарь";
 "profile.cta.reset_session" = "Сбросить защищённую сессию";
 "profile.cta.share_my_rcq" = "Поделиться RCQ";

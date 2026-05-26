@@ -367,16 +367,37 @@ struct LootboxView: View {
         let outcome = await items.openPull(boost: petBoost)
         switch outcome {
         case .item(let item):
-            if let idx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) {
-                landingKindIndex = idx
-            } else if let kind = items.catalog?.kind(by: item.kindID) {
-                // Catalog grew since session start; append so the spin can land on the new kind.
-                carouselKinds.append(kind)
-                landingKindIndex = carouselKinds.count - 1
-            } else {
-                landingKindIndex = Int.random(in: 0..<carouselKinds.count)
-            }
+            // Make sure the carousel can actually land on the kind we
+            // got back. If lookup fails AND catalog can't help us find
+            // it, the previous code fell back to `Int.random(...)` —
+            // which is exactly the "spin lands on wrong item, reveal
+            // shows different item" bug, because there's no relation
+            // between the random index and the real outcome. Better to
+            // skip the animation entirely than to lie about it.
+            let resolvedIdx: Int? = {
+                if let idx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) {
+                    return idx
+                }
+                if let kind = items.catalog?.kind(by: item.kindID) {
+                    carouselKinds.append(kind)
+                    return carouselKinds.count - 1
+                }
+                return nil
+            }()
+
             pendingOutcome = .item(item)
+
+            guard let targetIdx = resolvedIdx else {
+                // Catalog doesn't know this kind. Don't animate to a
+                // random tile; just reveal the outcome directly.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 30_000_000)
+                    revealPending()
+                }
+                return
+            }
+            landingKindIndex = targetIdx
+
             // Hop one runloop tick before presenting the cover so wallet/rolling commits first.
             if skipSpin {
                 Task { @MainActor in
@@ -384,7 +405,16 @@ struct LootboxView: View {
                     revealPending()
                 }
             } else {
-                spinTrigger += 1
+                // Defer the spinTrigger bump by one runloop. Without
+                // this, `landingKindIndex` (and possibly the appended
+                // `carouselKinds`) commit in the same SwiftUI tick as
+                // `spinTrigger`, and RouletteCarousel's `.onChange`
+                // can read stale values when computing the target
+                // offset — leading to a spin that lands on the
+                // pre-update kind instead of the new one.
+                DispatchQueue.main.async {
+                    spinTrigger += 1
+                }
             }
         case .scroll(let count):
             rolling = false

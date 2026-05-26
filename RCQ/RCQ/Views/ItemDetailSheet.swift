@@ -537,16 +537,12 @@ struct ItemDetailSheet: View {
     private func actorChip(uin: Int, isMe: Bool) -> some View {
         Button {
             guard !isMe else { return }
-            UIPasteboard.general.string = String(uin)
-            UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(.easeInOut(duration: 0.15)) {
-                copiedUIN = uin
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if copiedUIN == uin {
-                    withAnimation { copiedUIN = nil }
-                }
-            }
+            // Tap on a counterparty UIN now opens their profile rather
+            // than copying to clipboard — testers wanted to drill into
+            // who they traded with, not just paste the number somewhere.
+            // Routes through the global deeplink path the rest of the
+            // app uses for username-tap.
+            AppState.shared.pendingOpenUserProfile = uin
         } label: {
             // String() interpolation avoids SwiftUI locale grouping ("#1,234").
             Text(isMe ? "item.history.actor.you".localized : "#" + String(uin))
@@ -642,10 +638,20 @@ struct ItemDetailSheet: View {
 
 extension DateFormatter {
     /// Shared item-acquired formatter (item detail / memorial / history).
-    static let itemAcquired: DateFormatter = {
+    /// Returns a fresh formatter on every access so the locale tracks
+    /// the user's in-app language pick (LanguageManager overrides
+    /// `Bundle.main`, but a STATIC formatter caches the locale at
+    /// first init — symptoms: app in RU, dates render in EN).
+    /// Caller is always on the main actor (rendered inside a SwiftUI
+    /// View body), so we read LanguageManager.shared.current via a
+    /// MainActor-guarded snapshot stored in UserDefaults — same place
+    /// LanguageManager mirrors its pick for the App Group.
+    @MainActor
+    static var itemAcquired: DateFormatter {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .short
+        f.locale = Locale(identifier: LanguageManager.shared.current.rawValue)
         return f
-    }()
+    }
 }

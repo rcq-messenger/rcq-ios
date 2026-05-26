@@ -98,7 +98,7 @@ struct GroupInfoView: View {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
-                            .foregroundColor(Theme.Color.accent)
+                            .foregroundColor(Theme.Color.textPrimary)
                     }
                 }
             }
@@ -176,9 +176,9 @@ struct GroupInfoView: View {
                         .foregroundColor(muted ? Theme.Color.statusBusy : Theme.Color.accent)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(muted ? "group.notifications.unmute" : "group.notifications.mute")
+                        Text((muted ? "group.notifications.unmute" : "group.notifications.mute").localized)
                             .foregroundColor(Theme.Color.textPrimary)
-                        Text(muted ? "group.notifications.muted.hint" : "group.notifications.unmuted.hint")
+                        Text((muted ? "group.notifications.muted.hint" : "group.notifications.unmuted.hint").localized)
                             .font(.caption)
                             .foregroundColor(Theme.Color.textSecondary)
                     }

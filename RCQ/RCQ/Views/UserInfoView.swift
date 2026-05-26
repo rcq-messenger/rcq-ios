@@ -175,6 +175,22 @@ struct UserInfoView: View {
             .disabled(!saveEnabled)
         } else if let p = profile {
             Menu {
+                // Add-to-contacts: shown only when target isn't the
+                // viewer themselves and isn't already a confirmed
+                // contact. If the user already sent the same request
+                // earlier and re-taps, the server dedups (returns 400
+                // "already requested") which the catch swallows.
+                if !isOwn,
+                   !ContactService.shared.contacts.contains(where: { $0.uin == p.uin }) {
+                    Button {
+                        Task {
+                            try? await ContactService.shared.sendAddRequest(to: p.uin)
+                            await ContactService.shared.refresh()
+                        }
+                    } label: {
+                        Label("profile.cta.add_contact".localized, systemImage: "person.badge.plus")
+                    }
+                }
                 if peerCanReceiveTrade {
                     Button {
                         showTrade = true

@@ -1060,6 +1060,7 @@
 "profile.last_seen" = "Last seen %@";
 "profile.audience.last_7" = "· last 7 days";
 "profile.cta.propose_trade" = "Propose trade";
+"profile.cta.add_contact" = "Add to contacts";
 "profile.cta.view_inventory" = "View their inventory";
 "profile.cta.reset_session" = "Reset secure session";
 "profile.cta.share_my_rcq" = "Share my RCQ";

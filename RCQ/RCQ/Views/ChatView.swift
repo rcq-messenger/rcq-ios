@@ -271,6 +271,15 @@ struct ChatView: View {
     /// the editable set in `MessageStore.applyEdit`.
     private static let editableKinds: [MessageKind] =
         [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
+    /// Non-nil = the pinned-announcement expansion sheet is open.
+    @State private var pinnedExpansion: PinExpansion?
+    /// Forces the pinned banner row to re-render after a dismiss.
+    @State private var pinDismissTick: Int = 0
+    struct PinExpansion: Identifiable {
+        let id = UUID()
+        let text: String
+    }
+
     /// Finished recording awaiting user's send / re-listen / discard
     /// decision. Non-nil → input bar shows `previewPill`.
     @State private var pendingVoicePreview: PendingVoicePreview?
@@ -382,9 +391,15 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        // Hide pinned banner during the long-press action overlay
+        // so the focused message + action menu reads as a clean
+        // modal, not as a partial UI with chrome leaking through.
         .safeAreaInset(edge: .top, spacing: 0) {
-            pinnedBanner
+            if actionTarget == nil { pinnedBanner }
         }
+        // Same reasoning for the navigation bar — long-press should
+        // feel like a modal focus state.
+        .toolbar(actionTarget == nil ? .visible : .hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
@@ -652,6 +667,30 @@ struct ChatView: View {
                     onSuccess: { _ in }
                 )
             }
+        }
+        .sheet(item: $pinnedExpansion) { exp in
+            NavigationStack {
+                ScrollView {
+                    Text(exp.text)
+                        .font(.body)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .textSelection(.enabled)
+                }
+                .background(Theme.Color.bgPrimary.ignoresSafeArea())
+                .navigationTitle("chat.pin.title".localized)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("common.close".localized) {
+                            pinnedExpansion = nil
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .onChange(of: vm.messages.last?.id) { _ in
             if let last = vm.messages.last { vm.ackIfVisible(last) }
@@ -1518,7 +1557,8 @@ struct ChatView: View {
         if case .group(let snapshot) = vm.target,
            let live = groupSvc.find(snapshot.id) ?? Optional(snapshot),
            let text = live.pinnedText,
-           !text.isEmpty {
+           !text.isEmpty,
+           !pinDismissedByUser(group: live, text: text) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 13, weight: .semibold))
@@ -1534,7 +1574,17 @@ struct ChatView: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 6)
+                Button {
+                    dismissPin(group: live, text: text)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -1545,7 +1595,36 @@ struct ChatView: View {
                     .frame(height: 0.5),
                 alignment: .bottom
             )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                pinnedExpansion = PinExpansion(text: text)
+            }
         }
+    }
+
+    /// Has the user dismissed THIS exact pin text (per group) on this
+    /// device? Keyed by `pinned_text` content so an owner editing the
+    /// pin re-surfaces the banner for everyone who had previously
+    /// dismissed the old text.
+    private func pinDismissedByUser(group: RCQGroup, text: String) -> Bool {
+        let key = pinDismissKey(groupID: group.id, text: text)
+        return UserDefaults.standard.bool(forKey: key)
+    }
+
+    private func dismissPin(group: RCQGroup, text: String) {
+        let key = pinDismissKey(groupID: group.id, text: text)
+        UserDefaults.standard.set(true, forKey: key)
+        // Bump a state value to force re-render — UserDefaults change
+        // alone won't redraw, so we mirror the dismissed key into a
+        // local @State counter.
+        pinDismissTick &+= 1
+    }
+
+    private func pinDismissKey(groupID: Int, text: String) -> String {
+        // Hash the text so the key length stays bounded; SHA1 prefix
+        // is fine for cache invalidation (not security).
+        let hash = abs(text.hashValue)
+        return "rcq.pin.dismissed.\(groupID).\(hash)"
     }
 
     private var inputBar: some View {
