@@ -397,13 +397,17 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        // Long-press blur extension: the MessageActionOverlay inside
+        // Long-press blur extension. The MessageActionOverlay inside
         // the ZStack covers chat content with `.regularMaterial`, but
-        // the navigation bar AND the pinned banner sit OUTSIDE the
-        // ZStack (nav bar from NavigationStack, pin from safeAreaInset),
-        // so they stay sharp by default. Mirror the same material
-        // here as a top overlay so all three areas read as a single
-        // unified blurred backdrop.
+        // the pinned banner (safeAreaInset) and navigation bar (native
+        // NavigationStack chrome) sit OUTSIDE the ZStack and stay
+        // sharp by default. Two fixes:
+        //   1. `.toolbarBackground(.regularMaterial)` switches the nav
+        //      bar's own background to material when actionTarget is
+        //      set, so the nav bar reads as part of the unified blur.
+        //   2. The overlay below the toolbar paints material over the
+        //      safeAreaInset region (pin banner) — that area isn't
+        //      reachable via toolbarBackground.
         .overlay(alignment: .top) {
             if actionTarget != nil {
                 Rectangle()
@@ -415,6 +419,11 @@ struct ChatView: View {
                     .allowsHitTesting(false)
             }
         }
+        .toolbarBackground(
+            actionTarget != nil ? Material.regular : Material.bar,
+            for: .navigationBar
+        )
+        .toolbarBackground(.visible, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             pinnedBanner
         }

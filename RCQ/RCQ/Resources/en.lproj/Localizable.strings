@@ -608,19 +608,19 @@
 "chat.action.delete_for_me" = "Delete for me";
 "chat.action.delete_for_everyone" = "Delete for everyone";
 "chat.action.react" = "React";
-"chat.action.jeton" = "Send jetons";
+"chat.action.jeton" = "Send tokens";
 
-"jeton.react.body" = "Send jetons to %@. They go straight to the message author's wallet.";
-"jeton.react.amount_suffix" = "jetons";
+"jeton.react.body" = "Send tokens to %@. They go straight to the message author's wallet.";
+"jeton.react.amount_suffix" = "tokens";
 "jeton.react.balance" = "Balance: %d tokens";
 "jeton.react.send" = "Send";
-"jeton.react.error_min" = "Minimum is %d jeton.";
+"jeton.react.error_min" = "Minimum is %d token.";
 "jeton.react.error_insufficient" = "Not enough tokens.";
 "jeton.react.error_target_missing" = "That user doesn't exist.";
 "jeton.react.error_rate_limited" = "Too many reactions — try again in a minute.";
 "jeton.react.error_not_member" = "You're not a member of this group.";
-"jeton.react.error_self" = "You can't send jetons to your own message.";
-"jeton.react.error_generic" = "Couldn't send jetons. Try again.";
+"jeton.react.error_self" = "You can't send tokens to your own message.";
+"jeton.react.error_generic" = "Couldn't send tokens. Try again.";
 "chat.action.report_content" = "Report content";
 
 /* Report with evidence — long-press on a media bubble */
