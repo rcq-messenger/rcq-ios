@@ -6,8 +6,19 @@ import UIKit
 /// Tap during spin to skip to reveal. Haptic + tick rate modulated by ease velocity.
 struct RouletteCarousel: View {
     let kinds: [ItemKind]
-    let landingKindIndex: Int
-    @Binding var spinTrigger: Int
+    /// Atomic spin trigger AND target index in one binding. Non-nil =
+    /// the caller wants the carousel to spin and land on this index in
+    /// `kinds`. The carousel resets to nil immediately after kicking
+    /// off the spin so the next non-nil assignment fires a new spin
+    /// even if the value is the same as the previous one.
+    ///
+    /// Replaces the old `landingKindIndex: Int` + `spinTrigger: Int`
+    /// pair. The two-binding approach raced when SwiftUI processed
+    /// them in separate ticks: `startSpin()` could read a stale
+    /// `landingKindIndex` and compute a spin target for the previous
+    /// roll's item. Carrying the target in the trigger eliminates that
+    /// race because there's exactly one signal.
+    @Binding var landingTrigger: Int?
     let onSpinComplete: () -> Void
 
     @State private var idleAnchor: Date = Date()
@@ -18,6 +29,10 @@ struct RouletteCarousel: View {
     @State private var spinTargetOffset: CGFloat = 0
     @State private var hasFiredCompletion: Bool = false
     @State private var pendingTick: DispatchWorkItem? = nil
+    /// Snapshot of `kinds.count` captured at startSpin time. Used by
+    /// `currentSpinKindIdx` to verify the actual landing kind matches
+    /// the requested one, even if `kinds` mutates mid-animation.
+    @State private var spinTargetIndex: Int? = nil
 
     // MARK: - Tunables
 
@@ -50,7 +65,15 @@ struct RouletteCarousel: View {
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture { skipSpinIfRunning() }
-        .onChange(of: spinTrigger) { _ in startSpin() }
+        .onChange(of: landingTrigger) { newValue in
+            guard let target = newValue else { return }
+            startSpin(landingKindIndex: target, kindsSnapshot: kinds)
+            // Reset to nil so the next assignment fires regardless of
+            // whether it has the same integer value. Done on the next
+            // runloop so this state mutation doesn't fight with the
+            // caller's set.
+            DispatchQueue.main.async { landingTrigger = nil }
+        }
         .onDisappear { pendingTick?.cancel() }
     }
 
@@ -184,21 +207,25 @@ struct RouletteCarousel: View {
 
     // MARK: - Spin trigger
 
-    private func startSpin() {
+    private func startSpin(landingKindIndex: Int, kindsSnapshot: [ItemKind]) {
         let now = Date()
         let from = currentOffset(at: now)
 
-        let count = kinds.count
+        let count = kindsSnapshot.count
         guard count > 0 else { return }
+        // Clamp into the snapshot range — defensive against a caller
+        // passing an out-of-bounds index after a kinds mutation.
+        let safeLanding = ((landingKindIndex % count) + count) % count
         let approxFutureI = Int(floor((-from - Self.tileSize / 2) / Self.pitch)) + Self.baseSpinPitches
         let baseKindAtFuture = ((approxFutureI % count) + count) % count
-        let alignDelta = ((landingKindIndex - baseKindAtFuture) % count + count) % count
+        let alignDelta = ((safeLanding - baseKindAtFuture) % count + count) % count
         let targetI = approxFutureI + alignDelta
         let target = -CGFloat(targetI) * Self.pitch - Self.tileSize / 2
 
         spinStartOffset = from
         spinTargetOffset = target
         spinStartDate = now
+        spinTargetIndex = safeLanding
         hasFiredCompletion = false
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

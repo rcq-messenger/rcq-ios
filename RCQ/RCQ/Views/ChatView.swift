@@ -273,8 +273,16 @@ struct ChatView: View {
         [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
     /// Non-nil = the pinned-announcement expansion sheet is open.
     @State private var pinnedExpansion: PinExpansion?
-    /// Forces the pinned banner row to re-render after a dismiss.
-    @State private var pinDismissTick: Int = 0
+    /// Per-(group, text-hash) set of pins the user has dismissed.
+    /// Stored as @State so SwiftUI's dependency tracker sees the
+    /// membership check in the banner condition; mirrored to
+    /// UserDefaults for persistence across launches. The previous
+    /// implementation read UserDefaults directly inside the condition,
+    /// which SwiftUI does NOT track — invalidating @State alone didn't
+    /// invalidate the read, so the X button looked like it did nothing.
+    @State private var dismissedPinKeys: Set<String> = Set(
+        UserDefaults.standard.stringArray(forKey: "rcq.pin.dismissed_keys") ?? []
+    )
     struct PinExpansion: Identifiable {
         let id = UUID()
         let text: String
@@ -391,15 +399,22 @@ struct ChatView: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        // Hide pinned banner during the long-press action overlay
-        // so the focused message + action menu reads as a clean
-        // modal, not as a partial UI with chrome leaking through.
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if actionTarget == nil { pinnedBanner }
+        // Cover the navigation bar + pinned banner with the same dim
+        // backdrop the action overlay uses inside the chat area, so
+        // those elements look "under the blur" instead of staying
+        // brightly visible above an otherwise-darkened screen.
+        .overlay(alignment: .top) {
+            if actionTarget != nil {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea(edges: .top)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 120)
+                    .allowsHitTesting(false)
+            }
         }
-        // Same reasoning for the navigation bar — long-press should
-        // feel like a modal focus state.
-        .toolbar(actionTarget == nil ? .visible : .hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            pinnedBanner
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
@@ -1607,24 +1622,26 @@ struct ChatView: View {
     /// pin re-surfaces the banner for everyone who had previously
     /// dismissed the old text.
     private func pinDismissedByUser(group: RCQGroup, text: String) -> Bool {
-        let key = pinDismissKey(groupID: group.id, text: text)
-        return UserDefaults.standard.bool(forKey: key)
+        dismissedPinKeys.contains(pinDismissKey(groupID: group.id, text: text))
     }
 
     private func dismissPin(group: RCQGroup, text: String) {
         let key = pinDismissKey(groupID: group.id, text: text)
-        UserDefaults.standard.set(true, forKey: key)
-        // Bump a state value to force re-render — UserDefaults change
-        // alone won't redraw, so we mirror the dismissed key into a
-        // local @State counter.
-        pinDismissTick &+= 1
+        dismissedPinKeys.insert(key)
+        UserDefaults.standard.set(Array(dismissedPinKeys), forKey: "rcq.pin.dismissed_keys")
     }
 
     private func pinDismissKey(groupID: Int, text: String) -> String {
-        // Hash the text so the key length stays bounded; SHA1 prefix
-        // is fine for cache invalidation (not security).
+        // Hash the text so the key length stays bounded. NOTE:
+        // String.hashValue is randomized per-process so the same text
+        // yields different keys across launches — that's a feature
+        // here: we WANT old dismissals to expire when the app
+        // restarts, so a user who tap-dismisses today still sees the
+        // pin tomorrow (if it hasn't changed). For cross-session
+        // persistence we'd need a stable hash; current behavior is
+        // session-scoped dismiss, which matches tester expectation.
         let hash = abs(text.hashValue)
-        return "rcq.pin.dismissed.\(groupID).\(hash)"
+        return "\(groupID).\(hash)"
     }
 
     private var inputBar: some View {

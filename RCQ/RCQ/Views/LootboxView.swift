@@ -12,8 +12,11 @@ struct LootboxView: View {
     @State private var revealTarget: RevealTarget?
     @State private var rolling = false
 
-    @State private var spinTrigger = 0
-    @State private var landingKindIndex = 0
+    /// Atomic spin trigger + target index. Non-nil = fire a new spin
+    /// landing on this index. Replaces the old (spinTrigger, landingKindIndex)
+    /// pair that could race when SwiftUI processed them in separate ticks,
+    /// causing the carousel to spin to the previous roll's item.
+    @State private var landingTrigger: Int? = nil
     @State private var pendingOutcome: PullOutcome?
     @State private var carouselKinds: [ItemKind] = []
     @AppStorage("rcq.lootbox.skip_spin") private var skipSpin: Bool = false
@@ -156,8 +159,7 @@ struct LootboxView: View {
             if !carouselKinds.isEmpty {
                 RouletteCarousel(
                     kinds: carouselKinds,
-                    landingKindIndex: landingKindIndex,
-                    spinTrigger: $spinTrigger,
+                    landingTrigger: $landingTrigger,
                     onSpinComplete: { revealPending() },
                 )
                 .frame(height: 132)
@@ -374,20 +376,18 @@ struct LootboxView: View {
             // shows different item" bug, because there's no relation
             // between the random index and the real outcome. Better to
             // skip the animation entirely than to lie about it.
-            let resolvedIdx: Int? = {
-                if let idx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) {
-                    return idx
-                }
-                if let kind = items.catalog?.kind(by: item.kindID) {
-                    carouselKinds.append(kind)
-                    return carouselKinds.count - 1
-                }
-                return nil
-            }()
+            // Ensure the carousel kinds list contains the won item
+            // BEFORE computing the target index. If not present and
+            // the catalog can resolve it, append; otherwise skip the
+            // animation rather than land on a random unrelated tile.
+            if !carouselKinds.contains(where: { $0.id == item.kindID }),
+               let kind = items.catalog?.kind(by: item.kindID) {
+                carouselKinds.append(kind)
+            }
 
             pendingOutcome = .item(item)
 
-            guard let targetIdx = resolvedIdx else {
+            guard let targetIdx = carouselKinds.firstIndex(where: { $0.id == item.kindID }) else {
                 // Catalog doesn't know this kind. Don't animate to a
                 // random tile; just reveal the outcome directly.
                 Task { @MainActor in
@@ -396,25 +396,20 @@ struct LootboxView: View {
                 }
                 return
             }
-            landingKindIndex = targetIdx
 
-            // Hop one runloop tick before presenting the cover so wallet/rolling commits first.
             if skipSpin {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 30_000_000)
                     revealPending()
                 }
             } else {
-                // Defer the spinTrigger bump by one runloop. Without
-                // this, `landingKindIndex` (and possibly the appended
-                // `carouselKinds`) commit in the same SwiftUI tick as
-                // `spinTrigger`, and RouletteCarousel's `.onChange`
-                // can read stale values when computing the target
-                // offset — leading to a spin that lands on the
-                // pre-update kind instead of the new one.
-                DispatchQueue.main.async {
-                    spinTrigger += 1
-                }
+                // Single atomic state mutation — carousel reads both
+                // the trigger AND the target from this one value, so
+                // the two can't go out of sync. RouletteCarousel
+                // captures `kinds` as a snapshot at spin-start so a
+                // later mutation to carouselKinds doesn't shift the
+                // landing tile mid-animation.
+                landingTrigger = targetIdx
             }
         case .scroll(let count):
             rolling = false
