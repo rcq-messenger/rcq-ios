@@ -127,8 +127,21 @@ class NotificationService: UNNotificationServiceExtension {
         // Group threading by sender so iOS stacks multiple messages
         // from the same UIN into a single notification group AND
         // gives the main app's `didReceive` handler a deterministic
-        // `peer-<UIN>` token to parse for tap-routing.
-        let threadKey = "peer-\(decrypted.senderUIN)"
+        // `peer-<UIN>` / `group-<GID>` token to parse for tap-routing.
+        //
+        // Group messages set `group_id` in userInfo (server-side, see
+        // apns.send_to_user). When present, thread the notification +
+        // badge under `group-<id>` so ChatView.onAppear's per-group
+        // reset matches what we just incremented. Without this the
+        // increment goes to `peer-<sender>` and never gets cleared.
+        let groupID = (content.userInfo["group_id"] as? Int)
+            ?? ((content.userInfo["group_id"] as? NSNumber)?.intValue)
+        let threadKey: String
+        if let gid = groupID {
+            threadKey = "group-\(gid)"
+        } else {
+            threadKey = "peer-\(decrypted.senderUIN)"
+        }
         content.threadIdentifier = threadKey
 
         // User-visible envelopes bump the unread counter so the icon

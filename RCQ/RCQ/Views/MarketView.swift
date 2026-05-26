@@ -376,7 +376,12 @@ struct MarketView: View {
 
     private func reload() async {
         refreshing = true
-        market.wipe()
+        // No wipe() here: refresh() atomically replaces `listings` on
+        // success. Wiping first synchronously empties the array and
+        // the UI renders blank for the HTTP roundtrip, which reads
+        // as "lots disappeared on refresh" to users. Leaving the
+        // stale list visible until the fresh one lands is the standard
+        // pull-to-refresh feel (and preserves scroll position).
         switch category {
         case .items:
             await market.refresh(

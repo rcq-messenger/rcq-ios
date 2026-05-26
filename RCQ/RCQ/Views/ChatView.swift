@@ -1962,7 +1962,10 @@ struct ChatView: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                     vm.replyTarget = items.first!
                 }
-            }
+            },
+            onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) },
+            jetonTotal: jetonStore.total(for: items.first!.id),
+            onTapJeton: jetonEligible(items.first!) ? { jetonTarget = items.first! } : nil
         )
         .id(items.first!.id)
     }

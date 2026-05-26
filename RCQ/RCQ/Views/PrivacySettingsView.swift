@@ -99,7 +99,6 @@ struct PrivacySettingsView: View {
                         }
                         if presencePersistent {
                             Picker(selection: $presenceTTLMinutes) {
-                                Text("settings.privacy.presence_ttl.forever".localized).tag(0)
                                 Text("settings.privacy.presence_ttl.30m".localized).tag(30)
                                 Text("settings.privacy.presence_ttl.1h".localized).tag(60)
                                 Text("settings.privacy.presence_ttl.3h".localized).tag(180)
@@ -515,7 +514,16 @@ struct PrivacySettingsView: View {
             }
             if let v = p.reputationVisibility { reputationVisibility = v }
             if let v = p.presencePersistent { presencePersistent = v }
-            if let v = p.presenceTTLMinutes { presenceTTLMinutes = v }
+            if let v = p.presenceTTLMinutes {
+                // Migrate legacy "forever" (0) silently to 24h so the
+                // picker shows a real selection. The forever option was
+                // removed because it lies about presence: app closed for
+                // days, contacts still see "online".
+                presenceTTLMinutes = v == 0 ? 1440 : v
+                if v == 0 {
+                    Task { await pushIntField("presence_ttl_minutes", 1440) }
+                }
+            }
             gender = p.gender ?? ""
         } catch {
             // Soft-fail — the picker write paths still work, the

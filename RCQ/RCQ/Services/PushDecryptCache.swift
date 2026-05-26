@@ -17,7 +17,14 @@ import Foundation
 ///
 /// Storage: one JSON file per envelope under `<app-group>/push-cache/<sha256-hex>.json`.
 enum PushDecryptCache {
-    private static let maxAgeSec: TimeInterval = 60 * 60
+    // 30 days. Entries here are the ONLY decoder for v=2 envelopes the
+    // NSE already stepped the ratchet on, so a TTL shorter than the
+    // worst-case "user closed the app for a while" window loses
+    // messages permanently (the offline-queue row is still there, but
+    // the second crypto.decrypt fails because ratchet has moved past).
+    // Disk cost is bounded by sweep-on-store; entries are a few hundred
+    // bytes each, so even thousands of stale entries cost low-MB.
+    private static let maxAgeSec: TimeInterval = 60 * 60 * 24 * 30
 
     private struct CacheEntry: Codable {
         let senderUIN: Int
