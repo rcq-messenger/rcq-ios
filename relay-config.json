@@ -1,6 +1,6 @@
 {
-  "version": 8,
-  "issued_at": "2026-05-25T18:29:40Z",
+  "version": 9,
+  "issued_at": "2026-05-26T18:52:30Z",
   "relays": [
     {
       "tag": "relay-do-fra-yandex-hy2",
@@ -69,6 +69,16 @@
       "flow": "xtls-rprx-vision"
     },
     {
+      "tag": "relay-aws-sg-hy2",
+      "proto": "hysteria2",
+      "server": "47.129.249.170",
+      "port": 443,
+      "sni": "www.amazon.com",
+      "password": "IjO9NlfvuXuP8w4tZNXHZwGL",
+      "obfs_password": "yBlwN4J7IMzQi3VCMo0oKZHh",
+      "priority": 6
+    },
+    {
       "tag": "relay-aws-sg",
       "proto": "vless",
       "server": "47.129.249.170",
@@ -77,9 +87,9 @@
       "sni": "www.amazon.com",
       "public_key": "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
       "short_id": "533142a04b016a00",
-      "priority": 6,
+      "priority": 7,
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "4Ln17q+g8AHmETlCji6hJrB3Hv50ZSRFc4D2FLZfThmLI+zv8Gpr5h/zuDVLVRFKbJFeZfc+WHhEpvIEuxYdDQ=="
+  "sig": "Z0PWyeZaAFNFIt8QHchOGFv+lMnxN6ElE5ZuZGKNs47CWGVNQmY+7GPaAv0F4yftoTpbX8OwMmfCANFldwnXCg=="
 }
