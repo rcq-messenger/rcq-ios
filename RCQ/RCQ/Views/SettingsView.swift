@@ -237,7 +237,7 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
-            .sheet(isPresented: $showUINShop) { UINShopView() }
+            .fullScreenCover(isPresented: $showUINShop) { UINShopView() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
             .sheet(isPresented: $showLinkWeb) {

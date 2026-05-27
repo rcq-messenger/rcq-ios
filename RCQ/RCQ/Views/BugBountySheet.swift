@@ -28,6 +28,7 @@ struct BugBountySheet: View {
     @State private var sending: Bool = false
     @State private var sentOK: Bool = false
     @State private var errorMessage: String?
+    @AppStorage("rcq.shake_to_bug_disabled") private var shakeDisabled: Bool = false
 
     /// Hard cap matches the backend's `MAX_REASON_LEN` so a typed-out
     /// report fits in one POST without surprise truncation.
@@ -59,6 +60,7 @@ struct BugBountySheet: View {
                     header
                     howItWorks
                     submitForm
+                    shakeToggle
                     Text("bug_bounty.disclosure".localized)
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
@@ -112,6 +114,26 @@ struct BugBountySheet: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Color.bgSecondary)
+        .cornerRadius(8)
+    }
+
+    private var shakeToggle: some View {
+        Toggle(isOn: Binding(
+            get: { !shakeDisabled },
+            set: { shakeDisabled = !$0 }
+        )) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("bug_bounty.shake.toggle".localized)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text("bug_bounty.shake.toggle_hint".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+        }
+        .tint(Theme.Color.accent)
+        .padding(14)
         .background(Theme.Color.bgSecondary)
         .cornerRadius(8)
     }

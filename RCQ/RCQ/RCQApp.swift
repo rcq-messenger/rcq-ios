@@ -224,6 +224,11 @@ struct RootView: View {
         // to the top VC and presenting imperatively works regardless
         // of modal depth.
         .onReceive(NotificationCenter.default.publisher(for: .rcqDeviceShook)) { _ in
+            // User opt-out lives in the Bug Bounty sheet itself as a
+            // toggle, persisted to UserDefaults. Default = enabled
+            // (key absent), so checking the boolean directly is fine
+            // — the disable flag is opt-in.
+            guard !UserDefaults.standard.bool(forKey: "rcq.shake_to_bug_disabled") else { return }
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             BugBountyPresenter.present()
         }
