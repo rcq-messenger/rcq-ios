@@ -158,8 +158,11 @@
 "uin_shop.status.unavailable" = "Недоступен";
 "uin_shop.hint.too_short" = "Минимум 3 цифры";
 "uin_shop.price.label" = "ЦЕНА";
-"uin_shop.footer.line1" = "Чем короче UIN, тем дороже.";
-"uin_shop.footer.current" = "сейчас · %@";
+"uin_shop.info.what.title" = "Что такое UIN";
+"uin_shop.info.what.body" = "UIN это твой ник в RCQ. Номер не привязан к телефону или почте, по нему тебя находят другие. Чем короче, тем он реже, поэтому стоит дороже.";
+"uin_shop.info.migrate.title" = "Покупка переносит аккаунт";
+"uin_shop.info.migrate.body" = "Контакты, группы, профиль и аудио-комнаты переедут на новый UIN. Старый освободится и однажды может достаться кому-то ещё. История чатов на этом устройстве при переезде очищается.";
+"uin_shop.info.current" = "Твой сейчас · %@";
 "uin_shop.buy.cta" = "Купить за %@";
 "uin_shop.buy.processing" = "Покупаем…";
 "uin_shop.confirm.title" = "Подтвердить покупку";

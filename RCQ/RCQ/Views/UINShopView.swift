@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// UIN marketplace. Fullscreen, keyboard-up immediately. A single
-/// plate card with the typed digits is the hero. Status + a small
-/// live-price preview sit underneath; when the server confirms the
-/// UIN is free, the price re-emerges as the headline number in the
-/// accent colour. One capsule CTA at the bottom. No carousel, no
-/// extra chrome — the page exists to take a number and a tap.
+/// UIN marketplace surface. The user types a 3-9 digit number, the
+/// server confirms availability, the price flips from preview-grey to
+/// accent-green, one tap on the bottom capsule starts the migration.
+///
+/// Below the input we keep a short explainer: what a UIN is and what
+/// happens to the account when one is bought. The shop is the only
+/// place in the app where a tester encounters the migration semantics
+/// for the first time, so it has to explain itself.
 struct UINShopView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var fieldFocused: Bool
@@ -17,23 +19,24 @@ struct UINShopView: View {
     @State private var showConfirm = false
     @State private var error: String?
     @State private var quoteTask: Task<Void, Never>?
-    @State private var revealedCents: Int = 0
 
     private var ownUIN: Int? { AuthService.shared.ownUIN }
     private var typedLength: Int { typed.count }
     private var isValidLength: Bool { (3...9).contains(typedLength) }
 
-    /// Local mirror of the server's `_PRICES_CENTS`. The /quote call
-    /// is still authoritative for *availability*, but the price tier
-    /// depends only on length — we can preview it immediately while
-    /// the network round-trip lands.
+    /// Local mirror of `_PRICES_CENTS` on the backend. The /quote call
+    /// is the authority for *availability*; the tier price depends
+    /// only on length, so we preview it client-side without waiting
+    /// for the network. No count-up animation — the value just lands
+    /// instantly so it doesn't flicker mid-animation when the user
+    /// types fast.
     private static let priceCentsByLength: [Int: Int] = [
         9: 99,
         8: 199,
-        7: 299,
-        6: 499,
-        5: 999,
-        4: 1999,
+        7: 499,
+        6: 1499,
+        5: 4999,
+        4: 19900,
         3: 99900,
     ]
 
@@ -49,17 +52,18 @@ struct UINShopView: View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
-            VStack(spacing: 20) {
-                Spacer().frame(height: 36)
-                plateCard
-                statusLine
-                priceBlock
-                Spacer(minLength: 8)
-                footerHint
-                Spacer().frame(height: 120)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 18) {
+                    Spacer().frame(height: 12)
+                    plateCard
+                    statusLine
+                    priceLine
+                    Spacer().frame(height: 12)
+                    infoBlock
+                    Spacer().frame(height: 140)
+                }
+                .padding(.horizontal, 22)
             }
-            .padding(.horizontal, 22)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             closeButton
                 .padding(.leading, 12)
@@ -111,9 +115,9 @@ struct UINShopView: View {
     private var closeButton: some View {
         Button(action: { dismiss() }) {
             Image(systemName: "chevron.down")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Theme.Color.textSecondary)
-                .frame(width: 40, height: 40)
+                .frame(width: 36, height: 36)
                 .background(Theme.Color.bgSecondary)
                 .clipShape(Circle())
         }
@@ -123,30 +127,24 @@ struct UINShopView: View {
 
     private var plateCard: some View {
         Button(action: { fieldFocused = true }) {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 Text(displayedNumber)
-                    .font(.system(size: 56, weight: .heavy, design: .monospaced))
+                    .font(.system(size: 48, weight: .semibold, design: .monospaced))
                     .foregroundColor(typedLength == 0 ? Theme.Color.textSecondary.opacity(0.32) : Theme.Color.textPrimary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
-                    .contentTransition(.numericText())
                     .animation(.spring(response: 0.32, dampingFraction: 0.78), value: typed)
                 Text(plateCaption)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Theme.Color.textSecondary)
                     .animation(.easeInOut(duration: 0.18), value: typedLength)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 36)
+            .padding(.vertical, 32)
             .padding(.horizontal, 20)
             .background(Theme.Color.bgSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(plateAccent, lineWidth: isAvailable ? 1.5 : 0)
-                    .animation(.easeInOut(duration: 0.25), value: isAvailable)
-            )
             .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -161,10 +159,6 @@ struct UINShopView: View {
         return String(format: "uin_shop.plate.digits".localized, typedLength)
     }
 
-    private var plateAccent: Color {
-        isAvailable ? Theme.Color.accent : .clear
-    }
-
     // MARK: - Status
 
     @ViewBuilder
@@ -177,18 +171,15 @@ struct UINShopView: View {
                 Text("uin_shop.hint.too_short".localized)
                     .foregroundColor(Theme.Color.textSecondary)
             } else if checking, displayedQuote == nil {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ProgressView().scaleEffect(0.7)
                     Text("uin_shop.status.checking".localized)
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             } else if let q = displayedQuote {
                 if q.available {
-                    HStack(spacing: 6) {
-                        Circle().fill(Theme.Color.accent).frame(width: 6, height: 6)
-                        Text("uin_shop.status.available".localized)
-                            .foregroundColor(Theme.Color.textPrimary)
-                    }
+                    Text("uin_shop.status.available".localized)
+                        .foregroundColor(Theme.Color.accent)
                 } else {
                     Text(reasonText(q.reason ?? "taken"))
                         .foregroundColor(.red.opacity(0.85))
@@ -197,68 +188,22 @@ struct UINShopView: View {
                 Text(" ").foregroundColor(.clear)
             }
         }
-        .font(.system(size: 14, weight: .semibold))
+        .font(.system(size: 14, weight: .medium))
         .frame(height: 18)
-        .transition(.opacity)
     }
 
     // MARK: - Price
 
     @ViewBuilder
-    private var priceBlock: some View {
-        VStack(spacing: 6) {
-            Text("uin_shop.price.label".localized)
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(1.8)
-                .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
-            Text(priceDisplay(cents: priceToShow))
-                .font(.system(size: 56, weight: .heavy, design: .rounded))
-                .foregroundColor(priceColor)
+    private var priceLine: some View {
+        if isValidLength, let cents = Self.priceCentsByLength[typedLength] {
+            Text(priceDisplay(cents: cents))
+                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .foregroundColor(isAvailable ? Theme.Color.accent : Theme.Color.textPrimary)
                 .monospacedDigit()
-                .contentTransition(.numericText(countsDown: false))
-                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: priceToShow)
-                .animation(.easeInOut(duration: 0.25), value: priceColor)
-        }
-        .opacity(showPriceBlock ? 1 : 0)
-        .animation(.easeInOut(duration: 0.2), value: showPriceBlock)
-        .onChange(of: isAvailable) { available in
-            if available, let cents = displayedQuote?.priceCents {
-                animateReveal(toCents: cents)
-            }
-        }
-    }
-
-    /// We show the price block as soon as the user has typed a valid
-    /// length — but in *muted* form (textSecondary). Once /quote
-    /// confirms availability, the colour pops to accent and the
-    /// number does the count-up reveal. The hint to the user is:
-    /// price depends on length, not on which UIN you pick.
-    private var showPriceBlock: Bool {
-        isValidLength
-    }
-
-    private var priceToShow: Int {
-        if isAvailable {
-            return revealedCents
-        }
-        return Self.priceCentsByLength[typedLength] ?? 0
-    }
-
-    private var priceColor: Color {
-        isAvailable ? Theme.Color.accent : Theme.Color.textSecondary
-    }
-
-    private func animateReveal(toCents target: Int) {
-        revealedCents = 0
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            withAnimation(.easeOut(duration: 0.18)) {
-                revealedCents = Int(Double(target) * 0.6)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) {
-                revealedCents = target
-            }
+                .animation(.easeInOut(duration: 0.22), value: isAvailable)
+        } else {
+            Color.clear.frame(height: 48)
         }
     }
 
@@ -270,20 +215,38 @@ struct UINShopView: View {
         return String(format: "$%.2f", dollars)
     }
 
-    // MARK: - Footer hint
+    // MARK: - Info
 
-    private var footerHint: some View {
-        VStack(spacing: 4) {
-            Text("uin_shop.footer.line1".localized)
-                .font(.caption2)
-                .foregroundColor(Theme.Color.textSecondary)
+    private var infoBlock: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            infoRow(
+                title: "uin_shop.info.what.title",
+                body: "uin_shop.info.what.body"
+            )
+            infoRow(
+                title: "uin_shop.info.migrate.title",
+                body: "uin_shop.info.migrate.body"
+            )
             if let uin = ownUIN {
-                Text(String(format: "uin_shop.footer.current".localized, String(uin)))
+                Text(String(format: "uin_shop.info.current".localized, String(uin)))
                     .font(.caption2.monospacedDigit())
-                    .foregroundColor(Theme.Color.textSecondary.opacity(0.6))
+                    .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+                    .padding(.top, 2)
             }
         }
-        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func infoRow(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.localized)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            Text(body.localized)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Bottom CTA
@@ -314,7 +277,7 @@ struct UINShopView: View {
                     .clipShape(Capsule())
             }
             .buttonStyle(SubtlePressStyle())
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(.opacity)
         } else if let error {
             Text(error)
                 .font(.caption.weight(.medium))
@@ -362,7 +325,7 @@ struct UINShopView: View {
                 "POST", "/uin/quote", body: Body(uin: uin)
             )
             if !Task.isCancelled, Int(typed) == uin {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                withAnimation(.easeInOut(duration: 0.22)) {
                     quote = resp
                 }
             }
@@ -404,8 +367,7 @@ struct UINShopView: View {
 private struct SubtlePressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(configuration.isPressed ? 0.75 : 1)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }

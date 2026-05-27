@@ -167,8 +167,11 @@
 "uin_shop.status.unavailable" = "Unavailable";
 "uin_shop.hint.too_short" = "Need at least 3 digits";
 "uin_shop.price.label" = "PRICE";
-"uin_shop.footer.line1" = "The shorter your UIN, the higher the price.";
-"uin_shop.footer.current" = "current · %@";
+"uin_shop.info.what.title" = "What is a UIN";
+"uin_shop.info.what.body" = "Your UIN is your handle in RCQ — a number tied to no phone or email. Other users find you by it; shorter UINs are scarcer, so they cost more.";
+"uin_shop.info.migrate.title" = "Buying migrates your account";
+"uin_shop.info.migrate.body" = "Contacts, groups, profile and audio rooms move with you onto the new UIN. The old UIN returns to the shared pool and may be claimed by someone else later. Local chat history on this device is cleared by the migration.";
+"uin_shop.info.current" = "Your current UIN · %@";
 "uin_shop.buy.cta" = "Buy for %@";
 "uin_shop.buy.processing" = "Processing…";
 "uin_shop.confirm.title" = "Confirm purchase";
