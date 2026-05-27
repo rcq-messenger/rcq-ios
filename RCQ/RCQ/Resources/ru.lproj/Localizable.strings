@@ -454,7 +454,7 @@
 "hood_banner.board.title" = "Доска района";
 "contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.roulette" = "Незнакомец";
+"contact_list.bar.random" = "Незнакомец";
 "contact_list.bar.nearby" = "Рядом";
 "contact_list.bar.settings" = "Настройки";
 "contact_list.section.online" = "В сети";

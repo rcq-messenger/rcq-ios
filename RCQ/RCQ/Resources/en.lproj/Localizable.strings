@@ -487,7 +487,7 @@
 "hood_banner.board.title" = "Area board";
 "contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.roulette" = "Stranger Mode";
+"contact_list.bar.random" = "Stranger Mode";
 "contact_list.bar.nearby" = "Nearby";
 "contact_list.bar.settings" = "Settings";
 "contact_list.section.online" = "Online";

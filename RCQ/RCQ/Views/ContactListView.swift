@@ -23,6 +23,7 @@ struct ContactListView: View {
     @State private var collapsedAudioRooms = false
     @State private var rotateKeyConfirmRoom: AudioRoom?
     @State private var showNearby = false
+    @State private var showRandom = false
     @State private var showQR = false
     @State private var showSearch = false
     @State private var collapsedGroups = false
@@ -147,6 +148,7 @@ struct ContactListView: View {
                 }
             }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
+            .fullScreenCover(isPresented: $showRandom) { RandomChatView() }
             .background(storiesCoverHost)
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
@@ -1174,6 +1176,7 @@ struct ContactListView: View {
         HStack(spacing: 0) {
             barButton(icon: "person.badge.plus", label: "contact_list.bar.add".localized) { showAddContact = true }
             barButton(icon: "qrcode.viewfinder", label: "contact_list.bar.qr".localized) { showQR = true }
+            barButton(icon: "shuffle", label: "contact_list.bar.random".localized) { showRandom = true }
             barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
             barButton(icon: "gearshape", label: "contact_list.bar.settings".localized) { showSettings = true }
         }
