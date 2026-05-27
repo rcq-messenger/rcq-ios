@@ -52,17 +52,30 @@ struct UINShopView: View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
+            // Tap-anywhere-blank-area to dismiss the keyboard.
+            // Sits behind the content but in front of the bg colour
+            // so taps on the plate / info / CTA still hit those
+            // first (Button hit-test wins over this transparent
+            // layer).
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { fieldFocused = false }
+                .ignoresSafeArea()
+
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
-                    Spacer().frame(height: 12)
+                    Spacer(minLength: 24)
                     plateCard
                     statusLine
                     priceLine
-                    Spacer().frame(height: 12)
+                    Spacer(minLength: 18)
                     infoBlock
-                    Spacer().frame(height: 140)
+                    Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 22)
+                .padding(.top, 56)       // breathing room under the close button
+                .padding(.bottom, 120)   // breathing room above the CTA
+                .frame(maxWidth: .infinity, minHeight: scrollMinHeight)
             }
 
             closeButton
@@ -91,11 +104,6 @@ struct UINShopView: View {
                     scheduleQuote()
                 }
         )
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                fieldFocused = true
-            }
-        }
         .confirmationDialog(
             confirmTitle,
             isPresented: $showConfirm,
@@ -108,6 +116,15 @@ struct UINShopView: View {
         } message: {
             Text("uin_shop.confirm.body".localized)
         }
+    }
+
+    /// Vertical breathing space — when the keyboard is dismissed we
+    /// want the content centred-ish on screen, not glued to the top.
+    /// `UIScreen.main.bounds` is fine here; we don't need precise
+    /// safe-area math because the inner Spacers do the centring as
+    /// long as the container is tall enough.
+    private var scrollMinHeight: CGFloat {
+        UIScreen.main.bounds.height - 120
     }
 
     // MARK: - Close
