@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// UIN marketplace. Fullscreen, minimal, one accent. The plate is a
-/// single soft-surface card that holds the typed number; status sits
-/// beneath it; price only appears once the server confirms the UIN is
-/// free; suggestions ride below; one capsule CTA pinned to the bottom.
+/// UIN marketplace. Fullscreen, keyboard-up immediately. A single
+/// plate card with the typed digits is the hero. Status + a small
+/// live-price preview sit underneath; when the server confirms the
+/// UIN is free, the price re-emerges as the headline number in the
+/// accent colour. One capsule CTA at the bottom. No carousel, no
+/// extra chrome — the page exists to take a number and a tap.
 struct UINShopView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var fieldFocused: Bool
 
     @State private var typed: String = ""
     @State private var quote: QuoteResponse?
-    @State private var suggestions: [SuggestionResponse] = []
     @State private var checking = false
     @State private var buying = false
     @State private var showConfirm = false
@@ -21,6 +22,20 @@ struct UINShopView: View {
     private var ownUIN: Int? { AuthService.shared.ownUIN }
     private var typedLength: Int { typed.count }
     private var isValidLength: Bool { (3...9).contains(typedLength) }
+
+    /// Local mirror of the server's `_PRICES_CENTS`. The /quote call
+    /// is still authoritative for *availability*, but the price tier
+    /// depends only on length — we can preview it immediately while
+    /// the network round-trip lands.
+    private static let priceCentsByLength: [Int: Int] = [
+        9: 99,
+        8: 199,
+        7: 299,
+        6: 499,
+        5: 999,
+        4: 1999,
+        3: 99900,
+    ]
 
     private var displayedQuote: QuoteResponse? {
         guard let q = quote, q.uin == Int(typed) else { return nil }
@@ -34,26 +49,28 @@ struct UINShopView: View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 28) {
-                    Spacer().frame(height: 16)
-                    plateCard
-                    statusLine
-                    priceBlock
-                    suggestionsSection
-                    Spacer().frame(height: 140)
-                }
-                .padding(.horizontal, 22)
+            VStack(spacing: 20) {
+                Spacer().frame(height: 36)
+                plateCard
+                statusLine
+                priceBlock
+                Spacer(minLength: 8)
+                footerHint
+                Spacer().frame(height: 120)
             }
+            .padding(.horizontal, 22)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            topBar
-                .background(Theme.Color.bgPrimary.opacity(0.96))
+            closeButton
+                .padding(.leading, 12)
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack {
                 Spacer()
                 bottomCTA
                     .padding(.horizontal, 22)
-                    .padding(.bottom, 22)
+                    .padding(.bottom, 18)
             }
         }
         .background(
@@ -70,7 +87,6 @@ struct UINShopView: View {
                     scheduleQuote()
                 }
         )
-        .task { await refreshSuggestions() }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 fieldFocused = true
@@ -90,69 +106,66 @@ struct UINShopView: View {
         }
     }
 
-    // MARK: - Top bar
+    // MARK: - Close
 
-    private var topBar: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .frame(width: 40, height: 40)
-                    .contentShape(Rectangle())
-            }
-            Spacer()
-            VStack(spacing: 1) {
-                Text("uin_shop.title".localized)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Theme.Color.textPrimary)
-                if let uin = ownUIN {
-                    Text(String(format: "uin_shop.subtitle_current".localized, String(uin)))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-            }
-            Spacer()
-            Color.clear.frame(width: 40, height: 40)
+    private var closeButton: some View {
+        Button(action: { dismiss() }) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Theme.Color.textSecondary)
+                .frame(width: 40, height: 40)
+                .background(Theme.Color.bgSecondary)
+                .clipShape(Circle())
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
     }
 
     // MARK: - Plate
 
     private var plateCard: some View {
         Button(action: { fieldFocused = true }) {
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
                 Text(displayedNumber)
-                    .font(.system(size: 52, weight: .heavy, design: .monospaced))
+                    .font(.system(size: 56, weight: .heavy, design: .monospaced))
                     .foregroundColor(typedLength == 0 ? Theme.Color.textSecondary.opacity(0.32) : Theme.Color.textPrimary)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.32, dampingFraction: 0.78), value: typed)
-                Text(typedLength == 0
-                     ? "uin_shop.plate.hint".localized
-                     : String(format: "uin_shop.plate.digits".localized, typedLength))
+                Text(plateCaption)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Theme.Color.textSecondary)
                     .animation(.easeInOut(duration: 0.18), value: typedLength)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 36)
+            .padding(.horizontal, 20)
             .background(Theme.Color.bgSecondary)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(plateAccent, lineWidth: isAvailable ? 1.5 : 0)
+                    .animation(.easeInOut(duration: 0.25), value: isAvailable)
+            )
             .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     private var displayedNumber: String {
-        if typed.isEmpty { return "—" }
-        return typed
+        typed.isEmpty ? "—" : typed
     }
 
-    // MARK: - Status line
+    private var plateCaption: String {
+        if typed.isEmpty { return "uin_shop.plate.hint".localized }
+        return String(format: "uin_shop.plate.digits".localized, typedLength)
+    }
+
+    private var plateAccent: Color {
+        isAvailable ? Theme.Color.accent : .clear
+    }
+
+    // MARK: - Status
 
     @ViewBuilder
     private var statusLine: some View {
@@ -178,13 +191,13 @@ struct UINShopView: View {
                     }
                 } else {
                     Text(reasonText(q.reason ?? "taken"))
-                        .foregroundColor(Theme.Color.textSecondary)
+                        .foregroundColor(.red.opacity(0.85))
                 }
             } else {
                 Text(" ").foregroundColor(.clear)
             }
         }
-        .font(.system(size: 14, weight: .medium))
+        .font(.system(size: 14, weight: .semibold))
         .frame(height: 18)
         .transition(.opacity)
     }
@@ -193,25 +206,46 @@ struct UINShopView: View {
 
     @ViewBuilder
     private var priceBlock: some View {
-        if isAvailable, let cents = displayedQuote?.priceCents {
-            VStack(spacing: 6) {
-                Text("uin_shop.price.label".localized)
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.6)
-                    .foregroundColor(Theme.Color.textSecondary)
-                Text(priceDisplay(cents: revealedCents))
-                    .font(.system(size: 52, weight: .heavy, design: .rounded))
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText(countsDown: false))
-                    .animation(.spring(response: 0.55, dampingFraction: 0.7), value: revealedCents)
-            }
-            .onAppear { animateReveal(toCents: cents) }
-            .onChange(of: cents) { newCents in animateReveal(toCents: newCents) }
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-        } else {
-            Color.clear.frame(height: 80)
+        VStack(spacing: 6) {
+            Text("uin_shop.price.label".localized)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.8)
+                .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+            Text(priceDisplay(cents: priceToShow))
+                .font(.system(size: 56, weight: .heavy, design: .rounded))
+                .foregroundColor(priceColor)
+                .monospacedDigit()
+                .contentTransition(.numericText(countsDown: false))
+                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: priceToShow)
+                .animation(.easeInOut(duration: 0.25), value: priceColor)
         }
+        .opacity(showPriceBlock ? 1 : 0)
+        .animation(.easeInOut(duration: 0.2), value: showPriceBlock)
+        .onChange(of: isAvailable) { available in
+            if available, let cents = displayedQuote?.priceCents {
+                animateReveal(toCents: cents)
+            }
+        }
+    }
+
+    /// We show the price block as soon as the user has typed a valid
+    /// length — but in *muted* form (textSecondary). Once /quote
+    /// confirms availability, the colour pops to accent and the
+    /// number does the count-up reveal. The hint to the user is:
+    /// price depends on length, not on which UIN you pick.
+    private var showPriceBlock: Bool {
+        isValidLength
+    }
+
+    private var priceToShow: Int {
+        if isAvailable {
+            return revealedCents
+        }
+        return Self.priceCentsByLength[typedLength] ?? 0
+    }
+
+    private var priceColor: Color {
+        isAvailable ? Theme.Color.accent : Theme.Color.textSecondary
     }
 
     private func animateReveal(toCents target: Int) {
@@ -230,60 +264,26 @@ struct UINShopView: View {
 
     private func priceDisplay(cents: Int) -> String {
         let dollars = Double(cents) / 100.0
+        if cents % 100 == 0 {
+            return String(format: "$%.0f", dollars)
+        }
         return String(format: "$%.2f", dollars)
     }
 
-    // MARK: - Suggestions
+    // MARK: - Footer hint
 
-    @ViewBuilder
-    private var suggestionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("uin_shop.suggestions.header".localized)
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1.4)
-                    .foregroundColor(Theme.Color.textSecondary)
-                Spacer()
-                Button {
-                    Task { await refreshSuggestions(force: true) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                .buttonStyle(.plain)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    if suggestions.isEmpty {
-                        ForEach(0..<5, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Theme.Color.bgSecondary)
-                                .frame(width: 96, height: 52)
-                                .opacity(0.45)
-                        }
-                    } else {
-                        ForEach(suggestions) { s in
-                            Button {
-                                typed = String(s.uin)
-                                fieldFocused = true
-                                scheduleQuote()
-                            } label: {
-                                Text(String(s.uin))
-                                    .font(.system(size: 17, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                    .monospacedDigit()
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 14)
-                                    .background(Theme.Color.bgSecondary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(SubtlePressStyle())
-                        }
-                    }
-                }
+    private var footerHint: some View {
+        VStack(spacing: 4) {
+            Text("uin_shop.footer.line1".localized)
+                .font(.caption2)
+                .foregroundColor(Theme.Color.textSecondary)
+            if let uin = ownUIN {
+                Text(String(format: "uin_shop.footer.current".localized, String(uin)))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(Theme.Color.textSecondary.opacity(0.6))
             }
         }
+        .multilineTextAlignment(.center)
     }
 
     // MARK: - Bottom CTA
@@ -371,20 +371,6 @@ struct UINShopView: View {
         }
     }
 
-    private func refreshSuggestions(force: Bool = false) async {
-        if !force && !suggestions.isEmpty { return }
-        do {
-            let resp: [SuggestionResponse] = try await APIClient.shared.request(
-                "GET", "/uin/suggestions", query: ["count": "6"]
-            )
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                suggestions = resp
-            }
-        } catch {
-            // No suggestions surface: composer still works manually.
-        }
-    }
-
     private func runPurchase() async {
         guard let parsed = Int(typed) else { return }
         buying = true
@@ -397,7 +383,6 @@ struct UINShopView: View {
         case .taken:
             error = "uin_shop.error.taken".localized
             quote = nil
-            await refreshSuggestions(force: true)
         case .cooldown:
             error = "uin_shop.error.cooldown".localized
         case .other(let msg):
@@ -437,21 +422,6 @@ private struct QuoteResponse: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case uin, length, available, reason
-        case priceCents = "price_cents"
-        case priceDisplay = "price_display"
-    }
-}
-
-private struct SuggestionResponse: Decodable, Identifiable {
-    let uin: Int
-    let length: Int
-    let priceCents: Int
-    let priceDisplay: String
-
-    var id: Int { uin }
-
-    enum CodingKeys: String, CodingKey {
-        case uin, length
         case priceCents = "price_cents"
         case priceDisplay = "price_display"
     }
