@@ -7,22 +7,8 @@ import UIKit
 final class MediaService {
     static let shared = MediaService()
 
-    /// Matches backend `MAX_BLOB_SIZE`. The user-facing rule is "as
-    /// long as you have jetons" — this is just the safety backstop.
+    /// Matches backend `MAX_BLOB_SIZE`. Upper bound for media uploads.
     nonisolated static let maxBlobBytes: Int = 2 * 1024 * 1024 * 1024
-    /// Free-tier ceiling. Covers most casual shares.
-    nonisolated static let freeTierBytes: Int = 50 * 1024 * 1024
-
-    /// Per-file jeton cost above the free tier. 1 jeton per started
-    /// 10 MB block above the 50 MB free ceiling. MUST stay in sync
-    /// with `_jeton_cost_for` in `backend/app/routers/media.py` —
-    /// server re-checks the price and 400s on mismatch.
-    nonisolated static func jetonCost(forBytes size: Int) -> Int {
-        guard size > freeTierBytes else { return 0 }
-        let over = size - freeTierBytes
-        let block = 10 * 1024 * 1024
-        return Int((over + block - 1) / block)
-    }
 
     /// LRU image cache. Previously a plain `[String: UIImage]` that
     /// nuked the WHOLE thing via `removeAll()` once it hit a 60-entry
@@ -161,13 +147,8 @@ final class MediaService {
     }
 
     /// Encrypt + upload an arbitrary file (used for video + documents).
-    /// `payJetons` is the price the caller agreed to for this upload —
-    /// 0 for free-tier (≤25 MB) blobs, the per-file cost for paid
-    /// uploads. Server re-validates against its own size→price
-    /// formula and rejects with `priceMismatch` if they disagree.
     func uploadFile(
         at fileURL: URL,
-        payJetons: Int = 0,
         onProgress: ((Double) -> Void)? = nil,
     ) async throws -> UploadResult {
         // Pre-flight on raw size before encrypting; AES-GCM tag overhead is negligible at the cap.
@@ -188,52 +169,18 @@ final class MediaService {
         struct UploadOut: Decodable {
             let media_id: String
             let size: Int
-            let jetons_charged: Int?
-            let wallet_tokens: Int?
         }
-        var fields: [String: String] = [:]
-        if payJetons > 0 { fields["pay_jetons"] = String(payJetons) }
         let out: UploadOut = try await APIClient.shared.uploadBlob(
             "/media/upload",
             field: "blob",
             filename: fileURL.lastPathComponent,
             contentType: "application/octet-stream",
             data: combined,
-            extraFields: fields,
+            extraFields: [:],
             onProgress: onProgress,
         )
         let keyB64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
-        // Reflect the server-issued wallet balance immediately so the
-        // Settings readout + composer don't have to re-sync.
-        if let newBalance = out.wallet_tokens {
-            await MainActor.run { ItemsService.shared.setWalletTokens(newBalance) }
-        }
         return UploadResult(mediaID: out.media_id, keyBase64: keyB64)
-    }
-
-    /// Current-month traffic snapshot for the Settings readout.
-    func fetchTrafficUsage() async -> TrafficUsage? {
-        struct Out: Decodable {
-            let year_month: String
-            let bytes_used: Int
-            let jetons_spent: Int
-        }
-        do {
-            let out: Out = try await APIClient.shared.request("GET", "/media/usage")
-            return TrafficUsage(
-                yearMonth: out.year_month,
-                bytesUsed: out.bytes_used,
-                jetonsSpent: out.jetons_spent,
-            )
-        } catch {
-            return nil
-        }
-    }
-
-    struct TrafficUsage: Equatable {
-        let yearMonth: String
-        let bytesUsed: Int
-        let jetonsSpent: Int
     }
 
     /// Download + decrypt the blob and return raw plaintext bytes. Used

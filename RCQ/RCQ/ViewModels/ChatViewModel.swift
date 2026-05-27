@@ -33,20 +33,6 @@ final class ChatViewModel: ObservableObject {
     /// Cancel button on the selection action bar.
     @Published var isSelecting: Bool = false
     @Published var selectedIDs: Set<UUID> = []
-    /// Set when a queued upload would cross the 50 MB free-tier and
-    /// the user has the "Pay for big files" toggle OFF. ChatView
-    /// presents `PaidTrafficConfirmSheet` against this. Confirming
-    /// flips the toggle and re-runs the original send via `retry`.
-    @Published var pendingPaidUpload: PaidUploadRequest?
-
-    struct PaidUploadRequest: Identifiable {
-        let id = UUID()
-        let plaintextBytes: Int
-        let jetonsRequired: Int
-        /// Re-runs the send the user originally attempted.
-        let retry: () async -> String?
-    }
-
     enum PendingMediaItem: Identifiable {
         case photo(id: UUID, image: UIImage)
         case video(id: UUID, url: URL, thumbnail: UIImage?)
@@ -305,41 +291,9 @@ final class ChatViewModel: ObservableObject {
     /// the first error encountered, or nil. The composer text and
     /// pending list are cleared once dispatch starts so the user sees
     /// the queue empty out immediately.
-    /// Returns the largest paid-tier jeton cost across the queued
-    /// videos (the worst-case bill if the user enables paid traffic
-    /// and sends everything). nil if no item exceeds the free tier.
-    private func paidQueueCost(for queue: [PendingMediaItem]) -> (bytes: Int, jetons: Int)? {
-        var maxBytes = 0
-        for item in queue {
-            if case .video(_, let url, _) = item,
-               let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               let size = attrs[.size] as? Int {
-                maxBytes = max(maxBytes, size)
-            }
-        }
-        let cost = MediaService.jetonCost(forBytes: maxBytes)
-        return cost > 0 ? (maxBytes, cost) : nil
-    }
-
     @discardableResult
     func sendPendingMediaWithCaption() async -> String? {
         guard !pendingMedia.isEmpty else { return nil }
-        // Gate paid uploads BEFORE consuming the queue — if the user
-        // declines the prompt, the pending strip stays intact so
-        // they can drop the heavy clip and resend.
-        let payEnabled = UserDefaults.standard.bool(forKey: "rcq.network.pay_for_large_files")
-        if !payEnabled, let cost = paidQueueCost(for: pendingMedia) {
-            await MainActor.run {
-                self.pendingPaidUpload = PaidUploadRequest(
-                    plaintextBytes: cost.bytes,
-                    jetonsRequired: cost.jetons,
-                    retry: { [weak self] in
-                        await self?.sendPendingMediaWithCaption()
-                    },
-                )
-            }
-            return nil
-        }
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let queue = pendingMedia
         pendingMedia = []
@@ -406,34 +360,6 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func sendPremiumPhoto(_ image: UIImage, price: Int) async -> String? {
-        let reply = consumeReplyContext()
-        do {
-            try await MessageService.shared.sendPremiumPhoto(image, in: target, price: price, replyTo: reply)
-            return nil
-        } catch let err as MediaService.Failure {
-            return err.errorDescription
-        } catch {
-            return nil
-        }
-    }
-
-    func sendPremiumVideo(from sourceURL: URL, price: Int) async -> String? {
-        let reply = consumeReplyContext()
-        do {
-            let processed = try await VideoProcessor.process(sourceURL: sourceURL)
-            try? FileManager.default.removeItem(at: sourceURL)
-            try await MessageService.shared.sendPremiumVideo(processed: processed, in: target, price: price, replyTo: reply)
-            return nil
-        } catch let err as VideoProcessor.Failure {
-            try? FileManager.default.removeItem(at: sourceURL)
-            return err.errorDescription
-        } catch {
-            try? FileManager.default.removeItem(at: sourceURL)
-            return nil
-        }
-    }
-
     private func consumeReplyContext() -> ReplyContext? {
         guard let target = replyTarget else { return nil }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
@@ -454,8 +380,6 @@ final class ChatViewModel: ObservableObject {
         case .voice: raw = "🎤 Voice"
         case .file:  raw = "📎 \(message.fileName ?? "File")"
         case .location: raw = "📍 Location"
-        case .premiumPhoto: raw = "🔒 Premium photo"
-        case .premiumVideo: raw = "🔒 Premium video"
         case .poll:
             // `.poll` stores the full PollPayload as JSON in `text`
             // — the reply strip rendered the raw braces / option
@@ -515,43 +439,20 @@ final class ChatViewModel: ObservableObject {
     /// without it we block here so the server's 402 doesn't surface as
     /// a generic upload failure.
     func sendFile(fileURL: URL, fileName: String, mime: String, sizeBytes: Int) async -> String? {
-        let payEnabled = UserDefaults.standard.bool(forKey: "rcq.network.pay_for_large_files")
-        let payJetons = MediaService.jetonCost(forBytes: sizeBytes)
-        if payJetons > 0 && !payEnabled {
-            await MainActor.run {
-                self.pendingPaidUpload = PaidUploadRequest(
-                    plaintextBytes: sizeBytes,
-                    jetonsRequired: payJetons,
-                    retry: { [weak self] in
-                        await self?.sendFile(
-                            fileURL: fileURL,
-                            fileName: fileName,
-                            mime: mime,
-                            sizeBytes: sizeBytes,
-                        )
-                    },
-                )
-            }
-            return nil
-        }
         let reply = consumeReplyContext()
         do {
             switch target {
             case .peer(let c):
                 try await MessageService.shared.sendFile(
                     fileURL: fileURL, fileName: fileName, mime: mime, sizeBytes: sizeBytes,
-                    payJetons: payJetons,
                     to: c, replyTo: reply
                 )
             case .group(let g):
                 try await MessageService.shared.sendFile(
                     fileURL: fileURL, fileName: fileName, mime: mime, sizeBytes: sizeBytes,
-                    payJetons: payJetons,
                     to: g, replyTo: reply
                 )
             case .randomPeer:
-                // Document attaches are hidden from random-chat — defensive
-                // no-op in case the call site ever leaks past that gate.
                 break
             }
             return nil

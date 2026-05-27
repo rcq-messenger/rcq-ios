@@ -211,7 +211,6 @@ extension MessageService {
         fileName: String,
         mime: String,
         sizeBytes: Int,
-        payJetons: Int = 0,
         to group: RCQGroup,
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
@@ -239,7 +238,7 @@ extension MessageService {
             defer { try? FileManager.default.removeItem(at: fileURL) }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL, payJetons: payJetons) { p in
+                upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -339,11 +338,9 @@ extension MessageService {
                 messageID: local.id, thread: .group(id: group.id),
                 thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
             )
-            let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
-            let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
+                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {

@@ -24,7 +24,6 @@ struct PrivacySettingsView: View {
     @State private var genderVisibility: String = "nobody"
     @State private var profileVisibility: String = "everyone"
     @State private var groupInvitePolicy: String = "everyone"
-    @State private var tradePolicy: String = "everyone"
     /// Mirrored to `@AppStorage("rcq.privacy.callPolicy")` so
     /// `ChatView` can gate the call-button affordance without
     /// re-fetching `/users/me/info` on every render.
@@ -34,22 +33,14 @@ struct PrivacySettingsView: View {
     /// so `MessageService.markRead` can suppress outbound receipts
     /// without re-fetching `/users/me/info` per read.
     @State private var readReceiptsVisibility: String = "everyone"
+    @State private var showMigrateConfirm = false
+    @State private var migrating = false
+    @State private var migrateError: String? = nil
     @AppStorage("rcq.privacy.readReceiptsVisibility") private var readReceiptsCache: String = "everyone"
-    @State private var reputationVisibility: String = "everyone"
-    @AppStorage("rcq.requirePINForItems") private var requirePINForItems = false
-
-    @StateObject private var itemsSvc = ItemsService.shared
     @State private var showPINSettings = false
     @State private var showProxyURL = false
     @State private var showDiagnostics = false
-    @State private var showShop = false
-    @State private var confirmMigrate = false
-    @State private var migrating = false
-    @State private var migrationAlert: String?
-    @State private var trafficUsage: MediaService.TrafficUsage?
-    @AppStorage("rcq.network.pay_for_large_files") private var payForLargeFiles = false
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
-    private let migrationCost: Int = 99
 
     private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
 
@@ -139,16 +130,6 @@ struct PrivacySettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
                         scopePicker(
-                            title: "settings.privacy.trade_offers".localized,
-                            selection: $tradePolicy,
-                            field: "trade_policy"
-                        )
-                    } footer: {
-                        Text("settings.privacy.trade_offers.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
                             title: "settings.privacy.calls".localized,
                             selection: $callPolicy,
                             field: "call_policy"
@@ -180,43 +161,9 @@ struct PrivacySettingsView: View {
                         Text("settings.privacy.read_receipts.desc".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.reputation".localized,
-                            selection: $reputationVisibility,
-                            field: "reputation_visibility"
-                        )
-                    } footer: {
-                        Text("settings.privacy.reputation.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        Toggle(isOn: $requirePINForItems) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.privacy.item_pin".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.privacy.item_pin.desc".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        .tint(Theme.Color.accent)
-                        .disabled(!pinConfigured)
-                    } footer: {
-                        // No-PIN hint stays as a footer — the inline
-                        // description above is the "what does this do"
-                        // line; the footer is the "why is it disabled"
-                        // line and only renders when relevant.
-                        if !pinConfigured {
-                            Text("settings.privacy.item_pin.desc.no_pin".localized)
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
 
                     securitySection
-                    inventorySection
                     networkSection
-                    trafficSection
                     migrationSection
                 }
                 .scrollContentBackground(.hidden)
@@ -231,59 +178,7 @@ struct PrivacySettingsView: View {
             .sheet(isPresented: $showPINSettings) { PINSettingsView() }
             .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
             .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
-            .sheet(isPresented: $showShop) {
-                BuyTokensSheet()
-                    .presentationDetents([.medium, .large])
-            }
-            .confirmationDialog(
-                "settings.migrate.confirm.title".localized,
-                isPresented: $confirmMigrate,
-                titleVisibility: .visible,
-            ) {
-                Button("settings.migrate.confirm.button".localized) {
-                    Task {
-                        migrating = true
-                        let result = await AppState.shared.migrateAccount()
-                        migrating = false
-                        switch result {
-                        case .success(let newUIN):
-                            migrationAlert = String(format: "settings.migrate.success".localized, newUIN)
-                        case .insufficientTokens(let required, let have):
-                            migrationAlert = String(
-                                format: "settings.migrate.error.insufficient".localized,
-                                required, have,
-                            )
-                        case .cooldown:
-                            migrationAlert = "settings.migrate.error.cooldown".localized
-                        case .other(let msg):
-                            migrationAlert = msg.isEmpty ? "settings.migrate.error.generic".localized : msg
-                        }
-                    }
-                }
-                Button("common.cancel".localized, role: .cancel) {}
-            } message: {
-                Text("settings.migrate.confirm.message".localized)
-            }
-            .alert(
-                "settings.migrate.alert.title".localized,
-                isPresented: Binding(
-                    get: { migrationAlert != nil },
-                    set: { if !$0 { migrationAlert = nil } },
-                ),
-                actions: {
-                    Button("common.ok".localized, role: .cancel) {
-                        migrationAlert = nil
-                        dismiss()
-                    }
-                },
-                message: {
-                    Text(migrationAlert ?? "")
-                }
-            )
             .task { await loadVisibility() }
-            .task {
-                trafficUsage = await MediaService.shared.fetchTrafficUsage()
-            }
         }
     }
 
@@ -317,27 +212,6 @@ struct PrivacySettingsView: View {
             }
             .listRowBackground(Theme.Color.bgSecondary)
         }
-    }
-
-    private var inventorySection: some View {
-        Section {
-            Toggle(isOn: Binding(
-                get: { itemsSvc.inventoryPublic },
-                set: { newValue in
-                    Task { await itemsSvc.setInventoryPublic(newValue) }
-                },
-            )) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("settings.inventory.public".localized)
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text("settings.inventory.public.footer".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-            }
-            .tint(Theme.Color.accent)
-        }
-        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     private var networkSection: some View {
@@ -388,93 +262,70 @@ struct PrivacySettingsView: View {
         .listRowBackground(Theme.Color.bgSecondary)
     }
 
-    private var trafficSection: some View {
-        Section {
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: "internaldrive")
-                    .foregroundColor(Theme.Color.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("settings.traffic.used".localized)
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text(usedMBString)
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("settings.traffic.spent".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                    HStack(spacing: 3) {
-                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                            .frame(width: 12, height: 12)
-                        Text("\(trafficUsage?.jetonsSpent ?? 0)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Theme.Color.textPrimary)
-                    }
-                }
-            }
-            Toggle(isOn: $payForLargeFiles) {
-                Text("settings.traffic.pay_large".localized)
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
-            .tint(Theme.Color.accent)
-        } header: {
-            Text("settings.traffic".localized)
-        } footer: {
-            Text("settings.traffic.pay_large.footer".localized)
-                .font(.caption2)
-        }
-        .listRowBackground(Theme.Color.bgSecondary)
-    }
-
     private var migrationSection: some View {
         Section {
-            let canAfford = itemsSvc.wallet.tokens >= migrationCost
             Button {
-                if canAfford {
-                    confirmMigrate = true
-                } else {
-                    showShop = true
-                }
+                showMigrateConfirm = true
             } label: {
-                HStack {
-                    Image(systemName: "arrow.uturn.right.circle")
-                        .foregroundColor(canAfford ? Theme.Color.accent : Theme.Color.textSecondary)
-                    Text(migrating
-                        ? "settings.migrate.busy".localized
-                        : (canAfford
-                            ? "settings.migrate.label".localized
-                            : "settings.migrate.label.need_tokens".localized)
-                    )
-                    .foregroundColor(canAfford ? Theme.Color.textPrimary : Theme.Color.textSecondary)
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    Text("settings.migrate".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
                     Spacer()
                     if migrating {
-                        ProgressView().scaleEffect(0.7)
+                        ProgressView().scaleEffect(0.75)
                     } else {
-                        HStack(spacing: 3) {
-                            ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                                .frame(width: 12, height: 12)
-                            Text("\(migrationCost)")
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                .foregroundColor(canAfford ? Theme.Color.textSecondary : Color.red)
-                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
             }
             .disabled(migrating)
+            if let migrateError {
+                Text(migrateError)
+                    .font(.caption2)
+                    .foregroundColor(.red)
+            }
+        } header: {
+            Text("settings.migrate.header".localized)
         } footer: {
             Text("settings.migrate.footer".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+        .confirmationDialog(
+            "settings.migrate.confirm.title".localized,
+            isPresented: $showMigrateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("settings.migrate.confirm.cta".localized, role: .destructive) {
+                Task { await runMigrate() }
+            }
+            Button("common.cancel".localized, role: .cancel) { }
+        } message: {
+            Text("settings.migrate.confirm.body".localized)
+        }
     }
 
-    private var usedMBString: String {
-        let bytes = trafficUsage?.bytesUsed ?? 0
-        let f = ByteCountFormatter()
-        f.allowedUnits = [.useMB, .useGB]
-        f.countStyle = .file
-        return f.string(fromByteCount: Int64(bytes))
+    private func runMigrate() async {
+        migrating = true
+        migrateError = nil
+        let result = await AppState.shared.migrateAccount()
+        migrating = false
+        switch result {
+        case .success:
+            dismiss()
+        case .cooldown:
+            migrateError = "settings.migrate.error.cooldown".localized
+        case .taken, .other:
+            if case .other(let msg) = result {
+                migrateError = msg
+            } else {
+                migrateError = "settings.migrate.error.cooldown".localized
+            }
+        }
     }
 
     @ViewBuilder
@@ -503,7 +354,6 @@ struct PrivacySettingsView: View {
             if let v = p.genderVisibility { genderVisibility = v }
             if let v = p.profileVisibility { profileVisibility = v }
             if let v = p.groupInvitePolicy { groupInvitePolicy = v }
-            if let v = p.tradePolicy { tradePolicy = v }
             if let v = p.callPolicy {
                 callPolicy = v
                 callPolicyCache = v
@@ -512,7 +362,6 @@ struct PrivacySettingsView: View {
                 readReceiptsVisibility = v
                 readReceiptsCache = v
             }
-            if let v = p.reputationVisibility { reputationVisibility = v }
             if let v = p.presencePersistent { presencePersistent = v }
             if let v = p.presenceTTLMinutes {
                 // Migrate legacy "forever" (0) silently to 24h so the

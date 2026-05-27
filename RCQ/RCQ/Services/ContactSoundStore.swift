@@ -2,17 +2,10 @@ import Combine
 import Foundation
 
 /// Per-contact notification-sound override. ICQ-classic feature
-/// (different "uh-oh!" per buddy) revived for RCQ — ties directly
-/// into the lootbox Voices section: each pack is a tradable
-/// collectible, the user assigns it to one contact at a time and
-/// the incoming-message cue plays that pack's sound instead of the
-/// default. Until the lootbox surface ships, the available pack
-/// list is hardcoded; once Voices land, `availablePacks` reads from
-/// the user's inventory.
-///
-/// Persistence is local UserDefaults — assignments don't survive
-/// account-burn (intentional, alongside FavoritesStore /
-/// ArchiveStore — those are device-local organizational hints).
+/// (different "uh-oh!" per buddy). Persistence is local
+/// UserDefaults — assignments don't survive account-burn
+/// (intentional, alongside FavoritesStore / ArchiveStore — those
+/// are device-local organizational hints).
 @MainActor
 final class ContactSoundStore: ObservableObject {
     static let shared = ContactSoundStore()
@@ -75,30 +68,4 @@ struct SoundPack: Identifiable, Hashable {
     let label: String
 
     static let `default` = SoundPack(id: "default", label: "sound.default".localized)
-
-    /// Build the picker's option list for `uin`. Returns `[default]`
-    /// plus one entry per UNIQUE voice-section kind the user owns
-    /// (multiple instances of the same kind are deduped — owning two
-    /// copies of the same voice pack doesn't add two rows to the
-    /// picker). Empty inventory ⇒ only `default` is offered, which
-    /// matches the user's expectation that mock names are gone.
-    @MainActor
-    static func availablePacks(
-        items: [Item],
-        catalog: ItemCatalog?,
-    ) -> [SoundPack] {
-        var seen = Set<String>()
-        var packs: [SoundPack] = [.default]
-        for item in items {
-            guard !seen.contains(item.kindID) else { continue }
-            guard let kind = catalog?.kind(by: item.kindID),
-                  kind.section == .voices else { continue }
-            seen.insert(item.kindID)
-            packs.append(SoundPack(
-                id: item.kindID,
-                label: ItemDisplay.name(for: item.kindID),
-            ))
-        }
-        return packs
-    }
 }

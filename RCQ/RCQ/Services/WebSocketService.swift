@@ -19,10 +19,6 @@ final class WebSocketService: ObservableObject {
         case groupDeleted(groupID: Int)
         case randomMatch(peer: RandomPeer)
         case randomEnd(pairID: String, reason: String)
-        case hoodMessage(message: HoodMessage)
-        case hoodCount(bucketID: String, count: Int)
-        case hoodDelete(bucketID: String, messageID: Int)
-        case hoodReaction(bucketID: String, messageID: Int, reactions: [String: String])
         case callOffer(fromUIN: Int, nickname: String, callID: String, media: CallMedia, sdp: String)
         case callAnswer(fromUIN: Int, callID: String, sdp: String)
         case callIce(fromUIN: Int, callID: String, candidateJSON: String)
@@ -31,8 +27,8 @@ final class WebSocketService: ObservableObject {
         case callRenegotiateAnswer(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateDecline(fromUIN: Int, callID: String)
         case roomEnterRejected(roomID: Int, reason: String)
-        case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, equippedPet: EquippedPet?, mutedByOwner: Bool)], ownerOnlySpeaking: Bool)
-        case roomMemberEntered(roomID: Int, uin: Int, nickname: String, equippedPet: EquippedPet?, mutedByOwner: Bool)
+        case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, mutedByOwner: Bool)], ownerOnlySpeaking: Bool)
+        case roomMemberEntered(roomID: Int, uin: Int, nickname: String, mutedByOwner: Bool)
         case roomMemberLeft(roomID: Int, uin: Int)
         case roomOffer(roomID: Int, fromUIN: Int, sdp: String)
         case roomAnswer(roomID: Int, fromUIN: Int, sdp: String)
@@ -45,25 +41,8 @@ final class WebSocketService: ObservableObject {
         case roomMembershipRevoked(roomID: Int)
         case roomKeyRotated(roomID: Int, newKey: String)
         case roomRenamed(roomID: Int, name: String)
-        case uinAuctionStarted(auction: UinAuction)
-        case uinAuctionBid(auctionID: Int, amount: Int, bidderUIN: Int, bidderNickname: String, highBid: Int, highBidderUIN: Int, endsAt: Date, extended: Bool)
-        case uinAuctionEnded(auctionID: Int, uin: Int, tier: String, winnerUIN: Int?, winningBid: Int)
-        case uinAuctionOutbid(auctionID: Int, uin: Int, refund: Int, newHighBid: Int)
-        case tradeReceived(trade: Trade)
-        case tradeAccepted(trade: Trade)
-        case tradeDeclined(tradeID: String)
-        case tradeCancelled(tradeID: String)
         case storyPosted(storyID: String, ownerUIN: Int?)
         case storyDeleted(storyID: String, ownerUIN: Int?)
-        case marketplaceListingSold(listing: MarketplaceListing)
-        case uinMarketplaceListingSold(listing: UinMarketplaceListing)
-        case crashRoundBetting(roundID: String, seedHash: String, bettingSeconds: Double)
-        case crashRoundRunning(roundID: String, crashInSecondsHint: Double)
-        case crashRoundEnd(roundID: String, crashPoint: Double, seed: String, cashouts: [CrashCashoutEvent])
-        case crashCashout(roundID: String, uin: Int, nickname: String?, multiplier: Double, payout: Int)
-        case crashBetPlaced(roundID: String, uin: Int, nickname: String?, amount: Int, betsCount: Int)
-        case reputationChanged(targetUIN: Int, amount: Int, newTotal: Int, anonymous: Bool, donorUIN: Int?)
-        case jetonReact(groupID: Int, messageID: String, totalJetons: Int, reactorUIN: Int, amount: Int)
         case accountBurned
     }
 
@@ -342,32 +321,6 @@ final class WebSocketService: ObservableObject {
         case "account_burned":
             events.send(.accountBurned)
 
-        case "reputation_changed":
-            guard let target = dict["target_uin"] as? Int,
-                  let amount = dict["amount"] as? Int,
-                  let newTotal = dict["new_total"] as? Int else { return }
-            let anonymous = dict["anonymous"] as? Bool ?? false
-            let donor = dict["donor_uin"] as? Int
-            events.send(.reputationChanged(
-                targetUIN: target,
-                amount: amount,
-                newTotal: newTotal,
-                anonymous: anonymous,
-                donorUIN: donor
-            ))
-
-        case "jeton_react":
-            guard let gid = dict["group_id"] as? Int,
-                  let mid = dict["message_id"] as? String,
-                  let total = dict["total_jetons"] as? Int else { return }
-            events.send(.jetonReact(
-                groupID: gid,
-                messageID: mid,
-                totalJetons: total,
-                reactorUIN: dict["reactor_uin"] as? Int ?? 0,
-                amount: dict["amount"] as? Int ?? 0
-            ))
-
         case "presence":
             guard let uin = dict["uin"] as? Int,
                   let statusStr = dict["status"] as? String,
@@ -423,26 +376,6 @@ final class WebSocketService: ObservableObject {
             let reason = (dict["reason"] as? String) ?? "ended"
             events.send(.randomEnd(pairID: pairID, reason: reason))
 
-        case "hood_message":
-            guard let msgDict = dict["message"] as? [String: Any],
-                  let data = try? JSONSerialization.data(withJSONObject: msgDict),
-                  let parsed = decodeHoodMessage(data) else { return }
-            events.send(.hoodMessage(message: parsed))
-            if let count = dict["bucket_count"] as? Int {
-                events.send(.hoodCount(bucketID: parsed.bucketID, count: count))
-            }
-
-        case "hood_delete":
-            guard let bucketID = dict["bucket_id"] as? String,
-                  let messageID = dict["message_id"] as? Int else { return }
-            events.send(.hoodDelete(bucketID: bucketID, messageID: messageID))
-
-        case "hood_reaction":
-            guard let bucketID = dict["bucket_id"] as? String,
-                  let messageID = dict["message_id"] as? Int,
-                  let reactions = dict["reactions"] as? [String: String] else { return }
-            events.send(.hoodReaction(bucketID: bucketID, messageID: messageID, reactions: reactions))
-
         case "call_offer":
             guard let from = dict["from_uin"] as? Int,
                   let callID = dict["call_id"] as? String else { return }
@@ -496,12 +429,11 @@ final class WebSocketService: ObservableObject {
         case "room_roster":
             guard let roomID = dict["room_id"] as? Int,
                   let raw = dict["members"] as? [[String: Any]] else { return }
-            let members: [(uin: Int, nickname: String, equippedPet: EquippedPet?, mutedByOwner: Bool)] = raw.compactMap { d in
+            let members: [(uin: Int, nickname: String, mutedByOwner: Bool)] = raw.compactMap { d in
                 guard let u = d["uin"] as? Int else { return nil }
                 let nick = (d["nickname"] as? String) ?? String(u)
-                let pet = Self.decodeEquippedPet(d["equipped_pet"])
                 let muted = (d["muted_by_owner"] as? Bool) ?? false
-                return (uin: u, nickname: nick, equippedPet: pet, mutedByOwner: muted)
+                return (uin: u, nickname: nick, mutedByOwner: muted)
             }
             let ownerOnly = (dict["owner_only_speaking"] as? Bool) ?? false
             events.send(.roomRoster(roomID: roomID, members: members, ownerOnlySpeaking: ownerOnly))
@@ -511,9 +443,8 @@ final class WebSocketService: ObservableObject {
                   let m = dict["member"] as? [String: Any],
                   let uin = m["uin"] as? Int else { return }
             let nick = (m["nickname"] as? String) ?? String(uin)
-            let pet = Self.decodeEquippedPet(m["equipped_pet"])
             let muted = (m["muted_by_owner"] as? Bool) ?? false
-            events.send(.roomMemberEntered(roomID: roomID, uin: uin, nickname: nick, equippedPet: pet, mutedByOwner: muted))
+            events.send(.roomMemberEntered(roomID: roomID, uin: uin, nickname: nick, mutedByOwner: muted))
 
         case "room_member_left":
             guard let roomID = dict["room_id"] as? Int,
@@ -576,65 +507,6 @@ final class WebSocketService: ObservableObject {
                   let name = dict["name"] as? String else { return }
             events.send(.roomRenamed(roomID: roomID, name: name))
 
-        case "uin_auction_started":
-            guard let raw = dict["auction"] as? [String: Any],
-                  let data = try? JSONSerialization.data(withJSONObject: raw),
-                  let auction = try? Self.dateLenientDecoder.decode(UinAuction.self, from: data)
-            else { return }
-            events.send(.uinAuctionStarted(auction: auction))
-
-        case "uin_auction_bid":
-            // Only the structural fields are required. `ends_at` falls
-            // back to "now" if the ISO parse fails so the live bid list
-            // keeps updating even when the server timestamp format
-            // drifts (was dropping bids silently when fractional-second
-            // formatting hit an iOS edge case).
-            guard let auctionID = dict["auction_id"] as? Int,
-                  let amount = dict["amount"] as? Int,
-                  let bidderUIN = dict["bidder_uin"] as? Int,
-                  let highBid = dict["high_bid"] as? Int,
-                  let highBidderUIN = dict["high_bidder_uin"] as? Int
-            else { return }
-            let endsAt = (dict["ends_at"] as? String).flatMap(parseISO) ?? Date()
-            let nick = (dict["bidder_nickname"] as? String) ?? String(bidderUIN)
-            let extended = (dict["extended"] as? Bool) ?? false
-            events.send(.uinAuctionBid(
-                auctionID: auctionID, amount: amount, bidderUIN: bidderUIN,
-                bidderNickname: nick, highBid: highBid, highBidderUIN: highBidderUIN,
-                endsAt: endsAt, extended: extended,
-            ))
-
-        case "uin_auction_ended":
-            guard let auctionID = dict["auction_id"] as? Int,
-                  let uin = dict["uin"] as? Int,
-                  let tier = dict["tier"] as? String else { return }
-            let winner = dict["winner_uin"] as? Int
-            let winningBid = (dict["winning_bid"] as? Int) ?? 0
-            events.send(.uinAuctionEnded(
-                auctionID: auctionID, uin: uin, tier: tier,
-                winnerUIN: winner, winningBid: winningBid,
-            ))
-
-        case "uin_auction_outbid":
-            guard let auctionID = dict["auction_id"] as? Int,
-                  let uin = dict["uin"] as? Int,
-                  let refund = dict["refund"] as? Int,
-                  let newHigh = dict["new_high_bid"] as? Int else { return }
-            events.send(.uinAuctionOutbid(
-                auctionID: auctionID, uin: uin, refund: refund, newHighBid: newHigh,
-            ))
-
-        case "trade_received", "trade_accepted":
-            guard let tradeDict = dict["trade"] as? [String: Any],
-                  let raw = try? JSONSerialization.data(withJSONObject: tradeDict),
-                  let trade = decodeTrade(raw)
-            else { return }
-            if type == "trade_received" {
-                events.send(.tradeReceived(trade: trade))
-            } else {
-                events.send(.tradeAccepted(trade: trade))
-            }
-
         case "story_posted":
             guard let id = dict["story_id"] as? String else { return }
             let owner = dict["owner_uin"] as? Int
@@ -644,80 +516,6 @@ final class WebSocketService: ObservableObject {
             guard let id = dict["story_id"] as? String else { return }
             let owner = dict["owner_uin"] as? Int
             events.send(.storyDeleted(storyID: id, ownerUIN: owner))
-
-        case "marketplace_listing_sold":
-            // Re-encode → decode to reuse model CodingKeys (snake_case → Swift).
-            guard let raw = dict["listing"] as? [String: Any],
-                  let data = try? JSONSerialization.data(withJSONObject: raw) else {
-                return
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            guard let listing = try? decoder.decode(MarketplaceListing.self, from: data) else {
-                return
-            }
-            events.send(.marketplaceListingSold(listing: listing))
-
-        case "uin_marketplace_listing_sold":
-            guard let raw = dict["listing"] as? [String: Any],
-                  let data = try? JSONSerialization.data(withJSONObject: raw) else {
-                return
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            guard let listing = try? decoder.decode(UinMarketplaceListing.self, from: data) else {
-                return
-            }
-            events.send(.uinMarketplaceListingSold(listing: listing))
-
-        case "trade_declined":
-            guard let id = dict["trade_id"] as? String else { return }
-            events.send(.tradeDeclined(tradeID: id))
-
-        case "trade_cancelled":
-            guard let id = dict["trade_id"] as? String else { return }
-            events.send(.tradeCancelled(tradeID: id))
-
-        case "crash_round_betting":
-            guard let roundID = dict["round_id"] as? String,
-                  let seedHash = dict["seed_hash"] as? String else { return }
-            let bettingSeconds = (dict["betting_seconds"] as? Double) ?? 8.0
-            events.send(.crashRoundBetting(roundID: roundID, seedHash: seedHash, bettingSeconds: bettingSeconds))
-
-        case "crash_round_running":
-            guard let roundID = dict["round_id"] as? String else { return }
-            let hint = (dict["crash_in_seconds_hint"] as? Double) ?? 0.0
-            events.send(.crashRoundRunning(roundID: roundID, crashInSecondsHint: hint))
-
-        case "crash_round_end":
-            guard let roundID = dict["round_id"] as? String,
-                  let crashPoint = dict["crash_point"] as? Double,
-                  let seed = dict["seed"] as? String else { return }
-            let raw = (dict["cashouts"] as? [[String: Any]]) ?? []
-            let parsed: [CrashCashoutEvent] = raw.compactMap { entry in
-                guard let uin = entry["uin"] as? Int,
-                      let mult = entry["multiplier"] as? Double,
-                      let payout = entry["payout"] as? Int else { return nil }
-                let nick = entry["nickname"] as? String
-                return CrashCashoutEvent(uin: uin, nickname: nick, multiplier: mult, payout: payout)
-            }
-            events.send(.crashRoundEnd(roundID: roundID, crashPoint: crashPoint, seed: seed, cashouts: parsed))
-
-        case "crash_cashout":
-            guard let roundID = dict["round_id"] as? String,
-                  let uin = dict["uin"] as? Int,
-                  let mult = dict["multiplier"] as? Double,
-                  let payout = dict["payout"] as? Int else { return }
-            let nick = dict["nickname"] as? String
-            events.send(.crashCashout(roundID: roundID, uin: uin, nickname: nick, multiplier: mult, payout: payout))
-
-        case "crash_bet_placed":
-            guard let roundID = dict["round_id"] as? String,
-                  let uin = dict["uin"] as? Int,
-                  let amount = dict["amount"] as? Int else { return }
-            let count = (dict["bets_count"] as? Int) ?? 0
-            let nick = dict["nickname"] as? String
-            events.send(.crashBetPlaced(roundID: roundID, uin: uin, nickname: nick, amount: amount, betsCount: count))
 
         case "pong":
             break
@@ -770,24 +568,6 @@ final class WebSocketService: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom(APIClient.parseDateForExternal)
         return try? decoder.decode(RCQGroup.self, from: data)
-    }
-
-    private func decodeHoodMessage(_ data: Data) -> HoodMessage? {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(APIClient.parseDateForExternal)
-        return try? decoder.decode(HoodMessage.self, from: data)
-    }
-
-    private func decodeTrade(_ data: Data) -> Trade? {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(APIClient.parseDateForExternal)
-        return try? decoder.decode(Trade.self, from: data)
-    }
-
-    fileprivate static func decodeEquippedPet(_ raw: Any?) -> EquippedPet? {
-        guard let dict = raw as? [String: Any] else { return nil }
-        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
-        return try? JSONDecoder().decode(EquippedPet.self, from: data)
     }
 
     private func handleDisconnect() {

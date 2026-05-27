@@ -9,14 +9,6 @@ struct UserInfoView: View {
     @State private var loading = true
     @State private var draft: UserProfile?
     @State private var saving = false
-    @State private var showTrade = false
-    @State private var showInventory = false
-    @State private var showGiveReputation = false
-    @State private var showReputationHistory = false
-    @State private var petPreview: PetPreviewTarget?
-    /// One-shot flag — true briefly after reputation is granted to
-    /// flash a green up-arrow next to the counter.
-    @State private var repJustBumped = false
     @StateObject private var visits = VisitStore.shared
     @StateObject private var contacts = ContactService.shared
     // Observed so the custom-sound picker re-renders the moment an
@@ -67,12 +59,6 @@ struct UserInfoView: View {
                                 draft?.statusMessage = $0
                             }
                         }
-                        if !isOwn {
-                            // Per-contact custom notification sound.
-                            section("profile.section.notifications".localized) {
-                                customSoundPicker(uin: p.uin)
-                            }
-                        }
                         if isOwn {
                             section("profile.section.audience".localized) {
                                 let n = visits.count(within: 7 * 86_400)
@@ -106,57 +92,6 @@ struct UserInfoView: View {
             }
         }
         .task { await load() }
-        .sheet(isPresented: $showTrade) {
-            if let p = profile {
-                TradeProposeView(recipientUIN: p.uin, recipientNickname: p.nickname)
-            }
-        }
-        .fullScreenCover(isPresented: $showInventory) {
-            if let p = profile {
-                PublicInventoryView(uin: p.uin, nickname: p.nickname)
-            }
-        }
-        .sheet(isPresented: $showReputationHistory) {
-            ReputationHistorySheet()
-        }
-        .sheet(item: $petPreview) { wrap in
-            PetPreviewSheet(
-                pet: wrap.pet,
-                ownerUIN: wrap.uin,
-                ownerNickname: wrap.nickname,
-            )
-            .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showGiveReputation) {
-            if let p = profile {
-                GiveReputationSheet(
-                    targetUIN: p.uin,
-                    targetNickname: p.nickname,
-                ) { newTotal in
-                    // Server is the source of truth; splice the
-                    // post-grant total into the on-screen profile.
-                    withAnimation { profile?.reputation = newTotal }
-                    triggerRepBump()
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .rcqReputationChanged)) { note in
-            // Fired when a WS `reputation_changed` event lands. We
-            // only update the on-screen profile if this view is
-            // pointed at the same UIN whose counter just moved.
-            guard let target = note.userInfo?["target_uin"] as? Int,
-                  let total  = note.userInfo?["new_total"]  as? Int,
-                  target == uin else { return }
-            // The own-profile path renders `draft`, not `profile`
-            // (see `body`'s `isOwn ? draft : profile`). Update BOTH
-            // so the counter animates live whichever view is shown —
-            // updating only `profile` left the visible `draft` stale.
-            withAnimation {
-                profile?.reputation = total
-                draft?.reputation = total
-            }
-            triggerRepBump()
-        }
     }
 
     @ViewBuilder
@@ -191,18 +126,6 @@ struct UserInfoView: View {
                         Label("profile.cta.add_contact".localized, systemImage: "person.badge.plus")
                     }
                 }
-                if peerCanReceiveTrade {
-                    Button {
-                        showTrade = true
-                    } label: {
-                        Label("profile.cta.propose_trade".localized, systemImage: "arrow.left.arrow.right")
-                    }
-                }
-                Button {
-                    showInventory = true
-                } label: {
-                    Label("profile.cta.view_inventory".localized, systemImage: "shippingbox")
-                }
                 Divider()
                 Button {
                     resetSecureSession(uin: p.uin)
@@ -224,87 +147,10 @@ struct UserInfoView: View {
         }
     }
 
-    private var peerCanReceiveTrade: Bool {
-        let policy = profile?.tradePolicy ?? "everyone"
-        if policy == "nobody" { return false }
-        if policy == "contacts" {
-            return contacts.contacts.contains(where: { $0.uin == uin })
-        }
-        return true
-    }
-
-    @ViewBuilder
-    private func customSoundPicker(uin: Int) -> some View {
-        let store = ContactSoundStore.shared
-        let items = ItemsService.shared
-        // Read live from the observed store (`contactSounds`) so the
-        // picker reflects the current assignment on every render.
-        let current = contactSounds.packID(for: uin) ?? SoundPack.default.id
-        let packs = SoundPack.availablePacks(
-            items: items.items,
-            catalog: items.catalog,
-        )
-        HStack {
-            Picker(selection: Binding(
-                get: { current },
-                set: { newValue in
-                    store.setPack(newValue == SoundPack.default.id ? nil : newValue, for: uin)
-                    // Preview the pack the user just picked so they
-                    // hear what they assigned without round-tripping
-                    // through the inventory to memorise a number.
-                    if newValue != SoundPack.default.id {
-                        SoundService.shared.preview(kindID: newValue)
-                    }
-                }
-            )) {
-                ForEach(packs) { pack in
-                    Text(pack.label).tag(pack.id)
-                }
-            } label: {
-                Text("profile.field.custom_sound".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-            }
-            .pickerStyle(.menu)
-            .tint(Theme.Color.accent)
-
-            Spacer()
-
-            // Replay the currently-assigned pack — lets the user
-            // re-hear the choice without re-selecting it. Hidden when
-            // the contact is on the default cue (nothing custom to
-            // preview).
-            if current != SoundPack.default.id {
-                Button {
-                    SoundService.shared.preview(kindID: current)
-                } label: {
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(Theme.Color.accent)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
     private func header(_ p: UserProfile) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                // Tap the pet to preview it — same affordance as the
-                // contact list / group info. Plain status icon stays
-                // non-interactive when no pet is equipped.
-                if let pet = p.equippedPet {
-                    Button {
-                        petPreview = PetPreviewTarget(
-                            pet: pet, uin: p.uin, nickname: p.nickname,
-                        )
-                    } label: {
-                        StatusWithPet(status: p.status, pet: pet, size: 48)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    StatusWithPet(status: p.status, pet: nil, size: 48)
-                }
+                StatusIcon(status: p.status, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
                     Text(String(p.uin)).font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
@@ -321,99 +167,6 @@ struct UserInfoView: View {
                 }
                 Spacer()
             }
-            reputationRow(p)
-        }
-    }
-
-    @ViewBuilder
-    private func reputationRow(_ p: UserProfile) -> some View {
-        // Two display modes wrapped in a single row so the layout
-        // doesn't shift between "rep visible" and "rep hidden".
-        // - Visible: ⭐ 1.2K · [Give]
-        // - Hidden (other user's privacy): just [Give Reputation]
-        // - Own profile: ⭐ 1.2K (no Give button — can't grant to self)
-        let value = p.reputation
-        HStack(spacing: 10) {
-            if let value {
-                if isOwn {
-                    // Owner's own counter — tappable, opens history.
-                    Button {
-                        showReputationHistory = true
-                    } label: {
-                        reputationValueContent(value, showChevron: true)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    // Other user's counter — plain, NOT a disabled
-                    // Button (a disabled Button dimmed the whole row,
-                    // which read as "greyed out / semi-transparent").
-                    reputationValueContent(value, showChevron: false)
-                }
-            }
-            Spacer()
-            if !isOwn {
-                Button {
-                    showGiveReputation = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.caption2.weight(.bold))
-                        Text(value == nil
-                             ? "profile.reputation.give_long".localized
-                             : "profile.reputation.give_short".localized)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .foregroundColor(Theme.Color.accent)
-                    .background(Theme.Color.accent.opacity(0.12))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    /// The ⭐ N row content, shared by the own (tappable) and the
-    /// third-party (plain) render paths. `repJustBumped` flashes a
-    /// one-shot green up-arrow when reputation was just granted.
-    @ViewBuilder
-    private func reputationValueContent(_ value: Int, showChevron: Bool) -> some View {
-        HStack(spacing: 4) {
-            ItemAssetImage(bundleSubdir: "Items", filename: "rep", ext: "gif")
-                .frame(width: 15, height: 15)
-            Text(value.compactCount)
-                .font(.callout.monospacedDigit().weight(.semibold))
-                .foregroundColor(Theme.Color.textPrimary)
-            Text("profile.reputation.label".localized)
-                .font(.caption)
-                .foregroundColor(Theme.Color.textSecondary)
-            if repJustBumped {
-                // One-shot rise — slides up + fades, no looping.
-                Image(systemName: "arrow.up")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(.green)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if showChevron {
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-            }
-        }
-    }
-
-    /// Flash the green up-arrow once, then retire it. Called both on a
-    /// local grant success and on an inbound `reputation_changed` WS
-    /// event for this UIN.
-    private func triggerRepBump() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-            repJustBumped = true
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_600_000_000)
-            withAnimation(.easeOut(duration: 0.4)) { repJustBumped = false }
         }
     }
 

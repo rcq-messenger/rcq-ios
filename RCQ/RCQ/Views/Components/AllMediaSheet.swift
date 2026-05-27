@@ -10,7 +10,7 @@ struct AllMediaSheet: View {
         messages
             .filter {
                 !$0.deletedForEveryone
-                    && [.photo, .video, .premiumPhoto, .premiumVideo].contains($0.kind)
+                    && [.photo, .video].contains($0.kind)
             }
             .reversed()
     }
@@ -64,7 +64,7 @@ private struct MediaThumbCell: View {
     @State private var image: UIImage?
 
     private var isVideo: Bool {
-        message.kind == .video || message.kind == .premiumVideo
+        message.kind == .video
     }
 
     var body: some View {

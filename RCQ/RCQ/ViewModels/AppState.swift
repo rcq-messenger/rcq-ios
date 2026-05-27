@@ -28,24 +28,9 @@ final class AppState: ObservableObject {
     /// UIN-share flows; cleared by the sheet when it dismisses.
     @Published var pendingJoinGroupID: Int? = nil
     @Published var pendingOpenPending: Bool = false
-    @Published var pendingOpenTrades: Bool = false
-    /// Set when the user taps an outbid in-app banner — the
-    /// `GameMinisOverlayHost` consumes it and flips the auction full-
-    /// screen cover on.
-    @Published var pendingOpenUinAuction: Bool = false
-    /// Set by the deep-link parser when a share-to-chat market URL
-    /// (`rcq://market/{id}` or `https://rcq.app/m/{id}`) lands. The
-    /// MarketView consumes it on appear and opens the detail sheet
-    /// for that listing.
-    @Published var pendingOpenMarketListingID: String? = nil
-    /// Mirror of `pendingOpenMarketListingID` for the UIN marketplace.
-    @Published var pendingOpenUinListingID: String? = nil
     /// Tap target for @mentions in group chat. ContactListView shows
     /// `UserInfoView` for the UIN as a sheet.
     @Published var pendingOpenUserProfile: Int? = nil
-    /// Tap target for an inline sticker in chat. ContactListView
-    /// presents the pack-peek sheet on change.
-    @Published var pendingOpenStickerPack: String? = nil
 
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
@@ -78,22 +63,6 @@ final class AppState: ObservableObject {
             }
             return
         }
-        if url.scheme == "rcq", url.host == "uin-listing" {
-            let id = url.pathComponents.last ?? ""
-            if !id.isEmpty {
-                pendingOpenUinListingID = id
-            }
-            return
-        }
-        if url.scheme == "rcq", url.host == "market" {
-            // `rcq://market/{listing_id}` — opens the marketplace
-            // and presents the listing detail sheet for the id.
-            let id = url.pathComponents.last ?? ""
-            if !id.isEmpty {
-                pendingOpenMarketListingID = id
-            }
-            return
-        }
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
@@ -101,30 +70,6 @@ final class AppState: ObservableObject {
             let uinStr = url.pathComponents[2]
             if let uin = Int(uinStr), uin > 0 {
                 pendingAddUIN = uin
-            }
-            return
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "m" {
-            // `https://rcq.app/m/{listing_id}` — same target as the
-            // `rcq://` variant, used by the OS share-sheet / web
-            // pasteboard paths where a custom scheme would be
-            // unhelpful (browser refuses to redirect to it).
-            let id = url.pathComponents[2]
-            if !id.isEmpty {
-                pendingOpenMarketListingID = id
-            }
-            return
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "ul" {
-            let id = url.pathComponents[2]
-            if !id.isEmpty {
-                pendingOpenUinListingID = id
             }
             return
         }
@@ -187,8 +132,6 @@ final class AppState: ObservableObject {
         let baseURL = APIClient.shared.baseURL
         WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
         await syncOwnPresenceFromServer(uin: uin)
-        await ItemsService.shared.refreshCatalog()
-        await ItemsService.shared.refreshInventory()
         await ContactService.shared.refresh()
         await GroupService.shared.refresh()
         await MessageService.shared.fetchOfflineQueue()
@@ -289,11 +232,6 @@ final class AppState: ObservableObject {
             WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
 
             await syncOwnPresenceFromServer(uin: uin)
-            // Eager catalog + inventory: contact-list / chat header pet
-            // glyphs read from these synchronously and silently no-op
-            // when missing.
-            await ItemsService.shared.refreshCatalog()
-            await ItemsService.shared.refreshInventory()
             await ContactService.shared.refresh()
             await GroupService.shared.refresh()
             await MessageService.shared.fetchOfflineQueue()
@@ -320,8 +258,8 @@ final class AppState: ObservableObject {
 
     enum MigrationResult: Equatable {
         case success(newUIN: Int)
-        case insufficientTokens(required: Int, have: Int)
         case cooldown
+        case taken
         case other(String)
     }
 
@@ -331,28 +269,48 @@ final class AppState: ObservableObject {
     private var migratingAccount: Bool = false
 
     /// Migrate the account to a freshly-allocated UIN. Server keeps
-    /// profile + contacts + items + wallet (minus the 99-token fee).
-    /// Identity + signing keys are reused server-side so peers' stage-2
-    /// sessions survive; stage-3 material is dropped and re-handshakes
-    /// on next message.
-    func migrateAccount(targetUIN: Int? = nil) async -> MigrationResult {
-        struct Body: Encodable { let target_uin: Int? }
-        struct MigrateOut: Decodable {
-            let new_uin: Int
-            let token: String
+    /// profile + contacts + groups; identity + signing keys are
+    /// reused server-side so peers' stage-2 sessions survive;
+    /// stage-3 material is dropped and re-handshakes on next message.
+    func migrateAccount() async -> MigrationResult {
+        return await performMigration {
+            try await APIClient.shared.request("POST", "/account/migrate")
         }
+    }
+
+    /// Purchase a specific UIN via mock IAP and migrate onto it.
+    /// Reuses the same wipe + re-boot pipeline as the regular
+    /// `migrateAccount` flow.
+    func purchaseUIN(_ uin: Int, receipt: String) async -> MigrationResult {
+        struct Body: Encodable {
+            let uin: Int
+            let receipt: String
+        }
+        return await performMigration {
+            try await APIClient.shared.request(
+                "POST", "/uin/purchase",
+                body: Body(uin: uin, receipt: receipt)
+            )
+        }
+    }
+
+    private struct MigrateOut: Decodable {
+        let new_uin: Int
+        let token: String
+    }
+
+    private func performMigration(
+        _ call: () async throws -> MigrateOut
+    ) async -> MigrationResult {
         let resp: MigrateOut
         // Must be set before the POST: server fires `account_burned`
         // before the HTTP response unwinds.
         migratingAccount = true
         do {
-            resp = try await APIClient.shared.request(
-                "POST", "/account/migrate",
-                body: Body(target_uin: targetUIN)
-            )
-        } catch APIError.http(402, let body) {
+            resp = try await call()
+        } catch APIError.http(409, _) {
             migratingAccount = false
-            return Self.parseInsufficient(body) ?? .other("Not enough tokens")
+            return .taken
         } catch APIError.http(429, _) {
             migratingAccount = false
             return .cooldown
@@ -392,10 +350,6 @@ final class AppState: ObservableObject {
         pendingOpenChatUIN = nil
         pendingOpenGroupID = nil
         pendingOpenPending = false
-        pendingOpenTrades = false
-        pendingOpenUinAuction = false
-        pendingOpenMarketListingID = nil
-        pendingOpenUinListingID = nil
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
 
@@ -413,24 +367,8 @@ final class AppState: ObservableObject {
         bootError = nil
         await boot()
 
-        // forceWallet bypasses ItemsService's defensive max() so the
-        // post-deduction balance from the server wins.
-        await ItemsService.shared.refreshInventory(forceWallet: true)
-
         migratingAccount = false
         return .success(newUIN: resp.new_uin)
-    }
-
-    private static func parseInsufficient(_ body: String?) -> MigrationResult? {
-        guard let raw = body?.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
-              let detail = json["detail"] as? [String: Any],
-              detail["code"] as? String == "insufficient_tokens",
-              let required = detail["required"] as? Int,
-              let have = detail["have"] as? Int else {
-            return nil
-        }
-        return .insufficientTokens(required: required, have: have)
     }
 
     /// User-initiated nuclear reset. Wipes server account + every local
@@ -464,10 +402,6 @@ final class AppState: ObservableObject {
         pendingOpenChatUIN = nil
         pendingOpenGroupID = nil
         pendingOpenPending = false
-        pendingOpenTrades = false
-        pendingOpenUinAuction = false
-        pendingOpenMarketListingID = nil
-        pendingOpenUinListingID = nil
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
 
@@ -635,36 +569,7 @@ final class AppState: ObservableObject {
             GroupService.shared.purge(id)
             MessageStore.shared.clearThread(.group(id: id))
 
-        case .reputationChanged(let target, let amount, let newTotal, let anonymous, let donor):
-            // We only receive this WS event when WE are the target,
-            // so the toast wording assumes "you received". Anonymous
-            // donations show without a UIN; non-anonymous include
-            // the donor's UIN so the recipient can thank them.
-            let title = String(format: "reputation.toast.title".localized, amount)
-            let body: String
-            if anonymous {
-                body = "reputation.toast.body_anonymous".localized
-            } else if let donor {
-                body = String(format: "reputation.toast.body_from".localized, donor)
-            } else {
-                body = "reputation.toast.body_anonymous".localized
-            }
-            MessageBannerService.shared.tryPresentSystem(
-                title: title, body: body, target: .reputation
-            )
-            // Broadcast to any open profile view so it can splice
-            // the new total in without a refetch.
-            NotificationCenter.default.post(
-                name: .rcqReputationChanged,
-                object: nil,
-                userInfo: [
-                    "target_uin": target,
-                    "amount": amount,
-                    "new_total": newTotal,
-                ]
-            )
-
-		case .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction,
+		case
              .randomMatch, .randomEnd,
              .callOffer, .callAnswer, .callIce, .callEnd,
              .callRenegotiate, .callRenegotiateAnswer, .callRenegotiateDecline,
@@ -672,14 +577,7 @@ final class AppState: ObservableObject {
              .roomOffer, .roomAnswer, .roomIce, .roomSpeaking,
              .roomKicked, .roomDeleted, .roomMembershipRevoked, .roomKeyRotated,
              .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed,
-             .uinAuctionStarted, .uinAuctionBid, .uinAuctionEnded, .uinAuctionOutbid,
-             .tradeReceived, .tradeAccepted, .tradeDeclined, .tradeCancelled,
-             .crashRoundBetting, .crashRoundRunning, .crashRoundEnd,
-             .crashCashout, .crashBetPlaced,
-             .storyPosted, .storyDeleted,
-             .marketplaceListingSold,
-             .uinMarketplaceListingSold,
-             .jetonReact:
+             .storyPosted, .storyDeleted:
             // Owned by their respective services that subscribe directly.
             break
         }

@@ -9,7 +9,6 @@ struct MessageActionOverlay: View {
     let canReply: Bool
     let canEdit: Bool
     let onReact: (String) -> Void
-    var onJetonReact: (() -> Void)? = nil
     let onReply: () -> Void
     let onEdit: () -> Void
     let onForward: () -> Void
@@ -141,12 +140,6 @@ struct MessageActionOverlay: View {
                 if canReply && canForward {
                     actionRow("chat.action.reply".localized, icon: "arrowshape.turn.up.left", destructive: false) {
                         onReply(); onDismiss()
-                    }
-                    rowDivider
-                }
-                if let onJetonReact {
-                    actionRow("chat.action.jeton".localized, icon: "hands.clap.fill", destructive: false) {
-                        onJetonReact(); onDismiss()
                     }
                     rowDivider
                 }

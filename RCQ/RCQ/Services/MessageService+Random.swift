@@ -176,11 +176,9 @@ extension MessageService {
         RandomChatService.shared.append(local)
         defer { try? FileManager.default.removeItem(at: processed.url) }
         MediaProgressStore.shared.begin(local.id)
-        let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
-        let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
         let upload: MediaService.UploadResult
         do {
-            upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
+            upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
                 MediaProgressStore.shared.set(local.id, value: p)
             }
         } catch {

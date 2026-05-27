@@ -140,65 +140,16 @@ final class SoundService: ObservableObject {
 
     private var previewPlayer: AVAudioPlayer?
 
-    /// Preview a voice-pack. Switches to `.playback` so silent switch doesn't mute, then reverts.
-    func preview(kindID: String) {
-        guard isEnabled else {
-            print("[SoundService] preview: sound disabled")
-            return
-        }
-        guard let kind = ItemsService.shared.catalog?.kind(by: kindID) else {
-            print("[SoundService] preview: kind \(kindID) not in catalog (catalog stale?)")
-            return
-        }
-        guard kind.section == .voices else {
-            print("[SoundService] preview: kind \(kindID) is not a voice (section=\(kind.section))")
-            return
-        }
-        guard let player = loadPlayerForKind(kind) else {
-            print("[SoundService] preview: AVAudioPlayer load failed for assetRef=\(kind.assetRef)")
-            return
-        }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playback, options: [])
-            try session.setActive(true, options: [])
-        } catch {
-            print("[SoundService] preview: audio session setup failed \(error)")
-        }
-        previewPlayer = player
-        player.currentTime = 0
-        let started = player.play()
-        print("[SoundService] preview: played \(kind.id) → \(started ? "OK" : "FAILED")")
-        let revertAfter = max(0.5, player.duration + 0.2)
-        DispatchQueue.main.asyncAfter(deadline: .now() + revertAfter) { [weak self] in
-            try? session.setCategory(.ambient, options: [.mixWithOthers])
-            try? session.setActive(true, options: [])
-            self?.previewPlayer = nil
-        }
-    }
-
-    /// Incoming-message playback with optional per-contact pack override.
+    /// Incoming-message playback (jeton-bought sound packs are gone after pivot).
     func playIncoming(fromUIN uin: Int?, thread: ThreadID? = nil) {
         guard isEnabled else { return }
         if let thread, isMuted(thread: thread) { return }
-        let packID: String? = uin.flatMap { ContactSoundStore.shared.packID(for: $0) }
-        if let packID, packID != SoundPack.default.id, let custom = customPlayer(packID: packID) {
-            custom.currentTime = 0
-            custom.play()
-            return
-        }
         play(.messageIncoming, thread: thread)
     }
 
     private var customPlayers: [String: AVAudioPlayer] = [:]
     private func customPlayer(packID: String) -> AVAudioPlayer? {
         if let cached = customPlayers[packID] { return cached }
-        if let kind = ItemsService.shared.catalog?.kind(by: packID),
-           kind.section == .voices,
-           let player = loadPlayerForKind(kind) {
-            customPlayers[packID] = player
-            return player
-        }
         let candidates = ["aif", "aiff", "wav", "m4a", "mp3"]
         for ext in candidates {
             guard let url = Bundle.main.url(forResource: packID, withExtension: ext) else { continue }
@@ -208,29 +159,6 @@ final class SoundService: ObservableObject {
                 return player
             }
         }
-        return nil
-    }
-
-    private func loadPlayerForKind(_ kind: ItemKind) -> AVAudioPlayer? {
-        let trimmed = kind.assetRef.hasPrefix("items/")
-            ? String(kind.assetRef.dropFirst("items/".count))
-            : kind.assetRef
-        let basename = (trimmed as NSString).lastPathComponent
-        let stem = (basename as NSString).deletingPathExtension
-        let ext = (basename as NSString).pathExtension
-        let exts = ext.isEmpty ? ["mp3", "aif", "aiff", "wav", "m4a"] : [ext]
-        for tryExt in exts {
-            if let url = Bundle.main.url(forResource: stem, withExtension: tryExt) {
-                do {
-                    let p = try AVAudioPlayer(contentsOf: url)
-                    p.prepareToPlay()
-                    return p
-                } catch {
-                    print("[SoundService] AVAudioPlayer init failed for \(url.lastPathComponent): \(error)")
-                }
-            }
-        }
-        print("[SoundService] no asset found for stem=\(stem) ext=\(ext) (assetRef=\(kind.assetRef))")
         return nil
     }
 

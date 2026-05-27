@@ -15,8 +15,6 @@ struct AlbumRowView: View {
     let onLongPress: () -> Void
     let onSwipeReply: () -> Void
     var onTapReaction: ((String) -> Void)? = nil
-    var jetonTotal: Int = 0
-    var onTapJeton: (() -> Void)? = nil
 
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
@@ -102,14 +100,9 @@ struct AlbumRowView: View {
                             .font(Theme.Font.timestamp)
                             .foregroundColor(Theme.Color.textSecondary)
                     }
-                    if !first.reactions.isEmpty || jetonTotal > 0 {
+                    if !first.reactions.isEmpty, let onTapReaction {
                         HStack(spacing: 4) {
-                            if !first.reactions.isEmpty, let onTapReaction {
-                                ReactionsBar(message: first, onTap: onTapReaction)
-                            }
-                            if jetonTotal > 0 {
-                                jetonPill
-                            }
+                            ReactionsBar(message: first, onTap: onTapReaction)
                         }
                     }
                 }
@@ -154,22 +147,4 @@ struct AlbumRowView: View {
         )
     }
 
-    private var jetonPill: some View {
-        Button {
-            onTapJeton?()
-        } label: {
-            HStack(spacing: 3) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 14, height: 14)
-                Text("\(jetonTotal)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Theme.Color.accent.opacity(0.15)))
-        }
-        .buttonStyle(.plain)
-        .disabled(onTapJeton == nil)
-    }
 }

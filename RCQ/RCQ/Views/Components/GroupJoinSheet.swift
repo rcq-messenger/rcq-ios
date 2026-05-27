@@ -19,7 +19,6 @@ struct GroupJoinSheet: View {
     @State private var loading: Bool = true
     @State private var error: String?
     @State private var joining: Bool = false
-    @State private var insufficientTokens: (required: Int, have: Int)?
 
     /// True when the caller is already in this group. Skips the
     /// join button entirely and offers "Open" instead — the
@@ -124,9 +123,6 @@ struct GroupJoinSheet: View {
                     .padding(.horizontal, 32)
             }
             ownerRow(p)
-            if let price = p.entryPriceTokens, price > 0 {
-                priceChip(price: price)
-            }
             if p.isClosed && !alreadyMember {
                 Text("group_join.closed_hint".localized)
                     .font(.callout)
@@ -135,13 +131,7 @@ struct GroupJoinSheet: View {
                     .padding(.horizontal, 32)
             }
             Spacer()
-            if let info = insufficientTokens {
-                Text(String(format: "group_join.insufficient".localized, info.required, info.have))
-                    .font(.caption)
-                    .foregroundColor(.red.opacity(0.85))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            } else if let error {
+            if let error {
                 Text(error)
                     .font(.caption)
                     .foregroundColor(.red.opacity(0.85))
@@ -164,11 +154,7 @@ struct GroupJoinSheet: View {
             onOpenOwner?(p.ownerUIN)
         } label: {
             HStack(spacing: 10) {
-                StatusWithPet(
-                    status: ownerMember?.status ?? .offline,
-                    pet: ownerMember?.equippedPet,
-                    size: 28,
-                )
+                StatusIcon(status: ownerMember?.status ?? .offline, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("group_join.owner_label".localized)
                         .font(.caption2)
@@ -233,23 +219,6 @@ struct GroupJoinSheet: View {
         .disabled((p.isClosed && !alreadyMember) || joining)
     }
 
-    private func priceChip(price: Int) -> some View {
-        HStack(spacing: 6) {
-            ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                .frame(width: 20, height: 20)
-            Text("\(price)")
-                .font(.system(.body, design: .monospaced).weight(.bold))
-                .foregroundColor(Theme.Color.textPrimary)
-            Text("group_join.price_suffix".localized)
-                .font(.caption)
-                .foregroundColor(Theme.Color.textSecondary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .background(Theme.Color.accent.opacity(0.10))
-        .clipShape(Capsule())
-    }
-
     private func load() async {
         loading = true
         defer { loading = false }
@@ -264,15 +233,12 @@ struct GroupJoinSheet: View {
     private func join() async {
         joining = true
         defer { joining = false }
-        insufficientTokens = nil
         error = nil
         let result = await GroupService.shared.join(groupID: groupID)
         switch result {
         case .success(let g):
             onJoined(g)
             dismiss()
-        case .insufficientTokens(let required, let have):
-            insufficientTokens = (required, have)
         case .blocked:
             error = "group_join.error.blocked".localized
         case .closed:

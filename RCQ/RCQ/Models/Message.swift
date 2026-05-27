@@ -15,8 +15,6 @@ enum MessageKind: String, Codable {
     case location          // static lat/lng pinned location; coords on Message
     case systemNotice      // join/leave/rename, rendered as centred line
     case deleteForEveryone // tombstone
-    case premiumPhoto      // paywalled photo — unlock via /premium/contents/{id}/unlock
-    case premiumVideo
     case poll              // group poll: pollID + JSON-encoded {question, options, ...} in `text`
 }
 
@@ -79,11 +77,6 @@ struct Message: Identifiable, Hashable, Codable {
     var replyToAuthorName: String?
     /// Last `.edit` envelope timestamp. Nil = never edited.
     var editedAt: Date?
-    /// Token cost to unlock. Nil for non-premium kinds.
-    var premiumPriceTokens: Int?
-    /// True once the local user has a usable media key. Sender's copy
-    /// is always unlocked; recipients flip true after `/premium/contents/{id}/unlock`.
-    var premiumUnlocked: Bool
     /// Shared id for media sent in one batch (multi-pick from gallery
     /// or camera). Same id on every photo/video the sender shipped
     /// together, nil for stand-alone messages. Renderer groups
@@ -129,8 +122,6 @@ struct Message: Identifiable, Hashable, Codable {
         replyToSnippet: String? = nil,
         replyToAuthorName: String? = nil,
         editedAt: Date? = nil,
-        premiumPriceTokens: Int? = nil,
-        premiumUnlocked: Bool = false,
         albumID: UUID? = nil,
         fileName: String? = nil,
         fileMime: String? = nil,
@@ -159,8 +150,6 @@ struct Message: Identifiable, Hashable, Codable {
         self.replyToSnippet = replyToSnippet
         self.replyToAuthorName = replyToAuthorName
         self.editedAt = editedAt
-        self.premiumPriceTokens = premiumPriceTokens
-        self.premiumUnlocked = premiumUnlocked
         self.albumID = albumID
         self.fileName = fileName
         self.fileMime = fileMime

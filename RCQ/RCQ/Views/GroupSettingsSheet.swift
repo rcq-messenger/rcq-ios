@@ -15,11 +15,9 @@ struct GroupSettingsSheet: View {
     @State private var nameDraft: String = ""
     @State private var descriptionDraft: String = ""
     @State private var pinnedDraft: String = ""
-    @State private var entryPriceText: String = ""
     @State private var savingName = false
     @State private var savingDescription = false
     @State private var savingPin = false
-    @State private var savingPrice = false
     @State private var avatarUploading = false
     @State private var confirmAvatarRemove = false
     @State private var error: String?
@@ -73,7 +71,6 @@ struct GroupSettingsSheet: View {
                 nameDraft = g.name
                 descriptionDraft = g.description ?? ""
                 pinnedDraft = g.pinnedText ?? ""
-                entryPriceText = g.entryPriceTokens.map(String.init) ?? ""
             }
             .confirmationDialog(
                 "group.avatar.remove.confirm".localized,
@@ -268,28 +265,6 @@ struct GroupSettingsSheet: View {
             }
             .foregroundColor(Theme.Color.textPrimary)
 
-            HStack {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 18, height: 18)
-                TextField("0", text: Binding(
-                    get: { entryPriceText },
-                    set: { entryPriceText = $0.filter { $0.isNumber } }
-                ))
-                .keyboardType(.numberPad)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundColor(Theme.Color.textPrimary)
-                Spacer()
-                if savingPrice {
-                    ProgressView().controlSize(.small)
-                } else if (Int(entryPriceText) ?? 0) != (g.entryPriceTokens ?? 0) {
-                    Button("common.save".localized) {
-                        Task { await saveEntryPrice() }
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
-                }
-            }
-
             Toggle(isOn: Binding(
                 get: { g.isClosed },
                 set: { v in Task { try? await groups.setIsClosed(groupID: groupID, isClosed: v) } }
@@ -346,13 +321,6 @@ struct GroupSettingsSheet: View {
         defer { savingPin = false }
         let trimmed = pinnedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         do { try await groups.setPinnedText(groupID: groupID, pinnedText: trimmed) }
-        catch { self.error = error.localizedDescription }
-    }
-
-    private func saveEntryPrice() async {
-        savingPrice = true
-        defer { savingPrice = false }
-        do { try await groups.setEntryPrice(groupID: groupID, priceTokens: max(0, Int(entryPriceText) ?? 0)) }
         catch { self.error = error.localizedDescription }
     }
 

@@ -12,7 +12,6 @@ struct GroupInfoView: View {
     @State private var error: String?
     @State private var viewInfoForUIN: Int?
     @State private var actionMember: RCQGroupMember?
-    @State private var petPreview: PetPreviewTarget?
     @State private var showSettings = false
     @State private var showFullAvatar = false
     /// Members past the first N are folded behind a "Show all" disclosure
@@ -55,11 +54,7 @@ struct GroupInfoView: View {
                     } else {
                         membersSection
                     }
-                    // Paid groups: only owner can invite (free invites
-                    // would let anyone bypass the entry-price paywall).
-                    let canInvite = amOwner ||
-                        (currentGroup.entryPriceTokens ?? 0) == 0
-                    if canInvite {
+                    if true {
                         section("group.section.manage".localized) {
                             Button {
                                 showAddMember = true
@@ -127,14 +122,6 @@ struct GroupInfoView: View {
                         }
                     }
             }
-        }
-        .sheet(item: $petPreview) { wrap in
-            PetPreviewSheet(
-                pet: wrap.pet,
-                ownerUIN: wrap.uin,
-                ownerNickname: wrap.nickname,
-            )
-            .presentationDetents([.medium, .large])
         }
         .sheet(item: $actionMember) { m in
             MemberActionSheet(
@@ -289,25 +276,11 @@ struct GroupInfoView: View {
 
     private func memberRow(_ m: RCQGroupMember) -> some View {
         let isMe = m.uin == AuthService.shared.ownUIN
-        // Inner pet-preview Button wins for its bounds; outer row
-        // Button handles taps outside that zone.
-        let statusZone = StatusWithPet(status: m.status, pet: m.equippedPet, size: 22)
         return Button {
             if !isMe { actionMember = m }
         } label: {
             HStack(spacing: 8) {
-                if let pet = m.equippedPet {
-                    Button {
-                        petPreview = PetPreviewTarget(
-                            pet: pet, uin: m.uin, nickname: m.nickname,
-                        )
-                    } label: {
-                        statusZone
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    statusZone
-                }
+                StatusIcon(status: m.status, size: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text(m.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
@@ -374,19 +347,11 @@ private struct MemberActionSheet: View {
     @State private var profile: UserProfile?
     @State private var loading = true
     @State private var loadError: String?
-    @State private var showTrade = false
     @State private var addRequestSent = false
     @State private var addError: String?
 
     private var isAlreadyContact: Bool {
         contacts.contacts.contains(where: { $0.uin == member.uin })
-    }
-
-    private var canPropose: Bool {
-        let policy = profile?.tradePolicy ?? "everyone"
-        if policy == "nobody" { return false }
-        if policy == "contacts" && !isAlreadyContact { return false }
-        return true
     }
 
     var body: some View {
@@ -409,17 +374,6 @@ private struct MemberActionSheet: View {
             VStack(spacing: 10) {
                 if loading {
                     pillLoading
-                } else if canPropose {
-                    Button {
-                        showTrade = true
-                    } label: {
-                        actionPill(
-                            icon: "arrow.left.arrow.right",
-                            text: "group.member.action.trade".localized,
-                            tint: Theme.Color.accent,
-                        )
-                    }
-                    .buttonStyle(.plain)
                 }
                 if !isAlreadyContact {
                     Button {
@@ -482,9 +436,6 @@ private struct MemberActionSheet: View {
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
         .task {
             await loadProfile()
-        }
-        .sheet(isPresented: $showTrade) {
-            TradeProposeView(recipientUIN: member.uin, recipientNickname: member.nickname)
         }
     }
 

@@ -157,15 +157,7 @@ class NotificationService: UNNotificationServiceExtension {
 
         switch decrypted.envelope {
         case .text(_, let text, _, _, _):
-            if text.isEmpty {
-                content.body = "Message"
-            } else if Self.isMarketShareURL(text) {
-                content.body = "🛍️ Shared a marketplace item"
-            } else if Self.isUinShareURL(text) {
-                content.body = "#️⃣ Shared a UIN listing"
-            } else {
-                content.body = text
-            }
+            content.body = text.isEmpty ? "Message" : text
         case .photo(_, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📷 Photo" : "📷 \(cap)"
@@ -180,17 +172,6 @@ class NotificationService: UNNotificationServiceExtension {
         case .location(_, _, _, let caption, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📍 Location" : "📍 Location — \(cap)"
-        case .premiumPhoto(_, _, let price, _, let caption, _, _, _, _):
-            // Always include the price so the recipient sees the
-            // tap-cost up front in the notification surface — same
-            // as Telegram's "Premium content (X stars)" preview.
-            let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
-            let label = cap.isEmpty ? "Premium photo" : "Premium photo: \(cap)"
-            content.body = "🔒 \(label) — \(price)"
-        case .premiumVideo(_, _, let price, _, _, let caption, _, _, _, _):
-            let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
-            let label = cap.isEmpty ? "Premium video" : "Premium video: \(cap)"
-            content.body = "🔒 \(label) — \(price)"
         case .systemNotice(_, let text):
             content.body = text.isEmpty ? "System notice" : text
         case .poll(_, _, let question, _, _, _):
@@ -333,7 +314,7 @@ class NotificationService: UNNotificationServiceExtension {
     private static func envelopeIsUserVisible(_ envelope: Envelope) -> Bool {
         switch envelope {
         case .text, .photo, .video, .voice, .file, .location,
-             .premiumPhoto, .premiumVideo, .systemNotice, .poll:
+             .systemNotice, .poll:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit:
             return false
@@ -355,45 +336,8 @@ class NotificationService: UNNotificationServiceExtension {
         case .bounce:           return "bounce"
         case .visit:            return "visit"
         case .edit:             return "edit"
-        case .premiumPhoto:     return "premium_photo"
-        case .premiumVideo:     return "premium_video"
         case .poll:             return "poll"
         }
-    }
-
-    /// Inline mirror of the in-app `MarketLinkParser` — NSE is a
-    /// separate target and can't import the main app's view code, so
-    /// the URL-shape check is duplicated here. Both `rcq://market/<id>`
-    /// (deep link) and `https://rcq.app/m/<id>` (web link) qualify.
-    private static func isMarketShareURL(_ body: String) -> Bool {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
-        if url.scheme == "rcq" && url.host == "market" {
-            return !(url.pathComponents.last ?? "").isEmpty
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "m" {
-            return true
-        }
-        return false
-    }
-
-    /// Inline mirror of `UinLinkParser` — see note above.
-    private static func isUinShareURL(_ body: String) -> Bool {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return false }
-        if url.scheme == "rcq" && url.host == "uin-listing" {
-            return !(url.pathComponents.last ?? "").isEmpty
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "ul" {
-            return true
-        }
-        return false
     }
 
     override func serviceExtensionTimeWillExpire() {

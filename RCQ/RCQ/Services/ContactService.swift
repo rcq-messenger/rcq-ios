@@ -133,7 +133,6 @@ final class ContactService: ObservableObject {
                     signalIdentityKey: p.signalIdentityKey,
                     gender: nil,
                     unread: 0,
-                    equippedPet: p.equippedPet,
                     lastSeen: nil,
                 )
                 self.contacts.append(contact)

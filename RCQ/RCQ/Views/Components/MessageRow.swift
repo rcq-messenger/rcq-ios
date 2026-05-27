@@ -16,8 +16,6 @@ struct MessageRow: View {
     var isSelected: Bool = false
     var showSelectionAffordance: Bool = false
     let onTapReaction: (String) -> Void
-    var jetonTotal: Int = 0
-    var onTapJeton: (() -> Void)? = nil
     let onLongPress: () -> Void
     let onDoubleTapLike: () -> Void
     var onTapWhenSelecting: (() -> Void)? = nil
@@ -32,9 +30,6 @@ struct MessageRow: View {
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
     @State private var bubblePressed: Bool = false
-    @State private var showUnlockConfirm: Bool = false
-    @State private var unlockError: String?
-    @State private var unlockInFlight: Bool = false
 
     private static let swipeTriggerDistance: CGFloat = 60
     private static let swipeMaxDistance: CGFloat = 80
@@ -120,15 +115,10 @@ struct MessageRow: View {
                     }
                     .offset(x: swipeOffset)
                 }
-                if !message.reactions.isEmpty || jetonTotal > 0 {
+                if !message.reactions.isEmpty {
                     HStack(spacing: 4) {
                         if message.isFromMe { Spacer(minLength: 40) }
-                        if !message.reactions.isEmpty {
-                            ReactionsBar(message: message, onTap: onTapReaction)
-                        }
-                        if jetonTotal > 0 {
-                            jetonPill
-                        }
+                        ReactionsBar(message: message, onTap: onTapReaction)
                         if !message.isFromMe { Spacer(minLength: 40) }
                     }
                 }
@@ -200,27 +190,6 @@ struct MessageRow: View {
                         }
                     }
             )
-            .confirmationDialog(
-                String(format: "chat.premium.confirm.title".localized, message.premiumPriceTokens ?? 0),
-                isPresented: $showUnlockConfirm,
-                titleVisibility: .visible
-            ) {
-                Button(String(format: "chat.premium.confirm.pay".localized, message.premiumPriceTokens ?? 0)) {
-                    Task { await performUnlock(message) }
-                }
-                Button("common.cancel".localized, role: .cancel) {}
-            } message: {
-                Text("chat.premium.confirm.body".localized)
-            }
-            .alert(
-                "chat.premium.error.title".localized,
-                isPresented: Binding(
-                    get: { unlockError != nil },
-                    set: { if !$0 { unlockError = nil } }
-                ),
-                actions: { Button("common.ok".localized, role: .cancel) {} },
-                message: { Text(unlockError ?? "") }
-            )
         }
     }
 
@@ -267,25 +236,13 @@ struct MessageRow: View {
                                     .foregroundColor(Theme.Color.accent)
                                     .lineLimit(1)
                             }
-                            // If the quoted snippet is a market / UIN
-                            // share URL, render the actual item card
-                            // instead of the raw `rcq.app/m/<id>` text.
-                            // Composer already shows the card when
-                            // composing the reply — the bubble side
-                            // had been left as plain text.
-                            if let market = MarketLinkParser.parse(snippet) {
-                                MarketReplyMiniCard(listingID: market.listingID)
-                            } else if let uinShare = UinLinkParser.parse(snippet) {
-                                UinReplyMiniCard(listingID: uinShare.listingID)
-                            } else {
-                                EmoticonText(
-                                    text: snippet,
-                                    font: .caption2,
-                                    color: Theme.Color.textSecondary,
-                                    emoticonSize: 15,
-                                    members: currentGroupMembers
-                                )
-                            }
+                            EmoticonText(
+                                text: snippet,
+                                font: .caption2,
+                                color: Theme.Color.textSecondary,
+                                emoticonSize: 15,
+                                members: currentGroupMembers
+                            )
                         }
                     }
                     .padding(.vertical, 2)
@@ -403,34 +360,6 @@ struct MessageRow: View {
             // button so only the original creator sees the affordance.
             // PollBubble owns its own background + max-width clip.
             PollBubble(message: message, creatorIsMe: message.isFromMe)
-        } else if message.kind == .premiumPhoto || message.kind == .premiumVideo {
-            // Same component handles locked + unlocked so the unlock transition is an in-place blur dissolve.
-            let size = Self.premiumBubbleSize(thumbnailB64: message.thumbnailB64)
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                PremiumLockedBubble(message: message, onUnlock: { askUnlock(message) }, size: size)
-                if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-                        .cornerRadius(Theme.Metrics.bubbleRadius)
-                    if isTranslated { translatedFooter }
-                }
-            }
-        } else if let share = MarketLinkParser.parse(message.text) {
-            // Share-to-chat market link — full card preview takes the
-            // place of plain text so the recipient sees the item
-            // before tapping. The card itself routes the tap into
-            // `AppState.handle(deepLink:)` so it opens the listing
-            // detail sheet.
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
-                if isTranslated { translatedFooter }
-            }
-        } else if let share = UinLinkParser.parse(message.text) {
-            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                UinLinkBubble(listingID: share.listingID, rawURL: share.url)
-                if isTranslated { translatedFooter }
-            }
         } else if let share = GroupLinkParser.parse(message.text) {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 GroupLinkBubble(groupID: share.groupID, rawURL: share.url)
@@ -451,24 +380,6 @@ struct MessageRow: View {
         }
     }
 
-    private var jetonPill: some View {
-        Button {
-            onTapJeton?()
-        } label: {
-            HStack(spacing: 3) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 14, height: 14)
-                Text("\(jetonTotal)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Theme.Color.accent.opacity(0.15)))
-        }
-        .buttonStyle(.plain)
-        .disabled(onTapJeton == nil)
-    }
 
     private var translatedFooter: some View {
         HStack(spacing: 4) {
@@ -491,40 +402,4 @@ struct MessageRow: View {
         }
     }
 
-    fileprivate static func premiumBubbleSize(thumbnailB64: String?) -> CGSize {
-        let width: CGFloat = 240
-        let maxHeight: CGFloat = width * 1.4
-        let defaultHeight: CGFloat = width * 0.75
-        guard let b64 = thumbnailB64,
-              !b64.isEmpty,
-              let data = Data(base64Encoded: b64),
-              let img = UIImage(data: data),
-              img.size.width > 0, img.size.height > 0 else {
-            return CGSize(width: width, height: defaultHeight)
-        }
-        let aspect = img.size.width / img.size.height
-        let height = min(maxHeight, max(120, width / aspect))
-        return CGSize(width: width, height: height)
-    }
-
-    fileprivate func askUnlock(_ message: Message) {
-        showUnlockConfirm = true
-    }
-
-    fileprivate func performUnlock(_ message: Message) async {
-        if unlockInFlight { return }
-        unlockInFlight = true
-        defer { unlockInFlight = false }
-        do {
-            _ = try await MessageService.shared.unlockPremium(message: message)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch let APIError.http(402, body) {
-            _ = body
-            unlockError = "chat.premium.error.insufficient".localized
-        } catch APIError.http(404, _) {
-            unlockError = "chat.premium.error.gone".localized
-        } catch {
-            unlockError = "chat.premium.error.generic".localized
-        }
-    }
 }

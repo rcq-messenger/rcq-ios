@@ -177,11 +177,7 @@ struct SearchOverlay: View {
         ForEach(contactHits) { contact in
             Button { onSelectContact(contact) } label: {
                 HStack(spacing: 10) {
-                    StatusWithPet(
-                        status: contact.status,
-                        pet: contact.equippedPet,
-                        size: 36,
-                    )
+                    StatusIcon(status: contact.status, size: 36)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(contact.nickname)
                             .font(Theme.Font.nickname)
@@ -272,7 +268,7 @@ struct SearchOverlay: View {
         switch thread {
         case .peer(let uin):
             if let c = contactSvc.contacts.first(where: { $0.uin == uin }) {
-                StatusWithPet(status: c.status, pet: c.equippedPet, size: 32)
+                StatusIcon(status: c.status, size: 32)
             } else {
                 Image(systemName: "bubble.left")
                     .font(.system(size: 14))
@@ -300,23 +296,7 @@ struct SearchOverlay: View {
     /// rich preview (mirrors the chat-bubble detection).
     @ViewBuilder
     private func messageBody(_ message: Message) -> some View {
-        if let share = MarketLinkParser.parse(message.text) {
-            HStack(spacing: 6) {
-                Image(systemName: "cube.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.Color.accent)
-                MarketReplyMiniCard(listingID: share.listingID)
-            }
-        } else if UinLinkParser.parse(message.text) != nil {
-            HStack(spacing: 6) {
-                Image(systemName: "number.circle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.Color.accent)
-                Text("search.preview.uin_listing".localized)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
-        } else if GroupLinkParser.parse(message.text) != nil {
+        if GroupLinkParser.parse(message.text) != nil {
             HStack(spacing: 6) {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 12, weight: .semibold))

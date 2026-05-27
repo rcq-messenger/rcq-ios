@@ -14,16 +14,12 @@ import UIKit
 /// Document + Location + Premium.
 struct AttachmentPickerSheet: View {
     let isRandom: Bool
-    /// Hide the Premium row even outside random chat — used in groups
-    /// where only the owner can post paid content.
-    var premiumDisabled: Bool = false
     /// Sender called this when the user finishes picking media. Caller
     /// dismisses the sheet and routes selected media into the send
     /// pipeline. Empty array on cancel.
     let onMedia: ([CapturedMedia]) -> Void
     /// Open the camera UI.
     let onCamera: () -> Void
-    let onPremium: () -> Void
     let onDocument: () -> Void
     let onLocation: () -> Void
     /// Create a group poll. Only surfaced inside group chats; the
@@ -75,9 +71,6 @@ struct AttachmentPickerSheet: View {
                 if !isRandom {
                     actionChip(icon: "doc.fill", labelKey: "chat.attach.document", action: onDocument)
                     actionChip(icon: "mappin.and.ellipse", labelKey: "chat.attach.location", action: onLocation)
-                }
-                if !isRandom && !premiumDisabled {
-                    actionChip(icon: "lock.fill", labelKey: "chat.attach.premium", action: onPremium)
                 }
                 if let onPoll {
                     actionChip(icon: "chart.bar.doc.horizontal", labelKey: "chat.attach.poll", action: onPoll)

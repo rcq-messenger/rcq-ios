@@ -9,10 +9,8 @@ struct AudioRoomScreen: View {
     @StateObject private var rooms = AudioRoomService.shared
     let initialRoomName: String
 
-    @State private var inspectingPet: PetPreviewTarget?
     @State private var quickActionsTarget: AudioRoomMember?
     @State private var profilePeekUIN: Int?
-    @State private var tradeTarget: AudioRoomMember?
     @State private var showRenameSheet: Bool = false
     @State private var renameDraft: String = ""
 
@@ -38,10 +36,6 @@ struct AudioRoomScreen: View {
             }
         }
         .preferredColorScheme(.dark)
-        .sheet(item: $inspectingPet) { target in
-            PetPreviewSheet(pet: target.pet, ownerUIN: target.uin, ownerNickname: target.nickname)
-                .preferredColorScheme(.dark)
-        }
         .sheet(item: $quickActionsTarget) { member in
             AudioRoomQuickActionsSheet(
                 member: member,
@@ -52,13 +46,6 @@ struct AudioRoomScreen: View {
                     quickActionsTarget = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                         profilePeekUIN = member.uin
-                    }
-                },
-                onTrade: {
-                    let target = member
-                    quickActionsTarget = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                        tradeTarget = target
                     }
                 },
                 onKick: {
@@ -86,9 +73,6 @@ struct AudioRoomScreen: View {
             NavigationStack {
                 UserInfoView(uin: target.uin, isOwn: target.uin == AuthService.shared.ownUIN)
             }
-        }
-        .sheet(item: $tradeTarget) { target in
-            TradeProposeView(recipientUIN: target.uin, recipientNickname: target.nickname)
         }
         .sheet(isPresented: $showRenameSheet) {
             RenameAudioRoomSheet(
@@ -257,20 +241,6 @@ struct AudioRoomScreen: View {
                     }
                     .frame(width: 84, height: 84)
                 }
-                if let pet = m.equippedPet {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            AudioRoomPetGlyph(pet: pet)
-                                .offset(x: -2, y: 4)
-                                .onTapGesture {
-                                    inspectingPet = PetPreviewTarget(pet: pet, uin: m.uin, nickname: m.nickname)
-                                }
-                            Spacer()
-                        }
-                    }
-                    .frame(width: 84, height: 84)
-                }
             }
             .contentShape(Circle())
             .onTapGesture { handleTileTap(member: m, hasVideo: videoTrack != nil, isMe: isMe) }
@@ -420,43 +390,10 @@ private struct ProfilePeekTarget: Identifiable {
     var id: Int { uin }
 }
 
-private struct AudioRoomPetGlyph: View {
-    let pet: EquippedPet
-    var size: CGFloat = 28
-
-    @StateObject private var items = ItemsService.shared
-
-    var body: some View {
-        if let basename = petBasename(for: pet.kindID) {
-            ZStack {
-                Circle()
-                    .fill(pet.rarity.color.opacity(0.35))
-                    .blur(radius: size * 0.18)
-                    .scaleEffect(1.10)
-                GIFImage(name: basename)
-                    .shadow(color: .black.opacity(0.30),
-                            radius: size * 0.06, x: 0, y: size * 0.04)
-            }
-            .frame(width: size, height: size)
-            .contentShape(Circle())
-        } else {
-            // Catalog not loaded; re-attempts on next ItemsService publish.
-            Color.clear.frame(width: size, height: size)
-        }
-    }
-
-    private func petBasename(for kindID: String) -> String? {
-        guard let kind = items.catalog?.kind(by: kindID) else { return nil }
-        let basename = (kind.assetRef as NSString).lastPathComponent
-        return (basename as NSString).deletingPathExtension
-    }
-}
-
 private struct AudioRoomQuickActionsSheet: View {
     let member: AudioRoomMember
     let isRoomOwner: Bool
     let onOpenProfile: () -> Void
-    let onTrade: () -> Void
     let onKick: () -> Void
     /// Bool is the NEW mute state.
     let onSetMute: (Bool) -> Void
@@ -497,9 +434,6 @@ private struct AudioRoomQuickActionsSheet: View {
 
                     actionRow(systemImage: "person.crop.circle", labelKey: "audio_room.actions.profile") {
                         onOpenProfile()
-                    }
-                    actionRow(systemImage: "arrow.left.arrow.right", labelKey: "audio_room.actions.trade") {
-                        onTrade()
                     }
                     if isRoomOwner {
                         Divider().background(Theme.Color.divider)

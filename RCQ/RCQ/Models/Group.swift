@@ -14,12 +14,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// Sealed-sender means the server can't enforce identity at send
     /// time; iOS gates the composer to keep the contract honest.
     var postPolicy: String = "all"
-    /// Tokens charged on `POST /groups/{id}/join`. NULL/0 = free.
-    /// Owner gets `floor(price × 0.95)`; the 5% delta burns.
-    var entryPriceTokens: Int? = nil
     /// Closed groups can only be entered via an owner-issued
-    /// invite (or marketplace purchase). The share-to-friend deep
-    /// link 403s on `/join`. Toggle is owner-only in Group Settings.
+    /// invite. The share-to-friend deep link 403s on `/join`.
+    /// Toggle is owner-only in Group Settings.
     var isClosed: Bool = false
     /// When true, the member roster is hidden in Group Info from
     /// everyone but the owner. Display-only — `members` still
@@ -46,7 +43,6 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case ownerUIN = "owner_uin"
         case avatarSeed = "avatar_seed"
         case postPolicy = "post_policy"
-        case entryPriceTokens = "entry_price_tokens"
         case isClosed = "is_closed"
         case membersHidden = "members_hidden"
         case pinnedText = "pinned_text"
@@ -66,7 +62,6 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.ownerUIN = try c.decode(Int.self, forKey: .ownerUIN)
         self.avatarSeed = try c.decode(Int.self, forKey: .avatarSeed)
         self.postPolicy = (try? c.decodeIfPresent(String.self, forKey: .postPolicy)) ?? "all"
-        self.entryPriceTokens = try? c.decodeIfPresent(Int.self, forKey: .entryPriceTokens)
         self.isClosed = (try? c.decodeIfPresent(Bool.self, forKey: .isClosed)) ?? false
         self.membersHidden = (try? c.decodeIfPresent(Bool.self, forKey: .membersHidden)) ?? false
         self.pinnedText = try? c.decodeIfPresent(String.self, forKey: .pinnedText)
@@ -104,7 +99,6 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     let signingKey: String
     /// Non-null = member runs libsignal (Stage 3 eligible).
     let signalIdentityKey: String?
-    let equippedPet: EquippedPet?
 
     var id: Int { uin }
 
@@ -113,7 +107,6 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case identityKey = "identity_key"
         case signingKey = "signing_key"
         case signalIdentityKey = "signal_identity_key"
-        case equippedPet = "equipped_pet"
     }
 
     init(from decoder: Decoder) throws {
@@ -127,7 +120,6 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.identityKey = (try? c.decodeIfPresent(String.self, forKey: .identityKey)) ?? ""
         self.signingKey = (try? c.decodeIfPresent(String.self, forKey: .signingKey)) ?? ""
         self.signalIdentityKey = try? c.decodeIfPresent(String.self, forKey: .signalIdentityKey)
-        self.equippedPet = try? c.decodeIfPresent(EquippedPet.self, forKey: .equippedPet)
     }
 }
 

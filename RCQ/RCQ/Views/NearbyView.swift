@@ -7,9 +7,9 @@ struct NearbyView: View {
     @StateObject private var contacts = ContactService.shared
     @State private var pickedTTL: TTLPreset = .oneHour
     @State private var sentRequests: Set<Int> = []
-    @State private var showHood: Bool = false
     @State private var showRadio: Bool = false
     @State private var profileTarget: NearbyPerson?
+    @State private var showComposer: Bool = false
 
     private var visibleAsLabel: String {
         if service.anonymous { return service.displayName }
@@ -55,11 +55,6 @@ struct NearbyView: View {
             }
             .task { await service.refreshList() }
             // No onDisappear stop: visibility is bound by TTL, not sheet lifetime.
-            .sheet(isPresented: $showHood) {
-                if case .active(let bucket, _) = service.state {
-                    HoodChatView(bucket: bucket)
-                }
-            }
             .fullScreenCover(isPresented: $showRadio) {
                 RadioDiscoveryView()
             }
@@ -208,29 +203,13 @@ struct NearbyView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Theme.Color.bgSecondary)
 
-            Button {
-                showHood = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .foregroundColor(Theme.Color.accent)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("nearby.hood.title".localized)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Theme.Color.textPrimary)
-                        Text("nearby.hood.body".localized)
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary)
+            if let bucket = bucketTag {
+                HoodBannerCarousel(bucket: bucket, onCompose: { showComposer = true })
+                    .padding(.vertical, 10)
+                    .sheet(isPresented: $showComposer) {
+                        HoodBannerComposerSheet(bucket: bucket, onPosted: { _ in })
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(Theme.Color.accent.opacity(0.08))
             }
-            .buttonStyle(.plain)
 
             if service.people.isEmpty {
                 VStack(spacing: 8) {
@@ -263,9 +242,6 @@ struct NearbyView: View {
                 }
             }
 
-            if let bucket = bucketTag {
-                HoodBannerCarousel(bucket: bucket)
-            }
         }
     }
 

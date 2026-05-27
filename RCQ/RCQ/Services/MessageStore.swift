@@ -144,7 +144,7 @@ final class MessageStore: ObservableObject {
               let idx = t.firstIndex(where: { $0.id == messageID })
         else { return }
         let m = t[idx]
-        let editableKinds: [MessageKind] = [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
+        let editableKinds: [MessageKind] = [.text, .photo, .video, .file]
         guard editableKinds.contains(m.kind), !m.deletedForEveryone else { return }
         t[idx] = Message(
             id: m.id, thread: m.thread, senderUIN: m.senderUIN,
@@ -161,28 +161,10 @@ final class MessageStore: ObservableObject {
             replyToSnippet: m.replyToSnippet,
             replyToAuthorName: m.replyToAuthorName,
             editedAt: editedAt,
-            premiumPriceTokens: m.premiumPriceTokens,
-            premiumUnlocked: m.premiumUnlocked,
             albumID: m.albumID
         )
         threads[thread] = t
         MessageDB.shared.updateText(id: messageID, text: newText, editedAt: editedAt)
-    }
-
-    /// Patch in the recovered media key and flip `premiumUnlocked`.
-    func unlockPremium(messageID: UUID, thread: ThreadID, mediaKeyB64: String) {
-        guard var t = threads[thread],
-              let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
-        let m = t[idx]
-        guard m.kind == .premiumPhoto || m.kind == .premiumVideo else { return }
-        if m.premiumUnlocked { return }
-        // mediaID format on receive: "<server_media_id>|" — splice key into the second segment.
-        let baseMediaID = (m.mediaID ?? "").components(separatedBy: "|").first ?? ""
-        let newMediaID = baseMediaID + "|" + mediaKeyB64
-        t[idx].mediaID = newMediaID
-        t[idx].premiumUnlocked = true
-        threads[thread] = t
-        MessageDB.shared.updatePremiumUnlocked(id: messageID, mediaID: newMediaID)
     }
 
     /// Patch in the canonical thumbnail + durationSec once VideoProcessor

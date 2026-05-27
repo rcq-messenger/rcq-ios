@@ -29,12 +29,6 @@ struct MessagePreviewCard: View {
                     RoundedRectangle(cornerRadius: Theme.Metrics.bubbleRadius)
                         .stroke(Theme.Color.divider, lineWidth: 1)
                 )
-        } else if message.kind == .text,
-                  let share = MarketLinkParser.parse(message.text) {
-            MarketLinkBubble(listingID: share.listingID, rawURL: share.url)
-        } else if message.kind == .text,
-                  let share = UinLinkParser.parse(message.text) {
-            UinLinkBubble(listingID: share.listingID, rawURL: share.url)
         } else {
             // Bubble dimensions here MUST match the chat row's defaults
             // (PhotoBubble.maxWidth = 240, premium size 240×aspect)
@@ -46,21 +40,6 @@ struct MessagePreviewCard: View {
                 PhotoBubble(message: message, maxWidth: 240)
             case .video:
                 VideoBubble(message: message, maxWidth: 240)
-            case .premiumPhoto, .premiumVideo:
-                // Paywalled media — render the same bubble the chat
-                // row uses (locked-blur or unlocked photo/video,
-                // depending on the recipient's unlock state). Without
-                // this branch the preview fell through to the text
-                // fallback and rendered as an empty bubble.
-                //
-                // `onUnlock` is a no-op here: the long-press preview
-                // is read-only — the unlock CTA fires from the chat
-                // row itself, not from the action overlay.
-                PremiumLockedBubble(
-                    message: message,
-                    onUnlock: {},
-                    size: CGSize(width: 240, height: 240),
-                )
             case .voice:
                 // Voice message in long-press preview. `VoiceBubble`
                 // brings its own bubble background (waveform inset on

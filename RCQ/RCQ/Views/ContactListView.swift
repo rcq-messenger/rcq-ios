@@ -11,8 +11,6 @@ struct ContactListView: View {
     @StateObject private var archive = ArchiveStore.shared
 
     @StateObject private var appState = AppState.shared
-    @StateObject private var trades = TradesService.shared
-    @StateObject private var items = ItemsService.shared
     @StateObject private var stories = StoryService.shared
     @StateObject private var news = NewsService.shared
 
@@ -24,18 +22,9 @@ struct ContactListView: View {
     @State private var showAudioRoomSheet = false
     @State private var collapsedAudioRooms = false
     @State private var rotateKeyConfirmRoom: AudioRoom?
-    @State private var showRoulette = false
     @State private var showNearby = false
     @State private var showQR = false
     @State private var showSearch = false
-    @State private var showInventory = false
-    @State private var showTradesList = false
-    /// Loaded listing for the share-to-chat deep-link path. When set,
-    /// `.sheet(item:)` slides up `MarketListingDetailSheet` directly
-    /// — NOT wrapped in MarketView. The user reported the previous
-    /// "full market shutter → item shutter on top" stacked-sheet
-    /// look as confusing; this skips straight to the item.
-    @State private var deepLinkListing: MarketplaceListing? = nil
     @State private var collapsedGroups = false
     @State private var previewTarget: ChatTarget?
     /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
@@ -49,14 +38,9 @@ struct ContactListView: View {
     @State private var showArchivePINGate = false
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
-    @State private var deepLinkUinListing: UinMarketplaceListing? = nil
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
-    /// Bound by `pendingOpenStickerPack`; opens the pack-peek sheet.
-    @State private var deepLinkStickerPackKind: StickerPackPeek? = nil
     @State private var showStealthInfo: Bool = false
     @State private var refreshAttemptedFor: Set<Int> = []
-    @State private var petPreview: PetPreviewTarget?
-    @State private var tradeWithContact: Contact?
     @State private var reportContact: Contact?
     @AppStorage("rcq.singbox.activePort") private var singboxActivePort: Int = 0
 
@@ -106,26 +90,6 @@ struct ContactListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showInventory = true
-                    } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "shippingbox.fill")
-                                .foregroundColor(Theme.Color.textPrimary)
-                            if trades.pendingIncomingCount > 0 {
-                                Text("\(trades.pendingIncomingCount)")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 3)
-                                    .padding(.vertical, 1)
-                                    .background(Color.red)
-                                    .clipShape(Capsule())
-                                    .offset(x: 4, y: -2)
-                            }
-                        }
-                    }
-                }
                 ToolbarItem(placement: .principal) {
                     identityPrincipal
                 }
@@ -183,8 +147,6 @@ struct ContactListView: View {
                 }
             }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
-            .fullScreenCover(isPresented: $showRoulette) { RouletteView() }
-            .fullScreenCover(isPresented: $showInventory) { InventoryView() }
             .background(storiesCoverHost)
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
@@ -227,20 +189,6 @@ struct ContactListView: View {
             } message: {
                 Text("audio_room.rotate.confirm.body".localized)
             }
-            .sheet(item: $petPreview) { wrap in
-                PetPreviewSheet(
-                    pet: wrap.pet,
-                    ownerUIN: wrap.uin,
-                    ownerNickname: wrap.nickname,
-                )
-                .presentationDetents([.medium, .large])
-            }
-            .sheet(item: $tradeWithContact) { contact in
-                TradeProposeView(
-                    recipientUIN: contact.uin,
-                    recipientNickname: contact.nickname,
-                )
-            }
             .sheet(item: $reportContact) { contact in
                 ReportContactSheet(
                     targetUIN: contact.uin,
@@ -254,13 +202,7 @@ struct ContactListView: View {
                 await groups.refresh()
                 await audioRooms.refresh()
                 await stories.refresh()
-                await trades.refreshAll()
                 await news.refresh()
-                // Cold-launch replay: RCQAppDelegate sets these flags before mount, so onChange misses them.
-                if appState.pendingOpenTrades {
-                    showTradesList = true
-                    appState.pendingOpenTrades = false
-                }
                 if appState.pendingOpenPending {
                     showPending = true
                     appState.pendingOpenPending = false
@@ -276,15 +218,6 @@ struct ContactListView: View {
                 if appState.pendingOpenGroupID != nil {
                     tryOpenPendingGroup()
                 }
-            }
-            .sheet(isPresented: Binding(
-                get: { trades.freshIncoming != nil },
-                set: { if !$0 { trades.freshIncoming = nil } },
-            )) {
-                TradesListView()
-            }
-            .sheet(isPresented: $showTradesList) {
-                TradesListView()
             }
             .sheet(isPresented: $showNews) {
                 NewsSheet()
@@ -331,19 +264,8 @@ struct ContactListView: View {
             // Reset the flag so subsequent identical push taps re-fire (same-value assigns are no-ops).
             .onChange(of: appState.pendingOpenPending) { newValue in
                 if newValue {
-                    showInventory = false
-                    trades.freshIncoming = nil
                     showPending = true
                     appState.pendingOpenPending = false
-                }
-            }
-            .onChange(of: appState.pendingOpenTrades) { newValue in
-                if newValue {
-                    showInventory = false
-                    trades.freshIncoming = nil
-                    showTradesList = true
-                    appState.pendingOpenTrades = false
-                    Task { @MainActor in await trades.refreshAll() }
                 }
             }
             .onChange(of: appState.pendingOpenGroupID) { _ in
@@ -352,36 +274,10 @@ struct ContactListView: View {
             .onChange(of: groups.groups) { _ in
                 tryOpenPendingGroup()
             }
-            .onChange(of: appState.pendingOpenMarketListingID) { newValue in
-                guard let id = newValue else { return }
-                appState.pendingOpenMarketListingID = nil
-                Task {
-                    if let listing = await MarketService.shared.fetchListing(id: id) {
-                        await MainActor.run { deepLinkListing = listing }
-                    }
-                }
-            }
-            .onChange(of: appState.pendingOpenUinListingID) { newValue in
-                guard let id = newValue else { return }
-                appState.pendingOpenUinListingID = nil
-                Task {
-                    if let listing = await MarketService.shared.fetchUinListing(id: id) {
-                        await MainActor.run { deepLinkUinListing = listing }
-                    }
-                }
-            }
             .onChange(of: appState.pendingOpenUserProfile) { newValue in
                 guard let uin = newValue else { return }
                 appState.pendingOpenUserProfile = nil
                 deepLinkProfileUIN = DeepLinkUIN(uin: uin)
-            }
-            .onChange(of: appState.pendingOpenStickerPack) { newValue in
-                guard let kindID = newValue else { return }
-                appState.pendingOpenStickerPack = nil
-                deepLinkStickerPackKind = StickerPackPeek(kindID: kindID)
-            }
-            .sheet(item: $deepLinkStickerPackKind) { peek in
-                StickerPackPeekSheet(kindID: peek.kindID)
             }
             .alert(
                 "stealth.tooltip.title".localized,
@@ -398,24 +294,6 @@ struct ContactListView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(item: $deepLinkUinListing) { listing in
-                UinMarketListingDetailSheet(
-                    listing: listing,
-                    onBought: { deepLinkUinListing = nil },
-                    onCancelled: { },
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(item: $deepLinkListing) { listing in
-                MarketListingDetailSheet(
-                    listing: listing,
-                    onBought: { deepLinkListing = nil },
-                    onCancelled: { },
-                )
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
         }
     }
 
@@ -427,8 +305,6 @@ struct ContactListView: View {
             return
         }
         appState.pendingOpenGroupID = nil
-        showInventory = false
-        trades.freshIncoming = nil
         path.append(group)
     }
 
@@ -446,8 +322,6 @@ struct ContactListView: View {
         }
         appState.pendingOpenChatUIN = nil
         refreshAttemptedFor.removeAll()
-        showInventory = false
-        trades.freshIncoming = nil
         path.append(contact)
     }
 
@@ -456,7 +330,6 @@ struct ContactListView: View {
         let group = stories.group(forUIN: contact.uin)
         ContactRow(
             contact: contact,
-            onTapPet: { showPetPreview(for: contact) },
             storyGroup: group,
             onTapStory: group == nil ? nil : { openStoryViewer(forUIN: contact.uin) }
         )
@@ -527,11 +400,7 @@ struct ContactListView: View {
                 }
                 .pickerStyle(.inline)
             } label: {
-                StatusWithPet(
-                    status: presence.status,
-                    pet: items.ownEquippedPet,
-                    size: 26,
-                )
+                StatusIcon(status: presence.status, size: 26)
             }
             Button { showProfile = true } label: {
                 VStack(spacing: 0) {
@@ -661,9 +530,8 @@ struct ContactListView: View {
         .refreshable {
             async let c: Void = vm.refresh()
             async let g: Void = groups.refresh()
-            async let t: Void = trades.refreshAll()
             async let a: Void = audioRooms.refresh()
-            _ = await (c, g, t, a)
+            _ = await (c, g, a)
         }
     }
 
@@ -713,7 +581,6 @@ struct ContactListView: View {
                         let group = stories.group(forUIN: contact.uin)
                         ContactRow(
                             contact: contact,
-                            onTapPet: { showPetPreview(for: contact) },
                             storyGroup: group,
                             onTapStory: group == nil ? nil : { openStoryViewer(forUIN: contact.uin) }
                         )
@@ -949,7 +816,7 @@ struct ContactListView: View {
                             )
                     }
                     ForEach(archivedContacts) { contact in
-                        ContactRow(contact: contact, onTapPet: { showPetPreview(for: contact) })
+                        ContactRow(contact: contact)
                             .contentShape(Rectangle())
                             .onTapGesture { path.append(contact) }
                             .scaleEffect(pressedRowID == "arch-peer:\(contact.uin)" ? 0.96 : 1.0)
@@ -1123,13 +990,6 @@ struct ContactListView: View {
             title: "contact_list.ctx.view_info".localized,
             systemImage: "info.circle"
         ) { path.append(contact) })
-        // Trade — same surface AddDetailView gates behind, but reachable
-        // from the contact list directly so a user doesn't have to open
-        // the chat or search the contact again to propose an exchange.
-        out.append(ContextAction(
-            title: "contact_list.ctx.trade".localized,
-            systemImage: "arrow.left.arrow.right"
-        ) { tradeWithContact = contact })
         out.append(ContextAction(
             title: (favorites.contains(peer: contact.uin)
                     ? "contact_list.ctx.remove_favorite"
@@ -1314,7 +1174,6 @@ struct ContactListView: View {
         HStack(spacing: 0) {
             barButton(icon: "person.badge.plus", label: "contact_list.bar.add".localized) { showAddContact = true }
             barButton(icon: "qrcode.viewfinder", label: "contact_list.bar.qr".localized) { showQR = true }
-            barButton(icon: "shuffle", label: "contact_list.bar.roulette".localized) { showRoulette = true }
             barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
             barButton(icon: "gearshape", label: "contact_list.bar.settings".localized) { showSettings = true }
         }
@@ -1327,17 +1186,6 @@ struct ContactListView: View {
         )
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
-    }
-
-    /// Drive the pet-preview sheet from a contact row's status-icon
-    /// tap. Idempotent — silently no-ops if the contact has no
-    /// equipped pet (the row's button only fires for contacts with
-    /// a pet, but checking here keeps the call site cheap).
-    private func showPetPreview(for contact: Contact) {
-        guard let pet = contact.equippedPet else { return }
-        petPreview = PetPreviewTarget(
-            pet: pet, uin: contact.uin, nickname: contact.nickname,
-        )
     }
 
     private func barButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
@@ -1381,11 +1229,6 @@ struct ContactListView: View {
 /// under the UIN, just as it did in the legacy client.
 private struct ContactRow: View {
     let contact: Contact
-    /// Optional tap-on-status-icon override. When the contact has an
-    /// equipped pet, callers wire this to surface a preview sheet
-    /// instead of opening the chat. When nil, the whole row routes
-    /// to the chat as before.
-    var onTapPet: (() -> Void)? = nil
     /// Active story group for this contact (nil if they have no
     /// posted stories live right now). When non-nil, a circular
     /// thumbnail ring renders at the right edge of the row; tapping
@@ -1478,26 +1321,9 @@ private struct ContactRow: View {
         .background(Theme.Color.bgPrimary)
     }
 
-    /// Status icon zone — bare `StatusWithPet` when there's no
-    /// equipped pet (no special tap handling). When a pet is
-    /// equipped AND the caller provided `onTapPet`, the zone wraps
-    /// in a Button that captures the tap before it reaches the
-    /// row's outer `.onTapGesture`. Otherwise it falls through.
     @ViewBuilder
     private var statusIcon: some View {
-        let icon = StatusWithPet(status: contact.status,
-                                 pet: contact.equippedPet,
-                                 size: 28)
-        if let onTapPet, contact.equippedPet != nil {
-            // Wrapping in a Button captures taps in the icon area;
-            // the row's outer `.onTapGesture` only sees taps that
-            // fall OUTSIDE the button's bounds. Native SwiftUI tap
-            // consumption — no manual gesture priority needed.
-            Button(action: onTapPet) { icon }
-                .buttonStyle(.plain)
-        } else {
-            icon
-        }
+        StatusIcon(status: contact.status, size: 28)
     }
 
     /// Coarse "last seen" buckets — minutes / hours / days. Anything
@@ -1535,61 +1361,12 @@ private extension DateFormatter {
 private struct DeepLinkUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
 private struct JoinGroupTrigger: Identifiable, Hashable { let id: Int }
 
-/// Identifiable wrapper so the same pack tapped twice re-presents.
-private struct StickerPackPeek: Identifiable, Hashable {
-    let kindID: String
-    var id: String { kindID }
-}
-
-/// Sheet showing the full `KindContentsView` for a tapped pack sticker.
-private struct StickerPackPeekSheet: View {
-    let kindID: String
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    KindContentsView(kindID: kindID, horizontalInset: 0)
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-            }
-            .background(Theme.Color.bgPrimary)
-            .navigationTitle(ItemDisplay.name(for: kindID))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("common.done".localized) { dismiss() }
-                        .foregroundColor(Theme.Color.accent)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-}
-
 /// Identifiable wrapper for `.fullScreenCover(item:)` driving the
 /// story viewer. Carries the index into `StoryService.feed` of the
 /// group whose first story should appear first.
 private struct StoryViewerWrapper: Identifiable {
     let index: Int
     var id: Int { index }
-}
-
-
-/// Wrapper for `.sheet(item:)` of the equipped-pet preview. Carries
-/// the pet snapshot plus the owner's identity so the preview sheet
-/// can render the "see %@'s inventory" CTA without an extra fetch.
-struct PetPreviewTarget: Identifiable, Hashable {
-    let pet: EquippedPet
-    let uin: Int
-    let nickname: String
-    /// Stable id keyed off (uin, instance_id) — same UIN can re-equip
-    /// a different pet later, and the sheet should redraw if so.
-    var id: String { "\(uin):\(pet.instanceID)" }
 }
 
 

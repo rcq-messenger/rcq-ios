@@ -254,7 +254,6 @@ final class MessageService {
         fileName: String,
         mime: String,
         sizeBytes: Int,
-        payJetons: Int = 0,
         to contact: Contact,
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
@@ -282,7 +281,7 @@ final class MessageService {
             defer { try? FileManager.default.removeItem(at: fileURL) }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL, payJetons: payJetons) { p in
+                upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -394,17 +393,9 @@ final class MessageService {
                 messageID: local.id, thread: .peer(uin: contact.uin),
                 thumbnailB64: processed.thumbnailB64, durationSec: processed.durationSec,
             )
-            // Compute the paid-tier cost from the PROCESSED video's
-            // plaintext size. Without this, uploads above 50 MB hit
-            // the server's price-check with `pay_jetons=0` and 400.
-            // The ChatViewModel gates the queue BEFORE this point so
-            // we only get here with the user's consent (or a free
-            // file).
-            let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
-            let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
+                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -575,233 +566,6 @@ final class MessageService {
             .deleteForEveryone(targetID: message.id),
             to: peer, localID: nil
         )
-    }
-
-    // MARK: - premium content (paywalled media)
-
-    private struct PremiumRecipient {
-        let uin: Int
-        let identityKey: String
-        let signingKey: String
-        let signalIdentityKey: String?
-    }
-
-    private func premiumRecipients(for target: ChatTarget) -> [PremiumRecipient] {
-        switch target {
-        case .peer(let c):
-            return [PremiumRecipient(
-                uin: c.uin, identityKey: c.identityKey,
-                signingKey: c.signingKey, signalIdentityKey: c.signalIdentityKey
-            )]
-        case .group(let g):
-            return g.members.compactMap { m in
-                guard m.uin != ownUIN, !m.identityKey.isEmpty else { return nil }
-                return PremiumRecipient(
-                    uin: m.uin, identityKey: m.identityKey,
-                    signingKey: m.signingKey, signalIdentityKey: m.signalIdentityKey
-                )
-            }
-        case .randomPeer:
-            return []
-        }
-    }
-
-    private func uploadPremiumKeys(
-        contentID: UUID, mediaKeyB64: String, recipients: [PremiumRecipient], price: Int,
-        groupID: Int? = nil
-    ) async throws {
-        struct RecipientKey: Encodable { let uin: Int; let wrapped_key: String }
-        struct Body: Encodable {
-            let id: String
-            let price_tokens: Int
-            let recipient_keys: [RecipientKey]
-            let group_id: Int?
-        }
-        struct Out: Decodable { let id: String }
-
-        let wrapped: [RecipientKey] = try recipients.map { r in
-            let bundle = PeerBundle(uin: r.uin, identityKey: r.identityKey, signingKey: r.signingKey)
-            let w = try crypto.wrapKey(mediaKeyB64, for: bundle)
-            return RecipientKey(uin: r.uin, wrapped_key: w)
-        }
-        let _: Out = try await APIClient.shared.request(
-            "POST", "/premium/contents",
-            body: Body(
-                id: contentID.uuidString.lowercased(),
-                price_tokens: price,
-                recipient_keys: wrapped,
-                group_id: groupID
-            )
-        )
-    }
-
-    /// K is wrapped per-recipient and POSTed to `/premium/contents` before the envelope.
-    /// Recipients fetch wrapped K via `/premium/contents/{id}/unlock` after paying.
-    func sendPremiumPhoto(_ image: UIImage, in target: ChatTarget, price: Int, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
-        let recipients = premiumRecipients(for: target)
-        guard !recipients.isEmpty else { return }
-        let messageID = UUID()
-        let ttl = ChatSettingsStore.shared.ttl(for: target.thread)
-        let local = Message(
-            id: messageID,
-            thread: target.thread,
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .premiumPhoto,
-            text: caption ?? "",
-            mediaID: nil,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            premiumPriceTokens: price,
-            premiumUnlocked: true
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(messageID)
-        Task { [weak self] in
-            guard let self else { return }
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadImage(image) { p in
-                    MediaProgressStore.shared.set(messageID, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(messageID)
-                MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(messageID)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: messageID, thread: target.thread, mediaID: combined)
-            // POST wrapped keys before the envelope so a racing /unlock finds the row.
-            do {
-                let gid: Int? = if case .group(let g) = target { g.id } else { nil }
-                try await self.uploadPremiumKeys(
-                    contentID: messageID,
-                    mediaKeyB64: upload.keyBase64,
-                    recipients: recipients,
-                    price: price,
-                    groupID: gid
-                )
-            } catch {
-                MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
-                return
-            }
-            let blurThumb = Self.blurThumbnailB64(from: image)
-            let envelope: Envelope = .premiumPhoto(
-                id: messageID,
-                mediaID: upload.mediaID,
-                price: price,
-                blurThumbnailB64: blurThumb,
-                caption: caption,
-                ttl: ttl,
-                replyTo: replyTo
-            )
-            switch target {
-            case .peer(let c):
-                try? await self.sendEnvelope(envelope, to: c, localID: messageID)
-            case .group(let g):
-                try? await self.sendGroupEnvelope(envelope, to: g, localID: messageID)
-            case .randomPeer:
-                break
-            }
-        }
-    }
-
-    func sendPremiumVideo(processed: VideoProcessor.Output, in target: ChatTarget, price: Int, caption: String? = nil, replyTo: ReplyContext? = nil) async throws {
-        let recipients = premiumRecipients(for: target)
-        guard !recipients.isEmpty else { return }
-        let messageID = UUID()
-        let ttl = ChatSettingsStore.shared.ttl(for: target.thread)
-        let local = Message(
-            id: messageID,
-            thread: target.thread,
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .premiumVideo,
-            text: caption ?? "",
-            mediaID: nil,
-            thumbnailB64: processed.thumbnailB64,
-            durationSec: processed.durationSec,
-            ttlSeconds: ttl,
-            replyToID: replyTo?.id,
-            replyToSnippet: replyTo?.snippet,
-            replyToAuthorName: replyTo?.authorName,
-            premiumPriceTokens: price,
-            premiumUnlocked: true
-        )
-        MessageStore.shared.append(local)
-        MediaProgressStore.shared.begin(messageID)
-        Task { [weak self] in
-            guard let self else { return }
-            defer { try? FileManager.default.removeItem(at: processed.url) }
-            let plaintextSize = (try? FileManager.default.attributesOfItem(atPath: processed.url.path)[.size] as? Int) ?? 0
-            let payJetons = MediaService.jetonCost(forBytes: plaintextSize)
-            let upload: MediaService.UploadResult
-            do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url, payJetons: payJetons) { p in
-                    MediaProgressStore.shared.set(messageID, value: p)
-                }
-            } catch {
-                MediaProgressStore.shared.clear(messageID)
-                MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
-                return
-            }
-            MediaProgressStore.shared.clear(messageID)
-            let combined = upload.mediaID + "|" + upload.keyBase64
-            MessageStore.shared.updateMediaID(messageID: messageID, thread: target.thread, mediaID: combined)
-            do {
-                let gid: Int? = if case .group(let g) = target { g.id } else { nil }
-                try await self.uploadPremiumKeys(
-                    contentID: messageID,
-                    mediaKeyB64: upload.keyBase64,
-                    recipients: recipients,
-                    price: price,
-                    groupID: gid
-                )
-            } catch {
-                MessageStore.shared.updateState(messageID: messageID, thread: target.thread, state: .failed)
-                return
-            }
-            let envelope: Envelope = .premiumVideo(
-                id: messageID,
-                mediaID: upload.mediaID,
-                price: price,
-                blurThumbnailB64: processed.thumbnailB64,
-                durationSec: processed.durationSec,
-                caption: caption,
-                ttl: ttl,
-                replyTo: replyTo
-            )
-            switch target {
-            case .peer(let c):
-                try? await self.sendEnvelope(envelope, to: c, localID: messageID)
-            case .group(let g):
-                try? await self.sendGroupEnvelope(envelope, to: g, localID: messageID)
-            case .randomPeer:
-                break
-            }
-        }
-    }
-
-    /// Idempotent server-side — re-calling on paid content returns K without recharging.
-    func unlockPremium(message: Message) async throws -> Int {
-        struct Out: Decodable {
-            let wrapped_key: String
-            let price_tokens: Int
-            let paid_just_now: Bool
-            let wallet: Wallet
-        }
-        let response: Out = try await APIClient.shared.request(
-            "POST", "/premium/contents/\(message.id.uuidString.lowercased())/unlock"
-        )
-        let mediaKeyB64 = try crypto.unwrapKey(response.wrapped_key)
-        MessageStore.shared.unlockPremium(
-            messageID: message.id, thread: message.thread, mediaKeyB64: mediaKeyB64
-        )
-        ItemsService.shared.setWalletTokens(response.wallet.tokens)
-        return response.wallet.tokens
     }
 
     private static func blurThumbnailB64(from image: UIImage) -> String {
@@ -1055,8 +819,6 @@ final class MessageService {
         case .video(let id, _, _, _, _, _, _, _, _, _): return id
         case .voice(let id, _, _, _, _, _, _): return id
         case .systemNotice(let id, _): return id
-        case .premiumPhoto(let id, _, _, _, _, _, _, _, _): return id
-        case .premiumVideo(let id, _, _, _, _, _, _, _, _, _): return id
         case .poll(let id, _, _, _, _, _): return id
         default: return nil
         }
@@ -1064,7 +826,7 @@ final class MessageService {
 
     func playSentSound(for envelope: Envelope) {
         switch envelope {
-        case .text, .photo, .voice, .premiumPhoto, .premiumVideo, .poll: SoundService.shared.play(.messageSent)
+        case .text, .photo, .voice, .poll: SoundService.shared.play(.messageSent)
         default: break
         }
     }
@@ -1401,28 +1163,6 @@ final class MessageService {
                     sentAt: ws.serverTime,
                     deliveryState: .delivered
                 ))
-            case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let envTTL, let fwd, let reply, let album):
-                // Empty key half (`<id>|`) keeps the media renderer's split parser happy until unlock.
-                inserted = MessageStore.shared.append(Message(
-                    id: id,
-                    thread: thread,
-                    senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
-                    kind: .premiumPhoto, text: caption ?? "",
-                    mediaID: mediaID + "|",
-                    sentAt: ws.serverTime,
-                    deliveryState: .delivered,
-                    receivedWhileAway: ws.offline,
-                    thumbnailB64: thumb,
-                    ttlSeconds: envTTL ?? localTTL,
-                    forwardedFromName: fwd,
-                    replyToID: reply?.id,
-                    replyToSnippet: reply?.snippet,
-                    replyToAuthorName: reply?.authorName,
-                    premiumPriceTokens: price,
-                    premiumUnlocked: false,
-                    albumID: album
-                ))
             case .poll(let id, let pollID, let question, let options, let singleChoice, let anonymous):
                 // Bubble keeps the question + options + flags as a
                 // small JSON blob inside `text` — the renderer parses
@@ -1446,28 +1186,6 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     pollID: pollID
-                ))
-            case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album):
-                inserted = MessageStore.shared.append(Message(
-                    id: id,
-                    thread: thread,
-                    senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
-                    kind: .premiumVideo, text: caption ?? "",
-                    mediaID: mediaID + "|",
-                    sentAt: ws.serverTime,
-                    deliveryState: .delivered,
-                    receivedWhileAway: ws.offline,
-                    thumbnailB64: thumb,
-                    durationSec: dur,
-                    ttlSeconds: envTTL ?? localTTL,
-                    forwardedFromName: fwd,
-                    replyToID: reply?.id,
-                    replyToSnippet: reply?.snippet,
-                    replyToAuthorName: reply?.authorName,
-                    premiumPriceTokens: price,
-                    premiumUnlocked: false,
-                    albumID: album
                 ))
             }
             os_log(

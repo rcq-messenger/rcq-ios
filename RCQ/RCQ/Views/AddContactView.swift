@@ -196,20 +196,7 @@ private struct GroupPreviewHit: View {
                 }
             }
             Spacer()
-            if let price = preview.entryPriceTokens, price > 0 {
-                HStack(spacing: 3) {
-                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                        .frame(width: 14, height: 14)
-                    Text("\(price)")
-                        .font(.system(.callout, weight: .bold).monospacedDigit())
-                        .foregroundColor(Theme.Color.textPrimary)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Theme.Color.accent.opacity(0.15))
-                .cornerRadius(6)
-            } else {
-                Image(systemName: "chevron.right").foregroundColor(Theme.Color.textSecondary)
-            }
+            Image(systemName: "chevron.right").foregroundColor(Theme.Color.textSecondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
     }
@@ -221,12 +208,8 @@ struct JoinGroupSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var groups = GroupService.shared
-    @StateObject private var items = ItemsService.shared
     @State private var busy: Bool = false
     @State private var alertMessage: String?
-
-    private var price: Int { preview.entryPriceTokens ?? 0 }
-    private var canAfford: Bool { items.wallet.tokens >= price }
 
     var body: some View {
         NavigationStack {
@@ -251,28 +234,19 @@ struct JoinGroupSheet: View {
                         .font(.callout)
                         .foregroundColor(Theme.Color.textSecondary)
                     }
-                    if price > 0 {
-                        priceBlock
-                    }
                     Button {
                         Task { await join() }
                     } label: {
-                        Text(price > 0
-                             ? (canAfford
-                                ? "join_group.cta.pay".localized
-                                : "join_group.cta.insufficient".localized)
-                             : "join_group.cta.free".localized)
+                        Text("join_group.cta.free".localized)
                             .font(.system(.body, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(price > 0 && !canAfford
-                                        ? Theme.Color.divider
-                                        : Theme.Color.accent)
+                            .background(Theme.Color.accent)
                             .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
-                    .disabled(busy || (price > 0 && !canAfford))
+                    .disabled(busy)
                 }
                 .padding(20)
             }
@@ -294,39 +268,6 @@ struct JoinGroupSheet: View {
         }
     }
 
-    private var priceBlock: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("join_group.entry_price".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-                HStack(spacing: 4) {
-                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                        .frame(width: 18, height: 18)
-                    Text("\(price)")
-                        .font(.system(.title2, weight: .bold).monospacedDigit())
-                        .foregroundColor(Theme.Color.textPrimary)
-                }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("join_group.your_balance".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-                HStack(spacing: 3) {
-                    ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                        .frame(width: 14, height: 14)
-                    Text("\(items.wallet.tokens)")
-                        .font(.system(.callout, weight: .semibold).monospacedDigit())
-                        .foregroundColor(canAfford ? Theme.Color.textPrimary : .red)
-                }
-            }
-        }
-        .padding(14)
-        .background(Theme.Color.bgSecondary)
-        .cornerRadius(8)
-    }
-
     private func join() async {
         busy = true
         defer { busy = false }
@@ -335,8 +276,6 @@ struct JoinGroupSheet: View {
         case .success(let g):
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             onJoined(g)
-        case .insufficientTokens(let req, let have):
-            alertMessage = String(format: "join_group.error.insufficient".localized, req, have)
         case .blocked:
             alertMessage = "join_group.error.blocked".localized
         case .closed:
@@ -418,8 +357,6 @@ private struct AddDetailView: View {
     @State private var sending = false
     @State private var sent = false
     @State private var errorMessage: String? = nil
-    @State private var showInventory = false
-    @State private var showTrade = false
 
     private var alreadyInList: Bool {
         contacts.contacts.contains(where: { $0.uin == user.uin })
@@ -457,30 +394,6 @@ private struct AddDetailView: View {
                 .padding(.horizontal, 24)
                 .disabled(buttonState.disabled)
 
-                HStack(spacing: 8) {
-                    Button {
-                        showInventory = true
-                    } label: {
-                        Label("add.inventory".localized, systemImage: "shippingbox")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Theme.Color.bgSecondary)
-                            .foregroundColor(Theme.Color.textPrimary)
-                            .cornerRadius(4)
-                    }
-                    Button {
-                        showTrade = true
-                    } label: {
-                        Label("add.trade".localized, systemImage: "arrow.left.arrow.right")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Theme.Color.accent)
-                            .foregroundColor(.white)
-                            .cornerRadius(4)
-                    }
-                }
-                .padding(.horizontal, 24)
-
                 if let err = errorMessage {
                     Text(err)
                         .font(.caption)
@@ -494,12 +407,6 @@ private struct AddDetailView: View {
         }
         .navigationTitle("add.contact_info".localized)
         .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(isPresented: $showInventory) {
-            PublicInventoryView(uin: user.uin, nickname: user.nickname)
-        }
-        .sheet(isPresented: $showTrade) {
-            TradeProposeView(recipientUIN: user.uin, recipientNickname: user.nickname)
-        }
     }
 
     private func sendRequest() async {

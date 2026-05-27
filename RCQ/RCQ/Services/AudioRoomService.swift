@@ -289,7 +289,7 @@ final class AudioRoomService: ObservableObject {
             for m in members {
                 fresh[m.uin] = AudioRoomMember(
                     uin: m.uin, nickname: m.nickname,
-                    equippedPet: m.equippedPet, mutedByOwner: m.mutedByOwner
+                    mutedByOwner: m.mutedByOwner
                 )
             }
             roster = fresh
@@ -302,11 +302,11 @@ final class AudioRoomService: ObservableObject {
                 localMuted = true
             }
 
-        case .roomMemberEntered(let roomID, let uin, let nickname, let pet, let mutedByOwner):
+        case .roomMemberEntered(let roomID, let uin, let nickname, let mutedByOwner):
             guard activeRoomID == roomID else { return }
             roster[uin] = AudioRoomMember(
                 uin: uin, nickname: nickname,
-                equippedPet: pet, mutedByOwner: mutedByOwner
+                mutedByOwner: mutedByOwner
             )
             updateActiveCount(roomID: roomID, count: roster.count)
             // Server convention: existing member is the offerer.

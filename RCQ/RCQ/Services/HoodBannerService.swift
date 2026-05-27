@@ -1,14 +1,16 @@
 import Combine
 import Foundation
 
+/// Per-bucket cache for district-banner placements. UI calls
+/// `refresh(bucket:)` on appear and `create(...)` from the composer.
+/// Pricing is fetched lazily on first composer open.
 @MainActor
 final class HoodBannerService: ObservableObject {
     static let shared = HoodBannerService()
 
     @Published private(set) var bannersByBucket: [String: [HoodBanner]] = [:]
     @Published private(set) var canPostByBucket: [String: Bool] = [:]
-    @Published private(set) var cooldownByBucket: [String: Int] = [:]
-    @Published var lastError: String?
+    @Published private(set) var pricing: [HoodBannerPricing] = []
 
     private init() {}
 
@@ -16,6 +18,12 @@ final class HoodBannerService: ObservableObject {
         bannersByBucket[bucket] ?? []
     }
 
+    func canPost(in bucket: String) -> Bool {
+        canPostByBucket[bucket] ?? true
+    }
+
+    /// Pull the bucket roster + refresh `canPost`. Soft-fail keeps
+    /// the prior cached list.
     func refresh(bucket: String) async {
         do {
             let out: HoodBannerList = try await APIClient.shared.request(
@@ -23,18 +31,29 @@ final class HoodBannerService: ObservableObject {
             )
             bannersByBucket[bucket] = out.items
             canPostByBucket[bucket] = out.canPost
-            cooldownByBucket[bucket] = out.cooldownRemainingSeconds
         } catch {
             print("[HoodBannerService] refresh failed: \(error)")
         }
     }
 
+    /// Fetch the IAP-tier table. Idempotent; only re-fetches if the
+    /// cached list is empty.
+    func fetchPricing() async {
+        guard pricing.isEmpty else { return }
+        do {
+            let out: [HoodBannerPricing] = try await APIClient.shared.request(
+                "GET", "/hood/banners/pricing"
+            )
+            pricing = out
+        } catch {
+            // Fallback to the per-enum constants if the network call
+            // failed — UI never blocks on this.
+        }
+    }
+
     enum CreateResult {
-        case success(HoodBanner, walletTokens: Int)
-        case insufficientTokens(required: Int, have: Int)
+        case success(HoodBanner)
         case bucketFull
-        case alreadyHaveBanner
-        case cooldown(seconds: Int)
         case other(String)
     }
 
@@ -43,6 +62,7 @@ final class HoodBannerService: ObservableObject {
         text: String,
         duration: BannerDuration,
         isAnonymous: Bool,
+        receipt: String,
         imageURL: String? = nil,
         imageThumbURL: String? = nil,
     ) async -> CreateResult {
@@ -53,15 +73,9 @@ final class HoodBannerService: ObservableObject {
             let is_anonymous: Bool
             let image_url: String?
             let image_thumb_url: String?
+            let receipt: String
         }
-        struct Out: Decodable {
-            let banner: HoodBanner
-            let walletTokens: Int
-            enum CodingKeys: String, CodingKey {
-                case banner
-                case walletTokens = "wallet_tokens"
-            }
-        }
+        struct Out: Decodable { let banner: HoodBanner }
         do {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/hood/banners",
@@ -72,24 +86,17 @@ final class HoodBannerService: ObservableObject {
                     is_anonymous: isAnonymous,
                     image_url: imageURL,
                     image_thumb_url: imageThumbURL,
+                    receipt: receipt,
                 )
             )
-            // Optimistic local insert.
             var list = bannersByBucket[bucket] ?? []
             list.insert(out.banner, at: 0)
             bannersByBucket[bucket] = list
-            ItemsService.shared.setWalletTokens(out.walletTokens)
-            return .success(out.banner, walletTokens: out.walletTokens)
-        } catch APIError.http(402, let body) {
-            let (req, have) = Self.parseInsufficient(body)
-            return .insufficientTokens(required: req, have: have)
+            return .success(out.banner)
         } catch APIError.http(409, let body) {
             let detail = (body ?? "").lowercased()
-            if detail.contains("bucket full") { return .bucketFull }
-            if detail.contains("already have") { return .alreadyHaveBanner }
+            if detail.contains("bucket_full") { return .bucketFull }
             return .other(body ?? "conflict")
-        } catch APIError.http(429, let body) {
-            return .cooldown(seconds: Self.parseCooldown(body))
         } catch {
             return .other(error.localizedDescription)
         }
@@ -102,28 +109,7 @@ final class HoodBannerService: ObservableObject {
             )
             bannersByBucket[bucket]?.removeAll { $0.id == bannerID }
         } catch {
-            lastError = APIErrorPresenter.friendly(error)
+            print("[HoodBannerService] delete failed: \(error)")
         }
-    }
-
-    func report(bannerID: Int) async {
-        do {
-            let _: EmptyResponse? = try await APIClient.shared.request(
-                "POST", "/hood/banners/\(bannerID)/report"
-            )
-        } catch {
-            lastError = APIErrorPresenter.friendly(error)
-        }
-    }
-
-    private static func parseInsufficient(_ body: String?) -> (Int, Int) {
-        guard let body else { return (0, 0) }
-        let nums = body.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-        return nums.count >= 2 ? (nums[0], nums[1]) : (0, 0)
-    }
-
-    private static func parseCooldown(_ body: String?) -> Int {
-        guard let body else { return 0 }
-        return body.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? 0
     }
 }

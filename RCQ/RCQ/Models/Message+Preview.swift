@@ -28,8 +28,6 @@ extension Message {
         case .voice:        raw = "chat.preview.voice".localized
         case .file:         raw = "📎 \(fileName ?? "chat.preview.file".localized)"
         case .location:     raw = "📍 \("chat.preview.location".localized)"
-        case .premiumPhoto: raw = "chat.preview.premium_photo".localized
-        case .premiumVideo: raw = "chat.preview.premium_video".localized
         case .poll:
             // `.poll` messages store the full PollPayload (question +
             // options + flags) as JSON in `text`. Pull out the

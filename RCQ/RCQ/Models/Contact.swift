@@ -22,10 +22,6 @@ struct Contact: Identifiable, Hashable, Codable {
     /// `HoodMessage.gender`, which carry the same string values.
     var gender: String?
     var unread: Int = 0
-    /// Tiny snapshot of the contact's currently-equipped pet — drives
-    /// the small overlay GIF on top of their status icon in lists.
-    /// Populated from server's `equipped_pet` field; null = no pet.
-    var equippedPet: EquippedPet?
     /// Server-gated by the contact's `last_seen_visibility`; null
     /// when the contact is currently online (status conveys that),
     /// or when they've hidden it. Use `relativeLastSeen()` to render.
@@ -41,7 +37,6 @@ struct Contact: Identifiable, Hashable, Codable {
         case signingKey = "signing_key"
         case signalIdentityKey = "signal_identity_key"
         case gender
-        case equippedPet = "equipped_pet"
         case lastSeen = "last_seen"
     }
 
@@ -65,7 +60,6 @@ struct Contact: Identifiable, Hashable, Codable {
             signalIdentityKey: nil,
             gender: nil,
             unread: 0,
-            equippedPet: nil,
             lastSeen: nil
         )
     }

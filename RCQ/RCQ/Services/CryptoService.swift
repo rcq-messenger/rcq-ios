@@ -48,8 +48,6 @@ enum Envelope: Codable, Hashable {
     case edit(targetID: UUID, text: String)
     /// Paywalled photo. `mediaKey` is escrowed per-recipient via `/premium/contents`
     /// and only released after a paid unlock. `blurThumbnailB64` is the locked preview.
-    case premiumPhoto(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
-    case premiumVideo(id: UUID, mediaID: String, price: Int, blurThumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil)
     /// Group poll announcement. The server-side `pollID` lets every
     /// recipient hit `/polls/{id}/vote` directly; the question +
     /// option labels travel here (encrypted lane), invisible to the
@@ -161,29 +159,6 @@ enum Envelope: Codable, Hashable {
             try c.encode("edit", forKey: .kind)
             try c.encode(target, forKey: .targetID)
             try c.encode(s, forKey: .text)
-        case .premiumPhoto(let id, let mediaID, let price, let thumb, let caption, let ttl, let fwd, let reply, let album):
-            try c.encode("premium_photo", forKey: .kind)
-            try c.encode(id, forKey: .id)
-            try c.encode(mediaID, forKey: .mediaID)
-            try c.encode(price, forKey: .price)
-            try c.encode(thumb, forKey: .thumbnailB64)
-            try c.encodeIfPresent(caption, forKey: .caption)
-            try c.encodeIfPresent(ttl, forKey: .ttl)
-            try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
-            try c.encodeIfPresent(reply, forKey: .replyTo)
-            try c.encodeIfPresent(album, forKey: .albumID)
-        case .premiumVideo(let id, let mediaID, let price, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album):
-            try c.encode("premium_video", forKey: .kind)
-            try c.encode(id, forKey: .id)
-            try c.encode(mediaID, forKey: .mediaID)
-            try c.encode(price, forKey: .price)
-            try c.encode(thumb, forKey: .thumbnailB64)
-            try c.encode(dur, forKey: .durationSec)
-            try c.encodeIfPresent(caption, forKey: .caption)
-            try c.encodeIfPresent(ttl, forKey: .ttl)
-            try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
-            try c.encodeIfPresent(reply, forKey: .replyTo)
-            try c.encodeIfPresent(album, forKey: .albumID)
         case .poll(let id, let pollID, let question, let options, let singleChoice, let anonymous):
             try c.encode("poll", forKey: .kind)
             try c.encode(id, forKey: .id)
@@ -286,31 +261,6 @@ enum Envelope: Codable, Hashable {
             self = .edit(
                 targetID: try c.decode(UUID.self, forKey: .targetID),
                 text: try c.decode(String.self, forKey: .text)
-            )
-        case "premium_photo":
-            self = .premiumPhoto(
-                id: try c.decode(UUID.self, forKey: .id),
-                mediaID: try c.decode(String.self, forKey: .mediaID),
-                price: try c.decode(Int.self, forKey: .price),
-                blurThumbnailB64: try c.decode(String.self, forKey: .thumbnailB64),
-                caption: try c.decodeIfPresent(String.self, forKey: .caption),
-                ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
-                forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
-                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
-            )
-        case "premium_video":
-            self = .premiumVideo(
-                id: try c.decode(UUID.self, forKey: .id),
-                mediaID: try c.decode(String.self, forKey: .mediaID),
-                price: try c.decode(Int.self, forKey: .price),
-                blurThumbnailB64: try c.decode(String.self, forKey: .thumbnailB64),
-                durationSec: try c.decode(Double.self, forKey: .durationSec),
-                caption: try c.decodeIfPresent(String.self, forKey: .caption),
-                ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
-                forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
-                replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
-                albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID)
             )
         case "poll":
             self = .poll(

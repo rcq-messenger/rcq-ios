@@ -69,20 +69,19 @@ struct ReplyMediaThumbnail: View {
     }
 
     private var isVideo: Bool {
-        message.kind == .video || message.kind == .premiumVideo
+        message.kind == .video
     }
 
     private var isLockedPremium: Bool {
-        (message.kind == .premiumPhoto || message.kind == .premiumVideo)
-            && !message.premiumUnlocked
+        false
     }
 
     private var placeholderIcon: String {
         switch message.kind {
-        case .photo, .premiumPhoto: return "photo"
-        case .video, .premiumVideo: return "video"
-        case .voice:                return "waveform"
-        default:                    return "doc"
+        case .photo: return "photo"
+        case .video: return "video"
+        case .voice: return "waveform"
+        default:     return "doc"
         }
     }
 

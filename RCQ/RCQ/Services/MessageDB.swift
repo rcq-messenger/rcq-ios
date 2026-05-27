@@ -32,11 +32,6 @@ final class MessageRecord: NSManagedObject {
     @NSManaged var replyToAuthorName: String?
     /// Last `.edit` timestamp. Nil = never edited.
     @NSManaged var editedAt: Date?
-    /// `0` for non-premium rows (normalized to nil on read).
-    @NSManaged var premiumPriceTokens: Int64
-    /// True once local user has a usable media key (sender always true,
-    /// recipients flip after paid unlock).
-    @NSManaged var premiumUnlocked: Bool
     /// Same id on every photo/video shipped together so the renderer
     /// can group them into a Telegram-style album cluster. Nil for
     /// stand-alone messages and any media coming from an older client
@@ -228,8 +223,6 @@ final class MessageDB {
             attr("replyToSnippet",     .stringAttributeType, optional: true),
             attr("replyToAuthorName",  .stringAttributeType, optional: true),
             attr("editedAt",           .dateAttributeType, optional: true),
-            attr("premiumPriceTokens", .integer64AttributeType),
-            attr("premiumUnlocked",    .booleanAttributeType),
             attr("albumID",            .UUIDAttributeType, optional: true),
             attr("fileName",           .stringAttributeType, optional: true),
             attr("fileMime",           .stringAttributeType, optional: true),
@@ -348,15 +341,6 @@ final class MessageDB {
         save()
     }
 
-    /// Splices the recovered mediaKey into `mediaID` (was `<id>|`) and
-    /// flips `premiumUnlocked` so re-launches render without re-charging.
-    func updatePremiumUnlocked(id: UUID, mediaID: String) {
-        guard let row = find(id: id) else { return }
-        row.mediaID = encField(mediaID)
-        row.premiumUnlocked = true
-        save()
-    }
-
     func updateVideoMeta(id: UUID, thumbnailB64: String, durationSec: Double) {
         guard let row = find(id: id) else { return }
         row.thumbnailB64 = encField(thumbnailB64)
@@ -465,8 +449,6 @@ final class MessageDB {
         row.replyToSnippet = encField(msg.replyToSnippet)
         row.replyToAuthorName = encField(msg.replyToAuthorName)
         row.editedAt = msg.editedAt
-        row.premiumPriceTokens = Int64(msg.premiumPriceTokens ?? 0)
-        row.premiumUnlocked = msg.premiumUnlocked
         row.albumID = msg.albumID
         row.fileName = encField(msg.fileName)
         row.fileMime = msg.fileMime
@@ -502,8 +484,6 @@ final class MessageDB {
             replyToSnippet: (replySnippet?.isEmpty == false) ? replySnippet : nil,
             replyToAuthorName: (replyAuthor?.isEmpty == false) ? replyAuthor : nil,
             editedAt: row.editedAt,
-            premiumPriceTokens: row.premiumPriceTokens > 0 ? Int(row.premiumPriceTokens) : nil,
-            premiumUnlocked: row.premiumUnlocked,
             albumID: row.albumID,
             fileName: (fileName?.isEmpty == false) ? fileName : nil,
             fileMime: (row.fileMime?.isEmpty == false) ? row.fileMime : nil,

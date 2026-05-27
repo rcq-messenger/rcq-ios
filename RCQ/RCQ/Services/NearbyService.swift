@@ -156,7 +156,6 @@ final class NearbyService: NSObject, ObservableObject {
         refreshTimer = nil
         people = []
         state = .idle
-        HoodChatService.shared.leave()
         let _: EmptyResponse? = try? await APIClient.shared.request("DELETE", "/nearby/checkin")
     }
 

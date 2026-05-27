@@ -165,9 +165,7 @@ struct ReportEvidenceSheet: View {
         sending = true
         defer { sending = false }
 
-        let context = (message.kind == .premiumPhoto || message.kind == .premiumVideo)
-            ? "premium_media"
-            : "media"
+        let context = "media"
         let ext: String = {
             switch evidenceMime {
             case "image/jpeg": return "jpg"

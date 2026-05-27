@@ -60,15 +60,7 @@ struct GroupLinkBubble: View {
                 Text(String(format: "group_share.members".localized, p.memberCount))
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
-                if let price = p.entryPriceTokens, price > 0 {
-                    HStack(spacing: 4) {
-                        ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                            .frame(width: 12, height: 12)
-                        Text("\(price)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(Theme.Color.textPrimary)
-                    }
-                } else if p.isClosed {
+                if p.isClosed {
                     Text("group_share.closed_badge".localized)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.red.opacity(0.7))

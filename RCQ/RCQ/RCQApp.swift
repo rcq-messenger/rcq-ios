@@ -8,11 +8,6 @@ extension Notification.Name {
     /// magnitude crosses the shake threshold. Wiring lives in
     /// `RCQApp.RootView.onReceive` for Bug Bounty.
     static let rcqDeviceShook = Notification.Name("rcq.device.shook")
-    /// Posted when a `reputation_changed` WS event lands. Open
-    /// profile sheets observe this to splice in the new total
-    /// without a refetch. `userInfo["target_uin"]`, `["amount"]`,
-    /// `["new_total"]`.
-    static let rcqReputationChanged = Notification.Name("rcq.reputation.changed")
 }
 
 /// Accelerometer-based shake detector. Used instead of `motionEnded`
@@ -129,8 +124,6 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
                 AppState.shared.pendingOpenChatUIN = uin
             case .pending:
                 AppState.shared.pendingOpenPending = true
-            case .trades:
-                AppState.shared.pendingOpenTrades = true
             case .none:
                 break
             }
@@ -141,12 +134,10 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
     enum PushTarget {
         case peer(Int)
         case pending
-        case trades
     }
 
     private static func parsePushTarget(fromThreadID threadID: String) -> PushTarget? {
         if threadID == "pending" { return .pending }
-        if threadID == "trades" { return .trades }
         let prefix = "peer-"
         if threadID.hasPrefix(prefix), let uin = Int(threadID.dropFirst(prefix.count)) {
             return .peer(uin)
@@ -207,9 +198,6 @@ struct RootView: View {
         // moment a fullScreenCover came up.
         ZStack {
             mainContent
-            if !panicPIN.isLocked {
-                GameMinisOverlayHost()
-            }
             if panicPIN.isConfigured && scenePhase != .active {
                 privacyCover
             }

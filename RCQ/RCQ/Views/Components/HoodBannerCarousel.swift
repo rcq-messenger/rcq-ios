@@ -1,255 +1,115 @@
 import SwiftUI
-import UIKit
 
+/// Horizontal strip of active banners for the caller's current
+/// geohash bucket. Caller passes the bucket and presents a composer
+/// sheet when the "post" pill is tapped. Tap an existing card to
+/// see who posted it (when not anonymous) and the time left.
 struct HoodBannerCarousel: View {
     let bucket: String
-    @StateObject private var svc = HoodBannerService.shared
-    @State private var selected: HoodBanner?
-    @State private var showComposer = false
-    @State private var showBoard = false
-    @State private var autoScrollIndex: Int = 0
-    @State private var paused = false
-    @State private var resumeTask: Task<Void, Never>?
+    let onCompose: () -> Void
+    @StateObject private var service = HoodBannerService.shared
 
-    private let autoScrollInterval: TimeInterval = 5
+    private var banners: [HoodBanner] { service.banners(for: bucket) }
+    private var canPost: Bool { service.canPost(in: bucket) }
 
-    private var banners: [HoodBanner] { svc.banners(for: bucket) }
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                composeChip
+                ForEach(banners) { b in
+                    BannerCard(banner: b, onDelete: {
+                        Task { await service.delete(bannerID: b.id, bucket: bucket) }
+                    })
+                }
+            }
+            .padding(.horizontal, 14)
+        }
+        .task(id: bucket) { await service.refresh(bucket: bucket) }
+    }
+
+    private var composeChip: some View {
+        Button(action: onCompose) {
+            VStack(spacing: 4) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                Text("hood.compose".localized)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            .frame(width: 160, height: 96)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Theme.Color.accent.opacity(0.4), style: StrokeStyle(lineWidth: 1.2, dash: [4]))
+            )
+            .opacity(canPost ? 1 : 0.5)
+        }
+        .disabled(!canPost)
+    }
+}
+
+private struct BannerCard: View {
+    let banner: HoodBanner
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            header
-            if banners.isEmpty {
-                emptyState
-            } else {
-                carousel
-            }
-        }
-        .padding(.bottom, 8)
-        .task(id: bucket) { await svc.refresh(bucket: bucket) }
-        .onReceive(Timer.publish(every: autoScrollInterval, on: .main, in: .common).autoconnect()) { _ in
-            guard !paused, banners.count > 1 else { return }
-            withAnimation(.easeInOut(duration: 0.4)) {
-                autoScrollIndex = (autoScrollIndex + 1) % banners.count
-            }
-        }
-        .sheet(item: $selected) { banner in
-            HoodBannerDetailSheet(banner: banner, bucket: bucket)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showComposer) {
-            HoodBannerComposer(bucket: bucket)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showBoard) {
-            HoodBannerBoardSheet(bucket: bucket, onSelect: { b in
-                showBoard = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    selected = b
-                }
-            })
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("hood_banner.section.title".localized)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .tracking(2)
-                .foregroundColor(Theme.Color.textSecondary)
-            Spacer()
-            if banners.count > 3 {
-                Button {
-                    showBoard = true
-                } label: {
-                    Text("hood_banner.show_all".localized)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
-                }
-                .buttonStyle(.plain)
-            }
-            Button {
-                showComposer = true
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundColor(Theme.Color.accent)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var emptyState: some View {
-        Button {
-            showComposer = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "rectangle.dashed.badge.plus")
-                    .font(.system(size: 20))
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: banner.isAnonymous ? "person.fill.questionmark" : "person.crop.circle.fill")
+                    .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
-                Text("hood_banner.empty.cta".localized)
-                    .font(.system(.caption, weight: .medium))
+                Text(authorLabel)
+                    .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                 Spacer()
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity)
-            .background(Theme.Color.bgSecondary)
-            .cornerRadius(12)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-    }
-
-    @ViewBuilder
-    private var carousel: some View {
-        if #available(iOS 17.0, *) {
-            modernCarousel
-        } else {
-            legacyCarousel
-        }
-    }
-
-    @available(iOS 17.0, *)
-    private var modernCarousel: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(banners) { banner in
-                    HoodBannerCard(banner: banner)
-                        .containerRelativeFrame(.horizontal, count: 1, span: 1, spacing: 10)
-                        .scrollTransition(.animated.threshold(.visible(0.7))) { c, phase in
-                            c.opacity(phase.isIdentity ? 1.0 : 0.55)
-                        }
-                        .onTapGesture {
-                            pauseAutoScroll()
-                            selected = banner
-                        }
+                if banner.isMine {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .scrollTargetLayout()
+            Text(banner.text)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textPrimary)
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+            Spacer(minLength: 0)
+            Text(timeLeft)
+                .font(.caption2)
+                .foregroundColor(Theme.Color.textSecondary)
         }
-        .contentMargins(.horizontal, 16, for: .scrollContent)
-        .scrollTargetBehavior(.viewAligned)
-        .frame(height: 96)
-        .simultaneousGesture(
-            DragGesture().onChanged { _ in pauseAutoScroll() }
+        .padding(10)
+        .frame(width: 200, height: 96, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Theme.Color.bgSecondary)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Theme.Color.divider, lineWidth: 0.5)
         )
     }
 
-    private var legacyCarousel: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(Array(banners.enumerated()), id: \.element.id) { idx, banner in
-                        HoodBannerCard(banner: banner)
-                            .id(idx)
-                            .onTapGesture {
-                                pauseAutoScroll()
-                                selected = banner
-                            }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .frame(height: 96)
-            .onChange(of: autoScrollIndex) { idx in
-                guard !paused else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    proxy.scrollTo(idx, anchor: .leading)
-                }
-            }
-            .simultaneousGesture(
-                DragGesture().onChanged { _ in pauseAutoScroll() }
-            )
-        }
+    private var authorLabel: String {
+        if banner.isAnonymous { return "hood.author.anonymous".localized }
+        return banner.ownerNickname ?? "#\(banner.ownerUIN ?? 0)"
     }
 
-    private func pauseAutoScroll() {
-        paused = true
-        resumeTask?.cancel()
-        resumeTask = Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s
-            if !Task.isCancelled {
-                paused = false
-            }
+    private var timeLeft: String {
+        let seconds = Int(banner.expiresAt.timeIntervalSinceNow)
+        if seconds <= 0 { return "hood.expired".localized }
+        if seconds < 3600 {
+            let m = max(1, seconds / 60)
+            return String(format: "hood.left_minutes".localized, m)
         }
-    }
-}
-
-struct HoodBannerCard: View {
-    let banner: HoodBanner
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if banner.imageURL != nil {
-                BannerThumbnail(imageRef: banner.imageThumbURL ?? banner.imageURL)
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(banner.text)
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .lineLimit(banner.imageURL != nil ? 2 : 3)
-                    .multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
-                Text(authorLine)
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        if seconds < 86_400 {
+            let h = seconds / 3600
+            return String(format: "hood.left_hours".localized, h)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity)
-        .frame(height: 88, alignment: .leading)
-        .background(Theme.Color.bgSecondary)
-        .cornerRadius(12)
-    }
-
-    private var authorLine: String {
-        if banner.isAnonymous { return "hood_banner.anonymous".localized }
-        if let nick = banner.ownerNickname { return nick }
-        return ""
-    }
-}
-
-/// Renders a banner image. Banner image_url uses the format
-/// `mediaID|keyBase64` — the same encrypted-blob pattern as photo
-/// messages, decrypted client-side via MediaService.loadImage.
-struct BannerThumbnail: View {
-    let imageRef: String?
-    @State private var image: UIImage?
-    @State private var isLoading = false
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.15)
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else if isLoading {
-                ProgressView()
-                    .tint(Theme.Color.textSecondary)
-            }
-        }
-        .task(id: imageRef) {
-            await load()
-        }
-    }
-
-    private func load() async {
-        guard let imageRef, image == nil, !isLoading else { return }
-        let parts = imageRef.split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return }
-        isLoading = true
-        let img = await MediaService.shared.loadImage(mediaID: parts[0], keyBase64: parts[1])
-        image = img
-        isLoading = false
+        let d = seconds / 86_400
+        return String(format: "hood.left_days".localized, d)
     }
 }

@@ -58,7 +58,6 @@ struct BugBountySheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     howItWorks
-                    severityTiers
                     submitForm
                     Text("bug_bounty.disclosure".localized)
                         .font(.caption2)
@@ -110,49 +109,11 @@ struct BugBountySheet: View {
             bulletParagraph("bug_bounty.how.b1")
             bulletParagraph("bug_bounty.how.b2")
             bulletParagraph("bug_bounty.how.b3")
-            bulletParagraph("bug_bounty.how.b4")
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Color.bgSecondary)
         .cornerRadius(8)
-    }
-
-    private var severityTiers: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("bug_bounty.section.tiers")
-            tierRow(label: "bug_bounty.tier.critical", reward: "10 000", color: .red)
-            tierRow(label: "bug_bounty.tier.high",     reward: "3 000",  color: .orange)
-            tierRow(label: "bug_bounty.tier.medium",   reward: "500",    color: .yellow)
-            tierRow(label: "bug_bounty.tier.low",      reward: "50",     color: Theme.Color.accent)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Color.bgSecondary)
-        .cornerRadius(8)
-    }
-
-    private func tierRow(label: String, reward: String, color: Color) -> some View {
-        HStack(spacing: 10) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(label.localized)
-                .font(.callout)
-                .foregroundColor(Theme.Color.textPrimary)
-            Spacer()
-            // Reward chip — coin sized to match the digit height
-            // (was 14pt next to a 17pt body number, looked starved).
-            HStack(spacing: 5) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 18, height: 18)
-                Text(reward)
-                    .font(.system(.callout, weight: .bold).monospacedDigit())
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Theme.Color.bgPrimary.opacity(0.6))
-            .clipShape(Capsule())
-        }
     }
 
     private var submitForm: some View {
@@ -387,13 +348,13 @@ struct BugBountySheet: View {
         // Beyond that we surface an error rather than charge the
         // reporter — they shouldn't pay to report a bug.
         let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if bytes > MediaService.freeTierBytes {
+        if bytes > MediaService.maxBlobBytes {
             markFailed(attachmentID: attachmentID,
                        error: MediaService.Failure.tooLarge(actualBytes: bytes))
             return
         }
         do {
-            let res = try await MediaService.shared.uploadFile(at: url, payJetons: 0)
+            let res = try await MediaService.shared.uploadFile(at: url)
             applyUploadResult(attachmentID: attachmentID, mediaID: res.mediaID, key: res.keyBase64, size: bytes)
         } catch {
             markFailed(attachmentID: attachmentID, error: error)

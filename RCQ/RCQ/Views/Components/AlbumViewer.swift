@@ -377,7 +377,7 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
         setSaveButtonIcon("ellipsis.circle")
         Task {
             switch m.kind {
-            case .photo, .premiumPhoto:
+            case .photo:
                 if let (img, data) = await MediaService.shared.loadImageWithData(mediaID: mediaID, keyBase64: key) {
                     if AnimatedGIFView.isGIF(data) {
                         self.saveGIFData(data)
@@ -396,7 +396,7 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
                 } else {
                     await MainActor.run { self.handleSaveCompletion(success: false) }
                 }
-            case .video, .premiumVideo:
+            case .video:
                 if let url = await MediaService.shared.decryptToFile(mediaID: mediaID, keyBase64: key),
                    UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(url.path) {
                     let delegate = VideoSaveDelegate { [weak self] result in
@@ -488,9 +488,9 @@ struct AlbumPage: View {
 
     var body: some View {
         switch message.kind {
-        case .photo, .premiumPhoto:
+        case .photo:
             AlbumImagePage(message: message, onTap: onTap, onZoomChanged: onZoomChanged)
-        case .video, .premiumVideo:
+        case .video:
             AlbumVideoPage(message: message, isCurrent: isCurrent)
         default:
             Color.black

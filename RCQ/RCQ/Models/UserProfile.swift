@@ -38,10 +38,6 @@ struct UserProfile: Codable, Hashable {
     /// Owner-only echo of the group-invite policy.
     /// `everyone` (default) / `contacts` / `nobody`.
     var groupInvitePolicy: String?
-    /// Owner-only echo of the trade-policy setting. Same tri-state.
-    /// Server-enforced at trade-propose time; iOS surfaces the
-    /// picker in Settings.
-    var tradePolicy: String?
     /// Owner-only echo of the call-policy setting. Same tri-state.
     /// Hides every call affordance in the caller's own UI when set
     /// to `"nobody"`.
@@ -51,13 +47,6 @@ struct UserProfile: Codable, Hashable {
     /// for the send-time gate so MessageService doesn't have to
     /// round-trip `/users/me/info` on every read.
     var readReceiptsVisibility: String?
-    /// Social reputation counter. `nil` on the wire means "hidden
-    /// by the target's privacy setting" — UI omits the row in that
-    /// case. The "Give reputation" button stays available regardless
-    /// of visibility because the grant endpoint doesn't gate on it.
-    var reputation: Int?
-    /// Owner-only echo of `reputation_visibility` for Settings.
-    var reputationVisibility: String?
     /// Opt-in flag: when true, the server keeps broadcasting the
     /// owner's chosen status to contacts even when the WebSocket has
     /// been gone past the staleness threshold. Lets the user appear
@@ -67,12 +56,6 @@ struct UserProfile: Codable, Hashable {
     /// Optional TTL (minutes) for `presencePersistent`. 0/nil = forever.
     /// Allowed values mirror the iOS picker: 30, 60, 180, 480, 1440.
     var presenceTTLMinutes: Int?
-    /// Snapshot of the user's currently-equipped pet, drives the
-    /// small overlay GIF on the status icon throughout the UI
-    /// (contact rows, profile header, group info). Always returned;
-    /// null = no pet equipped.
-    var equippedPet: EquippedPet?
-
     enum CodingKeys: String, CodingKey {
         case uin, nickname
         case firstName = "first_name"
@@ -88,14 +71,10 @@ struct UserProfile: Codable, Hashable {
         case genderVisibility = "gender_visibility"
         case profileVisibility = "profile_visibility"
         case groupInvitePolicy = "group_invite_policy"
-        case tradePolicy = "trade_policy"
         case callPolicy = "call_policy"
         case readReceiptsVisibility = "read_receipts_visibility"
-        case reputation
-        case reputationVisibility = "reputation_visibility"
         case presencePersistent = "presence_persistent"
         case presenceTTLMinutes = "presence_ttl_minutes"
-        case equippedPet = "equipped_pet"
     }
 }
 

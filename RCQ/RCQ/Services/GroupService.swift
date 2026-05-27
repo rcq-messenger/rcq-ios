@@ -122,16 +122,6 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
-    /// Owner-only — set the token cost to join. `0` (or nil) makes
-    /// the group free.
-    func setEntryPrice(groupID: Int, priceTokens: Int) async throws {
-        struct Body: Encodable { let entry_price_tokens: Int }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(entry_price_tokens: priceTokens)
-        )
-        upsert(g)
-    }
-
     /// Owner-only — flip `is_closed`. Closed groups reject self-join
     /// (the share-to-friend deep link 403s); only an owner-issued
     /// invite (the `add_member` endpoint) inserts membership.
@@ -174,24 +164,20 @@ final class GroupService: ObservableObject {
     }
 
     /// Lightweight info for a non-member — used by AddContactView's
-    /// "join by group id" path so the user sees the price + member
-    /// count BEFORE committing to the wallet hit.
+    /// "join by group id" path so the user sees the member count
+    /// BEFORE committing.
     struct Preview: Codable, Hashable, Identifiable {
         let id: Int
         let name: String
         let memberCount: Int
-        let entryPriceTokens: Int?
         let ownerUIN: Int
         let ownerNickname: String?
-        // Server returns these; the search-result row uses them to
-        // paint the actual group avatar instead of the generic glyph.
         let avatarMediaID: String?
         let avatarMediaKey: String?
 
         enum CodingKeys: String, CodingKey {
             case id, name
             case memberCount = "member_count"
-            case entryPriceTokens = "entry_price_tokens"
             case ownerUIN = "owner_uin"
             case ownerNickname = "owner_nickname"
             case avatarMediaID = "avatar_media_id"
@@ -228,11 +214,9 @@ final class GroupService: ObservableObject {
         }
     }
 
-    /// Self-join. Server charges entry_price_tokens (if any) and
-    /// adds the caller as a member.
+    /// Self-join. Server adds the caller as a member of an open group.
     enum JoinResult {
         case success(RCQGroup)
-        case insufficientTokens(required: Int, have: Int)
         case blocked
         /// Group is closed — share-to-friend recipients can preview
         /// but not self-join. Owner has to invite them explicitly.
@@ -249,20 +233,15 @@ final class GroupService: ObservableObject {
         /// Group description blurb — nil when the owner hasn't set one.
         let description: String?
         let memberCount: Int
-        let entryPriceTokens: Int?
         let isClosed: Bool
         let ownerUIN: Int
         let ownerNickname: String?
-        /// Avatar fields mirror the standard `GroupOut` shape so a
-        /// non-member sees the real group picture on the share-card.
-        /// Both nil for legacy groups without an uploaded avatar.
         let avatarMediaID: String?
         let avatarMediaKey: String?
 
         enum CodingKeys: String, CodingKey {
             case id, name, description
             case memberCount = "member_count"
-            case entryPriceTokens = "entry_price_tokens"
             case isClosed = "is_closed"
             case ownerUIN = "owner_uin"
             case ownerNickname = "owner_nickname"
@@ -277,16 +256,7 @@ final class GroupService: ObservableObject {
                 "POST", "/groups/\(groupID)/join",
             )
             upsert(g)
-            // Wallet was debited server-side if the group was paid;
-            // pull a fresh inventory snapshot so the badge ticks.
-            await ItemsService.shared.refreshInventory(forceWallet: true)
             return .success(g)
-        } catch APIError.http(402, let body) {
-            if let req = Self.parseInt(body, key: "required"),
-               let have = Self.parseInt(body, key: "have") {
-                return .insufficientTokens(required: req, have: have)
-            }
-            return .other("group.error.join_payment".localized)
         } catch APIError.http(403, let body) {
             // 403 from /join now covers two distinct cases: caller is
             // blocked by the owner, OR the group is closed and only

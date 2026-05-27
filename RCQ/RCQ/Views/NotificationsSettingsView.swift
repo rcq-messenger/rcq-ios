@@ -33,24 +33,6 @@ struct NotificationsSettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    Section {
-                        Toggle(isOn: bind(\.tradesFromContacts, set: prefs.setTradesFromContacts)) {
-                            Text("notifs.trades_from_contacts".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                        Toggle(isOn: bind(\.tradesFromStrangers, set: prefs.setTradesFromStrangers)) {
-                            Text("notifs.trades_from_strangers".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                    } header: {
-                        Text("notifs.section.trades".localized)
-                    } footer: {
-                        Text("notifs.trades.footer".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
                     if !prefs.prefs.mutedUINs.isEmpty {
                         Section {
                             ForEach(prefs.prefs.mutedUINs, id: \.self) { uin in

@@ -92,17 +92,6 @@ struct ShareGroupPickerSheet: View {
                     Text(String(format: "group_share.members".localized, g.members.count))
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
-                    if let price = g.entryPriceTokens, price > 0 {
-                        Text("·")
-                            .foregroundColor(Theme.Color.textSecondary)
-                        HStack(spacing: 3) {
-                            ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                                .frame(width: 10, height: 10)
-                            Text("\(price)")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                    }
                     if g.isClosed {
                         Text("·")
                             .foregroundColor(Theme.Color.textSecondary)

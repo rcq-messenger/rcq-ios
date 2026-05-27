@@ -61,11 +61,6 @@ struct ChatView: View {
         )
     }
 
-    private func jetonEligible(_ msg: Message) -> Bool {
-        guard activeGroupID != nil else { return false }
-        return !msg.isFromMe && !msg.deletedForEveryone && msg.kind != .systemNotice
-    }
-
     @ViewBuilder
     private func actionOverlay(for target: Message) -> some View {
         let resendCallback: (() -> Void)? = (target.deliveryState == .failed && target.isFromMe)
@@ -79,14 +74,6 @@ struct ChatView: View {
                 }
             }
             : nil
-        let jetonCallback: (() -> Void)? = jetonEligible(target)
-            ? {
-                let copy = target
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    jetonTarget = copy
-                }
-            }
-            : nil
         MessageActionOverlay(
             message: target,
             senderNickname: vm.senderNickname(target.senderUIN),
@@ -96,7 +83,6 @@ struct ChatView: View {
                 && !target.deletedForEveryone
                 && Self.editableKinds.contains(target.kind),
             onReact: { asset in vm.toggleReaction(asset, on: target) },
-            onJetonReact: jetonCallback,
             onReply: {
                 let copy = target
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -233,31 +219,20 @@ struct ChatView: View {
     @StateObject private var randomChat = RandomChatService.shared
     @StateObject private var calls = CallService.shared
     @StateObject private var chatSettings = ChatSettingsStore.shared
-    @StateObject private var tradesSvc = TradesService.shared
-    @StateObject private var itemsSvc = ItemsService.shared
     @StateObject private var emoticonUsage = EmoticonUsageStore.shared
-    @State private var emoticonTab: String? = nil
     @State private var showEmojiPanel = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
     @State private var showPollComposer: Bool = false
     @State private var showShareGroupPicker: Bool = false
-    /// Toggled every ~7s by the chat-header timer to crossfade
-    /// between UIN and "last seen X ago" under the peer's nickname.
-    /// Suppressed (stays on UIN) when the peer is online OR their
-    /// `lastSeen` is nil (hidden by privacy / unknown).
     @State private var headerShowsLastSeen: Bool = false
-    @State private var showPremiumComposer: Bool = false
     @State private var showLocationPicker: Bool = false
     @State private var showTTLPicker = false
-    @State private var showTrade = false
-    @State private var showTrades = false
     @State private var showInChatSearch = false
     @State private var showAllMedia = false
     @AppStorage("rcq.privacy.callPolicy") private var callPolicy: String = "everyone"
     @State private var pendingScrollID: UUID?
     @State private var flashHighlightID: UUID?
-    @State private var inspectingTrade: Trade?
     @State private var videoError: String?
     @State private var composerHeight: CGFloat = 36
     /// Tracks the last seen `composerHeight` so the scroll handler can
@@ -270,7 +245,7 @@ struct ChatView: View {
     /// Kinds whose caption/text can be edited. Must stay in sync with
     /// the editable set in `MessageStore.applyEdit`.
     private static let editableKinds: [MessageKind] =
-        [.text, .photo, .video, .file, .premiumPhoto, .premiumVideo]
+        [.text, .photo, .video, .file]
     /// Non-nil = the pinned-announcement expansion sheet is open.
     @State private var pinnedExpansion: PinExpansion?
     /// Per-group set of pins the user has COLLAPSED (not dismissed).
@@ -333,7 +308,7 @@ struct ChatView: View {
     /// dismissing, so we wait for the actual teardown completion.
     @State private var pendingAttachAction: AttachAction?
 
-    enum AttachAction { case media, camera, premium, document, location }
+    enum AttachAction { case media, camera, document, location }
 
     /// Identifiable wrapper for the fullscreen album viewer's
     /// `.fullScreenCover(item:)`.
@@ -346,8 +321,6 @@ struct ChatView: View {
     private var replyAllowed: Bool { true }
     @State private var now = Date()
     @State private var actionTarget: Message?
-    @State private var jetonTarget: Message?
-    @StateObject private var jetonStore = JetonStore.shared
     @State private var evidenceReportTarget: PendingEvidenceReport?
 
     init(target: ChatTarget) {
@@ -477,15 +450,6 @@ struct ChatView: View {
         .sheet(isPresented: $showAttachmentMenu, onDismiss: handleAttachDismiss) {
             AttachmentPickerSheet(
                 isRandom: { if case .randomPeer = vm.target { return true } else { return false } }(),
-                // Premium in groups is owner-only — server enforces it,
-                // but hide the menu row for non-owners so they don't
-                // get a 403 after picking media.
-                premiumDisabled: {
-                    if case .group(let g) = vm.target {
-                        return g.ownerUIN != AuthService.shared.ownUIN
-                    }
-                    return false
-                }(),
                 onMedia: { picks in
                     // Telegram-style: media chosen INSIDE the sheet
                     // rather than via a follow-up UnifiedMediaPicker.
@@ -509,10 +473,6 @@ struct ChatView: View {
                 },
                 onCamera: {
                     pendingAttachAction = .camera
-                    showAttachmentMenu = false
-                },
-                onPremium: {
-                    pendingAttachAction = .premium
                     showAttachmentMenu = false
                 },
                 onDocument: {
@@ -550,36 +510,6 @@ struct ChatView: View {
                 Task { await vm.sendText(url.absoluteString) }
             }
             .presentationDetents([.medium, .large])
-        }
-        .sheet(item: $vm.pendingPaidUpload) { req in
-            PaidTrafficConfirmSheet(
-                plaintextBytes: req.plaintextBytes,
-                jetonsRequired: req.jetonsRequired,
-                onConfirm: {
-                    Task { _ = await req.retry() }
-                },
-            )
-            .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $showPremiumComposer) {
-            PremiumComposerSheet(
-                onSendPhoto: { img, price in
-                    Task {
-                        if let err = await vm.sendPremiumPhoto(img, price: price) {
-                            videoError = err
-                        }
-                    }
-                },
-                onSendVideo: { url, price in
-                    Task {
-                        if let err = await vm.sendPremiumVideo(from: url, price: price) {
-                            videoError = err
-                        }
-                    }
-                }
-            )
-            .presentationDetents([.fraction(0.4), .large])
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showLocationPicker) {
             LocationPickerSheet(
@@ -637,44 +567,13 @@ struct ChatView: View {
             }()
             BadgeCounter.reset(threadKey: badgeKey)
             BadgeCounter.syncIcon()
-            Task { await tradesSvc.refreshAll() }
-            Task {
-                if itemsSvc.catalog == nil { await itemsSvc.refreshCatalog() }
-                if itemsSvc.items.isEmpty { await itemsSvc.refreshInventory() }
-            }
-            if let gid = activeGroupID {
-                Task { await jetonStore.loadGroup(gid) }
-            }
         }
         .onDisappear {
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
         }
-        .sheet(isPresented: $showTrade) {
-            if case .peer(let snapshot) = vm.target {
-                TradeProposeView(recipientUIN: snapshot.uin, recipientNickname: snapshot.nickname)
-            }
-        }
-        .sheet(isPresented: $showTrades) {
-            TradesListView()
-        }
         .modifier(InPlaceTranslator(vm: vm))
-        .sheet(item: $inspectingTrade) { trade in
-            SingleTradeSheet(trade: trade)
-                .presentationDetents([.fraction(0.5), .large])
-        }
         .sheet(isPresented: $showAllMedia) {
             AllMediaSheet(messages: vm.messages)
-        }
-        .sheet(item: $jetonTarget) { msg in
-            if let gid = activeGroupID {
-                JetonReactSheet(
-                    groupID: gid,
-                    messageID: msg.id,
-                    targetUIN: msg.senderUIN,
-                    targetNickname: vm.senderNickname(msg.senderUIN),
-                    onSuccess: { _ in }
-                )
-            }
         }
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
@@ -707,20 +606,6 @@ struct ChatView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             if case .randomPeer = vm.target { now = tick }
         }
-    }
-
-    // MARK: - pending-trade banner
-
-    private var pendingTradeWithPeer: Trade? {
-        guard case .peer(let snapshot) = vm.target else { return nil }
-        let myUIN = AuthService.shared.ownUIN ?? -1
-        if let inc = tradesSvc.incoming.first(where: { $0.fromUIN == snapshot.uin }) {
-            return inc
-        }
-        if let out = tradesSvc.outgoing.first(where: { $0.toUIN == snapshot.uin && $0.fromUIN == myUIN }) {
-            return out
-        }
-        return nil
     }
 
     // MARK: - random-chat CTA strip
@@ -864,9 +749,7 @@ struct ChatView: View {
                         .foregroundColor(Theme.Color.accent)
                         .frame(width: 24, height: 24)
                 } else {
-                    StatusWithPet(status: live.status,
-                                  pet: live.equippedPet,
-                                  size: 24)
+                    StatusIcon(status: live.status, size: 24)
                 }
                 VStack(spacing: 0) {
                     Text(isSelf ? "contact_list.saved_messages".localized : live.nickname)
@@ -975,13 +858,6 @@ struct ChatView: View {
                         Label("chat.menu.video_call".localized, systemImage: "video.fill")
                     }
                     .disabled(busy)
-                }
-                if !isPeerBlocked && !isSelfThread {
-                    Button {
-                        showTrade = true
-                    } label: {
-                        Label("chat.menu.propose_trade".localized, systemImage: "arrow.left.arrow.right")
-                    }
                 }
                 if !isSelfThread {
                     Button {
@@ -1166,8 +1042,6 @@ struct ChatView: View {
                                 isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
                                 showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
-                                jetonTotal: jetonStore.total(for: msg.id),
-                                onTapJeton: jetonEligible(msg) ? { jetonTarget = msg } : nil,
                                 onLongPress: {
                                     if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1232,21 +1106,6 @@ struct ChatView: View {
                             .id(msg.id)
                             }
                         }
-                    }
-                    if let trade = pendingTradeWithPeer {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            inspectingTrade = trade
-                        } label: {
-                            InlineTradeCard(
-                                trade: trade,
-                                isFromMe: trade.fromUIN == (AuthService.shared.ownUIN ?? -1),
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                        .id("trade-\(trade.id)")
                     }
                     // Bottom anchor — drives initial scroll-to-latest and the FAB visibility flag.
                     Color.clear
@@ -1461,8 +1320,6 @@ struct ChatView: View {
         switch message.kind {
         case .photo:
             return true
-        case .premiumPhoto:
-            return message.premiumUnlocked
         default:
             return false
         }
@@ -1511,8 +1368,6 @@ struct ChatView: View {
         case .voice: raw = "🎤 Voice"
         case .file:  raw = "📎 \(message.fileName ?? "chat.attach.document".localized)"
         case .location: raw = "📍 \("chat.preview.location".localized)"
-        case .premiumPhoto: raw = "🔒 \("chat.premium.preview_photo".localized)"
-        case .premiumVideo: raw = "🔒 \("chat.premium.preview_video".localized)"
         case .poll:
             // The text field on a `.poll` row is the JSON-encoded
             // PollPayload — surface the question only so the reply
@@ -1538,7 +1393,7 @@ struct ChatView: View {
     /// surfaces a thumbnail / glyph instead of text-only context.
     private func isMediaKind(_ kind: MessageKind) -> Bool {
         switch kind {
-        case .photo, .video, .voice, .premiumPhoto, .premiumVideo:
+        case .photo, .video, .voice:
             return true
         default:
             return false
@@ -1833,12 +1688,6 @@ struct ChatView: View {
     private func inlineReplyContext(_ message: Message) -> some View {
         let snippet = Self.replyPreview(for: message)
         let author = vm.senderNickname(message.senderUIN)
-        let market = (message.kind == .text)
-            ? MarketLinkParser.parse(message.text)
-            : nil
-        let uinShare = (message.kind == .text && market == nil)
-            ? UinLinkParser.parse(message.text)
-            : nil
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Theme.Color.accent)
@@ -1851,19 +1700,13 @@ struct ChatView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
                     .lineLimit(1)
-                if let market {
-                    MarketReplyMiniCard(listingID: market.listingID)
-                } else if let uinShare {
-                    UinReplyMiniCard(listingID: uinShare.listingID)
-                } else {
-                    EmoticonText(
-                        text: snippet,
-                        font: .caption2,
-                        color: Theme.Color.textSecondary,
-                        emoticonSize: 15,
-                        members: currentGroupMembers
-                    )
-                }
+                EmoticonText(
+                    text: snippet,
+                    font: .caption2,
+                    color: Theme.Color.textSecondary,
+                    emoticonSize: 15,
+                    members: currentGroupMembers
+                )
             }
             Spacer(minLength: 4)
             Button {
@@ -1963,9 +1806,7 @@ struct ChatView: View {
                     vm.replyTarget = items.first!
                 }
             },
-            onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) },
-            jetonTotal: jetonStore.total(for: items.first!.id),
-            onTapJeton: jetonEligible(items.first!) ? { jetonTarget = items.first! } : nil
+            onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) }
         )
         .id(items.first!.id)
     }
@@ -2244,8 +2085,6 @@ struct ChatView: View {
                         }
                     }
                 }
-            case .premium:
-                showPremiumComposer = true
             case .document:
                 DocumentPickerPresenter.present(
                     onPick: { picked in
@@ -2439,13 +2278,8 @@ struct ChatView: View {
     }
 
     private var emojiPanel: some View {
-        let equippedKinds: [ItemKind] = itemsSvc.items
-            .filter { $0.equipped }
-            .compactMap { itemsSvc.catalog?.kind(by: $0.kindID) }
-            .filter { $0.appliesAs == .cosmeticSmileys }
-        return VStack(spacing: 0) {
-            tabStrip(equippedKinds: equippedKinds)
-            grid(for: emoticonTab, equippedKinds: equippedKinds)
+        VStack(spacing: 0) {
+            grid(entries: emoticonEntries())
         }
         .frame(height: 240)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2455,45 +2289,6 @@ struct ChatView: View {
         )
         .padding(.horizontal, 8)
         .padding(.bottom, 6)
-    }
-
-    private func tabStrip(equippedKinds: [ItemKind]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                tabButton(id: nil, label: nil, systemIcon: "face.smiling")
-                ForEach(equippedKinds, id: \.id) { kind in
-                    tabButton(id: kind.id, label: ItemDisplay.name(for: kind.id), systemIcon: nil)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-        }
-        .frame(height: 34)
-    }
-
-    private func tabButton(id: String?, label: String?, systemIcon: String?) -> some View {
-        let isOn = emoticonTab == id
-        return Button {
-            emoticonTab = id
-        } label: {
-            HStack(spacing: 4) {
-                if let systemIcon {
-                    Image(systemName: systemIcon)
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                if let label {
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundColor(isOn ? .white : Theme.Color.textPrimary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(isOn ? Theme.Color.accent : Theme.Color.bgSecondary)
-            .cornerRadius(12)
-        }
-        .buttonStyle(.plain)
     }
 
     /// Splice an emoticon shortcode at the current caret position in
@@ -2509,8 +2304,7 @@ struct ChatView: View {
         composerCaret = clamped + code.count
     }
 
-    private func grid(for tab: String?, equippedKinds: [ItemKind]) -> some View {
-        let entries = emoticonEntries(for: tab, equippedKinds: equippedKinds)
+    private func grid(entries: [(asset: String, name: String, primaryCode: String)]) -> some View {
         let cols = [GridItem](repeating: GridItem(.flexible(), spacing: 8), count: 8)
         return ScrollView {
             LazyVGrid(columns: cols, spacing: 8) {
@@ -2534,14 +2328,7 @@ struct ChatView: View {
         }
     }
 
-    private func emoticonEntries(
-        for tab: String?, equippedKinds: [ItemKind],
-    ) -> [(asset: String, name: String, primaryCode: String)] {
-        if let tabID = tab, equippedKinds.contains(where: { $0.id == tabID }) {
-            return CosmeticPacks.entries(for: tabID).map {
-                (asset: $0.asset, name: $0.name, primaryCode: $0.primaryCode)
-            }
-        }
+    private func emoticonEntries() -> [(asset: String, name: String, primaryCode: String)] {
         let defaults = Emoticons.paletteAssets
         let usage = emoticonUsage.counts
         return defaults.sorted { a, b in

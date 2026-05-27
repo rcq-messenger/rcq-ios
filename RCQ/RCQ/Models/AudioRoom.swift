@@ -32,7 +32,6 @@ struct AudioRoomMember: Identifiable, Hashable {
     var speaking: Bool = false
     /// True when WE muted ourselves (only meaningful for the local row).
     var localMuted: Bool = false
-    var equippedPet: EquippedPet?
     /// Owner muted this user. Muted client honors via `setMicMuted(true)`;
     /// others render a "muted by owner" badge.
     var mutedByOwner: Bool = false

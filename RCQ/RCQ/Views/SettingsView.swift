@@ -7,23 +7,19 @@ struct SettingsView: View {
     @StateObject private var sound = SoundService.shared
     @StateObject private var auth = AuthService.shared
     @StateObject private var presence = PresenceService.shared
-    @StateObject private var itemsSvc = ItemsService.shared
     @State private var confirmClearHistory = false
     @State private var confirmBurn = false
     @State private var burning = false
     @State private var showAbout = false
+    @State private var showUINShop = false
     @State private var showBugBounty = false
     @State private var showSoundSheet = false
-    @State private var showReferral = false
     @State private var showLinkWeb = false
     @State private var showPrivacy = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
-    @State private var showDailyQA = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
-    @AppStorage("rcq.gameMinis.enabled") private var minisEnabled: Bool = true
-    @AppStorage("rcq.trades.realtime_popup") private var tradeRealtimePopup: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -153,30 +149,6 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    Section {
-                        Toggle(isOn: $minisEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.minis.toggle".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.minis.toggle.footer".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        .tint(Theme.Color.accent)
-                        Toggle(isOn: $tradeRealtimePopup) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.trades.realtime".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.trades.realtime.footer".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        .tint(Theme.Color.accent)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
                     Section("settings.history".localized) {
                         Button(role: .destructive) {
                             confirmClearHistory = true
@@ -186,6 +158,26 @@ struct SettingsView: View {
                                 Text("settings.history.clear".localized)
                             }
                         }
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    Section {
+                        Button {
+                            showUINShop = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "number.square.fill")
+                                    .foregroundColor(Theme.Color.accent)
+                                Text("settings.uin_shop".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                    } footer: {
+                        Text("settings.uin_shop.footer".localized)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -230,8 +222,6 @@ struct SettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
                     #endif
 
-                    referralSection
-
                     aboutAndBugBountySection
                 }
                 .scrollContentBackground(.hidden)
@@ -247,10 +237,9 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
+            .sheet(isPresented: $showUINShop) { UINShopView() }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
-            .sheet(isPresented: $showReferral) { ReferralSheet() }
-            .sheet(isPresented: $showDailyQA) { DailyQASheet() }
             .sheet(isPresented: $showLinkWeb) {
                 LinkWebView()
                     .presentationDetents([.height(360), .large])
@@ -312,27 +301,6 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private var referralSection: some View {
-        Section {
-            Button {
-                showReferral = true
-            } label: {
-                HStack {
-                    Image(systemName: "gift.fill").foregroundColor(Theme.Color.accent)
-                    Text("settings.account.referral".localized).foregroundColor(Theme.Color.textPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-            }
-        } footer: {
-            Text("settings.account.referral.footer".localized)
-        }
-        .listRowBackground(Theme.Color.bgSecondary)
-    }
-
     /// Extracted to keep `body` under the Swift type-checker's
     /// complexity ceiling. The Form's other 10+ sections were already
     /// hovering at the limit; folding the bug-bounty section plus the
@@ -367,19 +335,6 @@ struct SettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
-            BountyCreditsCard()
-            Button {
-                showDailyQA = true
-            } label: {
-                HStack {
-                    Image(systemName: "checklist").foregroundColor(Theme.Color.accent)
-                    Text("smoke.title".localized).foregroundColor(Theme.Color.textPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-            }
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }
@@ -387,11 +342,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var identityHeader: some View {
         HStack(spacing: 12) {
-            StatusWithPet(
-                status: presence.status,
-                pet: itemsSvc.ownEquippedPet,
-                size: 40,
-            )
+            StatusIcon(status: presence.status, size: 40)
             VStack(alignment: .leading, spacing: 4) {
                 Text(auth.nickname.isEmpty ? "—" : auth.nickname)
                     .font(.system(.title3, weight: .semibold))
@@ -423,53 +374,16 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
-            walletReadout
         }
         .padding(.vertical, 4)
     }
 
-    private var walletReadout: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            HStack(spacing: 4) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "coin", ext: "gif")
-                    .frame(width: 16, height: 16)
-                Text("\(itemsSvc.wallet.tokens)")
-                    .font(.system(.subheadline, weight: .semibold).monospacedDigit())
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
-            HStack(spacing: 4) {
-                ItemAssetImage(bundleSubdir: "Items", filename: "gem", ext: "gif")
-                    .frame(width: 16, height: 16)
-                Text("\(itemsSvc.wallet.scrolls)")
-                    .font(.system(.subheadline, weight: .semibold).monospacedDigit())
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
-        }
-    }
-
-    private var hasSignificantInventory: Bool {
-        !itemsSvc.items.isEmpty
-            || itemsSvc.wallet.tokens > 0
-            || itemsSvc.wallet.scrolls > 0
-    }
-
     private var burnTitle: String {
-        (hasSignificantInventory
-            ? "settings.account.burn.title_inventory"
-            : "settings.account.burn.title").localized
+        "settings.account.burn.title".localized
     }
 
     private var burnMessage: String {
-        if hasSignificantInventory {
-            let tally = String(
-                format: "settings.account.burn.tally".localized,
-                itemsSvc.items.count,
-                itemsSvc.wallet.tokens,
-                itemsSvc.wallet.scrolls
-            )
-            return String(format: "settings.account.burn.message_inventory".localized, tally)
-        }
-        return "settings.account.burn.message".localized
+        "settings.account.burn.message".localized
     }
 
     private var appVersion: String {

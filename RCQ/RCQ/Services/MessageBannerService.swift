@@ -21,15 +21,9 @@ final class MessageBannerService: ObservableObject {
 
     private static let visibleDuration: TimeInterval = 3.5
 
-    /// Tap-routing target. `thread(_)` routes to a chat via the
-    /// existing pending-open flags on AppState; `auction` routes to
-    /// the UIN auction sheet via the same overlay host.
+    /// Tap-routing target.
     enum Target: Equatable {
         case thread(ThreadID)
-        case auction
-        // Reputation grants — no tap routing; the banner is informational
-        // ("you received +N reputation"). Tap dismisses, that's it.
-        case reputation
     }
 
     struct Banner: Identifiable, Equatable {
