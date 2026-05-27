@@ -258,7 +258,11 @@ struct RootView: View {
         // backgrounded; mirror its current state to the app-icon
         // badge so the red dot disappears the moment the user
         // re-enters the app (and reappears if they back out again
-        // with unopened chats).
+        // with unopened chats). The reconcile-against-chat-list
+        // sweep (which drops orphan slots from removed contacts /
+        // left groups) runs AFTER the offline-queue drain so a
+        // stranger whose contact row hasn't been upserted yet
+        // doesn't get their fresh badge wiped.
         BadgeCounter.syncIcon()
         guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,

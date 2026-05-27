@@ -70,4 +70,46 @@ enum BadgeCounter {
     static func total() -> Int {
         load().values.reduce(0, +)
     }
+
+    /// Drop any thread-key whose target is no longer reachable from
+    /// the chat list, then return the new total. This is the
+    /// reconciliation pass that fixes badges sticking after a
+    /// contact removal / group leave / stranger ghost-message — the
+    /// NSE happily incremented the counter on push delivery, the
+    /// main app never had a way to navigate into the thread, so
+    /// nothing zeroed the slot.
+    ///
+    /// `keepPeers` / `keepGroups` are the set of thread IDs the
+    /// chat list can currently render. Anything else in the dict
+    /// gets dropped.
+    @discardableResult
+    static func reconcile(keepPeers: Set<Int>, keepGroups: Set<Int>) -> Int {
+        let dict = load()
+        var cleaned: [String: Int] = [:]
+        for (key, value) in dict {
+            if let uin = parsePeerKey(key) {
+                if keepPeers.contains(uin) { cleaned[key] = value }
+            } else if let gid = parseGroupKey(key) {
+                if keepGroups.contains(gid) { cleaned[key] = value }
+            } else {
+                // System trays (`pending`, etc.) are NOT counted on
+                // the icon — they don't appear in the increment path
+                // — but be conservative: keep unknown shapes so a
+                // future thread type isn't silently dropped.
+                cleaned[key] = value
+            }
+        }
+        save(cleaned)
+        return cleaned.values.reduce(0, +)
+    }
+
+    private static func parsePeerKey(_ key: String) -> Int? {
+        guard key.hasPrefix("peer-") else { return nil }
+        return Int(key.dropFirst("peer-".count))
+    }
+
+    private static func parseGroupKey(_ key: String) -> Int? {
+        guard key.hasPrefix("group-") else { return nil }
+        return Int(key.dropFirst("group-".count))
+    }
 }

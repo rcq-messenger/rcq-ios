@@ -313,6 +313,8 @@ final class GroupService: ObservableObject {
         let myUIN = AuthService.shared.ownUIN
         if let me = myUIN, !g.members.contains(where: { $0.uin == me }) {
             groups.removeAll { $0.id == g.id }
+            BadgeCounter.reset(threadKey: BadgeCounter.threadKey(groupID: g.id))
+            BadgeCounter.syncIcon()
             return
         }
         if let idx = groups.firstIndex(where: { $0.id == g.id }) {
@@ -324,6 +326,10 @@ final class GroupService: ObservableObject {
 
     func purge(_ groupID: Int) {
         groups.removeAll { $0.id == groupID }
+        // Drop the icon-badge slot for this group so the counter
+        // doesn't stick after a leave / group_deleted event.
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(groupID: groupID))
+        BadgeCounter.syncIcon()
     }
 
     /// Patch a member's status across every group they're in. Called by AppState

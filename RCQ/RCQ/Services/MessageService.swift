@@ -1259,6 +1259,15 @@ final class MessageService {
                     }
                 }
             }
+            // Drain finished — reconcile against the now-current
+            // chat list to drop badge slots for threads the user
+            // can no longer reach (removed contact, left group,
+            // stranger we never upserted). Without this pass the
+            // icon counter sticks at N even after every visible
+            // chat has been opened.
+            let knownPeers = Set(ContactService.shared.contacts.map { $0.uin })
+            let knownGroups = Set(GroupService.shared.groups.map { $0.id })
+            BadgeCounter.reconcile(keepPeers: knownPeers, keepGroups: knownGroups)
             BadgeCounter.syncIcon()
             if sawUnknownPeer {
                 await ContactService.shared.refresh()

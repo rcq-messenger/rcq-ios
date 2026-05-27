@@ -93,6 +93,11 @@ final class ContactService: ObservableObject {
         )
         contacts.removeAll { $0.uin == uin }
         UnreadStore.shared.clearPeer(uin)
+        // Drop any badge increment NSE may have pushed under this
+        // UIN — otherwise the icon counter sticks at N even though
+        // the thread is no longer reachable from the chat list.
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+        BadgeCounter.syncIcon()
         // Sealed sender means the server can't drop future messages
         // from this UIN — record it locally so MessageService and the
         // NSE silently filter them out.
@@ -106,6 +111,8 @@ final class ContactService: ObservableObject {
     func removeLocal(_ uin: Int) {
         contacts.removeAll { $0.uin == uin }
         UnreadStore.shared.clearPeer(uin)
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+        BadgeCounter.syncIcon()
     }
 
     /// Auto-surface an unknown sender so their messages appear in the
