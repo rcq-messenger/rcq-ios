@@ -41,8 +41,23 @@ struct PrivacySettingsView: View {
     @State private var showProxyURL = false
     @State private var showDiagnostics = false
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
+    @AppStorage("rcq.autoProxyActive") private var autoProxyActive: Bool = false
+    @AppStorage("rcq.singbox.autoDisabled") private var singboxAutoDisabled: Bool = false
+    @AppStorage("rcq.baseURL") private var customServer: String = ""
+    @State private var showCustomServer = false
 
     private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
+
+    /// Stealth-mode status label for the trailing slot on the
+    /// PrivacySettingsView row. Reflects the actual connection state,
+    /// not the legacy "always show Авто" placeholder.
+    private var stealthStatusLabel: String {
+        let trimmed = proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if autoProxyActive { return "settings.network.stealth.auto_on".localized }
+        if singboxAutoDisabled { return "settings.network.stealth.off".localized }
+        return "settings.network.stealth.direct".localized
+    }
 
     var body: some View {
         NavigationStack {
@@ -177,6 +192,7 @@ struct PrivacySettingsView: View {
             }
             .sheet(isPresented: $showPINSettings) { PINSettingsView() }
             .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
+            .sheet(isPresented: $showCustomServer) { CustomServerSheet() }
             .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
             .task { await loadVisibility() }
         }
@@ -226,9 +242,29 @@ struct PrivacySettingsView: View {
                     Text("settings.network.stealth".localized)
                         .foregroundColor(Theme.Color.textPrimary)
                     Spacer()
-                    Text(proxyURL.isEmpty
-                         ? "settings.network.proxy.unset".localized
-                         : proxyURL)
+                    Text(stealthStatusLabel)
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            Button {
+                showCustomServer = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "server.rack")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    Text("settings.network.custom_server".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(customServer.isEmpty
+                         ? "settings.network.custom_server.default".localized
+                         : customServer)
                         .font(.caption2.monospaced())
                         .foregroundColor(Theme.Color.textSecondary)
                         .lineLimit(1)

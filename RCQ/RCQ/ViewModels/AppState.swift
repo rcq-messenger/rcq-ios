@@ -175,6 +175,31 @@ final class AppState: ObservableObject {
             return
         }
 
+        // Watchdog: the network branch below can hang on a wedged
+        // sing-box start, a dead upstream proxy or a slow TLS
+        // handshake against a degraded relay. If 15s pass without
+        // booted=true, surrender to offline mode (when we have a
+        // cached identity) or surface the unreachable error. Keeps
+        // the loading spinner from spinning forever.
+        let watchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self else { return }
+            await MainActor.run {
+                guard !self.booted else { return }
+                if cachedUIN != nil && cachedToken != nil {
+                    self.isOffline = true
+                    if let uin = cachedUIN {
+                        MessageService.shared.configure(ownUIN: uin)
+                    }
+                    self.booted = true
+                    self.scheduleTransportRetry()
+                } else {
+                    self.bootError = "boot.error.unreachable".localized
+                }
+            }
+        }
+        defer { watchdog.cancel() }
+
         do {
             bootStatus = .connecting
             if SingBoxTransport.isEnabled {
