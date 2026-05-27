@@ -205,8 +205,6 @@ struct NearbyView: View {
 
             if let bucket = bucketTag {
                 hoodChatButton(bucket: bucket)
-                HoodBannerCarousel(bucket: bucket)
-                    .padding(.vertical, 10)
                     .sheet(isPresented: $showHood) {
                         HoodChatView(bucket: bucket)
                     }
@@ -243,6 +241,15 @@ struct NearbyView: View {
                 }
             }
 
+            // Banner carousel pinned to the bottom of the screen
+            // below the people list / empty state. The Hood-Chat
+            // button stays up top; banners live down here so the
+            // page doesn't feel front-loaded.
+            if let bucket = bucketTag {
+                HoodBannerCarousel(bucket: bucket)
+                    .padding(.top, 6)
+                    .padding(.bottom, 8)
+            }
         }
     }
 
