@@ -488,6 +488,15 @@
 "hood_banner.expires_in_hm" = "expires in %dh %dm";
 "hood_banner.expires_in_min" = "expires in %d min";
 "hood_banner.board.title" = "Area board";
+"hood_banner.empty.subtitle" = "Nothing posted in this area yet.";
+"hood_banner.full" = "Bucket full";
+"hood_banner.post_cta" = "Post banner";
+"hood_banner.composer.publish_for" = "Publish for %@";
+"hood_banner.composer.warning.title" = "Heads up";
+"hood_banner.composer.warning.body" = "After publishing the banner can't be edited. Deleting early doesn't refund the price.";
+"hood.error.slow_down" = "Slow down — give the room a beat.";
+"hood.error.send_failed" = "Couldn't send. Check your connection.";
+"hood.error.send_failed_code" = "Couldn't send (%d).";
 "contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.random" = "Stranger Mode";

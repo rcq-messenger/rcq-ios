@@ -9,7 +9,7 @@ struct NearbyView: View {
     @State private var sentRequests: Set<Int> = []
     @State private var showRadio: Bool = false
     @State private var profileTarget: NearbyPerson?
-    @State private var showComposer: Bool = false
+    @State private var showHood: Bool = false
 
     private var visibleAsLabel: String {
         if service.anonymous { return service.displayName }
@@ -204,10 +204,11 @@ struct NearbyView: View {
             .background(Theme.Color.bgSecondary)
 
             if let bucket = bucketTag {
-                HoodBannerCarousel(bucket: bucket, onCompose: { showComposer = true })
+                hoodChatButton(bucket: bucket)
+                HoodBannerCarousel(bucket: bucket)
                     .padding(.vertical, 10)
-                    .sheet(isPresented: $showComposer) {
-                        HoodBannerComposerSheet(bucket: bucket, onPosted: { _ in })
+                    .sheet(isPresented: $showHood) {
+                        HoodChatView(bucket: bucket)
                     }
             }
 
@@ -243,6 +244,37 @@ struct NearbyView: View {
             }
 
         }
+    }
+
+    private func hoodChatButton(bucket: String) -> some View {
+        Button {
+            showHood = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("nearby.hood.title".localized)
+                        .font(.system(.callout, weight: .semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("nearby.hood.body".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.Color.bgSecondary)
+            .cornerRadius(10)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+        }
+        .buttonStyle(.plain)
     }
 
     private func personRow(_ person: NearbyPerson) -> some View {

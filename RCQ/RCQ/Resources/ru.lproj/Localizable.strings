@@ -455,6 +455,15 @@
 "hood_banner.expires_in_hm" = "истекает через %dч %dм";
 "hood_banner.expires_in_min" = "истекает через %d мин";
 "hood_banner.board.title" = "Доска района";
+"hood_banner.empty.subtitle" = "В этом районе пока ничего нет.";
+"hood_banner.full" = "Лимит достигнут";
+"hood_banner.post_cta" = "Разместить";
+"hood_banner.composer.publish_for" = "Опубликовать за %@";
+"hood_banner.composer.warning.title" = "Важно";
+"hood_banner.composer.warning.body" = "После публикации редактировать нельзя. Удаление досрочно не возвращает оплату.";
+"hood.error.slow_down" = "Не так быстро, дай чату вдохнуть.";
+"hood.error.send_failed" = "Не получилось отправить. Проверь связь.";
+"hood.error.send_failed_code" = "Не отправилось (%d).";
 "contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.random" = "Незнакомец";

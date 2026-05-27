@@ -577,7 +577,8 @@ final class AppState: ObservableObject {
              .roomOffer, .roomAnswer, .roomIce, .roomSpeaking,
              .roomKicked, .roomDeleted, .roomMembershipRevoked, .roomKeyRotated,
              .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed,
-             .storyPosted, .storyDeleted:
+             .storyPosted, .storyDeleted,
+             .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction:
             // Owned by their respective services that subscribe directly.
             break
         }
