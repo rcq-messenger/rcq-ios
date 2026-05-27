@@ -146,8 +146,10 @@
 "settings.uin_shop" = "Магазин UIN";
 "settings.uin_shop.footer" = "Любой свободный UIN от 3 до 9 цифр. Чем короче, тем дороже.";
 "uin_shop.title" = "UIN";
-"uin_shop.plate.hint" = "Введи 3-9 цифр";
+"uin_shop.subtitle_current" = "сейчас · %@";
+"uin_shop.plate.hint" = "Коснись чтобы ввести";
 "uin_shop.plate.digits" = "%d цифр";
+"uin_shop.status.idle" = "Выбери UIN из 3-9 цифр";
 "uin_shop.status.available" = "Свободен";
 "uin_shop.status.checking" = "Проверяем";
 "uin_shop.status.taken" = "Занят";
@@ -156,6 +158,7 @@
 "uin_shop.status.self" = "Твой текущий UIN";
 "uin_shop.status.unavailable" = "Недоступен";
 "uin_shop.hint.too_short" = "Минимум 3 цифры";
+"uin_shop.price.label" = "ЦЕНА";
 "uin_shop.suggestions.header" = "ПРИМЕРЫ";
 "uin_shop.buy.cta" = "Купить за %@";
 "uin_shop.buy.processing" = "Покупаем…";

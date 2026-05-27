@@ -155,8 +155,10 @@
 "settings.uin_shop" = "UIN shop";
 "settings.uin_shop.footer" = "Pick any free 3-9 digit UIN. Shorter UINs are rarer and pricier.";
 "uin_shop.title" = "UIN";
-"uin_shop.plate.hint" = "Type a 3-9 digit UIN";
+"uin_shop.subtitle_current" = "current · %@";
+"uin_shop.plate.hint" = "Tap to type";
 "uin_shop.plate.digits" = "%d digits";
+"uin_shop.status.idle" = "Pick a 3-9 digit UIN";
 "uin_shop.status.available" = "Available";
 "uin_shop.status.checking" = "Checking";
 "uin_shop.status.taken" = "Taken";
@@ -165,6 +167,7 @@
 "uin_shop.status.self" = "Your current UIN";
 "uin_shop.status.unavailable" = "Unavailable";
 "uin_shop.hint.too_short" = "Need at least 3 digits";
+"uin_shop.price.label" = "PRICE";
 "uin_shop.suggestions.header" = "SUGGESTIONS";
 "uin_shop.buy.cta" = "Buy for %@";
 "uin_shop.buy.processing" = "Processing…";
