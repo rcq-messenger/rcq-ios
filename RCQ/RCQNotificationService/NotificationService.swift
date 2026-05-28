@@ -82,7 +82,22 @@ class NotificationService: UNNotificationServiceExtension {
             if let n = userInfo["to_uin"] as? NSNumber { return n.intValue }
             return nil
         }()
+        // Capture active before we (possibly) install a per-account
+        // override below — comparing target vs original active is
+        // what tells us whether this push is for the foreground
+        // account or a different one in the local roster.
+        let activeBeforeRoute = AppGroup.readActiveAccountID()
         if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
+            // Push for a non-foreground account: mark the banner so
+            // the user can tell at a glance that this message went
+            // to one of their OTHER accounts, not the one they're
+            // currently looking at. iOS renders subtitle as the
+            // second line below title in the banner. Single-account
+            // devices and pushes for the active account skip this —
+            // no clutter for the common case.
+            if let activeBeforeRoute, activeBeforeRoute != targetID {
+                content.subtitle = "#\(toUIN)"
+            }
             KeychainStore.setProcessOverrideAccountID(targetID)
             SignalProtocolDB.shared.reload(toAccountID: targetID)
             os_log("routed push to_uin=%d → account=%{public}@",
