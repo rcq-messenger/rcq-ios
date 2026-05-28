@@ -238,6 +238,18 @@ struct RootView: View {
 
     private static let relockGrace: TimeInterval = 30
 
+    /// How long the app must have been backgrounded before we treat the
+    /// WebSocket as suspect on resume. iOS suspends the process during
+    /// backgrounding and silently tears down (or half-opens) the socket;
+    /// the receive loop never gets to process the failure while frozen,
+    /// so `isConnected` lies (stays true) on resume. Anything past this
+    /// grace forces a clean reconnect + presence refresh rather than
+    /// trusting the stale boolean. Kept short so "pocket for 5s" already
+    /// triggers it, but above the momentary .active↔.inactive flicker of
+    /// a sheet/cover transition (which never sets .background, so
+    /// backgroundedAt stays nil for those anyway).
+    private static let connectionStaleGrace: TimeInterval = 4
+
     var body: some View {
         // Root ZStack hosts game mini-bubbles so they persist across nav.
         // The MessageBannerHost is NOT mounted here — it lives in its
@@ -290,10 +302,15 @@ struct RootView: View {
     /// can flip multiple times during a single sheet/cover transition.
     private func handleScenePhase(_ phase: ScenePhase) {
         if phase == .background {
-            if panicPIN.isConfigured { backgroundedAt = Date() }
+            // Track for ALL users now, not just panic-PIN configured
+            // ones — the connection-staleness check below needs to know
+            // how long we were suspended regardless of PIN state.
+            backgroundedAt = Date()
             return
         }
         guard phase == .active else { return }
+
+        let backgroundedFor = backgroundedAt.map { Date().timeIntervalSince($0) }
 
         if panicPIN.isConfigured, !panicPIN.isLocked, let since = backgroundedAt,
            Date().timeIntervalSince(since) > Self.relockGrace {
@@ -321,13 +338,33 @@ struct RootView: View {
         guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
+
+        // After a real background-suspend the socket is suspect even
+        // when `isConnected` claims otherwise — the OS freezes the
+        // process so the receive loop never processes the death, and the
+        // 90s watchdog hasn't ticked yet. Symptom the user hits: reopen,
+        // see contacts as "online" who actually went offline while we
+        // were away (we never received their presence-offline over the
+        // dead socket), then a send sits on the spinner because it's
+        // POSTing through a wedged transport. Force a clean reconnect and
+        // pull fresh presence so the stale rows correct immediately
+        // instead of after the watchdog fires.
+        let socketSuspect = (backgroundedFor ?? 0) > Self.connectionStaleGrace
+
         Task { @MainActor in
-            if !WebSocketService.shared.isConnected {
+            if socketSuspect || !WebSocketService.shared.isConnected {
                 let baseURL = APIClient.shared.baseURL
+                // connect() tears down any existing (stale) task before
+                // opening a fresh one, so no explicit disconnect needed.
                 WebSocketService.shared.connect(
                     uin: uin, token: token, baseURL: baseURL,
                     serverToken: AccountManager.shared.active?.serverToken
                 )
+                // Re-pull contacts so presence reflects current
+                // server-side state, not the snapshot frozen at suspend.
+                // Bounded by the 30s resource timeout, so a wedged
+                // transport surfaces rather than hanging.
+                await ContactService.shared.refresh()
             } else {
                 WebSocketService.shared.pingNow()
             }

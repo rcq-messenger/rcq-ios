@@ -158,7 +158,40 @@ final class WebSocketService: ObservableObject {
     }
 
     func pingNow() {
-        send(["type": "ping"])
+        sendPing()
+    }
+
+    /// Ping with liveness-aware completion. A successful outbound write
+    /// is decent evidence the socket is alive, so we refresh the
+    /// watchdog stamp on send-success — not just on inbound frames.
+    ///
+    /// Why this matters: for a quiet user the ONLY inbound traffic is
+    /// the server's pong replies, and those ride the cross-worker Redis
+    /// fanout (connection_manager `ws:fanout`). A dropped/raced pong
+    /// leaves `lastFrameAt` stale even though the socket is perfectly
+    /// healthy, and the 90s watchdog tears it down → reconnect storm
+    /// (observed: a one-contact user reconnecting every ~100s for
+    /// hours). Trusting our own successful send kills that false
+    /// positive.
+    ///
+    /// Trade-off: a half-open socket (writes succeed, inbound dead)
+    /// would be masked here. That's rare and mostly happens across an
+    /// OS background-suspend, which the foreground-resume forced
+    /// reconnect now handles independently. A genuinely dead write side
+    /// still errors → handleDisconnect below.
+    private func sendPing() {
+        guard let task else { return }
+        let issuedTask = task
+        task.send(.string("{\"type\":\"ping\"}")) { [weak self] error in
+            Task { @MainActor in
+                guard let self, self.task === issuedTask else { return }
+                if error != nil {
+                    self.handleDisconnect()
+                } else {
+                    self.lastFrameAt = Date()
+                }
+            }
+        }
     }
 
     private func scheduleReconnect() {
@@ -266,8 +299,8 @@ final class WebSocketService: ObservableObject {
     private func startPingTimer() {
         pingTimer?.invalidate()
         pingTimer = Timer.scheduledTimer(withTimeInterval: Self.pingInterval, repeats: true) { [weak self] _ in
-            // Timer's RunLoop callback is nonisolated; `send` is main-isolated.
-            Task { @MainActor in self?.send(["type": "ping"]) }
+            // Timer's RunLoop callback is nonisolated; `sendPing` is main-isolated.
+            Task { @MainActor in self?.sendPing() }
         }
     }
 

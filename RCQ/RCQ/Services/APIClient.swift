@@ -59,6 +59,16 @@ actor APIClient {
         let cfg = URLSessionConfiguration.default
         cfg.waitsForConnectivity = true
         cfg.timeoutIntervalForRequest = 20
+        // Hard ceiling on the WHOLE request including connectivity-wait.
+        // Without this, timeoutIntervalForResource defaults to 7 days, and
+        // because waitsForConnectivity=true a POST through a wedged
+        // sing-box proxy (typical right after an iOS background-suspend,
+        // before the transport is re-pumped) hangs effectively forever —
+        // the message bubble stays on the .sending spinner until the user
+        // force-quits, and the text is lost on relaunch. 30s lets a
+        // genuinely slow relay through while guaranteeing a stuck send
+        // surfaces as .failed → tap-to-retry, text intact.
+        cfg.timeoutIntervalForResource = 30
         if let proxy { cfg.connectionProxyDictionary = proxy }
         return URLSession(configuration: cfg)
     }
