@@ -1223,9 +1223,24 @@ final class MessageService {
             let group_id: Int?
         }
         do {
-            let rows: [Row] = try await APIClient.shared.request("GET", "/messages/queue")
-            // Refresh contact list if any envelope landed under an unknown UIN.
+            // `ack=1` opts into the server-side ACK protocol: rows are
+            // returned without being deleted, and the client is expected
+            // to POST /messages/queue/ack with the IDs it has successfully
+            // persisted. This closes the "push arrived but no message in
+            // chat" hole on the legacy fetch-and-drain path — if ingest
+            // fails for an envelope (decryption error, malformed payload,
+            // crash mid-loop), the server keeps the row and redelivers on
+            // the next fetch, up to OFFLINE_QUEUE_TTL_DAYS (default 30).
+            let rows: [Row] = try await APIClient.shared.request(
+                "GET", "/messages/queue", query: ["ack": "1"]
+            )
             var sawUnknownPeer = false
+            // Track which rows landed locally so we can ACK them. Two
+            // arrays because OfflineMessage.id and OfflineGroupMessage.id
+            // are per-table auto-increment integers on the server and
+            // can collide; we split by group_id.
+            var ackedDirectIDs: [Int] = []
+            var ackedGroupIDs: [Int] = []
             for r in rows {
                 let env = WebSocketService.EnvelopePacket(
                     type: r.envelope_type,
@@ -1234,7 +1249,22 @@ final class MessageService {
                     offline: true,
                     groupID: r.group_id
                 )
-                guard let outcome = ingest(envelope: env) else { continue }
+                guard let outcome = ingest(envelope: env) else {
+                    // ingest returned nil — decryption / validation /
+                    // persistence failure. Do NOT ACK; server keeps the
+                    // row and redelivers on the next /messages/queue
+                    // fetch. Better to over-deliver a message we'll
+                    // dedupe by inner-envelope UUID than lose it.
+                    continue
+                }
+                // Non-nil outcome means the envelope is now in MessageDB
+                // (either freshly stored or recognised as a duplicate of
+                // something we already had). Safe to ACK in both cases.
+                if r.group_id == nil {
+                    ackedDirectIDs.append(r.id)
+                } else {
+                    ackedGroupIDs.append(r.id)
+                }
                 // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
                 guard outcome.isNewContent else { continue }
                 let viewing = MessageBannerService.shared.isViewing(outcome.thread)
@@ -1257,6 +1287,27 @@ final class MessageService {
                     if bumpIcon {
                         BadgeCounter.increment(threadKey: BadgeCounter.threadKey(groupID: id))
                     }
+                }
+            }
+            // Send the ACK. Best-effort: if it fails (network blip,
+            // server hiccup, app backgrounded mid-call), the server
+            // holds those rows until the next fetch — same envelopes
+            // come back, ingest dedupes by inner UUID, and we ACK
+            // again. Eventually drains. The TTL sweeper catches rows
+            // that never get ACKed (old clients, dead accounts).
+            if !ackedDirectIDs.isEmpty || !ackedGroupIDs.isEmpty {
+                struct AckPayload: Encodable {
+                    let direct_ids: [Int]
+                    let group_ids: [Int]
+                }
+                struct AckOut: Decodable { let deleted: Int }
+                let payload = AckPayload(direct_ids: ackedDirectIDs, group_ids: ackedGroupIDs)
+                do {
+                    let _: AckOut = try await APIClient.shared.request(
+                        "POST", "/messages/queue/ack", body: payload
+                    )
+                } catch {
+                    // Non-fatal. See comment above.
                 }
             }
             // Drain finished — reconcile against the now-current
