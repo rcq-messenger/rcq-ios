@@ -64,12 +64,14 @@ struct UINShopView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 18) {
-                        Spacer(minLength: 16)
-                        plateCard
+                    VStack(spacing: 14) {
+                        Spacer(minLength: 12)
+                        // Status + price sit ABOVE the input plate as a
+                        // compact header; the explainer sits right below
+                        // the plate instead of floating at the bottom.
                         statusLine
                         priceLine
-                        Spacer(minLength: 18)
+                        plateCard
                         infoBlock
                         Spacer(minLength: 24)
                     }
@@ -112,7 +114,16 @@ struct UINShopView: View {
                     .opacity(0)
                     .frame(width: 1, height: 1)
                     .onChange(of: typed) { newValue in
-                        let filtered = String(newValue.filter(\.isNumber).prefix(9))
+                        var filtered = String(newValue.filter(\.isNumber).prefix(9))
+                        // Leading zeros are meaningless for a UIN — it's
+                        // an integer. "001" IS the 1-digit UIN 1 (the
+                        // server quotes it as 1 → "too short"), and "000"
+                        // is 0, which Int("000") parses to 0 and the
+                        // quote guard (`parsed > 0`) silently drops, so
+                        // nothing shows. Stripping leading zeros makes the
+                        // plate show the real number the server will quote
+                        // and removes both confusions.
+                        filtered = String(filtered.drop(while: { $0 == "0" }))
                         if filtered != newValue { typed = filtered; return }
                         quote = nil
                         error = nil
