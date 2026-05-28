@@ -426,22 +426,13 @@ struct ContactListView: View {
                     Label("contact_list.add_account".localized, systemImage: "plus")
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text(active.displayHost)
-                        .font(.system(.caption, design: .monospaced).weight(.semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                }
-                .foregroundColor(Theme.Color.textSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule().fill(Theme.Color.bgSecondary.opacity(0.6))
-                )
+                Image(systemName: "server.rack")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        Circle().fill(Theme.Color.bgSecondary.opacity(0.6))
+                    )
             }
         } else {
             EmptyView()

@@ -63,6 +63,21 @@ final class AccountManager: ObservableObject {
         // other singleton — KeychainStore via resolve(), NSE on the
         // next push — reads it.
         mirrorActiveToLegacy()
+        // S2 lazy backfill for S1-only installs upgrading to S2 with
+        // a populated roster: `migrateLegacyIfPresent` short-circuits
+        // when accounts is non-empty, so legacy unprefixed Keychain
+        // entries (uin, token, identityPriv, etc.) stay alive. The
+        // lazy-fallback in `KeychainStore.data` then leaks those
+        // values into every newly-added account that probes the
+        // prefixed slot and falls through. Migrate the legacy entries
+        // to the OLDEST account (by createdAt) — that's the account
+        // those keys originally belonged to before any second account
+        // existed. The function is idempotent (no-op when legacy is
+        // empty), so subsequent launches and fresh installs that came
+        // through `migrateLegacyIfPresent` already do nothing here.
+        if let oldest = accounts.min(by: { $0.createdAt < $1.createdAt }) {
+            KeychainStore.migrateLegacyKeysToAccount(oldest.id)
+        }
     }
 
     /// Add a new account to the roster and set it active. Used by:
