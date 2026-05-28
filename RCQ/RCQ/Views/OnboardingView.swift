@@ -307,6 +307,23 @@ struct OnboardingView: View {
                     withAnimation(.easeInOut(duration: 0.25)) { page += 1 }
                 } else {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    // Mint Account[0] in AccountManager BEFORE the
+                    // boot pipeline runs. Without this, AuthService's
+                    // first /auth/register writes Keychain under the
+                    // legacy unprefixed slot (because
+                    // AppGroup.readActiveAccountID returns nil with
+                    // an empty roster), and the account-switcher pill
+                    // in ContactListView stays hidden until the next
+                    // launch's legacy-migration mints Account[0]
+                    // retroactively. By calling add() here, the
+                    // active account is set up front: subsequent
+                    // KeychainStore.set writes land in the prefixed
+                    // slot directly, ContactListView renders with
+                    // accountManager.active non-nil, pill shows.
+                    let chosenURL = customServer.isEmpty
+                        ? "https://api.rcq.app"
+                        : customServer
+                    AccountManager.shared.add(serverURL: chosenURL)
                     withAnimation(.easeInOut(duration: 0.5)) {
                         entering = true
                     }
