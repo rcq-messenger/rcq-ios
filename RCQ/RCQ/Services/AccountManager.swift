@@ -53,6 +53,16 @@ final class AccountManager: ObservableObject {
         if accounts.isEmpty {
             migrateLegacyIfPresent()
         }
+        // Always announce the current active state to the legacy
+        // mirror + App Group file at the end of init. Two code paths
+        // arrive here: (a) loaded an existing roster from UserDefaults
+        // (mirror probably already correct from previous run but
+        // belt-and-suspenders), (b) just minted Account[0] from
+        // legacy detection (mirror not written yet). Both need the
+        // App Group activeAccountID file to be correct before any
+        // other singleton — KeychainStore via resolve(), NSE on the
+        // next push — reads it.
+        mirrorActiveToLegacy()
     }
 
     /// Add a new account to the roster and set it active. Used by:
@@ -132,12 +142,20 @@ final class AccountManager: ObservableObject {
         }
     }
 
-    /// During S1 the legacy single-tenant code paths (APIClient
-    /// reading `rcq.baseURL`, etc) are still authoritative. Keep
-    /// them in sync with the active account so AccountManager
-    /// remains a pure superset — if we never read AccountManager
-    /// at runtime in S1, nothing breaks. S2 reverses this: legacy
-    /// keys disappear and AccountManager becomes authoritative.
+    /// Two-way sync of the active account ID + URL with legacy
+    /// readers. Two things happen on every change:
+    ///
+    /// 1. `rcq.baseURL` UserDefaults mirror — APIClient and
+    ///    CustomServerSheet still read this. Empty / removed means
+    ///    "use the prod default" per the existing convention.
+    /// 2. App Group flat file — NSE reads the active account ID to
+    ///    pick the right per-account Keychain prefix when
+    ///    decrypting incoming pushes. KeychainStore in the main
+    ///    app reads it too, via the same AppGroup helper, so both
+    ///    targets resolve the same prefix at every Keychain hit.
+    ///
+    /// AccountManager is the only writer of either. Everything else
+    /// reads.
     private func mirrorActiveToLegacy() {
         if let url = active?.serverURL {
             // Mirror the "empty means default" convention used by
@@ -151,6 +169,7 @@ final class AccountManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: "rcq.baseURL")
         }
+        AppGroup.writeActiveAccountID(activeAccountID)
     }
 
     // MARK: - Legacy migration
@@ -180,6 +199,14 @@ final class AccountManager: ObservableObject {
     /// time.
     private func migrateLegacyIfPresent() {
         let legacyServer = UserDefaults.standard.string(forKey: "rcq.baseURL") ?? ""
+        // Probe the legacy unprefixed UIN slot directly. We can't use
+        // the normal KeychainStore.string accessor here because it
+        // resolves through AppGroup.readActiveAccountID, and at this
+        // point we haven't written one yet — so it'd correctly look
+        // under the (nonexistent) prefixed slot and return nil, even
+        // when a legacy unprefixed UIN exists. The accessor falls
+        // back to unprefixed on miss, so this works either way today,
+        // but being explicit guards against future changes.
         let hasUIN = KeychainStore.string(KeychainStore.Keys.uin) != nil
 
         if legacyServer.isEmpty && !hasUIN {
@@ -191,6 +218,13 @@ final class AccountManager: ObservableObject {
         let migrated = Account(serverURL: url)
         accounts = [migrated]
         activeAccountID = migrated.id
+        // Move every legacy unprefixed Keychain entry under Account[0]'s
+        // prefix before announcing the new active ID to the App Group —
+        // that way the moment NSE / KeychainStore.resolve sees a
+        // non-nil activeAccountID, the prefixed entries are already in
+        // place. Migration is an explicit one-shot keyed to the new
+        // account ID; it doesn't depend on App Group state.
+        KeychainStore.migrateLegacyKeysToAccount(migrated.id)
         save()
     }
 }

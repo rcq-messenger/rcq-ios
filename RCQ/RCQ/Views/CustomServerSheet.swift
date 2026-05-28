@@ -209,6 +209,15 @@ struct CustomServerSheet: View {
         switching = true
         defer { switching = false }
         customServer = trimmed
+        // Keep AccountManager in sync with the new server URL on the
+        // active account. AccountManager is authoritative under
+        // multi-identity (S1+); without this the rcq.baseURL
+        // UserDefaults set above would drift from Account[0].serverURL
+        // and any UI reading the account roster would show the old
+        // host. mirrorActiveToLegacy will harmonise both sides.
+        if let activeID = AccountManager.shared.activeAccountID {
+            AccountManager.shared.update(activeID, serverURL: trimmed)
+        }
         // Burn the local account: the new server's user table has no
         // record of our UIN, so the next boot has to mint fresh
         // identity. burnAccount() wipes every local store + reruns
@@ -221,6 +230,11 @@ struct CustomServerSheet: View {
         switching = true
         defer { switching = false }
         customServer = ""
+        // Also reset Account[0].serverURL to the default. Mirror
+        // takes care of clearing rcq.baseURL UserDefaults to match.
+        if let activeID = AccountManager.shared.activeAccountID {
+            AccountManager.shared.update(activeID, serverURL: "https://api.rcq.app")
+        }
         await AppState.shared.burnAccount()
         dismiss()
     }

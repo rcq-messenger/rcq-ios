@@ -45,4 +45,42 @@ enum AppGroup {
     static var languageFileURL: URL {
         containerURL.appendingPathComponent("language.txt")
     }
+
+    /// Plain file mirror of the currently active `AccountManager.shared.active.id`.
+    /// Same cfprefsd-unreliability dodge as `languageFileURL`. Written
+    /// by the main app every time the active account changes; read by
+    /// the NSE on every push so it knows which per-account Keychain
+    /// prefix and MessageDB file to use.
+    ///
+    /// File contents: a single UUID string (no newline). Empty / absent
+    /// file means "fresh install, no account yet" — NSE in that state
+    /// falls back to a no-op (push is shown as a generic banner with
+    /// no decrypt attempt).
+    static var activeAccountIDFileURL: URL {
+        containerURL.appendingPathComponent("active-account-id.txt")
+    }
+
+    /// Reads the active account ID from the App Group file. Returns
+    /// nil if the file is missing, unreadable, or contains garbage.
+    /// Cheap to call repeatedly — the file is tiny.
+    static func readActiveAccountID() -> UUID? {
+        guard let data = try? Data(contentsOf: activeAccountIDFileURL),
+              let raw = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty
+        else { return nil }
+        return UUID(uuidString: raw)
+    }
+
+    /// Atomically writes the active account ID to the App Group file.
+    /// Called by AccountManager whenever active changes. Pass nil to
+    /// clear (truly fresh install, no account exists).
+    static func writeActiveAccountID(_ id: UUID?) {
+        let url = activeAccountIDFileURL
+        if let id {
+            try? id.uuidString.data(using: .utf8)?.write(to: url, options: .atomic)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 }

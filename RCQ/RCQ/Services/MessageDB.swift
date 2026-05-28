@@ -86,8 +86,50 @@ final class MessageDB {
     private static func storeURL(decoy: Bool) -> URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
-        let name = decoy ? "rcq-history-decoy-v8.sqlite" : "rcq-history-v8.sqlite"
-        return baseURL.appendingPathComponent(name)
+
+        // Decoy mode stays a single global store regardless of how
+        // many real accounts the device has. The panic-PIN escape
+        // is an app-lock concept, not a per-account one — switching
+        // accounts doesn't expose a different decoy.
+        if decoy {
+            return baseURL.appendingPathComponent("rcq-history-decoy-v8.sqlite")
+        }
+
+        // Real mode: file is per-account. AccountManager mints
+        // Account[0] before any MessageDB access in RCQApp.init's
+        // eager-touch order, so this should always find a non-nil
+        // ID once the user is past first-launch.
+        guard let accountID = AppGroup.readActiveAccountID() else {
+            // Pre-onboarding state on a truly fresh install. Fall
+            // through to the legacy filename so a brand-new device
+            // gets a working SQLite to write into; the first
+            // post-onboarding launch will then carry it across
+            // via the migration block below once Account[0] exists.
+            return baseURL.appendingPathComponent("rcq-history-v8.sqlite")
+        }
+
+        let perAccountName = "rcq-history-\(accountID.uuidString)-v8.sqlite"
+        let perAccountURL = baseURL.appendingPathComponent(perAccountName)
+
+        // First-launch-after-v0.3 migration: if a legacy unprefixed
+        // file exists and the per-account file doesn't, rename the
+        // legacy file to belong to the active account. SQLite writes
+        // -shm and -wal sidecars alongside the main file — move all
+        // three so the journal stays consistent with the data. Each
+        // FileManager.moveItem call is atomic per-file (POSIX
+        // rename); a half-completed migration where only the main
+        // file moved still works because SQLite recreates missing
+        // sidecars on next open.
+        let legacyURL = baseURL.appendingPathComponent("rcq-history-v8.sqlite")
+        if !FileManager.default.fileExists(atPath: perAccountURL.path),
+           FileManager.default.fileExists(atPath: legacyURL.path) {
+            for suffix in ["", "-shm", "-wal"] {
+                let from = baseURL.appendingPathComponent("rcq-history-v8.sqlite" + suffix)
+                let to = baseURL.appendingPathComponent(perAccountName + suffix)
+                try? FileManager.default.moveItem(at: from, to: to)
+            }
+        }
+        return perAccountURL
     }
 
     static func destroyDecoyStore() {
@@ -96,6 +138,19 @@ final class MessageDB {
         let base = url.lastPathComponent
         for name in [base, base + "-shm", base + "-wal"] {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
+
+    /// Delete the per-account history file for a given account ID.
+    /// Used by the burn-account flow (S3+) so removing one account
+    /// from the roster wipes its chat history without touching any
+    /// other account. SQLite writes -shm and -wal sidecars, all
+    /// three get removed.
+    static func wipe(accountID: UUID) {
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let base = "rcq-history-\(accountID.uuidString)-v8.sqlite"
+        for name in [base, base + "-shm", base + "-wal"] {
+            try? FileManager.default.removeItem(at: baseURL.appendingPathComponent(name))
         }
     }
 
