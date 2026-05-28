@@ -453,17 +453,23 @@ final class AppState: ObservableObject {
     }
 
     /// Add a brand-new account on `serverURL`, switch active to it,
-    /// and let boot mint a fresh identity on the new server. If the
-    /// network step inside boot fails, the new account stays in the
-    /// roster but unregistered; the user can retry from the
-    /// account switcher.
-    func addAccount(serverURL: String) async {
+    /// and let boot mint a fresh identity on the new server. Returns
+    /// false when AccountManager refuses the add (roster at limit) —
+    /// no switch happens, no boot fires, the caller surfaces the
+    /// reason to the user. Returns true on a successful add even if
+    /// the subsequent register fails (the user can retry via the
+    /// switcher; the dangling account stays in the roster).
+    @discardableResult
+    func addAccount(serverURL: String) async -> Bool {
         // AccountManager.add also setActive(new.id) and triggers
         // mirrorActiveToLegacy → App Group file + rcq.baseURL
         // already point at the new account by the time
         // rebootForActiveAccount runs.
-        AccountManager.shared.add(serverURL: serverURL)
+        guard AccountManager.shared.add(serverURL: serverURL) != nil else {
+            return false
+        }
         await rebootForActiveAccount()
+        return true
     }
 
     /// Common sequence used after `setActive` or `add`: disconnect

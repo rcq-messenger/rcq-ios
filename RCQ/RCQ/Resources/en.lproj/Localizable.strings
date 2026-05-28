@@ -1948,6 +1948,7 @@
 "add_account.custom.invalid" = "URL must start with https:// and have a hostname.";
 "add_account.adding" = "Registering on the server…";
 "add_account.error" = "Couldn't register. Check the URL and your network.";
+"add_account.limit" = "Reached the %d-account device limit. Remove one via Manage accounts and try again.";
 
 /* Server picker — final onboarding page */
 "onboard.server.pill.prefix" = "server:";

@@ -446,10 +446,12 @@ struct ContactListView: View {
                     }
                 }
                 Divider()
-                Button {
-                    showAddAccount = true
-                } label: {
-                    Label("contact_list.add_account".localized, systemImage: "plus")
+                if !accountManager.isAtAccountLimit {
+                    Button {
+                        showAddAccount = true
+                    } label: {
+                        Label("contact_list.add_account".localized, systemImage: "plus")
+                    }
                 }
                 // Manage entry is only meaningful once you've got more
                 // than one account. With a single account there's

@@ -48,6 +48,22 @@ final class AccountManager: ObservableObject {
     private static let accountsKey = "rcq.accounts.v1"
     private static let activeKey = "rcq.accounts.activeID.v1"
 
+    /// Hard cap on the local roster. Single-account is the 99% case;
+    /// 2-3 accounts cover the realistic multi-identity uses (main +
+    /// work + journalist persona). Beyond that we suspect either
+    /// abuse or test setups, neither of which we owe a free pass.
+    /// UI surfaces (AddAccountSheet, the switcher pill) refuse to
+    /// add a sixth account and explain why. The limit is local-only;
+    /// nothing in the server enforces it (server can't tell if two
+    /// UINs share a device anyway).
+    static let maxAccounts: Int = 5
+
+    /// True when the roster is full. UI surfaces consult this before
+    /// offering the 'Add' / 'New server' affordance.
+    var isAtAccountLimit: Bool {
+        accounts.count >= Self.maxAccounts
+    }
+
     private init() {
         loadFromDefaults()
         if accounts.isEmpty {
@@ -99,7 +115,14 @@ final class AccountManager: ObservableObject {
     ///   - Multi-account add flow in S3 (creates Account[N] alongside
     ///     existing ones without burning anything)
     @discardableResult
-    func add(serverURL: String, displayLabel: String? = nil) -> Account {
+    func add(serverURL: String, displayLabel: String? = nil) -> Account? {
+        // Defence in depth: even if a caller skips the
+        // `isAtAccountLimit` check on the UI side, the manager
+        // itself refuses to mint a sixth account.
+        guard accounts.count < Self.maxAccounts else {
+            print("[AccountManager] add refused: at limit (\(accounts.count) of \(Self.maxAccounts))")
+            return nil
+        }
         let account = Account(serverURL: serverURL, displayLabel: displayLabel)
         accounts.append(account)
         activeAccountID = account.id

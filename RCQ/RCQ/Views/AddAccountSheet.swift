@@ -16,6 +16,7 @@ struct AddAccountSheet: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var directory = ServerDirectoryService.shared
 
+    @StateObject private var accountManager = AccountManager.shared
     @State private var query: String = ""
     @State private var customURL: String = ""
     @State private var adding: Bool = false
@@ -250,10 +251,26 @@ struct AddAccountSheet: View {
     // MARK: - actions
 
     private func performAdd(serverURL: String) async {
+        // UI defence: AccountManager also refuses but we'd rather
+        // not flash the loading state for a guaranteed-fail add.
+        if accountManager.isAtAccountLimit {
+            error = String(
+                format: "add_account.limit".localized,
+                AccountManager.maxAccounts
+            )
+            return
+        }
         adding = true
         error = nil
-        await appState.addAccount(serverURL: serverURL)
+        let ok = await appState.addAccount(serverURL: serverURL)
         adding = false
+        if !ok {
+            error = String(
+                format: "add_account.limit".localized,
+                AccountManager.maxAccounts
+            )
+            return
+        }
         if appState.bootError != nil {
             // Boot pipeline failed (network unreachable, server
             // refused registration, etc). Roll back: remove the
