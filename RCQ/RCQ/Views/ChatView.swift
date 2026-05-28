@@ -1025,7 +1025,16 @@ struct ChatView: View {
                         Color.clear.frame(height: 72)
                     }
                     loadOlderProbe(proxy: proxy)
-                    ForEach(Array(vm.grouped().enumerated()), id: \.offset) { _, group in
+                    // Identify day-groups by their (unique-per-day) label,
+                    // NOT array offset. With offset identity, loadOlder()
+                    // prepending a page of history shifts every index —
+                    // offset 0 flips from e.g. "12 May" to "7 May" — and
+                    // SwiftUI re-renders the whole list as if every group
+                    // changed, producing a visible jump that fights the
+                    // scroll-back-to-anchor in loadOlderProbe. Stable
+                    // label identity lets SwiftUI see new groups inserted
+                    // at the top while existing ones keep their place.
+                    ForEach(vm.grouped(), id: \.label) { group in
                         DateDivider(label: group.label)
                         ForEach(vm.collapsedAlbums(group.items)) { unit in
                             switch unit {
@@ -1155,9 +1164,20 @@ struct ChatView: View {
                 }
             }
             .onChange(of: vm.messages.last?.id) { _ in
-                // Re-anchor only if already at bottom — yanking a
-                // scrolled-up reader down is hostile. Watching the
-                // last id (not count) so `loadOlder()` prepends don't
+                // Your OWN send always jumps to the new bubble, even if
+                // you'd scrolled up — you initiated it and expect to see
+                // it (iMessage behaviour). Previously this hit the
+                // !showScrollToBottom guard below and a send while
+                // scrolled up left your message off-screen.
+                if vm.messages.last?.isFromMe == true {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    }
+                    return
+                }
+                // Incoming message: re-anchor only if already at bottom —
+                // yanking a scrolled-up reader down is hostile. Watching
+                // the last id (not count) so `loadOlder()` prepends don't
                 // trip this branch.
                 guard !showScrollToBottom else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
