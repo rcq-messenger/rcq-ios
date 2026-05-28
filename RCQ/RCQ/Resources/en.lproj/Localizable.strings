@@ -124,6 +124,7 @@
 "settings.network.stealth.auto_on" = "Auto on";
 "settings.network.stealth.off" = "Off";
 "settings.network.stealth.direct" = "Direct";
+"settings.network.accounts" = "Accounts";
 "settings.network.custom_server" = "Server";
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.custom_server.intro.title" = "Use a different server";

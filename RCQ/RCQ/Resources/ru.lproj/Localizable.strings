@@ -115,6 +115,7 @@
 "settings.network.stealth.auto_on" = "Авто включён";
 "settings.network.stealth.off" = "Выкл";
 "settings.network.stealth.direct" = "Напрямую";
+"settings.network.accounts" = "Аккаунты";
 "settings.network.custom_server" = "Сервер";
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.custom_server.intro.title" = "Свой сервер";

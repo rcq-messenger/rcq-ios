@@ -45,6 +45,8 @@ struct PrivacySettingsView: View {
     @AppStorage("rcq.singbox.autoDisabled") private var singboxAutoDisabled: Bool = false
     @AppStorage("rcq.baseURL") private var customServer: String = ""
     @State private var showCustomServer = false
+    @State private var showManageAccounts = false
+    @StateObject private var accountManager = AccountManager.shared
 
     private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
 
@@ -193,6 +195,7 @@ struct PrivacySettingsView: View {
             .sheet(isPresented: $showPINSettings) { PINSettingsView() }
             .sheet(isPresented: $showProxyURL) { ProxyURLSheet() }
             .sheet(isPresented: $showCustomServer) { CustomServerSheet() }
+            .sheet(isPresented: $showManageAccounts) { ManageAccountsSheet() }
             .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
             .task { await loadVisibility() }
         }
@@ -232,6 +235,24 @@ struct PrivacySettingsView: View {
 
     private var networkSection: some View {
         Section {
+            Button {
+                showManageAccounts = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.2.crop.square.stack")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    Text("settings.network.accounts".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(String(accountManager.accounts.count))
+                        .font(.caption2.monospaced())
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
             Button {
                 showProxyURL = true
             } label: {
