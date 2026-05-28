@@ -97,6 +97,37 @@ enum KeychainStore {
         }
     }
 
+    // MARK: - Multi-account NSE routing
+
+    /// Process-local override for the active account ID used by
+    /// `resolve(_:)`. When set, takes precedence over the App Group
+    /// flat file. Used by the NSE: a push for a non-active account
+    /// arrives at the device (device token is per-device), NSE looks
+    /// up which local Account owns the recipient UIN from the push
+    /// payload, sets this override to that account ID for the
+    /// duration of the decrypt, and clears it on the way out.
+    ///
+    /// The main app process has its own copy of this `nonisolated`
+    /// static (the NSE compiles its own copy of KeychainStore.swift
+    /// and they don't share state), so an NSE override never leaks
+    /// into the main app's active-account resolution.
+    private static var processOverrideAccountID: UUID?
+
+    static func setProcessOverrideAccountID(_ id: UUID?) {
+        processOverrideAccountID = id
+    }
+
+    /// Explicit per-account lookup that bypasses `resolve(_:)` and
+    /// the App Group file entirely. Used by the NSE when iterating
+    /// the local account roster looking for the one that owns a
+    /// given recipient UIN: each candidate gets a probe via this
+    /// helper without the side-effect of touching the active-account
+    /// pointer.
+    static func string(_ key: String, forAccount accountID: UUID) -> String? {
+        let prefixed = "acct.\(accountID.uuidString).\(key)"
+        return rawData(prefixed).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     // MARK: - Per-account migration
 
     /// Copy every per-account legacy unprefixed Keychain entry to the
@@ -137,7 +168,8 @@ enum KeychainStore {
     /// window between app launch and first onboarding registration.
     private static func resolve(_ key: String) -> String {
         guard perAccountKeys.contains(key) else { return key }
-        guard let id = AppGroup.readActiveAccountID() else { return key }
+        let effectiveID = processOverrideAccountID ?? AppGroup.readActiveAccountID()
+        guard let id = effectiveID else { return key }
         return "acct.\(id.uuidString).\(key)"
     }
 

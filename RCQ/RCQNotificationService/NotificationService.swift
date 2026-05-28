@@ -63,6 +63,32 @@ class NotificationService: UNNotificationServiceExtension {
         os_log("env present (len=%d), envType=%{public}@",
                log: Self.log, type: .default, envB64.count, envType)
 
+        // Multi-account push routing: the device token is per-device
+        // (not per-account), so a push for any local account lands
+        // here. If `to_uin` is set on the payload we use it to find
+        // which local account owns that UIN, then point KeychainStore
+        // + SignalProtocolDB at that account's stores for the
+        // decrypt. Without this step a push for a non-active account
+        // would resolve to the wrong Keychain prefix and the wrong
+        // libsignal local_identity, fail to decrypt, and fall through
+        // to the generic "New message" banner.
+        //
+        // Falls back to the active account if `to_uin` is missing
+        // (older backend that doesn't include the field) or no local
+        // account owns the value — preserves the pre-multi-account
+        // behaviour for any push the lookup can't route.
+        let toUIN: Int? = {
+            if let v = userInfo["to_uin"] as? Int { return v }
+            if let n = userInfo["to_uin"] as? NSNumber { return n.intValue }
+            return nil
+        }()
+        if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
+            KeychainStore.setProcessOverrideAccountID(targetID)
+            SignalProtocolDB.shared.reload(toAccountID: targetID)
+            os_log("routed push to_uin=%d → account=%{public}@",
+                   log: Self.log, type: .default, toUIN, targetID.uuidString)
+        }
+
         guard let crypto = SignalCryptoService.loadFromKeychain(ownUIN: 0) else {
             os_log("no identity in keychain (shared group missing?) — passing through",
                    log: Self.log, type: .error)
@@ -108,6 +134,21 @@ class NotificationService: UNNotificationServiceExtension {
                    String(describing: error))
             contentHandler(content)
         }
+    }
+
+    /// Walk the local account roster and return the ID of whichever
+    /// account owns the given UIN. Used by the multi-account push
+    /// router above. Returns nil if no account matches (push for an
+    /// account that's been removed from the device, or for a fresh
+    /// install that hasn't run AccountManager yet).
+    private func findAccountOwning(uin: Int) -> UUID? {
+        let target = String(uin)
+        for accountID in AppGroup.readAccountIDs() {
+            if KeychainStore.string(KeychainStore.Keys.uin, forAccount: accountID) == target {
+                return accountID
+            }
+        }
+        return nil
     }
 
     /// Sender's name → title; envelope type → body. Falls back to a

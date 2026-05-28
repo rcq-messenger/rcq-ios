@@ -169,6 +169,11 @@ final class AccountManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: Self.activeKey)
         }
+        // Keep the App Group account-ids.txt mirror in sync. NSE
+        // reads this file to know which local accounts exist when
+        // routing a push to the right libsignal store. Active ID
+        // is written separately by `mirrorActiveToLegacy`.
+        AppGroup.writeAccountIDs(accounts.map { $0.id })
     }
 
     /// Two-way sync of the active account ID + URL with legacy

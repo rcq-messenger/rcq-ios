@@ -83,4 +83,42 @@ enum AppGroup {
             try? FileManager.default.removeItem(at: url)
         }
     }
+
+    /// Plain file mirror of the FULL list of account IDs in the
+    /// local roster, newline-separated. Sibling of `activeAccountIDFileURL`
+    /// but for the multi-account NSE push-routing flow: when a push
+    /// arrives the NSE needs to know which local accounts exist
+    /// (not just which one is active) so it can find the account
+    /// whose UIN matches the push payload's `to_uin`. Written by
+    /// AccountManager on every roster mutation; read by NSE on
+    /// every push.
+    static var accountIDsFileURL: URL {
+        containerURL.appendingPathComponent("account-ids.txt")
+    }
+
+    /// Returns the list of every account ID known to the main app.
+    /// Cheap to call — the file is tiny (one UUID per line). Lines
+    /// that don't parse as UUIDs are skipped silently.
+    static func readAccountIDs() -> [UUID] {
+        guard let data = try? Data(contentsOf: accountIDsFileURL),
+              let text = String(data: data, encoding: .utf8)
+        else { return [] }
+        return text.split(separator: "\n")
+            .compactMap { line -> UUID? in
+                UUID(uuidString: line.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+    }
+
+    /// Atomically writes the account ID list to the App Group file.
+    /// AccountManager calls this from save() so the on-disk file
+    /// always matches the in-memory roster.
+    static func writeAccountIDs(_ ids: [UUID]) {
+        let url = accountIDsFileURL
+        if ids.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let text = ids.map { $0.uuidString }.joined(separator: "\n")
+        try? text.data(using: .utf8)?.write(to: url, options: .atomic)
+    }
 }

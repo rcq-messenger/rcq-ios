@@ -54,10 +54,35 @@ final class SignalProtocolDB: @unchecked Sendable {
     /// libsignal read/write completes against the old handle before
     /// the swap.
     func reload() {
+        reload(toAccountID: nil)
+    }
+
+    /// Variant of `reload()` that pins the new path to an explicit
+    /// account ID instead of reading the App Group file. Used by the
+    /// NSE multi-account push router: a push for a non-active
+    /// account arrives, NSE finds which local account owns the
+    /// recipient UIN, and calls this to swap libsignal stores to
+    /// that account for the decrypt — without ever touching the App
+    /// Group active-account-id file (which would confuse the main
+    /// app process).
+    ///
+    /// Pass nil to fall back to the App Group resolution (equivalent
+    /// to the no-arg `reload()`).
+    func reload(toAccountID accountID: UUID?) {
         queue.sync {
             if let db = db { sqlite3_close_v2(db) }
             self.db = nil
-            let url = Self.currentDBURL()
+            let url: URL
+            if let accountID {
+                let dir = AppGroup.signalStoreURL
+                    .appendingPathComponent(accountID.uuidString, isDirectory: true)
+                try? FileManager.default.createDirectory(
+                    at: dir, withIntermediateDirectories: true
+                )
+                url = dir.appendingPathComponent("signal-stores.sqlite")
+            } else {
+                url = Self.currentDBURL()
+            }
             self.dbURL = url
             Self.openConnection(at: url, into: &db)
         }
