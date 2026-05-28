@@ -1925,6 +1925,19 @@
 "onboard.pin.title" = "Locked on your device";
 "onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device — with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
 
+/* Account switcher + add account */
+"contact_list.add_account" = "Add another server";
+"add_account.title" = "New account";
+"add_account.intro.title" = "Which server?";
+"add_account.intro.body" = "Keep multiple accounts on different servers side by side. Your current one stays — its history and contacts are untouched. Switch between them with the pill at the top.";
+"add_account.search" = "Search servers";
+"add_account.empty" = "No matches";
+"add_account.custom.label" = "OR ENTER A URL MANUALLY";
+"add_account.custom.cta" = "Add";
+"add_account.custom.invalid" = "URL must start with https:// and have a hostname.";
+"add_account.adding" = "Registering on the server…";
+"add_account.error" = "Couldn't register. Check the URL and your network.";
+
 /* Server picker — final onboarding page */
 "onboard.server.pill.prefix" = "server:";
 "onboard.server.pill.change" = "change";

@@ -1,0 +1,271 @@
+import SwiftUI
+
+/// Add a new account on a different RCQ server alongside any
+/// existing accounts. Non-destructive: leaves every existing account
+/// (Keychain entries, MessageDB file, contact list, history) intact.
+/// After successful add, the new account becomes active and the
+/// main UI rebuilds against its data.
+///
+/// Distinct from `CustomServerSheet` (which is the destructive
+/// burn-and-switch path for users who don't want the previous
+/// account anymore) and from `ServerPickerSheet` (which runs at
+/// onboarding before any account exists and writes
+/// `rcq.baseURL` UserDefaults directly).
+struct AddAccountSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var directory = ServerDirectoryService.shared
+
+    @State private var query: String = ""
+    @State private var customURL: String = ""
+    @State private var adding: Bool = false
+    @State private var error: String?
+
+    private var filtered: [ServerEntry] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return directory.servers }
+        return directory.servers.filter { entry in
+            entry.name.lowercased().contains(q)
+                || entry.description.lowercased().contains(q)
+                || entry.region.lowercased().contains(q)
+                || entry.displayHost.lowercased().contains(q)
+        }
+    }
+
+    private var customURLTrimmed: String {
+        customURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var customURLValid: Bool {
+        guard let url = URL(string: customURLTrimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https",
+              url.host?.isEmpty == false
+        else { return false }
+        return true
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    headerBlock
+                    if !adding {
+                        searchField
+                        ScrollView {
+                            VStack(spacing: 10) {
+                                ForEach(filtered) { entry in
+                                    row(for: entry)
+                                }
+                                if filtered.isEmpty && customURL.isEmpty {
+                                    emptyState
+                                }
+                                customURLBlock
+                                Spacer(minLength: 24)
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.top, 8)
+                        }
+                    } else {
+                        loadingState
+                    }
+                }
+            }
+            .navigationTitle("add_account.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close".localized) { dismiss() }
+                        .disabled(adding)
+                }
+            }
+            .task {
+                await directory.refresh()
+            }
+        }
+    }
+
+    // MARK: - sections
+
+    private var headerBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("add_account.intro.title".localized)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            Text("add_account.intro.body".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(Theme.Color.textSecondary)
+                .font(.system(size: 13, weight: .semibold))
+            TextField("add_account.search".localized, text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.Color.bgSecondary)
+        .cornerRadius(10)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 10)
+    }
+
+    private func row(for entry: ServerEntry) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Task { await performAdd(serverURL: entry.url) }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(entry.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer(minLength: 8)
+                    if !entry.region.isEmpty && entry.region != "—" {
+                        Text(entry.region)
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Theme.Color.bgPrimary))
+                    }
+                }
+                if !entry.description.isEmpty {
+                    Text(entry.description)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(entry.displayHost)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Optional manual URL entry below the catalogue. Useful when
+    /// the user is adding a server that hasn't been listed in
+    /// `rcq-messenger/rcq-servers` yet (e.g. a freshly self-hosted
+    /// box, or a friend's private instance).
+    private var customURLBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("add_account.custom.label".localized)
+                .font(.caption2)
+                .tracking(1.2)
+                .foregroundColor(Theme.Color.textSecondary)
+                .padding(.top, 8)
+            HStack(spacing: 8) {
+                TextField("https://your-domain.example", text: $customURL)
+                    .keyboardType(.URL)
+                    .textContentType(.URL)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .font(.system(.callout, design: .monospaced))
+                    .padding(12)
+                    .background(Theme.Color.bgSecondary)
+                    .cornerRadius(10)
+                Button {
+                    Task { await performAdd(serverURL: customURLTrimmed) }
+                } label: {
+                    Text("add_account.custom.cta".localized)
+                        .font(.callout.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            customURLValid ? Theme.Color.accent : Theme.Color.bgSecondary
+                        )
+                        .cornerRadius(10)
+                }
+                .disabled(!customURLValid)
+            }
+            if !customURLTrimmed.isEmpty && !customURLValid {
+                Text("add_account.custom.invalid".localized)
+                    .font(.caption2)
+                    .foregroundColor(.red.opacity(0.85))
+            }
+            if let error {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundColor(.red.opacity(0.85))
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 22, weight: .light))
+                .foregroundColor(Theme.Color.textSecondary.opacity(0.5))
+            Text("add_account.empty".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("add_account.adding".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - actions
+
+    private func performAdd(serverURL: String) async {
+        adding = true
+        error = nil
+        await appState.addAccount(serverURL: serverURL)
+        adding = false
+        if appState.bootError != nil {
+            // Boot pipeline failed (network unreachable, server
+            // refused registration, etc). Roll back: remove the
+            // dangling account from the roster so the user lands
+            // back on the previous active account untouched.
+            if let danglingID = AccountManager.shared.activeAccountID,
+               AccountManager.shared.accounts.last?.id == danglingID {
+                AccountManager.shared.remove(danglingID)
+            }
+            error = "add_account.error".localized
+            return
+        }
+        dismiss()
+    }
+}

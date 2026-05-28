@@ -81,6 +81,17 @@ final class MessageDB {
         }
     }
 
+    /// Reopen the persistent container at whatever per-account
+    /// SQLite path the AppGroup file currently points at. Called by
+    /// AppState during a soft account switch — AccountManager has
+    /// already flipped the active ID + App Group file, so
+    /// `makeContainer` resolves to the new account's file. The old
+    /// container is dropped; its file stays on disk untouched
+    /// because per-account files are isolated.
+    func reload() {
+        container = MessageDB.makeContainer(decoy: decoyMode)
+    }
+
     // MARK: - store files
 
     private static func storeURL(decoy: Bool) -> URL {

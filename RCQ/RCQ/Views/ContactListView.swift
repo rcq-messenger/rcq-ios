@@ -13,8 +13,10 @@ struct ContactListView: View {
     @StateObject private var appState = AppState.shared
     @StateObject private var stories = StoryService.shared
     @StateObject private var news = NewsService.shared
+    @StateObject private var accountManager = AccountManager.shared
 
     @State private var showAddContact = false
+    @State private var showAddAccount = false
     @State private var showProfile = false
     @State private var showPending = false
     @State private var showSettings = false
@@ -91,6 +93,9 @@ struct ContactListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    accountSwitcherPill
+                }
                 ToolbarItem(placement: .principal) {
                     identityPrincipal
                 }
@@ -141,6 +146,7 @@ struct ContactListView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
             .sheet(isPresented: $showPending) { PendingRequestsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $showAddAccount) { AddAccountSheet() }
             .sheet(isPresented: $showArchivePINGate) {
                 PINVerifySheet(title: "pin_verify.title.archive".localized) {
                     archiveUnlocked = true
@@ -389,6 +395,57 @@ struct ContactListView: View {
                     myUIN: AuthService.shared.ownUIN ?? 0
                 )
             }
+    }
+
+    /// Tiny capsule at the top-leading edge of the nav bar showing the
+    /// current account's server host. Tap reveals a menu listing every
+    /// local account (checkmark on active) plus an "Add another
+    /// server" entry that opens `AddAccountSheet`. Hidden entirely
+    /// before onboarding has minted Account[0] — the principal nav
+    /// area is the user's first-launch focus, no infrastructure noise.
+    @ViewBuilder
+    private var accountSwitcherPill: some View {
+        if let active = accountManager.active {
+            Menu {
+                ForEach(accountManager.accounts.sorted(by: { $0.createdAt < $1.createdAt })) { account in
+                    Button {
+                        guard account.id != accountManager.activeAccountID else { return }
+                        Task { await appState.switchToAccount(account.id) }
+                    } label: {
+                        if account.id == accountManager.activeAccountID {
+                            Label(account.displayHost, systemImage: "checkmark")
+                        } else {
+                            Text(account.displayHost)
+                        }
+                    }
+                }
+                Divider()
+                Button {
+                    showAddAccount = true
+                } label: {
+                    Label("contact_list.add_account".localized, systemImage: "plus")
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "server.rack")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(active.displayHost)
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .foregroundColor(Theme.Color.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(Theme.Color.bgSecondary.opacity(0.6))
+                )
+            }
+        } else {
+            EmptyView()
+        }
     }
 
     private var identityPrincipal: some View {

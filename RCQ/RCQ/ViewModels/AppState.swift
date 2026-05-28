@@ -437,6 +437,83 @@ final class AppState: ObservableObject {
         await boot()
     }
 
+    /// Soft switch to a different existing account. Wipes only the
+    /// in-memory view of the current account (contacts, groups,
+    /// message store, WebSocket) — persistent storage (per-account
+    /// Keychain entries, per-account MessageDB file) stays intact
+    /// so switching back later resumes where we left off.
+    ///
+    /// No-op if the target account isn't in the roster or is
+    /// already active.
+    func switchToAccount(_ id: UUID) async {
+        guard AccountManager.shared.accounts.contains(where: { $0.id == id }) else { return }
+        guard id != AccountManager.shared.activeAccountID else { return }
+        AccountManager.shared.setActive(id)
+        await rebootForActiveAccount()
+    }
+
+    /// Add a brand-new account on `serverURL`, switch active to it,
+    /// and let boot mint a fresh identity on the new server. If the
+    /// network step inside boot fails, the new account stays in the
+    /// roster but unregistered; the user can retry from the
+    /// account switcher.
+    func addAccount(serverURL: String) async {
+        // AccountManager.add also setActive(new.id) and triggers
+        // mirrorActiveToLegacy → App Group file + rcq.baseURL
+        // already point at the new account by the time
+        // rebootForActiveAccount runs.
+        AccountManager.shared.add(serverURL: serverURL)
+        await rebootForActiveAccount()
+    }
+
+    /// Common sequence used after `setActive` or `add`: disconnect
+    /// the old WebSocket, drop every in-memory cache that was
+    /// scoped to the previous account, swap MessageDB to the new
+    /// account's SQLite file, and re-run boot() so the new
+    /// account's Keychain identity + server URL get picked up.
+    ///
+    /// Critically does NOT touch Keychain entries or SQLite rows —
+    /// those live under per-account prefixes / filenames and
+    /// survive untouched for the next switch-back. The wipe set
+    /// mirrors burnAccount()'s pile minus the destructive bits
+    /// (wipeLocalIdentity, deleteServerAccount, SignalProtocolDB.wipe).
+    private func rebootForActiveAccount() async {
+        WebSocketService.shared.disconnect()
+
+        ContactService.shared.wipe()
+        GroupService.shared.wipe()
+        PushDecryptCache.wipe()
+        NotificationPrefsService.shared.wipe()
+        MessageStore.shared.clearAll()
+        VisitStore.shared.wipe()
+        RandomChatService.shared.wipe()
+        CallService.shared.wipe()
+        NotificationService.shared.wipe()
+        FavoritesStore.shared.wipe()
+        ArchiveStore.shared.wipe()
+        ContactSoundStore.shared.wipe()
+        ChatSettingsStore.shared.wipe()
+        NearbyService.shared.wipe()
+        NicknameCache.wipe()
+        RemovedContactsStore.shared.wipe()
+        ReactionInboxStore.shared.wipe()
+        EncryptedBlobDiskCache.shared.clear()
+        PresenceService.shared.status = .online
+        PresenceService.shared.statusMessage = nil
+        typingByUIN = [:]
+        pendingOpenChatUIN = nil
+        pendingOpenGroupID = nil
+        pendingOpenPending = false
+        pendingOpenUserProfile = nil
+        pendingAddUIN = nil
+
+        MessageDB.shared.reload()
+
+        booted = false
+        bootError = nil
+        await boot()
+    }
+
     func performPanicWipe() async {
         PINVault.destroy()
         MessageDB.destroyDecoyStore()
