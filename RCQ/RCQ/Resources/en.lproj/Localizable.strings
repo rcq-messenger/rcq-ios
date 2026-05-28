@@ -1503,7 +1503,7 @@
 
 "onboard.welcome.kicker" = "RCQ";
 "onboard.welcome.title" = "Welcome";
-"onboard.welcome.body" = "An ICQ-flavoured messenger for the people who still remember the disconnect tone — fast, anonymous-friendly, and full of detail.";
+"onboard.welcome.body" = "A serious privacy messenger with real end-to-end encryption by default and built-in censorship bypass. No phone, no email, no ads.";
 
 "onboard.status.kicker" = "STATUS";
 "onboard.status.title" = "Pick your status";
@@ -1511,7 +1511,7 @@
 
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "Sealed-sender chat";
-"onboard.chat.body" = "End-to-end encrypted, with Kolobok smileys built in. Type :), :D, ;-) the way you used to — they animate inline.";
+"onboard.chat.body" = "End-to-end encrypted on every message. The server doesn't see who's writing to whom — the sender's identity is sealed inside the envelope, not in the header.";
 
 "onboard.nearby.kicker" = "NEARBY";
 "onboard.nearby.title" = "Find people in your area";
@@ -1930,7 +1930,7 @@
 "onboard.server.pill.change" = "change";
 "onboard.server.picker.title" = "Choose a server";
 "onboard.server.picker.intro.title" = "Where to register the account";
-"onboard.server.picker.intro.body" = "Each RCQ server is its own island. Your account, contacts and messages live only on the server you pick. You can only message users on the same one. Federation is deliberately off the roadmap.";
+"onboard.server.picker.intro.body" = "Each RCQ server is its own island. Your account, contacts and messages live only on the server you pick. You can only message users on the same one.";
 "onboard.server.picker.search" = "Search servers";
 "onboard.server.picker.empty" = "No matches";
 
