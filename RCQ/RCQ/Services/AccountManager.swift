@@ -1,0 +1,196 @@
+import Foundation
+
+/// Singleton owning the local account roster. Persists as JSON in
+/// UserDefaults, exposes the active account via `@Published`. Every
+/// singleton that touches per-account storage (S2 onward: Keychain,
+/// MessageDB, APIClient base URL, etc.) reads
+/// `AccountManager.shared.active` instead of going to legacy
+/// UserDefaults keys directly.
+///
+/// S1 behaviour (this slice): the roster + active pointer are
+/// maintained, but legacy storage paths still operate alongside.
+/// Migration on first launch wraps the existing single-identity state
+/// as `Account[0]` so an upgraded TF57 user sees zero change. S2
+/// pivots the Keychain and MessageDB readers over to per-account
+/// addressing; S3 surfaces the switcher in UI.
+///
+/// Bootstrap order:
+///   1. Load persisted accounts from UserDefaults. If non-empty,
+///      done — subsequent launches always take this path.
+///   2. Otherwise check legacy state (`rcq.baseURL` UserDefaults +
+///      `KeychainStore.Keys.uin`). If either is set, wrap that
+///      identity as Account[0] with a freshly minted UUID.
+///   3. Otherwise: empty roster (truly fresh install).
+@MainActor
+final class AccountManager: ObservableObject {
+    static let shared = AccountManager()
+
+    @Published private(set) var accounts: [Account] = []
+    @Published private(set) var activeAccountID: UUID?
+
+    /// Currently active account, or nil on a fresh install before
+    /// any onboarding has run.
+    var active: Account? {
+        guard let id = activeAccountID else { return nil }
+        return accounts.first(where: { $0.id == id })
+    }
+
+    /// Convenience for callers that need a server URL with the
+    /// "empty means default" legacy convention preserved. Returns
+    /// the active account's serverURL, falling back to
+    /// `https://api.rcq.app` on a fresh install where no account
+    /// exists yet (e.g. the very first APIClient call from
+    /// OnboardingView before registration).
+    var activeServerURL: String {
+        active?.serverURL ?? "https://api.rcq.app"
+    }
+
+    private static let accountsKey = "rcq.accounts.v1"
+    private static let activeKey = "rcq.accounts.activeID.v1"
+
+    private init() {
+        loadFromDefaults()
+        if accounts.isEmpty {
+            migrateLegacyIfPresent()
+        }
+    }
+
+    /// Add a new account to the roster and set it active. Used by:
+    ///   - First-launch onboarding (creates Account[0] for a new user)
+    ///   - Multi-account add flow in S3 (creates Account[N] alongside
+    ///     existing ones without burning anything)
+    @discardableResult
+    func add(serverURL: String, displayLabel: String? = nil) -> Account {
+        let account = Account(serverURL: serverURL, displayLabel: displayLabel)
+        accounts.append(account)
+        activeAccountID = account.id
+        save()
+        mirrorActiveToLegacy()
+        return account
+    }
+
+    /// Make a different existing account the active one. Singletons
+    /// listening on `active` re-route on the next read; S2 will wire
+    /// MessageDB / KeychainStore / APIClient to react automatically.
+    func setActive(_ id: UUID) {
+        guard accounts.contains(where: { $0.id == id }) else { return }
+        activeAccountID = id
+        save()
+        mirrorActiveToLegacy()
+    }
+
+    /// Remove an account from the roster. Caller is responsible for
+    /// wiping its Keychain entries + MessageDB file (S2 introduces
+    /// helpers for that). If the removed account was active, falls
+    /// back to the first remaining one — if no accounts remain, the
+    /// app is back to a fresh-install state.
+    func remove(_ id: UUID) {
+        accounts.removeAll(where: { $0.id == id })
+        if activeAccountID == id {
+            activeAccountID = accounts.first?.id
+        }
+        save()
+        mirrorActiveToLegacy()
+    }
+
+    /// Update server URL or display label on an existing account.
+    /// No-op for unknown id.
+    func update(_ id: UUID, serverURL: String? = nil, displayLabel: String? = nil) {
+        guard let idx = accounts.firstIndex(where: { $0.id == id }) else { return }
+        if let serverURL { accounts[idx].serverURL = serverURL }
+        if let displayLabel { accounts[idx].displayLabel = displayLabel }
+        save()
+        if id == activeAccountID {
+            mirrorActiveToLegacy()
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func loadFromDefaults() {
+        if let data = UserDefaults.standard.data(forKey: Self.accountsKey),
+           let list = try? JSONDecoder().decode([Account].self, from: data) {
+            accounts = list
+        }
+        if let raw = UserDefaults.standard.string(forKey: Self.activeKey),
+           let id = UUID(uuidString: raw),
+           accounts.contains(where: { $0.id == id }) {
+            activeAccountID = id
+        } else {
+            activeAccountID = accounts.first?.id
+        }
+    }
+
+    private func save() {
+        if let data = try? JSONEncoder().encode(accounts) {
+            UserDefaults.standard.set(data, forKey: Self.accountsKey)
+        }
+        if let id = activeAccountID {
+            UserDefaults.standard.set(id.uuidString, forKey: Self.activeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.activeKey)
+        }
+    }
+
+    /// During S1 the legacy single-tenant code paths (APIClient
+    /// reading `rcq.baseURL`, etc) are still authoritative. Keep
+    /// them in sync with the active account so AccountManager
+    /// remains a pure superset — if we never read AccountManager
+    /// at runtime in S1, nothing breaks. S2 reverses this: legacy
+    /// keys disappear and AccountManager becomes authoritative.
+    private func mirrorActiveToLegacy() {
+        if let url = active?.serverURL {
+            // Mirror the "empty means default" convention used by
+            // APIClient + CustomServerSheet: don't bother storing
+            // the default URL explicitly.
+            if url == "https://api.rcq.app" {
+                UserDefaults.standard.removeObject(forKey: "rcq.baseURL")
+            } else {
+                UserDefaults.standard.set(url, forKey: "rcq.baseURL")
+            }
+        } else {
+            UserDefaults.standard.removeObject(forKey: "rcq.baseURL")
+        }
+    }
+
+    // MARK: - Legacy migration
+
+    /// Detect a pre-v0.3 single-tenant install and wrap its state as
+    /// `Account[0]`. Idempotent — runs at most once because once an
+    /// account exists, `loadFromDefaults` populates `accounts` and
+    /// `init()` skips this method.
+    ///
+    /// Detection heuristic: a legacy install has at least one of:
+    ///   - `rcq.baseURL` UserDefaults set (custom server picked
+    ///     via CustomServerSheet, or via the new OnboardingView
+    ///     picker on a pre-v0.3 build)
+    ///   - `KeychainStore.Keys.uin` populated (user already
+    ///     registered)
+    /// Either alone is enough — mid-onboarding states (baseURL set
+    /// before register completes) and legacy default-server installs
+    /// (never touched rcq.baseURL but registered) both round-trip
+    /// correctly.
+    ///
+    /// S1 deliberately does NOT delete legacy keys here. The
+    /// Keychain entries (uin, token, identityPriv, etc.) stay under
+    /// their global names so APIClient + AppState + KeychainStore
+    /// readers continue to find them with no code change in S1. S2
+    /// rewrites those readers to use per-account prefixes and
+    /// renames the legacy keys to the Account[0] prefix at the same
+    /// time.
+    private func migrateLegacyIfPresent() {
+        let legacyServer = UserDefaults.standard.string(forKey: "rcq.baseURL") ?? ""
+        let hasUIN = KeychainStore.string(KeychainStore.Keys.uin) != nil
+
+        if legacyServer.isEmpty && !hasUIN {
+            // Truly fresh install. Nothing to migrate.
+            return
+        }
+
+        let url = legacyServer.isEmpty ? "https://api.rcq.app" : legacyServer
+        let migrated = Account(serverURL: url)
+        accounts = [migrated]
+        activeAccountID = migrated.id
+        save()
+    }
+}

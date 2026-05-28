@@ -154,6 +154,12 @@ struct RCQApp: App {
 
     init() {
         UserDefaults.standard.removeObject(forKey: "rcq.singbox.activePort")
+        // Eager-touch AccountManager FIRST so its first-launch legacy
+        // migration runs before any other singleton reads identity
+        // material. Pre-v0.3 installs get Account[0] minted around the
+        // existing UIN + baseURL; fresh installs start with an empty
+        // roster that the onboarding flow populates.
+        _ = AccountManager.shared
         // Eager-touch so PushKit + LanguageManager (App Group mirror) are
         // initialised before any push reaches the NSE.
         _ = VoIPPushService.shared
