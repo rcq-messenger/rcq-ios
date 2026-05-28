@@ -49,72 +49,88 @@ struct UINShopView: View {
     private var canBuy: Bool { isValidLength && isAvailable && !buying }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Theme.Color.bgPrimary.ignoresSafeArea()
+        NavigationStack {
+            ZStack(alignment: .top) {
+                Theme.Color.bgPrimary.ignoresSafeArea()
 
-            // Tap-anywhere-blank-area to dismiss the keyboard.
-            // Sits behind the content but in front of the bg colour
-            // so taps on the plate / info / CTA still hit those
-            // first (Button hit-test wins over this transparent
-            // layer).
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { fieldFocused = false }
-                .ignoresSafeArea()
+                // Tap-anywhere-blank-area to dismiss the keyboard.
+                // Sits behind the content but in front of the bg colour
+                // so taps on the plate / info / CTA still hit those
+                // first (Button hit-test wins over this transparent
+                // layer).
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { fieldFocused = false }
+                    .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    Spacer(minLength: 24)
-                    plateCard
-                    statusLine
-                    priceLine
-                    Spacer(minLength: 18)
-                    infoBlock
-                    Spacer(minLength: 24)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        Spacer(minLength: 16)
+                        plateCard
+                        statusLine
+                        priceLine
+                        Spacer(minLength: 18)
+                        infoBlock
+                        Spacer(minLength: 24)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity, minHeight: scrollMinHeight)
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 56)       // breathing room under the close button
-                .padding(.bottom, 120)   // breathing room above the CTA
-                .frame(maxWidth: .infinity, minHeight: scrollMinHeight)
             }
-
-            closeButton
-                .padding(.leading, 12)
-                .padding(.top, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack {
-                Spacer()
+            // System nav bar, matching the main screen (ContactListView):
+            // inline title + visible toolbar material background. Replaces
+            // the old free-floating chevron-down circle, which read as an
+            // unfinished surface rather than a proper screen.
+            .navigationTitle("uin_shop.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    .accessibilityLabel("common.close".localized)
+                }
+            }
+            // CTA pinned to the bottom safe area — reserves its own space
+            // so the scroll content never hides behind it, no manual
+            // bottom-padding guesswork.
+            .safeAreaInset(edge: .bottom) {
                 bottomCTA
                     .padding(.horizontal, 22)
-                    .padding(.bottom, 18)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
+                    .background(Theme.Color.bgPrimary)
             }
-        }
-        .background(
-            TextField("", text: $typed)
-                .keyboardType(.numberPad)
-                .focused($fieldFocused)
-                .opacity(0)
-                .frame(width: 1, height: 1)
-                .onChange(of: typed) { newValue in
-                    let filtered = String(newValue.filter(\.isNumber).prefix(9))
-                    if filtered != newValue { typed = filtered; return }
-                    quote = nil
-                    error = nil
-                    scheduleQuote()
+            .background(
+                TextField("", text: $typed)
+                    .keyboardType(.numberPad)
+                    .focused($fieldFocused)
+                    .opacity(0)
+                    .frame(width: 1, height: 1)
+                    .onChange(of: typed) { newValue in
+                        let filtered = String(newValue.filter(\.isNumber).prefix(9))
+                        if filtered != newValue { typed = filtered; return }
+                        quote = nil
+                        error = nil
+                        scheduleQuote()
+                    }
+            )
+            .confirmationDialog(
+                confirmTitle,
+                isPresented: $showConfirm,
+                titleVisibility: .visible
+            ) {
+                Button(confirmCTA, role: .destructive) {
+                    Task { await runPurchase() }
                 }
-        )
-        .confirmationDialog(
-            confirmTitle,
-            isPresented: $showConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(confirmCTA, role: .destructive) {
-                Task { await runPurchase() }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: {
+                Text("uin_shop.confirm.body".localized)
             }
-            Button("common.cancel".localized, role: .cancel) {}
-        } message: {
-            Text("uin_shop.confirm.body".localized)
         }
     }
 
@@ -125,19 +141,6 @@ struct UINShopView: View {
     /// long as the container is tall enough.
     private var scrollMinHeight: CGFloat {
         UIScreen.main.bounds.height - 120
-    }
-
-    // MARK: - Close
-
-    private var closeButton: some View {
-        Button(action: { dismiss() }) {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(Theme.Color.textSecondary)
-                .frame(width: 36, height: 36)
-                .background(Theme.Color.bgSecondary)
-                .clipShape(Circle())
-        }
     }
 
     // MARK: - Plate
