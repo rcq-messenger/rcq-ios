@@ -110,6 +110,13 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
 
     /// Tap handler. Drains the offline queue and routes to the surface
     /// whose threadIdentifier is `peer-<UIN>` / `pending` / `trades`.
+    ///
+    /// Multi-identity: when the push carries `to_uin` and that recipient
+    /// belongs to a non-active local account, auto-switch to the owning
+    /// account BEFORE routing the tap. Without this, the user taps a
+    /// banner for account B, the app opens to account A's contact list,
+    /// and the new message lives invisibly behind the switcher pill —
+    /// they have to figure out the switch is needed and do it manually.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
@@ -117,8 +124,25 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
     ) {
         let threadID = response.notification.request.content.threadIdentifier
         let target = Self.parsePushTarget(fromThreadID: threadID)
+        let userInfo = response.notification.request.content.userInfo
+        // `to_uin` can arrive as Int (encoded by the backend's APNs
+        // serializer) or String (depending on JSON roundtripping at the
+        // edge). Accept both, fall through to nil if neither parses.
+        let toUIN: Int? = (userInfo["to_uin"] as? Int)
+            ?? (userInfo["to_uin"] as? String).flatMap { Int($0) }
         Task { @MainActor in
-            await MessageService.shared.fetchOfflineQueue()
+            if let toUIN,
+               let owner = Self.findAccountOwningUIN(toUIN),
+               owner != AccountManager.shared.activeAccountID {
+                // switchToAccount runs the full reboot path
+                // (rebootForActiveAccount → boot), which itself drains
+                // the new account's offline queue. We skip the redundant
+                // pre-switch fetchOfflineQueue() that would otherwise
+                // pull against the OUTGOING account's storage.
+                await AppState.shared.switchToAccount(owner)
+            } else {
+                await MessageService.shared.fetchOfflineQueue()
+            }
             switch target {
             case .peer(let uin):
                 AppState.shared.pendingOpenChatUIN = uin
@@ -129,6 +153,25 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
             }
             completionHandler()
         }
+    }
+
+    /// Look up which local account on this device owns a given recipient
+    /// UIN. Walks the account-ids file written by AccountManager.save(),
+    /// probes each candidate's per-account Keychain slot directly via
+    /// `KeychainStore.string(_:forAccount:)` so the lookup has no
+    /// side-effect on the active-account pointer. Returns nil if no
+    /// local account claims the UIN (push for a UIN we don't have keys
+    /// for — should never happen given the NSE only delivers the banner
+    /// when it found the right account, but defensive nil keeps the
+    /// tap handler from forcing a wrong-account switch in that case).
+    private static func findAccountOwningUIN(_ uin: Int) -> UUID? {
+        let target = String(uin)
+        for accountID in AppGroup.readAccountIDs() {
+            if KeychainStore.string(KeychainStore.Keys.uin, forAccount: accountID) == target {
+                return accountID
+            }
+        }
+        return nil
     }
 
     enum PushTarget {
