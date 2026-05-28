@@ -19,8 +19,11 @@ final class AuthService: ObservableObject {
     /// launches validates the cached identity against the server and self-heals
     /// if our UIN no longer exists (burn from another device, dev DB wipe).
     func bootstrapIfNeeded(suggestedNickname: String? = nil) async throws {
-        if let token = KeychainStore.string(KeychainStore.Keys.token),
-           let uinStr = KeychainStore.string(KeychainStore.Keys.uin),
+        let probeToken = KeychainStore.string(KeychainStore.Keys.token)
+        let probeUIN = KeychainStore.string(KeychainStore.Keys.uin)
+        print("[AuthService] bootstrapIfNeeded: keychain token=\(probeToken == nil ? "nil" : "set") uin=\(probeUIN ?? "nil")")
+        if let token = probeToken,
+           let uinStr = probeUIN,
            let uin = Int(uinStr) {
             await APIClient.shared.setToken(token)
             do {
@@ -74,6 +77,7 @@ final class AuthService: ObservableObject {
         )
         UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
 
+        print("[AuthService] /auth/register returned uin=\(out.uin)")
         KeychainStore.setString(KeychainStore.Keys.uin, String(out.uin))
         KeychainStore.setString(KeychainStore.Keys.token, out.token)
         KeychainStore.setString(KeychainStore.Keys.nickname, nick)

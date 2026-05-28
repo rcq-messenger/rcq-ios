@@ -105,6 +105,7 @@ final class AccountManager: ObservableObject {
         activeAccountID = account.id
         save()
         mirrorActiveToLegacy()
+        print("[AccountManager] add: id=\(account.id) serverURL=\(serverURL) total=\(accounts.count) active=\(activeAccountID?.uuidString ?? "nil")")
         return account
     }
 
@@ -116,6 +117,7 @@ final class AccountManager: ObservableObject {
         activeAccountID = id
         save()
         mirrorActiveToLegacy()
+        print("[AccountManager] setActive: id=\(id)")
     }
 
     /// Remove an account from the roster. Caller is responsible for
