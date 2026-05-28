@@ -414,29 +414,34 @@ struct ContactListView: View {
                         guard account.id != accountManager.activeAccountID else { return }
                         Task { await appState.switchToAccount(account.id) }
                     } label: {
-                        // Two-line label inside Menu: human-readable
-                        // server name (from the public catalogue when
-                        // the URL matches an entry, otherwise the
-                        // bare host) on top, host as monospaced
-                        // subtitle below. Self-hosted instances with
-                        // unfamiliar URLs become recognisable at a
-                        // glance, which is the whole point.
+                        // Three-line label inside the Menu: human-
+                        // readable server name on top, host below,
+                        // and the account's UIN as the third line —
+                        // the UIN is the actually-unique identifier
+                        // a user remembers ("I'm UIN 12345 on this
+                        // server"), especially when two accounts
+                        // happen to live on the same backend.
                         let primary = accountTitle(for: account)
                         let secondary = account.displayHost
+                        let uin = KeychainStore.string(
+                            KeychainStore.Keys.uin,
+                            forAccount: account.id
+                        )
+                        let lines = VStack(alignment: .leading) {
+                            Text(primary)
+                            Text(secondary)
+                            if let uin {
+                                Text("#\(uin)")
+                            }
+                        }
                         if account.id == accountManager.activeAccountID {
                             Label {
-                                VStack(alignment: .leading) {
-                                    Text(primary)
-                                    Text(secondary)
-                                }
+                                lines
                             } icon: {
                                 Image(systemName: "checkmark")
                             }
                         } else {
-                            VStack(alignment: .leading) {
-                                Text(primary)
-                                Text(secondary)
-                            }
+                            lines
                         }
                     }
                 }

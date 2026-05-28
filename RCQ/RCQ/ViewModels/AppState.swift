@@ -479,6 +479,12 @@ final class AppState: ObservableObject {
     /// (wipeLocalIdentity, deleteServerAccount, SignalProtocolDB.wipe).
     private func rebootForActiveAccount() async {
         WebSocketService.shared.disconnect()
+        // Drop AuthService's in-memory snapshot of the OLD active
+        // account FIRST so any view that re-renders during the
+        // booted=false → booted=true window (BootSplash etc.) reads
+        // a clean "no identity" state instead of the stale UIN that
+        // belonged to the account we're switching away from.
+        AuthService.shared.resetForAccountSwitch()
 
         ContactService.shared.wipe()
         GroupService.shared.wipe()

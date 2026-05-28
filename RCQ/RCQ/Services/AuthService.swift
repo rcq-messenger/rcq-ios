@@ -112,6 +112,20 @@ final class AuthService: ObservableObject {
 
     /// Hard reset — wipes Keychain, in-memory state, and API token.
     /// Used by the "Burn account" flow.
+    /// In-memory reset for the soft account-switch path. Doesn't
+    /// touch Keychain or the libsignal store — those are per-account
+    /// already and stay on disk for the next switch-back. Just nulls
+    /// out the @Published properties so any view still holding a
+    /// reference to AuthService.shared during the rebootForActiveAccount
+    /// window doesn't render the OLD account's UIN / nickname over
+    /// the new account's empty state. Bootstrap repopulates these
+    /// from the new account's Keychain prefix.
+    func resetForAccountSwitch() {
+        ownUIN = nil
+        nickname = ""
+        isReady = false
+    }
+
     func wipeLocalIdentity() async {
         for key in [
             KeychainStore.Keys.uin,
