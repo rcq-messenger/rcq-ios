@@ -137,7 +137,8 @@ final class AppState: ObservableObject {
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         let baseURL = APIClient.shared.baseURL
-        WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+        let serverToken = AccountManager.shared.active?.serverToken
+        WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL, serverToken: serverToken)
         await syncOwnPresenceFromServer(uin: uin)
         await ContactService.shared.refresh()
         await GroupService.shared.refresh()
@@ -164,6 +165,15 @@ final class AppState: ObservableObject {
 
     func boot(suggestedNickname: String? = nil) async {
         RelayConfigStore.shared.refreshInBackground()
+        // Push the active account's masquerade token to APIClient
+        // BEFORE any HTTP fires. Defaults to nil for public backends
+        // (api.rcq.app), set per-account by the operator at add-time
+        // for self-host instances behind a Caddy `X-RCQ-Auth` gate.
+        // Without this header, those backends serve a decoy static
+        // site instead of FastAPI — `/health` and `/auth/register`
+        // would both 404 to the scanner, and to us too if we forget
+        // the token.
+        await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
 
         // Offline-first path. If we already have a local identity AND no
         // network is available, skip every server-touching call and let
@@ -272,7 +282,10 @@ final class AppState: ObservableObject {
             }
 
             let baseURL = APIClient.shared.baseURL
-            WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+            WebSocketService.shared.connect(
+                uin: uin, token: token, baseURL: baseURL,
+                serverToken: AccountManager.shared.active?.serverToken
+            )
 
             await syncOwnPresenceFromServer(uin: uin)
             await ContactService.shared.refresh()
@@ -478,12 +491,14 @@ final class AppState: ObservableObject {
     /// the subsequent register fails (the user can retry via the
     /// switcher; the dangling account stays in the roster).
     @discardableResult
-    func addAccount(serverURL: String) async -> Bool {
+    func addAccount(serverURL: String, serverToken: String? = nil) async -> Bool {
         // AccountManager.add also setActive(new.id) and triggers
         // mirrorActiveToLegacy → App Group file + rcq.baseURL
         // already point at the new account by the time
-        // rebootForActiveAccount runs.
-        guard AccountManager.shared.add(serverURL: serverURL) != nil else {
+        // rebootForActiveAccount runs. serverToken optional; non-nil
+        // for self-host backends behind a Caddy X-RCQ-Auth gate, nil
+        // for public deployments (api.rcq.app, default self-host).
+        guard AccountManager.shared.add(serverURL: serverURL, serverToken: serverToken) != nil else {
             return false
         }
         await rebootForActiveAccount()
@@ -509,6 +524,12 @@ final class AppState: ObservableObject {
         // a clean "no identity" state instead of the stale UIN that
         // belonged to the account we're switching away from.
         AuthService.shared.resetForAccountSwitch()
+
+        // Re-point the masquerade header to the new account's token
+        // BEFORE anything fires HTTP against the destination server.
+        // boot() also does this defensively, but flipping here covers
+        // the brief window where AuthService is being torn down.
+        await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
 
         // Reset to defaultLegacy so the new account's boot fetch
         // populates the actual capabilities of the destination server,
@@ -567,7 +588,8 @@ final class AppState: ObservableObject {
         isOffline = false
         if !WebSocketService.shared.isConnected {
             WebSocketService.shared.connect(
-                uin: uin, token: token, baseURL: APIClient.shared.baseURL
+                uin: uin, token: token, baseURL: APIClient.shared.baseURL,
+                serverToken: AccountManager.shared.active?.serverToken
             )
         }
         await syncOwnPresenceFromServer(uin: uin)

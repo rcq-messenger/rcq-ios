@@ -19,6 +19,7 @@ struct AddAccountSheet: View {
     @StateObject private var accountManager = AccountManager.shared
     @State private var query: String = ""
     @State private var customURL: String = ""
+    @State private var customToken: String = ""
     @State private var adding: Bool = false
     @State private var error: String?
 
@@ -35,6 +36,10 @@ struct AddAccountSheet: View {
 
     private var customURLTrimmed: String {
         customURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var customTokenTrimmed: String {
+        customToken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var customURLValid: Bool {
@@ -197,7 +202,12 @@ struct AddAccountSheet: View {
                     .background(Theme.Color.bgSecondary)
                     .cornerRadius(10)
                 Button {
-                    Task { await performAdd(serverURL: customURLTrimmed) }
+                    Task {
+                        await performAdd(
+                            serverURL: customURLTrimmed,
+                            serverToken: customTokenTrimmed.isEmpty ? nil : customTokenTrimmed
+                        )
+                    }
                 } label: {
                     Text("add_account.custom.cta".localized)
                         .font(.callout.weight(.semibold))
@@ -211,6 +221,18 @@ struct AddAccountSheet: View {
                 }
                 .disabled(!customURLValid)
             }
+            // Optional masquerade token for self-host backends gated
+            // behind a Caddy `X-RCQ-Auth` header. Empty for default
+            // public backends. Operator distributes the token out of
+            // band; we don't validate it here, the request just 404s
+            // (decoy) if the token is wrong.
+            TextField("add_account.custom.token".localized, text: $customToken)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.never)
+                .font(.system(.caption, design: .monospaced))
+                .padding(10)
+                .background(Theme.Color.bgSecondary)
+                .cornerRadius(8)
             if !customURLTrimmed.isEmpty && !customURLValid {
                 Text("add_account.custom.invalid".localized)
                     .font(.caption2)
@@ -250,7 +272,7 @@ struct AddAccountSheet: View {
 
     // MARK: - actions
 
-    private func performAdd(serverURL: String) async {
+    private func performAdd(serverURL: String, serverToken: String? = nil) async {
         // UI defence: AccountManager also refuses but we'd rather
         // not flash the loading state for a guaranteed-fail add.
         if accountManager.isAtAccountLimit {
@@ -262,7 +284,7 @@ struct AddAccountSheet: View {
         }
         adding = true
         error = nil
-        let ok = await appState.addAccount(serverURL: serverURL)
+        let ok = await appState.addAccount(serverURL: serverURL, serverToken: serverToken)
         adding = false
         if !ok {
             error = String(

@@ -42,6 +42,20 @@ struct Account: Codable, Identifiable, Hashable {
     /// affordance for distinguishing accounts at a glance.
     var displayLabel: String?
 
+    /// Pre-shared masquerade token, opt-in per server. When set, the
+    /// iOS client sends `X-RCQ-Auth: <token>` on every request to this
+    /// backend. The operator's Caddy frontend reads the header and
+    /// either proxies to FastAPI (header matches) or serves a decoy
+    /// static site (header missing/wrong). Defeats passive scanners
+    /// (Shodan, Censys) that probe `/auth/register` or `/health` and
+    /// otherwise see a stock RCQ backend.
+    ///
+    /// Stays nil on api.rcq.app and any other public-by-design
+    /// backend. Operator distributes the token out of band (Signal /
+    /// Telegram / face-to-face) — there's no value to a token a
+    /// scanner can guess.
+    var serverToken: String?
+
     /// Convenience for use in pickers / lists when `displayLabel`
     /// isn't set. Always non-empty.
     var displayHost: String {
@@ -52,11 +66,13 @@ struct Account: Codable, Identifiable, Hashable {
         id: UUID = UUID(),
         serverURL: String,
         createdAt: Date = Date(),
-        displayLabel: String? = nil
+        displayLabel: String? = nil,
+        serverToken: String? = nil
     ) {
         self.id = id
         self.serverURL = serverURL
         self.createdAt = createdAt
         self.displayLabel = displayLabel
+        self.serverToken = serverToken
     }
 }

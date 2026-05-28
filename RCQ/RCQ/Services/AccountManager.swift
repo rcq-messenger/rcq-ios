@@ -115,12 +115,12 @@ final class AccountManager: ObservableObject {
     ///   - Multi-account add flow in S3 (creates Account[N] alongside
     ///     existing ones without burning anything)
     @discardableResult
-    func add(serverURL: String, displayLabel: String? = nil) -> Account? {
+    func add(serverURL: String, displayLabel: String? = nil, serverToken: String? = nil) -> Account? {
         // Defence in depth: even if a caller skips the
         // `isAtAccountLimit` check on the UI side, the manager
         // itself refuses to mint a sixth account.
         guard accounts.count < Self.maxAccounts else { return nil }
-        let account = Account(serverURL: serverURL, displayLabel: displayLabel)
+        let account = Account(serverURL: serverURL, displayLabel: displayLabel, serverToken: serverToken)
         accounts.append(account)
         activeAccountID = account.id
         save()

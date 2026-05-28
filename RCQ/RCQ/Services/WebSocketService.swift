@@ -89,6 +89,7 @@ final class WebSocketService: ObservableObject {
     private var lastUIN: Int?
     private var lastToken: String?
     private var lastBaseURL: URL?
+    private var lastServerToken: String?
 
     private init() {}
 
@@ -99,11 +100,12 @@ final class WebSocketService: ObservableObject {
         return URLSession(configuration: cfg)
     }
 
-    func connect(uin: Int, token: String, baseURL: URL) {
+    func connect(uin: Int, token: String, baseURL: URL, serverToken: String? = nil) {
         shouldStayConnected = true
         lastUIN = uin
         lastToken = token
         lastBaseURL = baseURL
+        lastServerToken = serverToken
         pendingReconnect?.cancel()
         pendingReconnect = nil
 
@@ -120,7 +122,17 @@ final class WebSocketService: ObservableObject {
 
         session = Self.makeSession()
 
-        let task = session.webSocketTask(with: url)
+        // URLRequest-based handshake (vs `webSocketTask(with: url)`) so
+        // we can attach the optional masquerade header. When the active
+        // account has `serverToken` set, the Caddy frontend gates the
+        // upgrade on `X-RCQ-Auth` exactly like every HTTP request —
+        // missing/wrong header serves the decoy site and the upgrade
+        // fails, exactly what we want against passive scanners.
+        var req = URLRequest(url: url)
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
+        let task = session.webSocketTask(with: req)
         self.task = task
         task.resume()
         isConnected = true
@@ -174,7 +186,7 @@ final class WebSocketService: ObservableObject {
                     if let uin = self.lastUIN,
                        let token = self.lastToken,
                        let base = self.lastBaseURL {
-                        self.connect(uin: uin, token: token, baseURL: base)
+                        self.connect(uin: uin, token: token, baseURL: base, serverToken: self.lastServerToken)
                     }
                 } catch {
                     // Stealth start failed too — fall through to the
@@ -193,7 +205,7 @@ final class WebSocketService: ObservableObject {
                 guard let uin = self.lastUIN,
                       let token = self.lastToken,
                       let baseURL = self.lastBaseURL else { return }
-                self.connect(uin: uin, token: token, baseURL: baseURL)
+                self.connect(uin: uin, token: token, baseURL: baseURL, serverToken: self.lastServerToken)
             }
         }
         pendingReconnect = work

@@ -28,6 +28,12 @@ actor APIClient {
     /// (`APIClient.shared.baseURL`) drop-in.
     nonisolated var baseURL: URL { APIClient.defaultBaseURL() }
     private var token: String?
+    /// Pre-shared masquerade token sent as `X-RCQ-Auth` on every
+    /// request when set. Owned by `AppState` per active account —
+    /// flipped on account switch via `setServerToken`. nil means no
+    /// gate is in front of this backend (public deployments like
+    /// api.rcq.app) and we don't send the header at all.
+    private var serverToken: String?
     private var session: URLSession
     private var probeSession: URLSession
     private let decoder: JSONDecoder
@@ -207,6 +213,12 @@ actor APIClient {
     func setToken(_ token: String?) { self.token = token }
     func currentToken() -> String? { token }
 
+    /// Set the pre-shared masquerade token applied to every request as
+    /// `X-RCQ-Auth`. AppState flips this on account switch so each
+    /// backend gets its own opt-in header. Pass nil to disable for
+    /// public backends.
+    func setServerToken(_ token: String?) { self.serverToken = token }
+
     func request<T: Decodable>(
         _ method: String,
         _ path: String,
@@ -252,6 +264,9 @@ actor APIClient {
         req.httpMethod = method
         if authenticated, let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
         }
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -310,6 +325,9 @@ actor APIClient {
         if let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
         let localDecoder = self.decoder
         let localSession = self.session
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
@@ -348,6 +366,9 @@ actor APIClient {
     func downloadBlob(_ path: String) async throws -> Data {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "GET"
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }
         guard (200..<300).contains(http.statusCode) else {
@@ -383,6 +404,9 @@ actor APIClient {
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
         req.httpBody = body
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }

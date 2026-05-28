@@ -324,7 +324,10 @@ struct RootView: View {
         Task { @MainActor in
             if !WebSocketService.shared.isConnected {
                 let baseURL = APIClient.shared.baseURL
-                WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
+                WebSocketService.shared.connect(
+                    uin: uin, token: token, baseURL: baseURL,
+                    serverToken: AccountManager.shared.active?.serverToken
+                )
             } else {
                 WebSocketService.shared.pingNow()
             }
