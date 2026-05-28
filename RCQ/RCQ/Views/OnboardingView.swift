@@ -95,8 +95,7 @@ struct OnboardingView: View {
                         )
                 }
             } else {
-                // Reserve the slot so the language pill doesn't shift on the last page.
-                Color.clear.frame(width: 1, height: 1)
+                serverPill
             }
             Spacer()
             Button {
@@ -134,23 +133,19 @@ struct OnboardingView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.25), value: page)
             pageDots
-            // Server affordance lives just above the final CTA so it
-            // only appears on the last page — a user halfway through
-            // the deck shouldn't be choosing infrastructure, they're
-            // still learning what RCQ is. 99% of users tap "Start"
-            // straight through and never see the picker.
-            if page == pages.count - 1 {
-                serverPill
-            }
             ctaRow
         }
     }
 
     // MARK: - Server picker affordance
 
-    /// Compact pill showing where this onboarding will register the
-    /// new account. Tapping opens `ServerPickerSheet` to choose a
-    /// different backend from the public catalogue.
+    /// Compact pill in the top-leading slot of the toolbar on the
+    /// last onboarding page. Same Skip-button-slot the deck uses on
+    /// earlier pages — on the last page Skip is gone (no later page
+    /// to jump to), so the slot hosts the server picker affordance
+    /// instead. Tapping opens `ServerPickerSheet` to choose a
+    /// different backend from the public catalogue. Sized to match
+    /// the language pill on the trailing edge.
     private var serverPill: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -158,29 +153,22 @@ struct OnboardingView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "server.rack")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Theme.Color.textSecondary)
-                Text("onboard.server.pill.prefix".localized)
-                    .font(.system(.caption, weight: .regular))
-                    .foregroundColor(Theme.Color.textSecondary)
+                    .font(.system(size: 12, weight: .semibold))
                 Text(activeServerHost)
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
-                    .foregroundColor(Theme.Color.textPrimary)
-                Text("·")
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary.opacity(0.5))
-                Text("onboard.server.pill.change".localized)
-                    .font(.system(.caption, weight: .semibold))
-                    .foregroundColor(Theme.Color.accent)
+                    .font(.system(.footnote, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .foregroundColor(Theme.Color.textSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
                 Capsule().fill(Theme.Color.bgSecondary.opacity(0.6))
             )
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 12)
     }
 
     /// Host portion of the current `rcq.baseURL`, defaulting to

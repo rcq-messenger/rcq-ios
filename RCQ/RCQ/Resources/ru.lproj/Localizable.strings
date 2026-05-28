@@ -1905,6 +1905,16 @@
 
 /* Account switcher + add account */
 "contact_list.add_account" = "Новый сервер";
+"contact_list.manage_accounts" = "Управление аккаунтами";
+"manage_accounts.title" = "Аккаунты";
+"manage_accounts.intro.title" = "Аккаунты на этом устройстве";
+"manage_accounts.intro.body" = "Активный аккаунт удалить отсюда нельзя, переключись на другой сверху. Удаление с устройства не трогает аккаунт на сервере, для этого используй Burn account в настройках приватности.";
+"manage_accounts.active_badge" = "АКТИВНЫЙ";
+"manage_accounts.delete" = "Удалить";
+"manage_accounts.delete.confirm.title" = "Удалить %@?";
+"manage_accounts.delete.confirm.body" = "Локальные данные (контакты, история, identity) будут удалены с этого устройства. Аккаунт на сервере останется и будет копить входящие сообщения, пока их не очистит TTL.";
+"manage_accounts.delete.confirm.cta" = "Удалить с устройства";
+"manage_accounts.empty" = "Нет аккаунтов";
 "add_account.title" = "Новый аккаунт";
 "add_account.intro.title" = "На каком сервере";
 "add_account.intro.body" = "Можно держать несколько аккаунтов на разных серверах сразу. Текущий не сгорит, история и контакты на нём останутся. Между аккаунтами переключаешься пиллой сверху.";

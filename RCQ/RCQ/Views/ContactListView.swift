@@ -17,6 +17,7 @@ struct ContactListView: View {
 
     @State private var showAddContact = false
     @State private var showAddAccount = false
+    @State private var showManageAccounts = false
     @State private var showProfile = false
     @State private var showPending = false
     @State private var showSettings = false
@@ -147,6 +148,7 @@ struct ContactListView: View {
             .sheet(isPresented: $showPending) { PendingRequestsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showAddAccount) { AddAccountSheet() }
+            .sheet(isPresented: $showManageAccounts) { ManageAccountsSheet() }
             .sheet(isPresented: $showArchivePINGate) {
                 PINVerifySheet(title: "pin_verify.title.archive".localized) {
                     archiveUnlocked = true
@@ -443,6 +445,21 @@ struct ContactListView: View {
                     showAddAccount = true
                 } label: {
                     Label("contact_list.add_account".localized, systemImage: "plus")
+                }
+                // Manage entry is only meaningful once you've got more
+                // than one account. With a single account there's
+                // nothing to remove from here (the active one can't
+                // be deleted via this surface — that's the Burn
+                // account flow in Privacy & Network).
+                if accountManager.accounts.count > 1 {
+                    Button {
+                        showManageAccounts = true
+                    } label: {
+                        Label(
+                            "contact_list.manage_accounts".localized,
+                            systemImage: "person.2.crop.square.stack"
+                        )
+                    }
                 }
             } label: {
                 Image(systemName: "server.rack")
