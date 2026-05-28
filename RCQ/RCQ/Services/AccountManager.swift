@@ -119,16 +119,12 @@ final class AccountManager: ObservableObject {
         // Defence in depth: even if a caller skips the
         // `isAtAccountLimit` check on the UI side, the manager
         // itself refuses to mint a sixth account.
-        guard accounts.count < Self.maxAccounts else {
-            print("[AccountManager] add refused: at limit (\(accounts.count) of \(Self.maxAccounts))")
-            return nil
-        }
+        guard accounts.count < Self.maxAccounts else { return nil }
         let account = Account(serverURL: serverURL, displayLabel: displayLabel)
         accounts.append(account)
         activeAccountID = account.id
         save()
         mirrorActiveToLegacy()
-        print("[AccountManager] add: id=\(account.id) serverURL=\(serverURL) total=\(accounts.count) active=\(activeAccountID?.uuidString ?? "nil")")
         return account
     }
 
@@ -140,7 +136,6 @@ final class AccountManager: ObservableObject {
         activeAccountID = id
         save()
         mirrorActiveToLegacy()
-        print("[AccountManager] setActive: id=\(id)")
     }
 
     /// Remove an account from the roster. Caller is responsible for
