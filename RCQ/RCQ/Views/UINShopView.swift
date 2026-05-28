@@ -64,20 +64,20 @@ struct UINShopView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 14) {
-                        Spacer(minLength: 12)
+                    VStack(spacing: 16) {
                         // Status + price sit ABOVE the input plate as a
                         // compact header; the explainer sits right below
-                        // the plate instead of floating at the bottom.
+                        // the plate. Content is top-aligned under the nav
+                        // bar (no centring Spacers) so the page hugs the
+                        // header instead of floating mid-screen.
                         statusLine
                         priceLine
                         plateCard
                         infoBlock
-                        Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 22)
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, minHeight: scrollMinHeight)
+                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity)
                 }
             }
             // System nav bar, matching the main screen (ContactListView):
@@ -111,6 +111,12 @@ struct UINShopView: View {
                 TextField("", text: $typed)
                     .keyboardType(.numberPad)
                     .focused($fieldFocused)
+                    // Clear tint kills the blinking caret. The visible
+                    // input is the plate Button; this field is an
+                    // off-display capture target, so its cursor was
+                    // showing up as a stray square pinned to the top of
+                    // the keyboard when focused.
+                    .tint(.clear)
                     .opacity(0)
                     .frame(width: 1, height: 1)
                     .onChange(of: typed) { newValue in
@@ -143,15 +149,6 @@ struct UINShopView: View {
                 Text("uin_shop.confirm.body".localized)
             }
         }
-    }
-
-    /// Vertical breathing space — when the keyboard is dismissed we
-    /// want the content centred-ish on screen, not glued to the top.
-    /// `UIScreen.main.bounds` is fine here; we don't need precise
-    /// safe-area math because the inner Spacers do the centring as
-    /// long as the container is tall enough.
-    private var scrollMinHeight: CGFloat {
-        UIScreen.main.bounds.height - 120
     }
 
     // MARK: - Plate
