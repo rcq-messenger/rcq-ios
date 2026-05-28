@@ -405,17 +405,36 @@ struct ContactListView: View {
     /// area is the user's first-launch focus, no infrastructure noise.
     @ViewBuilder
     private var accountSwitcherPill: some View {
-        if let active = accountManager.active {
+        if accountManager.active != nil {
             Menu {
                 ForEach(accountManager.accounts.sorted(by: { $0.createdAt < $1.createdAt })) { account in
                     Button {
                         guard account.id != accountManager.activeAccountID else { return }
                         Task { await appState.switchToAccount(account.id) }
                     } label: {
+                        // Two-line label inside Menu: human-readable
+                        // server name (from the public catalogue when
+                        // the URL matches an entry, otherwise the
+                        // bare host) on top, host as monospaced
+                        // subtitle below. Self-hosted instances with
+                        // unfamiliar URLs become recognisable at a
+                        // glance, which is the whole point.
+                        let primary = accountTitle(for: account)
+                        let secondary = account.displayHost
                         if account.id == accountManager.activeAccountID {
-                            Label(account.displayHost, systemImage: "checkmark")
+                            Label {
+                                VStack(alignment: .leading) {
+                                    Text(primary)
+                                    Text(secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "checkmark")
+                            }
                         } else {
-                            Text(account.displayHost)
+                            VStack(alignment: .leading) {
+                                Text(primary)
+                                Text(secondary)
+                            }
                         }
                     }
                 }
@@ -437,6 +456,20 @@ struct ContactListView: View {
         } else {
             EmptyView()
         }
+    }
+
+    /// Human-readable label for an account row in the switcher
+    /// menu. Prefers an explicit `displayLabel` set on the account,
+    /// then a catalogue entry name matching the URL, finally falls
+    /// back to the bare host.
+    private func accountTitle(for account: Account) -> String {
+        if let label = account.displayLabel, !label.isEmpty {
+            return label
+        }
+        if let entry = ServerDirectoryService.shared.servers.first(where: { $0.url == account.serverURL }) {
+            return entry.name
+        }
+        return account.displayHost
     }
 
     private var identityPrincipal: some View {

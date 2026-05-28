@@ -1926,7 +1926,7 @@
 "onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device — with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
 
 /* Account switcher + add account */
-"contact_list.add_account" = "Add another server";
+"contact_list.add_account" = "New server";
 "add_account.title" = "New account";
 "add_account.intro.title" = "Which server?";
 "add_account.intro.body" = "Keep multiple accounts on different servers side by side. Your current one stays — its history and contacts are untouched. Switch between them with the pill at the top.";
