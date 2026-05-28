@@ -1903,4 +1903,13 @@
 "onboard.pin.title" = "Защита на устройстве";
 "onboard.pin.body" = "PIN блокирует приложение и шифрует историю переписки прямо на устройстве — с Face ID по желанию, плюс запасной и стирающий PIN на случай принуждения.";
 
+/* Server picker — последняя страница онбординга */
+"onboard.server.pill.prefix" = "сервер:";
+"onboard.server.pill.change" = "сменить";
+"onboard.server.picker.title" = "Выбор сервера";
+"onboard.server.picker.intro.title" = "Где зарегистрировать аккаунт";
+"onboard.server.picker.intro.body" = "Каждый сервер RCQ изолированный остров. Аккаунт, контакты и сообщения живут только на выбранном сервере. Общаться можно только с теми, кто на том же. Federation мы намеренно не делаем.";
+"onboard.server.picker.search" = "Поиск сервера";
+"onboard.server.picker.empty" = "Ничего не нашлось";
+
 "boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ — попробуйте VPN.";

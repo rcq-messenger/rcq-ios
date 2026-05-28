@@ -6,8 +6,10 @@ struct OnboardingView: View {
 
     @State private var page: Int = 0
     @State private var showLanguagePicker = false
+    @State private var showServerPicker = false
     @State private var entering: Bool = false
     @StateObject private var lang = LanguageManager.shared
+    @AppStorage("rcq.baseURL") private var customServer: String = ""
 
     private var pages: [Page] {
         [
@@ -67,6 +69,9 @@ struct OnboardingView: View {
         .sheet(isPresented: $showLanguagePicker) {
             LanguagePickerSheet()
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showServerPicker) {
+            ServerPickerSheet()
         }
     }
 
@@ -129,8 +134,60 @@ struct OnboardingView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.25), value: page)
             pageDots
+            // Server affordance lives just above the final CTA so it
+            // only appears on the last page — a user halfway through
+            // the deck shouldn't be choosing infrastructure, they're
+            // still learning what RCQ is. 99% of users tap "Start"
+            // straight through and never see the picker.
+            if page == pages.count - 1 {
+                serverPill
+            }
             ctaRow
         }
+    }
+
+    // MARK: - Server picker affordance
+
+    /// Compact pill showing where this onboarding will register the
+    /// new account. Tapping opens `ServerPickerSheet` to choose a
+    /// different backend from the public catalogue.
+    private var serverPill: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showServerPicker = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                Text("onboard.server.pill.prefix".localized)
+                    .font(.system(.caption, weight: .regular))
+                    .foregroundColor(Theme.Color.textSecondary)
+                Text(activeServerHost)
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text("·")
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary.opacity(0.5))
+                Text("onboard.server.pill.change".localized)
+                    .font(.system(.caption, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(Theme.Color.bgSecondary.opacity(0.6))
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 12)
+    }
+
+    /// Host portion of the current `rcq.baseURL`, defaulting to
+    /// `api.rcq.app` when nothing is overridden.
+    private var activeServerHost: String {
+        let raw = customServer.isEmpty ? "https://api.rcq.app" : customServer
+        return URL(string: raw)?.host ?? raw
     }
 
     // MARK: - Page model
