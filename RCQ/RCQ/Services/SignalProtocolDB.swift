@@ -3,33 +3,149 @@ import SQLite3
 
 /// SQLite wrapper for libsignal protocol stores. File lives in the App Group
 /// container so the NSE can write back ratchet state from push decrypts.
+///
+/// ## Per-account layout (v0.3+)
+///
+/// libsignal stores (identity, prekeys, sessions, sender keys) are
+/// per-account: a device with two accounts on the same backend has
+/// two completely separate libsignal identities, prekey pools and
+/// session ratchets. Without isolation, registering a second account
+/// would overwrite the first account's identity row in
+/// `local_identity`, leaking the new account's libsignal material
+/// into the old account's slot and breaking v=2 decryption for the
+/// original account.
+///
+/// File layout:
+///   `<AppGroup.signalStoreURL>/<accountUUID>/signal-stores.sqlite`
+///
+/// Path resolution reads `AppGroup.readActiveAccountID()` — the same
+/// flat file the per-account Keychain prefix and per-account
+/// MessageDB use, written by `AccountManager` whenever active
+/// changes. Pre-onboarding installs (no active account yet) fall
+/// back to the legacy unprefixed path so the very first registration
+/// has somewhere to write to; `AccountManager.migrateLegacyIfPresent`
+/// then moves that file under the freshly-minted Account[0]'s
+/// directory on next launch.
 final class SignalProtocolDB: @unchecked Sendable {
     static let shared = SignalProtocolDB()
 
     var db: OpaquePointer?
     private let queue = DispatchQueue(label: "app.rcq.signal.db")
-    private let dbURL: URL
+    private var dbURL: URL
 
     private init() {
-        self.dbURL = AppGroup.signalStoreURL.appendingPathComponent("signal-stores.sqlite")
-        var handle: OpaquePointer?
-        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
-        if sqlite3_open_v2(dbURL.path, &handle, flags, nil) == SQLITE_OK {
-            self.db = handle
-            // WAL for concurrent read/write between main app and NSE.
-            _ = sqlite3_exec(handle, "PRAGMA journal_mode=WAL;", nil, nil, nil)
-            _ = sqlite3_exec(handle, "PRAGMA foreign_keys=ON;", nil, nil, nil)
-            createSchema()
-        } else {
-            print("[SignalProtocolDB] open failed: \(dbURL.path)")
-        }
+        let url = Self.currentDBURL()
+        self.dbURL = url
+        Self.openConnection(at: url, into: &db)
     }
 
     deinit {
         if let db = db { sqlite3_close_v2(db) }
     }
 
-    private func createSchema() {
+    /// Close the current SQLite handle and re-open against whatever
+    /// per-account path the App Group activeAccountID file currently
+    /// points at. Called by `AppState.rebootForActiveAccount` after
+    /// an account switch — the new active account has its own
+    /// libsignal stores in a separate file, so this is what swaps
+    /// the in-memory handle over to read/write the new one.
+    ///
+    /// Runs synchronously on the SQLite queue so any in-flight
+    /// libsignal read/write completes against the old handle before
+    /// the swap.
+    func reload() {
+        queue.sync {
+            if let db = db { sqlite3_close_v2(db) }
+            self.db = nil
+            let url = Self.currentDBURL()
+            self.dbURL = url
+            Self.openConnection(at: url, into: &db)
+        }
+    }
+
+    // MARK: - file paths
+
+    /// Resolve the SQLite path for whichever account is currently
+    /// active. Pre-onboarding (no active account yet) falls through
+    /// to the legacy unprefixed path under the App Group root.
+    /// Per-account paths nest under a per-account directory so the
+    /// directory itself can be wiped wholesale to remove an account.
+    private static func currentDBURL() -> URL {
+        if let accountID = AppGroup.readActiveAccountID() {
+            let dir = AppGroup.signalStoreURL
+                .appendingPathComponent(accountID.uuidString, isDirectory: true)
+            try? FileManager.default.createDirectory(
+                at: dir, withIntermediateDirectories: true
+            )
+            return dir.appendingPathComponent("signal-stores.sqlite")
+        }
+        return AppGroup.signalStoreURL.appendingPathComponent("signal-stores.sqlite")
+    }
+
+    private static func openConnection(at url: URL, into handle: inout OpaquePointer?) {
+        var local: OpaquePointer?
+        let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+        if sqlite3_open_v2(url.path, &local, flags, nil) == SQLITE_OK {
+            handle = local
+            // WAL for concurrent read/write between main app and NSE.
+            _ = sqlite3_exec(local, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+            _ = sqlite3_exec(local, "PRAGMA foreign_keys=ON;", nil, nil, nil)
+            createSchema(on: local)
+        } else {
+            print("[SignalProtocolDB] open failed: \(url.path)")
+        }
+    }
+
+    /// One-shot migration of the legacy pre-v0.3 stores file under
+    /// the OLDEST account's per-account directory. Called by
+    /// `AccountManager` from its init after the roster is loaded
+    /// and the active-account-id App Group file is written.
+    ///
+    /// Only migrates when EXACTLY one account is in the roster. With
+    /// two or more accounts the legacy stores file is unreliable —
+    /// the most recent `/auth/register` from a second account
+    /// overwrote `local_identity` and possibly other rows, so the
+    /// data no longer maps cleanly to any one account. In that case
+    /// we leave the legacy file orphan and every account starts
+    /// with a fresh empty store; `SignalIdentityBootstrap` will
+    /// detect missing local_identity on next bootstrap and
+    /// re-register libsignal material per-account.
+    static func migrateLegacyIfPresent(oldestAccountID: UUID, accountCount: Int) {
+        guard accountCount == 1 else { return }
+        let legacyURL = AppGroup.signalStoreURL.appendingPathComponent("signal-stores.sqlite")
+        let perAccountDir = AppGroup.signalStoreURL
+            .appendingPathComponent(oldestAccountID.uuidString, isDirectory: true)
+        let perAccountURL = perAccountDir.appendingPathComponent("signal-stores.sqlite")
+
+        guard !FileManager.default.fileExists(atPath: perAccountURL.path),
+              FileManager.default.fileExists(atPath: legacyURL.path)
+        else { return }
+
+        try? FileManager.default.createDirectory(at: perAccountDir, withIntermediateDirectories: true)
+        // Move main file + WAL/SHM sidecars. Each move is atomic per
+        // file; a half-completed migration where only the main file
+        // moved still works because SQLite recreates missing
+        // sidecars on next open.
+        for suffix in ["", "-wal", "-shm"] {
+            let from = AppGroup.signalStoreURL.appendingPathComponent("signal-stores.sqlite" + suffix)
+            let to = perAccountDir.appendingPathComponent("signal-stores.sqlite" + suffix)
+            try? FileManager.default.moveItem(at: from, to: to)
+        }
+    }
+
+    /// Delete the entire libsignal store directory for a given
+    /// account. Used by burn-account flows in S3+ to leave no
+    /// libsignal residue when a second account is removed.
+    static func wipeFiles(accountID: UUID) {
+        let dir = AppGroup.signalStoreURL
+            .appendingPathComponent(accountID.uuidString, isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// Static so it can run against either the instance's
+    /// stored `db` handle or any other handle (used during the
+    /// reopen path in `openConnection`).
+    private static func createSchema(on db: OpaquePointer?) {
         let stmts = [
             """
             CREATE TABLE IF NOT EXISTS local_identity (

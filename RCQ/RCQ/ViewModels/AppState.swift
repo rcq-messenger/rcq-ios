@@ -508,6 +508,7 @@ final class AppState: ObservableObject {
         pendingAddUIN = nil
 
         MessageDB.shared.reload()
+        SignalProtocolDB.shared.reload()
 
         booted = false
         bootError = nil

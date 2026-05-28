@@ -77,6 +77,20 @@ final class AccountManager: ObservableObject {
         // through `migrateLegacyIfPresent` already do nothing here.
         if let oldest = accounts.min(by: { $0.createdAt < $1.createdAt }) {
             KeychainStore.migrateLegacyKeysToAccount(oldest.id)
+            // Same migration story for the libsignal stores file.
+            // Per-account isolation is critical: without it, a second
+            // /auth/register overwrites local_identity in the shared
+            // file and breaks v=2 decryption for the first account.
+            // SignalProtocolDB.migrateLegacyIfPresent only moves the
+            // legacy file when exactly one account is in the roster
+            // — with two or more, the legacy file is unreliable and
+            // gets left orphan; each account starts fresh and
+            // SignalIdentityBootstrap re-registers libsignal material
+            // per-account on first boot.
+            SignalProtocolDB.migrateLegacyIfPresent(
+                oldestAccountID: oldest.id,
+                accountCount: accounts.count
+            )
         }
     }
 
