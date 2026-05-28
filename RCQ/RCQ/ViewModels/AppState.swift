@@ -19,6 +19,13 @@ final class AppState: ObservableObject {
         case engagingStealth
         case stealthActive
     }
+    /// Capabilities advertised by the active server via `/server/info`.
+    /// Defaults to the permissive "legacy backend" set so pre-flag
+    /// servers (and the brief window between boot start and the fetch
+    /// landing) keep the same surfaces as before. Reset to
+    /// `.defaultLegacy` on every account switch and re-populated by
+    /// the next boot.
+    @Published var serverCapabilities: ServerCapabilities = .defaultLegacy
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     @Published var pendingOpenChatUIN: Int? = nil
@@ -252,6 +259,17 @@ final class AppState: ObservableObject {
                 throw NSError(domain: "boot", code: 1)
             }
             MessageService.shared.configure(ownUIN: uin)
+
+            // Capability fetch. Failure is non-fatal — we keep the
+            // permissive defaultLegacy set, which matches every
+            // backend's behaviour before v0.4 added /server/info.
+            // Self-host backends running rcq-server-ref return
+            // {uin_shop: false} here and SettingsView drops the row
+            // entirely; api.rcq.app returns {uin_shop: true} and the
+            // surface stays.
+            if let caps = await ServerInfoService.fetch() {
+                serverCapabilities = caps
+            }
 
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL)
@@ -492,6 +510,14 @@ final class AppState: ObservableObject {
         // belonged to the account we're switching away from.
         AuthService.shared.resetForAccountSwitch()
 
+        // Reset to defaultLegacy so the new account's boot fetch
+        // populates the actual capabilities of the destination server,
+        // not the stale outgoing one. Without this, switching from
+        // api.rcq.app (uinShop=true) to a self-host account would
+        // briefly show the UIN-shop row in Settings until the new
+        // /server/info reply lands.
+        serverCapabilities = .defaultLegacy
+
         ContactService.shared.wipe()
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
@@ -699,4 +725,53 @@ final class AppState: ObservableObject {
         }
     }
 
+}
+
+// MARK: - Server capabilities
+
+/// Server-advertised capabilities consumed by the iOS client to gate
+/// optional surfaces. The flagship gate today is the in-app UIN shop:
+/// `api.rcq.app` advertises `uinShop=true`, every self-host backend
+/// running `rcq-server-ref` defaults to `false`, and `SettingsView`
+/// hides the row entirely on backends that don't sell UINs in-app.
+///
+/// Default values are deliberately permissive (everything on) so that
+/// legacy backends predating `/server/info` keep working — they 404
+/// the lookup and we fall through to the defaults, which match the
+/// pre-flag behaviour. Future capabilities should follow the same
+/// rule: pick the default that preserves the old behaviour.
+struct ServerCapabilities: Decodable, Equatable {
+    var uinShop: Bool
+
+    static let defaultLegacy = ServerCapabilities(uinShop: true)
+
+    private enum CodingKeys: String, CodingKey {
+        case uinShop = "uin_shop"
+    }
+}
+
+private struct ServerInfoResponse: Decodable {
+    let name: String
+    let capabilities: ServerCapabilities
+}
+
+@MainActor
+enum ServerInfoService {
+    /// Fetch `/server/info` against the currently-pointed backend. Returns
+    /// `nil` on any network or decode failure — we never block boot on
+    /// this, and we never collapse a previously-known-good capability
+    /// set on a transient miss. Callers should only adopt the returned
+    /// value on success; see `AppState.boot` for the gating.
+    static func fetch() async -> ServerCapabilities? {
+        do {
+            let info: ServerInfoResponse = try await APIClient.shared.request(
+                "GET",
+                "/server/info",
+                authenticated: false
+            )
+            return info.capabilities
+        } catch {
+            return nil
+        }
+    }
 }

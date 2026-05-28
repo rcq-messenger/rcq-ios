@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var showBlockedUsers = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         NavigationStack {
@@ -161,25 +162,35 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    Section {
-                        Button {
-                            showUINShop = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "number.square.fill")
-                                    .foregroundColor(Theme.Color.accent)
-                                Text("settings.uin_shop".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
+                    // Self-host backends running rcq-server-ref report
+                    // uin_shop=false via /server/info and the row hides
+                    // entirely — operators handle UIN allocation out of
+                    // band (Telegram channel, BTCPay, manual assignment)
+                    // because the in-app Apple IAP transaction is bound
+                    // to our developer account regardless of which
+                    // backend the user is on. See
+                    // project_rcq_monetization_model for the design.
+                    if appState.serverCapabilities.uinShop {
+                        Section {
+                            Button {
+                                showUINShop = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "number.square.fill")
+                                        .foregroundColor(Theme.Color.accent)
+                                    Text("settings.uin_shop".localized)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
                             }
+                        } footer: {
+                            Text("settings.uin_shop.footer".localized)
                         }
-                    } footer: {
-                        Text("settings.uin_shop.footer".localized)
+                        .listRowBackground(Theme.Color.bgSecondary)
                     }
-                    .listRowBackground(Theme.Color.bgSecondary)
 
                     Section {
                         Button(role: .destructive) {
