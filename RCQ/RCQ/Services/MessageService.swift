@@ -660,7 +660,8 @@ final class MessageService {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/messages/sealed",
                 body: Body(to_uin: contact.uin, envelope_type: envType, payload: blob),
-                authenticated: false
+                authenticated: false,
+                retries: 2
             )
             if let localID {
                 let next: DeliveryState = out.delivered ? .delivered : (out.queued ? .sent : .failed)
@@ -737,7 +738,8 @@ final class MessageService {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/messages/group-sealed",
                 body: Body(group_id: group.id, envelope_type: envType, payloads: entries),
-                authenticated: false
+                authenticated: false,
+                retries: 2
             )
             if let localID {
                 let next: DeliveryState = out.delivered ? .delivered : .sent

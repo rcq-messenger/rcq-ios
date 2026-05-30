@@ -234,9 +234,10 @@ actor APIClient {
         _ path: String,
         body: Encodable? = nil,
         query: [String: String] = [:],
-        authenticated: Bool = true
+        authenticated: Bool = true,
+        retries: Int = 0
     ) async throws -> T {
-        let data = try await rawRequest(method, path, body: body, query: query, authenticated: authenticated)
+        let data = try await rawRequest(method, path, body: body, query: query, authenticated: authenticated, retries: retries)
         if T.self == EmptyResponse.self {
             return EmptyResponse() as! T
         }
@@ -264,7 +265,8 @@ actor APIClient {
         _ path: String,
         body: Encodable? = nil,
         query: [String: String] = [:],
-        authenticated: Bool = true
+        authenticated: Bool = true,
+        retries: Int = 0
     ) async throws -> Data {
         var comp = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
@@ -282,23 +284,38 @@ actor APIClient {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
-        do {
-            let (data, resp) = try await session.data(for: req)
-            guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }
-            guard (200..<300).contains(http.statusCode) else {
-                throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+        // `retries` > 0 only from callers whose request is dedup-safe to repeat
+        // (sealed sends: the recipient dedups by envelope UUID, so re-POSTing
+        // the identical body is harmless). On cellular a transport failure is
+        // usually a dead pooled connection the server already dropped; a quick
+        // retry opens a fresh one and lands — automating the manual resend.
+        // HTTP errors and cancellation are never retried.
+        var lastError: Error = URLError(.unknown)
+        for attempt in 0...max(0, retries) {
+            do {
+                let (data, resp) = try await session.data(for: req)
+                guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+                }
+                return data
+            } catch let err as APIError {
+                throw err
+            } catch is CancellationError {
+                // Re-throw raw so callers can detect cancellation.
+                throw CancellationError()
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw urlError
+            } catch {
+                lastError = error
+                if attempt < max(0, retries) {
+                    try? await Task.sleep(nanoseconds: UInt64((attempt + 1) * 400) * 1_000_000)
+                    continue
+                }
+                throw APIError.transport(error)
             }
-            return data
-        } catch let err as APIError {
-            throw err
-        } catch is CancellationError {
-            // Re-throw raw so callers can detect cancellation.
-            throw CancellationError()
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            throw urlError
-        } catch {
-            throw APIError.transport(error)
         }
+        throw APIError.transport(lastError)
     }
 
     func uploadBlob<T: Decodable>(
