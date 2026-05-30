@@ -85,8 +85,7 @@ struct CustomServerSheet: View {
                 isPresented: $showConfirmSwitch,
                 titleVisibility: .visible
             ) {
-                Button("settings.network.custom_server.confirm.cta".localized,
-                       role: .destructive) {
+                Button("settings.network.custom_server.confirm.cta".localized) {
                     Task { await applySwitch() }
                 }
                 Button("common.cancel".localized, role: .cancel) {}
@@ -98,8 +97,7 @@ struct CustomServerSheet: View {
                 isPresented: $showConfirmReset,
                 titleVisibility: .visible
             ) {
-                Button("settings.network.custom_server.reset.cta".localized,
-                       role: .destructive) {
+                Button("settings.network.custom_server.reset.cta".localized) {
                     Task { await applyReset() }
                 }
                 Button("common.cancel".localized, role: .cancel) {}
@@ -171,8 +169,8 @@ struct CustomServerSheet: View {
 
     private var warningBlock: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+            Image(systemName: "info.circle.fill")
+                .foregroundColor(Theme.Color.accent)
             Text("settings.network.custom_server.warning".localized)
                 .font(.caption)
                 .foregroundColor(Theme.Color.textSecondary)
@@ -208,34 +206,43 @@ struct CustomServerSheet: View {
         guard isValidURL else { return }
         switching = true
         defer { switching = false }
-        customServer = trimmed
-        // Keep AccountManager in sync with the new server URL on the
-        // active account. AccountManager is authoritative under
-        // multi-identity (S1+); without this the rcq.baseURL
-        // UserDefaults set above would drift from Account[0].serverURL
-        // and any UI reading the account roster would show the old
-        // host. mirrorActiveToLegacy will harmonise both sides.
-        if let activeID = AccountManager.shared.activeAccountID {
-            AccountManager.shared.update(activeID, serverURL: trimmed)
+        validationError = nil
+        if AccountManager.shared.isAtAccountLimit {
+            validationError = String(format: "add_account.limit".localized, AccountManager.maxAccounts)
+            return
         }
-        // Burn the local account: the new server's user table has no
-        // record of our UIN, so the next boot has to mint fresh
-        // identity. burnAccount() wipes every local store + reruns
-        // boot(), which reads APIClient.shared.baseURL fresh.
-        await AppState.shared.burnAccount()
+        // Non-destructive: ADD a new account on the chosen server instead of
+        // burning the current one. The previous account (UIN, contacts,
+        // history, favorites) stays on this device and is switchable from the
+        // account switcher. Mirrors AddAccountSheet's proven add path, which
+        // also sets the new account active and rebuilds the UI against it.
+        let ok = await AppState.shared.addAccount(serverURL: trimmed)
+        if !ok || AppState.shared.bootError != nil {
+            // Roll back a dangling account so we land back on the previous one.
+            if let danglingID = AccountManager.shared.activeAccountID,
+               AccountManager.shared.accounts.last?.id == danglingID {
+                AccountManager.shared.remove(danglingID)
+            }
+            validationError = "add_account.error".localized
+            return
+        }
         dismiss()
     }
 
     private func applyReset() async {
         switching = true
         defer { switching = false }
-        customServer = ""
-        // Also reset Account[0].serverURL to the default. Mirror
-        // takes care of clearing rcq.baseURL UserDefaults to match.
-        if let activeID = AccountManager.shared.activeAccountID {
-            AccountManager.shared.update(activeID, serverURL: "https://api.rcq.app")
+        validationError = nil
+        // Same non-destructive add, targeting the default public server.
+        let ok = await AppState.shared.addAccount(serverURL: Self.defaultServer)
+        if !ok || AppState.shared.bootError != nil {
+            if let danglingID = AccountManager.shared.activeAccountID,
+               AccountManager.shared.accounts.last?.id == danglingID {
+                AccountManager.shared.remove(danglingID)
+            }
+            validationError = "add_account.error".localized
+            return
         }
-        await AppState.shared.burnAccount()
         dismiss()
     }
 }
