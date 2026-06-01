@@ -205,7 +205,6 @@ struct PrivacySettingsView: View {
     // MARK: - moved sections (PIN / inventory / network / traffic / migration)
 
     @ViewBuilder
-    @ViewBuilder
     private var securitySection: some View {
         if !PanicPINService.shared.isDecoy {
             Section {
