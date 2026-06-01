@@ -30,6 +30,13 @@ final class ScreenSecurity: ObservableObject {
 
     private let secureField = UITextField()
     private weak var attachedWindow: UIWindow?
+    /// Original parent of `window.layer` before we reparent it under the secure
+    /// canvas, so disabling can put it back exactly where it was.
+    private weak var originalSuperlayer: CALayer?
+    /// True only while the window's layer is actually hosted in the secure
+    /// canvas. Gates the (reversible) layer surgery so the default-OFF path
+    /// never touches the layer tree.
+    private var protectionActive = false
 
     var enabled: Bool {
         UserDefaults.standard.bool(forKey: Self.defaultsKey)
@@ -58,13 +65,18 @@ final class ScreenSecurity: ObservableObject {
     func refresh() {
         guard let window = Self.keyWindow else { return }
         if window !== attachedWindow {
+            // Undo any protection on the old window before re-homing.
+            if protectionActive { deactivateProtection() }
             attach(to: window)
         }
-        secureField.isSecureTextEntry = enabled
+        applyProtection()
     }
 
     // MARK: - Secure-field layer trick
 
+    /// Add the (invisible, non-interactive) secure field to the window. This is
+    /// harmless on its own — NO layer surgery happens here, so an attached-but-
+    /// disabled window renders completely normally.
     private func attach(to window: UIWindow) {
         secureField.removeFromSuperview()
         window.addSubview(secureField)
@@ -73,19 +85,45 @@ final class ScreenSecurity: ObservableObject {
             secureField.centerYAnchor.constraint(equalTo: window.centerYAnchor),
         ])
         attachedWindow = window
-        // Lift the secure field's layer above the window, then host the window's
-        // own layer inside the secure canvas so the whole rendered tree inherits
-        // the no-capture flag. Layer indices differ across iOS versions. Guard on
-        // a non-nil superlayer: if the window's layer is top-level (no host),
-        // reparenting it under our own sublayer would form a cycle — skip and
-        // leave the screen unprotected rather than risk a broken window.
-        guard let superlayer = window.layer.superlayer else { return }
-        superlayer.addSublayer(secureField.layer)
-        if #available(iOS 17.0, *) {
-            secureField.layer.sublayers?.first?.addSublayer(window.layer)
+        protectionActive = false
+    }
+
+    /// Reconcile the live layer tree with [enabled]. The layer surgery (hosting
+    /// the window's own layer inside the secure canvas so the whole rendered tree
+    /// inherits the no-capture flag) ONLY runs while enabled, and is fully undone
+    /// when disabled — so the default-OFF state never reparents anything.
+    private func applyProtection() {
+        let on = enabled
+        secureField.isSecureTextEntry = on
+        if on {
+            activateProtection()
         } else {
-            secureField.layer.sublayers?.last?.addSublayer(window.layer)
+            deactivateProtection()
         }
+    }
+
+    private func activateProtection() {
+        guard !protectionActive, let window = attachedWindow else { return }
+        // If the window's layer is top-level (no host), reparenting it under our
+        // own sublayer would form a cycle — skip and leave the screen unprotected
+        // rather than risk a broken window. Fail-open.
+        guard let superlayer = window.layer.superlayer else { return }
+        guard let canvas = secureField.layer.sublayers?.last else { return }
+        originalSuperlayer = superlayer
+        superlayer.addSublayer(secureField.layer)
+        canvas.addSublayer(window.layer)
+        protectionActive = true
+    }
+
+    private func deactivateProtection() {
+        guard protectionActive else { return }
+        // Put the window's layer back under its original host, then drop our
+        // lifted secure-field layer.
+        if let window = attachedWindow, let orig = originalSuperlayer {
+            orig.addSublayer(window.layer)
+        }
+        secureField.layer.removeFromSuperlayer()
+        protectionActive = false
     }
 
     // MARK: - Helpers
