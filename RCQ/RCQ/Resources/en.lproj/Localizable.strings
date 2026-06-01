@@ -1842,6 +1842,9 @@
 "settings.panic_pin.on" = "On";
 "settings.panic_pin.off" = "Off";
 "settings.panic_pin.footer" = "A PIN that locks the app and encrypts your message history on this device.";
+"settings.privacy.screen_security" = "Screen security";
+"settings.privacy.screen_security.desc" = "Hide content from screenshots and recordings";
+"settings.privacy.screen_security.footer" = "When on, screenshots and screen recordings of RCQ come out blank, and the app is hidden in the app switcher. Off by default.";
 "panic_pin.lock.title" = "Enter PIN";
 "panic_pin.settings.title" = "Security PIN";
 "panic_pin.settings.section" = "App PIN";

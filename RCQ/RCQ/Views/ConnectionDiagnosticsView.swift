@@ -1,44 +1,42 @@
 import Foundation
 import SwiftUI
 
+/// Friendly connection diagnostics. Plain-language checks with a clear overall
+/// verdict, green/red/neutral tints, and a Run button to re-test. Mirrors the
+/// Android "Connection diagnostics" screen — no raw `enabled=X port=Z` dumps,
+/// every line says what it means for the user.
 struct ConnectionDiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    private enum Status { case ok, fail, info }
+
     private struct DiagLine: Identifiable {
         let id = UUID()
-        let label: String
-        let value: String
-        let ok: Bool
+        let title: String
+        let detail: String
+        let status: Status
     }
 
     @State private var lines: [DiagLine] = []
     @State private var running = false
+    @State private var overallOK: Bool? = nil
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(lines) { line in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Image(systemName: line.ok
-                                      ? "checkmark.circle.fill"
-                                      : "xmark.octagon.fill")
-                                    .foregroundColor(line.ok ? .green : .red)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(line.label)
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundColor(Theme.Color.textPrimary)
-                                    Text(line.value)
-                                        .font(.caption.monospaced())
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                        }
+                    VStack(alignment: .leading, spacing: 14) {
+                        header
+                        ForEach(lines) { row($0) }
                         if running {
-                            ProgressView().padding(.top, 4)
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Checking…")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                            .padding(.top, 2)
                         }
                     }
                     .padding(20)
@@ -60,60 +58,148 @@ struct ConnectionDiagnosticsView: View {
         }
     }
 
+    // MARK: - Header verdict
+
+    @ViewBuilder private var header: some View {
+        let (glyph, tint, text): (String, Color, String) = {
+            switch overallOK {
+            case .some(true):  return ("checkmark.seal.fill", .green, "Everything looks good. You're connected.")
+            case .some(false): return ("exclamationmark.triangle.fill", .orange, "Some checks didn't pass. Details below.")
+            case .none:        return ("antenna.radiowaves.left.and.right", Theme.Color.accent, "Checking your connection…")
+            }
+        }()
+        HStack(spacing: 12) {
+            Image(systemName: glyph)
+                .font(.system(size: 26))
+                .foregroundColor(tint)
+            Text(text)
+                .font(.callout.weight(.semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Row
+
+    private func row(_ line: DiagLine) -> some View {
+        let (glyph, tint): (String, Color) = {
+            switch line.status {
+            case .ok:   return ("checkmark.circle.fill", .green)
+            case .fail: return ("xmark.octagon.fill", .red)
+            case .info: return ("info.circle.fill", Theme.Color.textSecondary)
+            }
+        }()
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: glyph).foregroundColor(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(line.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text(line.detail)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: - Probes
+
     @MainActor
     private func run() async {
         running = true
+        overallOK = nil
         var out: [DiagLine] = []
+        func push(_ l: DiagLine) { out.append(l); lines = out }
 
-        let port = UserDefaults.standard.integer(forKey: "rcq.singbox.activePort")
-        out.append(DiagLine(
-            label: "Transport",
-            value: "enabled=\(SingBoxTransport.isEnabled)  active=\(SingBoxTransport.shared.isActive)  port=\(port)",
-            ok: true
+        // Route: direct vs through the censorship-bypass relay.
+        let onRelay = SingBoxTransport.shared.isActive
+        push(DiagLine(
+            title: "Route",
+            detail: onRelay
+                ? "Through the bypass relay. Censorship circumvention is active."
+                : "Direct to the server.",
+            status: .info
         ))
-        if let lastErr = SingBoxTransport.lastStartError {
-            out.append(DiagLine(
-                label: "Transport last error",
-                value: lastErr,
-                ok: false,
+
+        // Surface a transport start failure if the bypass tried and failed.
+        if let err = SingBoxTransport.lastStartError {
+            push(DiagLine(
+                title: "Bypass transport",
+                detail: "Couldn't start: \(err)",
+                status: .fail
             ))
         }
-        out.append(DiagLine(
-            label: "App state",
-            value: "offline=\(AppState.shared.isOffline)  ws=\(WebSocketService.shared.isConnected)",
-            ok: true
-        ))
-        lines = out
 
-        let probes: [(String, String, Bool)] = [
-            ("GET /health", "/health", false),
-            ("GET /contacts", "/contacts", true),
-            ("GET /groups", "/groups", true),
-        ]
-        for (label, path, authed) in probes {
-            let started = Date()
-            do {
-                let data = try await APIClient.shared.rawRequest(
-                    "GET", path, authenticated: authed
-                )
-                let ms = Int(Date().timeIntervalSince(started) * 1000)
-                let count = ((try? JSONSerialization.jsonObject(with: data)) as? [Any])?.count
-                let detail = count.map { "\($0) items, " } ?? ""
-                out.append(DiagLine(
-                    label: label,
-                    value: "OK — \(detail)\(data.count) bytes, \(ms)ms",
-                    ok: true
-                ))
-            } catch {
-                let ms = Int(Date().timeIntervalSince(started) * 1000)
-                out.append(DiagLine(
-                    label: label,
-                    value: "FAIL (\(ms)ms) — \(error.localizedDescription)",
-                    ok: false
-                ))
-            }
-            lines = out
-        }
+        // Server reachable: unauthenticated /health.
+        await probe(
+            title: "Server reachable",
+            path: "/health",
+            authed: false,
+            okText: { ms, _ in "The server answered in \(ms) ms." },
+            failText: { "Couldn't reach the server. Check your network, or turn on the obfuscated connection if you're on a censored network." },
+            push: push
+        )
+
+        // Account: authenticated /contacts (proves the token works end to end).
+        await probe(
+            title: "Your account",
+            path: "/contacts",
+            authed: true,
+            okText: { ms, count in
+                let n = count.map { "\($0) contact\($0 == 1 ? "" : "s")" } ?? "loaded"
+                return "Signed in. Contacts \(n) (\(ms) ms)."
+            },
+            failText: { "Signed in but the server rejected the request. Try Run again, or restart the app." },
+            push: push
+        )
+
+        // Real-time channel: the live WebSocket.
+        let ws = WebSocketService.shared.isConnected
+        let offline = AppState.shared.isOffline
+        push(DiagLine(
+            title: "Real-time channel",
+            detail: ws
+                ? "Connected. New messages and presence arrive instantly."
+                : (offline ? "Offline. Trying to reconnect…" : "Not connected right now."),
+            status: ws ? .ok : .fail
+        ))
+
+        // Bypass relays available (informational).
+        let relayCount = RelayConfigStore.shared.currentRelays().count
+        push(DiagLine(
+            title: "Bypass relays",
+            detail: relayCount > 0
+                ? "\(relayCount) relay\(relayCount == 1 ? "" : "s") available if the direct route is blocked."
+                : "Using the built-in relay list.",
+            status: .info
+        ))
+
+        overallOK = !out.contains { $0.status == .fail }
         running = false
+    }
+
+    /// One reachability probe. `okText(ms, itemCount)` / `failText()` build the
+    /// human-readable detail. itemCount is the JSON array length when the body
+    /// is an array (contacts/groups), else nil.
+    @MainActor
+    private func probe(
+        title: String,
+        path: String,
+        authed: Bool,
+        okText: (Int, Int?) -> String,
+        failText: () -> String,
+        push: (DiagLine) -> Void
+    ) async {
+        let started = Date()
+        do {
+            let data = try await APIClient.shared.rawRequest("GET", path, authenticated: authed)
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            let count = ((try? JSONSerialization.jsonObject(with: data)) as? [Any])?.count
+            push(DiagLine(title: title, detail: okText(ms, count), status: .ok))
+        } catch {
+            push(DiagLine(title: title, detail: failText(), status: .fail))
+        }
     }
 }

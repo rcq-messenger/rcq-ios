@@ -40,6 +40,7 @@ struct PrivacySettingsView: View {
     @State private var showPINSettings = false
     @State private var showProxyURL = false
     @State private var showDiagnostics = false
+    @AppStorage("rcq.privacy.screenSecurity") private var screenSecurityOn = false
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
     @AppStorage("rcq.autoProxyActive") private var autoProxyActive: Bool = false
     @AppStorage("rcq.singbox.autoDisabled") private var singboxAutoDisabled: Bool = false
@@ -204,6 +205,7 @@ struct PrivacySettingsView: View {
     // MARK: - moved sections (PIN / inventory / network / traffic / migration)
 
     @ViewBuilder
+    @ViewBuilder
     private var securitySection: some View {
         if !PanicPINService.shared.isDecoy {
             Section {
@@ -231,6 +233,27 @@ struct PrivacySettingsView: View {
             }
             .listRowBackground(Theme.Color.bgSecondary)
         }
+
+        Section {
+            Toggle(isOn: $screenSecurityOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.privacy.screen_security".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("settings.privacy.screen_security.desc".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .tint(Theme.Color.accent)
+            .onChange(of: screenSecurityOn) { _ in
+                // @AppStorage already persisted the value; (re)apply it to the
+                // live window's secure-field layer.
+                ScreenSecurity.shared.refresh()
+            }
+        } footer: {
+            Text("settings.privacy.screen_security.footer".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     private var networkSection: some View {

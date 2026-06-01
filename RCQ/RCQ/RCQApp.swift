@@ -232,6 +232,7 @@ struct RootView: View {
     @StateObject private var audioRooms = AudioRoomService.shared
     @StateObject private var ws = WebSocketService.shared
     @StateObject private var panicPIN = PanicPINService.shared
+    @StateObject private var screenSecurity = ScreenSecurity.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("rcq.onboarded") private var didOnboard: Bool = false
     @State private var backgroundedAt: Date?
@@ -259,7 +260,12 @@ struct RootView: View {
         // moment a fullScreenCover came up.
         ZStack {
             mainContent
-            if panicPIN.isConfigured && scenePhase != .active {
+            // Cover the UI for: a configured panic-PIN going to background, OR
+            // screen-security being on while backgrounded (app-switcher snapshot)
+            // or while the screen is recorded/mirrored (belt-and-suspenders over
+            // the secure-field layer trick).
+            if (panicPIN.isConfigured && scenePhase != .active)
+                || (screenSecurity.enabled && (scenePhase != .active || screenSecurity.isCaptured)) {
                 privacyCover
             }
         }
@@ -324,6 +330,10 @@ struct RootView: View {
         // Also fires before boot completes (during OnboardingView),
         // which is fine — no banners can fire pre-boot anyway.
         BannerWindowController.shared.install()
+
+        // Wire the screen-security secure-field to the (now-live) window and
+        // sync it to the current setting. Idempotent.
+        ScreenSecurity.shared.refresh()
 
         // NSE may have bumped the unread counter while we were
         // backgrounded; mirror its current state to the app-icon

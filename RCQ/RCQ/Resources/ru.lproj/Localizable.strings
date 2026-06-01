@@ -1820,6 +1820,9 @@
 "settings.panic_pin.on" = "Вкл";
 "settings.panic_pin.off" = "Выкл";
 "settings.panic_pin.footer" = "PIN-код блокирует приложение и шифрует историю сообщений на этом устройстве.";
+"settings.privacy.screen_security" = "Защита экрана";
+"settings.privacy.screen_security.desc" = "Скрывать содержимое от скриншотов и записи экрана";
+"settings.privacy.screen_security.footer" = "Когда включено, скриншоты и запись экрана RCQ выходят пустыми, а приложение скрыто в переключателе задач. По умолчанию выключено.";
 "panic_pin.lock.title" = "Введите PIN-код";
 "panic_pin.settings.title" = "PIN-код";
 "panic_pin.settings.section" = "PIN приложения";
