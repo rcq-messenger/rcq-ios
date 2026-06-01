@@ -269,4 +269,12 @@ final class MessageStore: ObservableObject {
         threads = [:]
         MessageDB.shared.deleteAll()
     }
+
+    /// Soft account-switch reset: drop the in-memory thread cache WITHOUT
+    /// deleting any rows. History lives in a per-account SQLite file
+    /// (`rcq-history-<accountID>-v8.sqlite`) that must survive so switching back
+    /// resumes the conversation. Use [clearAll] only for a true burn/migrate.
+    func resetInMemory() {
+        threads = [:]
+    }
 }

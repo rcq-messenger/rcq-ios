@@ -543,15 +543,21 @@ final class AppState: ObservableObject {
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
         NotificationPrefsService.shared.wipe()
-        MessageStore.shared.clearAll()
+        // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows
+        // — history lives in a per-account SQLite file and must survive so a
+        // switch-back resumes the conversation. (clearAll() deletes rows; that's
+        // the burn/migrate path, not this one. This was the chat-history loss.)
+        MessageStore.shared.resetInMemory()
         VisitStore.shared.wipe()
         RandomChatService.shared.wipe()
         CallService.shared.wipe()
         NotificationService.shared.wipe()
-        FavoritesStore.shared.wipe()
-        ArchiveStore.shared.wipe()
-        ContactSoundStore.shared.wipe()
-        ChatSettingsStore.shared.wipe()
+        // Favourites / archive / per-chat sounds / per-chat settings are
+        // persistent per-device organizational data, NOT transient view state.
+        // They live under global UserDefaults keys, so wiping them on a soft
+        // switch permanently destroyed them for EVERY account — that was the
+        // favourites/archive loss on server switch. Leave them intact here;
+        // only burnAccount() (nuclear reset) clears them.
         NearbyService.shared.wipe()
         NicknameCache.wipe()
         RemovedContactsStore.shared.wipe()
