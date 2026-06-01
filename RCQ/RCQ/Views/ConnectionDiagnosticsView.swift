@@ -32,7 +32,7 @@ struct ConnectionDiagnosticsView: View {
                         if running {
                             HStack(spacing: 8) {
                                 ProgressView()
-                                Text("Checking…")
+                                Text("diag.checking".localized)
                                     .font(.caption)
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
@@ -63,9 +63,9 @@ struct ConnectionDiagnosticsView: View {
     @ViewBuilder private var header: some View {
         let (glyph, tint, text): (String, Color, String) = {
             switch overallOK {
-            case .some(true):  return ("checkmark.seal.fill", .green, "Everything looks good. You're connected.")
-            case .some(false): return ("exclamationmark.triangle.fill", .orange, "Some checks didn't pass. Details below.")
-            case .none:        return ("antenna.radiowaves.left.and.right", Theme.Color.accent, "Checking your connection…")
+            case .some(true):  return ("checkmark.seal.fill", .green, "diag.verdict.ok".localized)
+            case .some(false): return ("exclamationmark.triangle.fill", .orange, "diag.verdict.problems".localized)
+            case .none:        return ("antenna.radiowaves.left.and.right", Theme.Color.accent, "diag.verdict.checking".localized)
             }
         }()
         HStack(spacing: 12) {
@@ -116,42 +116,40 @@ struct ConnectionDiagnosticsView: View {
         // Route: direct vs through the censorship-bypass relay.
         let onRelay = SingBoxTransport.shared.isActive
         push(DiagLine(
-            title: "Route",
-            detail: onRelay
-                ? "Through the bypass relay. Censorship circumvention is active."
-                : "Direct to the server.",
+            title: "diag.route.title".localized,
+            detail: (onRelay ? "diag.route.relay" : "diag.route.direct").localized,
             status: .info
         ))
 
         // Surface a transport start failure if the bypass tried and failed.
         if let err = SingBoxTransport.lastStartError {
             push(DiagLine(
-                title: "Bypass transport",
-                detail: "Couldn't start: \(err)",
+                title: "diag.transport.title".localized,
+                detail: "diag.transport.failed".localized(err),
                 status: .fail
             ))
         }
 
         // Server reachable: unauthenticated /health.
         await probe(
-            title: "Server reachable",
+            title: "diag.server.title".localized,
             path: "/health",
             authed: false,
-            okText: { ms, _ in "The server answered in \(ms) ms." },
-            failText: { "Couldn't reach the server. Check your network, or turn on the obfuscated connection if you're on a censored network." },
+            okText: { ms, _ in "diag.server.ok".localized(ms) },
+            failText: { "diag.server.fail".localized },
             push: push
         )
 
         // Account: authenticated /contacts (proves the token works end to end).
         await probe(
-            title: "Your account",
+            title: "diag.account.title".localized,
             path: "/contacts",
             authed: true,
             okText: { ms, count in
-                let n = count.map { "\($0) contact\($0 == 1 ? "" : "s")" } ?? "loaded"
-                return "Signed in. Contacts \(n) (\(ms) ms)."
+                count.map { "diag.account.ok".localized($0, ms) }
+                    ?? "diag.account.ok_unknown".localized(ms)
             },
-            failText: { "Signed in but the server rejected the request. Try Run again, or restart the app." },
+            failText: { "diag.account.fail".localized },
             push: push
         )
 
@@ -159,20 +157,20 @@ struct ConnectionDiagnosticsView: View {
         let ws = WebSocketService.shared.isConnected
         let offline = AppState.shared.isOffline
         push(DiagLine(
-            title: "Real-time channel",
+            title: "diag.ws.title".localized,
             detail: ws
-                ? "Connected. New messages and presence arrive instantly."
-                : (offline ? "Offline. Trying to reconnect…" : "Not connected right now."),
+                ? "diag.ws.connected".localized
+                : (offline ? "diag.ws.offline".localized : "diag.ws.disconnected".localized),
             status: ws ? .ok : .fail
         ))
 
         // Bypass relays available (informational).
         let relayCount = RelayConfigStore.shared.currentRelays().count
         push(DiagLine(
-            title: "Bypass relays",
+            title: "diag.relays.title".localized,
             detail: relayCount > 0
-                ? "\(relayCount) relay\(relayCount == 1 ? "" : "s") available if the direct route is blocked."
-                : "Using the built-in relay list.",
+                ? "diag.relays.count".localized(relayCount)
+                : "diag.relays.builtin".localized,
             status: .info
         ))
 
