@@ -142,6 +142,12 @@
 "diag.relays.title" = "Bypass relays";
 "diag.relays.count" = "%d relays available if the direct route is blocked.";
 "diag.relays.builtin" = "Using the built-in relay list.";
+
+"serverjoin.title" = "Join this server?";
+"serverjoin.body" = "You've been invited to a private RCQ island. We'll add it as a separate account with its own identity.";
+"serverjoin.body_open" = "Add this RCQ server as a separate account with its own identity.";
+"serverjoin.join" = "Join";
+"serverjoin.error" = "Couldn't join. The invite may be wrong or expired, or the server is unreachable.";
 "settings.network.proxy.unset" = "Automatic";
 "settings.network.proxy.intro" = "RCQ connects to the server directly. If that server is blocked on your network, the app automatically switches to a built-in backup route — you don't need to do anything.";
 "settings.network.stealth.auto_on" = "Auto on";

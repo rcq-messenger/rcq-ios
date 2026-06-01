@@ -257,6 +257,9 @@ struct ContactListView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
+            .sheet(item: $appState.pendingServerJoin) { req in
+                ServerJoinSheet(request: req, onJoined: { appState.pendingServerJoin = nil })
+            }
             .onChange(of: appState.pendingAddUIN) { newValue in
                 if let uin = newValue {
                     deepLinkAddUIN = uin

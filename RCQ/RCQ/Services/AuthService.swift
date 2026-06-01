@@ -59,10 +59,15 @@ final class AuthService: ObservableObject {
             let identity_key: String
             let signing_key: String
             let inviter_uin: Int?
+            let invite: String?
         }
         struct Out: Decodable { let uin: Int; let token: String }
 
         let inviterUIN = UserDefaults.standard.object(forKey: AppState.pendingInviterKey) as? Int
+        // Consume-once: read + clear the server-join invite up front so a failed
+        // register (e.g. bad invite → 403) can't leave it to leak into the next.
+        let serverInvite = UserDefaults.standard.string(forKey: AppState.pendingServerInviteKey)
+        UserDefaults.standard.removeObject(forKey: AppState.pendingServerInviteKey)
 
         let out: Out = try await APIClient.shared.request(
             "POST",
@@ -71,7 +76,8 @@ final class AuthService: ObservableObject {
                 nickname: nick,
                 identity_key: bundle.identityKey,
                 signing_key: bundle.signingKey,
-                inviter_uin: inviterUIN
+                inviter_uin: inviterUIN,
+                invite: serverInvite
             )
         )
         UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)

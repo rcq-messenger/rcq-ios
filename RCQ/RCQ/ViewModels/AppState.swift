@@ -39,6 +39,19 @@ final class AppState: ObservableObject {
     /// `UserInfoView` for the UIN as a sheet.
     @Published var pendingOpenUserProfile: Int? = nil
 
+    /// Server-join request captured from an `rcq://server/<host>?invite=<code>`
+    /// deep link (the QR an operator of an invite-only island shares). The root
+    /// view presents a confirmation sheet that adds the account with the invite.
+    @Published var pendingServerJoin: ServerJoinRequest? = nil
+
+    /// A pending invite-only server join. `host` is a bare domain
+    /// (e.g. "island.example.com"); `invite` is nil for an open server link.
+    struct ServerJoinRequest: Identifiable, Equatable {
+        let id = UUID()
+        let host: String
+        let invite: String?
+    }
+
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
     private var pendingOnlineSync: Task<Void, Never>?
@@ -48,7 +61,30 @@ final class AppState: ObservableObject {
     /// existing accounts.
     static let pendingInviterKey = "rcq.pendingInviterUIN"
 
+    /// UserDefaults key for a server-join invite token, stashed by
+    /// `addAccount` and consumed once by the next `/auth/register` (required
+    /// only by servers running REGISTRATION_POLICY=invite; ignored otherwise).
+    static let pendingServerInviteKey = "rcq.pendingServerInvite"
+
     func handle(deepLink url: URL) {
+        // Invite-only server join — rcq://server/<host>?invite=<code> (the
+        // QR/link an island operator shares) or https://rcq.app/s/<host>?invite=.
+        // `invite` is omitted for an open-server link.
+        func inviteParam(_ u: URL) -> String? {
+            URLComponents(url: u, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "invite" })?.value
+        }
+        if url.scheme == "rcq", url.host == "server",
+           let host = url.pathComponents.dropFirst().first(where: { !$0.isEmpty }) {
+            pendingServerJoin = ServerJoinRequest(host: host, invite: inviteParam(url))
+            return
+        }
+        if (url.scheme == "https" || url.scheme == "http"), url.host == "rcq.app",
+           url.pathComponents.count >= 3, url.pathComponents[1] == "s",
+           !url.pathComponents[2].isEmpty {
+            pendingServerJoin = ServerJoinRequest(host: url.pathComponents[2], invite: inviteParam(url))
+            return
+        }
         // Referral link — rcq://r/<uin> or https://rcq.app/r/<uin>.
         if (url.scheme == "rcq" && url.host == "r"),
            let last = url.pathComponents.last, let uin = Int(last), uin > 0 {
@@ -491,7 +527,13 @@ final class AppState: ObservableObject {
     /// the subsequent register fails (the user can retry via the
     /// switcher; the dangling account stays in the roster).
     @discardableResult
-    func addAccount(serverURL: String, serverToken: String? = nil) async -> Bool {
+    func addAccount(serverURL: String, serverToken: String? = nil, invite: String? = nil) async -> Bool {
+        // Stash the server-join invite for the fresh register that boot() runs
+        // on the new account. Consumed once in AuthService.register; harmless on
+        // open servers (the backend ignores it unless policy=invite).
+        if let invite, !invite.isEmpty {
+            UserDefaults.standard.set(invite, forKey: Self.pendingServerInviteKey)
+        }
         // AccountManager.add also setActive(new.id) and triggers
         // mirrorActiveToLegacy → App Group file + rcq.baseURL
         // already point at the new account by the time
@@ -499,6 +541,7 @@ final class AppState: ObservableObject {
         // for self-host backends behind a Caddy X-RCQ-Auth gate, nil
         // for public deployments (api.rcq.app, default self-host).
         guard AccountManager.shared.add(serverURL: serverURL, serverToken: serverToken) != nil else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingServerInviteKey)
             return false
         }
         await rebootForActiveAccount()
