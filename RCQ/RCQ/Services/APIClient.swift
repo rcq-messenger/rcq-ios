@@ -181,24 +181,25 @@ actor APIClient {
         }
         let key = "rcq.autoProxyActive"
 
-        if UserDefaults.standard.bool(forKey: key) {
-            if await probe(Self.builtInProxyURL) {
-                Task.detached { [weak self] in
-                    guard let self else { return }
-                    if await self.probe(Self.prodBaseURL) {
-                        UserDefaults.standard.set(false, forKey: key)
-                    }
-                }
-                return .proxy
-            }
-            if await probe(Self.prodBaseURL) {
+        // ALWAYS prefer the direct path and re-check it every boot — even when
+        // a previous boot fell back to the built-in proxy. A single transient
+        // /health failure (cold radio after an iOS background-suspend, a
+        // momentary upstream blip) used to flip `autoProxyActive` on and then
+        // STICK: subsequent boots probed the proxy FIRST and rode the relay for
+        // the whole session, recovering to direct only via a detached probe
+        // that took effect a boot later. For a user whose direct path works
+        // fine (e.g. an uncensored network abroad — Israel) that produced a slow
+        // login, a stale "Без сети" badge (the 15s boot watchdog firing on the
+        // slow relay path), and occasional tap-to-resend — all while direct
+        // would have been instant. Probing prod first self-heals the moment
+        // direct is reachable again; the proxy stays purely as a fallback.
+        if await probe(Self.prodBaseURL) {
+            if UserDefaults.standard.bool(forKey: key) {
                 UserDefaults.standard.set(false, forKey: key)
-                return .primary
             }
-            return .unreachable
+            return .primary
         }
-
-        if await probe(Self.prodBaseURL) { return .primary }
+        // Direct genuinely unreachable — fall back to the embedded proxy.
         if await probe(Self.builtInProxyURL) {
             UserDefaults.standard.set(true, forKey: key)
             print("[APIClient] primary unreachable — switched to built-in proxy")

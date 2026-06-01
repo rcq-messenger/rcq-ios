@@ -615,6 +615,10 @@ final class AppState: ObservableObject {
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .opened:
+            // A live realtime socket is the definitive "we're online" signal —
+            // clear any stale offline badge the boot watchdog may have set after
+            // a slow first connect (the "Без сети while everything works" case).
+            if isOffline { isOffline = false }
             // Drain offline queue on every (re)connect.
             Task { await MessageService.shared.fetchOfflineQueue() }
             // Re-sync audio room subscription if we were inside one.
