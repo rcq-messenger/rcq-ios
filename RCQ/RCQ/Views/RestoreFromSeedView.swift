@@ -29,7 +29,8 @@ struct RestoreFromSeedView: View {
 
     private var words: [String] { RecoveryPhrase.parse(input) }
     private var wordCount: Int { words.count }
-    private var canRestore: Bool { wordCount == 24 && !restoring && serverURL != nil }
+    // 24 words = a normal seed phrase; 48 = a legacy account's raw-key export.
+    private var canRestore: Bool { (wordCount == 24 || wordCount == 48) && !restoring && serverURL != nil }
 
     /// Normalized https URL, or nil when the field is malformed.
     private var serverURL: String? {

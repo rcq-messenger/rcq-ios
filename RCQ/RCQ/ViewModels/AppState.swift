@@ -580,12 +580,26 @@ final class AppState: ObservableObject {
         if AccountManager.shared.isAtAccountLimit {
             return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
         }
-        guard let seed = RecoveryPhrase.decode(words) else {
+        guard let decoded = RecoveryPhrase.decode(words) else {
             return "recovery.restore.error.invalid".localized
         }
+        // 32 bytes = a seed (new accounts) → derive; 64 bytes = a legacy
+        // account's raw idPriv||signPriv export → use directly, no seed carried.
         let keys: RecoveryPhrase.DerivedKeys
-        do { keys = try RecoveryPhrase.deriveKeys(seed: seed) }
-        catch { return "recovery.restore.error.generic".localized }
+        let seedToStore: Data?
+        do {
+            if decoded.count == 32 {
+                keys = try RecoveryPhrase.deriveKeys(seed: decoded)
+                seedToStore = decoded
+            } else if decoded.count == 64 {
+                keys = try RecoveryPhrase.keysFromRaw(
+                    identityPriv: Data(decoded.prefix(32)),
+                    signingPriv: Data(decoded.suffix(32)))
+                seedToStore = nil
+            } else {
+                return "recovery.restore.error.invalid".localized
+            }
+        } catch { return "recovery.restore.error.generic".localized }
 
         let previousActiveID = AccountManager.shared.activeAccountID
         guard let acct = AccountManager.shared.add(serverURL: serverURL) else {
@@ -634,7 +648,7 @@ final class AppState: ObservableObject {
             // Persist the recovered identity under the new account's prefix.
             KeychainStore.set(KeychainStore.Keys.identityPriv, keys.identityPriv.rawRepresentation)
             KeychainStore.set(KeychainStore.Keys.signingPriv,  keys.signingPriv.rawRepresentation)
-            KeychainStore.set(KeychainStore.Keys.recoverySeed, seed)
+            if let seedToStore { KeychainStore.set(KeychainStore.Keys.recoverySeed, seedToStore) }
             KeychainStore.setString(KeychainStore.Keys.uin, String(rec.uin))
             KeychainStore.setString(KeychainStore.Keys.token, rec.token)
             KeychainStore.setString(KeychainStore.Keys.nickname, nick)

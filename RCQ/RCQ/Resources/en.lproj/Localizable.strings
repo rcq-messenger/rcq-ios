@@ -2002,14 +2002,14 @@
 "recovery.reveal" = "Reveal phrase";
 "recovery.copy" = "Copy phrase";
 "recovery.copied" = "Copied";
-"recovery.warning" = "Write these 24 words down and keep them somewhere safe and private. Anyone who has them can take over your account, and we can't recover them for you.";
+"recovery.warning" = "Write these words down and keep them somewhere safe and private. Anyone who has them can take over your account, and we can't recover them for you.";
 "recovery.unavailable.title" = "No phrase for this account";
-"recovery.unavailable.body" = "This account was created before recovery phrases existed, so it doesn't have one. Burn it and create a new account to get a backup phrase.";
+"recovery.unavailable.body" = "There is no backup phrase available for this account on this device.";
 
 "recovery.restore.title" = "Restore from phrase";
-"recovery.restore.subtitle" = "Enter your 24-word recovery phrase to bring your account back on this device.";
-"recovery.restore.placeholder" = "Type or paste your 24 words, separated by spaces";
-"recovery.restore.word_count" = "%d / 24 words";
+"recovery.restore.subtitle" = "Enter your recovery phrase (24 words, or 48 for an older account) to bring your account back on this device.";
+"recovery.restore.placeholder" = "Type or paste your words, separated by spaces";
+"recovery.restore.word_count" = "%d words";
 "recovery.restore.advanced" = "Advanced";
 "recovery.restore.server.label" = "Server";
 "recovery.restore.cta" = "Restore account";

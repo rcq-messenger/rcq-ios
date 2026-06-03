@@ -23,7 +23,9 @@ struct RecoveryPhraseView: View {
         // Derived in `body` (a @MainActor context) since AuthService is
         // main-actor isolated; the active account is stable while the sheet
         // is up and the encode is cheap.
-        let phrase = AuthService.shared.recoveryPhrase()
+        // Seed accounts get a 24-word phrase; legacy (pre-seed) accounts fall
+        // back to a 48-word raw-key export. Truly keyless accounts show nothing.
+        let phrase = AuthService.shared.recoveryPhrase() ?? AuthService.shared.legacyExportPhrase()
         let needsPIN = PanicPINService.shared.isConfigured && !unlocked
         return NavigationStack {
             ZStack {

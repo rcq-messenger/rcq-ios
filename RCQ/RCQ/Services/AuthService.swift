@@ -105,6 +105,17 @@ final class AuthService: ObservableObject {
         return RecoveryPhrase.encode(seed)
     }
 
+    /// A LEGACY account (no seed) backup: its raw identity keys exported as a
+    /// 48-word phrase (idPriv||signPriv = 64 bytes). nil for a seed-derived
+    /// account (use recoveryPhrase()) or if keys are missing/malformed.
+    func legacyExportPhrase() -> [String]? {
+        guard KeychainStore.data(KeychainStore.Keys.recoverySeed) == nil else { return nil }
+        guard let id = KeychainStore.data(KeychainStore.Keys.identityPriv),
+              let sign = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              id.count == 32, sign.count == 32 else { return nil }
+        return RecoveryPhrase.encode(id + sign)
+    }
+
     func updateNicknameLocal(_ nick: String) {
         nickname = nick
         KeychainStore.setString(KeychainStore.Keys.nickname, nick)

@@ -47,6 +47,15 @@ enum RecoveryPhrase {
         return DerivedKeys(identityPriv: idPriv, signingPriv: sigPriv)
     }
 
+    /// Rebuild keys from raw 32-byte private halves — legacy account recovery,
+    /// where the keys weren't seed-derived and are backed up/restored directly
+    /// as a 48-word phrase (idPriv||signPriv).
+    static func keysFromRaw(identityPriv: Data, signingPriv: Data) throws -> DerivedKeys {
+        let idPriv = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: identityPriv)
+        let sigPriv = try Curve25519.Signing.PrivateKey(rawRepresentation: signingPriv)
+        return DerivedKeys(identityPriv: idPriv, signingPriv: sigPriv)
+    }
+
     /// A fresh 32-byte recovery seed (256 bits -> a 24-word phrase).
     static func newSeed() -> Data {
         var d = Data(count: 32)
@@ -63,10 +72,11 @@ enum RecoveryPhrase {
 
     // MARK: - BIP39 (matches Android RecoveryPhrase.encode/decode)
 
-    /// 32-byte seed -> 24 words (256 entropy bits + 8 checksum bits = 24×11).
-    /// Returns nil only if `seed` isn't exactly 32 bytes.
+    /// Bytes -> BIP39 words. 32 bytes (a seed) -> 24 words; 64 bytes (a legacy
+    /// account's raw idPriv||signPriv) -> 48 words. The checksum length scales
+    /// with the entropy. Returns nil for any other length.
     static func encode(_ seed: Data) -> [String]? {
-        guard seed.count == 32 else { return nil }
+        guard seed.count == 32 || seed.count == 64 else { return nil }
         let hash = Data(SHA256.hash(data: seed))
         let csBits = seed.count * 8 / 32 // 8
         var bits: [Bool] = []
@@ -84,11 +94,12 @@ enum RecoveryPhrase {
         return out
     }
 
-    /// 24 words -> 32-byte seed, or nil on a bad word / count / checksum.
+    /// 24 words -> 32-byte seed, or 48 words -> 64-byte legacy raw-key blob, or
+    /// nil on a bad word / count / checksum.
     static func decode(_ input: [String]) -> Data? {
-        guard input.count == 24 else { return nil }
+        guard input.count == 24 || input.count == 48 else { return nil }
         var bits: [Bool] = []
-        bits.reserveCapacity(264)
+        bits.reserveCapacity(input.count * 11)
         for w in input {
             guard let i = wordIndex[w.trimmingCharacters(in: .whitespaces).lowercased()] else { return nil }
             for j in stride(from: 10, through: 0, by: -1) { bits.append((i >> j) & 1 == 1) }
