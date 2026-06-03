@@ -2018,3 +2018,5 @@
 "recovery.restore.error.notfound" = "No account was found for this phrase on this server. Check the server, or the phrase may belong elsewhere.";
 "recovery.restore.error.generic" = "Couldn't restore right now. Check your connection and try again.";
 "recovery.restore.error.server" = "Enter a valid server address.";
+"recovery.pin.title" = "Enter your PIN to view the recovery phrase";
+"recovery.pin.unlock" = "Enter PIN";

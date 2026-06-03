@@ -1996,3 +1996,5 @@
 "recovery.restore.error.notfound" = "На этом сервере нет аккаунта для этой фразы. Проверь сервер, возможно фраза от другого.";
 "recovery.restore.error.generic" = "Сейчас восстановить не удалось. Проверь соединение и попробуй снова.";
 "recovery.restore.error.server" = "Введи корректный адрес сервера.";
+"recovery.pin.title" = "Введи PIN, чтобы увидеть фразу восстановления";
+"recovery.pin.unlock" = "Ввести PIN";

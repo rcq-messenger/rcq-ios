@@ -14,19 +14,26 @@ struct RecoveryPhraseView: View {
 
     @State private var revealed = false
     @State private var copied = false
+    // The phrase grants full account access forever, so re-gate it behind the
+    // PIN when one is set — the app being unlocked isn't enough. No PIN = no gate.
+    @State private var unlocked = false
+    @State private var showPINGate = false
 
     var body: some View {
         // Derived in `body` (a @MainActor context) since AuthService is
         // main-actor isolated; the active account is stable while the sheet
         // is up and the encode is cheap.
         let phrase = AuthService.shared.recoveryPhrase()
+        let needsPIN = PanicPINService.shared.isConfigured && !unlocked
         return NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                if let phrase {
-                    content(phrase)
-                } else {
+                if phrase == nil {
                     unavailable
+                } else if needsPIN {
+                    pinLocked
+                } else if let phrase {
+                    content(phrase)
                 }
             }
             .navigationTitle("recovery.title".localized)
@@ -36,7 +43,42 @@ struct RecoveryPhraseView: View {
                     Button("common.close".localized) { dismiss() }
                 }
             }
+            .onAppear {
+                if phrase != nil, PanicPINService.shared.isConfigured, !unlocked {
+                    showPINGate = true
+                }
+            }
+            .sheet(isPresented: $showPINGate) {
+                PINVerifySheet(title: "recovery.pin.title".localized) {
+                    unlocked = true
+                    revealed = true
+                }
+            }
         }
+    }
+
+    private var pinLocked: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 30, weight: .light))
+                .foregroundColor(Theme.Color.accent)
+            Text("recovery.pin.title".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+            Button {
+                showPINGate = true
+            } label: {
+                Text("recovery.pin.unlock".localized)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(Capsule().fill(Theme.Color.accent))
+                    .foregroundColor(.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(28)
     }
 
     // MARK: - phrase available
