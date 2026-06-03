@@ -22,6 +22,7 @@ struct AddAccountSheet: View {
     @State private var customToken: String = ""
     @State private var adding: Bool = false
     @State private var error: String?
+    @State private var showRestore: Bool = false
 
     private var filtered: [ServerEntry] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -68,6 +69,7 @@ struct AddAccountSheet: View {
                                     emptyState
                                 }
                                 customURLBlock
+                                restoreBlock
                                 Spacer(minLength: 24)
                             }
                             .padding(.horizontal, 18)
@@ -88,6 +90,9 @@ struct AddAccountSheet: View {
             }
             .task {
                 await directory.refresh()
+            }
+            .sheet(isPresented: $showRestore) {
+                RestoreFromSeedView(onCompleted: { dismiss() })
             }
         }
     }
@@ -244,6 +249,29 @@ struct AddAccountSheet: View {
                     .foregroundColor(.red.opacity(0.85))
             }
         }
+    }
+
+    /// Restore an existing identity (e.g. moving an account to this device)
+    /// from its recovery phrase, alongside the catalogue/custom add paths.
+    private var restoreBlock: some View {
+        Button {
+            showRestore = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                Text("recovery.restore.title".localized)
+                    .fontWeight(.medium)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption2)
+            }
+            .foregroundColor(Theme.Color.textSecondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
     }
 
     private var emptyState: some View {

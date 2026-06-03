@@ -49,6 +49,7 @@ enum KeychainStore {
         Keys.nickname,
         Keys.identityPriv,
         Keys.signingPriv,
+        Keys.recoverySeed,
     ]
 
     // MARK: - Public API (auto-routes per-account vs global)
@@ -222,6 +223,11 @@ enum KeychainStore {
         /// Raw 32-byte Ed25519 private key for sender-authentication.
         /// Public half lives on the server as `users.signing_key`.
         static let signingPriv = "rcq.signing.priv"
+        /// 32-byte seed the identity keypairs were derived from (HKDF), the
+        /// basis of the BIP39 recovery phrase. Present only for seed-derived
+        /// accounts (everything registered after v0.4); absent for legacy
+        /// accounts whose keys predate seed-derivation, which have no phrase.
+        static let recoverySeed = "rcq.recovery.seed"
         static let pinPepper = "rcq.pin.pepper"
         static let pinAttempts = "rcq.pin.attempts"
     }

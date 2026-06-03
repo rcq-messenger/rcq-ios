@@ -7,6 +7,7 @@ struct OnboardingView: View {
     @State private var page: Int = 0
     @State private var showLanguagePicker = false
     @State private var showServerPicker = false
+    @State private var showRestore = false
     @State private var entering: Bool = false
     @StateObject private var lang = LanguageManager.shared
     @AppStorage("rcq.baseURL") private var customServer: String = ""
@@ -73,6 +74,12 @@ struct OnboardingView: View {
         .sheet(isPresented: $showServerPicker) {
             ServerPickerSheet()
         }
+        .sheet(isPresented: $showRestore) {
+            RestoreFromSeedView(onCompleted: {
+                UserDefaults.standard.set(true, forKey: "rcq.onboarded")
+                onFinish()
+            })
+        }
     }
 
     // MARK: - top bar (Skip + language)
@@ -134,7 +141,29 @@ struct OnboardingView: View {
             .animation(.easeInOut(duration: 0.25), value: page)
             pageDots
             ctaRow
+            if page == pages.count - 1 {
+                restoreLink
+            }
         }
+    }
+
+    /// "Already have an account? Restore from phrase" — the new-phone path.
+    /// Only on the last page, beneath the Get Started CTA. Recovery mints
+    /// Account[0] itself and boots it, so on success we just mark onboarding
+    /// complete (no separate register fires — boot() gates the launch
+    /// throwaway and the restore path sets `booted` directly).
+    private var restoreLink: some View {
+        Button {
+            showRestore = true
+        } label: {
+            Text("onboard.cta.restore".localized)
+                .font(.system(.footnote, weight: .medium))
+                .foregroundColor(Theme.Color.textSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Server picker affordance

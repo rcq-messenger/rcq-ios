@@ -280,6 +280,16 @@ struct RootView: View {
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
         }
+        .onChange(of: didOnboard) { onboarded in
+            // Onboarding just completed. The launch boot was gated to NOT
+            // register a throwaway identity on a fresh install (see boot()),
+            // so mint the first account's identity now. "Get Started" already
+            // added Account[0] → boot registers under it. The phrase-restore
+            // path boots the recovered account itself, so it's already booted
+            // by the time it flips this flag — the guard skips the re-boot.
+            guard onboarded, !appState.booted else { return }
+            Task { await appState.boot() }
+        }
         // Shake-to-report. Wired at the root so any surface (chat,
         // inventory, game minis, settings, etc.) can summon Bug
         // Bounty by physically shaking the device. Routed through

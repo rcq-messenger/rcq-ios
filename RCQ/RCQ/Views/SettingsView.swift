@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showPrivacy = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
+    @State private var showRecovery = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @EnvironmentObject private var appState: AppState
@@ -193,6 +194,19 @@ struct SettingsView: View {
                     }
 
                     Section {
+                        Button {
+                            showRecovery = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "key.fill").foregroundColor(Theme.Color.accent)
+                                Text("settings.account.recovery".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
                         Button(role: .destructive) {
                             confirmBurn = true
                         } label: {
@@ -259,6 +273,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showPrivacy) { PrivacySettingsView() }
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
+            .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .confirmationDialog(
                 "settings.history.confirm.title".localized,
                 isPresented: $confirmClearHistory,

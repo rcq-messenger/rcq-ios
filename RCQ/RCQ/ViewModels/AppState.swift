@@ -220,6 +220,20 @@ final class AppState: ObservableObject {
         let cachedToken = KeychainStore.string(KeychainStore.Keys.token)
         let pathSatisfied = pathMonitor.currentPath.status == .satisfied
 
+        // Fresh install still on the onboarding deck: no account in the roster
+        // and no legacy identity to validate. Do NOT auto-register a throwaway
+        // identity here — the user hasn't yet chosen "new account" vs "restore
+        // from phrase". Registration is minted explicitly when they finish
+        // onboarding (RCQApp re-runs boot on `didOnboard`) or recovered by
+        // `recoverAccount`. Without this gate a fresh launch registered a UIN
+        // into the legacy unprefixed Keychain slot before that choice, leaving
+        // an orphan account and poisoning the legacy→account migration for a
+        // restored identity. Returning users (roster populated, or a legacy
+        // identity AccountManager already wrapped as Account[0]) skip the gate.
+        if AccountManager.shared.active == nil, cachedUIN == nil {
+            return
+        }
+
         if !pathSatisfied || PanicPINService.shared.isDecoy,
            let uin = cachedUIN, cachedToken != nil {
             isOffline = !PanicPINService.shared.isDecoy
@@ -546,6 +560,101 @@ final class AppState: ObservableObject {
         }
         await rebootForActiveAccount()
         return true
+    }
+
+    /// Restore an existing identity from its 24-word BIP39 phrase onto
+    /// `serverURL` as a NEW local account. Derives the keypair from the seed,
+    /// proves possession of the signing key to the server (`/auth/recover`
+    /// challenge → Ed25519 signature), and on success adds + activates the
+    /// account with the recovered UIN/token/keys/seed already in the Keychain,
+    /// then boots it (bootstrap validates the cached identity — no re-register).
+    ///
+    /// Returns nil on success, or a localized error string. On failure the
+    /// dangling account is rolled back and the previous active (if any) is
+    /// rebooted, so the caller stays where it was. Used from both the
+    /// onboarding "Restore from phrase" entry (fresh install: no previous
+    /// account, the gate in `boot()` having suppressed the launch throwaway)
+    /// and Settings "Add account → Restore".
+    func recoverAccount(phrase words: [String], serverURL: String) async -> String? {
+        if AccountManager.shared.isAtAccountLimit {
+            return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
+        }
+        guard let seed = RecoveryPhrase.decode(words) else {
+            return "recovery.restore.error.invalid".localized
+        }
+        let keys: RecoveryPhrase.DerivedKeys
+        do { keys = try RecoveryPhrase.deriveKeys(seed: seed) }
+        catch { return "recovery.restore.error.generic".localized }
+
+        let previousActiveID = AccountManager.shared.activeAccountID
+        guard let acct = AccountManager.shared.add(serverURL: serverURL) else {
+            return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
+        }
+        // The new account is now active: AccountManager.add already mirrored
+        // rcq.baseURL + the App Group active-id, so APIClient targets
+        // `serverURL` and KeychainStore.set lands under `acct.id`. Tear down the
+        // outgoing session's socket + in-memory identity and clear any stale
+        // token so the unauthenticated recover probes go out clean. Engage the
+        // proxy / pick a reachable base exactly like boot() does pre-register so
+        // recovery works on a censored network too.
+        WebSocketService.shared.disconnect()
+        AuthService.shared.resetForAccountSwitch()
+        await APIClient.shared.setServerToken(nil)
+        await APIClient.shared.setToken(nil)
+        _ = await APIClient.shared.refreshActiveBase()
+
+        struct ChalBody: Encodable { let signing_key: String }
+        struct ChalOut: Decodable { let challenge: String }
+        struct RecBody: Encodable { let signing_key: String; let challenge: String; let signature: String }
+        struct RecOut: Decodable { let uin: Int; let token: String }
+
+        do {
+            let chal: ChalOut = try await APIClient.shared.request(
+                "POST", "/auth/recover/challenge",
+                body: ChalBody(signing_key: keys.signingPubB64),
+                authenticated: false
+            )
+            let signature = try RecoveryPhrase.signChallenge(
+                signingPrivate: keys.signingPriv, challenge: chal.challenge)
+            let rec: RecOut = try await APIClient.shared.request(
+                "POST", "/auth/recover",
+                body: RecBody(signing_key: keys.signingPubB64, challenge: chal.challenge, signature: signature),
+                authenticated: false
+            )
+
+            // Server kept the profile — pull the real nickname back.
+            await APIClient.shared.setToken(rec.token)
+            var nick = "user-\(rec.uin)"
+            if let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(rec.uin)/info"),
+               !p.nickname.isEmpty {
+                nick = p.nickname
+            }
+
+            // Persist the recovered identity under the new account's prefix.
+            KeychainStore.set(KeychainStore.Keys.identityPriv, keys.identityPriv.rawRepresentation)
+            KeychainStore.set(KeychainStore.Keys.signingPriv,  keys.signingPriv.rawRepresentation)
+            KeychainStore.set(KeychainStore.Keys.recoverySeed, seed)
+            KeychainStore.setString(KeychainStore.Keys.uin, String(rec.uin))
+            KeychainStore.setString(KeychainStore.Keys.token, rec.token)
+            KeychainStore.setString(KeychainStore.Keys.nickname, nick)
+        } catch {
+            // Roll back the dangling account; restore the previous active.
+            KeychainStore.wipeAccount(acct.id)
+            AccountManager.shared.remove(acct.id)
+            if let prev = previousActiveID {
+                AccountManager.shared.setActive(prev)
+                await rebootForActiveAccount()
+            }
+            if case let APIError.http(status, _) = error, status == 404 {
+                return "recovery.restore.error.notfound".localized
+            }
+            return "recovery.restore.error.generic".localized
+        }
+
+        // Boot the recovered account: the cached uin+token now validate in
+        // bootstrapIfNeeded → ready, with no fresh registration.
+        await rebootForActiveAccount()
+        return nil
     }
 
     /// Common sequence used after `setActive` or `add`: disconnect

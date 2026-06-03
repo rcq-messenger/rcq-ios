@@ -332,16 +332,27 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
     }
 
     static func bootstrap() throws -> (RegistrationBundle, SignalCryptoService) {
-        let identity = Curve25519.KeyAgreement.PrivateKey()
-        let signing = Curve25519.Signing.PrivateKey()
-        KeychainStore.set(KeychainStore.Keys.identityPriv, identity.rawRepresentation)
-        KeychainStore.set(KeychainStore.Keys.signingPriv,  signing.rawRepresentation)
+        // Derive the identity from a fresh 32-byte recovery seed so the account
+        // is restorable from its BIP39 phrase (Android parity). The seed is
+        // persisted per-account below; `RecoveryPhrase` exports it as 24 words.
+        return try bootstrap(fromSeed: RecoveryPhrase.newSeed())
+    }
+
+    /// Seed-derived identity bootstrap. Used by both fresh registration (random
+    /// seed) and account recovery (seed decoded from the user's phrase). The
+    /// seed + both private halves are written to the Keychain; the public
+    /// halves go to `/auth/register` (or are matched by `/auth/recover`).
+    static func bootstrap(fromSeed seed: Data) throws -> (RegistrationBundle, SignalCryptoService) {
+        let keys = try RecoveryPhrase.deriveKeys(seed: seed)
+        KeychainStore.set(KeychainStore.Keys.identityPriv, keys.identityPriv.rawRepresentation)
+        KeychainStore.set(KeychainStore.Keys.signingPriv,  keys.signingPriv.rawRepresentation)
+        KeychainStore.set(KeychainStore.Keys.recoverySeed, seed)
         let bundle = RegistrationBundle(
-            identityKey: identity.publicKey.rawRepresentation.base64EncodedString(),
-            signingKey:  signing.publicKey.rawRepresentation.base64EncodedString()
+            identityKey: keys.identityPubB64,
+            signingKey:  keys.signingPubB64
         )
         // ownUIN=0 placeholder; the service is rebuilt after `/auth/register`
-        let svc = SignalCryptoService(ownUIN: 0, identityPriv: identity, signingPriv: signing)
+        let svc = SignalCryptoService(ownUIN: 0, identityPriv: keys.identityPriv, signingPriv: keys.signingPriv)
         return (bundle, svc)
     }
 

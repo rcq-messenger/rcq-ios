@@ -1971,3 +1971,28 @@
 "onboard.server.picker.empty" = "Ничего не нашлось";
 
 "boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ — попробуйте VPN.";
+
+/* ── Восстановление аккаунта (seed-фраза) ─────────────────────── */
+"settings.account.recovery" = "Фраза восстановления";
+"onboard.cta.restore" = "Уже есть аккаунт? Восстановить по фразе";
+
+"recovery.title" = "Фраза восстановления";
+"recovery.reveal" = "Показать фразу";
+"recovery.copy" = "Скопировать фразу";
+"recovery.copied" = "Скопировано";
+"recovery.warning" = "Запиши эти 24 слова и храни их в надёжном, приватном месте. Любой, у кого они есть, получит полный доступ к аккаунту, и восстановить их за тебя мы не сможем.";
+"recovery.unavailable.title" = "Для этого аккаунта фразы нет";
+"recovery.unavailable.body" = "Этот аккаунт создан до появления фраз восстановления, поэтому фразы у него нет. Сожги аккаунт и создай новый, чтобы получить резервную фразу.";
+
+"recovery.restore.title" = "Восстановить по фразе";
+"recovery.restore.subtitle" = "Введи фразу из 24 слов, чтобы вернуть аккаунт на это устройство.";
+"recovery.restore.placeholder" = "Введи или вставь 24 слова через пробел";
+"recovery.restore.word_count" = "%d / 24 слов";
+"recovery.restore.advanced" = "Дополнительно";
+"recovery.restore.server.label" = "Сервер";
+"recovery.restore.cta" = "Восстановить аккаунт";
+"recovery.restore.working" = "Восстанавливаем аккаунт…";
+"recovery.restore.error.invalid" = "Эта фраза недействительна. Проверь слова и написание, затем попробуй снова.";
+"recovery.restore.error.notfound" = "На этом сервере нет аккаунта для этой фразы. Проверь сервер, возможно фраза от другого.";
+"recovery.restore.error.generic" = "Сейчас восстановить не удалось. Проверь соединение и попробуй снова.";
+"recovery.restore.error.server" = "Введи корректный адрес сервера.";

@@ -97,6 +97,14 @@ final class AuthService: ObservableObject {
         isReady = true
     }
 
+    /// The active account's 24-word recovery phrase, or nil for a legacy
+    /// account whose keys predate seed-derivation (nothing to back up). The
+    /// caller gates the Settings UI on nil to show a "not available" notice.
+    func recoveryPhrase() -> [String]? {
+        guard let seed = KeychainStore.data(KeychainStore.Keys.recoverySeed) else { return nil }
+        return RecoveryPhrase.encode(seed)
+    }
+
     func updateNicknameLocal(_ nick: String) {
         nickname = nick
         KeychainStore.setString(KeychainStore.Keys.nickname, nick)
@@ -137,6 +145,7 @@ final class AuthService: ObservableObject {
             KeychainStore.Keys.nickname,
             KeychainStore.Keys.identityPriv,
             KeychainStore.Keys.signingPriv,
+            KeychainStore.Keys.recoverySeed,
         ] {
             KeychainStore.delete(key)
         }
