@@ -434,16 +434,17 @@ final class AppState: ObservableObject {
         AudioRoomService.shared.wipe()
         PushDecryptCache.wipe()
         NotificationPrefsService.shared.wipe()
-        MessageStore.shared.clearAll()
+        // A UIN move REUSES the same identity (only the server-side handle
+        // changes), so chat history (peer-keyed), favourites, archive and
+        // per-chat settings/sounds all stay valid. Don't nuke them like a burn
+        // does — that was the move-to-new-UIN data loss. Reset only the
+        // in-memory thread cache; the rows stay on disk and reload on boot.
+        MessageStore.shared.resetInMemory()
         VisitStore.shared.wipe()
         RandomChatService.shared.wipe()
         CallService.shared.wipe()
         NotificationService.shared.wipe()
         VoIPPushService.shared.wipe()
-        FavoritesStore.shared.wipe()
-        ArchiveStore.shared.wipe()
-        ContactSoundStore.shared.wipe()
-        ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
         RemovedContactsStore.shared.wipe()
