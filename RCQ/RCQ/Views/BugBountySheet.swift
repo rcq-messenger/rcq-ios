@@ -463,7 +463,10 @@ struct BugBountySheet: View {
                 "POST", "/reports",
                 body: Body(
                     target_uin: me,
-                    reason: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                    // Tag the platform + app version so the admin queue shows
+                    // which client a bug report came from (Android does the same).
+                    reason: "[iOS \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")] "
+                        + description.trimmingCharacters(in: .whitespacesAndNewlines),
                     context: "bug_bounty",
                     attachments: readyAttachments
                 )

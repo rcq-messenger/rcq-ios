@@ -21,6 +21,16 @@ struct EmoticonText: View {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, lineRuns in
                 if lineRuns.isEmpty {
                     Text(" ").font(font).foregroundColor(color)
+                } else if let plain = Self.plainText(lineRuns) {
+                    // Pure-text line (no inline emoticons / mentions): render as
+                    // ONE native Text so wrapping is natural. The word-by-word
+                    // FlowLayout below placed each word and each space as its own
+                    // child, so a wrap left a leading space at the start of the
+                    // next line and broke lines unevenly (the "странные переносы").
+                    Text(Self.linkify(plain))
+                        .font(font)
+                        .foregroundColor(color)
+                        .lineSpacing(lineSpacing)
                 } else {
                     FlowLayout(spacing: 0, lineSpacing: 2) {
                         ForEach(Array(lineRuns.enumerated()), id: \.offset) { _, run in
@@ -30,6 +40,17 @@ struct EmoticonText: View {
                 }
             }
         }
+    }
+
+    /// The line reconstructed if it's made up entirely of `.text` runs (no
+    /// inline emoticons or mentions); else nil so the FlowLayout path runs.
+    private static func plainText(_ runs: [Run]) -> String? {
+        var s = ""
+        for r in runs {
+            guard case .text(let t) = r else { return nil }
+            s += t
+        }
+        return s
     }
 
     @ViewBuilder

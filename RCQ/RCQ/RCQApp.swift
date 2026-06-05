@@ -465,7 +465,7 @@ private struct BootSplash: View {
         switch appState.bootStatus {
         case .connecting:      return nil
         case .engagingStealth: return "shield.lefthalf.filled"
-        case .stealthActive:   return "eye.slash.circle.fill"
+        case .stealthActive:   return "shield.fill"
         }
     }
 

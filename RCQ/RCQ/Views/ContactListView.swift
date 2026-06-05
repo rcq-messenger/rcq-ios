@@ -1647,7 +1647,7 @@ private struct StealthHeaderBadge: View {
 
     var body: some View {
         Button(action: onTap) {
-            Image(systemName: "eye.slash.circle.fill")
+            Image(systemName: "shield.fill")
                 .font(.system(size: 14))
                 .foregroundColor(Theme.Color.accent)
                 .scaleEffect(pulse ? 1.08 : 1.0)

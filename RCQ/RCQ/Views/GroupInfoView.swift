@@ -187,11 +187,19 @@ struct GroupInfoView: View {
     /// member group doesn't make the info screen unscrollable. Hidden
     /// roster path doesn't reach here.
     private var membersSection: some View {
+        // Owner first, then admins, then everyone else. Swift's sort isn't
+        // stable, so tiebreak on the original index to keep server order
+        // within a rank.
+        func rank(_ r: String) -> Int { r == "owner" ? 0 : (r == "admin" ? 1 : 2) }
+        let ordered = currentGroup.members.enumerated().sorted { a, b in
+            let ra = rank(a.element.role), rb = rank(b.element.role)
+            return ra != rb ? ra < rb : a.offset < b.offset
+        }.map { $0.element }
         let visible: [RCQGroupMember] = {
-            if showAllMembers || currentGroup.members.count <= Self.memberPreviewLimit {
-                return currentGroup.members
+            if showAllMembers || ordered.count <= Self.memberPreviewLimit {
+                return ordered
             }
-            return Array(currentGroup.members.prefix(Self.memberPreviewLimit))
+            return Array(ordered.prefix(Self.memberPreviewLimit))
         }()
         let hidden = max(0, currentGroup.members.count - visible.count)
         return section(String(format: "group.section.members".localized, currentGroup.members.count)) {
