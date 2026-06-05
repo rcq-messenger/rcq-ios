@@ -633,7 +633,7 @@ struct ChatView: View {
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
                 ScrollView {
-                    Text(pinnedAttributed(exp.text))
+                    Text(pinnedAttributed(exp.text, linkable: true))
                         .font(.body)
                         .foregroundColor(Theme.Color.textPrimary)
                         .tint(Theme.Color.accent)
@@ -670,7 +670,7 @@ struct ChatView: View {
             set: { pinnedMemberUIN = $0?.uin }
         )) { t in
             NavigationStack {
-                UserInfoView(uin: t.uin, isOwn: false)
+                UserInfoView(uin: t.uin, isOwn: t.uin == (AuthService.shared.ownUIN ?? -1))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("common.close".localized) { pinnedMemberUIN = nil }
@@ -1581,7 +1581,7 @@ struct ChatView: View {
                 Text("chat.pin.title".localized)
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                Text(text)
+                Text(pinnedAttributed(text, linkable: false))
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
@@ -1619,7 +1619,7 @@ struct ChatView: View {
                 Text("chat.pin.title".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                Text(text)
+                Text(pinnedAttributed(text, linkable: false))
                     .font(.callout)
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(3)
@@ -1655,10 +1655,11 @@ struct ChatView: View {
         }
     }
 
-    /// Plain pinned text → AttributedString with tappable links (URLs,
-    /// rcq:// deep links, bare domains). The expanded pin view renders this so
-    /// announcement links are clickable instead of inert text.
-    static func linkified(_ text: String) -> AttributedString {
+    /// Plain pinned text → AttributedString with URLs accent-coloured. With
+    /// `linkable` they're also tappable + underlined (the expanded pin view);
+    /// without it they're colour-only (the banner preview), so a tap falls
+    /// through to the banner's "expand" gesture.
+    static func linkified(_ text: String, linkable: Bool = true) -> AttributedString {
         var attr = AttributedString(text)
         let types = NSTextCheckingResult.CheckingType.link.rawValue
         guard let detector = try? NSDataDetector(types: types) else { return attr }
@@ -1668,42 +1669,49 @@ struct ChatView: View {
                   let r = Range(m.range, in: text),
                   let lo = AttributedString.Index(r.lowerBound, within: attr),
                   let hi = AttributedString.Index(r.upperBound, within: attr) else { continue }
-            attr[lo..<hi].link = url
-            attr[lo..<hi].underlineStyle = .single
+            attr[lo..<hi].foregroundColor = Theme.Color.accent
+            if linkable {
+                attr[lo..<hi].link = url
+                attr[lo..<hi].underlineStyle = .single
+            }
         }
         return attr
     }
 
-    /// Pinned text → AttributedString with both tappable URLs AND `#<uin>`
-    /// member mentions. A `#<uin>` whose UIN is a CURRENT group member renders
-    /// as that member's nickname, tappable (`rcq://member/<uin>`) to open their
-    /// profile; a `#<uin>` that is NOT in this group stays inert plain text, so
-    /// the announcement can't point the group at an outsider.
-    private func pinnedAttributed(_ text: String) -> AttributedString {
+    /// Pinned text → AttributedString with URLs AND `#<uin>` / `UIN <uin>`
+    /// member mentions. A mention whose UIN is a CURRENT group member renders
+    /// as that member's nickname in accent; a mention NOT in this group stays
+    /// inert plain text (so the announcement can't point the group at an
+    /// outsider). With `linkable` the mentions/URLs are tappable (the expanded
+    /// view); without it they're colour-only (the banner), so the whole banner
+    /// taps to expand and the user clicks the link/nick there.
+    private func pinnedAttributed(_ text: String, linkable: Bool) -> AttributedString {
         let nickByUIN: [Int: String] = Dictionary(
             currentGroupMembers.map { ($0.uin, $0.nickname) }, uniquingKeysWith: { a, _ in a }
         )
         // Matches both `#<uin>` and `UIN <uin>` (the format used in real pins).
         guard let regex = try? NSRegularExpression(pattern: "(?:#|UIN\\s+)(\\d{3,})", options: [.caseInsensitive]) else {
-            return ChatView.linkified(text)
+            return ChatView.linkified(text, linkable: linkable)
         }
         let ns = text as NSString
         let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return ChatView.linkified(text) }
+        guard !matches.isEmpty else { return ChatView.linkified(text, linkable: linkable) }
 
         var result = AttributedString()
         var cursor = 0
         for m in matches {
             if m.range.location > cursor {
                 result.append(ChatView.linkified(
-                    ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                    ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor)),
+                    linkable: linkable
                 ))
             }
-            let token = ns.substring(with: m.range)            // "#111"
-            let uin = Int(ns.substring(with: m.range(at: 1)))  // 111
+            let token = ns.substring(with: m.range)            // "#911" / "UIN 911"
+            let uin = Int(ns.substring(with: m.range(at: 1)))  // 911
             if let uin, let nick = nickByUIN[uin] {
                 var mention = AttributedString(nick)
-                mention.link = URL(string: "rcq://member/\(uin)")
+                mention.foregroundColor = Theme.Color.accent
+                if linkable { mention.link = URL(string: "rcq://member/\(uin)") }
                 result.append(mention)
             } else {
                 result.append(AttributedString(token))         // inert plain text
@@ -1711,7 +1719,7 @@ struct ChatView: View {
             cursor = m.range.location + m.range.length
         }
         if cursor < ns.length {
-            result.append(ChatView.linkified(ns.substring(from: cursor)))
+            result.append(ChatView.linkified(ns.substring(from: cursor), linkable: linkable))
         }
         return result
     }
