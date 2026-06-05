@@ -98,7 +98,12 @@ struct EmoticonText: View {
 
     static func linkify(_ s: String) -> AttributedString {
         var attr = AttributedString(s)
-        guard let detector = linkDetector, !s.isEmpty else { return attr }
+        // NSDataDetector is expensive and re-runs on every row body eval during
+        // scroll. Only scan when a URL marker is present (https/http/www — how
+        // links are actually shared in RCQ). Trade-off: a bare-domain like
+        // "rcq.app" with no scheme won't auto-link, which is a fair price for
+        // smooth scrolling on long threads.
+        guard s.contains("://") || s.contains("www."), let detector = linkDetector, !s.isEmpty else { return attr }
         let nsRange = NSRange(s.startIndex..<s.endIndex, in: s)
         detector.enumerateMatches(in: s, options: [], range: nsRange) { match, _, _ in
             guard let match, let url = match.url,
@@ -123,6 +128,14 @@ struct EmoticonText: View {
     }
 
     private func runs(in line: String) -> [Run] {
+        // Fast path: a line with no emoticon (':'), mention ('@') or #uin ('#')
+        // marker is plain text. Return a single .text run and skip BOTH the
+        // mention parse and the per-character tokenizer below — they run on every
+        // row body eval, so for the common plain-text message this is the main
+        // chat-scroll cost. plainText() then collapses it to one native Text.
+        if !line.contains(":") && !line.contains("#") && !line.contains("@") {
+            return [.text(line)]
+        }
         // Split the line by mention spans first — each span becomes a
         // .mention run, the gaps run through the existing emoticon
         // tokenizer + whitespace splitter.

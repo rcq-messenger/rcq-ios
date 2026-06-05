@@ -1510,8 +1510,16 @@ struct ChatView: View {
             raw = "📊 \(q)"
         default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
         }
-        if raw.count <= 80 { return raw }
-        return raw.prefix(80) + "…"
+        // Quote the replied-to message generously so the bubble shows it in
+        // full for normal-length messages (no more tiny mid-word "…" that forced
+        // a tap to read). Only a very long quote is clipped, and at a word
+        // boundary so it never cuts mid-word.
+        if raw.count <= 280 { return raw }
+        let cut = raw.prefix(280)
+        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.startIndex {
+            return String(cut[..<lastSpace]) + "…"
+        }
+        return String(cut) + "…"
     }
 
     // MARK: - reply compose strip
