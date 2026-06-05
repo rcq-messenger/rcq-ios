@@ -533,6 +533,8 @@
 "presence.countdown.h_unit" = "ч";
 "presence.countdown.m_unit" = "м";
 "presence.countdown.lt1m" = "<1м";
+"presence.info.title" = "Видимость после выхода";
+"presence.info.body" = "Вас показывают онлайн ещё столько времени после закрытия приложения. Изменить можно в Настройки, Приватность и сеть.";
 
 /* Inventory trailing-toolbar ellipsis menu */
 "inventory.menu.games" = "Игры";

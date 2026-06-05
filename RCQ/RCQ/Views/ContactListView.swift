@@ -36,6 +36,7 @@ struct ContactListView: View {
     @State private var showStoryComposer = false
     @State private var showNews = false
     @State private var showOutgoing = false
+    @State private var showPresenceInfo = false
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
@@ -235,6 +236,11 @@ struct ContactListView: View {
             }
             .sheet(isPresented: $showOutgoing) {
                 OutgoingRequestsView()
+            }
+            .alert("presence.info.title".localized, isPresented: $showPresenceInfo) {
+                Button("common.ok".localized, role: .cancel) {}
+            } message: {
+                Text("presence.info.body".localized)
             }
             .sheet(item: Binding(
                 get: { appState.pendingJoinGroupID.map(JoinGroupTrigger.init) },
@@ -508,7 +514,9 @@ struct ContactListView: View {
         HStack(spacing: 8) {
             // Stay-online countdown, left of the status icon: how long until
             // presence drops back to offline after leaving (set in Privacy).
-            PresenceCountdownChip(uin: auth.ownUIN)
+            // Tapping it explains what it is; an invisible copy on the trailing
+            // side keeps it from shifting the centred nick/UIN.
+            PresenceCountdownChip(uin: auth.ownUIN, onTap: { showPresenceInfo = true })
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
@@ -548,6 +556,9 @@ struct ContactListView: View {
                 }
             }
             .frame(width: 22, height: 22)
+            // Invisible mirror of the leading chip — balances its width so it
+            // doesn't push the nick/UIN off-centre.
+            PresenceCountdownChip(uin: auth.ownUIN, invisible: true)
         }
     }
 
@@ -1678,6 +1689,10 @@ enum PresenceWindow {
 /// off or has elapsed.
 private struct PresenceCountdownChip: View {
     let uin: Int?
+    /// Rendered transparent + non-interactive as a width mirror on the trailing
+    /// side, so the leading chip never shifts the centred nick/UIN.
+    var invisible: Bool = false
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
@@ -1693,6 +1708,10 @@ private struct PresenceCountdownChip: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Theme.Color.bgSecondary))
+                .contentShape(Capsule())
+                .opacity(invisible ? 0 : 1)
+                .allowsHitTesting(!invisible)
+                .onTapGesture { onTap?() }
             }
         }
     }

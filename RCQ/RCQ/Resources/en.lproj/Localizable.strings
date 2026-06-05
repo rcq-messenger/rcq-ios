@@ -566,6 +566,8 @@
 "presence.countdown.h_unit" = "h";
 "presence.countdown.m_unit" = "m";
 "presence.countdown.lt1m" = "<1m";
+"presence.info.title" = "Stay visible after you leave";
+"presence.info.body" = "You keep showing as online for this long after you close the app. Change it in Settings, Privacy & Network.";
 
 /* Inventory trailing-toolbar ellipsis menu */
 "inventory.menu.games" = "Games";
