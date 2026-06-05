@@ -126,13 +126,20 @@ struct GroupInfoView: View {
         .sheet(item: $actionMember) { m in
             MemberActionSheet(
                 member: m,
+                // Owner can kick any non-owner member (not themselves).
+                canKick: amOwner && m.uin != currentGroup.ownerUIN && m.uin != (AuthService.shared.ownUIN ?? -1),
+                onKick: {
+                    let uin = m.uin
+                    actionMember = nil
+                    Task { try? await groups.removeMember(groupID: currentGroup.id, uin: uin) }
+                },
                 onOpenProfile: {
                     viewInfoForUIN = m.uin
                     actionMember = nil
                 },
                 onDismiss: { actionMember = nil },
             )
-            .presentationDetents([.height(420)])
+            .presentationDetents([.height(480)])
             .presentationDragIndicator(.visible)
         }
         .confirmationDialog(
@@ -340,6 +347,8 @@ private struct ViewInfoUIN: Identifiable, Hashable { let uin: Int; var id: Int {
 
 private struct MemberActionSheet: View {
     let member: RCQGroupMember
+    var canKick: Bool = false
+    var onKick: () -> Void = {}
     let onOpenProfile: () -> Void
     let onDismiss: () -> Void
 
@@ -349,6 +358,7 @@ private struct MemberActionSheet: View {
     @State private var loadError: String?
     @State private var addRequestSent = false
     @State private var addError: String?
+    @State private var confirmKick = false
 
     private var isAlreadyContact: Bool {
         contacts.contacts.contains(where: { $0.uin == member.uin })
@@ -431,9 +441,33 @@ private struct MemberActionSheet: View {
                 )
             }
 
+            // Owner-only: kick this member out of the group.
+            if canKick {
+                Button(role: .destructive) {
+                    confirmKick = true
+                } label: {
+                    actionPill(
+                        icon: "person.crop.circle.badge.xmark",
+                        text: "group.member.remove".localized,
+                        tint: Theme.Color.statusBusy,
+                        background: Theme.Color.bgSecondary,
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+            }
+
             Spacer(minLength: 8)
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        .confirmationDialog(
+            String(format: "group.member.remove.confirm".localized, member.nickname),
+            isPresented: $confirmKick,
+            titleVisibility: .visible,
+        ) {
+            Button("group.member.remove".localized, role: .destructive) { onKick() }
+            Button("common.cancel".localized, role: .cancel) {}
+        }
         .task {
             await loadProfile()
         }

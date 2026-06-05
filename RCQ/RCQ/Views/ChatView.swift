@@ -625,9 +625,10 @@ struct ChatView: View {
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
                 ScrollView {
-                    Text(exp.text)
+                    Text(Self.linkified(exp.text))
                         .font(.body)
                         .foregroundColor(Theme.Color.textPrimary)
+                        .tint(Theme.Color.accent)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
                         .textSelection(.enabled)
@@ -1621,6 +1622,25 @@ struct ChatView: View {
         .onTapGesture {
             pinnedExpansion = PinExpansion(text: text)
         }
+    }
+
+    /// Plain pinned text → AttributedString with tappable links (URLs,
+    /// rcq:// deep links, bare domains). The expanded pin view renders this so
+    /// announcement links are clickable instead of inert text.
+    static func linkified(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        let types = NSTextCheckingResult.CheckingType.link.rawValue
+        guard let detector = try? NSDataDetector(types: types) else { return attr }
+        let ns = text as NSString
+        for m in detector.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let url = m.url,
+                  let r = Range(m.range, in: text),
+                  let lo = AttributedString.Index(r.lowerBound, within: attr),
+                  let hi = AttributedString.Index(r.upperBound, within: attr) else { continue }
+            attr[lo..<hi].link = url
+            attr[lo..<hi].underlineStyle = .single
+        }
+        return attr
     }
 
     /// True when the active chat target is a group with a non-empty

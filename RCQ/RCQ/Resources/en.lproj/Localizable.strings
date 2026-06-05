@@ -979,6 +979,7 @@
 "group.role.owner" = "Owner";
 "group.role.admin" = "Admin";
 "group.member.remove" = "Remove from group";
+"group.member.remove.confirm" = "Remove %@ from the group?";
 "group.member.action.trade" = "Propose trade";
 "group.member.action.add" = "Add as contact";
 "group.member.action.add.sent" = "Request sent";

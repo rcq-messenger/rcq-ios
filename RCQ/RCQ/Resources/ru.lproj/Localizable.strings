@@ -946,6 +946,7 @@
 "group.role.owner" = "Создатель";
 "group.role.admin" = "Админ";
 "group.member.remove" = "Удалить из группы";
+"group.member.remove.confirm" = "Исключить %@ из группы?";
 "group.member.action.trade" = "Предложить обмен";
 "group.member.action.add" = "Добавить в контакты";
 "group.member.action.add.sent" = "Заявка отправлена";

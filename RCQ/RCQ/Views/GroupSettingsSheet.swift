@@ -37,10 +37,11 @@ struct GroupSettingsSheet: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 if let g = currentGroup {
                     Form {
+                        // Photo first, above the name (founder request).
+                        avatarSection(g)
                         nameSection(g)
                         descriptionSection(g)
                         pinSection(g)
-                        avatarSection(g)
                         if amOwner {
                             audienceSection(g)
                         }
@@ -290,9 +291,6 @@ struct GroupSettingsSheet: View {
             .tint(Theme.Color.accent)
         } header: {
             Text("group.section.settings".localized)
-        } footer: {
-            Text("group.settings.entry_price.hint".localized)
-                .font(.caption2)
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }
