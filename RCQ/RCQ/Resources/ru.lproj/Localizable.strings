@@ -523,6 +523,16 @@
 "contact_list.section.favorites" = "Избранные";
 "contact_list.section.archive" = "Архив";
 "contact_list.menu.add" = "Добавить контакт";
+"contact_list.menu.outgoing" = "Исходящие заявки";
+"outgoing.title" = "Исходящие заявки";
+"outgoing.empty" = "Вы не отправляли заявок.";
+"outgoing.state.pending" = "Ожидает";
+"outgoing.state.declined" = "Отклонена";
+"outgoing.cancel" = "Отменить";
+"outgoing.dismiss" = "Убрать";
+"presence.countdown.h_unit" = "ч";
+"presence.countdown.m_unit" = "м";
+"presence.countdown.lt1m" = "<1м";
 
 /* Inventory trailing-toolbar ellipsis menu */
 "inventory.menu.games" = "Игры";

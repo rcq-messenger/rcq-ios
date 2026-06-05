@@ -396,6 +396,11 @@ final class WebSocketService: ObservableObject {
             guard let peer = dict["peer_uin"] as? Int else { return }
             events.send(.contactRemoved(peerUIN: peer))
 
+        case "contact_request_cancelled":
+            // A request we received was revoked by its sender — refresh so
+            // it drops out of our pending list (the row is gone server-side).
+            Task { @MainActor in await ContactService.shared.refresh() }
+
         case "group_created", "group_membership_changed":
             guard let groupDict = dict["group"] as? [String: Any],
                   let groupData = try? JSONSerialization.data(withJSONObject: groupDict),

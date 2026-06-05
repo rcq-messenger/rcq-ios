@@ -10,12 +10,22 @@ final class ContactService: ObservableObject {
 
     @Published private(set) var contacts: [Contact] = []
     @Published private(set) var pendingRequests: [PendingRequest] = []
+    /// Requests WE sent that are still pending or were declined by the
+    /// recipient (declined surface here because no push tells the sender).
+    @Published private(set) var outgoingRequests: [OutgoingRequest] = []
 
     struct PendingRequest: Identifiable, Codable, Hashable {
         let id: Int
         let from_uin: Int
         let nickname: String
         let state: String
+    }
+
+    struct OutgoingRequest: Identifiable, Codable, Hashable {
+        let id: Int
+        let to_uin: Int
+        let nickname: String
+        let state: String  // pending | declined
     }
 
     private init() {}
@@ -37,6 +47,8 @@ final class ContactService: ObservableObject {
             self.contacts = list
             let pending: [PendingRequest] = try await APIClient.shared.request("GET", "/contacts/pending")
             self.pendingRequests = pending
+            let outgoing: [OutgoingRequest] = try await APIClient.shared.request("GET", "/contacts/outgoing")
+            self.outgoingRequests = outgoing
             // Push the latest uin → nickname map into the App Group
             // cache so the NSE can resolve sender names on push.
             var nickMap: [Int: String] = [:]
@@ -76,6 +88,16 @@ final class ContactService: ObservableObject {
         // their messages stop being dropped on ingest even before the
         // server's auto-accept WS event lands.
         RemovedContactsStore.shared.remove(uin)
+        await refresh()
+    }
+
+    /// Cancel/revoke a request we sent (state pending), or dismiss a
+    /// declined one out of our outgoing list.
+    func cancelOutgoing(toUIN: Int) async throws {
+        let _: EmptyResponse = try await APIClient.shared.request(
+            "DELETE", "/contacts/outgoing/\(toUIN)"
+        )
+        outgoingRequests.removeAll { $0.to_uin == toUIN }
     }
 
     func respond(requestID: Int, accept: Bool) async throws {
@@ -187,6 +209,7 @@ final class ContactService: ObservableObject {
     func wipe() {
         contacts = []
         pendingRequests = []
+        outgoingRequests = []
         UnreadStore.shared.wipeAll()
         BadgeCounter.resetAll()
         BadgeCounter.syncIcon()
@@ -195,5 +218,6 @@ final class ContactService: ObservableObject {
     func clearForDecoy() {
         contacts = []
         pendingRequests = []
+        outgoingRequests = []
     }
 }

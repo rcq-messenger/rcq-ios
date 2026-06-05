@@ -221,6 +221,35 @@ actor APIClient {
         }
     }
 
+    /// Fast DIRECT reachability of the prod backend, forced through NO proxy
+    /// (a dedicated ephemeral session, never the transport). Used by the
+    /// first-launch registration boot to decide whether to pre-engage the
+    /// embedded transport BEFORE the very first /auth/register call — a
+    /// blocked user can't reach Settings to flip the proxy on, and without
+    /// this their first request goes out direct, times out, and they wrongly
+    /// conclude they need a VPN just to sign up (mirrors Android's
+    /// ensureTransportForHost). 5s so a DPI'd network that hangs doesn't
+    /// stall onboarding.
+    func probeDirectReachable() async -> Bool {
+        guard let url = URL(string: Self.prodBaseURL + "/health") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 5
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.connectionProxyDictionary = [:]   // force a direct connection
+        cfg.waitsForConnectivity = false
+        cfg.timeoutIntervalForRequest = 5
+        cfg.timeoutIntervalForResource = 6
+        let direct = URLSession(configuration: cfg)
+        defer { direct.invalidateAndCancel() }
+        do {
+            let (_, resp) = try await direct.data(for: req)
+            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+        } catch {
+            return false
+        }
+    }
+
     func setToken(_ token: String?) { self.token = token }
     func currentToken() -> String? { token }
 

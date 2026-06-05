@@ -1233,7 +1233,15 @@ struct ChatView: View {
                 // !showScrollToBottom guard below and a send while
                 // scrolled up left your message off-screen.
                 if vm.messages.last?.isFromMe == true {
-                    withAnimation(.easeOut(duration: 0.25)) {
+                    // Own send: the new bubble already animates in via the
+                    // `.animation(value:)` above. Wrapping the scroll in its
+                    // OWN `withAnimation` ran a SECOND 0.25s curve against the
+                    // still-growing content height, so the offset chased a
+                    // moving target and the list visibly jumped/overshot.
+                    // Defer one runloop (so the new row's layout is committed)
+                    // and scroll WITHOUT a competing animation — the viewport
+                    // settles at the final bottom while the bubble animates in.
+                    DispatchQueue.main.async {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                     }
                     return

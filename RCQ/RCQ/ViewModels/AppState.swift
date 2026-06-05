@@ -248,8 +248,13 @@ final class AppState: ObservableObject {
         // booted=true, surrender to offline mode (when we have a
         // cached identity) or surface the unreachable error. Keeps
         // the loading spinner from spinning forever.
+        // First-launch registration over a censored network legitimately
+        // takes longer (probe direct → engage transport → register through
+        // the tunnel), so give a registration boot a longer leash before the
+        // watchdog surrenders. Returning users keep the snappy 15s.
+        let watchdogSeconds: UInt64 = cachedUIN == nil ? 25 : 15
         let watchdog = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            try? await Task.sleep(nanoseconds: watchdogSeconds * 1_000_000_000)
             guard let self else { return }
             await MainActor.run {
                 guard !self.booted else { return }
@@ -268,6 +273,28 @@ final class AppState: ObservableObject {
         defer { watchdog.cancel() }
 
         do {
+            // First-launch registration over a censored network: bring the
+            // embedded transport up BEFORE the first /auth/register if the
+            // direct path is blocked, so a brand-new user doesn't have to
+            // switch on a VPN just to sign up (mirrors Android's
+            // ensureTransportForHost). Only for a fresh install (no cached
+            // identity); returning users fall through to the probe chain
+            // below, which already auto-engages on an unreachable direct path.
+            if cachedUIN == nil,
+               !SingBoxTransport.shared.isActive,
+               !SingBoxTransport.isEnabled,
+               !UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled") {
+                let directOK = await APIClient.shared.probeDirectReachable()
+                if !directOK {
+                    bootStatus = .engagingStealth
+                    do {
+                        try await SingBoxTransport.shared.start()
+                        await APIClient.shared.applyTransportProxy()
+                    } catch {
+                        print("[boot] pre-register transport engage failed: \(error)")
+                    }
+                }
+            }
             bootStatus = .connecting
             if SingBoxTransport.isEnabled {
                 bootStatus = .engagingStealth

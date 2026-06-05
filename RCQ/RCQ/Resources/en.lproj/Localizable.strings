@@ -556,6 +556,16 @@
 "contact_list.section.favorites" = "Favorites";
 "contact_list.section.archive" = "Archive";
 "contact_list.menu.add" = "Add Contact";
+"contact_list.menu.outgoing" = "Sent Requests";
+"outgoing.title" = "Sent Requests";
+"outgoing.empty" = "You haven't sent any requests.";
+"outgoing.state.pending" = "Pending";
+"outgoing.state.declined" = "Declined";
+"outgoing.cancel" = "Cancel";
+"outgoing.dismiss" = "Dismiss";
+"presence.countdown.h_unit" = "h";
+"presence.countdown.m_unit" = "m";
+"presence.countdown.lt1m" = "<1m";
 
 /* Inventory trailing-toolbar ellipsis menu */
 "inventory.menu.games" = "Games";

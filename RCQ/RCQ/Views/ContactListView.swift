@@ -35,6 +35,7 @@ struct ContactListView: View {
     @State private var pressedRowID: String?
     @State private var showStoryComposer = false
     @State private var showNews = false
+    @State private var showOutgoing = false
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
@@ -231,6 +232,9 @@ struct ContactListView: View {
             }
             .sheet(isPresented: $showNews) {
                 NewsSheet()
+            }
+            .sheet(isPresented: $showOutgoing) {
+                OutgoingRequestsView()
             }
             .sheet(item: Binding(
                 get: { appState.pendingJoinGroupID.map(JoinGroupTrigger.init) },
@@ -502,6 +506,9 @@ struct ContactListView: View {
     private var identityPrincipal: some View {
         // Trailing Color.clear pads against the leading icon to centre nick/UIN in the nav bar.
         HStack(spacing: 8) {
+            // Stay-online countdown, left of the status icon: how long until
+            // presence drops back to offline after leaving (set in Privacy).
+            PresenceCountdownChip(uin: auth.ownUIN)
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
@@ -551,6 +558,11 @@ struct ContactListView: View {
                 showAddContact = true
             } label: {
                 Label("contact_list.menu.add".localized, systemImage: "person.badge.plus")
+            }
+            Button {
+                showOutgoing = true
+            } label: {
+                Label("contact_list.menu.outgoing".localized, systemImage: "clock")
             }
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) { showSearch = true }
@@ -1636,6 +1648,64 @@ private struct StealthHeaderBadge: View {
                 pulse = true
             }
         }
+    }
+}
+
+/// Local anchor for the presence "stay online for N hours" countdown shown
+/// in the contact-list header. Set when the user enables/changes the window
+/// in Privacy settings, re-anchored on every change, cleared when off. Keyed
+/// by UIN so each account on the device tracks its own window.
+enum PresenceWindow {
+    private static func key(_ uin: Int?) -> String { "rcq.presenceWindow.\(uin ?? 0)" }
+
+    static func anchor(ttlMinutes: Int, uin: Int?) {
+        let expiry = Date().addingTimeInterval(Double(ttlMinutes) * 60)
+        UserDefaults.standard.set(expiry.timeIntervalSince1970, forKey: key(uin))
+    }
+
+    static func clear(uin: Int?) {
+        UserDefaults.standard.removeObject(forKey: key(uin))
+    }
+
+    static func expiry(uin: Int?) -> Date? {
+        let t = UserDefaults.standard.double(forKey: key(uin))
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+}
+
+/// Compact "stay visible" countdown chip (clock + "Xh Ym") that sits left of
+/// the header status icon. Ticks via TimelineView; hidden when the window is
+/// off or has elapsed.
+private struct PresenceCountdownChip: View {
+    let uin: Int?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            if let expiry = PresenceWindow.expiry(uin: uin), expiry > context.date {
+                HStack(spacing: 3) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Theme.Color.accent)
+                    Text(Self.label(expiry.timeIntervalSince(context.date)))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Theme.Color.bgSecondary))
+            }
+        }
+    }
+
+    static func label(_ secs: TimeInterval) -> String {
+        let totalMin = Int(secs / 60)
+        let h = totalMin / 60, m = totalMin % 60
+        let hU = "presence.countdown.h_unit".localized
+        let mU = "presence.countdown.m_unit".localized
+        if h > 0 && m > 0 { return "\(h)\(hU) \(m)\(mU)" }
+        if h > 0 { return "\(h)\(hU)" }
+        if totalMin > 0 { return "\(m)\(mU)" }
+        return "presence.countdown.lt1m".localized
     }
 }
 

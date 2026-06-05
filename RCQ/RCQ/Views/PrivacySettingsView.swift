@@ -104,6 +104,13 @@ struct PrivacySettingsView: View {
                         .tint(Theme.Color.accent)
                         .onChange(of: presencePersistent) { newValue in
                             Task { await pushBoolField("presence_persistent", newValue) }
+                            // (Re)anchor the local countdown shown in the
+                            // contact-list header, or clear it when turned off.
+                            if newValue {
+                                PresenceWindow.anchor(ttlMinutes: presenceTTLMinutes, uin: AuthService.shared.ownUIN)
+                            } else {
+                                PresenceWindow.clear(uin: AuthService.shared.ownUIN)
+                            }
                         }
                         if presencePersistent {
                             Picker(selection: $presenceTTLMinutes) {
@@ -118,6 +125,7 @@ struct PrivacySettingsView: View {
                             }
                             .onChange(of: presenceTTLMinutes) { newValue in
                                 Task { await pushIntField("presence_ttl_minutes", newValue) }
+                                PresenceWindow.anchor(ttlMinutes: newValue, uin: AuthService.shared.ownUIN)
                             }
                         }
                     }
@@ -434,6 +442,14 @@ struct PrivacySettingsView: View {
                 readReceiptsCache = v
             }
             if let v = p.presencePersistent { presencePersistent = v }
+            // Seed the local countdown anchor if the feature is on but we
+            // have none yet (enabled before this existed / on another
+            // device). Active changes above re-anchor it; load never
+            // overrides an existing anchor.
+            if presencePersistent, PresenceWindow.expiry(uin: uin) == nil {
+                let ttl = p.presenceTTLMinutes ?? 1440
+                PresenceWindow.anchor(ttlMinutes: ttl == 0 ? 1440 : ttl, uin: uin)
+            }
             if let v = p.presenceTTLMinutes {
                 // Migrate legacy "forever" (0) silently to 24h so the
                 // picker shows a real selection. The forever option was
