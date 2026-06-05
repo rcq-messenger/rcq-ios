@@ -146,7 +146,7 @@ private enum DestinationRow {
                 Text(c.nickname)
                     .font(Theme.Font.nickname)
                     .foregroundColor(c.status == .offline ? Theme.Color.textSecondary : Theme.Color.textPrimary)
-                Text(String(c.uin))
+                Text("#\(c.uin)")
                     .font(Theme.Font.monoSmall)
                     .foregroundColor(Theme.Color.textMono)
             }

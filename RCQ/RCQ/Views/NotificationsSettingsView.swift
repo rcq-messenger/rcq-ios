@@ -70,7 +70,7 @@ struct NotificationsSettingsView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(nickname)
                     .foregroundColor(Theme.Color.textPrimary)
-                Text(String(uin))
+                Text("#\(uin)")
                     .font(Theme.Font.monoSmall)
                     .foregroundColor(Theme.Color.textMono)
             }

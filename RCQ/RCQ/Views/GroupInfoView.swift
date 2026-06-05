@@ -305,7 +305,7 @@ struct GroupInfoView: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                         }
                     }
-                    Text(String(m.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text("#\(m.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
                 Spacer()
                 if m.role != "member" && m.uin != currentGroup.ownerUIN {
@@ -381,7 +381,7 @@ private struct MemberActionSheet: View {
                     Text(member.nickname)
                         .font(.title3.bold())
                         .foregroundColor(Theme.Color.textPrimary)
-                    Text(String(member.uin))
+                    Text("#\(member.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
                 }
@@ -629,7 +629,7 @@ private struct AddGroupMemberView: View {
                 StatusIcon(status: c.status, size: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(c.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                    Text(String(c.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text("#\(c.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
                 Spacer()
                 Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)
@@ -646,7 +646,7 @@ private struct AddGroupMemberView: View {
                 StatusIcon(status: u.status, size: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(u.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                    Text(String(u.uin)).font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text("#\(u.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
                 Spacer()
                 Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)

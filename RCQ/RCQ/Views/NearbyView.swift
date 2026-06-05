@@ -304,7 +304,7 @@ struct NearbyView: View {
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                     } else {
-                        Text(String(person.uin))
+                        Text("#\(person.uin)")
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }
@@ -357,7 +357,7 @@ struct NearbyView: View {
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                     } else {
-                        Text(String(person.uin))
+                        Text("#\(person.uin)")
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }

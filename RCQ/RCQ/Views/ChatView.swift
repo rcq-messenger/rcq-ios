@@ -193,7 +193,7 @@ struct ChatView: View {
                                 Text(m.nickname)
                                     .foregroundColor(Theme.Color.textPrimary)
                                 Spacer()
-                                Text(String(m.uin))
+                                Text("#\(m.uin)")
                                     .font(.caption.monospacedDigit())
                                     .foregroundColor(Theme.Color.textMono)
                             }
@@ -746,7 +746,7 @@ struct ChatView: View {
             // the layout box stable so the nickname above doesn't
             // jiggle on swap (a single Text re-render would shrink
             // / grow the line width during animation).
-            Text(String(live.uin))
+            Text("#\(live.uin)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Theme.Color.textMono)
                 .opacity(showAlt ? 0 : 1)

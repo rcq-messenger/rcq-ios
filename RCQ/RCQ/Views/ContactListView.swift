@@ -1433,7 +1433,7 @@ private struct ContactRow: View {
                     }
                 }
                 HStack(spacing: 4) {
-                    Text(String(contact.uin))
+                    Text("#\(contact.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
                     if let m = contact.statusMessage, !m.isEmpty {
