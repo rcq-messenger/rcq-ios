@@ -516,8 +516,18 @@ struct ContactListView: View {
             // presence drops back to offline after leaving (set in Privacy).
             // Tapping it explains what it is; an invisible copy on the trailing
             // side keeps it from shifting the centred nick/UIN.
-            PresenceCountdownChip(uin: auth.ownUIN, onTap: { showPresenceInfo = true })
             Menu {
+                // "Stay visible after you leave" countdown, moved here from the
+                // header into the status menu. A native iOS menu can't free-
+                // position a chip, so it sits as the top section; tapping it
+                // opens the explainer.
+                if let expiry = PresenceWindow.expiry(uin: auth.ownUIN), expiry > Date() {
+                    Section("presence.info.title".localized) {
+                        Button { showPresenceInfo = true } label: {
+                            Label(PresenceCountdownChip.label(expiry.timeIntervalSinceNow), systemImage: "clock")
+                        }
+                    }
+                }
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
                         Label(status.label, image: assetName(for: status)).tag(status)
@@ -556,9 +566,6 @@ struct ContactListView: View {
                 }
             }
             .frame(width: 22, height: 22)
-            // Invisible mirror of the leading chip — balances its width so it
-            // doesn't push the nick/UIN off-centre.
-            PresenceCountdownChip(uin: auth.ownUIN, invisible: true)
         }
     }
 
