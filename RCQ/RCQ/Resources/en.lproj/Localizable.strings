@@ -2038,3 +2038,11 @@
 "recovery.restore.error.server" = "Enter a valid server address.";
 "recovery.pin.title" = "Enter your PIN to view the recovery phrase";
 "recovery.pin.unlock" = "Enter PIN";
+"reissue.title" = "Re-issue keys";
+"reissue.explain" = "Generate a brand-new identity and recovery phrase while keeping the same UIN. Use this only if you think your keys may have been compromised.";
+"reissue.cta" = "Re-issue keys";
+"reissue.working" = "Re-issuing…";
+"reissue.confirm.title" = "Re-issue keys?";
+"reissue.confirm.body" = "Your old recovery phrase stops working and is replaced by a new one, so write the new one down. Your contacts will see a security-code-changed warning, and messages sent to you during the switch may not arrive. Your UIN stays the same.";
+"reissue.done" = "Keys re-issued. Write down your new recovery phrase.";
+"reissue.failed" = "Couldn't re-issue keys. Check your connection and try again.";

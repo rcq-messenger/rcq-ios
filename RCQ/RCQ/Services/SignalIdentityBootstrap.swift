@@ -114,6 +114,91 @@ enum SignalIdentityBootstrap {
         print("[SignalBootstrap] uploaded fresh bundle for UIN=\(ownUIN), OPKs=\(opks.count)")
     }
 
+    /// Rotate the libsignal identity in place: mint a brand-new identity + prekey
+    /// bundle, upload it (REPLACING the old one), then swap local state to match.
+    /// Upload-FIRST so a failed network call leaves the existing (working)
+    /// identity untouched instead of desyncing local vs server. Used by account
+    /// key re-issue — a new libsignal identity changes our safety number so
+    /// contacts get a "safety number changed" warning on their next session.
+    static func rebootstrap(ownUIN: Int) async throws {
+        let stores = SignalProtocolStores.shared
+        let ctx = RCQStoreContext.shared
+
+        let identity = IdentityKeyPair.generate()
+        let registrationId = UInt32.random(in: 1...16380)
+        let nowMs = UInt64(Date().timeIntervalSince1970 * 1000)
+
+        let signedId = UInt32.random(in: 1...0x7FFFFFFF)
+        let signedPriv = PrivateKey.generate()
+        let signedPubBytes = signedPriv.publicKey.serialize()
+        let signedSig = identity.privateKey.generateSignature(message: signedPubBytes)
+
+        let kyberId = UInt32.random(in: 1...0x7FFFFFFF)
+        let kyberKp = KEMKeyPair.generate()
+        let kyberPubBytes = kyberKp.publicKey.serialize()
+        let kyberSig = identity.privateKey.generateSignature(message: kyberPubBytes)
+
+        struct GenOPK { let id: UInt32; let priv: PrivateKey }
+        var gen: [GenOPK] = []
+        for _ in 0..<targetOPKCount {
+            gen.append(GenOPK(id: UInt32.random(in: 1...0x7FFFFFFF), priv: PrivateKey.generate()))
+        }
+
+        struct SignedPreKeyOut: Encodable { let id: UInt32; let publicKey: String; let signature: String
+            enum CodingKeys: String, CodingKey { case id; case publicKey = "public"; case signature }
+        }
+        struct KyberPreKeyOut: Encodable { let id: UInt32; let publicKey: String; let signature: String
+            enum CodingKeys: String, CodingKey { case id; case publicKey = "public"; case signature }
+        }
+        struct OPKOut: Encodable { let id: UInt32; let publicKey: String
+            enum CodingKeys: String, CodingKey { case id; case publicKey = "public" }
+        }
+        struct BundleBody: Encodable {
+            let signal_identity_key: String
+            let registration_id: UInt32
+            let signed_prekey: SignedPreKeyOut
+            let kyber_prekey: KyberPreKeyOut
+            let one_time_prekeys: [OPKOut]
+        }
+
+        let body = BundleBody(
+            signal_identity_key: identity.publicKey.serialize().base64EncodedString(),
+            registration_id: registrationId,
+            signed_prekey: SignedPreKeyOut(
+                id: signedId,
+                publicKey: signedPubBytes.base64EncodedString(),
+                signature: signedSig.base64EncodedString()
+            ),
+            kyber_prekey: KyberPreKeyOut(
+                id: kyberId,
+                publicKey: kyberPubBytes.base64EncodedString(),
+                signature: kyberSig.base64EncodedString()
+            ),
+            one_time_prekeys: gen.map {
+                OPKOut(id: $0.id, publicKey: $0.priv.publicKey.serialize().base64EncodedString())
+            }
+        )
+        // Upload BEFORE touching local state.
+        let _: EmptyResponse = try await APIClient.shared.request("POST", "/keys/bundle", body: body)
+
+        // Server accepted the new bundle — swap local libsignal state to match.
+        SignalProtocolDB.shared.wipe()
+        stores.storeLocalIdentity(uin: ownUIN, identityKeyPair: identity, registrationId: registrationId)
+        let signedRecord = try SignedPreKeyRecord(
+            id: signedId, timestamp: nowMs, privateKey: signedPriv, signature: signedSig
+        )
+        try stores.storeSignedPreKey(signedRecord, id: signedId, context: ctx)
+        let kyberRecord = try KyberPreKeyRecord(
+            id: kyberId, timestamp: nowMs, keyPair: kyberKp, signature: kyberSig
+        )
+        try stores.storeKyberPreKey(kyberRecord, id: kyberId, context: ctx)
+        for o in gen {
+            let record = try PreKeyRecord(id: o.id, privateKey: o.priv)
+            try stores.storePreKey(record, id: o.id, context: ctx)
+        }
+        print("[SignalBootstrap] re-issued libsignal identity for UIN=\(ownUIN)")
+    }
+
     private static func topUpIfNeeded() async {
         struct StatusOut: Decodable {
             let has_bundle: Bool

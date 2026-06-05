@@ -18,6 +18,10 @@ struct RecoveryPhraseView: View {
     // PIN when one is set — the app being unlocked isn't enough. No PIN = no gate.
     @State private var unlocked = false
     @State private var showPINGate = false
+    // Key re-issue (identity rotation).
+    @State private var confirmReissue = false
+    @State private var rotating = false
+    @State private var reissueAlert: String? = nil
 
     var body: some View {
         // Derived in `body` (a @MainActor context) since AuthService is
@@ -133,8 +137,73 @@ struct RecoveryPhraseView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                reissueSection
             }
             .padding(20)
+        }
+        .alert("reissue.confirm.title".localized, isPresented: $confirmReissue) {
+            Button("reissue.cta".localized, role: .destructive) { performReissue() }
+            Button("common.cancel".localized, role: .cancel) {}
+        } message: {
+            Text("reissue.confirm.body".localized)
+        }
+        .alert(
+            "reissue.title".localized,
+            isPresented: Binding(get: { reissueAlert != nil }, set: { if !$0 { reissueAlert = nil } })
+        ) {
+            Button("common.ok".localized, role: .cancel) {}
+        } message: {
+            Text(reissueAlert ?? "")
+        }
+    }
+
+    // MARK: - re-issue (identity rotation)
+
+    private var reissueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+                .overlay(Theme.Color.textSecondary.opacity(0.2))
+                .padding(.vertical, 4)
+            Text("reissue.title".localized)
+                .font(.callout.weight(.semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            Text("reissue.explain".localized)
+                .font(.footnote)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                confirmReissue = true
+            } label: {
+                HStack(spacing: 8) {
+                    if rotating { ProgressView().tint(.white) }
+                    Text((rotating ? "reissue.working" : "reissue.cta").localized)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange))
+            }
+            .buttonStyle(.plain)
+            .disabled(rotating)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func performReissue() {
+        rotating = true
+        Task {
+            let result = await AuthService.shared.reissueKeys()
+            rotating = false
+            if result != nil {
+                // Keychain now holds the new seed; reveal so `body` re-derives
+                // and shows the fresh phrase, and confirm to the user.
+                revealed = true
+                reissueAlert = "reissue.done".localized
+            } else {
+                reissueAlert = "reissue.failed".localized
+            }
         }
     }
 

@@ -116,6 +116,39 @@ final class AuthService: ObservableObject {
         return RecoveryPhrase.encode(id + sign)
     }
 
+    /// Rotate the active account's long-term identity to a fresh seed/keypair
+    /// while KEEPING the same UIN. Derives new X25519 + Ed25519 keys from a new
+    /// recovery seed, pushes the new public keys to /auth/reissue, persists them
+    /// (server-FIRST, so a failed call never strands us on keys the server
+    /// doesn't have), and rebuilds the libsignal bundle so the safety number
+    /// changes and contacts get a "security code changed" warning on their next
+    /// key sync. Returns the NEW 24-word phrase, or nil on failure. For users
+    /// who fear key compromise or just want a fresh phrase.
+    func reissueKeys() async -> [String]? {
+        guard ownUIN != nil else { return nil }
+        do {
+            let newSeed = RecoveryPhrase.newSeed()
+            let keys = try RecoveryPhrase.deriveKeys(seed: newSeed)
+            struct Body: Encodable { let identity_key: String; let signing_key: String }
+            struct Out: Decodable { let uin: Int; let token: String }
+            let out: Out = try await APIClient.shared.request(
+                "POST", "/auth/reissue",
+                body: Body(identity_key: keys.identityPubB64, signing_key: keys.signingPubB64)
+            )
+            // Server accepted the new keys — now commit them locally.
+            KeychainStore.set(KeychainStore.Keys.identityPriv, keys.identityPriv.rawRepresentation)
+            KeychainStore.set(KeychainStore.Keys.signingPriv,  keys.signingPriv.rawRepresentation)
+            KeychainStore.set(KeychainStore.Keys.recoverySeed, newSeed)
+            KeychainStore.setString(KeychainStore.Keys.token, out.token)
+            await APIClient.shared.setToken(out.token)
+            // Rotate the libsignal identity too → new safety number (upload-first).
+            try await SignalIdentityBootstrap.rebootstrap(ownUIN: out.uin)
+            return RecoveryPhrase.encode(newSeed)
+        } catch {
+            return nil
+        }
+    }
+
     func updateNicknameLocal(_ nick: String) {
         nickname = nick
         KeychainStore.setString(KeychainStore.Keys.nickname, nick)
