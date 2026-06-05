@@ -176,7 +176,11 @@ struct RecoveryPhraseView: View {
                 confirmReissue = true
             } label: {
                 HStack(spacing: 8) {
-                    if rotating { ProgressView().tint(.white) }
+                    if rotating {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
                     Text((rotating ? "reissue.working" : "reissue.cta").localized)
                         .fontWeight(.semibold)
                 }

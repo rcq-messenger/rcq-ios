@@ -652,7 +652,7 @@ final class MessageService {
     /// "<me> took a screenshot" with my name in their locale).
     func reportScreenshot(to contact: Contact) async {
         let thread = ThreadID.peer(uin: contact.uin)
-        await MainActor.run {
+        _ = await MainActor.run {
             MessageStore.shared.append(Message(
                 id: UUID(), thread: thread, senderUIN: ownUIN, isFromMe: true,
                 kind: .systemNotice, text: "secscreen.you_screenshotted".localized,
