@@ -223,6 +223,49 @@ struct ChatView: View {
     @State private var showEmojiPanel = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
+    // Per-conversation screen-secure: whether protection is currently armed
+    // for this open chat, plus the live screenshot-detection observer token.
+    @State private var screenSecured = false
+    @State private var screenshotObserver: NSObjectProtocol?
+
+    /// True only for a 1:1 thread that has screen-secure mode on.
+    private var threadIsSecure: Bool {
+        if case .peer = vm.target.thread { return chatSettings.isSecure(thread: vm.target.thread) }
+        return false
+    }
+
+    /// Arm or disarm screen-secure for this open chat to match its flag —
+    /// called on appear and whenever the flag flips (local toggle or a peer
+    /// `secureScreen` arriving while we're viewing).
+    private func reconcileScreenSecure() {
+        if threadIsSecure, !screenSecured {
+            ScreenSecurity.shared.enterChat()
+            installScreenshotObserver()
+            screenSecured = true
+        } else if !threadIsSecure, screenSecured {
+            teardownScreenSecure()
+        }
+    }
+
+    private func teardownScreenSecure() {
+        guard screenSecured else { return }
+        ScreenSecurity.shared.leaveChat()
+        if let o = screenshotObserver {
+            NotificationCenter.default.removeObserver(o)
+            screenshotObserver = nil
+        }
+        screenSecured = false
+    }
+
+    private func installScreenshotObserver() {
+        guard screenshotObserver == nil, case .peer(let snap) = vm.target else { return }
+        screenshotObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification, object: nil, queue: .main
+        ) { _ in
+            let live = ContactService.shared.contacts.first(where: { $0.uin == snap.uin }) ?? snap
+            Task { await MessageService.shared.reportScreenshot(to: live) }
+        }
+    }
     @State private var showPollComposer: Bool = false
     @State private var showShareGroupPicker: Bool = false
     @State private var headerShowsLastSeen: Bool = false
@@ -552,6 +595,9 @@ struct ChatView: View {
         }
         .onAppear {
             vm.onAppear()
+            // Per-conversation screen-secure: arm blanking + screenshot
+            // detection only if THIS chat has secure mode on.
+            reconcileScreenSecure()
             // Tell the in-app banner service which chat is on-screen
             // so a same-thread arrival doesn't show a redundant banner.
             MessageBannerService.shared.setActive(vm.target.thread)
@@ -569,8 +615,10 @@ struct ChatView: View {
             BadgeCounter.syncIcon()
         }
         .onDisappear {
+            teardownScreenSecure()
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
         }
+        .onChange(of: chatSettings.secureByThread) { _ in reconcileScreenSecure() }
         .modifier(InPlaceTranslator(vm: vm))
         .sheet(isPresented: $showAllMedia) {
             AllMediaSheet(messages: vm.messages)
@@ -864,6 +912,21 @@ struct ChatView: View {
                         showTTLPicker = true
                     } label: {
                         Label(disappearingLabel, systemImage: ttlActive ? "clock.fill" : "clock")
+                    }
+                    // Per-conversation screen-secure: blanks THIS chat's
+                    // screenshots/recording on BOTH sides (propagated to the
+                    // peer) + posts a "took a screenshot" line on either screenshot.
+                    Button {
+                        let on = !chatSettings.isSecure(thread: .peer(uin: snapshot.uin))
+                        chatSettings.setSecure(on, for: .peer(uin: snapshot.uin))
+                        let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
+                        Task { await MessageService.shared.sendSecureScreen(on: on, to: live) }
+                    } label: {
+                        let on = chatSettings.isSecure(thread: .peer(uin: snapshot.uin))
+                        Label(
+                            on ? "secscreen.menu_on".localized : "secscreen.menu_off".localized,
+                            systemImage: on ? "eye.slash.fill" : "eye.slash"
+                        )
                     }
                     Divider()
                     // App Review 1.2: UGC moderation reachable from every surface.

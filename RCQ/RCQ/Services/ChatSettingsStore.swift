@@ -23,7 +23,14 @@ final class ChatSettingsStore: ObservableObject {
     /// disappearing is off for that thread.
     @Published private(set) var ttlByThread: [String: Int] = [:]
 
+    /// `peer:<UIN>` / `group:<id>` → screen-secure mode on. When on for a
+    /// thread, that chat's screen is blanked in screenshots/recording (on
+    /// BOTH sides — the flag is propagated to the peer via a `secureScreen`
+    /// envelope), and a screenshot posts a "took a screenshot" notice.
+    @Published private(set) var secureByThread: [String: Bool] = [:]
+
     private static let storageKey = "rcq.chat.ttl"
+    private static let secureKey = "rcq.chat.secure"
 
     /// Discrete options the UI exposes. Off (`nil`), then a few human
     /// scales — minutes for testing, hours for normal use, a day for
@@ -56,11 +63,26 @@ final class ChatSettingsStore: ObservableObject {
         save()
     }
 
+    /// Whether screen-secure mode is on for a thread.
+    func isSecure(thread: ThreadID) -> Bool {
+        secureByThread[Self.threadKey(thread)] ?? false
+    }
+
+    /// Set/clear screen-secure mode for a thread (local store only — the
+    /// caller propagates to the peer via a `secureScreen` envelope).
+    func setSecure(_ on: Bool, for thread: ThreadID) {
+        let key = Self.threadKey(thread)
+        if on { secureByThread[key] = true } else { secureByThread.removeValue(forKey: key) }
+        saveSecure()
+    }
+
     /// Burn-account hook — wipe everything along with the rest of the
     /// local state.
     func wipe() {
         ttlByThread.removeAll()
+        secureByThread.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.storageKey)
+        UserDefaults.standard.removeObject(forKey: Self.secureKey)
     }
 
     /// Human label for the live TTL of a thread — used by the chat header
@@ -80,11 +102,19 @@ final class ChatSettingsStore: ObservableObject {
     }
 
     private func load() {
-        guard let raw = UserDefaults.standard.dictionary(forKey: Self.storageKey) else { return }
-        ttlByThread = raw.compactMapValues { $0 as? Int }
+        if let raw = UserDefaults.standard.dictionary(forKey: Self.storageKey) {
+            ttlByThread = raw.compactMapValues { $0 as? Int }
+        }
+        if let raw = UserDefaults.standard.dictionary(forKey: Self.secureKey) {
+            secureByThread = raw.compactMapValues { $0 as? Bool }
+        }
     }
 
     private func save() {
         UserDefaults.standard.set(ttlByThread, forKey: Self.storageKey)
+    }
+
+    private func saveSecure() {
+        UserDefaults.standard.set(secureByThread, forKey: Self.secureKey)
     }
 }

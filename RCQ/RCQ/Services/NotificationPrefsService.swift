@@ -62,6 +62,11 @@ final class NotificationPrefsService: ObservableObject {
         } catch {
         }
         self.loaded = true
+        mirrorMuteToAppGroup()
+    }
+
+    private func mirrorMuteToAppGroup() {
+        MutedStore.shared.setMuted(uins: prefs.mutedUINs, groupIDs: prefs.mutedGroupIDs)
     }
 
     /// Optimistic full-map PUT. UI flips first, server catches up async.
@@ -70,6 +75,7 @@ final class NotificationPrefsService: ObservableObject {
         patch(&next)
         guard next != prefs else { return }
         prefs = next
+        mirrorMuteToAppGroup()
         do {
             struct Body: Encodable {
                 let contact_requests: Bool?
@@ -116,5 +122,6 @@ final class NotificationPrefsService: ObservableObject {
     func wipe() {
         prefs = .defaults
         loaded = false
+        MutedStore.shared.wipe()
     }
 }

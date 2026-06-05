@@ -55,9 +55,21 @@ enum Envelope: Codable, Hashable {
     /// client that loses connection to /polls can still render the
     /// bubble correctly.
     case poll(id: UUID, pollID: Int, question: String, options: [String], singleChoice: Bool, anonymous: Bool)
+    /// Per-conversation screen-privacy toggle, propagated to the peer so BOTH
+    /// clients blank THIS chat's screenshots/recording (Telegram-secret-chat
+    /// style — you can't blank a screenshot on the peer's phone except by
+    /// having their client enforce it). Latest value wins. Control only:
+    /// renders no bubble. iOS-only for now; clients that don't know the kind
+    /// ignore it.
+    case secureScreen(on: Bool)
+    /// Sent when the sender took a screenshot in a secure chat. The receiver
+    /// renders "<sender> took a screenshot" (resolving the name + locale on
+    /// their side). Control only.
+    case screenshotTaken(id: UUID)
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
+        case on
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
@@ -167,6 +179,12 @@ enum Envelope: Codable, Hashable {
             try c.encode(options, forKey: .options)
             try c.encode(singleChoice, forKey: .singleChoice)
             try c.encode(anonymous, forKey: .anonymous)
+        case .secureScreen(let on):
+            try c.encode("secscreen", forKey: .kind)
+            try c.encode(on, forKey: .on)
+        case .screenshotTaken(let id):
+            try c.encode("shot", forKey: .kind)
+            try c.encode(id, forKey: .id)
         }
     }
 
@@ -271,6 +289,10 @@ enum Envelope: Codable, Hashable {
                 singleChoice: try c.decode(Bool.self, forKey: .singleChoice),
                 anonymous: try c.decode(Bool.self, forKey: .anonymous)
             )
+        case "secscreen":
+            self = .secureScreen(on: try c.decode(Bool.self, forKey: .on))
+        case "shot":
+            self = .screenshotTaken(id: try c.decode(UUID.self, forKey: .id))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")
         }

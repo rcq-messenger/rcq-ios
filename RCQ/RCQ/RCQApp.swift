@@ -104,6 +104,11 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
                 return
             }
             await MessageService.shared.fetchOfflineQueue()
+            // Empty content = NSE-suppressed (removed/muted) — no banner/sound.
+            if notification.request.content.body.isEmpty {
+                completionHandler([])
+                return
+            }
             completionHandler([.banner, .sound, .badge, .list])
         }
     }
@@ -260,12 +265,13 @@ struct RootView: View {
         // moment a fullScreenCover came up.
         ZStack {
             mainContent
-            // Cover the UI for: a configured panic-PIN going to background, OR
-            // screen-security being on while backgrounded (app-switcher snapshot)
-            // or while the screen is recorded/mirrored (belt-and-suspenders over
-            // the secure-field layer trick).
+            // Cover the UI for: a configured panic-PIN going to background, OR —
+            // only while a SECURE chat is on screen — backgrounding (app-switcher
+            // snapshot) or screen recording/mirroring (belt-and-suspenders over
+            // the secure-field layer trick). Screen-secure is per-conversation
+            // now, so nothing covers outside a secure chat.
             if (panicPIN.isConfigured && scenePhase != .active)
-                || (screenSecurity.enabled && (scenePhase != .active || screenSecurity.isCaptured)) {
+                || (screenSecurity.protectsLiveContent && (scenePhase != .active || screenSecurity.isCaptured)) {
                 privacyCover
             }
         }

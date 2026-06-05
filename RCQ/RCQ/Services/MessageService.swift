@@ -638,6 +638,30 @@ final class MessageService {
         } catch { }
     }
 
+    // MARK: - screen-secure (per-conversation)
+
+    /// Propagate this 1:1 conversation's screen-secure toggle to the peer so
+    /// THEIR client also blanks the chat (you can't blank a screenshot on the
+    /// peer's phone except by their client enforcing it).
+    func sendSecureScreen(on: Bool, to contact: Contact) async {
+        try? await sendEnvelope(.secureScreen(on: on), to: contact, localID: nil)
+    }
+
+    /// A screenshot was taken in a secure 1:1 chat — post "You took a
+    /// screenshot" locally and tell the peer (their client renders
+    /// "<me> took a screenshot" with my name in their locale).
+    func reportScreenshot(to contact: Contact) async {
+        let thread = ThreadID.peer(uin: contact.uin)
+        await MainActor.run {
+            MessageStore.shared.append(Message(
+                id: UUID(), thread: thread, senderUIN: ownUIN, isFromMe: true,
+                kind: .systemNotice, text: "secscreen.you_screenshotted".localized,
+                sentAt: Date(), deliveryState: .sent
+            ))
+        }
+        try? await sendEnvelope(.screenshotTaken(id: UUID()), to: contact, localID: nil)
+    }
+
     // MARK: - low level
 
     private func sendEnvelope(_ envelope: Envelope, to contact: Contact, localID: UUID?) async throws {
@@ -763,6 +787,7 @@ final class MessageService {
         case .bounce: return "bounce"
         case .visit: return "visit"
         case .edit: return "edit"
+        case .secureScreen, .screenshotTaken: return "secscreen"
         default: return "message"
         }
     }
@@ -1188,6 +1213,27 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     pollID: pollID
+                ))
+            case .secureScreen(let on):
+                // Peer toggled per-conversation screen-secure mode — mirror it
+                // locally so OUR side also blanks this chat (1:1 only for now).
+                if case .peer = thread {
+                    ChatSettingsStore.shared.setSecure(on, for: thread)
+                }
+                return nil
+            case .screenshotTaken(let id):
+                // Peer took a screenshot in a secure chat — show a line with
+                // their name (resolved on our side, in our locale).
+                let name = senderContact?.nickname ?? "#\(decrypted.senderUIN)"
+                inserted = MessageStore.shared.append(Message(
+                    id: id,
+                    thread: thread,
+                    senderUIN: decrypted.senderUIN,
+                    isFromMe: false,
+                    kind: .systemNotice,
+                    text: String(format: "secscreen.peer_screenshotted".localized, name),
+                    sentAt: ws.serverTime,
+                    deliveryState: .delivered
                 ))
             }
             os_log(

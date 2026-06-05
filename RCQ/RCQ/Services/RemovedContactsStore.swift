@@ -46,3 +46,35 @@ final class RemovedContactsStore {
         defaults.removeObject(forKey: Self.key)
     }
 }
+
+/// App-group mirror of the mute lists so the NSE + foreground presentation can
+/// suppress a muted sender/group locally (sealed sender hides 1:1 senders from
+/// the server). Reads hit UserDefaults directly so a reused NSE process stays current.
+final class MutedStore {
+    static let shared = MutedStore()
+
+    private static let uinKey = "rcq.muted_uins"
+    private static let groupKey = "rcq.muted_group_ids"
+    private static let appGroup = "group.app.rcq.shared"
+
+    private let defaults: UserDefaults
+    private init() { defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard }
+
+    func isMuted(_ uin: Int) -> Bool {
+        ((defaults.array(forKey: Self.uinKey) as? [Int]) ?? []).contains(uin)
+    }
+    func isGroupMuted(_ groupID: Int) -> Bool {
+        ((defaults.array(forKey: Self.groupKey) as? [Int]) ?? []).contains(groupID)
+    }
+
+    /// Mirror the authoritative lists from NotificationPrefsService.
+    func setMuted(uins: [Int], groupIDs: [Int]) {
+        defaults.set(uins, forKey: Self.uinKey)
+        defaults.set(groupIDs, forKey: Self.groupKey)
+    }
+
+    func wipe() {
+        defaults.removeObject(forKey: Self.uinKey)
+        defaults.removeObject(forKey: Self.groupKey)
+    }
+}

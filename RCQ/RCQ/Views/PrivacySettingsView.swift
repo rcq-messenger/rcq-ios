@@ -40,7 +40,6 @@ struct PrivacySettingsView: View {
     @State private var showPINSettings = false
     @State private var showProxyURL = false
     @State private var showDiagnostics = false
-    @AppStorage("rcq.privacy.screenSecurity") private var screenSecurityOn = false
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
     @AppStorage("rcq.autoProxyActive") private var autoProxyActive: Bool = false
     @AppStorage("rcq.singbox.autoDisabled") private var singboxAutoDisabled: Bool = false
@@ -233,24 +232,17 @@ struct PrivacySettingsView: View {
             .listRowBackground(Theme.Color.bgSecondary)
         }
 
+        // Screen privacy is now PER-CHAT (open a chat → ⋯ → Secure mode),
+        // not a global toggle — so the peer's screenshots blank too and a
+        // screenshot posts a notice. A short pointer where the old switch was.
         Section {
-            Toggle(isOn: $screenSecurityOn) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("settings.privacy.screen_security".localized)
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text("settings.privacy.screen_security.desc".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "eye.slash")
+                    .foregroundColor(Theme.Color.accent)
+                Text("settings.privacy.screen_security.moved".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
             }
-            .tint(Theme.Color.accent)
-            .onChange(of: screenSecurityOn) { _ in
-                // @AppStorage already persisted the value; (re)apply it to the
-                // live window's secure-field layer.
-                ScreenSecurity.shared.refresh()
-            }
-        } footer: {
-            Text("settings.privacy.screen_security.footer".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }

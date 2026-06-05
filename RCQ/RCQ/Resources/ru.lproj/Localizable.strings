@@ -1852,6 +1852,11 @@
 "settings.privacy.screen_security" = "Защита экрана";
 "settings.privacy.screen_security.desc" = "Скрывать содержимое от скриншотов и записи экрана";
 "settings.privacy.screen_security.footer" = "Когда включено, скриншоты и запись экрана RCQ выходят пустыми, а приложение скрыто в переключателе задач. По умолчанию выключено.";
+"settings.privacy.screen_security.moved" = "Защита экрана теперь в каждом чате: откройте чат, нажмите ⋯, затем Защита экрана.";
+"secscreen.menu_on" = "Защита экрана: вкл";
+"secscreen.menu_off" = "Защита экрана";
+"secscreen.you_screenshotted" = "Вы сделали скриншот";
+"secscreen.peer_screenshotted" = "%@ сделал скриншот";
 "panic_pin.lock.title" = "Введите PIN-код";
 "panic_pin.settings.title" = "PIN-код";
 "panic_pin.settings.section" = "PIN приложения";
