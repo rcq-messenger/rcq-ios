@@ -290,6 +290,9 @@ struct ChatView: View {
         [.text, .photo, .video, .file]
     /// Non-nil = the pinned-announcement expansion sheet is open.
     @State private var pinnedExpansion: PinExpansion?
+    /// Non-nil = a `#<uin>` mention in the pin (for a current group member)
+    /// was tapped; opens that member's profile.
+    @State private var pinnedMemberUIN: Int?
     /// Per-group set of pins the user has COLLAPSED (not dismissed).
     /// In the collapsed state the banner shrinks to a single-line
     /// pin-icon strip that the user can tap to expand back. Persisted
@@ -301,6 +304,11 @@ struct ChatView: View {
     struct PinExpansion: Identifiable {
         let id = UUID()
         let text: String
+    }
+
+    struct MentionTarget: Identifiable {
+        var id: Int { uin }
+        let uin: Int
     }
 
     /// Finished recording awaiting user's send / re-listen / discard
@@ -625,7 +633,7 @@ struct ChatView: View {
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
                 ScrollView {
-                    Text(Self.linkified(exp.text))
+                    Text(pinnedAttributed(exp.text))
                         .font(.body)
                         .foregroundColor(Theme.Color.textPrimary)
                         .tint(Theme.Color.accent)
@@ -646,6 +654,29 @@ struct ChatView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            // A `rcq://member/<uin>` mention tap opens that member's profile;
+            // real http(s) links fall through to the system (Safari).
+            .environment(\.openURL, OpenURLAction { url in
+                if url.scheme == "rcq", url.host == "member", let uin = Int(url.lastPathComponent) {
+                    pinnedExpansion = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinnedMemberUIN = uin }
+                    return .handled
+                }
+                return .systemAction
+            })
+        }
+        .sheet(item: Binding(
+            get: { pinnedMemberUIN.map { MentionTarget(uin: $0) } },
+            set: { pinnedMemberUIN = $0?.uin }
+        )) { t in
+            NavigationStack {
+                UserInfoView(uin: t.uin, isOwn: false)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("common.close".localized) { pinnedMemberUIN = nil }
+                        }
+                    }
+            }
         }
         .onChange(of: vm.messages.last?.id) { _ in
             if let last = vm.messages.last { vm.ackIfVisible(last) }
@@ -1641,6 +1672,47 @@ struct ChatView: View {
             attr[lo..<hi].underlineStyle = .single
         }
         return attr
+    }
+
+    /// Pinned text → AttributedString with both tappable URLs AND `#<uin>`
+    /// member mentions. A `#<uin>` whose UIN is a CURRENT group member renders
+    /// as that member's nickname, tappable (`rcq://member/<uin>`) to open their
+    /// profile; a `#<uin>` that is NOT in this group stays inert plain text, so
+    /// the announcement can't point the group at an outsider.
+    private func pinnedAttributed(_ text: String) -> AttributedString {
+        let nickByUIN: [Int: String] = Dictionary(
+            currentGroupMembers.map { ($0.uin, $0.nickname) }, uniquingKeysWith: { a, _ in a }
+        )
+        guard let regex = try? NSRegularExpression(pattern: "#(\\d{3,})") else {
+            return ChatView.linkified(text)
+        }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return ChatView.linkified(text) }
+
+        var result = AttributedString()
+        var cursor = 0
+        for m in matches {
+            if m.range.location > cursor {
+                result.append(ChatView.linkified(
+                    ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                ))
+            }
+            let token = ns.substring(with: m.range)            // "#111"
+            let uin = Int(ns.substring(with: m.range(at: 1)))  // 111
+            if let uin, let nick = nickByUIN[uin] {
+                var mention = AttributedString(nick)
+                mention.link = URL(string: "rcq://member/\(uin)")
+                result.append(mention)
+            } else {
+                result.append(AttributedString(token))         // inert plain text
+            }
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length {
+            result.append(ChatView.linkified(ns.substring(from: cursor)))
+        }
+        return result
     }
 
     /// True when the active chat target is a group with a non-empty
