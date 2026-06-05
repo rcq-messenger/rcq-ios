@@ -14,6 +14,10 @@ struct EmoticonText: View {
     var members: [RCQGroupMember] = []
     /// Tap action on a resolved mention; default opens the user profile.
     var onMentionTap: ((Int) -> Void)? = nil
+    /// Resolve a `#<uin>` in the body to a nick (group member / contact / peer).
+    /// When it resolves, the `#<uin>` token renders as the clickable nick (tap
+    /// opens the profile via [onMentionTap]); else it stays plain digits.
+    var uinNick: ((Int) -> String?)? = nil
 
     var body: some View {
         // VStack of per-line FlowLayouts so user newlines drive real breaks.
@@ -73,6 +77,13 @@ struct EmoticonText: View {
             }
         case .mention(let nickname, let uin):
             Text("@\(nickname)")
+                .font(font)
+                .foregroundColor(Theme.Color.accent)
+                .onTapGesture {
+                    (onMentionTap ?? { AppState.shared.pendingOpenUserProfile = $0 })(uin)
+                }
+        case .userRef(let nickname, let uin):
+            Text(nickname)
                 .font(font)
                 .foregroundColor(Theme.Color.accent)
                 .onTapGesture {
@@ -143,13 +154,13 @@ struct EmoticonText: View {
                 var current = ""
                 for ch in s {
                     if ch.isWhitespace {
-                        if !current.isEmpty { lineRuns.append(.text(current)); current = "" }
+                        if !current.isEmpty { lineRuns.append(wordRun(current)); current = "" }
                         lineRuns.append(.text(String(ch)))
                     } else {
                         current.append(ch)
                     }
                 }
-                if !current.isEmpty { lineRuns.append(.text(current)) }
+                if !current.isEmpty { lineRuns.append(wordRun(current)) }
             case .emoticon(let asset, let code):
                 lineRuns.append(.emoticon(asset: asset, code: code))
             }
@@ -157,10 +168,26 @@ struct EmoticonText: View {
         return lineRuns
     }
 
+    /// A whitespace-delimited word: a `#<uin>` user reference when it resolves
+    /// to a nick (via [uinNick]), else plain text.
+    private func wordRun(_ word: String) -> Run {
+        if let uinNick,
+           let m = Self.uinRefRE.firstMatch(in: word, range: NSRange(word.startIndex..., in: word)),
+           let r = Range(m.range(at: 1), in: word),
+           let uin = Int(word[r]),
+           let nick = uinNick(uin) {
+            return .userRef(nickname: nick, uin: uin)
+        }
+        return .text(word)
+    }
+
+    private static let uinRefRE = try! NSRegularExpression(pattern: "^#(\\d{3,})$")
+
     private enum Run: Hashable {
         case text(String)
         case emoticon(asset: String, code: String)
         case mention(nickname: String, uin: Int)
+        case userRef(nickname: String, uin: Int)
     }
 }
 

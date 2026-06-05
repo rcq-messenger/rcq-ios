@@ -27,6 +27,15 @@ struct MessageRow: View {
     /// Renders next to the timestamp as `👁 N`.
     var viewCount: Int? = nil
 
+    /// Resolve a `#<uin>` in the body to a nick (group member / contact) so it
+    /// renders as the clickable nick that opens the profile — Android parity.
+    private var uinNick: (Int) -> String? {
+        { uin in
+            currentGroupMembers.first(where: { $0.uin == uin })?.nickname
+                ?? ContactService.shared.contacts.first(where: { $0.uin == uin })?.nickname
+        }
+    }
+
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
     @State private var bubblePressed: Bool = false
@@ -241,7 +250,8 @@ struct MessageRow: View {
                                 font: .caption2,
                                 color: Theme.Color.textSecondary,
                                 emoticonSize: 15,
-                                members: currentGroupMembers
+                                members: currentGroupMembers,
+                                uinNick: uinNick
                             )
                         }
                     }
@@ -308,7 +318,7 @@ struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PhotoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -319,7 +329,7 @@ struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 VideoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -337,7 +347,7 @@ struct MessageRow: View {
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -348,7 +358,7 @@ struct MessageRow: View {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 LocationBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -367,7 +377,7 @@ struct MessageRow: View {
             }
         } else {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                EmoticonText(text: displayBody, members: currentGroupMembers)
+                EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
