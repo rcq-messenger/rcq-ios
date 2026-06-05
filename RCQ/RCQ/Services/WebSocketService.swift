@@ -157,6 +157,16 @@ final class WebSocketService: ObservableObject {
         staleWatchdog = nil
     }
 
+    /// Force an immediate reconnect using the last connect parameters — e.g.
+    /// after the obfuscation transport is toggled, so the socket re-opens
+    /// through (or without) the new proxy instead of waiting for a failure.
+    /// No-op if we've never connected.
+    func reconnectNow() {
+        pendingReconnect?.cancel()
+        guard let uin = lastUIN, let token = lastToken, let base = lastBaseURL else { return }
+        connect(uin: uin, token: token, baseURL: base, serverToken: lastServerToken)
+    }
+
     func pingNow() {
         sendPing()
     }

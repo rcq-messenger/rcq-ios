@@ -642,6 +642,8 @@
 "inventory.menu.show" = "Показать инвентарь";
 "contact_list.menu.search" = "Поиск";
 "contact_list.menu.saved" = "Сохранённые сообщения";
+"bypass.menu.enable" = "Включить обход блокировок";
+"bypass.menu.disable" = "Выключить обход блокировок";
 "contact_list.menu.post_story" = "Опубликовать историю";
 "contact_list.menu.news" = "Новости";
 

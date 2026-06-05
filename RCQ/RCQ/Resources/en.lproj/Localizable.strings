@@ -675,6 +675,8 @@
 "inventory.menu.show" = "Show inventory";
 "contact_list.menu.search" = "Search";
 "contact_list.menu.saved" = "Saved Messages";
+"bypass.menu.enable" = "Turn on censorship bypass";
+"bypass.menu.disable" = "Turn off censorship bypass";
 "contact_list.menu.post_story" = "Post a story";
 "contact_list.menu.news" = "News";
 

@@ -812,6 +812,18 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Manual censorship-bypass toggle (Android parity — the home ⋮ menu item).
+    /// Engages or drops the sing-box obfuscation transport live and reconnects
+    /// the socket so traffic immediately routes through (or stops routing
+    /// through) it, no app restart. A manual turn-off also persists the
+    /// auto-disable opt-out so the failure-driven auto-engage doesn't turn it
+    /// straight back on.
+    func setBypass(_ on: Bool) async {
+        UserDefaults.standard.set(!on, forKey: "rcq.singbox.autoDisabled")
+        await SingBoxTransport.shared.setEnabled(on)
+        WebSocketService.shared.reconnectNow()
+    }
+
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .opened:

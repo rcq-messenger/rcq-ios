@@ -617,6 +617,19 @@ struct ContactListView: View {
                     Label("contact_list.menu.saved".localized, systemImage: "bookmark.fill")
                 }
             }
+            // Manual censorship-bypass toggle (Android parity). Engages/drops the
+            // obfuscation transport live + reconnects. Reads the current state at
+            // menu-open so the label flips each time it's reopened.
+            Section {
+                Button {
+                    let newVal = !SingBoxTransport.isEnabled
+                    Task { await AppState.shared.setBypass(newVal) }
+                } label: {
+                    Label(SingBoxTransport.isEnabled ? "bypass.menu.disable".localized
+                                                     : "bypass.menu.enable".localized,
+                          systemImage: SingBoxTransport.isEnabled ? "shield.lefthalf.filled" : "shield")
+                }
+            }
         } label: {
             // Red dot indicator when unread news posts are
             // available. Overlay'd at the top-right so the ellipsis
