@@ -378,6 +378,10 @@ struct MessageRow: View {
         } else {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    // Guarantee the body takes its full height so it never
+                    // truncates vertically (e.g. when a reply quote above it
+                    // narrows the layout proposal).
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
