@@ -139,7 +139,12 @@ struct ChatView: View {
             let scalar = Unicode.Scalar(ns.character(at: i - 1))
             if let s = scalar, s == "@" {
                 let after = ns.substring(from: i)
-                let valid = after.unicodeScalars.allSatisfy { $0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == "_" || $0 == "-" }
+                // The walk-back already stops at whitespace, so the partial
+                // never spans words. Accept any non-empty run (not just
+                // [A-Za-z0-9_-]) so nicks with a dot or other punctuation
+                // (e.g. ".Dev") are searchable — the picker matches against the
+                // real roster anyway.
+                let valid = !after.isEmpty
                 if valid {
                     return (range: NSRange(location: i - 1, length: ns.length - i + 1), partial: after)
                 }
@@ -262,8 +267,10 @@ struct ChatView: View {
         screenshotObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.userDidTakeScreenshotNotification, object: nil, queue: .main
         ) { _ in
-            let live = ContactService.shared.contacts.first(where: { $0.uin == snap.uin }) ?? snap
-            Task { await MessageService.shared.reportScreenshot(to: live) }
+            Task { @MainActor in
+                let live = ContactService.shared.contacts.first(where: { $0.uin == snap.uin }) ?? snap
+                await MessageService.shared.reportScreenshot(to: live)
+            }
         }
     }
     @State private var showPollComposer: Bool = false

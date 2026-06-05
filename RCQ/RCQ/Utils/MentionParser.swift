@@ -24,7 +24,9 @@ enum MentionParser {
         )
         let ns = text as NSString
         var out: [Match] = []
-        let pattern = try? NSRegularExpression(pattern: "@([\\p{L}\\p{N}_-]+)")
+        // Include `.` so nicks like ".Dev" (leading dot) and "a.b" resolve;
+        // an over-captured token just fails the roster lookup and stays plain.
+        let pattern = try? NSRegularExpression(pattern: "@([\\p{L}\\p{N}_.-]+)")
         pattern?.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
             guard let m, m.numberOfRanges >= 2 else { return }
             let nickRange = m.range(at: 1)
