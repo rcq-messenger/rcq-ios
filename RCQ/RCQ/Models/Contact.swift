@@ -26,6 +26,11 @@ struct Contact: Identifiable, Hashable, Codable {
     /// when the contact is currently online (status conveys that),
     /// or when they've hidden it. Use `relativeLastSeen()` to render.
     var lastSeen: Date?
+    /// Whether WE may call this contact, per THEIR `call_policy` ("nobody"
+    /// hides our call buttons). Optional for back-compat with an older server
+    /// that omits it — nil is treated as callable. The server enforces the
+    /// policy on the call_offer regardless.
+    var callable: Bool? = nil
 
     var id: Int { uin }
 
@@ -38,6 +43,7 @@ struct Contact: Identifiable, Hashable, Codable {
         case signalIdentityKey = "signal_identity_key"
         case gender
         case lastSeen = "last_seen"
+        case callable
     }
 
     /// Synthetic "Saved Messages" peer — the user's own UIN dressed up

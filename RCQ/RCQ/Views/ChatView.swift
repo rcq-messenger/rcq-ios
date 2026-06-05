@@ -273,7 +273,6 @@ struct ChatView: View {
     @State private var showTTLPicker = false
     @State private var showInChatSearch = false
     @State private var showAllMedia = false
-    @AppStorage("rcq.privacy.callPolicy") private var callPolicy: String = "everyone"
     @State private var pendingScrollID: UUID?
     @State private var flashHighlightID: UUID?
     @State private var videoError: String?
@@ -889,18 +888,21 @@ struct ChatView: View {
             switch vm.target {
             case .peer(let snapshot):
                 let isSelfThread = snapshot.uin == (AuthService.shared.ownUIN ?? -1)
-                let callsEnabled = callPolicy != "nobody"
+                // Gate the call buttons on the PEER's call_policy (do THEY
+                // accept calls from us), NOT our own setting. Our own
+                // "who can call me" only governs who may call US, and is
+                // enforced server-side on the call_offer.
+                let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
+                let callsEnabled = (live.callable ?? true)
                 if !isPeerBlocked && !isSelfThread && callsEnabled {
                     let busy = calls.state.isActive
                     Button {
-                        let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
                         CallService.shared.start(toContact: live, media: .audio)
                     } label: {
                         Label("chat.menu.voice_call".localized, systemImage: "phone.fill")
                     }
                     .disabled(busy)
                     Button {
-                        let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
                         CallService.shared.start(toContact: live, media: .video)
                     } label: {
                         Label("chat.menu.video_call".localized, systemImage: "video.fill")
