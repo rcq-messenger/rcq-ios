@@ -1683,7 +1683,8 @@ struct ChatView: View {
         let nickByUIN: [Int: String] = Dictionary(
             currentGroupMembers.map { ($0.uin, $0.nickname) }, uniquingKeysWith: { a, _ in a }
         )
-        guard let regex = try? NSRegularExpression(pattern: "#(\\d{3,})") else {
+        // Matches both `#<uin>` and `UIN <uin>` (the format used in real pins).
+        guard let regex = try? NSRegularExpression(pattern: "(?:#|UIN\\s+)(\\d{3,})", options: [.caseInsensitive]) else {
             return ChatView.linkified(text)
         }
         let ns = text as NSString
