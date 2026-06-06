@@ -18,12 +18,12 @@ struct MessageActionSheet: View {
     /// kolobok pack instead of inventing emojis, since the user already has
     /// these assets and they're the soul of the app.
     static let reactionAssets: [String] = [
-        "smile",   // happy / like
-        "biggrin", // laughing
-        "shok",    // shocked / wow
-        "cray",    // crying / sad
-        "good",    // thumbs up
-        "heart",   // love
+        "good",       // thumbs up / like
+        "give_heart", // love
+        "biggrin",    // laughing
+        "shok",       // shocked / wow
+        "cray",       // crying / sad
+        "mad",        // angry
     ]
 
     var body: some View {

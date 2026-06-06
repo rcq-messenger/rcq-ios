@@ -130,7 +130,7 @@ struct RadioChatView: View {
                 }
             }
             .onTapGesture(count: 2) {
-                radio.toggleReaction("heart", on: msg)
+                radio.toggleReaction("give_heart", on: msg)
             }
             .onLongPressGesture(minimumDuration: 0.4) {
                 replyTarget = msg
