@@ -10,6 +10,7 @@ struct UserInfoView: View {
     @State private var draft: UserProfile?
     @State private var saving = false
     @State private var showSafety = false
+    @State private var identityChanged = false
     @StateObject private var visits = VisitStore.shared
     @StateObject private var contacts = ContactService.shared
     // Observed so the custom-sound picker re-renders the moment an
@@ -26,6 +27,25 @@ struct UserInfoView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         header(p)
+                        if !isOwn, identityChanged {
+                            Button {
+                                openSafety()
+                            } label: {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(Theme.Color.statusBusy)
+                                    Text("profile.safety.changed".localized)
+                                        .font(.footnote)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Theme.Color.bgSecondary)
+                                .cornerRadius(8)
+                            }
+                        }
                         section("profile.section.identity".localized) {
                             field("profile.field.nickname".localized, p.nickname, editable: isOwn) { draft?.nickname = $0 }
                             field("profile.field.uin".localized, String(p.uin), editable: false, mono: true) { _ in }
@@ -63,7 +83,7 @@ struct UserInfoView: View {
                         if !isOwn {
                             section("profile.section.security".localized) {
                                 Button {
-                                    showSafety = true
+                                    openSafety()
                                 } label: {
                                     HStack(spacing: 8) {
                                         Image(systemName: "lock.fill")
@@ -330,6 +350,7 @@ struct UserInfoView: View {
             // "+1 in last 7 days" tally. Throttled per (target, session)
             // inside MessageService.
             if !isOwn {
+                identityChanged = SignalProtocolStores.shared.peerIdentityChanged(uin)
                 Task {
                     await MessageService.shared.sendVisit(
                         toUIN: p.uin,
@@ -395,6 +416,17 @@ struct UserInfoView: View {
         guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
         SignalProtocolStores.shared.deleteSession(for: addr)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// Present the safety-number sheet. Opening it to re-check counts as
+    /// acknowledging any pending identity-change warning, so the banner
+    /// clears (matches the Android contact-info flow).
+    private func openSafety() {
+        if identityChanged {
+            SignalProtocolStores.shared.acknowledgePeerIdentity(uin)
+            identityChanged = false
+        }
+        showSafety = true
     }
 }
 

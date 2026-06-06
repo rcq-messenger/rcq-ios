@@ -218,6 +218,16 @@ final class SignalProtocolDB: @unchecked Sendable {
                 PRIMARY KEY (sender_address, distribution_id)
             );
             """,
+            // A row's presence = this peer's pinned identity key was
+            // REPLACED (re-register / new device / server MITM) and the
+            // user hasn't re-verified the safety number yet. Cleared on
+            // acknowledge. `IF NOT EXISTS` runs on every open, so existing
+            // per-account stores pick the table up with no version bump.
+            """
+            CREATE TABLE IF NOT EXISTS identity_changes (
+                address TEXT PRIMARY KEY
+            );
+            """,
         ]
         for sql in stmts {
             _ = sqlite3_exec(db, sql, nil, nil, nil)
@@ -281,7 +291,7 @@ final class SignalProtocolDB: @unchecked Sendable {
         sync {
             for table in ["local_identity", "prekeys", "signed_prekeys",
                           "kyber_prekeys", "sessions", "identities",
-                          "sender_keys"] {
+                          "sender_keys", "identity_changes"] {
                 _ = sqlite3_exec(db, "DELETE FROM \(table);", nil, nil, nil)
             }
         }

@@ -1162,6 +1162,7 @@
 "profile.safety.computing" = "Computing…";
 "profile.safety.unavailable" = "This contact hasn't published forward-secrecy keys yet, so there's nothing to verify.";
 "profile.safety.body" = "Compare this number with your contact over a channel you trust, in person or on a call. If it matches on both phones, no one is intercepting your messages.";
+"profile.safety.changed" = "This contact's safety number changed. It could be a new device, or someone intercepting. Open it to verify again.";
 "profile.field.nickname" = "Nickname";
 "profile.field.uin" = "UIN";
 "profile.field.first_name" = "First name";

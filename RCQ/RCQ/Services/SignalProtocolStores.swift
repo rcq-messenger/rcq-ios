@@ -127,6 +127,16 @@ extension SignalProtocolStores: IdentityKeyStore {
                 }
             )
             if let existing, existing != serialized {
+                // The peer's pinned identity key changed under a known
+                // address: re-register, new device, or a server swapping
+                // keys (MITM). Flag it so the contact screen can warn the
+                // user to re-verify the safety number; TOFU still accepts
+                // it (Signal behaviour — the user is just told). Same
+                // process/handle, so we're already inside the db queue.
+                _ = db.execute(
+                    sql: "INSERT OR IGNORE INTO identity_changes (address) VALUES (?);",
+                    bind: { stmt in self.db.bindText(stmt, 1, key) }
+                )
                 return IdentityChange.replacedExisting
             }
             return IdentityChange.newOrUnchanged
@@ -134,7 +144,8 @@ extension SignalProtocolStores: IdentityKeyStore {
     }
 
     func isTrustedIdentity(_ identity: IdentityKey, for address: ProtocolAddress, direction: Direction, context: StoreContext) throws -> Bool {
-        // TOFU + accept rotations. No safety-number UI yet — revisit when added.
+        // TOFU + accept rotations; a replaced key is flagged in saveIdentity
+        // and surfaced as a re-verify warning rather than blocked.
         return true
     }
 
@@ -152,6 +163,39 @@ extension SignalProtocolStores: IdentityKeyStore {
 
     private func addressKey(_ address: ProtocolAddress) -> String {
         return "\(address.name):\(address.deviceId)"
+    }
+}
+
+// MARK: - Identity-change flag (safety-number-changed warning)
+
+extension SignalProtocolStores {
+    /// True when [uin]'s pinned libsignal identity was REPLACED (re-register,
+    /// new device, or a server swapping keys for a MITM) and the user hasn't
+    /// re-verified yet. Set in `saveIdentity` when an inbound prekey message
+    /// carries a new identity for a known peer; cleared by
+    /// `acknowledgePeerIdentity`.
+    func peerIdentityChanged(_ uin: Int) -> Bool {
+        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return false }
+        let key = addressKey(addr)
+        return db.sync {
+            db.selectInt(
+                sql: "SELECT 1 FROM identity_changes WHERE address = ? LIMIT 1;",
+                bind: { stmt in self.db.bindText(stmt, 1, key) }
+            ) != nil
+        }
+    }
+
+    /// Clear the change flag for [uin]. Opening the safety number to re-check
+    /// counts as acknowledging the change.
+    func acknowledgePeerIdentity(_ uin: Int) {
+        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
+        let key = addressKey(addr)
+        db.sync {
+            _ = db.execute(
+                sql: "DELETE FROM identity_changes WHERE address = ?;",
+                bind: { stmt in self.db.bindText(stmt, 1, key) }
+            )
+        }
     }
 }
 
