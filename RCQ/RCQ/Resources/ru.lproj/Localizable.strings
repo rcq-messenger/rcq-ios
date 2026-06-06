@@ -1123,6 +1123,12 @@
 "profile.section.status" = "Статус";
 "profile.section.notifications" = "Уведомления";
 "profile.section.audience" = "Аудитория";
+"profile.section.security" = "Безопасность";
+"profile.safety.row" = "Код безопасности";
+"profile.safety.title" = "Код безопасности";
+"profile.safety.computing" = "Вычисляем…";
+"profile.safety.unavailable" = "Контакт ещё не опубликовал ключи forward secrecy, проверять нечего.";
+"profile.safety.body" = "Сравните этот код с контактом по доверенному каналу: лично или по звонку. Если на обоих телефонах он совпадает, вашу переписку никто не перехватывает.";
 "profile.field.nickname" = "Ник";
 "profile.field.uin" = "UIN";
 "profile.field.first_name" = "Имя";

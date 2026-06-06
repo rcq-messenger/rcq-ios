@@ -106,4 +106,55 @@ extension SignalCryptoService {
             context: ctx
         )
     }
+
+    /// The 60-digit safety number for verifying the v=2 conversation with
+    /// [uin] out-of-band (key-fingerprint verification). Closes the
+    /// server-MITM gap left by TOFU: a malicious server could substitute a
+    /// peer's identity key, and there was no way to detect it. Two users
+    /// compare this number over a trusted channel; if it matches, no key was
+    /// swapped.
+    ///
+    /// Computed over the PINNED libsignal identities (the keys our sessions
+    /// actually use, not a fresh server-fetched one). Returns nil when there
+    /// is nothing to verify: we aren't bootstrapped, or the peer is v=1-only
+    /// (never published a libsignal bundle). Establishing the session first
+    /// pins the peer's identity (TOFU).
+    ///
+    /// Cross-platform with Android: the same iterations (5200) and version (2)
+    /// over the same (uin-string, identity-key) inputs, so both ends compute
+    /// the identical number. The fingerprint generator orders the two halves
+    /// canonically, so each side passing its own (self, peer) yields the same
+    /// result.
+    static func safetyNumber(forPeerUIN uin: Int) async -> String? {
+        let stores = SignalProtocolStores.shared
+        let ctx = RCQStoreContext.shared
+        guard let local = try? stores.loadLocalIdentity(),
+              let addr = try? ProtocolAddress(name: String(uin), deviceId: 1)
+        else { return nil }
+
+        // The peer's PINNED identity; establish a session first (TOFU) when
+        // we have none yet so the pin exists to read back.
+        var peer = try? stores.identity(for: addr, context: ctx)
+        if peer == nil {
+            try? await ensureStage3Session(forPeerUIN: uin)
+            peer = try? stores.identity(for: addr, context: ctx)
+        }
+        guard let peerKey = peer else { return nil }  // v=1-only peer
+
+        let generator = NumericFingerprintGenerator(iterations: 5200)
+        guard let fingerprint = try? generator.create(
+            version: 2,
+            localIdentifier: Data(String(local.uin).utf8),
+            localKey: local.identityKeyPair.publicKey,
+            remoteIdentifier: Data(String(uin).utf8),
+            remoteKey: peerKey.publicKey
+        ) else { return nil }
+
+        // displayable.formatted is the raw 60-digit string; group it in fives
+        // for reading aloud, matching the Android dialog.
+        let digits = Array(fingerprint.displayable.formatted)
+        return stride(from: 0, to: digits.count, by: 5)
+            .map { String(digits[$0 ..< min($0 + 5, digits.count)]) }
+            .joined(separator: " ")
+    }
 }

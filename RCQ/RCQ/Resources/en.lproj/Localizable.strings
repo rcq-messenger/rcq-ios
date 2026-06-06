@@ -1156,6 +1156,12 @@
 "profile.section.status" = "Status";
 "profile.section.notifications" = "Notifications";
 "profile.section.audience" = "Audience";
+"profile.section.security" = "Security";
+"profile.safety.row" = "Safety number";
+"profile.safety.title" = "Safety number";
+"profile.safety.computing" = "Computing…";
+"profile.safety.unavailable" = "This contact hasn't published forward-secrecy keys yet, so there's nothing to verify.";
+"profile.safety.body" = "Compare this number with your contact over a channel you trust, in person or on a call. If it matches on both phones, no one is intercepting your messages.";
 "profile.field.nickname" = "Nickname";
 "profile.field.uin" = "UIN";
 "profile.field.first_name" = "First name";

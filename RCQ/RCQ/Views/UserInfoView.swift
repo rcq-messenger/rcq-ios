@@ -9,6 +9,7 @@ struct UserInfoView: View {
     @State private var loading = true
     @State private var draft: UserProfile?
     @State private var saving = false
+    @State private var showSafety = false
     @StateObject private var visits = VisitStore.shared
     @StateObject private var contacts = ContactService.shared
     // Observed so the custom-sound picker re-renders the moment an
@@ -59,6 +60,25 @@ struct UserInfoView: View {
                                 draft?.statusMessage = $0
                             }
                         }
+                        if !isOwn {
+                            section("profile.section.security".localized) {
+                                Button {
+                                    showSafety = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Color.textSecondary)
+                                        Text("profile.safety.row".localized)
+                                            .foregroundColor(Theme.Color.textPrimary)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Color.textSecondary)
+                                    }
+                                }
+                            }
+                        }
                         if isOwn {
                             section("profile.section.audience".localized) {
                                 let n = visits.count(within: 7 * 86_400)
@@ -92,6 +112,9 @@ struct UserInfoView: View {
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showSafety) {
+            SafetyNumberSheet(peerUIN: uin)
+        }
     }
 
     @ViewBuilder
@@ -372,5 +395,69 @@ struct UserInfoView: View {
         guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
         SignalProtocolStores.shared.deleteSession(for: addr)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+}
+
+/// Out-of-band key-fingerprint verification. Shows the 60-digit safety
+/// number for the v=2 conversation with [peerUIN] so two users can compare
+/// it over a trusted channel; a match means no key was swapped by the
+/// server. The number is identical to what the Android client shows for the
+/// same pair. Returns nil (and the "nothing to verify" copy) when the peer
+/// is v=1-only or we aren't bootstrapped.
+private struct SafetyNumberSheet: View {
+    let peerUIN: Int
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var number: String?
+    @State private var loading = true
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 16) {
+                    if loading {
+                        VStack(spacing: 10) {
+                            ProgressView().tint(Theme.Color.accent)
+                            Text("profile.safety.computing".localized)
+                                .font(.caption)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 32)
+                    } else if let n = number {
+                        Text(n)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineSpacing(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                        Text("profile.safety.body".localized)
+                            .font(.footnote)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("profile.safety.unavailable".localized)
+                            .font(.footnote)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .navigationTitle("profile.safety.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("common.close".localized) { dismiss() }
+                        .foregroundColor(Theme.Color.accent)
+                }
+            }
+        }
+        .task {
+            number = await SignalCryptoService.safetyNumber(forPeerUIN: peerUIN)
+            loading = false
+        }
     }
 }
