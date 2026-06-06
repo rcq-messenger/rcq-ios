@@ -92,6 +92,16 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// Owner: grant/revoke a member's moderator caps (subset of
+    /// delete|members|info). Returns the updated group with the new roster.
+    func setMemberPermissions(groupID: Int, uin: Int, permissions: [String]) async throws {
+        struct Body: Encodable { let permissions: [String] }
+        let g: RCQGroup = try await APIClient.shared.request(
+            "POST", "/groups/\(groupID)/members/\(uin)/permissions", body: Body(permissions: permissions)
+        )
+        upsert(g)
+    }
+
     /// Owner/admin — set the free-text group description. Pass an
     /// empty string to clear it (server treats empty as "remove").
     func setDescription(groupID: Int, description: String) async throws {

@@ -99,11 +99,17 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     let signingKey: String
     /// Non-null = member runs libsignal (Stage 3 eligible).
     let signalIdentityKey: String?
+    /// Granular moderator caps the owner granted (subset of delete|members|info).
+    /// Owner implicitly has all; a non-owner with any cap is a moderator.
+    let permissions: [String]
 
     var id: Int { uin }
 
+    /// True if this member may delete anyone's message (owner OR `delete` cap).
+    func canDelete(ownerUIN: Int) -> Bool { uin == ownerUIN || permissions.contains("delete") }
+
     enum CodingKeys: String, CodingKey {
-        case uin, nickname, role, status
+        case uin, nickname, role, status, permissions
         case identityKey = "identity_key"
         case signingKey = "signing_key"
         case signalIdentityKey = "signal_identity_key"
@@ -120,6 +126,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.identityKey = (try? c.decodeIfPresent(String.self, forKey: .identityKey)) ?? ""
         self.signingKey = (try? c.decodeIfPresent(String.self, forKey: .signingKey)) ?? ""
         self.signalIdentityKey = try? c.decodeIfPresent(String.self, forKey: .signalIdentityKey)
+        self.permissions = (try? c.decodeIfPresent([String].self, forKey: .permissions)) ?? []
     }
 }
 

@@ -951,6 +951,10 @@
 "group.role.owner" = "Создатель";
 "group.role.admin" = "Админ";
 "group.member.remove" = "Удалить из группы";
+"group.perm.title" = "Права модератора";
+"group.perm.delete" = "Удалять";
+"group.perm.members" = "Участники";
+"group.perm.info" = "Инфо";
 "group.member.remove.confirm" = "Исключить %@ из группы?";
 "group.member.action.trade" = "Предложить обмен";
 "group.member.action.add" = "Добавить в контакты";

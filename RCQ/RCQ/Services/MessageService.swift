@@ -1156,7 +1156,20 @@ final class MessageService {
                     longitude: lng
                 ))
             case .deleteForEveryone(let targetID):
-                MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
+                // Honor a delete-for-everyone only from someone allowed to make
+                // it: the message's own author, OR (in a group) a moderator —
+                // the owner or a member the owner granted the `delete` cap.
+                // Sealed sender still reveals the decrypted deleter, and we have
+                // the cached roster. (Previously honored from ANYONE.)
+                let deleter = decrypted.senderUIN
+                let target = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
+                var authorized = target?.senderUIN == deleter
+                if !authorized, case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
+                    authorized = g.members.first { $0.uin == deleter }?.canDelete(ownerUIN: g.ownerUIN) == true
+                }
+                if authorized {
+                    MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
+                }
             case .readReceipt(let ids):
                 MessageStore.shared.markRead(messageIDs: ids, thread: thread)
             case .reaction(let targetID, let asset):

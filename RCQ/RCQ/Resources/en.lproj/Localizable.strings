@@ -984,6 +984,10 @@
 "group.role.owner" = "Owner";
 "group.role.admin" = "Admin";
 "group.member.remove" = "Remove from group";
+"group.perm.title" = "Moderator rights";
+"group.perm.delete" = "Delete";
+"group.perm.members" = "Members";
+"group.perm.info" = "Info";
 "group.member.remove.confirm" = "Remove %@ from the group?";
 "group.member.action.trade" = "Propose trade";
 "group.member.action.add" = "Add as contact";

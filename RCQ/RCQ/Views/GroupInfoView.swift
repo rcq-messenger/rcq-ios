@@ -133,13 +133,18 @@ struct GroupInfoView: View {
                     actionMember = nil
                     Task { try? await groups.removeMember(groupID: currentGroup.id, uin: uin) }
                 },
+                // Owner grants/revokes this member's moderator caps.
+                canModerate: amOwner && m.uin != currentGroup.ownerUIN && m.uin != (AuthService.shared.ownUIN ?? -1),
+                onSetPermissions: { perms in
+                    Task { try? await groups.setMemberPermissions(groupID: currentGroup.id, uin: m.uin, permissions: perms) }
+                },
                 onOpenProfile: {
                     viewInfoForUIN = m.uin
                     actionMember = nil
                 },
                 onDismiss: { actionMember = nil },
             )
-            .presentationDetents([.height(480)])
+            .presentationDetents([.height(540)])
             .presentationDragIndicator(.visible)
         }
         .confirmationDialog(
@@ -357,6 +362,9 @@ private struct MemberActionSheet: View {
     let member: RCQGroupMember
     var canKick: Bool = false
     var onKick: () -> Void = {}
+    /// Owner viewing a non-owner, non-self member: may grant/revoke caps.
+    var canModerate: Bool = false
+    var onSetPermissions: ([String]) -> Void = { _ in }
     let onOpenProfile: () -> Void
     let onDismiss: () -> Void
 
@@ -367,6 +375,26 @@ private struct MemberActionSheet: View {
     @State private var addRequestSent = false
     @State private var addError: String?
     @State private var confirmKick = false
+    @State private var perms: Set<String> = []
+    @State private var permsSeeded = false
+
+    @ViewBuilder
+    private func permChip(_ label: String, cap: String) -> some View {
+        let on = perms.contains(cap)
+        Button {
+            if on { perms.remove(cap) } else { perms.insert(cap) }
+            onSetPermissions(Array(perms))
+        } label: {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(on ? Theme.Color.bgPrimary : Theme.Color.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(on ? Theme.Color.accent : Theme.Color.bgSecondary)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
 
     private var isAlreadyContact: Bool {
         contacts.contacts.contains(where: { $0.uin == member.uin })
@@ -449,6 +477,26 @@ private struct MemberActionSheet: View {
                 )
             }
 
+            // Owner-only: grant/revoke this member's moderator caps. The owner
+            // decides which rights each moderator gets. Toggles are optimistic;
+            // the parent persists via POST /permissions.
+            if canModerate {
+                Divider().background(Theme.Color.divider)
+                    .padding(.horizontal, 20)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("group.perm.title".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    HStack(spacing: 8) {
+                        permChip("group.perm.delete".localized, cap: "delete")
+                        permChip("group.perm.members".localized, cap: "members")
+                        permChip("group.perm.info".localized, cap: "info")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+            }
+
             // Owner-only: kick this member out of the group.
             if canKick {
                 Button(role: .destructive) {
@@ -478,6 +526,9 @@ private struct MemberActionSheet: View {
         }
         .task {
             await loadProfile()
+        }
+        .onAppear {
+            if !permsSeeded { perms = Set(member.permissions); permsSeeded = true }
         }
     }
 

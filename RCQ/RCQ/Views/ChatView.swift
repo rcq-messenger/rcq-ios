@@ -22,6 +22,18 @@ struct ChatView: View {
         return nil
     }
 
+    /// "Delete for everyone" is offered for your own message, OR (in a group)
+    /// when you're a moderator: the owner, or a member the owner granted the
+    /// `delete` cap. Recipients re-check the same rule on receipt.
+    private func canDeleteForEveryone(_ message: Message) -> Bool {
+        if message.isFromMe { return true }
+        guard case .group(let snapshot) = vm.target,
+              let me = AuthService.shared.ownUIN else { return false }
+        let live = groupSvc.find(snapshot.id) ?? snapshot
+        return me == live.ownerUIN
+            || live.members.first { $0.uin == me }?.canDelete(ownerUIN: live.ownerUIN) == true
+    }
+
     /// View counts are a broadcast-mode affordance: only meaningful
     /// when ONE person (the owner) is talking and everyone else is a
     /// passive audience. In a chat where every member can post, an
@@ -77,7 +89,7 @@ struct ChatView: View {
         MessageActionOverlay(
             message: target,
             senderNickname: vm.senderNickname(target.senderUIN),
-            canDeleteForEveryone: target.isFromMe,
+            canDeleteForEveryone: canDeleteForEveryone(target),
             canReply: replyAllowed,
             canEdit: target.isFromMe
                 && !target.deletedForEveryone
