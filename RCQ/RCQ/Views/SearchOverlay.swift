@@ -182,7 +182,7 @@ struct SearchOverlay: View {
                         Text(contact.nickname)
                             .font(Theme.Font.nickname)
                             .foregroundColor(Theme.Color.textPrimary)
-                        Text("#\(contact.uin)")
+                        Text(verbatim: "#\(contact.uin)")
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }

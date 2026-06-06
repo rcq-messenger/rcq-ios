@@ -153,7 +153,7 @@ struct UserInfoView: View {
                 StatusIcon(status: p.status, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
-                    Text("#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
                     if let m = p.statusMessage, !m.isEmpty {
                         Text(m).font(.caption.italic()).foregroundColor(Theme.Color.textSecondary)
                     }

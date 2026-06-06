@@ -437,7 +437,7 @@ struct HoodChatView: View {
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                     } else {
-                        Text("#\(target.uin)")
+                        Text(verbatim: "#\(target.uin)")
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }

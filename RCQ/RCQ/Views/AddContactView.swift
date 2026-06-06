@@ -328,7 +328,7 @@ private struct AddRow: View {
             StatusIcon(status: user.status, size: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text("#\(user.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                Text(verbatim: "#\(user.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 let parts = [user.city, user.country].compactMap { $0?.isEmpty == false ? $0 : nil }
                 if !parts.isEmpty {
                     Text(parts.joined(separator: ", "))
@@ -375,7 +375,7 @@ private struct AddDetailView: View {
             VStack(spacing: 16) {
                 StatusIcon(status: user.status, size: 64)
                 Text(user.nickname).font(.title2.bold()).foregroundColor(Theme.Color.textPrimary)
-                Text("#\(user.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
+                Text(verbatim: "#\(user.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
                 if let about = user.about, !about.isEmpty {
                     Text(about).font(.body).foregroundColor(Theme.Color.textSecondary)
                         .multilineTextAlignment(.center).padding(.horizontal, 24)

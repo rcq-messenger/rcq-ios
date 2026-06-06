@@ -127,7 +127,7 @@ struct ManageAccountsSheet: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let uin {
-                    Text("#\(uin)")
+                    Text(verbatim: "#\(uin)")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
                 }

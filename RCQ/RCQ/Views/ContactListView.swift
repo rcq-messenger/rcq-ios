@@ -444,7 +444,7 @@ struct ContactListView: View {
                             Text(primary)
                             Text(secondary)
                             if let uin {
-                                Text("#\(uin)")
+                                Text(verbatim: "#\(uin)")
                             }
                         }
                         if account.id == accountManager.activeAccountID {
@@ -1433,7 +1433,7 @@ private struct ContactRow: View {
                     }
                 }
                 HStack(spacing: 4) {
-                    Text("#\(contact.uin)")
+                    Text(verbatim: "#\(contact.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
                     if let m = contact.statusMessage, !m.isEmpty {

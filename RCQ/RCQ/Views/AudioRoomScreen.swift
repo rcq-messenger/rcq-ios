@@ -422,7 +422,7 @@ private struct AudioRoomQuickActionsSheet: View {
                             Text(member.nickname)
                                 .font(.system(.headline, weight: .semibold))
                                 .foregroundColor(Theme.Color.textPrimary)
-                            Text("#\(member.uin)")
+                            Text(verbatim: "#\(member.uin)")
                                 .font(Theme.Font.monoSmall)
                                 .foregroundColor(Theme.Color.textMono)
                         }

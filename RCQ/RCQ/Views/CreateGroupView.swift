@@ -81,7 +81,7 @@ struct CreateGroupView: View {
             StatusIcon(status: contact.status, size: 24)
             VStack(alignment: .leading, spacing: 1) {
                 Text(contact.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text("#\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                Text(verbatim: "#\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }
             Spacer()
             Image(systemName: selected.contains(contact.uin) ? "checkmark.circle.fill" : "circle")
