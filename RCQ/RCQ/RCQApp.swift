@@ -109,6 +109,21 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
                 completionHandler([])
                 return
             }
+            // In the foreground a MESSAGE push is redundant: the same
+            // envelope was just drained by fetchOfflineQueue above and is
+            // surfaced by the in-app MessageBannerService, so a system
+            // banner doubles up. This is the "a push pops over the chat
+            // I'm already looking at" complaint, worst in busy groups
+            // where a recipient who briefly looks offline (WS reconnect
+            // churn) still gets pushed. Keep badge + notification-center
+            // entry, drop the banner + sound. Non-message pushes
+            // (contact requests, trades, outbid: no `env`) have no in-app
+            // equivalent, so they still present normally.
+            let isMessagePush = notification.request.content.userInfo["env"] != nil
+            if isMessagePush {
+                completionHandler([.badge, .list])
+                return
+            }
             completionHandler([.banner, .sound, .badge, .list])
         }
     }

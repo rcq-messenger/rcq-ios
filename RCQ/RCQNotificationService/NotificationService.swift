@@ -138,6 +138,17 @@ class NotificationService: UNNotificationServiceExtension {
                 senderUIN: decrypted.senderUIN,
                 envelope: decrypted.envelope
             )
+            // Your OWN message coming back to you: a group fan-out from a
+            // client that didn't drop the sender, or the same account on a
+            // second device. The recipient (`to_uin`) is us, and the
+            // decrypted sender is also us. Cached above so the main app
+            // still threads it, but we do NOT buzz the user about their
+            // own message. (iOS group sends already skip self; this also
+            // covers other clients that don't.)
+            if let toUIN, decrypted.senderUIN == toUIN {
+                contentHandler(UNNotificationContent())
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
             let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
