@@ -17,6 +17,9 @@
 "settings.appearance.theme.system" = "System";
 "settings.appearance.theme.light" = "Light";
 "settings.appearance.theme.dark" = "Dark";
+"settings.app_icon" = "App icon";
+"settings.app_icon.default" = "Default";
+"settings.app_icon.footer" = "Pick a different home-screen icon. Changing it shows a brief system confirmation.";
 "settings.sound" = "Sound";
 "settings.sound.toggle" = "System sounds";
 "settings.sound.row" = "Sounds";

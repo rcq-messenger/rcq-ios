@@ -8,6 +8,9 @@
 "settings.appearance.theme.system" = "Системная";
 "settings.appearance.theme.light" = "Светлая";
 "settings.appearance.theme.dark" = "Тёмная";
+"settings.app_icon" = "Иконка приложения";
+"settings.app_icon.default" = "По умолчанию";
+"settings.app_icon.footer" = "Выберите другую иконку на домашнем экране. При смене iOS покажет короткое системное подтверждение.";
 "settings.sound" = "Звук";
 "settings.sound.toggle" = "Системные звуки";
 "settings.sound.row" = "Звуки";

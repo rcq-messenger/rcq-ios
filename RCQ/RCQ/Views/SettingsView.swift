@@ -39,6 +39,19 @@ struct SettingsView: View {
                                 Text(t.label).tag(t)
                             }
                         }
+                        if AppIconManager.shared.supportsAlternateIcons {
+                            NavigationLink {
+                                AppIconView()
+                            } label: {
+                                HStack {
+                                    Text("settings.app_icon".localized)
+                                    Spacer()
+                                    Text(AppIconManager.shared.currentOption.displayName)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                            }
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -416,5 +429,140 @@ struct SettingsView: View {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(v) (\(b))"
+    }
+}
+
+// MARK: - Alternate app icon
+
+/// One selectable launcher icon. `id == nil` is the primary (default) icon;
+/// a non-nil id must match an **iOS App Icon** set name in Assets.xcassets.
+struct AppIconOption: Identifiable, Equatable {
+    let id: String?
+    let labelKey: String
+    /// Asset name for the in-app thumbnail. Defaults to `"<id>Preview"`.
+    var previewAsset: String? = nil
+
+    var displayName: String { labelKey.localized }
+}
+
+/// Alternate app-icon support (lets the user hide the RCQ flower or pick a
+/// different look). Backed by UIKit's `setAlternateIconName`.
+///
+/// ── HOW TO ADD AN ICON (founder, once the art exists) ─────────────────
+///  1. In Assets.xcassets add a new **iOS App Icon** set named e.g.
+///     `IconMono` (a single 1024pt image is enough).
+///  2. (Recommended) add a normal **Image Set** named `IconMonoPreview`
+///     (~120pt rounded render) for the chooser thumbnail. Without it the
+///     chooser falls back to a neutral placeholder.
+///  3. In Xcode → target Build Settings, set **Include All App Icon
+///     Assets = Yes** (`ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS`).
+///     That is what makes catalog alt-icons addressable by name. Do this
+///     once; it covers every alternate.
+///  4. Append one line to `options` below, id == the App Icon set name:
+///        AppIconOption(id: "IconMono", labelKey: "settings.app_icon.mono")
+///  5. Add the label string to Localizable.strings (en + ru).
+/// The chooser, selection, checkmark and persistence all work already.
+@MainActor
+final class AppIconManager: ObservableObject {
+    static let shared = AppIconManager()
+
+    /// The catalogue. First entry is the default; append alternates here.
+    let options: [AppIconOption] = [
+        AppIconOption(id: nil, labelKey: "settings.app_icon.default", previewAsset: "AppIconPreview"),
+        // AppIconOption(id: "IconMono",  labelKey: "settings.app_icon.mono"),
+        // AppIconOption(id: "IconDark",  labelKey: "settings.app_icon.dark"),
+    ]
+
+    /// nil = primary icon is active.
+    @Published private(set) var currentIconID: String?
+
+    var supportsAlternateIcons: Bool { UIApplication.shared.supportsAlternateIcons }
+
+    var currentOption: AppIconOption {
+        options.first { $0.id == currentIconID } ?? options[0]
+    }
+
+    private init() {
+        currentIconID = UIApplication.shared.alternateIconName
+    }
+
+    func set(_ option: AppIconOption) {
+        guard option.id != currentIconID else { return }
+        UIApplication.shared.setAlternateIconName(option.id) { [weak self] error in
+            Task { @MainActor in
+                if let error {
+                    print("[AppIcon] setAlternateIconName(\(option.id ?? "primary")) failed: \(error)")
+                } else {
+                    self?.currentIconID = option.id
+                }
+            }
+        }
+    }
+
+    func previewImage(for option: AppIconOption) -> UIImage? {
+        let name = option.previewAsset ?? option.id.map { "\($0)Preview" }
+        if let name, let img = UIImage(named: name) { return img }
+        // Fall back to the alternate/primary icon file itself if present.
+        if let id = option.id, let img = UIImage(named: id) { return img }
+        return UIImage(named: "AppIcon")
+    }
+}
+
+/// Settings → Appearance → App icon. Renders whatever is in
+/// `AppIconManager.options`; with no alternates added yet it shows only
+/// "Default" (the scaffold is plug-and-play once art lands).
+struct AppIconView: View {
+    @StateObject private var icons = AppIconManager.shared
+
+    var body: some View {
+        ZStack {
+            Theme.Color.bgPrimary.ignoresSafeArea()
+            Form {
+                Section {
+                    ForEach(icons.options) { option in
+                        Button {
+                            icons.set(option)
+                        } label: {
+                            HStack(spacing: 14) {
+                                thumb(option)
+                                Text(option.displayName)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                if option.id == icons.currentIconID {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Theme.Color.accent)
+                                }
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("settings.app_icon.footer".localized)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                .listRowBackground(Theme.Color.bgSecondary)
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("settings.app_icon".localized)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func thumb(_ option: AppIconOption) -> some View {
+        if let img = icons.previewImage(for: option) {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.Color.bgPrimary)
+                .frame(width: 52, height: 52)
+                .overlay(
+                    Image(systemName: "app.dashed")
+                        .foregroundColor(Theme.Color.textSecondary)
+                )
+        }
     }
 }
