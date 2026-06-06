@@ -548,7 +548,7 @@ struct ContactListView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color.orange)
                     } else {
-                        Text(String(auth.ownUIN ?? 0))
+                        Text("#\(auth.ownUIN ?? 0)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
                     }
