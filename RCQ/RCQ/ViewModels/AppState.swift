@@ -903,21 +903,26 @@ final class AppState: ObservableObject {
                 if !viewing { GroupService.shared.incrementUnread(id) }
                 title = GroupService.shared.find(id)?.name ?? "Group"
             }
-            let bannerShown = MessageBannerService.shared.tryPresent(
+            // Muted thread: it still counts as unread (incremented above) and
+            // lands in the chat, but produces NO banner, NO sound, and NO
+            // backgrounded local notification — mute means silent everywhere,
+            // inside the app too.
+            let muted = SoundService.shared.isMuted(thread: thread)
+            let bannerShown = !muted && MessageBannerService.shared.tryPresent(
                 thread: thread, title: title, body: preview,
             )
             // Sound is tied to banner visibility — silent when the
             // user is already in the chat (the message just appears
             // in the open thread, no need for a chime) and silent
-            // when the app is backgrounded (APNs alert sound fires
-            // instead). `playIncoming` still respects per-thread
-            // mute on top of this gate.
+            // when the app is backgrounded (APNs alert sound fires instead).
             if bannerShown {
                 SoundService.shared.playIncoming(fromUIN: sender, thread: thread)
             }
-            NotificationService.shared.presentIfBackgrounded(
-                title: title, body: preview, threadKey: "\(thread.kindString)-\(thread.rawKey)"
-            )
+            if !muted {
+                NotificationService.shared.presentIfBackgrounded(
+                    title: title, body: preview, threadKey: "\(thread.kindString)-\(thread.rawKey)"
+                )
+            }
 
         case .typing(let from, let active):
             typingByUIN[from] = active

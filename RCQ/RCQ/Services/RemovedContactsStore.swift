@@ -60,21 +60,41 @@ final class MutedStore {
     private let defaults: UserDefaults
     private init() { defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard }
 
-    func isMuted(_ uin: Int) -> Bool {
-        ((defaults.array(forKey: Self.uinKey) as? [Int]) ?? []).contains(uin)
+    // A FLAT FILE is the source of truth. App Group UserDefaults is read by the
+    // NSE in a separate process, where cfprefsd "detaches" routinely and serves
+    // a STALE snapshot — so a freshly-muted group/user still pushed (the exact
+    // bug). The file dodges that layer (same fix as AppGroup.languageFileURL).
+    // UserDefaults is kept written for back-compat with in-flight installs.
+    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int] }
+    private var fileURL: URL { AppGroup.containerURL.appendingPathComponent("muted.json") }
+
+    private func read() -> Lists {
+        if let data = try? Data(contentsOf: fileURL),
+           let l = try? JSONDecoder().decode(Lists.self, from: data) {
+            return l
+        }
+        // Fallback for installs that muted before the file existed.
+        return Lists(
+            uins: (defaults.array(forKey: Self.uinKey) as? [Int]) ?? [],
+            groupIDs: (defaults.array(forKey: Self.groupKey) as? [Int]) ?? [],
+        )
     }
-    func isGroupMuted(_ groupID: Int) -> Bool {
-        ((defaults.array(forKey: Self.groupKey) as? [Int]) ?? []).contains(groupID)
-    }
+
+    func isMuted(_ uin: Int) -> Bool { read().uins.contains(uin) }
+    func isGroupMuted(_ groupID: Int) -> Bool { read().groupIDs.contains(groupID) }
 
     /// Mirror the authoritative lists from NotificationPrefsService.
     func setMuted(uins: [Int], groupIDs: [Int]) {
         defaults.set(uins, forKey: Self.uinKey)
         defaults.set(groupIDs, forKey: Self.groupKey)
+        if let data = try? JSONEncoder().encode(Lists(uins: uins, groupIDs: groupIDs)) {
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 
     func wipe() {
         defaults.removeObject(forKey: Self.uinKey)
         defaults.removeObject(forKey: Self.groupKey)
+        try? FileManager.default.removeItem(at: fileURL)
     }
 }
