@@ -50,3 +50,32 @@ enum NicknameCache {
         defaults?.removeObject(forKey: storageKey)
     }
 }
+
+/// App Group-shared cache of `group id → group name`, so the NSE can title a
+/// group-message push with the GROUP'S name instead of just the sender (a
+/// founder ask). Same UserDefaults-backed, best-effort-stale approach as
+/// `NicknameCache`: the main app rewrites it on every `/groups` refresh, the
+/// NSE only reads. A stale name just shows the previous group title briefly.
+enum GroupNameCache {
+    private static let storageKey = "rcq.group_names"
+
+    private static var defaults: UserDefaults? {
+        return UserDefaults(suiteName: AppGroup.identifier)
+    }
+
+    static func name(for groupID: Int) -> String? {
+        let dict = (defaults?.dictionary(forKey: storageKey) as? [String: String]) ?? [:]
+        return dict[String(groupID)]
+    }
+
+    /// Replace the whole map. Called from `GroupService.refresh()`.
+    static func setAll(_ pairs: [Int: String]) {
+        var asStrings: [String: String] = [:]
+        for (gid, name) in pairs { asStrings[String(gid)] = name }
+        defaults?.set(asStrings, forKey: storageKey)
+    }
+
+    static func wipe() {
+        defaults?.removeObject(forKey: storageKey)
+    }
+}

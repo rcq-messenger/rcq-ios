@@ -63,6 +63,19 @@ class NotificationService: UNNotificationServiceExtension {
         os_log("env present (len=%d), envType=%{public}@",
                log: Self.log, type: .default, envB64.count, envType)
 
+        // Group mute, checked BEFORE the decrypt: group_id rides in userInfo,
+        // so we don't need the plaintext to know the thread. Doing it here
+        // means a muted group stays silent even when the decrypt fails (the
+        // per-recipient ratchet may already have advanced via the WS path) —
+        // the post-decrypt mute check used to be skipped by the catch-block
+        // fallthrough, leaking muted-group pushes as the generic banner.
+        if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue,
+           MutedStore.shared.isGroupMuted(gid) {
+            os_log("group %d muted — suppressing", log: Self.log, type: .default, gid)
+            contentHandler(UNNotificationContent())
+            return
+        }
+
         // Multi-account push routing: the device token is per-device
         // (not per-account), so a push for any local account lands
         // here. If `to_uin` is set on the payload we use it to find
@@ -174,6 +187,14 @@ class NotificationService: UNNotificationServiceExtension {
             os_log("decrypt failed: %{public}@",
                    log: Self.log, type: .error,
                    String(describing: error))
+            // Even when we can't decrypt (e.g. the WS path already advanced the
+            // ratchet), label a group push with the group name if we know it,
+            // so the fallback reads "My Group" / "New message" rather than the
+            // generic "RCQ" / "New group message".
+            if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue,
+               let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
+                content.title = gname
+            }
             contentHandler(content)
         }
     }
@@ -202,11 +223,8 @@ class NotificationService: UNNotificationServiceExtension {
         // a recent value here in most cases. Falls back to a `#UIN`
         // tag when the sender isn't in our contacts (e.g. an open
         // random-chat session, or a contact added on another device).
-        if let nick = NicknameCache.nickname(for: decrypted.senderUIN) {
-            content.title = nick
-        } else {
-            content.title = "#\(decrypted.senderUIN)"
-        }
+        let senderNick = NicknameCache.nickname(for: decrypted.senderUIN) ?? "#\(decrypted.senderUIN)"
+        content.title = senderNick
         // Group threading by sender so iOS stacks multiple messages
         // from the same UIN into a single notification group AND
         // gives the main app's `didReceive` handler a deterministic
@@ -265,6 +283,17 @@ class NotificationService: UNNotificationServiceExtension {
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen:
             content.body = "Message"
+        }
+
+        // Group message: lead the banner with the GROUP'S name and prefix the
+        // body with the sender, so it reads "My Group" / "Alice: hi" instead
+        // of just "Alice" / "hi" (founder ask). Falls back to the sender as
+        // title when the group name isn't cached yet.
+        if let gid = groupID {
+            if let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
+                content.title = gname
+            }
+            content.body = "\(senderNick): \(content.body)"
         }
     }
 

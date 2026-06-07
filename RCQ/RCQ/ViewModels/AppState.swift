@@ -474,6 +474,7 @@ final class AppState: ObservableObject {
         VoIPPushService.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
         SignalProtocolDB.shared.wipe()
@@ -527,6 +528,7 @@ final class AppState: ObservableObject {
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()
@@ -754,6 +756,7 @@ final class AppState: ObservableObject {
         // only burnAccount() (nuclear reset) clears them.
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()

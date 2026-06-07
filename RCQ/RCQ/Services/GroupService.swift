@@ -35,6 +35,9 @@ final class GroupService: ObservableObject {
         do {
             let list: [RCQGroup] = try await APIClient.shared.request("GET", "/groups")
             self.groups = list
+            // Mirror id → name into the App Group so the NSE can title a
+            // group-message push with the group's name (not just the sender).
+            GroupNameCache.setAll(Dictionary(list.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))
             // Re-sync from the persisted store in case background
             // pushes mutated it while we were offline.
             self.unread = UnreadStore.shared.allGroupCounts
