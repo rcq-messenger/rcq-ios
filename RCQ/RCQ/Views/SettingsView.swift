@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
+    @State private var showLinkedDevices = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @EnvironmentObject private var appState: AppState
@@ -220,6 +221,19 @@ struct SettingsView: View {
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
                         }
+                        Button {
+                            showLinkedDevices = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "laptopcomputer.and.iphone").foregroundColor(Theme.Color.accent)
+                                Text("linkeddevices.title".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
                         Button(role: .destructive) {
                             confirmBurn = true
                         } label: {
@@ -287,6 +301,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
+            .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
             .confirmationDialog(
                 "settings.history.confirm.title".localized,
                 isPresented: $confirmClearHistory,
@@ -511,6 +526,105 @@ final class AppIconManager: ObservableObject {
 /// Settings → Appearance → App icon. Renders whatever is in
 /// `AppIconManager.options`; with no alternates added yet it shows only
 /// "Default" (the scaffold is plug-and-play once art lands).
+/// Web sessions linked to this account (connect-to-web). Lists them and lets
+/// the user disconnect any. Removing the last one drops the account back to
+/// single-device server-side (v=2 resumes).
+struct LinkedDevicesView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    struct Device: Identifiable, Decodable {
+        let device_id: String
+        let label: String
+        let created_at: String
+        var id: String { device_id }
+    }
+
+    @State private var devices: [Device]? = nil // nil = loading
+    @State private var failed = false
+    @State private var revoking: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                content
+            }
+            .navigationTitle("linkeddevices.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close".localized) { dismiss() }
+                }
+            }
+            .task { await reload() }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if devices == nil {
+            ProgressView().tint(Theme.Color.accent)
+        } else if (devices ?? []).isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "laptopcomputer")
+                    .font(.system(size: 40)).foregroundColor(Theme.Color.textSecondary)
+                Text((failed ? "linkeddevices.error" : "linkeddevices.empty").localized)
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text("linkeddevices.hint".localized)
+                    .font(.footnote).foregroundColor(Theme.Color.textSecondary)
+                    .multilineTextAlignment(.center).padding(.horizontal, 28)
+            }
+        } else {
+            List {
+                Section {
+                    ForEach(devices ?? []) { d in
+                        HStack(spacing: 12) {
+                            Image(systemName: "laptopcomputer").foregroundColor(Theme.Color.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(d.label.isEmpty ? "Web" : d.label).foregroundColor(Theme.Color.textPrimary)
+                                if d.created_at.count >= 10 {
+                                    Text(String(format: "linkeddevices.connected".localized, String(d.created_at.prefix(10))))
+                                        .font(.caption).foregroundColor(Theme.Color.textSecondary)
+                                }
+                            }
+                            Spacer()
+                            if revoking.contains(d.device_id) {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Button("linkeddevices.disconnect".localized, role: .destructive) {
+                                    Task { await revoke(d) }
+                                }
+                                .font(.callout)
+                            }
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                    }
+                } footer: {
+                    Text("linkeddevices.hint".localized)
+                }
+            }
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func reload() async {
+        failed = false
+        do {
+            let list: [Device] = try await APIClient.shared.request("GET", "/devices")
+            devices = list
+        } catch {
+            failed = true
+            devices = []
+        }
+    }
+
+    private func revoke(_ d: Device) async {
+        revoking.insert(d.device_id)
+        let _: EmptyResponse? = try? await APIClient.shared.request("DELETE", "/devices/\(d.device_id)")
+        revoking.remove(d.device_id)
+        await reload()
+    }
+}
+
 struct AppIconView: View {
     @StateObject private var icons = AppIconManager.shared
 

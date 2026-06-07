@@ -147,6 +147,12 @@
 "weblink.confirm" = "Подключить";
 "weblink.done" = "Веб подключён. Браузер должен войти.";
 "weblink.error" = "Не удалось подключить. Код мог истечь — обновите страницу и попробуйте снова.";
+"linkeddevices.title" = "Подключённые устройства";
+"linkeddevices.hint" = "Браузеры, подключённые к вашему аккаунту. Чтобы подключить, откройте chat.rcq.app, выберите «Connect phone» и отсканируйте код камерой.";
+"linkeddevices.empty" = "Нет подключённых браузеров.";
+"linkeddevices.error" = "Не удалось загрузить список устройств.";
+"linkeddevices.disconnect" = "Отключить";
+"linkeddevices.connected" = "Подключено %@";
 "settings.network.proxy.unset" = "Автоматически";
 "settings.network.proxy.intro" = "RCQ подключается к серверу напрямую. Если сервер заблокируют в вашей сети, приложение само переключится на встроенный резервный маршрут — делать ничего не нужно.";
 "settings.network.stealth.auto_on" = "Авто включён";
