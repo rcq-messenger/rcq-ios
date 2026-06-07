@@ -8,6 +8,13 @@ final class ChatViewModel: ObservableObject {
     let target: ChatTarget
 
     @Published var messages: [Message] = []
+    /// Day-bucketed, album-collapsed render list, derived from `messages`
+    /// via a Combine sink in `init`. Recomputed ONLY when messages change,
+    /// never on a composer keystroke — ChatView reads this stored array
+    /// instead of calling `grouped()`/`collapsedAlbums()` in its body, so
+    /// typing no longer re-runs the O(n log n) grouping over the whole
+    /// history every time `input` mutates (the edit-composer lag root).
+    @Published private(set) var groupedUnits: [(label: String, units: [RenderUnit])] = []
     @Published var input: String = ""
     @Published var isPeerTyping: Bool = false
     @Published var fadingOutIDs: Set<UUID> = []
@@ -103,6 +110,16 @@ final class ChatViewModel: ObservableObject {
                 .map { $0[contact.uin] ?? false }
                 .assign(to: &$isPeerTyping)
         }
+
+        // Recompute the day-grouped / album-collapsed render list only
+        // when `messages` actually changes (new/edited/removed message),
+        // NOT on every keystroke. Fires once on subscribe with the
+        // current value, so the initial render is populated.
+        $messages
+            .sink { [weak self] msgs in
+                self?.groupedUnits = ChatViewModel.computeGroupedUnits(msgs)
+            }
+            .store(in: &cancellables)
     }
 
     private static func draftKey(for target: ChatTarget) -> String {
@@ -684,7 +701,15 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func grouped() -> [(label: String, items: [Message])] {
+    /// Combines day-grouping and album-collapsing in a single pass.
+    /// Pure over `messages`, so it's safe to drive off the Combine sink
+    /// that watches `$messages` (see init) and cache the result in
+    /// `groupedUnits`.
+    static func computeGroupedUnits(_ messages: [Message]) -> [(label: String, units: [RenderUnit])] {
+        dayGroups(messages).map { (label: $0.label, units: collapseAlbums($0.items)) }
+    }
+
+    static func dayGroups(_ messages: [Message]) -> [(label: String, items: [Message])] {
         let groups = Dictionary(grouping: messages, by: { DayKey.from($0.sentAt) })
         let sorted = groups.sorted { lhs, rhs in
             let l = lhs.value.first?.sentAt ?? .distantPast
@@ -714,7 +739,7 @@ final class ChatViewModel: ObservableObject {
     /// Collapses consecutive messages with the same `albumID` (and same
     /// sender) into one render unit. Anything without an albumID, or a
     /// run of length 1, stays as `.single`.
-    func collapsedAlbums(_ items: [Message]) -> [RenderUnit] {
+    static func collapseAlbums(_ items: [Message]) -> [RenderUnit] {
         var out: [RenderUnit] = []
         var i = 0
         while i < items.count {

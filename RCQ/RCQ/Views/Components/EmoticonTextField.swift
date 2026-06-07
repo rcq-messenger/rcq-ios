@@ -275,19 +275,29 @@ struct EmoticonTextField: UIViewRepresentable {
                 parent.onTextChange?(plain)
             }
 
-            let rebuilt = attributed(from: plain)
-            if !attributedEqual(tv.attributedText, rebuilt) {
-                let cursor = tv.selectedRange.location
-                let plainCursor = plainOffset(in: tv.attributedText, at: cursor)
-                tv.attributedText = rebuilt
-                let restoredCursor = attributedOffset(in: rebuilt, forPlainOffset: plainCursor)
-                tv.selectedRange = NSRange(location: restoredCursor, length: 0)
-                // Setting attributedText resets typingAttributes to
-                // whatever was around the new caret position. If the
-                // caret landed right after an attachment, the attrs
-                // included our base font/color (we wrap attachments
-                // now), so this is mostly belt-and-suspenders.
-                tv.typingAttributes = Coordinator.baseAttrs(fontSize: parent.fontSize)
+            // Fast path: an emoticon shortcode always contains ":" (and an
+            // already-rendered emoticon attachment contributes its ":code:"
+            // back into `plain`), so text with no ":" can carry no emoticon
+            // — the live UITextView already shows the correct plain glyphs.
+            // Skip the O(n) attributed rebuild + full TextKit relayout that
+            // otherwise ran on EVERY keystroke (the edit-composer lag, worst
+            // on long pre-filled messages). Only fall through when a ":" is
+            // in play and a shortcode might need rendering.
+            if plain.contains(":") {
+                let rebuilt = attributed(from: plain)
+                if !attributedEqual(tv.attributedText, rebuilt) {
+                    let cursor = tv.selectedRange.location
+                    let plainCursor = plainOffset(in: tv.attributedText, at: cursor)
+                    tv.attributedText = rebuilt
+                    let restoredCursor = attributedOffset(in: rebuilt, forPlainOffset: plainCursor)
+                    tv.selectedRange = NSRange(location: restoredCursor, length: 0)
+                    // Setting attributedText resets typingAttributes to
+                    // whatever was around the new caret position. If the
+                    // caret landed right after an attachment, the attrs
+                    // included our base font/color (we wrap attachments
+                    // now), so this is mostly belt-and-suspenders.
+                    tv.typingAttributes = Coordinator.baseAttrs(fontSize: parent.fontSize)
+                }
             }
             tv.refreshPlaceholderVisibility()
             // Always keep the caret in view — frame animations on the

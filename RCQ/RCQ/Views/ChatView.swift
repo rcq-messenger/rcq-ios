@@ -1150,9 +1150,9 @@ struct ChatView: View {
                     // scroll-back-to-anchor in loadOlderProbe. Stable
                     // label identity lets SwiftUI see new groups inserted
                     // at the top while existing ones keep their place.
-                    ForEach(vm.grouped(), id: \.label) { group in
+                    ForEach(vm.groupedUnits, id: \.label) { group in
                         DateDivider(label: group.label)
-                        ForEach(vm.collapsedAlbums(group.items)) { unit in
+                        ForEach(group.units) { unit in
                             switch unit {
                             case .album(_, let items):
                                 albumRow(items: items)
