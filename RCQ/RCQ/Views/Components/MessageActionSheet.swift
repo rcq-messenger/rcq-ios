@@ -125,8 +125,16 @@ struct ReactionsBar: View {
             ForEach(grouped, id: \.asset) { entry in
                 chip(entry)
                     .contentShape(Capsule())
-                    .onTapGesture { onTap(entry.asset) }
-                    .onLongPressGesture { onShowWho?() }
+                    // ExclusiveGesture: a hold (≥0.35s) opens "who reacted" and
+                    // suppresses the tap; a quick tap toggles. .onTapGesture +
+                    // .onLongPressGesture on one view conflict — the tap claims
+                    // the touch and the long-press never fires.
+                    .gesture(
+                        ExclusiveGesture(
+                            LongPressGesture(minimumDuration: 0.35).onEnded { _ in onShowWho?() },
+                            TapGesture().onEnded { onTap(entry.asset) }
+                        )
+                    )
             }
         }
     }
