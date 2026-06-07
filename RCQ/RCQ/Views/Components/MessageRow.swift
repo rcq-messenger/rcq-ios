@@ -338,6 +338,9 @@ struct MessageRow: View {
                 PhotoBubble(message: message)
                 if !displayBody.isEmpty {
                     EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                        // Same full-height pin as the plain-text bubble below, so a
+                        // long caption never truncates to a couple of lines.
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -349,6 +352,9 @@ struct MessageRow: View {
                 VideoBubble(message: message)
                 if !displayBody.isEmpty {
                     EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                        // Same full-height pin as the plain-text bubble below, so a
+                        // long caption never truncates to a couple of lines.
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -367,6 +373,9 @@ struct MessageRow: View {
                     .cornerRadius(Theme.Metrics.bubbleRadius)
                 if !displayBody.isEmpty {
                     EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                        // Same full-height pin as the plain-text bubble below, so a
+                        // long caption never truncates to a couple of lines.
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
@@ -378,6 +387,9 @@ struct MessageRow: View {
                 LocationBubble(message: message)
                 if !displayBody.isEmpty {
                     EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                        // Same full-height pin as the plain-text bubble below, so a
+                        // long caption never truncates to a couple of lines.
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                         .cornerRadius(Theme.Metrics.bubbleRadius)
