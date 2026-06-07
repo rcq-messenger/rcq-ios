@@ -1264,6 +1264,22 @@ final class MessageService {
             )
             return IngestOutcome(thread: thread, isNewContent: inserted, wasInNSECache: fromNSE)
         } catch {
+            // `duplicatedMessage` means the v=2 ratchet already consumed this
+            // envelope — we DECRYPTED AND STORED IT BEFORE. The backend always
+            // queues a copy of every message it also delivers live, so the
+            // offline queue re-hands us the whole backlog on each drain. With
+            // the old "never ACK a failed decrypt" rule a duplicate (which
+            // re-decrypt ALWAYS rejects) was never acked → the server kept
+            // redelivering the same backlog forever: the log flood, the
+            // `Cache purging` memory pressure, and pointless ratchet pokes.
+            // Treat a duplicate as a benign, ACK-able outcome (isNewContent
+            // false → no badge/banner). Genuine failures (stale key, ratchet
+            // desync, unsupported version) still return nil and stay queued
+            // for a later retry, as before.
+            if String(describing: error).hasPrefix("duplicatedMessage") {
+                let dupThread = ws.groupID.map { ThreadID.group(id: $0) } ?? ThreadID.peer(uin: 0)
+                return IngestOutcome(thread: dupThread, isNewContent: false, wasInNSECache: false)
+            }
             // Common: stale identity_key after peer reinstall/re-register.
             os_log(
                 "ingest decrypt failed: %{public}@ — payload=%{public}@... type=%{public}@ offline=%{public}d groupID=%{public}@",
