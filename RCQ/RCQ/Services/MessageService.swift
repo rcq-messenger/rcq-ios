@@ -1237,7 +1237,14 @@ final class MessageService {
             case .screenshotTaken(let id):
                 // Peer took a screenshot in a secure chat — show a line with
                 // their name (resolved on our side, in our locale).
-                let name = senderContact?.nickname ?? "#\(decrypted.senderUIN)"
+                // Resolve from the CURRENT contacts, and if the screenshotter
+                // isn't a resolvable saved contact (e.g. the notice is drained
+                // from the offline queue on reconnect before contacts load),
+                // use a clean "Собеседник" label instead of a cryptic raw UIN
+                // like "#911".
+                let live = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
+                let nick = live?.nickname
+                let name = (nick?.isEmpty == false) ? nick! : "secscreen.peer_fallback".localized
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
