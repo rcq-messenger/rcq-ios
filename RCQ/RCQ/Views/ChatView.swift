@@ -404,7 +404,14 @@ struct ChatView: View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
 
-            messageScroll
+            // Screenshot / recording blanking for secure 1:1 chats: host the
+            // message list inside the secure-field canvas so its content
+            // renders blank on capture. Scoped to the scroll (not the
+            // composer) so the keyboard path is untouched; fail-open if the
+            // private canvas can't be resolved. ⚠️ TF-verify scroll + blanking.
+            SecureCanvasView(isProtected: screenSecured) {
+                messageScroll
+            }
 
             // Pinned announcement floats inside the chat ZStack as a
             // capsule at the top — this places it BELOW the action
