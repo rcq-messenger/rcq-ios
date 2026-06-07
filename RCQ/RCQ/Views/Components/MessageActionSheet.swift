@@ -148,11 +148,9 @@ struct ReactionsBar: View {
             } else {
                 Text(":)").font(.caption2).foregroundColor(Theme.Color.textPrimary)
             }
-            if entry.count > 1 {
-                Text("\(entry.count)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Theme.Color.textPrimary)
-            }
+            Text("\(entry.count)")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
         }
         .padding(.horizontal, 6).padding(.vertical, 2)
         .background(
