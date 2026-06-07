@@ -1,6 +1,24 @@
 import AVKit
 import SwiftUI
 
+extension Message {
+    /// Stored as the `text` of a received "peer took a screenshot" notice so
+    /// the screenshotter's name resolves at DISPLAY time, not at ingest.
+    static let screenshotSentinel = "\u{1}rcq.secscreen\u{1}"
+
+    /// Localized display text for a system notice. A screenshot notice
+    /// resolves the screenshotter's CURRENT nickname (the 1:1 peer is always a
+    /// contact; resolving live avoids the stale "#911" that got baked when
+    /// contacts weren't loaded yet during a reconnect-queue drain). All other
+    /// system notices return their stored text unchanged.
+    @MainActor var systemNoticeText: String {
+        guard text == Message.screenshotSentinel else { return text }
+        let nick = ContactService.shared.contacts.first { $0.uin == senderUIN }?.nickname
+        let name = (nick?.isEmpty == false) ? nick! : "secscreen.peer_fallback".localized
+        return String(format: "secscreen.peer_screenshotted".localized, name)
+    }
+}
+
 /// Single chat message bubble — extracted from `ChatView` to keep
 /// the parent file under SwiftUI's type-checker complexity ceiling.
 /// Self-contained: every dependency travels as an init parameter
@@ -76,7 +94,7 @@ struct MessageRow: View {
         if message.kind == .systemNotice {
             HStack {
                 Spacer()
-                Text(message.text)
+                Text(message.systemNoticeText)
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                 Spacer()

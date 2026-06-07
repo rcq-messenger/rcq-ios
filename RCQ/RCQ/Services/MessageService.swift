@@ -1237,21 +1237,18 @@ final class MessageService {
             case .screenshotTaken(let id):
                 // Peer took a screenshot in a secure chat — show a line with
                 // their name (resolved on our side, in our locale).
-                // Resolve from the CURRENT contacts, and if the screenshotter
-                // isn't a resolvable saved contact (e.g. the notice is drained
-                // from the offline queue on reconnect before contacts load),
-                // use a clean "Собеседник" label instead of a cryptic raw UIN
-                // like "#911".
-                let live = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
-                let nick = live?.nickname
-                let name = (nick?.isEmpty == false) ? nick! : "secscreen.peer_fallback".localized
+                // Store a sentinel and resolve the screenshotter's name at
+                // DISPLAY time (Message.systemNoticeText). The 1:1 peer is
+                // always a contact, so resolving live always yields the nick —
+                // baking it here produced a stale "#911" whenever contacts
+                // weren't loaded yet during a reconnect-queue drain.
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
                     isFromMe: false,
                     kind: .systemNotice,
-                    text: String(format: "secscreen.peer_screenshotted".localized, name),
+                    text: Message.screenshotSentinel,
                     sentAt: ws.serverTime,
                     deliveryState: .delivered
                 ))

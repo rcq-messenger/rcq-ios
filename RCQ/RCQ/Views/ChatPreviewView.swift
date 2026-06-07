@@ -183,7 +183,7 @@ private struct ChatPreviewBubble: View {
         if message.kind == .systemNotice {
             HStack {
                 Spacer()
-                Text(message.text).font(.caption2).foregroundColor(Theme.Color.textSecondary)
+                Text(message.systemNoticeText).font(.caption2).foregroundColor(Theme.Color.textSecondary)
                 Spacer()
             }
         } else {
