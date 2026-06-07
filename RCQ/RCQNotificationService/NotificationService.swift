@@ -149,6 +149,14 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // secureScreen is the SILENT secure-mode toggle (same "secscreen"
+            // push type as a screenshot notice, which we DO want to surface).
+            // Cached above so the main app applies the flag, but never buzz the
+            // user — only the screenshot-taken notice should alert.
+            if case .secureScreen = decrypted.envelope {
+                contentHandler(UNNotificationContent())
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
             let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
@@ -252,8 +260,10 @@ class NotificationService: UNNotificationServiceExtension {
         case .poll(_, _, let question, _, _, _):
             let q = question.trimmingCharacters(in: .whitespaces)
             content.body = q.isEmpty ? "📊 New poll" : "📊 \(q)"
+        case .screenshotTaken:
+            content.body = "📸 Screenshot"
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .screenshotTaken:
+             .secureScreen:
             content.body = "Message"
         }
     }
@@ -390,10 +400,10 @@ class NotificationService: UNNotificationServiceExtension {
     private static func envelopeIsUserVisible(_ envelope: Envelope) -> Bool {
         switch envelope {
         case .text, .photo, .video, .voice, .file, .location,
-             .systemNotice, .poll:
+             .systemNotice, .poll, .screenshotTaken:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .screenshotTaken:
+             .secureScreen:
             return false
         }
     }
