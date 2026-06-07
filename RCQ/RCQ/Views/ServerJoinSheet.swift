@@ -102,3 +102,85 @@ struct ServerJoinSheet: View {
         dismiss()
     }
 }
+
+/// Confirmation sheet for a scanned `rcq://link?t=&k=` QR (connect to web). On
+/// confirm it seals THIS account into the one-time relay so chat.rcq.app logs in
+/// as the same identity. The blob carries recovery material, so it confirms
+/// first — only continue if the user opened the QR on chat.rcq.app themselves.
+struct WebLinkSheet: View {
+    let request: AppState.WebLinkRequest
+    var onClose: () -> Void = {}
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var working = false
+    @State private var error: String?
+    @State private var done = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "laptopcomputer.and.iphone")
+                .font(.system(size: 34, weight: .light))
+                .foregroundColor(Theme.Color.accent)
+                .padding(.top, 8)
+
+            Text("weblink.title".localized)
+                .font(.title3.weight(.semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+
+            Text(done ? "weblink.done".localized : "weblink.body".localized)
+                .font(.footnote)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let error {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer(minLength: 0)
+
+            if done {
+                Button("common.close".localized) { onClose(); dismiss() }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.Color.accent)
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+            } else {
+                Button {
+                    Task { await connect() }
+                } label: {
+                    Group {
+                        if working { ProgressView().tint(.white) }
+                        else { Text("weblink.confirm".localized).fontWeight(.semibold) }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.Color.accent)
+                    .foregroundColor(.white)
+                    .clipShape(Capsule())
+                }
+                .disabled(working)
+
+                Button("common.cancel".localized) { onClose(); dismiss() }
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .disabled(working)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        .presentationDetents([.medium])
+    }
+
+    private func connect() async {
+        working = true
+        error = nil
+        let ok = await AppState.shared.linkWeb(request)
+        working = false
+        if ok { done = true } else { error = "weblink.error".localized }
+    }
+}

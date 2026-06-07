@@ -343,6 +343,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
 
     private static let HKDF_INFO_V1 = Data("RCQ-1to1-v1".utf8)
     private static let HKDF_INFO_V2 = Data("RCQ-1to1-v2".utf8)
+    private static let HKDF_INFO_WEBLINK = Data("RCQ-weblink-v1".utf8)
 
     init(ownUIN: Int,
          identityPriv: Curve25519.KeyAgreement.PrivateKey,
@@ -433,6 +434,34 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
 
         let wire: [String: Any] = [
             "v":  Self.WIRE_VERSION_V1,
+            "ek": ephemeralPubBytes.base64EncodedString(),
+            "ct": sealed.combined.base64EncodedString(),
+        ]
+        let wireJSON = try JSONSerialization.data(withJSONObject: wire)
+        return wireJSON.base64EncodedString()
+    }
+
+    /// Seal [plaintext] to a web client's ephemeral Curve25519 pubkey for the
+    /// connect-to-web QR login. Same ECIES as `encrypt` (ephemeral Curve25519 →
+    /// HKDF-SHA256(salt = ephPub + recipientPub, info "RCQ-weblink-v1") →
+    /// ChaChaPoly, AAD = ephPub) but WITHOUT the inner envelope + signature —
+    /// it carries a raw blob (the account LinkBlob JSON). Wire = base64(JSON
+    /// {ek, ct}) with ct = CryptoKit combined (nonce(12) || ct || tag). The
+    /// web's `openLinkSeal` and Android's `sealForWebLink` mirror this exactly.
+    static func sealForWebLink(_ plaintext: Data, recipientWebPub: Data) throws -> String {
+        guard let recipientPub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientWebPub)
+        else { throw CryptoError.malformedWire }
+        let ephemeralPriv = Curve25519.KeyAgreement.PrivateKey()
+        let ephemeralPubBytes = ephemeralPriv.publicKey.rawRepresentation
+        let shared = try ephemeralPriv.sharedSecretFromKeyAgreement(with: recipientPub)
+        let aeadKey = shared.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: ephemeralPubBytes + recipientWebPub,
+            sharedInfo: Self.HKDF_INFO_WEBLINK,
+            outputByteCount: 32
+        )
+        let sealed = try ChaChaPoly.seal(plaintext, using: aeadKey, authenticating: ephemeralPubBytes)
+        let wire: [String: Any] = [
             "ek": ephemeralPubBytes.base64EncodedString(),
             "ct": sealed.combined.base64EncodedString(),
         ]

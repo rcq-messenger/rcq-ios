@@ -270,6 +270,9 @@ struct ContactListView: View {
             .sheet(item: $appState.pendingServerJoin) { req in
                 ServerJoinSheet(request: req, onJoined: { appState.pendingServerJoin = nil })
             }
+            .sheet(item: $appState.pendingWebLink) { req in
+                WebLinkSheet(request: req, onClose: { appState.pendingWebLink = nil })
+            }
             .onChange(of: appState.pendingAddUIN) { newValue in
                 if let uin = newValue {
                     deepLinkAddUIN = uin

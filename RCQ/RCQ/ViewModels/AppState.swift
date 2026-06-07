@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import Network
 import SwiftUI
@@ -52,6 +53,17 @@ final class AppState: ObservableObject {
         let invite: String?
     }
 
+    /// Connect-to-web request captured from a scanned `rcq://link?t=<token>&k=<webEphPub>`
+    /// QR (shown on chat.rcq.app). The root view presents a confirmation sheet
+    /// that seals this account into the one-time relay so the web logs in.
+    @Published var pendingWebLink: WebLinkRequest? = nil
+
+    struct WebLinkRequest: Identifiable, Equatable {
+        let id = UUID()
+        let token: String
+        let webPub: String
+    }
+
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
     private var pendingOnlineSync: Task<Void, Never>?
@@ -65,6 +77,46 @@ final class AppState: ObservableObject {
     /// `addAccount` and consumed once by the next `/auth/register` (required
     /// only by servers running REGISTRATION_POLICY=invite; ignored otherwise).
     static let pendingServerInviteKey = "rcq.pendingServerInvite"
+
+    /// Seal THIS account into the relay slot for the scanned web client so the
+    /// web logs in as the same identity. Builds the LinkBlob (same wire shape as
+    /// LinkWebView + web-chat auth.ts), seals it to the web's ephemeral pubkey,
+    /// and POSTs it to the one-time relay. Returns false on any failure (no
+    /// keys, bad pubkey, expired/taken slot, network). The blob carries recovery
+    /// material, so the CALLER must confirm with the user before calling this.
+    func linkWeb(_ req: WebLinkRequest) async -> Bool {
+        guard let uin = AuthService.shared.ownUIN,
+              let jwt = KeychainStore.string(KeychainStore.Keys.token),
+              let identityPrivBytes = KeychainStore.data(KeychainStore.Keys.identityPriv),
+              let signingPrivBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let identityPriv = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: identityPrivBytes),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: signingPrivBytes),
+              let webPub = Data(base64Encoded: req.webPub)
+        else { return false }
+        let apiBase = APIClient.shared.baseURL.absoluteString
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let payload: [String: Any] = [
+            "uin": uin,
+            "jwt": jwt,
+            "api_base": apiBase,
+            "identity_priv": identityPrivBytes.base64EncodedString(),
+            "identity_pub": identityPriv.publicKey.rawRepresentation.base64EncodedString(),
+            "signing_priv": signingPrivBytes.base64EncodedString(),
+            "signing_pub": signingPriv.publicKey.rawRepresentation.base64EncodedString(),
+            "iat": Int(Date().timeIntervalSince1970),
+        ]
+        do {
+            let blobJSON = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let sealed = try SignalCryptoService.sealForWebLink(blobJSON, recipientWebPub: webPub)
+            struct Body: Encodable { let blob: String }
+            let _: EmptyResponse = try await APIClient.shared.request(
+                "POST", "/link/\(req.token)", body: Body(blob: sealed)
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
 
     func handle(deepLink url: URL) {
         // Invite-only server join — rcq://server/<host>?invite=<code> (the
@@ -83,6 +135,17 @@ final class AppState: ObservableObject {
            url.pathComponents.count >= 3, url.pathComponents[1] == "s",
            !url.pathComponents[2].isEmpty {
             pendingServerJoin = ServerJoinRequest(host: url.pathComponents[2], invite: inviteParam(url))
+            return
+        }
+        // Connect-to-web — rcq://link?t=<token>&k=<webEphPub> (the QR shown on
+        // chat.rcq.app, scanned with the phone's camera). Captures both query
+        // params; the root view confirms before sealing the account in.
+        if url.scheme == "rcq", url.host == "link" {
+            let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+            if let token = q?.first(where: { $0.name == "t" })?.value, !token.isEmpty,
+               let webPub = q?.first(where: { $0.name == "k" })?.value, !webPub.isEmpty {
+                pendingWebLink = WebLinkRequest(token: token, webPub: webPub)
+            }
             return
         }
         // Referral link — rcq://r/<uin> or https://rcq.app/r/<uin>.
