@@ -397,7 +397,7 @@ struct SettingsView: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text("#\(auth.ownUIN ?? 0)")
+                        Text(verbatim: "#\(auth.ownUIN ?? 0)")
                             .font(.system(.subheadline, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
                         Image(systemName: uinCopied ? "checkmark.circle.fill" : "doc.on.doc")
