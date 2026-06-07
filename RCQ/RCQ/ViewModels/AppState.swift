@@ -86,13 +86,24 @@ final class AppState: ObservableObject {
     /// material, so the CALLER must confirm with the user before calling this.
     func linkWeb(_ req: WebLinkRequest) async -> Bool {
         guard let uin = AuthService.shared.ownUIN,
-              let jwt = KeychainStore.string(KeychainStore.Keys.token),
               let identityPrivBytes = KeychainStore.data(KeychainStore.Keys.identityPriv),
               let signingPrivBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let identityPriv = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: identityPrivBytes),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: signingPrivBytes),
               let webPub = Data(base64Encoded: req.webPub)
         else { return false }
+        // Mint a SEPARATE revocable session token for the web device (it also
+        // flips the account to multi-device → the server serves v=1). The web
+        // carries this token, not the phone's own.
+        struct LinkDeviceBody: Encodable { let label: String }
+        struct LinkDeviceResp: Decodable { let device_id: String; let token: String }
+        let jwt: String
+        do {
+            let resp: LinkDeviceResp = try await APIClient.shared.request(
+                "POST", "/devices/link", body: LinkDeviceBody(label: "Web")
+            )
+            jwt = resp.token
+        } catch { return false }
         let apiBase = APIClient.shared.baseURL.absoluteString
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let payload: [String: Any] = [
