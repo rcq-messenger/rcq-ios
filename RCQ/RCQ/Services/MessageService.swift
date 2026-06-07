@@ -734,10 +734,20 @@ final class MessageService {
                         signingKey: member.signingKey
                     )
                     do {
+                        // Groups ALWAYS use v=1 sealed-sender (stateless ECIES),
+                        // never the v=2 Double Ratchet. The per-recipient group
+                        // fan-out + multi-device desynced the v=2 ratchet, which
+                        // silently dropped group messages/reactions/edits (the
+                        // invalidMessage / duplicatedMessage failures in the
+                        // device logs) AND made group pushes fall back to the
+                        // generic banner. v=1 has no ratchet to desync, so group
+                        // delivery is reliable. Android already sends groups v=1.
+                        // Passing peerSignalIdentityKey: nil routes encryptForPeer
+                        // down its v=1 path (and keeps the main-actor hop intact).
                         let blob = try await encryptForPeer(
                             envelope: envelope,
                             peer: bundle,
-                            peerSignalIdentityKey: member.signalIdentityKey
+                            peerSignalIdentityKey: nil
                         )
                         return Entry(to_uin: member.uin, payload: blob)
                     } catch {
