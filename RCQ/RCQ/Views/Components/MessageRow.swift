@@ -34,6 +34,7 @@ struct MessageRow: View {
     var isSelected: Bool = false
     var showSelectionAffordance: Bool = false
     let onTapReaction: (String) -> Void
+    var onShowReactors: (() -> Void)? = nil
     let onLongPress: () -> Void
     let onDoubleTapLike: () -> Void
     var onTapWhenSelecting: (() -> Void)? = nil
@@ -145,7 +146,7 @@ struct MessageRow: View {
                 if !message.reactions.isEmpty {
                     HStack(spacing: 4) {
                         if message.isFromMe { Spacer(minLength: 40) }
-                        ReactionsBar(message: message, onTap: onTapReaction)
+                        ReactionsBar(message: message, onTap: onTapReaction, onShowWho: onShowReactors)
                         if !message.isFromMe { Spacer(minLength: 40) }
                     }
                 }

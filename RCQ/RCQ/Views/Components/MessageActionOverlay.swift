@@ -24,7 +24,8 @@ struct MessageActionOverlay: View {
     @State private var showDeleteSubmenu = false
 
     private static let assets: [String] = [
-        "good", "give_heart", "biggrin", "shok", "cray", "mad",
+        "good", "give_heart", "biggrin", "rofl", "shok", "cray",
+        "mad", "diablo", "cool", "kiss", "give_rose", "man_in_love",
     ]
 
     var body: some View {

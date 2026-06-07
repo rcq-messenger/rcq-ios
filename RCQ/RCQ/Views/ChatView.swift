@@ -390,6 +390,8 @@ struct ChatView: View {
     private var replyAllowed: Bool { true }
     @State private var now = Date()
     @State private var actionTarget: Message?
+    /// Long-pressing a reaction chip opens a "who reacted" sheet for this message.
+    @State private var reactorsSheetMessage: Message?
     @State private var evidenceReportTarget: PendingEvidenceReport?
 
     init(target: ChatTarget) {
@@ -648,6 +650,9 @@ struct ChatView: View {
         .modifier(InPlaceTranslator(vm: vm))
         .sheet(isPresented: $showAllMedia) {
             AllMediaSheet(messages: vm.messages)
+        }
+        .sheet(item: $reactorsSheetMessage) { msg in
+            ReactionsWhoSheet(reactions: msg.reactions, nameFor: { vm.senderNickname($0) })
         }
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
@@ -1167,6 +1172,7 @@ struct ChatView: View {
                                 isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
                                 showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
+                                onShowReactors: { reactorsSheetMessage = msg },
                                 onLongPress: {
                                     if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -2027,7 +2033,8 @@ struct ChatView: View {
                     vm.replyTarget = items.first!
                 }
             },
-            onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) }
+            onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) },
+            onShowReactors: { reactorsSheetMessage = items.first! }
         )
         .id(items.first!.id)
     }

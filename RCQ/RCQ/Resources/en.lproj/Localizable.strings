@@ -1909,6 +1909,7 @@
 "secscreen.you_screenshotted" = "You took a screenshot";
 "secscreen.peer_screenshotted" = "%@ took a screenshot";
 "secscreen.peer_fallback" = "Your contact";
+"reactions.who_title" = "Reactions";
 "panic_pin.lock.title" = "Enter PIN";
 "panic_pin.settings.title" = "Security PIN";
 "panic_pin.settings.section" = "App PIN";

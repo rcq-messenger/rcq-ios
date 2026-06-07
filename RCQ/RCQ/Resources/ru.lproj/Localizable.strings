@@ -1887,6 +1887,7 @@
 "secscreen.you_screenshotted" = "Вы сделали скриншот";
 "secscreen.peer_screenshotted" = "%@ сделал скриншот";
 "secscreen.peer_fallback" = "Собеседник";
+"reactions.who_title" = "Реакции";
 "panic_pin.lock.title" = "Введите PIN-код";
 "panic_pin.settings.title" = "PIN-код";
 "panic_pin.settings.section" = "PIN приложения";

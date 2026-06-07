@@ -15,6 +15,7 @@ struct AlbumRowView: View {
     let onLongPress: () -> Void
     let onSwipeReply: () -> Void
     var onTapReaction: ((String) -> Void)? = nil
+    var onShowReactors: (() -> Void)? = nil
 
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
@@ -102,7 +103,7 @@ struct AlbumRowView: View {
                     }
                     if !first.reactions.isEmpty, let onTapReaction {
                         HStack(spacing: 4) {
-                            ReactionsBar(message: first, onTap: onTapReaction)
+                            ReactionsBar(message: first, onTap: onTapReaction, onShowWho: onShowReactors)
                         }
                     }
                 }
