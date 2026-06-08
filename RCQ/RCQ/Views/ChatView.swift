@@ -657,13 +657,34 @@ struct ChatView: View {
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
                 ScrollView {
-                    Text(pinnedAttributed(exp.text, linkable: true))
-                        .font(.body)
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .tint(Theme.Color.accent)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(pinnedAttributed(exp.text, linkable: true))
+                            .font(.body)
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .tint(Theme.Color.accent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+
+                        // Any group links in the announcement render as
+                        // tappable group chips — a "bridge" letting
+                        // newcomers hop into the linked groups from the
+                        // pin window. Tap dismisses this sheet first,
+                        // then the root presents the join sheet.
+                        let linkedGroups = GroupLinkParser.parseAll(exp.text)
+                        if !linkedGroups.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(linkedGroups, id: \.self) { gid in
+                                    PinnedGroupChip(groupID: gid) { tappedGID in
+                                        pinnedExpansion = nil
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                            appState.pendingJoinGroupID = tappedGID
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
                 }
                 .background(Theme.Color.bgPrimary.ignoresSafeArea())
                 .navigationTitle("chat.pin.title".localized)
@@ -679,11 +700,19 @@ struct ChatView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             // A `rcq://member/<uin>` mention tap opens that member's profile;
-            // real http(s) links fall through to the system (Safari).
+            // a group-share link opens the in-app join sheet; other
+            // http(s) links fall through to the system (Safari).
             .environment(\.openURL, OpenURLAction { url in
                 if url.scheme == "rcq", url.host == "member", let uin = Int(url.lastPathComponent) {
                     pinnedExpansion = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinnedMemberUIN = uin }
+                    return .handled
+                }
+                if let hit = GroupLinkParser.parse(url.absoluteString) {
+                    pinnedExpansion = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        appState.pendingJoinGroupID = hit.groupID
+                    }
                     return .handled
                 }
                 return .systemAction

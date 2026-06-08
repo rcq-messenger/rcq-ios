@@ -157,6 +157,7 @@
 "weblink.done" = "Web connected. Your browser should log in now.";
 "weblink.error" = "Couldn't connect. The code may have expired — reload the page and try again.";
 "linkeddevices.title" = "Linked devices";
+"linkeddevices.nav" = "Devices";
 "linkeddevices.hint" = "Browsers connected to your account. To connect one, open chat.rcq.app, choose Connect phone, and scan the code with your camera.";
 "linkeddevices.empty" = "No browsers are connected.";
 "linkeddevices.error" = "Couldn't load linked devices.";

@@ -551,7 +551,7 @@ struct LinkedDevicesView: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 content
             }
-            .navigationTitle("linkeddevices.title".localized)
+            .navigationTitle("linkeddevices.nav".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

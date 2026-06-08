@@ -160,10 +160,86 @@ enum GroupLinkParser {
         return nil
     }
 
+    /// Extract EVERY group-share link embedded anywhere in a longer
+    /// text (a pinned announcement mixes prose with one or more group
+    /// links). Deduped by groupID, original order preserved. Used by
+    /// the pinned-announcement window to surface tappable group chips.
+    static func parseAll(_ text: String) -> [Int] {
+        guard let detector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue
+        ) else { return [] }
+        let ns = text as NSString
+        var seen = Set<Int>()
+        var out: [Int] = []
+        for m in detector.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let url = m.url,
+                  let hit = parse(url.absoluteString),
+                  !seen.contains(hit.groupID) else { continue }
+            seen.insert(hit.groupID)
+            out.append(hit.groupID)
+        }
+        return out
+    }
+
     /// Canonical URL shape for a fresh share — keeps the `https://`
     /// path in sync with the deep-link parser above. iOS clients
     /// produce this when the user picks a group from the share sheet.
     static func canonicalURL(forGroupID gid: Int) -> URL {
         URL(string: "https://rcq.app/g/\(gid)")!
+    }
+}
+
+/// Compact tappable row for a group link surfaced in the pinned-
+/// announcement window — a "bridge" so newcomers can hop straight into
+/// related groups. Resolves name + member count + avatar like
+/// `GroupLinkBubble`, but as a slim list row, and delegates the tap so
+/// the parent can dismiss the pin sheet BEFORE the join sheet presents
+/// (avoids stacking two sheets).
+struct PinnedGroupChip: View {
+    let groupID: Int
+    let onOpen: (Int) -> Void
+
+    @State private var preview: GroupService.GroupPreview?
+
+    var body: some View {
+        Button { onOpen(groupID) } label: {
+            HStack(spacing: 10) {
+                GroupAvatarView(
+                    mediaID: preview?.avatarMediaID,
+                    keyBase64: preview?.avatarMediaKey,
+                    size: 36,
+                )
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preview?.name ?? "#\(groupID)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .lineLimit(1)
+                    if let p = preview {
+                        Text(String(format: "group_share.members".localized, p.memberCount))
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            .padding(10)
+            .background(Theme.Color.bgSecondary.opacity(0.6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.Color.divider, lineWidth: 0.5),
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .task(id: groupID) {
+            if preview == nil {
+                preview = await GroupService.shared.fetchPreview(groupID: groupID)
+            }
+        }
     }
 }
