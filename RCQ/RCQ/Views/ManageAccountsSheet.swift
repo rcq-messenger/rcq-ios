@@ -19,6 +19,7 @@ struct ManageAccountsSheet: View {
     @StateObject private var accountManager = AccountManager.shared
 
     @State private var pendingDelete: Account?
+    @State private var showRestore = false
 
     private var sortedAccounts: [Account] {
         accountManager.accounts.sorted { $0.createdAt < $1.createdAt }
@@ -34,6 +35,9 @@ struct ManageAccountsSheet: View {
                     ScrollView {
                         VStack(spacing: 10) {
                             intro
+                            if !accountManager.isAtAccountLimit {
+                                addByPhraseButton
+                            }
                             ForEach(sortedAccounts) { account in
                                 row(for: account)
                             }
@@ -72,7 +76,38 @@ struct ManageAccountsSheet: View {
             } message: { _ in
                 Text("manage_accounts.delete.confirm.body".localized)
             }
+            .sheet(isPresented: $showRestore) {
+                RestoreFromSeedView(onCompleted: { dismiss() })
+            }
         }
+    }
+
+    /// Add an EXISTING account (one you already own elsewhere) to this device
+    /// by typing its recovery phrase — registers it as a further local account
+    /// and switches to it. Mirrors the Android "Add account by recovery phrase"
+    /// entry; also reachable from the Add-account sheet.
+    private var addByPhraseButton: some View {
+        Button {
+            showRestore = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "key.fill")
+                    .foregroundColor(Theme.Color.accent)
+                Text("manage_accounts.add_by_phrase".localized)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var deleteConfirmTitle: String {
