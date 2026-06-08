@@ -7,31 +7,15 @@ import Foundation
 final class SoundService: ObservableObject {
     static let shared = SoundService()
 
+    // Only the live cues remain — the casino/lootbox/temper games and
+    // their sounds were removed with the cosmetics pivot.
     enum Cue: String, CaseIterable {
         case messageIncoming
         case contactOnline
         case contactOffline
         case messageSent
-        case typing
-        case lootboxOpen
-        case temperSuccess
-        case temperFail
         case joinMe
         case joinAll
-        case crashBetPlaced
-        case crashRunning
-        case crashCashout
-        case crashBurn
-        case hiloFlip
-        case hiloWin
-        case hiloLose
-        case limboRolling
-        case limboWin
-        case limboLose
-        case auctionBidPlaced
-        case auctionOutbid
-        case auctionWon
-        case auctionSoftClose
     }
 
     private func filename(for cue: Cue) -> String? {
@@ -40,37 +24,8 @@ final class SoundService: ObservableObject {
         case .contactOnline:     return "contact_online"
         case .contactOffline:    return "contact_offline"
         case .messageSent:       return "message_sent"
-        case .typing:            return "typing"
-        case .lootboxOpen:       return "open"
-        case .temperSuccess:     return "success"
-        case .temperFail:        return "fail"
         case .joinMe:            return "join-me"
         case .joinAll:           return "join-all"
-        case .crashCashout,
-             .hiloWin,
-             .limboWin,
-             .auctionWon:        return "celebratory_chime"
-        case .crashBurn:         return "thud"
-        case .hiloLose,
-             .limboLose:         return "fail_tone"
-        case .limboRolling:      return "rolling"
-        case .auctionOutbid:     return "alert"
-        case .auctionSoftClose:  return "tense_beep"
-        case .crashBetPlaced,
-             .crashRunning,
-             .hiloFlip,
-             .auctionBidPlaced:  return nil
-        }
-    }
-
-    // SystemSoundID reference: https://github.com/TUNER88/iOSSystemSoundsLibrary
-    private func systemSoundID(for cue: Cue) -> SystemSoundID? {
-        switch cue {
-        case .crashBetPlaced,
-             .auctionBidPlaced:  return 1306
-        case .crashRunning:      return 1257
-        case .hiloFlip:          return 1104
-        default:                 return nil
         }
     }
 
@@ -131,10 +86,6 @@ final class SoundService: ObservableObject {
         if let player = players[cue] {
             player.currentTime = 0
             player.play()
-            return
-        }
-        if let sid = systemSoundID(for: cue) {
-            AudioServicesPlaySystemSound(sid)
         }
     }
 
