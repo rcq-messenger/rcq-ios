@@ -623,18 +623,43 @@ final class MessageService {
                 targetID: message.id, thread: target.thread, uin: me, asset: newAsset
             )
         }
+        let env: Envelope = .reaction(targetID: message.id, asset: newAsset)
         do {
             switch target {
             case .peer(let c):
-                try await sendEnvelope(.reaction(targetID: message.id, asset: newAsset), to: c, localID: nil)
+                try await sendEnvelope(env, to: c, localID: nil)
             case .group(let g):
-                try await sendGroupEnvelope(.reaction(targetID: message.id, asset: newAsset), to: g, localID: nil)
+                try await sendGroupEnvelope(env, to: g, localID: nil)
             case .randomPeer(let p):
-                try await sendRandomEnvelope(
-                    .reaction(targetID: message.id, asset: newAsset),
-                    to: p, localID: nil
-                )
+                try await sendRandomEnvelope(env, to: p, localID: nil)
             }
+        } catch { }
+        // Echo to your OWN other devices (linked web / second phone): random
+        // chats are ephemeral and never synced, so skip them.
+        if case .randomPeer = target {} else {
+            await sendReactionSelfEcho(env)
+        }
+    }
+
+    /// Echo a reaction to the user's OWN other logged-in devices. sendEnvelope()
+    /// short-circuits a send to self (Saved Messages stays local), so we seal
+    /// the reaction to our own identity (v=1) and POST it to our own uin. The
+    /// receiver applies reactions by target id across threads, so it lands on
+    /// the same message there. Best-effort — the reaction itself already went.
+    private func sendReactionSelfEcho(_ envelope: Envelope) async {
+        let me = ownUIN
+        guard let mine = try? crypto.bootstrapIdentity() else { return }
+        let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
+        guard let blob = try? crypto.encrypt(envelope: envelope, for: selfBundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        do {
+            let _: Out = try await APIClient.shared.request(
+                "POST", "/messages/sealed",
+                body: Body(to_uin: me, envelope_type: envelopeType(for: envelope), payload: blob),
+                authenticated: false,
+                retries: 1
+            )
         } catch { }
     }
 
@@ -1183,15 +1208,20 @@ final class MessageService {
             case .readReceipt(let ids):
                 MessageStore.shared.markRead(messageIDs: ids, thread: thread)
             case .reaction(let targetID, let asset):
-                MessageStore.shared.applyReaction(
-                    targetID: targetID, thread: thread,
-                    uin: decrypted.senderUIN, asset: asset
+                // Locate the target by id across ALL threads (not the sender-
+                // derived `thread`), so a SELF-echo (a reaction made on your
+                // other device, sealed to your own identity → sender == you →
+                // thread would wrongly resolve to your own peer thread) lands on
+                // the right message. Normal peer reactions still resolve to their
+                // own thread (unique UUID).
+                let reactThread = MessageStore.shared.applyReactionAnywhere(
+                    targetID: targetID, uin: decrypted.senderUIN, asset: asset
                 )
-                if asset != nil, decrypted.senderUIN != ownUIN,
-                   !MessageBannerService.shared.isViewing(thread),
-                   MessageStore.shared.messages(for: thread)
+                if asset != nil, decrypted.senderUIN != ownUIN, let reactThread,
+                   !MessageBannerService.shared.isViewing(reactThread),
+                   MessageStore.shared.messages(for: reactThread)
                        .first(where: { $0.id == targetID })?.isFromMe == true {
-                    ReactionInboxStore.shared.mark(thread)
+                    ReactionInboxStore.shared.mark(reactThread)
                 }
             case .bounce(let targetID):
                 MessageStore.shared.updateState(messageID: targetID, thread: thread, state: .failed)

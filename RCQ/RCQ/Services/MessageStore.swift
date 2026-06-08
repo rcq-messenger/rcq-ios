@@ -240,6 +240,22 @@ final class MessageStore: ObservableObject {
         MessageDB.shared.updateReactions(id: targetID, reactions: reactions)
     }
 
+    /// Apply a reaction located by its target message id across ALL threads
+    /// (1:1 + group). Used for self-echoes: a reaction you made on another
+    /// device, sealed to your own identity, arrives with only the target id and
+    /// no reliable thread (the sender is yourself, so the thread would resolve
+    /// to your own peer thread, not where the message lives). The id is a
+    /// globally-unique UUID, so it matches exactly one message. Returns the
+    /// thread it landed in (for the reaction-inbox ping), or nil if not found.
+    @discardableResult
+    func applyReactionAnywhere(targetID: UUID, uin: Int, asset: String?) -> ThreadID? {
+        for (thread, msgs) in threads where msgs.contains(where: { $0.id == targetID }) {
+            applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset)
+            return thread
+        }
+        return nil
+    }
+
     /// Apply a deleteForEveryone tombstone. Row stays as a placeholder.
     func tombstone(messageID: UUID, thread: ThreadID) {
         guard var t = threads[thread] else { return }
