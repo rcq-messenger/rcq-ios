@@ -657,31 +657,25 @@ struct ChatView: View {
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        let pinBody = pinnedDisplayText(exp.text)
-                        if !pinBody.isEmpty {
-                            Text(pinnedAttributed(pinBody, linkable: true))
-                                .font(.body)
-                                .foregroundColor(Theme.Color.textPrimary)
-                                .tint(Theme.Color.accent)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
-                        }
-
-                        // Any group links in the announcement render as
-                        // tappable group chips — a "bridge" letting
-                        // newcomers hop into the linked groups from the
-                        // pin window. Tap dismisses this sheet first,
-                        // then the root presents the join sheet.
-                        let linkedGroups = GroupLinkParser.parseAll(exp.text)
-                        if !linkedGroups.isEmpty {
-                            VStack(spacing: 8) {
-                                ForEach(linkedGroups, id: \.self) { gid in
-                                    PinnedGroupChip(groupID: gid) { tappedGID in
-                                        pinnedExpansion = nil
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                            appState.pendingJoinGroupID = tappedGID
-                                        }
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Text runs and group cards in document order, so
+                        // each card sits under its own introducing line —
+                        // tapping a card dismisses this sheet first, then
+                        // the root presents the join sheet.
+                        ForEach(Array(pinnedSegments(exp.text).enumerated()), id: \.offset) { _, seg in
+                            switch seg {
+                            case .text(let t):
+                                Text(pinnedAttributed(t, linkable: true))
+                                    .font(.body)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                    .tint(Theme.Color.accent)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            case .group(let gid):
+                                PinnedGroupChip(groupID: gid) { tappedGID in
+                                    pinnedExpansion = nil
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                        appState.pendingJoinGroupID = tappedGID
                                     }
                                 }
                             }
@@ -1680,24 +1674,24 @@ struct ChatView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.Color.accent)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("chat.pin.title".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                let disp = pinnedDisplayText(text)
-                if !disp.isEmpty {
-                    Text(pinnedAttributed(disp, linkable: false))
-                        .font(.callout)
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                // Group links render as tappable cards right here in the
-                // banner (not just the expanded window) — the raw URL is
-                // stripped from the text above.
-                ForEach(GroupLinkParser.parseAll(text), id: \.self) { gid in
-                    PinnedGroupChip(groupID: gid) { tapped in
-                        appState.pendingJoinGroupID = tapped
+                // Text runs and group cards laid out IN ORDER, so each card
+                // sits under the line that introduced it (raw URLs stripped).
+                ForEach(Array(pinnedSegments(text).enumerated()), id: \.offset) { _, seg in
+                    switch seg {
+                    case .text(let t):
+                        Text(pinnedAttributed(t, linkable: false))
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    case .group(let gid):
+                        PinnedGroupChip(groupID: gid) { tapped in
+                            appState.pendingJoinGroupID = tapped
+                        }
                     }
                 }
             }
@@ -1743,6 +1737,43 @@ struct ChatView: View {
         s = s.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
         s = s.replacingOccurrences(of: "\\n[ \\t]*\\n[ \\t]*\\n+", with: "\n\n", options: .regularExpression)
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// An ordered piece of a pinned announcement: a run of text, or a
+    /// group-share link (rendered as a card). Used to lay the pin out
+    /// IN DOCUMENT ORDER so each group card sits directly under the line
+    /// that introduced it, instead of all cards bunched at the bottom.
+    enum PinSegment {
+        case text(String)
+        case group(Int)
+    }
+
+    private func pinnedSegments(_ text: String) -> [PinSegment] {
+        guard let rx = try? NSRegularExpression(
+            pattern: "(?:https?://rcq\\.app/g/(\\d+)|rcq://group/(\\d+))", options: [.caseInsensitive]
+        ) else { return [.text(text)] }
+        let ns = text as NSString
+        let matches = rx.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return [.text(text)] }
+        var out: [PinSegment] = []
+        var cursor = 0
+        for m in matches {
+            if m.range.location > cursor {
+                let chunk = ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !chunk.isEmpty { out.append(.text(chunk)) }
+            }
+            let g1 = m.range(at: 1), g2 = m.range(at: 2)
+            let idStr = g1.location != NSNotFound ? ns.substring(with: g1)
+                : (g2.location != NSNotFound ? ns.substring(with: g2) : "")
+            if let gid = Int(idStr), gid > 0 { out.append(.group(gid)) }
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length {
+            let tail = ns.substring(from: cursor).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !tail.isEmpty { out.append(.text(tail)) }
+        }
+        return out
     }
 
     /// Plain pinned text → AttributedString with URLs accent-coloured. With
