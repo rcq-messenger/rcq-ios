@@ -161,6 +161,8 @@
 "linkeddevices.empty" = "No browsers are connected.";
 "linkeddevices.error" = "Couldn't load linked devices.";
 "linkeddevices.disconnect" = "Disconnect";
+"linkeddevices.connect" = "Connect a browser";
+"linkeddevices.scan_hint" = "Point at the QR code on chat.rcq.app";
 "linkeddevices.connected" = "Connected %@";
 "settings.network.proxy.unset" = "Automatic";
 "settings.network.proxy.intro" = "RCQ connects to the server directly. If that server is blocked on your network, the app automatically switches to a built-in backup route — you don't need to do anything.";

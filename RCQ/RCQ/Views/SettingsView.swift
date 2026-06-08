@@ -542,6 +542,8 @@ struct LinkedDevicesView: View {
     @State private var devices: [Device]? = nil // nil = loading
     @State private var failed = false
     @State private var revoking: Set<String> = []
+    @State private var showScanner = false
+    @State private var pendingLink: AppState.WebLinkRequest? = nil
 
     var body: some View {
         NavigationStack {
@@ -555,8 +557,23 @@ struct LinkedDevicesView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showScanner = true } label: {
+                        Image(systemName: "qrcode.viewfinder")
+                    }
+                    .tint(Theme.Color.accent)
+                }
             }
             .task { await reload() }
+            .sheet(isPresented: $showScanner) {
+                WebLinkScannerSheet { req in showScanner = false; pendingLink = req }
+            }
+            .sheet(item: $pendingLink) { req in
+                WebLinkSheet(request: req, onClose: {
+                    pendingLink = nil
+                    Task { await reload() }
+                })
+            }
         }
     }
 
@@ -564,7 +581,7 @@ struct LinkedDevicesView: View {
         if devices == nil {
             ProgressView().tint(Theme.Color.accent)
         } else if (devices ?? []).isEmpty {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 Image(systemName: "laptopcomputer")
                     .font(.system(size: 40)).foregroundColor(Theme.Color.textSecondary)
                 Text((failed ? "linkeddevices.error" : "linkeddevices.empty").localized)
@@ -572,6 +589,17 @@ struct LinkedDevicesView: View {
                 Text("linkeddevices.hint".localized)
                     .font(.footnote).foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center).padding(.horizontal, 28)
+                Button {
+                    showScanner = true
+                } label: {
+                    Label("linkeddevices.connect".localized, systemImage: "qrcode.viewfinder")
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 20).padding(.vertical, 12)
+                        .background(Theme.Color.accent)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                .padding(.top, 4)
             }
         } else {
             List {
@@ -622,6 +650,50 @@ struct LinkedDevicesView: View {
         let _: EmptyResponse? = try? await APIClient.shared.request("DELETE", "/devices/\(d.device_id)")
         revoking.remove(d.device_id)
         await reload()
+    }
+}
+
+/// Camera scanner for the "connect a browser" flow. Reads the rcq://link QR
+/// shown on chat.rcq.app and hands the token + web pubkey to [onLink]; ignores
+/// any other QR so a stray code doesn't do anything.
+private struct WebLinkScannerSheet: View {
+    let onLink: (AppState.WebLinkRequest) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                QRScannerView { raw in handle(raw) }
+                    .ignoresSafeArea()
+                VStack {
+                    Spacer()
+                    Text("linkeddevices.scan_hint".localized)
+                        .font(.footnote)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(.black.opacity(0.55))
+                        .clipShape(Capsule())
+                        .padding(.bottom, 40)
+                }
+            }
+            .navigationTitle("linkeddevices.connect".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.cancel".localized) { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func handle(_ raw: String) {
+        guard let url = URL(string: raw), url.scheme == "rcq", url.host == "link",
+              let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              let token = q.first(where: { $0.name == "t" })?.value, !token.isEmpty,
+              let webPub = q.first(where: { $0.name == "k" })?.value, !webPub.isEmpty
+        else { return } // not a connect-to-web QR; keep scanning
+        onLink(AppState.WebLinkRequest(token: token, webPub: webPub))
     }
 }
 

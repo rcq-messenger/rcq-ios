@@ -152,6 +152,8 @@
 "linkeddevices.empty" = "Нет подключённых браузеров.";
 "linkeddevices.error" = "Не удалось загрузить список устройств.";
 "linkeddevices.disconnect" = "Отключить";
+"linkeddevices.connect" = "Подключить браузер";
+"linkeddevices.scan_hint" = "Наведите на QR-код на chat.rcq.app";
 "linkeddevices.connected" = "Подключено %@";
 "settings.network.proxy.unset" = "Автоматически";
 "settings.network.proxy.intro" = "RCQ подключается к серверу напрямую. Если сервер заблокируют в вашей сети, приложение само переключится на встроенный резервный маршрут — делать ничего не нужно.";
