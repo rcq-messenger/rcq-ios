@@ -61,6 +61,9 @@ struct MessageRow: View {
 
     private static let swipeTriggerDistance: CGFloat = 60
     private static let swipeMaxDistance: CGFloat = 80
+    /// Hard cap on bubble width (~78% of the screen) so the body wraps at a
+    /// determinate width and the LazyVStack measures its height right.
+    private static var maxBubbleWidth: CGFloat { UIScreen.main.bounds.width * 0.78 }
 
     @ViewBuilder
     var body: some View {
@@ -291,6 +294,13 @@ struct MessageRow: View {
             }
             HStack(alignment: .bottom, spacing: 6) {
                 bubbleContent
+                    // Determinate width cap so the body wraps at a fixed width
+                    // and the LazyVStack measures its height right on first
+                    // layout. A reply quote above the text used to leave the
+                    // width ambiguous, truncating the body to ~2 lines until a
+                    // re-render (e.g. on long-press). The coloured bubble still
+                    // hugs its content; this only bounds where text wraps.
+                    .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             }
             HStack(spacing: 4) {
                 Text(DateFormatters.timeOfDay.string(from: message.sentAt))
