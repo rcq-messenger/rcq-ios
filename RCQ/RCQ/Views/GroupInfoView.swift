@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct GroupInfoView: View {
     let group: RCQGroup
@@ -14,6 +15,7 @@ struct GroupInfoView: View {
     @State private var actionMember: RCQGroupMember?
     @State private var showSettings = false
     @State private var showFullAvatar = false
+    @State private var linkCopied = false
     /// Members past the first N are folded behind a "Show all" disclosure
     /// — on big groups the info screen was unscrollable with every member
     /// rendered eagerly.
@@ -61,6 +63,21 @@ struct GroupInfoView: View {
                             } label: {
                                 Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
                                     .foregroundColor(Theme.Color.textPrimary)
+                            }
+                            // Copy the group's invite link — paste it into a
+                            // chat, or into a group's pinned announcement to
+                            // surface it as a tappable group card.
+                            Button {
+                                UIPasteboard.general.string =
+                                    GroupLinkParser.canonicalURL(forGroupID: currentGroup.id).absoluteString
+                                linkCopied = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { linkCopied = false }
+                            } label: {
+                                Label(
+                                    linkCopied ? "group.cta.link_copied".localized : "group.cta.copy_link".localized,
+                                    systemImage: linkCopied ? "checkmark" : "link",
+                                )
+                                .foregroundColor(linkCopied ? Theme.Color.accent : Theme.Color.textPrimary)
                             }
                         }
                     }

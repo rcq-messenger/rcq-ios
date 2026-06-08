@@ -956,6 +956,8 @@
 "group.compose.broadcast_only" = "Только владелец может писать";
 "group.error.join_payment" = "Не удалось оплатить вход в группу";
 "group.cta.add_member" = "Добавить участника";
+"group.cta.copy_link" = "Скопировать ссылку на группу";
+"group.cta.link_copied" = "Ссылка скопирована";
 "group.cta.delete" = "Удалить группу";
 "group.cta.leave" = "Покинуть группу";
 "group.cta.delete.short" = "Удалить";

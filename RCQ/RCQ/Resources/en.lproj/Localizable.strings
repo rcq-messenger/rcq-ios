@@ -989,6 +989,8 @@
 "group.compose.broadcast_only" = "Only the owner can post";
 "group.error.join_payment" = "Couldn't pay group entry";
 "group.cta.add_member" = "Add member";
+"group.cta.copy_link" = "Copy group link";
+"group.cta.link_copied" = "Link copied";
 "group.cta.delete" = "Delete group";
 "group.cta.leave" = "Leave group";
 "group.cta.delete.short" = "Delete";

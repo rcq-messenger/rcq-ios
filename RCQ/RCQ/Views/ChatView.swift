@@ -658,12 +658,15 @@ struct ChatView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text(pinnedAttributed(exp.text, linkable: true))
-                            .font(.body)
-                            .foregroundColor(Theme.Color.textPrimary)
-                            .tint(Theme.Color.accent)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
+                        let pinBody = pinnedDisplayText(exp.text)
+                        if !pinBody.isEmpty {
+                            Text(pinnedAttributed(pinBody, linkable: true))
+                                .font(.body)
+                                .foregroundColor(Theme.Color.textPrimary)
+                                .tint(Theme.Color.accent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
 
                         // Any group links in the announcement render as
                         // tappable group chips — a "bridge" letting
@@ -1643,7 +1646,7 @@ struct ChatView: View {
                 Text("chat.pin.title".localized)
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                Text(pinnedAttributed(text, linkable: false))
+                Text(pinnedAttributed(pinnedDisplayText(text), linkable: false))
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
@@ -1677,15 +1680,26 @@ struct ChatView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(Theme.Color.accent)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("chat.pin.title".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                Text(pinnedAttributed(text, linkable: false))
-                    .font(.callout)
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                let disp = pinnedDisplayText(text)
+                if !disp.isEmpty {
+                    Text(pinnedAttributed(disp, linkable: false))
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                // Group links render as tappable cards right here in the
+                // banner (not just the expanded window) — the raw URL is
+                // stripped from the text above.
+                ForEach(GroupLinkParser.parseAll(text), id: \.self) { gid in
+                    PinnedGroupChip(groupID: gid) { tapped in
+                        appState.pendingJoinGroupID = tapped
+                    }
+                }
             }
             Spacer(minLength: 6)
             Button {
@@ -1715,6 +1729,20 @@ struct ChatView: View {
         .onTapGesture {
             pinnedExpansion = PinExpansion(text: text)
         }
+    }
+
+    /// The pinned text with group-share links stripped, for DISPLAY only.
+    /// Those links render as tappable group chips (see `PinnedGroupChip`),
+    /// so leaving the raw `rcq.app/g/<id>` URL in the text too is just
+    /// noise. Collapses the whitespace/blank lines the removal leaves.
+    private func pinnedDisplayText(_ text: String) -> String {
+        var s = text.replacingOccurrences(
+            of: "(?:https?://rcq\\.app/g/\\d+|rcq://group/\\d+)",
+            with: "", options: [.regularExpression, .caseInsensitive]
+        )
+        s = s.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\n[ \\t]*\\n[ \\t]*\\n+", with: "\n\n", options: .regularExpression)
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Plain pinned text → AttributedString with URLs accent-coloured. With
