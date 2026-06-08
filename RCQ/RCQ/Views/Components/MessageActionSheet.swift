@@ -148,9 +148,13 @@ struct ReactionsBar: View {
             } else {
                 Text(":)").font(.caption2).foregroundColor(Theme.Color.textPrimary)
             }
-            Text("\(entry.count)")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Theme.Color.textPrimary)
+            // A lone reactor needs no "1" — show the number only once it grows
+            // past one (founder feedback; Android parity).
+            if entry.count > 1 {
+                Text("\(entry.count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
         }
         .padding(.horizontal, 6).padding(.vertical, 2)
         .background(
