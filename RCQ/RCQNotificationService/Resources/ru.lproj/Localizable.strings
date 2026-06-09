@@ -6,3 +6,6 @@
 "push.trade_received.offer.body" = "прислал предложение обмена";
 "push.uin_auction_outbid.title" = "Аукцион UIN";
 "push.uin_auction_outbid.body" = "Вашу ставку перебили — загляните в аукцион.";
+/* Фолбэк, когда NSE не смог расшифровать групповой пуш (локализованный текст,
+   в заголовке — название группы). */
+"push.group_message.body" = "Новое сообщение";

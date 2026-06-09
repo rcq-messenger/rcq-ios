@@ -184,16 +184,24 @@ class NotificationService: UNNotificationServiceExtension {
                    content.title, content.body)
             contentHandler(content)
         } catch {
-            os_log("decrypt failed: %{public}@",
+            // envType logged too — tells us whether v=1 (stateless ECIES, should
+            // never fail) or a v=2 ratchet message is the one failing, for
+            // root-causing the "New group message" generic on a device.
+            os_log("decrypt failed: envType=%{public}@ %{public}@",
                    log: Self.log, type: .error,
-                   String(describing: error))
+                   envType, String(describing: error))
             // Even when we can't decrypt (e.g. the WS path already advanced the
-            // ratchet), label a group push with the group name if we know it,
-            // so the fallback reads "My Group" / "New message" rather than the
-            // generic "RCQ" / "New group message".
-            if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue,
-               let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
-                content.title = gname
+            // ratchet), label a group push with the group name + a LOCALIZED
+            // body so it reads "My Group" / "Новое сообщение" rather than the
+            // generic English "RCQ" / "New group message" (#9).
+            if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue {
+                if let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
+                    content.title = gname
+                }
+                let localized = Self.pushLocalized("push.group_message.body")
+                if !localized.isEmpty && localized != "push.group_message.body" {
+                    content.body = localized
+                }
             }
             contentHandler(content)
         }

@@ -44,6 +44,12 @@ final class ContactService: ObservableObject {
                     list[i].unread = n
                 }
             }
+            // Hide contacts I've locally deleted, even if the server roster still
+            // returns them (a delete can linger one-directionally / until the
+            // peer drops their edge). Without this they reappeared on every
+            // launch (#8). They're un-filtered only on an EXPLICIT re-add
+            // (sendAddRequest / accepting their request).
+            list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
             self.contacts = list
             let pending: [PendingRequest] = try await APIClient.shared.request("GET", "/contacts/pending")
             self.pendingRequests = pending
@@ -54,14 +60,11 @@ final class ContactService: ObservableObject {
             var nickMap: [Int: String] = [:]
             for c in list { nickMap[c.uin] = c.nickname }
             NicknameCache.setAll(nickMap)
-            // Any UIN we'd previously dropped via `remove()` but that's
-            // now back in our contact list means a re-add happened.
-            // Clearing the filter so their future messages render
-            // again — otherwise the recipient gets locally-filtered
-            // sealed envelopes forever after a single remove + re-add
-            // round-trip and "iPhone → sim doesn't arrive" becomes
-            // permanent until reinstall.
-            for c in list { RemovedContactsStore.shared.remove(c.uin) }
+            // (Removed: the blanket "un-remove every roster UIN" that used to live
+            // here — it resurrected contacts the user had deliberately deleted
+            // every launch, #8. Re-adds now clear the filter explicitly in
+            // sendAddRequest() and respond(accept:), and deleted-but-lingering
+            // contacts are filtered out of `list` above.)
         } catch {
             // Keep current cached state on failure.
         }
@@ -105,8 +108,16 @@ final class ContactService: ObservableObject {
         let _: EmptyResponse = try await APIClient.shared.request(
             "POST", "/contacts/respond", body: Body(request_id: requestID, accept: accept)
         )
+        let fromUIN = pendingRequests.first { $0.id == requestID }?.from_uin
         pendingRequests.removeAll { $0.id == requestID }
-        if accept { await refresh() }
+        if accept {
+            // Explicit re-add: if I'd previously deleted this UIN, clear the
+            // local removal filter so their messages render again. (refresh()
+            // no longer blanket-clears the filter — that resurrected contacts I
+            // deliberately deleted, #8.)
+            if let u = fromUIN { RemovedContactsStore.shared.remove(u) }
+            await refresh()
+        }
     }
 
     func remove(_ uin: Int) async throws {

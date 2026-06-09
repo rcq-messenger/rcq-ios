@@ -9,3 +9,6 @@
 "push.trade_received.offer.body" = "sent you a trade offer";
 "push.uin_auction_outbid.title" = "UIN Auction";
 "push.uin_auction_outbid.body" = "You were outbid — check the auction.";
+/* Fallback body when the NSE can't decrypt a group push (localized so it's at
+   least in the user's language, with the group name as the title). */
+"push.group_message.body" = "New message";

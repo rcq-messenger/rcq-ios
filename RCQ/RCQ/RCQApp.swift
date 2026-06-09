@@ -377,6 +377,10 @@ struct RootView: View {
         // doesn't get their fresh badge wiped.
         BadgeCounter.syncIcon()
         guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
+        // Clear the Notification Center tray now the user is back in the app —
+        // delivered banners used to linger until manually swiped (#10). Badge is
+        // synced separately above.
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
 

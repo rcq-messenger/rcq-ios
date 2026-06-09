@@ -1678,22 +1678,30 @@ struct ChatView: View {
                 Text("chat.pin.title".localized)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
-                // Text runs and group cards laid out IN ORDER, so each card
-                // sits under the line that introduced it (raw URLs stripped).
-                ForEach(Array(pinnedSegments(text).enumerated()), id: \.offset) { _, seg in
-                    switch seg {
-                    case .text(let t):
-                        Text(pinnedAttributed(t, linkable: false))
-                            .font(.callout)
-                            .foregroundColor(Theme.Color.textPrimary)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    case .group(let gid):
-                        PinnedGroupChip(groupID: gid) { tapped in
-                            appState.pendingJoinGroupID = tapped
+                // Cap the expanded pin's height and scroll inside it — a pin with
+                // many group links used to grow unbounded, pushing the chat down
+                // and hiding rows past ~13 with no way to scroll (#5).
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Text runs and group cards laid out IN ORDER, so each card
+                        // sits under the line that introduced it (raw URLs stripped).
+                        ForEach(Array(pinnedSegments(text).enumerated()), id: \.offset) { _, seg in
+                            switch seg {
+                            case .text(let t):
+                                Text(pinnedAttributed(t, linkable: false))
+                                    .font(.callout)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                    .lineLimit(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            case .group(let gid):
+                                PinnedGroupChip(groupID: gid) { tapped in
+                                    appState.pendingJoinGroupID = tapped
+                                }
+                            }
                         }
                     }
                 }
+                .frame(maxHeight: 240)
             }
             Spacer(minLength: 6)
             Button {
