@@ -66,10 +66,19 @@ enum Envelope: Codable, Hashable {
     /// renders "<sender> took a screenshot" (resolving the name + locale on
     /// their side). Control only.
     case screenshotTaken(id: UUID)
+    /// Multi-device send-side sync. When the user sends a message from one
+    /// device, that device also seals a `carbon` to the user's OWN identity
+    /// (to_uin = me) wrapping the original envelope + its destination (exactly
+    /// one of `to` / `gid`). The user's other devices unwrap it and file the
+    /// inner message as fromMe in the destination thread; the origin device
+    /// dedups its own carbon by the inner message's id. Defined identically on
+    /// iOS/Android/web.
+    indirect case carbon(to: Int?, gid: Int?, env: Envelope)
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
         case on
+        case to, gid, env
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
@@ -185,6 +194,11 @@ enum Envelope: Codable, Hashable {
         case .screenshotTaken(let id):
             try c.encode("shot", forKey: .kind)
             try c.encode(id, forKey: .id)
+        case .carbon(let to, let gid, let env):
+            try c.encode("carbon", forKey: .kind)
+            try c.encodeIfPresent(to, forKey: .to)
+            try c.encodeIfPresent(gid, forKey: .gid)
+            try c.encode(env, forKey: .env)
         }
     }
 
@@ -293,6 +307,12 @@ enum Envelope: Codable, Hashable {
             self = .secureScreen(on: try c.decode(Bool.self, forKey: .on))
         case "shot":
             self = .screenshotTaken(id: try c.decode(UUID.self, forKey: .id))
+        case "carbon":
+            self = .carbon(
+                to: try c.decodeIfPresent(Int.self, forKey: .to),
+                gid: try c.decodeIfPresent(Int.self, forKey: .gid),
+                env: try c.decode(Envelope.self, forKey: .env)
+            )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")
         }

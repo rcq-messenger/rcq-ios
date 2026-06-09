@@ -663,6 +663,106 @@ final class MessageService {
         } catch { }
     }
 
+    // MARK: - multi-device carbons (send-side sync)
+
+    /// Message kinds we mirror to the user's other devices via a carbon.
+    /// Reactions sync through their own self-echo; control envelopes don't sync.
+    private func isCarbonable(_ env: Envelope) -> Bool {
+        switch env {
+        case .text, .photo, .video, .voice, .file, .location: return true
+        default: return false
+        }
+    }
+
+    /// Mirror a just-sent message to the user's OTHER logged-in devices. Seals
+    /// a `.carbon` (the original envelope + its destination) to our own identity
+    /// (v=1) and posts it to our own uin with a NON-pushable type so it doesn't
+    /// buzz us about our own message — it syncs over WS / the per-device queue.
+    /// The other device files the inner message as fromMe; the origin device
+    /// dedups its own carbon by id. Best-effort — the message already went out.
+    private func sendMessageCarbon(_ inner: Envelope, toPeer: Int?, toGroup: Int?) async {
+        guard isCarbonable(inner) else { return }
+        let me = ownUIN
+        guard let mine = try? crypto.bootstrapIdentity() else { return }
+        let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
+        let carbon: Envelope = .carbon(to: toPeer, gid: toGroup, env: inner)
+        guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        do {
+            let _: Out = try await APIClient.shared.request(
+                "POST", "/messages/sealed",
+                body: Body(to_uin: me, envelope_type: "carbon", payload: blob),
+                authenticated: false,
+                retries: 1
+            )
+        } catch { }
+    }
+
+    /// File a carbon's inner message as a fromMe row in its destination thread.
+    /// Mirrors the incoming construction but marks it ours and .delivered.
+    /// MessageStore dedups by id, so the origin device's own carbon and any
+    /// queue redelivery are no-ops.
+    @discardableResult
+    private func appendCarbonMessage(inner: Envelope, thread: ThreadID, serverTime: Date) -> Bool {
+        let me = ownUIN
+        switch inner {
+        case .text(let id, let text, let ttl, let fwd, let reply):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .text, text: text, sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
+            ))
+        case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let fwd, let reply, let album):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .photo, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
+                sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
+                albumID: album
+            ))
+        case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .video, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
+                sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, thumbnailB64: thumb, durationSec: dur,
+                ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
+                albumID: album
+            ))
+        case .voice(let id, let mediaID, let mediaKey, let dur, let ttl, let fwd, let reply):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .voice, text: "", mediaID: mediaID + "|" + mediaKey,
+                sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, durationSec: dur, ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
+            ))
+        case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let ttl, let fwd, let reply):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .file, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
+                sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
+                fileName: fname, fileMime: mime, fileSizeBytes: size
+            ))
+        case .location(let id, let lat, let lng, let caption, let ttl, let fwd, let reply):
+            return MessageStore.shared.append(Message(
+                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                kind: .location, text: caption ?? "", sentAt: serverTime, deliveryState: .delivered,
+                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
+                latitude: lat, longitude: lng
+            ))
+        default:
+            return false
+        }
+    }
+
     // MARK: - screen-secure (per-conversation)
 
     /// Propagate this 1:1 conversation's screen-secure toggle to the peer so
@@ -717,6 +817,8 @@ final class MessageService {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: next)
             }
             playSentSound(for: envelope)
+            // Mirror the message to the user's other devices (best-effort).
+            await sendMessageCarbon(envelope, toPeer: contact.uin, toGroup: nil)
         } catch {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .failed)
@@ -805,6 +907,8 @@ final class MessageService {
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: next)
             }
             playSentSound(for: envelope)
+            // Mirror the message to the user's other devices (best-effort).
+            await sendMessageCarbon(envelope, toPeer: nil, toGroup: group.id)
         } catch {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .failed)
@@ -922,6 +1026,21 @@ final class MessageService {
                 fromNSE = false
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
+
+            // Multi-device carbon: a message I sent from ANOTHER device, echoed
+            // to my own uin. Unwrap and file the inner message as fromMe in its
+            // destination thread (NOT the sender-derived Saved-Messages thread).
+            // Only honour a carbon actually signed by me; dedup by the inner id
+            // (the origin device no-ops its own carbon). Never a banner/badge —
+            // it's my own message — but return a non-nil outcome so the offline
+            // queue acks it instead of redelivering forever.
+            if case .carbon(let cTo, let cGid, let inner) = decrypted.envelope {
+                guard decrypted.senderUIN == ownUIN else { return nil }
+                let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }
+                guard let dest else { return nil }
+                appendCarbonMessage(inner: inner, thread: dest, serverTime: ws.serverTime)
+                return IngestOutcome(thread: dest, isNewContent: false, wasInNSECache: fromNSE)
+            }
 
             // Route to ephemeral random buffer when sender is the active anonymous peer.
             if ws.groupID == nil,
@@ -1292,6 +1411,10 @@ final class MessageService {
                     sentAt: ws.serverTime,
                     deliveryState: .delivered
                 ))
+            case .carbon:
+                // Intercepted before this switch (filed into its destination
+                // thread). Unreachable here; present only for exhaustiveness.
+                break
             }
             os_log(
                 "ingest ok: senderUIN=%d thread=%{public}@ envType=%{public}@ offline=%{public}d new=%{public}d",

@@ -281,7 +281,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .screenshotTaken:
             content.body = "📸 Screenshot"
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen:
+             .secureScreen, .carbon:
             content.body = "Message"
         }
 
@@ -432,7 +432,7 @@ class NotificationService: UNNotificationServiceExtension {
              .systemNotice, .poll, .screenshotTaken:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen:
+             .secureScreen, .carbon:
             return false
         }
     }
@@ -455,6 +455,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .poll:             return "poll"
         case .secureScreen:     return "secscreen"
         case .screenshotTaken:  return "shot"
+        case .carbon:           return "carbon"
         }
     }
 
