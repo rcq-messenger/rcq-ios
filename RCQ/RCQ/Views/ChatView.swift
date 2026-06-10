@@ -1183,15 +1183,19 @@ struct ChatView: View {
                     // at the top while existing ones keep their place.
                     ForEach(vm.groupedUnits, id: \.label) { group in
                         DateDivider(label: group.label)
-                        ForEach(group.units) { unit in
+                        ForEach(Array(group.units.enumerated()), id: \.element.id) { idx, unit in
                             switch unit {
                             case .album(_, let items):
                                 albumRow(items: items)
                             case .single(let msg):
                                 MessageRow(
                                 message: msg,
-                                showSender: vm.target.thread.isGroup && !msg.isFromMe,
+                                // Group: show the sender name only on the first
+                                // message of a consecutive run from that person
+                                // (WA/TG style), not on every bubble.
+                                showSender: vm.target.thread.isGroup && !msg.isFromMe && Self.startsSenderRun(group.units, idx),
                                 senderNickname: vm.senderNickname(msg.senderUIN),
+                                replyAuthorOverride: vm.replyIsMine(msg) ? "chat.you".localized : nil,
                                 displayBody: vm.displayText(for: msg),
                                 isTranslated: vm.isTranslated(msg),
                                 isHighlighted: flashHighlightID == msg.id,
@@ -1431,12 +1435,19 @@ struct ChatView: View {
             // screen and the opacity transition hides the residual
             // motion.
             .task {
+                // Open scrolled to the first unread message if there are unread
+                // (every-messenger behaviour); otherwise settle at the bottom.
+                let unreadID = vm.openFirstUnreadID
+                func settle() {
+                    if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
+                    else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
+                }
                 let endDate = Date().addingTimeInterval(0.35)
                 while Date() < endDate {
-                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    settle()
                     try? await Task.sleep(nanoseconds: 16_000_000)
                 }
-                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                settle()
                 withAnimation(.easeOut(duration: 0.15)) {
                     chatVisible = true
                 }
@@ -1586,6 +1597,20 @@ struct ChatView: View {
 
     // MARK: - input
 
+    /// True when the unit at `index` starts a new run of messages from a sender
+    /// (the previous unit is from someone else, or it's the first of the day
+    /// group). Used to show the group sender name once per run, WA/TG style.
+    private static func startsSenderRun(_ units: [ChatViewModel.RenderUnit], _ index: Int) -> Bool {
+        guard index > 0 else { return true }
+        func sender(_ u: ChatViewModel.RenderUnit) -> Int {
+            switch u {
+            case .single(let m): return m.senderUIN
+            case .album(_, let items): return items.first?.senderUIN ?? -1
+            }
+        }
+        return sender(units[index]) != sender(units[index - 1])
+    }
+
     private func broadcastReadOnlyHint(group: RCQGroup) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "megaphone.fill")
@@ -1597,6 +1622,9 @@ struct ChatView: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 14)
         .frame(maxWidth: .infinity)
+        // Blurred material backdrop (like iOS system bars) so the read-only
+        // notice reads as a deliberate bar over the content, not stray text.
+        .background(.ultraThinMaterial)
     }
 
     private var isStrangerMode: Bool {

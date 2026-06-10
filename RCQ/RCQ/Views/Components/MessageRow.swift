@@ -28,6 +28,10 @@ struct MessageRow: View {
     let message: Message
     let showSender: Bool
     let senderNickname: String
+    /// When set, overrides the reply-quote author label (used to show "You"
+    /// when the quoted message is the viewer's own — the wire still carries
+    /// the real nick so other people see the nick).
+    var replyAuthorOverride: String? = nil
     let displayBody: String
     let isTranslated: Bool
     let isHighlighted: Bool
@@ -261,7 +265,7 @@ struct MessageRow: View {
                             .fill(Theme.Color.accent)
                             .frame(width: 3)
                         VStack(alignment: .leading, spacing: 1) {
-                            if let author = message.replyToAuthorName, !author.isEmpty {
+                            if let author = replyAuthorOverride ?? message.replyToAuthorName, !author.isEmpty {
                                 Text(author)
                                     .font(.caption2.weight(.semibold))
                                     .foregroundColor(Theme.Color.accent)

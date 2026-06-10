@@ -898,6 +898,7 @@
 "chat.call.outcome.ended" = "Завершён";
 
 "chat.random.you" = "Вы";
+"chat.you" = "Вы";
 
 "chat.preview.no_messages" = "Сообщений пока нет";
 "chat.preview.deleted" = "Сообщение удалено";

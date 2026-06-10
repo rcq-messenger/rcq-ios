@@ -36,6 +36,7 @@ struct ContactListView: View {
     @State private var showStoryComposer = false
     @State private var showNews = false
     @State private var showOutgoing = false
+    @State private var showDiagnostics = false
     @State private var showPresenceInfo = false
     @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
@@ -237,6 +238,7 @@ struct ContactListView: View {
             .sheet(isPresented: $showOutgoing) {
                 OutgoingRequestsView()
             }
+            .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
             .alert("presence.info.title".localized, isPresented: $showPresenceInfo) {
                 Button("common.ok".localized, role: .cancel) {}
             } message: {
@@ -631,6 +633,13 @@ struct ContactListView: View {
                     Label(SingBoxTransport.isEnabled ? "bypass.menu.disable".localized
                                                      : "bypass.menu.enable".localized,
                           systemImage: SingBoxTransport.isEnabled ? "shield.lefthalf.filled" : "shield")
+                }
+                // Network diagnostics right next to the bypass toggle (Android
+                // parity), so it opens without digging into Settings.
+                Button {
+                    showDiagnostics = true
+                } label: {
+                    Label("settings.network.diag".localized, systemImage: "stethoscope")
                 }
             }
         } label: {

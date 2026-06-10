@@ -931,6 +931,7 @@
 "chat.call.outcome.ended" = "Ended";
 
 "chat.random.you" = "You";
+"chat.you" = "You";
 
 "chat.preview.no_messages" = "No messages yet";
 "chat.preview.deleted" = "Message deleted";

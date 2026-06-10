@@ -130,7 +130,30 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    private var didCaptureUnread = false
+    /// Unread count snapshotted the first time the chat appears, BEFORE
+    /// markThreadSeen() clears it — so we can open scrolled to the first
+    /// unread message (every-messenger behaviour), not the bottom.
+    private(set) var openUnreadCount = 0
+
+    /// The first unread message to open at, or nil → open at the bottom.
+    var openFirstUnreadID: UUID? {
+        guard openUnreadCount > 0, openUnreadCount <= messages.count else { return nil }
+        return messages[messages.count - openUnreadCount].id
+    }
+
     func onAppear() {
+        if !didCaptureUnread {
+            didCaptureUnread = true
+            switch target {
+            case .peer(let c):
+                openUnreadCount = ContactService.shared.contacts.first(where: { $0.uin == c.uin })?.unread ?? 0
+            case .group(let g):
+                openUnreadCount = GroupService.shared.unread[g.id] ?? 0
+            case .randomPeer:
+                openUnreadCount = 0
+            }
+        }
         markThreadSeen()
     }
 
@@ -766,6 +789,14 @@ final class ChatViewModel: ObservableObject {
             i = j
         }
         return out
+    }
+
+    /// True when `message` quotes one of MY OWN messages, so the quote shows
+    /// "You" to me. The wire carries the real nick, so everyone else still sees
+    /// the nick — fixes "others see You" on a reply to your own message.
+    func replyIsMine(_ message: Message) -> Bool {
+        guard let rid = message.replyToID else { return false }
+        return messages.first(where: { $0.id == rid })?.isFromMe ?? false
     }
 
     func senderNickname(_ uin: Int) -> String {
