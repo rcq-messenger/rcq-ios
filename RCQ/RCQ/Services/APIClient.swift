@@ -259,6 +259,22 @@ actor APIClient {
     /// public backends.
     func setServerToken(_ token: String?) { self.serverToken = token }
 
+    /// Federation Layer B (F1): PUT a pre-serialized signed home-island record.
+    /// The body is raw Data because the record is built as `[String: Any]` and
+    /// its exact bytes carry the Ed25519 signature. Best-effort: returns false
+    /// instead of throwing so a failed publish never disrupts login.
+    func publishIslandRecord(_ jsonBody: Data) async -> Bool {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/federation/island-record"))
+        req.httpMethod = "PUT"
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let serverToken { req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth") }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = jsonBody
+        guard let (_, resp) = try? await session.data(for: req),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
+        return true
+    }
+
     func request<T: Decodable>(
         _ method: String,
         _ path: String,

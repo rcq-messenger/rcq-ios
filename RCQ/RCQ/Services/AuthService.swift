@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 @MainActor
 final class AuthService: ObservableObject {
@@ -32,6 +33,7 @@ final class AuthService: ObservableObject {
                 // Fire-and-forget Stage 3 top-up. Failure is non-fatal —
                 // encrypt path falls back to v=1 per peer.
                 try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: uin)
+                await publishHomeIslandRecord(ownUIN: uin)
                 UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
                 isReady = true
                 return
@@ -93,8 +95,28 @@ final class AuthService: ObservableObject {
         // Stage 3 bootstrap. Failure here doesn't block registration —
         // peers fall back to v=1 until next successful boot.
         try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: out.uin)
+        await publishHomeIslandRecord(ownUIN: out.uin)
 
         isReady = true
+    }
+
+    /// Federation Layer B (F1): build + publish this account's signed home-island
+    /// record after the libsignal identity exists. Single-homed on this session's
+    /// island for now (multi-homing = F2). Fully best-effort — any failure (an
+    /// island without the F1 endpoint, a missing key, a network hiccup) is
+    /// swallowed so it can never disrupt login. Mirrors the web + Android wiring.
+    private func publishHomeIslandRecord(ownUIN: Int) async {
+        guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
+              let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return }
+        let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
+        let ik = local.identityKeyPair.publicKey.serialize().base64EncodedString()
+        let host = APIClient.shared.baseURL.host ?? RcqFederation.flagshipHost
+        let homes = [RcqFederation.Home(host: host, uin: ownUIN)]
+        let ts = Int(Date().timeIntervalSince1970)
+        guard let doc = try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts),
+              let body = try? JSONSerialization.data(withJSONObject: doc) else { return }
+        _ = await APIClient.shared.publishIslandRecord(body)
     }
 
     /// The active account's 24-word recovery phrase, or nil for a legacy
