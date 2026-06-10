@@ -834,9 +834,28 @@ final class MessageService {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: next)
             }
             playSentSound(for: envelope)
+            // Multihoming v1: best-effort v=1 sealed copy into the peer's OTHER
+            // home islands; no-op (cached record lookup only) for single-homed
+            // peers — today's universal case.
+            if let v1Blob = try? crypto.encrypt(envelope: envelope, for: bundle) {
+                let peerUin = contact.uin, peerSk = contact.signingKey
+                Task.detached(priority: .utility) {
+                    _ = await Multihome.depositToExtraHomes(peerUin: peerUin, peerSigningKey: peerSk, sealedV1: v1Blob)
+                }
+            }
             // Mirror the message to the user's other devices (best-effort).
             await sendMessageCarbon(envelope, toPeer: contact.uin, toGroup: nil)
         } catch {
+            // Primary island unreachable — failover: the (possibly stale-cached)
+            // record may list other homes; one accepted copy = delivered.
+            if let v1Blob = try? crypto.encrypt(envelope: envelope, for: bundle),
+               await Multihome.depositToExtraHomes(peerUin: contact.uin, peerSigningKey: contact.signingKey, sealedV1: v1Blob) > 0 {
+                if let localID {
+                    MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .sent)
+                }
+                playSentSound(for: envelope)
+                return
+            }
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .failed)
             }
@@ -1476,6 +1495,10 @@ final class MessageService {
 
     func fetchOfflineQueue() async {
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
+        // Multihoming v1: make sure the backup-island poll is running (no-op
+        // without backup homes; idempotent). Independent of the primary fetch
+        // below — when the primary island is down, that loop IS delivery.
+        if ownUIN != 0 { Multihome.startPolling(ownUin: ownUIN) }
         struct Row: Decodable {
             let id: Int
             let envelope_type: String

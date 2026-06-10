@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
+    @State private var showBackupIsland = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @EnvironmentObject private var appState: AppState
@@ -234,6 +235,19 @@ struct SettingsView: View {
                                     .foregroundColor(Theme.Color.textSecondary)
                             }
                         }
+                        Button {
+                            showBackupIsland = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "externaldrive.badge.icloud").foregroundColor(Theme.Color.accent)
+                                Text("multihome.title".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
                         Button(role: .destructive) {
                             confirmBurn = true
                         } label: {
@@ -302,6 +316,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
+            .sheet(isPresented: $showBackupIsland) { BackupIslandView() }
             .confirmationDialog(
                 "settings.history.confirm.title".localized,
                 isPresented: $confirmClearHistory,
@@ -750,5 +765,141 @@ struct AppIconView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 )
         }
+    }
+}
+
+// MARK: - Backup island (multihoming, federation v1)
+
+/// Settings surface for multihoming: this account also registers on a second,
+/// independent island (same keypair), so messages land in both mailboxes and a
+/// single island death loses nothing. The heavy lifting lives in `Multihome`;
+/// this view just lists/adds/removes backup homes and republishes the record.
+struct BackupIslandView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var homes: [MultihomeStore.Home] = []
+    @State private var host = ""
+    @State private var busy = false
+    @State private var error: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                Form {
+                    Section {
+                        Text("multihome.body".localized)
+                            .font(.footnote)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    if !homes.isEmpty {
+                        Section {
+                            ForEach(homes) { h in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(h.host)
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundColor(Theme.Color.textPrimary)
+                                        Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
+                                            .font(.caption)
+                                            .foregroundColor(Theme.Color.textSecondary)
+                                    }
+                                    Spacer()
+                                    Button("multihome.remove".localized) { remove(h) }
+                                        .font(.callout)
+                                        .foregroundColor(Theme.Color.accent)
+                                        .disabled(busy)
+                                }
+                            }
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                    }
+
+                    Section {
+                        TextField("multihome.host_hint".localized, text: $host)
+                            .font(.system(.body, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                        Button {
+                            add()
+                        } label: {
+                            HStack {
+                                Text((busy ? "multihome.busy" : "multihome.add").localized)
+                                Spacer()
+                                if busy { ProgressView().scaleEffect(0.7) }
+                            }
+                        }
+                        .disabled(busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
+                        if let error {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundColor(.red)
+                        }
+                    } footer: {
+                        Text("multihome.footer".localized)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("multihome.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close".localized) { dismiss() }
+                }
+            }
+            .onAppear { reload() }
+        }
+    }
+
+    private func reload() {
+        let uin = MessageService.shared.ownUIN
+        homes = uin != 0 ? MultihomeStore.shared.list(ownUin: uin) : []
+    }
+
+    private func add() {
+        let uin = MessageService.shared.ownUIN
+        guard uin != 0 else { return }
+        busy = true
+        error = nil
+        let nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? "user-\(uin)"
+        Task {
+            do {
+                _ = try await Multihome.addBackupIsland(ownUin: uin, hostInput: host, nickname: nickname)
+                await AuthService.shared.publishHomeIslandRecord(ownUIN: uin)
+                await Multihome.drainBackupQueues(ownUin: uin)
+                await MainActor.run {
+                    host = ""
+                    busy = false
+                    reload()
+                }
+            } catch {
+                let message: String
+                switch error {
+                case Multihome.AddError.invalidHost: message = "multihome.err.invalid".localized
+                case Multihome.AddError.primaryIsland: message = "multihome.err.primary".localized
+                case Multihome.AddError.alreadyAdded: message = "multihome.err.already".localized
+                case Multihome.AddError.network(let detail):
+                    message = "multihome.err.generic".localized + " (\(detail))"
+                default: message = "multihome.err.generic".localized
+                }
+                await MainActor.run {
+                    self.error = message
+                    busy = false
+                }
+            }
+        }
+    }
+
+    private func remove(_ home: MultihomeStore.Home) {
+        let uin = MessageService.shared.ownUIN
+        MultihomeStore.shared.remove(ownUin: uin, host: home.host)
+        reload()
+        Task { await AuthService.shared.publishHomeIslandRecord(ownUIN: uin) }
     }
 }
