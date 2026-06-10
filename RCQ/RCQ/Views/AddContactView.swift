@@ -10,6 +10,7 @@ struct AddContactView: View {
     @State private var foreignGroups: [GroupService.Preview] = []
     @State private var searchTask: Task<Void, Never>?
     @State private var joinPreview: GroupService.Preview?
+    @State private var ciBusy = false
     /// Pre-filled UIN from an `rcq://add/{uin}` deep link.
     var prefillUIN: Int? = nil
     var onSelectGroup: ((RCQGroup) -> Void)? = nil
@@ -24,6 +25,14 @@ struct AddContactView: View {
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Federation (F2): the query parsed as a `uin@host` cross-island address
+    /// (non-flagship), or nil for an ordinary flagship search.
+    private var crossIsland: RcqFederation.Address? {
+        guard let a = try? RcqFederation.parseAddress(trimmedQuery),
+              a.host != RcqFederation.flagshipHost else { return nil }
+        return a
     }
 
     var body: some View {
@@ -74,6 +83,31 @@ struct AddContactView: View {
                                         }
                                         Divider().background(Theme.Color.divider)
                                     }
+                                }
+                                if let ci = crossIsland {
+                                    sectionHeader("Cross-island")
+                                    Button {
+                                        ciBusy = true
+                                        Task {
+                                            let ok = await ContactService.shared.addCrossIslandContact(uin: ci.uin, host: ci.host)
+                                            ciBusy = false
+                                            if ok { dismiss() }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "globe").foregroundColor(Theme.Color.accent)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("\(ci.uin)@\(ci.host)").foregroundColor(Theme.Color.textPrimary)
+                                                Text("Cross-island contact (another RCQ island)")
+                                                    .font(.caption).foregroundColor(Theme.Color.textSecondary)
+                                            }
+                                            Spacer()
+                                            if ciBusy { ProgressView().tint(Theme.Color.accent) }
+                                        }
+                                        .padding(.horizontal, 16).padding(.vertical, 12)
+                                        .contentShape(Rectangle())
+                                    }
+                                    Divider().background(Theme.Color.divider)
                                 }
                                 if !results.isEmpty {
                                     sectionHeader("add.section.people".localized)

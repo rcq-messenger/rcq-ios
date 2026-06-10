@@ -31,6 +31,12 @@ struct Contact: Identifiable, Hashable, Codable {
     /// that omits it — nil is treated as callable. The server enforces the
     /// policy on the call_offer regardless.
     var callable: Bool? = nil
+    /// Federation (F2): the island host where this peer lives, set ONLY for a
+    /// cross-island contact (stored locally, never from the server `/contacts`).
+    /// When present, `MessageService.sendEnvelope` deposits to their island via
+    /// federation-send instead of the flagship. Must be in CodingKeys so it
+    /// survives `CrossIslandStore`'s JSON persistence.
+    var host: String? = nil
 
     var id: Int { uin }
 
@@ -44,6 +50,7 @@ struct Contact: Identifiable, Hashable, Codable {
         case gender
         case lastSeen = "last_seen"
         case callable
+        case host
     }
 
     /// Synthetic "Saved Messages" peer — the user's own UIN dressed up

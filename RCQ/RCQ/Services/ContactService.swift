@@ -50,7 +50,10 @@ final class ContactService: ObservableObject {
             // launch (#8). They're un-filtered only on an EXPLICIT re-add
             // (sendAddRequest / accepting their request).
             list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
-            self.contacts = list
+            // Federation (F2): merge local cross-island contacts (peers on other
+            // islands — not in the server roster) so they show + open a chat.
+            let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
+            self.contacts = list + cross
             let pending: [PendingRequest] = try await APIClient.shared.request("GET", "/contacts/pending")
             self.pendingRequests = pending
             let outgoing: [OutgoingRequest] = try await APIClient.shared.request("GET", "/contacts/outgoing")
@@ -80,6 +83,22 @@ final class ContactService: ObservableObject {
         if !pendingRequests.contains(where: { $0.id == req.id }) {
             pendingRequests.append(req)
         }
+    }
+
+    /// Federation (F2): add a cross-island contact `uin@host` — fetch their
+    /// island's open key card, store it locally, and merge it into the list so
+    /// the normal chat-open + send flow works. Returns true on success.
+    func addCrossIslandContact(uin: Int, host: String) async -> Bool {
+        guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else { return false }
+        var c = Contact(
+            uin: uin, nickname: "\(uin)@\(host)", status: .online, statusMessage: nil,
+            blocked: false, identityKey: card.identity_key, signingKey: card.signing_key,
+            signalIdentityKey: card.signal_identity_key, gender: nil, unread: 0, lastSeen: nil
+        )
+        c.host = host
+        CrossIslandStore.shared.save(c)
+        if !contacts.contains(where: { $0.uin == uin }) { contacts.append(c) }
+        return true
     }
 
     func sendAddRequest(to uin: Int) async throws {

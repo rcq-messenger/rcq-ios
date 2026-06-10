@@ -798,6 +798,23 @@ final class MessageService {
             playSentSound(for: envelope)
             return
         }
+        // Federation (F2): a cross-island peer (host set) lives on another island —
+        // seal v=1 to their key card and deposit to their island(s), not the
+        // flagship. Gated strictly: every flagship contact has host==nil and falls
+        // through to the unchanged path below.
+        if let host = contact.host {
+            let ciBundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
+            let ciBlob = try crypto.encrypt(envelope: envelope, for: ciBundle)
+            var ok = false
+            for h in await CrossIslandSender.resolveHomes(host: host, uin: contact.uin) {
+                if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob) { ok = true }
+            }
+            if let localID {
+                MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: ok ? .sent : .failed)
+            }
+            playSentSound(for: envelope)
+            return
+        }
         let bundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
         let blob = try await encryptForPeer(envelope: envelope, peer: bundle, peerSignalIdentityKey: contact.signalIdentityKey)
 
