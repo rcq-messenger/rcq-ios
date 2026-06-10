@@ -16,6 +16,7 @@ struct PrivacySettingsView: View {
     /// past the staleness window. Lets the user appear "around" with
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = false
+    @State private var hofOptIn: Bool = false
     /// Allowed values match the server allow-list: 0 (forever), 30,
     /// 60, 180, 480, 1440. Picker labels render to the localised
     /// strings below.
@@ -127,6 +128,22 @@ struct PrivacySettingsView: View {
                                 Task { await pushIntField("presence_ttl_minutes", newValue) }
                                 PresenceWindow.anchor(ttlMinutes: newValue, uin: AuthService.shared.ownUIN)
                             }
+                        }
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+                    Section {
+                        Toggle(isOn: $hofOptIn) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.privacy.hof_opt_in".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.privacy.hof_opt_in.desc".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .onChange(of: hofOptIn) { newValue in
+                            Task { await pushBoolField("hof_opt_in", newValue) }
                         }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
@@ -442,6 +459,7 @@ struct PrivacySettingsView: View {
                 readReceiptsCache = v
             }
             if let v = p.presencePersistent { presencePersistent = v }
+            if let v = p.hofOptIn { hofOptIn = v }
             // Seed the local countdown anchor if the feature is on but we
             // have none yet (enabled before this existed / on another
             // device). Active changes above re-anchor it; load never

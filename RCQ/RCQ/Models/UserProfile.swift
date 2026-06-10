@@ -56,6 +56,11 @@ struct UserProfile: Codable, Hashable {
     /// Optional TTL (minutes) for `presencePersistent`. 0/nil = forever.
     /// Allowed values mirror the iOS picker: 30, 60, 180, 480, 1440.
     var presenceTTLMinutes: Int?
+    /// Owner-only echo of the Hall-of-Fame opt-in (consent to be
+    /// considered). The founder approves who actually appears on the
+    /// public wall; this flag is just the user's consent. Nil for
+    /// third-party fetches.
+    var hofOptIn: Bool?
     enum CodingKeys: String, CodingKey {
         case uin, nickname
         case firstName = "first_name"
@@ -75,6 +80,7 @@ struct UserProfile: Codable, Hashable {
         case readReceiptsVisibility = "read_receipts_visibility"
         case presencePersistent = "presence_persistent"
         case presenceTTLMinutes = "presence_ttl_minutes"
+        case hofOptIn = "hof_opt_in"
     }
 }
 

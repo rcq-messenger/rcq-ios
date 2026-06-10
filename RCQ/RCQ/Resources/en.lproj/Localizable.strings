@@ -1359,6 +1359,8 @@
 "inventory.filter.level_all" = "All levels";
 "settings.privacy.persistent_presence" = "Visibility after exit";
 "settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
+"settings.privacy.hof_opt_in" = "Hall of Fame";
+"settings.privacy.hof_opt_in.desc" = "Allow being considered for the public Hall of Fame at rcq.app. Only your nickname and UIN, and only if approved. You can turn this off any time.";
 "settings.privacy.presence_ttl" = "Duration";
 "settings.privacy.presence_ttl.forever" = "Forever";
 "settings.privacy.presence_ttl.30m" = "30 minutes";
