@@ -1361,6 +1361,11 @@
 "settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
 "settings.privacy.hof_opt_in" = "Hall of Fame";
 "settings.privacy.hof_opt_in.desc" = "Allow being considered for the public Hall of Fame at rcq.app. Only your nickname and UIN, and only if approved. You can turn this off any time.";
+"settings.privacy.hof_add_image" = "Add image / GIF";
+"settings.privacy.hof_change_image" = "Change image";
+"settings.privacy.hof_remove_image" = "Remove image";
+"settings.privacy.hof_image_too_large" = "Image is too large. Pick a smaller one (max ~256 KB).";
+"settings.privacy.hof_image_error" = "Could not upload the image. Try again.";
 "settings.privacy.presence_ttl" = "Duration";
 "settings.privacy.presence_ttl.forever" = "Forever";
 "settings.privacy.presence_ttl.30m" = "30 minutes";

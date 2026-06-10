@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 /// Privacy pickers split out of `SettingsView` once the list grew
 /// past four entries. All five tri-state policies (last-seen /
@@ -17,6 +19,13 @@ struct PrivacySettingsView: View {
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = false
     @State private var hofOptIn: Bool = false
+    /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
+    /// image and the picker/busy state.
+    @State private var hofAvatar: String? = nil
+    @State private var hofPreview: UIImage? = nil
+    @State private var showHofPicker: Bool = false
+    @State private var hofBusy: Bool = false
+    @State private var hofError: String? = nil
     /// Allowed values match the server allow-list: 0 (forever), 30,
     /// 60, 180, 480, 1440. Picker labels render to the localised
     /// strings below.
@@ -145,6 +154,34 @@ struct PrivacySettingsView: View {
                         .onChange(of: hofOptIn) { newValue in
                             Task { await pushBoolField("hof_opt_in", newValue) }
                         }
+                        if hofOptIn {
+                            HStack(spacing: 12) {
+                                hofAvatarPreview
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Button(hofAvatar == nil
+                                           ? "settings.privacy.hof_add_image".localized
+                                           : "settings.privacy.hof_change_image".localized) {
+                                        showHofPicker = true
+                                    }
+                                    .font(.callout)
+                                    .foregroundColor(Theme.Color.accent)
+                                    .disabled(hofBusy)
+                                    if hofAvatar != nil {
+                                        Button("settings.privacy.hof_remove_image".localized) {
+                                            Task { await setHofAvatar("") }
+                                        }
+                                        .font(.callout)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                        .disabled(hofBusy)
+                                    }
+                                }
+                                Spacer()
+                                if hofBusy { ProgressView().scaleEffect(0.8) }
+                            }
+                            if let err = hofError {
+                                Text(err).font(.caption2).foregroundColor(.red)
+                            }
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
@@ -222,6 +259,13 @@ struct PrivacySettingsView: View {
             .sheet(isPresented: $showCustomServer) { CustomServerSheet() }
             .sheet(isPresented: $showManageAccounts) { ManageAccountsSheet() }
             .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
+            .sheet(isPresented: $showHofPicker) {
+                HofImagePicker { data, mime in
+                    showHofPicker = false
+                    guard let data, let mime else { return }
+                    Task { await applyPickedHofImage(data: data, mime: mime) }
+                }
+            }
             .task { await loadVisibility() }
         }
     }
@@ -460,6 +504,8 @@ struct PrivacySettingsView: View {
             }
             if let v = p.presencePersistent { presencePersistent = v }
             if let v = p.hofOptIn { hofOptIn = v }
+            hofAvatar = p.hofAvatar
+            hofPreview = p.hofAvatar.flatMap(Self.decodeDataUri)
             // Seed the local countdown anchor if the feature is on but we
             // have none yet (enabled before this existed / on another
             // device). Active changes above re-anchor it; load never
@@ -565,6 +611,143 @@ struct PrivacySettingsView: View {
             )
         } catch {
             // Soft-fail; user can re-pick.
+        }
+    }
+
+    // MARK: - Hall of Fame avatar
+
+    @ViewBuilder private var hofAvatarPreview: some View {
+        ZStack {
+            Circle().fill(Theme.Color.accent.opacity(0.12))
+            if let img = hofPreview {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                Image(systemName: "photo").foregroundColor(Theme.Color.textSecondary)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(Circle())
+    }
+
+    /// Normalize a picked image into a capped (~256KB) data-URI and upload it.
+    /// A small animated GIF is kept raw so it still animates on the wall;
+    /// anything else (or an oversized GIF) is downscaled + JPEG-compressed.
+    private func applyPickedHofImage(data: Data, mime: String) async {
+        hofBusy = true; hofError = nil
+        let cap = 256 * 1024
+        var finalData = data
+        var finalMime = mime
+        if !(mime == "image/gif" && data.count <= cap) {
+            guard let img = UIImage(data: data) else {
+                hofError = "settings.privacy.hof_image_error".localized; hofBusy = false; return
+            }
+            let scaled = Self.downscale(img, maxSide: 256)
+            var jpeg: Data? = nil
+            for q in [CGFloat(0.85), 0.7, 0.55, 0.4] {
+                if let d = scaled.jpegData(compressionQuality: q), d.count <= cap { jpeg = d; break }
+            }
+            guard let j = jpeg else {
+                hofError = "settings.privacy.hof_image_too_large".localized; hofBusy = false; return
+            }
+            finalData = j; finalMime = "image/jpeg"
+        }
+        let dataUri = "data:\(finalMime);base64,\(finalData.base64EncodedString())"
+        if await putHofAvatar(dataUri) {
+            hofAvatar = dataUri
+            hofPreview = UIImage(data: finalData)
+        } else {
+            hofError = "settings.privacy.hof_image_error".localized
+        }
+        hofBusy = false
+    }
+
+    private func setHofAvatar(_ dataUri: String) async {
+        hofBusy = true; hofError = nil
+        if await putHofAvatar(dataUri) {
+            hofAvatar = dataUri.isEmpty ? nil : dataUri
+            hofPreview = dataUri.isEmpty ? nil : Self.decodeDataUri(dataUri)
+        } else {
+            hofError = "settings.privacy.hof_image_error".localized
+        }
+        hofBusy = false
+    }
+
+    private func putHofAvatar(_ value: String) async -> Bool {
+        struct Body: Encodable {
+            let v: String
+            func encode(to e: Encoder) throws {
+                var c = e.container(keyedBy: DynamicKey.self)
+                try c.encode(v, forKey: DynamicKey(stringValue: "hof_avatar")!)
+            }
+        }
+        struct DynamicKey: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+        do {
+            let _: UserProfile = try await APIClient.shared.request("PUT", "/users/me", body: Body(v: value))
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private static func downscale(_ img: UIImage, maxSide: CGFloat) -> UIImage {
+        let longest = max(img.size.width, img.size.height)
+        guard longest > maxSide else { return img }
+        let f = maxSide / longest
+        let size = CGSize(width: img.size.width * f, height: img.size.height * f)
+        return UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+    }
+
+    static func decodeDataUri(_ s: String) -> UIImage? {
+        guard let r = s.range(of: ";base64,") else { return nil }
+        guard let data = Data(base64Encoded: String(s[r.upperBound...])) else { return nil }
+        return UIImage(data: data)
+    }
+}
+
+/// PHPicker that hands back the picked image as RAW data + mime, so an animated
+/// GIF survives (loading it as a UIImage would flatten it). The caller caps and
+/// normalizes. One image, current representation.
+private struct HofImagePicker: UIViewControllerRepresentable {
+    let onPick: (Data?, String?) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        cfg.filter = .images
+        cfg.selectionLimit = 1
+        cfg.preferredAssetRepresentationMode = .current
+        let p = PHPickerViewController(configuration: cfg)
+        p.delegate = context.coordinator
+        return p
+    }
+
+    func updateUIViewController(_ vc: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let onPick: (Data?, String?) -> Void
+        init(onPick: @escaping (Data?, String?) -> Void) { self.onPick = onPick }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let item = results.first?.itemProvider else { onPick(nil, nil); return }
+            if item.hasItemConformingToTypeIdentifier(UTType.gif.identifier) {
+                item.loadDataRepresentation(forTypeIdentifier: UTType.gif.identifier) { data, _ in
+                    DispatchQueue.main.async { self.onPick(data, data == nil ? nil : "image/gif") }
+                }
+            } else if item.canLoadObject(ofClass: UIImage.self) {
+                item.loadObject(ofClass: UIImage.self) { obj, _ in
+                    let data = (obj as? UIImage)?.jpegData(compressionQuality: 0.9)
+                    DispatchQueue.main.async { self.onPick(data, data == nil ? nil : "image/jpeg") }
+                }
+            } else {
+                DispatchQueue.main.async { self.onPick(nil, nil) }
+            }
         }
     }
 }

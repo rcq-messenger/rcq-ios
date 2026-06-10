@@ -61,6 +61,9 @@ struct UserProfile: Codable, Hashable {
     /// public wall; this flag is just the user's consent. Nil for
     /// third-party fetches.
     var hofOptIn: Bool?
+    /// Owner-only echo of the uploaded HoF avatar as a data-URI, so the
+    /// client can preview the current image. Nil for third parties.
+    var hofAvatar: String?
     enum CodingKeys: String, CodingKey {
         case uin, nickname
         case firstName = "first_name"
@@ -81,6 +84,7 @@ struct UserProfile: Codable, Hashable {
         case presencePersistent = "presence_persistent"
         case presenceTTLMinutes = "presence_ttl_minutes"
         case hofOptIn = "hof_opt_in"
+        case hofAvatar = "hof_avatar"
     }
 }
 

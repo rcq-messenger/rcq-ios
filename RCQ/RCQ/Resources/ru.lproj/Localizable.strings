@@ -1328,6 +1328,11 @@
 "settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
 "settings.privacy.hof_opt_in" = "Зал славы";
 "settings.privacy.hof_opt_in.desc" = "Разрешить рассматривать вас для публичного зала славы на rcq.app. Только ник и UIN, и только если одобрят. Можно выключить в любой момент.";
+"settings.privacy.hof_add_image" = "Добавить картинку / GIF";
+"settings.privacy.hof_change_image" = "Сменить картинку";
+"settings.privacy.hof_remove_image" = "Убрать картинку";
+"settings.privacy.hof_image_too_large" = "Картинка слишком большая. Выберите поменьше (макс ~256 КБ).";
+"settings.privacy.hof_image_error" = "Не удалось загрузить картинку. Попробуйте ещё раз.";
 "settings.privacy.presence_ttl" = "Длительность";
 "settings.privacy.presence_ttl.forever" = "Бессрочно";
 "settings.privacy.presence_ttl.30m" = "30 минут";
