@@ -25,6 +25,10 @@ final class MultihomeStore {
         /// Bearer token for that island; refreshable any time via /auth/recover.
         var jwt: String
         let addedAt: Date
+        /// True when this home was picked by the catalogue auto-pick toggle
+        /// (vs a manually-entered host); the toggle only adds/removes its own
+        /// homes. Optional so pre-existing stored entries decode as manual.
+        var auto: Bool? = nil
         var id: String { "\(ownUin)@\(host)" }
     }
 
@@ -104,7 +108,7 @@ enum Multihome {
     /// serve as the failover route when the primary island is unreachable.
     private static let peerCacheTTL: TimeInterval = 10 * 60
 
-    enum AddError: Error { case invalidHost, primaryIsland, alreadyAdded, network(String) }
+    enum AddError: Error { case invalidHost, primaryIsland, alreadyAdded, noIsland, network(String) }
 
     struct Credentials: Decodable { let uin: Int; let token: String }
 
@@ -143,7 +147,7 @@ enum Multihome {
 
     /// Register (or recover) this identity on `hostInput` as a backup home,
     /// persist it, and return it. The caller republishes the home-island record.
-    static func addBackupIsland(ownUin: Int, hostInput: String, nickname: String) async throws -> MultihomeStore.Home {
+    static func addBackupIsland(ownUin: Int, hostInput: String, nickname: String, auto: Bool = false) async throws -> MultihomeStore.Home {
         guard let host = normalizeHost(hostInput) else { throw AddError.invalidHost }
         guard host != ownHost() else { throw AddError.primaryIsland }
         guard !MultihomeStore.shared.list(ownUin: ownUin).contains(where: { $0.host == host }) else {
@@ -171,13 +175,71 @@ enum Multihome {
                     ]
                 )
             }
-            let home = MultihomeStore.Home(ownUin: ownUin, host: host, uin: creds.uin, jwt: creds.token, addedAt: Date())
+            let home = MultihomeStore.Home(
+                ownUin: ownUin, host: host, uin: creds.uin, jwt: creds.token,
+                addedAt: Date(), auto: auto ? true : nil
+            )
             MultihomeStore.shared.save(home)
             return home
         } catch let e as AddError {
             throw e
         } catch {
             throw AddError.network(String(describing: error))
+        }
+    }
+
+    // MARK: auto-pick — one toggle instead of typing a host
+
+    private static let catalogueURL = URL(
+        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/servers.json"
+    )!
+
+    /// Pick a backup island from the public catalogue: entries the maintainer
+    /// flagged `auto_backup`, minus our own island + already-added hosts; the
+    /// FIRST healthy one in catalogue order wins (the order is the project's
+    /// preference). Returns nil when the catalogue is unreachable or no
+    /// flagged island responds.
+    static func autoPickHost(ownUin: Int) async -> String? {
+        struct Entry: Decodable { let url: String; let auto_backup: Bool? }
+        struct Catalogue: Decodable { let servers: [Entry] }
+        var req = URLRequest(url: catalogueURL)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let cat = try? JSONDecoder().decode(Catalogue.self, from: data) else { return nil }
+        let own = ownHost()
+        let existing = Set(MultihomeStore.shared.list(ownUin: ownUin).map(\.host))
+        for entry in cat.servers where entry.auto_backup == true {
+            guard let host = normalizeHost(entry.url), host != own, !existing.contains(host) else { continue }
+            if await healthy(host) { return host }
+        }
+        return nil
+    }
+
+    private static func healthy(_ host: String) async -> Bool {
+        guard let url = URL(string: "https://\(host)/health") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 6
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
+    /// The toggle's ON action: pick a healthy catalogue island and register
+    /// there (recover-first, same keys). Returns the chosen host; throws
+    /// `AddError.noIsland` when nothing is reachable. The caller republishes
+    /// the home-island record.
+    static func enableAutoBackup(ownUin: Int, nickname: String) async throws -> String {
+        guard let host = await autoPickHost(ownUin: ownUin) else { throw AddError.noIsland }
+        _ = try await addBackupIsland(ownUin: ownUin, hostInput: host, nickname: nickname, auto: true)
+        return host
+    }
+
+    /// The toggle's OFF action: forget every auto-picked home (manually-added
+    /// islands stay). The caller republishes the record.
+    static func disableAutoBackup(ownUin: Int) {
+        for h in MultihomeStore.shared.list(ownUin: ownUin) where h.auto == true {
+            MultihomeStore.shared.remove(ownUin: ownUin, host: h.host)
         }
     }
 

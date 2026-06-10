@@ -780,7 +780,12 @@ struct BackupIslandView: View {
     @State private var homes: [MultihomeStore.Home] = []
     @State private var host = ""
     @State private var busy = false
+    @State private var autoBusy = false
+    @State private var advanced = false
     @State private var error: String? = nil
+
+    private var autoHomes: [MultihomeStore.Home] { homes.filter { $0.auto == true } }
+    private var manualHomes: [MultihomeStore.Home] { homes.filter { $0.auto != true } }
 
     var body: some View {
         NavigationStack {
@@ -794,9 +799,61 @@ struct BackupIslandView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    if !homes.isEmpty {
-                        Section {
-                            ForEach(homes) { h in
+                    // One toggle for normal users: the island comes from the
+                    // public catalogue (auto_backup-flagged entries).
+                    Section {
+                        Toggle(isOn: Binding(
+                            get: { !autoHomes.isEmpty },
+                            set: { setAuto($0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("multihome.auto.title".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("multihome.auto.sub".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .disabled(autoBusy)
+                        if autoBusy {
+                            HStack {
+                                Text("multihome.auto.busy".localized)
+                                    .font(.footnote)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                Spacer()
+                                ProgressView().scaleEffect(0.7)
+                            }
+                        }
+                        ForEach(autoHomes) { h in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(h.host)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        if let error {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
+                    // Manual host entry stays for self-hosters, tucked away.
+                    Section {
+                        Button {
+                            advanced.toggle()
+                        } label: {
+                            Text((advanced ? "▾ " : "▸ ") + "multihome.advanced".localized)
+                                .font(.footnote)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                        if advanced {
+                            ForEach(manualHomes) { h in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(h.host)
@@ -813,30 +870,21 @@ struct BackupIslandView: View {
                                         .disabled(busy)
                                 }
                             }
-                        }
-                        .listRowBackground(Theme.Color.bgSecondary)
-                    }
-
-                    Section {
-                        TextField("multihome.host_hint".localized, text: $host)
-                            .font(.system(.body, design: .monospaced))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .keyboardType(.URL)
-                        Button {
-                            add()
-                        } label: {
-                            HStack {
-                                Text((busy ? "multihome.busy" : "multihome.add").localized)
-                                Spacer()
-                                if busy { ProgressView().scaleEffect(0.7) }
+                            TextField("multihome.host_hint".localized, text: $host)
+                                .font(.system(.body, design: .monospaced))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.URL)
+                            Button {
+                                add()
+                            } label: {
+                                HStack {
+                                    Text((busy ? "multihome.busy" : "multihome.add").localized)
+                                    Spacer()
+                                    if busy { ProgressView().scaleEffect(0.7) }
+                                }
                             }
-                        }
-                        .disabled(busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
-                        if let error {
-                            Text(error)
-                                .font(.footnote)
-                                .foregroundColor(.red)
+                            .disabled(busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     } footer: {
                         Text("multihome.footer".localized)
@@ -853,13 +901,54 @@ struct BackupIslandView: View {
                     Button("common.close".localized) { dismiss() }
                 }
             }
-            .onAppear { reload() }
+            .onAppear {
+                reload()
+                // Open the manual block for self-hosters who already added an
+                // island by hand; everyone else sees just the toggle.
+                if !manualHomes.isEmpty { advanced = true }
+            }
         }
     }
 
     private func reload() {
         let uin = MessageService.shared.ownUIN
         homes = uin != 0 ? MultihomeStore.shared.list(ownUin: uin) : []
+    }
+
+    private func setAuto(_ on: Bool) {
+        let uin = MessageService.shared.ownUIN
+        guard uin != 0, !autoBusy else { return }
+        autoBusy = true
+        error = nil
+        let nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? "user-\(uin)"
+        Task {
+            do {
+                if on {
+                    _ = try await Multihome.enableAutoBackup(ownUin: uin, nickname: nickname)
+                } else {
+                    Multihome.disableAutoBackup(ownUin: uin)
+                }
+                await AuthService.shared.publishHomeIslandRecord(ownUIN: uin)
+                if on { await Multihome.drainBackupQueues(ownUin: uin) }
+                await MainActor.run {
+                    autoBusy = false
+                    reload()
+                }
+            } catch {
+                let message: String
+                switch error {
+                case Multihome.AddError.noIsland: message = "multihome.err.none".localized
+                case Multihome.AddError.network(let detail):
+                    message = "multihome.err.generic".localized + " (\(detail))"
+                default: message = "multihome.err.generic".localized
+                }
+                await MainActor.run {
+                    self.error = message
+                    autoBusy = false
+                    reload()
+                }
+            }
+        }
     }
 
     private func add() {

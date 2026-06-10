@@ -161,6 +161,11 @@
 "multihome.title" = "Backup island";
 "multihome.body" = "Your account can also live on a second, independent RCQ island (server). Messages are then delivered into both mailboxes, so if one island goes down, nothing is lost — the other keeps receiving.";
 "multihome.row_uin" = "your number there: #%@";
+"multihome.auto.title" = "Keep a backup on another island";
+"multihome.auto.sub" = "The island is picked automatically from the public catalogue";
+"multihome.auto.busy" = "Picking an island…";
+"multihome.advanced" = "Advanced: add an island manually";
+"multihome.err.none" = "No reachable backup island right now. Try again later, or add one manually.";
 "multihome.host_hint" = "Island host, e.g. is2.rcq.app";
 "multihome.add" = "Add backup island";
 "multihome.busy" = "Connecting…";
