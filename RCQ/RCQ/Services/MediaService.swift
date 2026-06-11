@@ -88,6 +88,25 @@ final class MediaService {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
 
+    /// Download an encrypted blob, own island first. §5c: cross-island GROUP
+    /// media lives on the GROUP's island (the sender deposits it there, not
+    /// ours), so on an own-island miss fall back to each VISITED island's open
+    /// `GET /media/{id}`. Zero view changes — every fetcher routes through here.
+    nonisolated static func fetchBlob(mediaID: String) async throws -> Data {
+        do {
+            return try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+        } catch {
+            for v in VisitedIslandsStore.shared.list() {
+                if let url = URL(string: "https://\(v.host)/media/\(mediaID)"),
+                   let (data, resp) = try? await URLSession.shared.data(from: url),
+                   let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                    return data
+                }
+            }
+            throw error
+        }
+    }
+
     /// Deposit an already-encrypted blob under a client-chosen id
     /// (`PUT /media/{id}`, idempotent, no auth — same trust model as the
     /// envelope deposit). Plain URLSession to the peer's island, the same
@@ -243,7 +262,7 @@ final class MediaService {
             return hit as Data
         }
         do {
-            let blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+            let blob = try await Self.fetchBlob(mediaID: mediaID)
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
             let plain: Data? = await Task.detached(priority: .userInitiated) {
                 let key = SymmetricKey(data: keyBytes)
@@ -262,7 +281,7 @@ final class MediaService {
     /// Download + decrypt to a temp file. AVPlayer needs a URL. Caller deletes the file.
     func decryptToFile(mediaID: String, keyBase64: String) async -> URL? {
         do {
-            let blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+            let blob = try await Self.fetchBlob(mediaID: mediaID)
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
             let key = SymmetricKey(data: keyBytes)
             let box = try AES.GCM.SealedBox(combined: blob)
@@ -308,7 +327,7 @@ final class MediaService {
             } else if let onDisk = await EncryptedBlobDiskCache.shared.loadBlob(mediaID: mediaID) {
                 blob = onDisk
             } else {
-                blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+                blob = try await Self.fetchBlob(mediaID: mediaID)
                 EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
             }
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
@@ -360,7 +379,7 @@ final class MediaService {
             } else if let onDisk = await EncryptedBlobDiskCache.shared.loadBlob(mediaID: mediaID) {
                 blob = onDisk
             } else {
-                blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+                blob = try await Self.fetchBlob(mediaID: mediaID)
                 EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
             }
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
@@ -406,7 +425,7 @@ final class MediaService {
             return
         }
         do {
-            let blob = try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+            let blob = try await Self.fetchBlob(mediaID: mediaID)
             encryptedBlobCache.setObject(blob as NSData, forKey: mediaKey, cost: blob.count)
             EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
         } catch {

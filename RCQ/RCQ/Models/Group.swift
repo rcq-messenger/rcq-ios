@@ -3,8 +3,14 @@ import Foundation
 /// Group of friends, ICQ-style. Mirrors `GroupOut`. Named `RCQGroup` to
 /// avoid collision with SwiftUI's `Group` view container.
 struct RCQGroup: Identifiable, Hashable, Codable {
-    let id: Int
+    /// For a cross-island group (§5c) the client rewrites this to the local
+    /// NEGATIVE alias at the fetch boundary; the server-side id lives in
+    /// VisitedIslandsStore's alias map. `var` so that rewrite is in place.
+    var id: Int
     var name: String
+    /// CLIENT-SIDE only (§5c): the island a cross-island group lives on. Never
+    /// sent by a server (not in CodingKeys); nil for own-island groups.
+    var host: String? = nil
     /// Owner/admin-set free-text description. Nil when unset —
     /// Group Info hides the blurb and the join sheet skips the row.
     var description: String? = nil

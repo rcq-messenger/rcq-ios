@@ -7,6 +7,10 @@ import SwiftUI
 /// straight into the group chat.
 struct GroupJoinSheet: View {
     let groupID: Int
+    /// §5c: the group's host island when the invite carried one. nil/own =
+    /// a normal local group. When foreign, `groupID` is the SERVER-side id on
+    /// that island (the alias is allocated on join).
+    var host: String? = nil
     let onJoined: (RCQGroup) -> Void
     /// Tapping the owner row opens their profile preview. The
     /// caller hands back a UIN to surface via the global preview
@@ -20,11 +24,29 @@ struct GroupJoinSheet: View {
     @State private var error: String?
     @State private var joining: Bool = false
 
-    /// True when the caller is already in this group. Skips the
-    /// join button entirely and offers "Open" instead — the
-    /// previous Join UI on a self-owned group was confusing.
+    /// Foreign = an island that isn't ours (§5c).
+    private var foreignHost: String? {
+        guard let host, host != Multihome.ownHost() else { return nil }
+        return host
+    }
+
+    /// True when the caller is already in this group. For a foreign group the
+    /// local roster holds it under its ALIAS id; match by (host, remoteId)
+    /// without allocating a new alias.
     private var alreadyMember: Bool {
-        groups.groups.contains(where: { $0.id == groupID })
+        if let h = foreignHost {
+            return groups.groups.contains { g in
+                g.host == h && VisitedIslandsStore.shared.refByAlias(g.id)?.remoteId == groupID
+            }
+        }
+        return groups.groups.contains(where: { $0.id == groupID })
+    }
+
+    private var cachedForeignGroup: RCQGroup? {
+        guard let h = foreignHost else { return nil }
+        return groups.groups.first { g in
+            g.host == h && VisitedIslandsStore.shared.refByAlias(g.id)?.remoteId == groupID
+        }
     }
 
     /// Local cache snapshot so we can render the real avatar (the
@@ -41,6 +63,10 @@ struct GroupJoinSheet: View {
                     loadingView
                 } else if let preview {
                     content(preview)
+                } else if foreignHost != nil {
+                    // Foreign island we haven't visited (no preview by design —
+                    // seeing a link must not touch it). Minimal join surface.
+                    islandView
                 } else {
                     errorView
                 }
@@ -65,6 +91,46 @@ struct GroupJoinSheet: View {
                 .foregroundColor(Theme.Color.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var islandView: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "person.3.fill")
+                .font(.system(size: 44))
+                .foregroundColor(.white)
+                .frame(width: 96, height: 96)
+                .background(Circle().fill(Theme.Color.accent))
+                .padding(.top, 24)
+            VStack(spacing: 6) {
+                Text("group_join.island".localized)
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                Text(foreignHost ?? "")
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            Text(String(format: "group_join.island_hint".localized, foreignHost ?? ""))
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+            if let error {
+                Text(error).font(.caption).foregroundColor(.red.opacity(0.85)).padding(.horizontal, 32)
+            }
+            Button { Task { await join() } } label: {
+                Group {
+                    if joining { ProgressView().tint(.white) }
+                    else { Text("group_join.button".localized).font(.body.weight(.semibold)).foregroundColor(.white) }
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+            }
+            .background(Theme.Color.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .disabled(joining)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
     }
 
     private var errorView: some View {
@@ -222,6 +288,13 @@ struct GroupJoinSheet: View {
     private func load() async {
         loading = true
         defer { loading = false }
+        if let h = foreignHost {
+            // Only a VISITED island can be previewed (privacy). An unvisited
+            // one falls through to `islandView` — no network, no error.
+            preview = await CrossIslandGroups.previewForeign(host: h, remoteId: groupID)
+            error = nil
+            return
+        }
         if let snap = await GroupService.shared.fetchPreview(groupID: groupID) {
             preview = snap
             error = nil
@@ -234,6 +307,18 @@ struct GroupJoinSheet: View {
         joining = true
         defer { joining = false }
         error = nil
+        if let h = foreignHost {
+            // §5c: guest-register on the group's island (explicit user action),
+            // join there, hand back the alias-stamped group.
+            let nick = AuthService.shared.nickname.isEmpty ? "user-\(AuthService.shared.ownUIN ?? 0)" : AuthService.shared.nickname
+            if let g = await CrossIslandGroups.joinForeign(host: h, remoteId: groupID, nickname: nick) {
+                onJoined(g)
+                dismiss()
+            } else {
+                error = "group_join.error.generic".localized
+            }
+            return
+        }
         let result = await GroupService.shared.join(groupID: groupID)
         switch result {
         case .success(let g):

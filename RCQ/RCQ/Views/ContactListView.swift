@@ -257,11 +257,13 @@ struct ContactListView: View {
             )) { trigger in
                 GroupJoinSheet(
                     groupID: trigger.id,
+                    host: appState.pendingJoinGroupHost,
                     onJoined: { joined in
                         // After a successful join, refresh local groups
                         // and route the user straight into the group chat.
                         Task { @MainActor in
                             groups.upsert(joined)
+                            appState.pendingJoinGroupHost = nil
                             appState.pendingOpenGroupID = joined.id
                             tryOpenPendingGroup()
                         }
@@ -271,6 +273,7 @@ struct ContactListView: View {
                         // path — same affordance as a nickname tap
                         // anywhere else in the app.
                         appState.pendingJoinGroupID = nil
+                        appState.pendingJoinGroupHost = nil
                         deepLinkProfileUIN = DeepLinkUIN(uin: ownerUIN)
                     },
                 )
@@ -1631,8 +1634,9 @@ private struct GroupRow: View {
                         ? "contact_list.members_one"
                         : "contact_list.members_many").localized,
                     group.members.count
-                ))
+                ) + (group.host.map { " · \($0)" } ?? ""))
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    .lineLimit(1)
             }
             Spacer()
             if hasReaction {

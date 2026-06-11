@@ -35,6 +35,9 @@ final class AppState: ObservableObject {
     /// card from chat. Same deep-link mechanism as the marketplace +
     /// UIN-share flows; cleared by the sheet when it dismisses.
     @Published var pendingJoinGroupID: Int? = nil
+    /// §5c: the host island for `pendingJoinGroupID` when the invite link
+    /// carried one (`/g/<id>@<host>`); nil = own island.
+    @Published var pendingJoinGroupHost: String? = nil
     @Published var pendingOpenPending: Bool = false
     /// Tap target for @mentions in group chat. ContactListView shows
     /// `UserInfoView` for the UIN as a sheet.
@@ -195,19 +198,24 @@ final class AppState: ObservableObject {
         // text-paste / browser path). Both route to the same
         // `pendingJoinGroupID`; the JoinSheet handles already-member
         // by jumping the user straight into the group chat instead.
+        // §5c: the id segment may carry the group's island as `<id>@<host>`.
+        func setJoin(_ seg: String) {
+            let at = seg.firstIndex(of: "@")
+            let idPart = at.map { String(seg[seg.startIndex..<$0]) } ?? seg
+            let hostPart = at.map { String(seg[seg.index(after: $0)...]) }
+            guard let gid = Int(idPart), gid > 0 else { return }
+            pendingJoinGroupID = gid
+            pendingJoinGroupHost = (hostPart?.isEmpty == false) ? hostPart?.lowercased() : nil
+        }
         if url.scheme == "rcq", url.host == "group" {
-            if let last = url.pathComponents.last, let gid = Int(last), gid > 0 {
-                pendingJoinGroupID = gid
-            }
+            if let last = url.pathComponents.last { setJoin(last) }
             return
         }
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "g" {
-            if let gid = Int(url.pathComponents[2]), gid > 0 {
-                pendingJoinGroupID = gid
-            }
+            setJoin(url.pathComponents[2])
             return
         }
     }
@@ -817,6 +825,7 @@ final class AppState: ObservableObject {
         // others (founder report).
         CrossIslandStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
         NotificationPrefsService.shared.wipe()
         // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows

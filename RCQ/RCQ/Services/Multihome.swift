@@ -297,6 +297,9 @@ enum Multihome {
         pollTask = Task.detached(priority: .utility) {
             while !Task.isCancelled {
                 await drainBackupQueues(ownUin: ownUin)
+                // §5c: also drain the guest mailbox on every visited island
+                // (cross-island groups spool their fan-out there).
+                await CrossIslandGroups.drainVisitedQueues()
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
             }
         }
@@ -326,12 +329,16 @@ enum Multihome {
             }
             guard let rows else { continue }
             for r in rows {
+                // §5c: a group row in a BACKUP mailbox = that island also hosts
+                // a group we joined (same identity = same mailbox) — file it
+                // under the local alias, not the raw remote id.
+                let gid = r.group_id.map { VisitedIslandsStore.shared.aliasFor(host: home.host, remoteId: $0) }
                 let packet = WebSocketService.EnvelopePacket(
                     type: r.envelope_type,
                     payload: r.payload,
                     serverTime: Date(),
                     offline: true,
-                    groupID: r.group_id
+                    groupID: gid
                 )
                 guard let outcome = MessageService.shared.ingest(envelope: packet),
                       outcome.isNewContent else { continue }

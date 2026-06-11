@@ -8,11 +8,24 @@ import SwiftUI
 /// observes to present `GroupJoinSheet`.
 struct GroupLinkBubble: View {
     let groupID: Int
+    /// §5c: the group's host island when the link carried one; nil = ours.
+    var host: String? = nil
     let rawURL: URL
 
     @EnvironmentObject private var appState: AppState
     @State private var preview: GroupService.GroupPreview?
     @State private var loadFailed: Bool = false
+
+    /// Foreign = the link names an island that isn't ours.
+    private var foreignHost: String? {
+        guard let host, host != Multihome.ownHost() else { return nil }
+        return host
+    }
+
+    private func openJoin() {
+        appState.pendingJoinGroupHost = foreignHost
+        appState.pendingJoinGroupID = groupID
+    }
 
     private static let cardWidth: CGFloat = 260
     private static let cardHeight: CGFloat = 96
@@ -21,6 +34,10 @@ struct GroupLinkBubble: View {
         Group {
             if let preview {
                 card(preview)
+            } else if foreignHost != nil {
+                // Unvisited foreign island: do NOT touch it just because the
+                // link is on screen (anti-tracking). Minimal join card.
+                islandCard
             } else if loadFailed {
                 fallback
             } else {
@@ -81,9 +98,39 @@ struct GroupLinkBubble: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())
-        .onTapGesture {
-            appState.pendingJoinGroupID = groupID
+        .onTapGesture { openJoin() }
+    }
+
+    /// Minimal card for an unvisited foreign island (no preview by design).
+    private var islandCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "person.3.fill")
+                .font(.system(size: 22))
+                .foregroundColor(.white)
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Theme.Color.accent))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("group_join.island".localized)
+                    .font(.callout.weight(.semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .lineLimit(1)
+                Text(foreignHost ?? "")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+                Text("group_share.free".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.accent)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(8)
+        .frame(width: Self.cardWidth, height: Self.cardHeight)
+        .background(Theme.Color.bgSecondary.opacity(0.7))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.Color.divider, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .onTapGesture { openJoin() }
     }
 
     private var placeholder: some View {
@@ -110,7 +157,7 @@ struct GroupLinkBubble: View {
 
     private var fallback: some View {
         Button {
-            appState.pendingJoinGroupID = groupID
+            openJoin()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "person.3.fill")
@@ -130,6 +177,14 @@ struct GroupLinkBubble: View {
 
     private func load() async {
         if preview != nil { return }
+        // Foreign island: only query one we've already VISITED (privacy). An
+        // unvisited island renders `islandCard` and is left untouched.
+        if let foreignHost {
+            if let snap = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID) {
+                preview = snap
+            }
+            return
+        }
         if let snap = await GroupService.shared.fetchPreview(groupID: groupID) {
             preview = snap
         } else {
@@ -138,54 +193,60 @@ struct GroupLinkBubble: View {
     }
 }
 
-/// Parse a chat body for a single group-share URL.
+/// Parse a chat body for a single group-share URL. §5c: the id segment may
+/// carry the group's host island as `<id>@<host>`; a bare id = own island.
 enum GroupLinkParser {
-    static func parse(_ body: String) -> (groupID: Int, url: URL)? {
+    /// Split a `<id>` or `<id>@<host>` path segment.
+    private static func splitSeg(_ seg: String) -> (id: Int, host: String?)? {
+        let at = seg.firstIndex(of: "@")
+        let idPart = at.map { String(seg[seg.startIndex..<$0]) } ?? seg
+        let hostPart = at.map { String(seg[seg.index(after: $0)...]).lowercased() }
+        guard let gid = Int(idPart), gid > 0 else { return nil }
+        return (gid, (hostPart?.isEmpty == false) ? hostPart : nil)
+    }
+
+    static func parse(_ body: String) -> (groupID: Int, host: String?, url: URL)? {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         guard let url = URL(string: trimmed) else { return nil }
         if url.scheme == "rcq" && url.host == "group" {
-            if let last = url.pathComponents.last, let gid = Int(last), gid > 0 {
-                return (gid, url)
+            if let last = url.pathComponents.last, let s = splitSeg(last) {
+                return (s.id, s.host, url)
             }
         }
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "g",
-           let gid = Int(url.pathComponents[2]),
-           gid > 0 {
-            return (gid, url)
+           let s = splitSeg(url.pathComponents[2]) {
+            return (s.id, s.host, url)
         }
         return nil
     }
 
-    /// Extract EVERY group-share link embedded anywhere in a longer
-    /// text (a pinned announcement mixes prose with one or more group
-    /// links). Deduped by groupID, original order preserved. Used by
-    /// the pinned-announcement window to surface tappable group chips.
-    static func parseAll(_ text: String) -> [Int] {
+    /// Extract EVERY group-share link embedded anywhere in a longer text.
+    /// Deduped by (id, host), original order preserved.
+    static func parseAll(_ text: String) -> [(groupID: Int, host: String?)] {
         guard let detector = try? NSDataDetector(
             types: NSTextCheckingResult.CheckingType.link.rawValue
         ) else { return [] }
         let ns = text as NSString
-        var seen = Set<Int>()
-        var out: [Int] = []
+        var seen = Set<String>()
+        var out: [(Int, String?)] = []
         for m in detector.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            guard let url = m.url,
-                  let hit = parse(url.absoluteString),
-                  !seen.contains(hit.groupID) else { continue }
-            seen.insert(hit.groupID)
-            out.append(hit.groupID)
+            guard let url = m.url, let hit = parse(url.absoluteString) else { continue }
+            let key = "\(hit.groupID)@\(hit.host ?? "")"
+            if seen.contains(key) { continue }
+            seen.insert(key)
+            out.append((hit.groupID, hit.host))
         }
         return out
     }
 
-    /// Canonical URL shape for a fresh share — keeps the `https://`
-    /// path in sync with the deep-link parser above. iOS clients
-    /// produce this when the user picks a group from the share sheet.
-    static func canonicalURL(forGroupID gid: Int) -> URL {
-        URL(string: "https://rcq.app/g/\(gid)")!
+    /// Canonical URL for a fresh share — new shares ALWAYS carry the host so
+    /// the link works from any island (§5c).
+    static func canonicalURL(forGroupID gid: Int, host: String) -> URL {
+        URL(string: "https://rcq.app/g/\(gid)@\(host)")!
     }
 }
 
@@ -197,9 +258,15 @@ enum GroupLinkParser {
 /// (avoids stacking two sheets).
 struct PinnedGroupChip: View {
     let groupID: Int
+    var host: String? = nil
     let onOpen: (Int) -> Void
 
     @State private var preview: GroupService.GroupPreview?
+
+    private var foreignHost: String? {
+        guard let host, host != Multihome.ownHost() else { return nil }
+        return host
+    }
 
     var body: some View {
         Button { onOpen(groupID) } label: {
@@ -211,13 +278,18 @@ struct PinnedGroupChip: View {
                 )
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(preview?.name ?? "#\(groupID)")
+                    Text(preview?.name ?? (foreignHost != nil ? "group_join.island".localized : "#\(groupID)"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
                     if let p = preview {
                         Text(String(format: "group_share.members".localized, p.memberCount))
                             .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .lineLimit(1)
+                    } else if let foreignHost {
+                        Text(foreignHost)
+                            .font(.system(.caption2, design: .monospaced))
                             .foregroundColor(Theme.Color.textSecondary)
                             .lineLimit(1)
                     }
@@ -238,7 +310,11 @@ struct PinnedGroupChip: View {
         .buttonStyle(.plain)
         .task(id: groupID) {
             if preview == nil {
-                preview = await GroupService.shared.fetchPreview(groupID: groupID)
+                if let foreignHost {
+                    preview = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
+                } else {
+                    preview = await GroupService.shared.fetchPreview(groupID: groupID)
+                }
             }
         }
     }

@@ -34,7 +34,15 @@ final class GroupService: ObservableObject {
         if PanicPINService.shared.isDecoy { return }
         do {
             let list: [RCQGroup] = try await APIClient.shared.request("GET", "/groups")
-            self.groups = list
+            // §5c: groups joined on OTHER islands, fetched with the guest creds;
+            // ids rewritten to the local alias + host stamped. Per-island
+            // failures degrade to "no groups from there" — never block the own
+            // list (the 30s drain refreshes expired guest creds).
+            var foreign: [RCQGroup] = []
+            for v in VisitedIslandsStore.shared.list() {
+                foreign += await CrossIslandGroups.guestGroups(host: v.host)
+            }
+            self.groups = list + foreign
             // Mirror id → name into the App Group so the NSE can title a
             // group-message push with the group's name (not just the sender).
             GroupNameCache.setAll(Dictionary(list.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))

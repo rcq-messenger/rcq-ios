@@ -68,8 +68,13 @@ struct GroupInfoView: View {
                             // chat, or into a group's pinned announcement to
                             // surface it as a tappable group card.
                             Button {
-                                UIPasteboard.general.string =
-                                    GroupLinkParser.canonicalURL(forGroupID: currentGroup.id).absoluteString
+                                UIPasteboard.general.string = {
+                                    if let h = currentGroup.host {
+                                        let rid = VisitedIslandsStore.shared.refByAlias(currentGroup.id)?.remoteId ?? currentGroup.id
+                                        return GroupLinkParser.canonicalURL(forGroupID: rid, host: h).absoluteString
+                                    }
+                                    return GroupLinkParser.canonicalURL(forGroupID: currentGroup.id, host: Multihome.ownHost()).absoluteString
+                                }()
                                 linkCopied = true
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { linkCopied = false }
                             } label: {

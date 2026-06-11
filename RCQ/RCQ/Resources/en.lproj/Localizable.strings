@@ -392,6 +392,8 @@
 "group_join.title" = "Join group";
 "group_join.loading" = "Loading…";
 "group_join.button" = "Join";
+"group_join.island" = "Group on another island";
+"group_join.island_hint" = "Joining registers your key on %@ so the group can deliver to you.";
 "group_join.open_button" = "Open";
 "group_join.closed_button" = "Invite-only";
 "group_join.price_suffix" = "to join";

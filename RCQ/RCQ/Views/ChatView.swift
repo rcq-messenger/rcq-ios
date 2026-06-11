@@ -577,7 +577,7 @@ struct ChatView: View {
                 // Send the canonical share URL as plain text — the
                 // receiving client's `GroupLinkParser` upgrades the
                 // bubble into a `GroupLinkBubble` card automatically.
-                let url = GroupLinkParser.canonicalURL(forGroupID: picked.id)
+                let url = GroupLinkParser.canonicalURL(forGroupID: picked.host != nil ? (VisitedIslandsStore.shared.refByAlias(picked.id)?.remoteId ?? picked.id) : picked.id, host: picked.host ?? Multihome.ownHost())
                 Task { await vm.sendText(url.absoluteString) }
             }
             .presentationDetents([.medium, .large])
@@ -671,10 +671,11 @@ struct ChatView: View {
                                     .tint(Theme.Color.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
-                            case .group(let gid):
-                                PinnedGroupChip(groupID: gid) { tappedGID in
+                            case .group(let gid, let ghost):
+                                PinnedGroupChip(groupID: gid, host: ghost) { tappedGID in
                                     pinnedExpansion = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                        appState.pendingJoinGroupHost = (ghost != Multihome.ownHost()) ? ghost : nil
                                         appState.pendingJoinGroupID = tappedGID
                                     }
                                 }
@@ -708,6 +709,7 @@ struct ChatView: View {
                 if let hit = GroupLinkParser.parse(url.absoluteString) {
                     pinnedExpansion = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        appState.pendingJoinGroupHost = (hit.host != nil && hit.host != Multihome.ownHost()) ? hit.host : nil
                         appState.pendingJoinGroupID = hit.groupID
                     }
                     return .handled
@@ -1721,8 +1723,9 @@ struct ChatView: View {
                                     .foregroundColor(Theme.Color.textPrimary)
                                     .lineLimit(3)
                                     .fixedSize(horizontal: false, vertical: true)
-                            case .group(let gid):
-                                PinnedGroupChip(groupID: gid) { tapped in
+                            case .group(let gid, let ghost):
+                                PinnedGroupChip(groupID: gid, host: ghost) { tapped in
+                                    appState.pendingJoinGroupHost = (ghost != Multihome.ownHost()) ? ghost : nil
                                     appState.pendingJoinGroupID = tapped
                                 }
                             }
@@ -1781,12 +1784,12 @@ struct ChatView: View {
     /// that introduced it, instead of all cards bunched at the bottom.
     enum PinSegment {
         case text(String)
-        case group(Int)
+        case group(Int, String?)
     }
 
     private func pinnedSegments(_ text: String) -> [PinSegment] {
         guard let rx = try? NSRegularExpression(
-            pattern: "(?:https?://rcq\\.app/g/(\\d+)|rcq://group/(\\d+))", options: [.caseInsensitive]
+            pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)", options: [.caseInsensitive]
         ) else { return [.text(text)] }
         let ns = text as NSString
         let matches = rx.matches(in: text, range: NSRange(location: 0, length: ns.length))
@@ -1799,10 +1802,13 @@ struct ChatView: View {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !chunk.isEmpty { out.append(.text(chunk)) }
             }
-            let g1 = m.range(at: 1), g2 = m.range(at: 2)
+            // groups: (1)=https id (2)=https host (3)=scheme id (4)=scheme host
+            let g1 = m.range(at: 1), g2 = m.range(at: 2), g3 = m.range(at: 3), g4 = m.range(at: 4)
             let idStr = g1.location != NSNotFound ? ns.substring(with: g1)
-                : (g2.location != NSNotFound ? ns.substring(with: g2) : "")
-            if let gid = Int(idStr), gid > 0 { out.append(.group(gid)) }
+                : (g3.location != NSNotFound ? ns.substring(with: g3) : "")
+            let hostRange = g1.location != NSNotFound ? g2 : g4
+            let host: String? = hostRange.location != NSNotFound ? ns.substring(with: hostRange).lowercased() : nil
+            if let gid = Int(idStr), gid > 0 { out.append(.group(gid, host)) }
             cursor = m.range.location + m.range.length
         }
         if cursor < ns.length {

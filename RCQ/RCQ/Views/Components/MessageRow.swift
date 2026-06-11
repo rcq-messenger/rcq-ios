@@ -417,7 +417,7 @@ struct MessageRow: View {
             PollBubble(message: message, creatorIsMe: message.isFromMe)
         } else if let share = GroupLinkParser.parse(message.text) {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                GroupLinkBubble(groupID: share.groupID, rawURL: share.url)
+                GroupLinkBubble(groupID: share.groupID, host: share.host, rawURL: share.url)
                 if isTranslated { translatedFooter }
             }
         } else {

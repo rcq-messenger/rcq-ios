@@ -8,6 +8,9 @@ import LibSignalClient
 protocol CryptoService {
     func bootstrapIdentity() throws -> RegistrationBundle
     func encrypt(envelope: Envelope, for recipient: PeerBundle) throws -> String
+    /// Cross-island group seal (§5c): override the inner `from` / `from_host`
+    /// with the guest identity on the group's island.
+    func encrypt(envelope: Envelope, for recipient: PeerBundle, fromUIN: Int, fromHost: String) throws -> String
     /// Caller must establish the libsignal session via `ensureStage3Session(forPeerUIN:)` first.
     func encryptStage3(envelope: Envelope, for recipient: PeerBundle) throws -> String
     func decrypt(envelopeB64: String) throws -> DecryptedEnvelope
@@ -421,7 +424,20 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
 
     // MARK: - encrypt
 
+    /// Cross-island group send (§5c): seal AS the guest identity — the `from`
+    /// and `from_host` inside the envelope must be the sender's per-island uin
+    /// and the group's island, so members local to that island see
+    /// `from_host == their own island` (no Variant-A quarantine). The KEYS are
+    /// the same on every island, so the signature verifies identically.
+    func encrypt(envelope: Envelope, for recipient: PeerBundle, fromUIN: Int, fromHost: String) throws -> String {
+        try encryptV1(envelope: envelope, for: recipient, overrideFrom: fromUIN, overrideHost: fromHost)
+    }
+
     func encrypt(envelope: Envelope, for recipient: PeerBundle) throws -> String {
+        try encryptV1(envelope: envelope, for: recipient, overrideFrom: nil, overrideHost: nil)
+    }
+
+    private func encryptV1(envelope: Envelope, for recipient: PeerBundle, overrideFrom: Int?, overrideHost: String?) throws -> String {
         guard let recipientPubBytes = Data(base64Encoded: recipient.identityKey),
               let recipientPub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPubBytes)
         else { throw CryptoError.malformedWire }
@@ -446,14 +462,14 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         // old decoders ignore it; the authenticated identity stays `spub`. Read
         // the host from the AccountManager-mirrored `rcq.baseURL` (NSE-safe:
         // UserDefaults.standard, no app-only deps — encrypt only runs in the app).
-        let fromHost: String = {
+        let fromHost: String = overrideHost ?? {
             if let url = UserDefaults.standard.string(forKey: "rcq.baseURL"),
                let h = URL(string: url)?.host { return h }
             return "api.rcq.app"
         }()
         // signature is over the JSONEncoder bytes, so ship them as-is (no re-serialisation).
         let plaintext = try JSONSerialization.data(withJSONObject: [
-            "from": ownUIN,
+            "from": overrideFrom ?? ownUIN,
             "from_host": fromHost,
             "spub": signingPubB64,
             "sig":  signature.base64EncodedString(),

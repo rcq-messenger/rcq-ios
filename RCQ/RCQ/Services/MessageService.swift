@@ -877,6 +877,15 @@ final class MessageService {
     }
 
     func sendGroupEnvelope(_ envelope: Envelope, to group: RCQGroup, localID: UUID?) async throws {
+        // Cross-island group (§5c): seal AS the guest identity (the sender uin
+        // must be our per-island uin so the roster resolves it; keys identical)
+        // and deposit to the group's island. Handled on its own path.
+        if let host = group.host, let ref = VisitedIslandsStore.shared.refByAlias(group.id),
+           let guest = VisitedIslandsStore.shared.get(host: host) {
+            try await sendForeignGroupEnvelope(envelope, to: group, remoteId: ref.remoteId,
+                                               host: host, guestUIN: guest.uin, localID: localID)
+            return
+        }
         // Per-member encrypt (skipping self) — keeps sealed-sender intact
         // at the cost of N session encrypts vs one Sender-Keys groupEncrypt.
         struct Entry: Encodable { let to_uin: Int; let payload: String }
@@ -945,6 +954,37 @@ final class MessageService {
             playSentSound(for: envelope)
             // Mirror the message to the user's other devices (best-effort).
             await sendMessageCarbon(envelope, toPeer: nil, toGroup: group.id)
+        } catch {
+            if let localID {
+                MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .failed)
+            }
+            throw error
+        }
+    }
+
+    /// §5c cross-island group send: seal per-member AS the guest identity
+    /// (`fromUIN`/`fromHost` = our per-island uin + the group's island) and
+    /// deposit to the group's island. No carbon (the carbon would carry the
+    /// server-side group id, which another of our devices would misread as a
+    /// LOCAL group — alias maps are per-device).
+    private func sendForeignGroupEnvelope(
+        _ envelope: Envelope, to group: RCQGroup, remoteId: Int,
+        host: String, guestUIN: Int, localID: UUID?
+    ) async throws {
+        let recipients = group.members.filter { $0.uin != guestUIN && !$0.identityKey.isEmpty }
+        let entries: [CrossIslandGroups.GroupEntry] = recipients.compactMap { member in
+            let bundle = PeerBundle(uin: member.uin, identityKey: member.identityKey, signingKey: member.signingKey)
+            guard let blob = try? crypto.encrypt(envelope: envelope, for: bundle, fromUIN: guestUIN, fromHost: host) else { return nil }
+            return CrossIslandGroups.GroupEntry(to_uin: member.uin, payload: blob)
+        }
+        do {
+            try await CrossIslandGroups.groupSealedDeposit(
+                host: host, remoteId: remoteId, envelopeType: envelopeType(for: envelope), payloads: entries
+            )
+            if let localID {
+                MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .sent)
+            }
+            playSentSound(for: envelope)
         } catch {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .failed)
