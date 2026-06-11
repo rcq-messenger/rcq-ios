@@ -9,8 +9,18 @@ import Foundation
 /// we QUARANTINE their messages here until the user Accepts (→ the sender
 /// becomes a normal cross-island contact and the held messages replay) or
 /// Blocks. Mirrors web-chat's crossisland-requests.ts. Per-account (no bleed).
-final class CrossIslandRequestsStore {
+///
+/// ObservableObject so the contact list's pending banner can include held
+/// cross-island requests — without it the banner (the only path to
+/// PendingRequestsView) never rendered when ONLY a cross-island request
+/// waited, making the request invisible (founder report: 100@is2 → 911,
+/// "нигде не вижу заявок"). All mutators run on the main actor
+/// (MessageService.ingest, AppState, the request views).
+final class CrossIslandRequestsStore: ObservableObject {
     static let shared = CrossIslandRequestsStore()
+
+    /// Live count of held requests for the pending banner / badges.
+    @Published private(set) var requestCount: Int = 0
 
     /// One held message: the SEALED payload (re-fed through ingest verbatim on
     /// Accept, so it files with the correct sender + kind) plus a plaintext
@@ -48,6 +58,7 @@ final class CrossIslandRequestsStore {
         blockedKey = Self.blockedPrefix + (id?.uuidString ?? "none")
         cache = Self.loadRequests(defaults, key)
         blocked = Self.loadBlocked(defaults, blockedKey)
+        requestCount = cache.count
     }
 
     /// Re-point at the active account on launch + every account switch.
@@ -56,6 +67,7 @@ final class CrossIslandRequestsStore {
         blockedKey = Self.blockedPrefix + (accountID?.uuidString ?? "none")
         cache = Self.loadRequests(defaults, key)
         blocked = Self.loadBlocked(defaults, blockedKey)
+        requestCount = cache.count
     }
 
     private func reqKey(_ uin: Int, _ host: String) -> String { "\(uin)@\(host.lowercased())" }
@@ -73,6 +85,7 @@ final class CrossIslandRequestsStore {
         if r.msgs.count > Self.maxHeld { r.msgs = Array(r.msgs.suffix(Self.maxHeld)) }
         cache[k] = r
         persist()
+        requestCount = cache.count
         return true
     }
 
@@ -87,6 +100,7 @@ final class CrossIslandRequestsStore {
         let r = cache[k]
         cache[k] = nil
         persist()
+        requestCount = cache.count
         return r
     }
 

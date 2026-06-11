@@ -14,6 +14,9 @@ struct ContactListView: View {
     @StateObject private var stories = StoryService.shared
     @StateObject private var news = NewsService.shared
     @StateObject private var accountManager = AccountManager.shared
+    // Variant A: held cross-island "message requests" count into the pending
+    // banner — without it a cross-island request was invisible (no entry point).
+    @ObservedObject private var ciRequests = CrossIslandRequestsStore.shared
 
     @State private var showAddContact = false
     @State private var showAddAccount = false
@@ -663,11 +666,11 @@ struct ContactListView: View {
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: []) {
-                if vm.pendingCount > 0 {
+                if vm.pendingCount + ciRequests.requestCount > 0 {
                     pendingBanner
                 }
                 // Gate empty-state on a completed first refresh — otherwise the CTA flashes during cold launch.
-                if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount == 0 {
+                if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount + ciRequests.requestCount == 0 {
                     emptyState
                 }
                 favoritesSection
@@ -1039,15 +1042,16 @@ struct ContactListView: View {
     }
 
     private var pendingBanner: some View {
-        Button { showPending = true } label: {
+        let total = vm.pendingCount + ciRequests.requestCount
+        return Button { showPending = true } label: {
             HStack {
                 Image(systemName: "person.crop.circle.badge.plus")
                     .foregroundColor(Theme.Color.accent)
                 Text(String(
-                    format: (vm.pendingCount == 1
+                    format: (total == 1
                         ? "contact_list.pending_one"
                         : "contact_list.pending_many").localized,
-                    vm.pendingCount
+                    total
                 ))
                     .font(Theme.Font.statusLabel)
                     .foregroundColor(Theme.Color.textPrimary)
