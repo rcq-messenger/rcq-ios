@@ -77,6 +77,42 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    enum CrossIslandAddError: Error { case notCrossIsland, unreachable }
+
+    /// §5c owner-initiated cross-island add: put a contact who lives on ANOTHER
+    /// island into a (local) group. The group's island has no account for the
+    /// foreign uin (that's the "no such user" 404), so resolve-or-register the
+    /// contact's PUBLIC keys there to get a local uin, add THAT uin, then send
+    /// the contact the group link so they guest-register (recover-first → the
+    /// SAME uin) and start polling. Added FIRST, their later /join
+    /// short-circuits on "already a member" BEFORE the closed-group gate, so
+    /// this works for CLOSED groups too. Foreign groups (alias id) keep the
+    /// §5c management limit — owner-add there routes to the own island.
+    func addCrossIslandMember(group: RCQGroup, contact: Contact) async throws {
+        guard let contactHost = contact.host else { throw CrossIslandAddError.notCrossIsland }
+        let groupHost = group.host ?? Multihome.ownHost()
+        // Contact already lives on the group's island → a normal same-island add.
+        if contactHost.lowercased() == groupHost.lowercased() {
+            try await addMember(groupID: group.id, uin: contact.uin)
+            return
+        }
+        let nick = contact.nickname.isEmpty ? "user-\(contact.uin)" : contact.nickname
+        var resolved = await CrossIslandGroups.resolveUinForKey(host: groupHost, signingKeyB64: contact.signingKey)
+        if resolved == nil {
+            resolved = await CrossIslandGroups.registerForeignKeys(
+                host: groupHost, identityKey: contact.identityKey, signingKey: contact.signingKey, nickname: nick
+            )
+        }
+        guard let localUin = resolved else { throw CrossIslandAddError.unreachable }
+        // Add the resolved local uin to the roster (group.host == nil → own
+        // island; this is the founder's common case).
+        try await addMember(groupID: group.id, uin: localUin)
+        // Notify the contact via a cross-island 1:1 — the link renders as a join
+        // card on their side; tapping it completes the loop.
+        let link = "https://rcq.app/g/\(group.id)@\(groupHost)"
+        try? await MessageService.shared.send(text: link, to: contact)
+    }
+
     func removeMember(groupID: Int, uin: Int) async throws {
         let _: EmptyResponse = try await APIClient.shared.request(
             "DELETE", "/groups/\(groupID)/members/\(uin)"

@@ -696,18 +696,39 @@ private struct AddGroupMemberView: View {
 
     private func contactRow(_ c: Contact) -> some View {
         Button {
-            Task { await add(uin: c.uin) }
+            // §5c: a contact on another island can't be added by their foreign
+            // uin (the group's island has no such account). Route them through
+            // the owner-initiated cross-island add (resolve/register + invite).
+            if c.host != nil {
+                Task { await addCrossIsland(c) }
+            } else {
+                Task { await add(uin: c.uin) }
+            }
         } label: {
             HStack(spacing: 10) {
-                StatusIcon(status: c.status, size: 24)
+                StatusIcon(status: c.status, size: 24, crossIsland: c.host != nil)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(c.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                    Text(verbatim: "#\(c.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    if let h = c.host {
+                        Text(verbatim: "#\(c.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    } else {
+                        Text(verbatim: "#\(c.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    }
                 }
                 Spacer()
                 Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
+        }
+    }
+
+    private func addCrossIsland(_ c: Contact) async {
+        addError = nil
+        do {
+            try await GroupService.shared.addCrossIslandMember(group: group, contact: c)
+            dismiss()
+        } catch {
+            addError = String(format: "group.add.error.generic".localized, error.localizedDescription)
         }
     }
 

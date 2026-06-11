@@ -219,6 +219,30 @@ enum CrossIslandGroups {
         }
     }
 
+    /// §5c owner-initiated group add: the local uin bound to a signing key on
+    /// `host`, or nil when no account there has it yet. Open inverse key card.
+    static func resolveUinForKey(host: String, signingKeyB64: String) async -> Int? {
+        guard let enc = signingKeyB64.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://\(host)/federation/uin-for-key?signing_key=\(enc)") else { return nil }
+        guard let (data, resp) = try? await URLSession.shared.data(from: url),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        struct Out: Decodable { let uin: Int }
+        return (try? decoder.decode(Out.self, from: data))?.uin
+    }
+
+    /// §5c: register a contact's PUBLIC keys on `host` so an owner-initiated add
+    /// has a local uin for the roster. The contact later recovers the SAME uin
+    /// (recover-first is keyed by the signing key). Returns the new uin, or nil.
+    static func registerForeignKeys(host: String, identityKey: String, signingKey: String, nickname: String) async -> Int? {
+        struct Out: Decodable { let uin: Int }
+        let out: Out? = try? await postJSON(
+            "https://\(host)/auth/register",
+            json: ["nickname": nickname, "identity_key": identityKey, "signing_key": signingKey],
+            jwt: nil
+        )
+        return out?.uin
+    }
+
     /// Deposit a group fan-out into the group's island. The deposit endpoint is
     /// the open unauthenticated path (same as 1:1), so no jwt needed.
     struct GroupEntry: Encodable { let to_uin: Int; let payload: String }
