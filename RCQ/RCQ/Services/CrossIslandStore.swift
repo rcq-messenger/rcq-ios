@@ -8,8 +8,17 @@ import Foundation
 /// island key card). `ContactService` merges these into its published list so
 /// the normal chat-open + send flow works; `MessageService.sendEnvelope` routes
 /// by `contact.host`. Mirrors web-chat's crossisland-store + Android's.
-final class CrossIslandStore {
+/// ObservableObject so the contact list's "Other islands" section renders
+/// straight from this store: the merged ContactService list silently DROPS a
+/// cross-island contact when a same-uin LOCAL contact exists (per-island uins
+/// collide), which made an accepted cross-island peer invisible in the roster
+/// (founder report). The section reads the snapshot; the merge stays for the
+/// chat-open path.
+final class CrossIslandStore: ObservableObject {
     static let shared = CrossIslandStore()
+
+    /// Live copy of the stored contacts for SwiftUI (always `host != nil`).
+    @Published private(set) var contactsSnapshot: [Contact] = []
 
     private static let appGroup = "group.app.rcq.shared"
     // Per-account: a cross-island contact added on one local account must NOT
@@ -28,6 +37,7 @@ final class CrossIslandStore {
         // the per-account slot from) so init stays off the main actor.
         accountKey = Self.keyFor(AppGroup.readActiveAccountID())
         cache = Self.load(defaults, accountKey)
+        contactsSnapshot = Array(cache.values)
     }
 
     private static func keyFor(_ id: UUID?) -> String {
@@ -46,6 +56,7 @@ final class CrossIslandStore {
     func bind(accountID: UUID?) {
         accountKey = Self.keyFor(accountID)
         cache = Self.load(defaults, accountKey)
+        contactsSnapshot = Array(cache.values)
     }
 
     private func ciKey(_ uin: Int, _ host: String) -> String { "\(uin)@\(host.lowercased())" }
@@ -54,6 +65,7 @@ final class CrossIslandStore {
         guard let host = c.host else { return }
         cache[ciKey(c.uin, host)] = c
         persist()
+        contactsSnapshot = Array(cache.values)
     }
 
     /// All stored cross-island contacts (each has `host` set).
@@ -66,6 +78,7 @@ final class CrossIslandStore {
     func remove(uin: Int, host: String) {
         cache.removeValue(forKey: ciKey(uin, host))
         persist()
+        contactsSnapshot = Array(cache.values)
     }
 
     private func persist() {

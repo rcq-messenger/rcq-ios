@@ -1265,6 +1265,8 @@
 "pending.cta.accept" = "Accept";
 "ci.section" = "Message requests (other islands)";
 "ci.block" = "Block";
+"ci.add_row.subtitle" = "Cross-island contact (another RCQ island)";
+"contact_list.section.cross_island" = "Other islands";
 "pending.cta.decline" = "Decline";
 
 /* ── Inventory / Lootbox ──────────────────────────────────── */

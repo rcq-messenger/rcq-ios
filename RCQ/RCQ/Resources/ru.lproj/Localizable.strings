@@ -1232,6 +1232,8 @@
 "pending.cta.accept" = "Принять";
 "ci.section" = "Запросы на переписку (другие острова)";
 "ci.block" = "Заблокировать";
+"ci.add_row.subtitle" = "Контакт с другого острова RCQ";
+"contact_list.section.cross_island" = "Другие острова";
 "pending.cta.decline" = "Отклонить";
 
 /* ── Inventory / Lootbox ──────────────────────────────────── */

@@ -101,8 +101,9 @@ struct AddContactView: View {
                                         HStack(spacing: 12) {
                                             Image(systemName: "globe").foregroundColor(Theme.Color.accent)
                                             VStack(alignment: .leading, spacing: 2) {
-                                                Text("\(ci.uin)@\(ci.host)").foregroundColor(Theme.Color.textPrimary)
-                                                Text("Cross-island contact (another RCQ island)")
+                                                // verbatim: LocalizedStringKey would group the uin ("618,917,107").
+                                                Text(verbatim: "\(ci.uin)@\(ci.host)").foregroundColor(Theme.Color.textPrimary)
+                                                Text("ci.add_row.subtitle".localized)
                                                     .font(.caption).foregroundColor(Theme.Color.textSecondary)
                                             }
                                             Spacer()
@@ -521,7 +522,9 @@ struct PendingRequestsView: View {
 
     private func ciRow(_ r: CrossIslandRequestsStore.Request) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(r.uin)@\(r.host)")
+            // verbatim: LocalizedStringKey interpolation would render the uin
+            // with locale grouping separators ("618,917,107").
+            Text(verbatim: "\(r.uin)@\(r.host)")
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(Theme.Color.textPrimary)
             if !r.preview.isEmpty {

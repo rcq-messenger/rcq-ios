@@ -17,6 +17,10 @@ struct ContactListView: View {
     // Variant A: held cross-island "message requests" count into the pending
     // banner — without it a cross-island request was invisible (no entry point).
     @ObservedObject private var ciRequests = CrossIslandRequestsStore.shared
+    // Cross-island contacts render from the store directly: the merged
+    // ContactService list drops them when a same-uin LOCAL contact exists.
+    @ObservedObject private var ciStore = CrossIslandStore.shared
+    @State private var collapsedCrossIsland = false
 
     @State private var showAddContact = false
     @State private var showAddAccount = false
@@ -691,6 +695,7 @@ struct ContactListView: View {
                     unreadBadge: vm.offlineUnreadContacts,
                     toggle: { vm.collapsedOffline.toggle() }
                 )
+                crossIslandSection
                 archiveSection
                 Spacer().frame(height: 8)
             }
@@ -1039,6 +1044,32 @@ struct ContactListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
+    }
+
+    /// "Other islands" — cross-island contacts, straight from CrossIslandStore
+    /// (the merged roster drops them on a uin collision with a local contact).
+    /// Rows pass the full Contact (host set) into navigation, so the chat
+    /// routes cross-island even when a same-uin local contact exists.
+    @ViewBuilder
+    private var crossIslandSection: some View {
+        let unread = UnreadStore.shared.allPeerCounts
+        let rows = ciStore.contactsSnapshot
+            .map { c -> Contact in
+                var c = c
+                c.unread = unread[c.uin] ?? 0
+                return c
+            }
+            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
+        if !rows.isEmpty {
+            section(
+                title: "contact_list.section.cross_island".localized,
+                count: rows.count,
+                collapsed: collapsedCrossIsland,
+                rows: rows,
+                unreadBadge: rows.filter { $0.unread > 0 }.count,
+                toggle: { collapsedCrossIsland.toggle() }
+            )
+        }
     }
 
     private var pendingBanner: some View {
@@ -1493,7 +1524,7 @@ private struct ContactRow: View {
 
     @ViewBuilder
     private var statusIcon: some View {
-        StatusIcon(status: contact.status, size: 28)
+        StatusIcon(status: contact.status, size: 28, crossIsland: contact.host != nil)
     }
 
     /// Coarse "last seen" buckets — minutes / hours / days. Anything

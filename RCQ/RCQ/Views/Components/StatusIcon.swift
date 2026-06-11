@@ -7,9 +7,19 @@ import SwiftUI
 struct StatusIcon: View {
     let status: UserStatus
     var size: CGFloat = 14
+    /// Cross-island peer: presence isn't tracked across islands, so instead of
+    /// claiming online/offline we render the ONLINE flower desaturated to gray
+    /// ("reachable, presence unknown").
+    var crossIsland: Bool = false
 
     var body: some View {
-        if let ui = UIImage(named: assetName) {
+        if crossIsland, let ui = UIImage(named: "status_online") {
+            Image(uiImage: ui)
+                .resizable()
+                .interpolation(.high)
+                .saturation(0)
+                .frame(width: size, height: size)
+        } else if let ui = UIImage(named: assetName) {
             Image(uiImage: ui)
                 .resizable()
                 .interpolation(.high)

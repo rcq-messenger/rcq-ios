@@ -878,7 +878,7 @@ struct ChatView: View {
                         .foregroundColor(Theme.Color.accent)
                         .frame(width: 24, height: 24)
                 } else {
-                    StatusIcon(status: live.status, size: 24)
+                    StatusIcon(status: live.status, size: 24, crossIsland: live.host != nil)
                 }
                 VStack(spacing: 0) {
                     Text(isSelf ? "contact_list.saved_messages".localized : live.nickname)

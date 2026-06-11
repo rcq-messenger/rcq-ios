@@ -31,16 +31,18 @@ final class ContactListViewModel: ObservableObject {
 
     /// Online section, filtered by archive state. Archived contacts
     /// drop out of the regular online/offline groups and live under a
-    /// dedicated section at the bottom of the list.
+    /// dedicated section at the bottom of the list. Cross-island contacts
+    /// (`host != nil`) live in their own "Other islands" section — presence
+    /// isn't tracked across islands, so online/offline would be a lie.
     var online: [Contact] {
         contacts
-            .filter { $0.status != .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
+            .filter { $0.host == nil && $0.status != .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
             .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
     }
 
     var offline: [Contact] {
         contacts
-            .filter { $0.status == .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
+            .filter { $0.host == nil && $0.status == .offline && !ArchiveStore.shared.contains(peer: $0.uin) }
             .sorted {
                 if ($0.unread > 0) != ($1.unread > 0) { return $0.unread > 0 }
                 return $0.nickname.lowercased() < $1.nickname.lowercased()
@@ -49,7 +51,8 @@ final class ContactListViewModel: ObservableObject {
 
     var offlineUnreadContacts: Int {
         contacts.filter {
-            $0.status == .offline
+            $0.host == nil
+                && $0.status == .offline
                 && !ArchiveStore.shared.contains(peer: $0.uin)
                 && $0.unread > 0
         }.count
