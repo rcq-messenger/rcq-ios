@@ -386,7 +386,8 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
     private let ownUIN: Int
     private let identityPriv: Curve25519.KeyAgreement.PrivateKey
     private let signingPriv: Curve25519.Signing.PrivateKey
-    private let signingPubB64: String
+    // Internal: QRSheet embeds it as the advisory `k=` pinning key (spec §5).
+    let signingPubB64: String
 
     private static let WIRE_VERSION_V1 = 1
     private static let WIRE_VERSION_V2 = 2

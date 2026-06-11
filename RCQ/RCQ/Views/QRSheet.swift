@@ -157,12 +157,23 @@ struct QRSheet: View {
         .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
     }
 
-    /// Our own add-code payload. Carries the island host for a self-hoster so
-    /// others can add us cross-island by scanning; bare (back-compat) on the
-    /// flagship so old scanners keep working for the common case.
+    /// Our own add-code payload (spec §5). Carries the island host for a
+    /// self-hoster so others can add us cross-island by scanning, plus the
+    /// advisory `k=` signing key (base64url; consumers still fetch the card).
+    /// A flagship account with no key degrades to the legacy bare form old
+    /// scanners already parse.
     private func addPayload(for uin: Int) -> String {
         let host = Multihome.ownHost()
-        return host == RcqFederation.flagshipHost ? "rcq://add/\(uin)" : "rcq://add/\(uin)?h=\(host)"
+        var params: [String] = []
+        if host != RcqFederation.flagshipHost { params.append("h=\(host)") }
+        if let sk = (MessageService.shared.crypto as? SignalCryptoService)?.signingPubB64 {
+            let urlSafe = sk
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            params.append("k=\(urlSafe)")
+        }
+        return "rcq://add/\(uin)" + (params.isEmpty ? "" : "?" + params.joined(separator: "&"))
     }
 
     private func handleScan(_ raw: String) async {

@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
     @Published var serverCapabilities: ServerCapabilities = .defaultLegacy
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
+    /// Island host from a contact link's `?h=` (spec §5) — set BEFORE
+    /// pendingAddUIN so the observer reads both; nil = same-island link.
+    @Published var pendingAddHost: String? = nil
     @Published var pendingOpenChatUIN: Int? = nil
     @Published var pendingOpenGroupID: Int? = nil
     /// Drives the `GroupJoinSheet` when a user taps a shared-group
@@ -132,6 +135,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    private static func queryParam(_ u: URL, _ name: String) -> String? {
+        let v = URLComponents(url: u, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == name })?.value?
+            .trimmingCharacters(in: .whitespaces)
+        return (v?.isEmpty == false) ? v : nil
+    }
+
     func handle(deepLink url: URL) {
         // Invite-only server join — rcq://server/<host>?invite=<code> (the
         // QR/link an island operator shares) or https://rcq.app/s/<host>?invite=.
@@ -179,6 +189,9 @@ final class AppState: ObservableObject {
         if url.scheme == "rcq", url.host == "add" {
             let uinStr = url.pathComponents.last ?? ""
             if let uin = Int(uinStr), uin > 0 {
+                // Spec §5: ?h=<island> makes one scan/tap add a cross-island
+                // contact; bare links stay same-island.
+                pendingAddHost = Self.queryParam(url, "h")
                 pendingAddUIN = uin
             }
             return
@@ -189,6 +202,7 @@ final class AppState: ObservableObject {
            url.pathComponents[1] == "u" {
             let uinStr = url.pathComponents[2]
             if let uin = Int(uinStr), uin > 0 {
+                pendingAddHost = Self.queryParam(url, "h")
                 pendingAddUIN = uin
             }
             return
@@ -569,6 +583,7 @@ final class AppState: ObservableObject {
         pendingOpenPending = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
+        pendingAddHost = nil
 
         let nickname = AuthService.shared.nickname
         KeychainStore.delete(KeychainStore.Keys.uin)
@@ -622,6 +637,7 @@ final class AppState: ObservableObject {
         pendingOpenPending = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
+        pendingAddHost = nil
 
         await AuthService.shared.wipeLocalIdentity()
 
@@ -857,6 +873,7 @@ final class AppState: ObservableObject {
         pendingOpenPending = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
+        pendingAddHost = nil
 
         MessageDB.shared.reload()
         SignalProtocolDB.shared.reload()

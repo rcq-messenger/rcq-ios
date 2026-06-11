@@ -52,6 +52,8 @@ struct ContactListView: View {
     @State private var showArchivePINGate = false
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
+    /// Island host from the contact link's `?h=` (spec §5); nil = same island.
+    @State private var deepLinkAddHost: String? = nil
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
     @State private var showStealthInfo: Bool = false
     @State private var refreshAttemptedFor: Set<Int> = []
@@ -150,7 +152,7 @@ struct ContactListView: View {
                 get: { deepLinkAddUIN.map { DeepLinkUIN(uin: $0) } },
                 set: { deepLinkAddUIN = $0?.uin }
             )) { wrap in
-                AddContactView(prefillUIN: wrap.uin)
+                AddContactView(prefillUIN: wrap.uin, prefillHost: deepLinkAddHost)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
@@ -287,8 +289,10 @@ struct ContactListView: View {
             }
             .onChange(of: appState.pendingAddUIN) { newValue in
                 if let uin = newValue {
+                    deepLinkAddHost = appState.pendingAddHost
                     deepLinkAddUIN = uin
                     appState.pendingAddUIN = nil
+                    appState.pendingAddHost = nil
                 }
             }
             // Don't clear pendingOpenChatUIN until navigation succeeds — cold-launch push taps land

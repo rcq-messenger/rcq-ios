@@ -13,6 +13,9 @@ struct AddContactView: View {
     @State private var ciBusy = false
     /// Pre-filled UIN from an `rcq://add/{uin}` deep link.
     var prefillUIN: Int? = nil
+    /// Island host from the link's `?h=` (spec §5): pre-fills `uin@host` so
+    /// the Cross-island row surfaces immediately — one scan, one tap.
+    var prefillHost: String? = nil
     var onSelectGroup: ((RCQGroup) -> Void)? = nil
 
     private var groupMatches: [RCQGroup] {
@@ -138,8 +141,12 @@ struct AddContactView: View {
             }
             .task {
                 if let uin = prefillUIN {
-                    query = String(uin)
-                    await search()
+                    if let host = prefillHost, host != Multihome.ownHost() {
+                        query = "\(uin)@\(host)"   // surfaces the Cross-island row
+                    } else {
+                        query = String(uin)
+                        await search()
+                    }
                 }
             }
             .onChange(of: query) { _ in
