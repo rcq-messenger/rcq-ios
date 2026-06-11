@@ -845,6 +845,11 @@ final class AppState: ObservableObject {
 
         MessageDB.shared.reload()
         SignalProtocolDB.shared.reload()
+        // Load the NEW account's conversations into the in-memory store now that
+        // MessageDB points at its SQLite file. The singleton's init→rehydrate
+        // only runs once at app launch, so without this the chat list stayed
+        // EMPTY after an account switch until an app restart (founder report).
+        MessageStore.shared.reloadFromDB()
 
         booted = false
         bootError = nil

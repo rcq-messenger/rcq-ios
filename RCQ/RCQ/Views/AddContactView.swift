@@ -27,11 +27,15 @@ struct AddContactView: View {
         query.trimmingCharacters(in: .whitespaces)
     }
 
-    /// Federation (F2): the query parsed as a `uin@host` cross-island address
-    /// (non-flagship), or nil for an ordinary flagship search.
+    /// Federation (F2): the query parsed as an explicit `uin@host` whose host
+    /// is NOT our OWN island, or nil otherwise. Compared to our own island, not
+    /// the flagship: a self-hoster on is2 adding `911@api.rcq.app` must see the
+    /// flagship as cross-island. Requires an explicit `@` so a bare UIN stays a
+    /// normal local search.
     private var crossIsland: RcqFederation.Address? {
-        guard let a = try? RcqFederation.parseAddress(trimmedQuery),
-              a.host != RcqFederation.flagshipHost else { return nil }
+        guard trimmedQuery.contains("@"),
+              let a = try? RcqFederation.parseAddress(trimmedQuery),
+              a.host != Multihome.ownHost() else { return nil }
         return a
     }
 
