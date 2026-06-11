@@ -90,8 +90,10 @@ final class ContactService: ObservableObject {
     /// the normal chat-open + send flow works. Returns true on success.
     func addCrossIslandContact(uin: Int, host: String) async -> Bool {
         guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else { return false }
+        // Presence isn't tracked across islands, so don't fake `.online` — show
+        // offline/unknown rather than a green dot we can't back up.
         var c = Contact(
-            uin: uin, nickname: "\(uin)@\(host)", status: .online, statusMessage: nil,
+            uin: uin, nickname: "\(uin)@\(host)", status: .offline, statusMessage: nil,
             blocked: false, identityKey: card.identity_key, signingKey: card.signing_key,
             signalIdentityKey: card.signal_identity_key, gender: nil, unread: 0, lastSeen: nil
         )
@@ -140,6 +142,19 @@ final class ContactService: ObservableObject {
     }
 
     func remove(_ uin: Int) async throws {
+        // Cross-island contacts live ONLY in CrossIslandStore (on-device), not
+        // in the server-side /contacts list, so a DELETE /contacts/{uin} did
+        // nothing and they couldn't be removed (founder report). Remove them
+        // locally instead.
+        if let c = contacts.first(where: { $0.uin == uin }), let host = c.host {
+            CrossIslandStore.shared.remove(uin: uin, host: host)
+            contacts.removeAll { $0.uin == uin }
+            UnreadStore.shared.clearPeer(uin)
+            BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+            BadgeCounter.syncIcon()
+            RemovedContactsStore.shared.add(uin)
+            return
+        }
         let _: EmptyResponse = try await APIClient.shared.request(
             "DELETE", "/contacts/\(uin)"
         )

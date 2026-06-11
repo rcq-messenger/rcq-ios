@@ -811,6 +811,11 @@ final class AppState: ObservableObject {
 
         ContactService.shared.wipe()
         GroupService.shared.wipe()
+        // Re-point cross-island contacts at the NEW account (per-account store);
+        // boot()'s ContactService.refresh then merges the right ones in. Without
+        // this, a cross-island contact added on one local account bled into the
+        // others (founder report).
+        CrossIslandStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
         NotificationPrefsService.shared.wipe()
         // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows
