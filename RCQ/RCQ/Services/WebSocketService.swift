@@ -268,6 +268,13 @@ final class WebSocketService: ObservableObject {
     }
 
     func sendCallSignal(type: String, toUIN: Int, callID: String, extras: [String: Any] = [:]) {
+        // §5d: a signal to a CROSS-ISLAND peer can't ride this socket (their
+        // island never sees our WS) — wrap it as Envelope.callSignal, v=1-seal
+        // and deposit it to their island instead. Same-island stays WS.
+        if let ci = CrossIslandStore.shared.find(uin: toUIN), let host = ci.host {
+            CrossIslandSender.depositCallSignal(type: type, callID: callID, extras: extras, contact: ci, host: host)
+            return
+        }
         var payload: [String: Any] = ["type": type, "to_uin": toUIN, "call_id": callID]
         for (k, v) in extras { payload[k] = v }
         send(payload)

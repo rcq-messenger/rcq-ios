@@ -1131,6 +1131,30 @@ final class MessageService {
                 return IngestOutcome(thread: dest, isNewContent: false, wasInNSECache: fromNSE)
             }
 
+            // §5d cross-island call signaling rides sealed envelopes (kind
+            // "call") — route to the call state machine, never the message
+            // store, and never the request quarantine (signals are ephemeral).
+            // Only an ACCEPTED cross-island contact may ring us; a stale offer
+            // (old `ts` — offline-queue drains deliver hours-old rows) files a
+            // missed-call row instead of ringing. ACK every branch so the
+            // queue stops redelivering.
+            if case .callSignal(_, let sig, let cid, let ts, let data) = decrypted.envelope {
+                let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                guard ws.groupID == nil,
+                      let fromHost = decrypted.senderHost, fromHost != Multihome.ownHost(),
+                      CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost })
+                else { return outcome }
+                if sig == "call_offer", Int(Date().timeIntervalSince1970) - ts > 60 {
+                    CallService.shared.fileMissedCall(
+                        fromUIN: decrypted.senderUIN,
+                        media: CallMedia(rawValue: data["media"] ?? "video") ?? .video
+                    )
+                    return outcome
+                }
+                CallService.shared.handleCrossIslandSignal(sig: sig, fromUIN: decrypted.senderUIN, callID: cid, data: data)
+                return outcome
+            }
+
             // Variant A consent: a 1:1 message from an un-accepted CROSS-ISLAND
             // sender (its `from_host` isn't ours and we haven't added them) is
             // QUARANTINED as a "message request" instead of landing in the chat
@@ -1518,6 +1542,10 @@ final class MessageService {
             case .carbon:
                 // Intercepted before this switch (filed into its destination
                 // thread). Unreachable here; present only for exhaustiveness.
+                break
+            case .callSignal:
+                // §5d: intercepted before this switch (routed to CallService).
+                // Unreachable here; present only for exhaustiveness.
                 break
             }
             os_log(

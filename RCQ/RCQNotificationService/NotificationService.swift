@@ -288,6 +288,16 @@ class NotificationService: UNNotificationServiceExtension {
             content.body = q.isEmpty ? "📊 New poll" : "📊 \(q)"
         case .screenshotTaken:
             content.body = "📸 Screenshot"
+        case .callSignal(_, let sig, _, let ts, _):
+            // §5d cross-island call signaling pushed to a backgrounded app.
+            // No VoIP push across islands (v1 limit) — at least banner the
+            // offer honestly; a stale offer reads as missed.
+            if sig == "call_offer" {
+                let fresh = Int(Date().timeIntervalSince1970) - ts <= 60
+                content.body = fresh ? "📞 Incoming call" : "📞 Missed call"
+            } else {
+                content.body = "Call update"
+            }
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon:
             content.body = "Message"
@@ -440,7 +450,7 @@ class NotificationService: UNNotificationServiceExtension {
              .systemNotice, .poll, .screenshotTaken:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon:
+             .secureScreen, .carbon, .callSignal:
             return false
         }
     }
@@ -464,6 +474,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .secureScreen:     return "secscreen"
         case .screenshotTaken:  return "shot"
         case .carbon:           return "carbon"
+        case .callSignal:       return "call"
         }
     }
 

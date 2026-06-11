@@ -77,11 +77,20 @@ enum Envelope: Codable, Hashable {
     /// dedups its own carbon by the inner message's id. Defined identically on
     /// iOS/Android/web.
     indirect case carbon(to: Int?, gid: Int?, env: Envelope)
+    /// Cross-island call signaling (wire kind "call", spec §5d). Same-island
+    /// calls ride the WS as plaintext call_* events; across islands there is
+    /// no shared socket, so the SAME signal payload is wrapped here, v=1-sealed
+    /// and deposited to the peer's island. `sig` = the WS event type verbatim
+    /// (call_offer/call_answer/call_ice/call_end/call_renegotiate*), `cid` =
+    /// the call id, `ts` = sender epoch SECONDS (receivers drop stale offers),
+    /// `data` = the signal extras (sdp/candidate/media/reason — all strings).
+    case callSignal(id: UUID, sig: String, cid: String, ts: Int, data: [String: String])
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
         case on
         case to, gid, env
+        case sig, cid, ts, data
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
@@ -202,6 +211,13 @@ enum Envelope: Codable, Hashable {
             try c.encodeIfPresent(to, forKey: .to)
             try c.encodeIfPresent(gid, forKey: .gid)
             try c.encode(env, forKey: .env)
+        case .callSignal(let id, let sig, let cid, let ts, let data):
+            try c.encode("call", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(sig, forKey: .sig)
+            try c.encode(cid, forKey: .cid)
+            try c.encode(ts, forKey: .ts)
+            try c.encode(data, forKey: .data)
         }
     }
 
@@ -315,6 +331,14 @@ enum Envelope: Codable, Hashable {
                 to: try c.decodeIfPresent(Int.self, forKey: .to),
                 gid: try c.decodeIfPresent(Int.self, forKey: .gid),
                 env: try c.decode(Envelope.self, forKey: .env)
+            )
+        case "call":
+            self = .callSignal(
+                id: try c.decode(UUID.self, forKey: .id),
+                sig: try c.decode(String.self, forKey: .sig),
+                cid: try c.decode(String.self, forKey: .cid),
+                ts: try c.decode(Int.self, forKey: .ts),
+                data: try c.decodeIfPresent([String: String].self, forKey: .data) ?? [:]
             )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")

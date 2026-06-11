@@ -75,6 +75,7 @@ final class CallService: ObservableObject {
         )
         print("[CallService] start outgoing call=\(call.id) to uin=\(contact.uin) media=\(media)")
         state = .outgoingRinging(call)
+        armRingTimeout(callID: call.id)
         // outgoing bypasses CallKit: CXStartCallAction + libwebrtc on iOS 17/18 fires an
         // immediate CXEndCallAction once the audio session is touched. Inbound only.
         Task {
@@ -222,6 +223,7 @@ final class CallService: ObservableObject {
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         state = .incomingRinging(call)
+        armRingTimeout(callID: call.id)
     }
 
     func clearEnded() {
@@ -357,6 +359,69 @@ final class CallService: ObservableObject {
         }
     }
 
+    // MARK: - cross-island signaling (§5d)
+
+    /// A decrypted cross-island call envelope (inner kind "call") re-enters
+    /// the SAME state machine as a live WS signal. Replies route back
+    /// cross-island automatically: `WebSocketService.sendCallSignal` branches
+    /// on the peer being a CrossIslandStore contact.
+    func handleCrossIslandSignal(sig: String, fromUIN: Int, callID: String, data: [String: String]) {
+        let sdp = data["sdp"] ?? ""
+        switch sig {
+        case "call_offer":
+            let media = CallMedia(rawValue: data["media"] ?? "video") ?? .video
+            handle(.callOffer(fromUIN: fromUIN, nickname: String(fromUIN), callID: callID, media: media, sdp: sdp))
+        case "call_answer":
+            handle(.callAnswer(fromUIN: fromUIN, callID: callID, sdp: sdp))
+        case "call_ice":
+            handle(.callIce(fromUIN: fromUIN, callID: callID, candidateJSON: data["candidate"] ?? ""))
+        case "call_end":
+            handle(.callEnd(fromUIN: fromUIN, callID: callID, reason: data["reason"] ?? "ended"))
+        case "call_renegotiate":
+            handle(.callRenegotiate(fromUIN: fromUIN, callID: callID, sdp: sdp))
+        case "call_renegotiate_answer":
+            handle(.callRenegotiateAnswer(fromUIN: fromUIN, callID: callID, sdp: sdp))
+        case "call_renegotiate_decline":
+            handle(.callRenegotiateDecline(fromUIN: fromUIN, callID: callID))
+        default:
+            break
+        }
+    }
+
+    /// §5d: a STALE cross-island offer (offline-queue drains deliver
+    /// hours-old rows) never rings — file the missed-call row directly.
+    func fileMissedCall(fromUIN: Int, media: CallMedia) {
+        let nickname = ContactService.shared.contacts
+            .first(where: { $0.uin == fromUIN })?.nickname ?? String(fromUIN)
+        let call = Call(peerUIN: fromUIN, peerNickname: nickname, media: media, direction: .incoming)
+        logCallEnded(call: call, reason: "expired", duration: nil)
+    }
+
+    /// Ringing watchdog, both directions. Outgoing: the offer can be silently
+    /// lost (peer offline, an old client ignoring a §5d cross-island call
+    /// envelope) — stop ringback after 60s as "no answer". Incoming: a dead
+    /// caller never sends call_end — stop ringing after 60s as missed.
+    private func armRingTimeout(callID: String) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            guard let self, let c = self.state.call, c.id == callID else { return }
+            switch self.state {
+            case .outgoingRinging:
+                self.sendEnd(call: c, reason: "unanswered")
+                self.state = .ended(c, reason: "unanswered")
+                self.teardownAfterEnd()
+                self.scheduleEndedClear()
+            case .incomingRinging:
+                self.state = .ended(c, reason: "expired")
+                CallProvider.shared.reportEnded(callID: c.id, reason: .unanswered)
+                self.teardownAfterEnd()
+                self.scheduleEndedClear()
+            default:
+                break
+            }
+        }
+    }
+
     // MARK: - WS plumbing
 
     private func handle(_ event: WebSocketService.Event) {
@@ -452,6 +517,7 @@ final class CallService: ObservableObject {
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         state = .incomingRinging(call)
+        armRingTimeout(callID: call.id)
         CallProvider.shared.reportIncoming(
             callID: callID,
             peerName: displayName,

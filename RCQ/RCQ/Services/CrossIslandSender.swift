@@ -25,6 +25,31 @@ enum CrossIslandSender {
         let uin: Int
     }
 
+    /// §5d cross-island call signaling: wrap a call_* WS signal as an
+    /// `Envelope.callSignal`, v=1-seal it to the contact's identity key and
+    /// deposit it to their PRIMARY island only. No backup-home copies — backup
+    /// mailboxes are polled (~30s), useless for real-time signaling, and if
+    /// the primary island is down the call cannot work anyway.
+    @MainActor
+    static func depositCallSignal(type: String, callID: String, extras: [String: Any], contact: Contact, host: String) {
+        guard let crypto = MessageService.shared.crypto else { return }
+        let data = extras.compactMapValues { $0 as? String }
+        let env = Envelope.callSignal(
+            id: UUID(), sig: type, cid: callID,
+            ts: Int(Date().timeIntervalSince1970), data: data
+        )
+        let bundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
+        guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else {
+            print("[CrossIslandSender] call-signal seal failed (\(type))")
+            return
+        }
+        let uin = contact.uin
+        Task.detached {
+            let ok = await deposit(host: host, uin: uin, payload: blob)
+            if !ok { print("[CrossIslandSender] call-signal deposit failed (\(type) → \(uin)@\(host))") }
+        }
+    }
+
     /// Fetch a peer's open public-key card from their island (no auth).
     static func fetchCard(host: String, uin: Int) async -> Card? {
         guard let url = URL(string: "https://\(host)/federation/keys/\(uin)") else { return nil }
