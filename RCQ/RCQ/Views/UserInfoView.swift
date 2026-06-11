@@ -6,6 +6,9 @@ struct UserInfoView: View {
     let isOwn: Bool
 
     @State private var profile: UserProfile?
+    /// §5c: the peer's island when this is a cross-island contact (gray flower,
+    /// island shown instead of presence, no own-island fetch/visit).
+    @State private var crossIslandHost: String?
     @State private var loading = true
     @State private var draft: UserProfile?
     @State private var saving = false
@@ -193,10 +196,14 @@ struct UserInfoView: View {
     private func header(_ p: UserProfile) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                StatusIcon(status: p.status, size: 48)
+                StatusIcon(status: p.status, size: 48, crossIsland: crossIslandHost != nil)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
                     Text(verbatim: "#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
+                    // Cross-island: show the island (presence doesn't cross islands).
+                    if let h = crossIslandHost {
+                        Text(verbatim: h).font(Theme.Font.mono).foregroundColor(Theme.Color.textSecondary)
+                    }
                     if let m = p.statusMessage, !m.isEmpty {
                         Text(m).font(.caption.italic()).foregroundColor(Theme.Color.textSecondary)
                     }
@@ -341,6 +348,25 @@ struct UserInfoView: View {
     private var saveEnabled: Bool { isOwn && hasChanges && !saving }
 
     private func load() async {
+        // §5c: a cross-island contact's profile lives on ITS island — our own
+        // /users/{uin}/info 404s. Render from the locally-merged card and skip
+        // the fetch + visit ping (the ping would mis-route to our island).
+        if !isOwn, let c = ContactService.shared.contacts.first(where: { $0.uin == uin && $0.host != nil }) {
+            var dict: [String: Any] = [
+                "uin": c.uin, "nickname": c.nickname, "status": "offline", "interests": [],
+                "identity_key": c.identityKey, "signing_key": c.signingKey,
+            ]
+            if let g = c.gender { dict["gender"] = g }
+            if let s = c.statusMessage { dict["status_message"] = s }
+            if let sik = c.signalIdentityKey { dict["signal_identity_key"] = sik }
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let p = try? JSONDecoder().decode(UserProfile.self, from: data) {
+                self.profile = p
+                self.crossIslandHost = c.host
+            }
+            self.loading = false
+            return
+        }
         do {
             let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
             self.profile = p

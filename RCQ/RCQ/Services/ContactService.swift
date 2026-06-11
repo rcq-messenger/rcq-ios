@@ -92,10 +92,11 @@ final class ContactService: ObservableObject {
         guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else { return false }
         // Presence isn't tracked across islands, so don't fake `.online` — show
         // offline/unknown rather than a green dot we can't back up.
+        let nick = (card.nickname?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(uin)@\(host)"
         var c = Contact(
-            uin: uin, nickname: "\(uin)@\(host)", status: .offline, statusMessage: nil,
+            uin: uin, nickname: nick, status: .offline, statusMessage: card.status_message,
             blocked: false, identityKey: card.identity_key, signingKey: card.signing_key,
-            signalIdentityKey: card.signal_identity_key, gender: nil, unread: 0, lastSeen: nil
+            signalIdentityKey: card.signal_identity_key, gender: card.gender, unread: 0, lastSeen: nil
         )
         c.host = host
         CrossIslandStore.shared.save(c)

@@ -1486,7 +1486,20 @@ private struct ContactRow: View {
                     Text(verbatim: "#\(contact.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
-                    if let m = contact.statusMessage, !m.isEmpty {
+                    if let h = contact.host {
+                        // §5c: a cross-island peer shows its island (presence /
+                        // last_seen don't cross islands), then any status.
+                        Text(verbatim: "· \(h)")
+                            .font(Theme.Font.monoSmall)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .lineLimit(1)
+                        if let m = contact.statusMessage, !m.isEmpty {
+                            Text("· \(m)")
+                                .font(.caption2.italic())
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                        }
+                    } else if let m = contact.statusMessage, !m.isEmpty {
                         Text("· \(m)")
                             .font(.caption2.italic())
                             .foregroundColor(Theme.Color.textSecondary)

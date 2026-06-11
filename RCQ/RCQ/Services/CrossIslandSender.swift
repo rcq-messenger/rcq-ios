@@ -13,6 +13,11 @@ enum CrossIslandSender {
         let identity_key: String
         let signing_key: String
         let signal_identity_key: String?
+        // §5c display: the open card now carries the peer's nickname (+ optional
+        // gender/status) so a cross-island contact shows a real name, not uin@host.
+        let nickname: String?
+        let gender: String?
+        let status_message: String?
     }
 
     struct Home {
