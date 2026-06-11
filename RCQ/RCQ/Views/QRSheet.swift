@@ -73,7 +73,7 @@ struct QRSheet: View {
             ScrollView {
                 VStack(spacing: 18) {
                     Spacer().frame(height: 12)
-                    if let qr = QRCode.image(from: "rcq://add/\(uin)") {
+                    if let qr = QRCode.image(from: addPayload(for: uin)) {
                         // 44pt badge over 240pt code = ~3.3%, well under
                         // the ~15% level-M error-correction tolerance.
                         Image(uiImage: qr)
@@ -103,7 +103,7 @@ struct QRSheet: View {
                         .padding(.horizontal, 24)
                     HStack(spacing: 10) {
                         Button {
-                            UIPasteboard.general.string = "rcq://add/\(uin)"
+                            UIPasteboard.general.string = addPayload(for: uin)
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                         } label: {
                             Label("qr.button.copy_link".localized, systemImage: "link")
@@ -157,15 +157,24 @@ struct QRSheet: View {
         .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
     }
 
+    /// Our own add-code payload. Carries the island host for a self-hoster so
+    /// others can add us cross-island by scanning; bare (back-compat) on the
+    /// flagship so old scanners keep working for the common case.
+    private func addPayload(for uin: Int) -> String {
+        let host = Multihome.ownHost()
+        return host == RcqFederation.flagshipHost ? "rcq://add/\(uin)" : "rcq://add/\(uin)?h=\(host)"
+    }
+
     private func handleScan(_ raw: String) async {
         guard let url = URL(string: raw),
-              let uin = Self.parseAddURL(url) else {
+              let scanned = Self.parseAddURL(url) else {
             await MainActor.run {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 scanResult = .failed(message: "qr.alert.invalid_code".localized)
             }
             return
         }
+        let uin = scanned.uin
         if uin == auth.ownUIN {
             await MainActor.run {
                 scanResult = .failed(message: "qr.alert.own_code".localized)
@@ -175,6 +184,20 @@ struct QRSheet: View {
         if ContactService.shared.contacts.contains(where: { $0.uin == uin }) {
             await MainActor.run {
                 scanResult = .alreadyContact(uin: uin)
+            }
+            return
+        }
+        // Resolve the peer's island: an explicit `?h=`, else the flagship (a
+        // bare code means flagship by convention). If that island isn't OURS,
+        // add as a cross-island contact directly (no add-request; the peer's
+        // keys come from their island's open card). This is what lets a
+        // self-hoster on is2 scan a flagship user's bare QR and reach them.
+        let host = scanned.host ?? RcqFederation.flagshipHost
+        if host != Multihome.ownHost() {
+            let ok = await ContactService.shared.addCrossIslandContact(uin: uin, host: host)
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
+                scanResult = ok ? .sent(uin: uin) : .failed(message: "qr.alert.failed.title".localized)
             }
             return
         }
@@ -192,11 +215,31 @@ struct QRSheet: View {
         }
     }
 
-    static func parseAddURL(_ url: URL) -> Int? {
-        guard url.scheme == "rcq" else { return nil }
-        guard url.host == "add" else { return nil }
-        let trimmed = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return Int(trimmed)
+    /// A scanned add-code: the UIN plus an optional island host. Handles our own
+    /// `rcq://add/{uin}[?h=host]` and the web universal link
+    /// `https://rcq.app/u/{uin}?h=host` so iOS can scan codes from any client.
+    struct ScannedAddress { let uin: Int; let host: String? }
+
+    static func parseAddURL(_ url: URL) -> ScannedAddress? {
+        let hostRaw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "h" })?.value?
+            .trimmingCharacters(in: .whitespaces)
+        let host = (hostRaw?.isEmpty ?? true) ? nil : hostRaw
+        // rcq://add/{uin}[?h=host]
+        if url.scheme == "rcq", url.host == "add" {
+            let seg = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard let uin = Int(seg) else { return nil }
+            return ScannedAddress(uin: uin, host: host)
+        }
+        // https://rcq.app/u/{uin}?h=host
+        if let scheme = url.scheme, scheme.hasPrefix("http"),
+           let h = url.host, h == "rcq.app" || h == "www.rcq.app" {
+            let parts = url.path.split(separator: "/").map(String.init)
+            if parts.count == 2, parts[0] == "u", let uin = Int(parts[1]) {
+                return ScannedAddress(uin: uin, host: host)
+            }
+        }
+        return nil
     }
 
     // MARK: - alert plumbing
