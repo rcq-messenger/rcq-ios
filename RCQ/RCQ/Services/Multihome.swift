@@ -190,30 +190,52 @@ enum Multihome {
 
     // MARK: auto-pick — one toggle instead of typing a host
 
-    private static let catalogueURL = URL(
-        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/servers.json"
+    // The auto-pick list is a SEPARATE, Ed25519-signed file (not servers.json):
+    // the toggle silently registers a backup mailbox on whatever it picks, so a
+    // tampered catalogue must not steer that. We verify the signature over the
+    // EXACT bytes GitHub served, against the maintainer key already pinned for
+    // relay-config. servers.json stays a display-only directory.
+    private static let autoIslandsURL = URL(
+        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json"
     )!
+    private static let autoIslandsSigURL = URL(
+        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json.sig"
+    )!
+    private static let autoIslandsPubKeyB64 = "TY834OFcBvtUqHcnVw/QrPBOaEAZo7a1GAmABMhjkT8="
 
-    /// Pick a backup island from the public catalogue: entries the maintainer
-    /// flagged `auto_backup`, minus our own island + already-added hosts; the
-    /// FIRST healthy one in catalogue order wins (the order is the project's
-    /// preference). Returns nil when the catalogue is unreachable or no
-    /// flagged island responds.
+    /// Pick a backup island from the SIGNED island list, minus our own island +
+    /// already-added hosts; the FIRST healthy one in list order wins (the order
+    /// is the project's preference). Returns nil when the list is unreachable,
+    /// the signature fails, or no island responds (fail-safe: never
+    /// auto-register on an unverified island).
     static func autoPickHost(ownUin: Int) async -> String? {
-        struct Entry: Decodable { let url: String; let auto_backup: Bool? }
-        struct Catalogue: Decodable { let servers: [Entry] }
-        var req = URLRequest(url: catalogueURL)
-        req.cachePolicy = .reloadIgnoringLocalCacheData
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
-              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let cat = try? JSONDecoder().decode(Catalogue.self, from: data) else { return nil }
+        guard let islands = await fetchSignedAutoIslands() else { return nil }
         let own = ownHost()
         let existing = Set(MultihomeStore.shared.list(ownUin: ownUin).map(\.host))
-        for entry in cat.servers where entry.auto_backup == true {
-            guard let host = normalizeHost(entry.url), host != own, !existing.contains(host) else { continue }
+        for url in islands {
+            guard let host = normalizeHost(url), host != own, !existing.contains(host) else { continue }
             if await healthy(host) { return host }
         }
         return nil
+    }
+
+    /// Fetch the signed list + signature and verify Ed25519 over the EXACT
+    /// bytes against the pinned maintainer key. Returns nil on any failure.
+    private static func fetchSignedAutoIslands() async -> [String]? {
+        var jreq = URLRequest(url: autoIslandsURL); jreq.cachePolicy = .reloadIgnoringLocalCacheData
+        var sreq = URLRequest(url: autoIslandsSigURL); sreq.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, r1) = try? await URLSession.shared.data(for: jreq),
+              let (sigData, r2) = try? await URLSession.shared.data(for: sreq),
+              (r1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
+              (r2 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
+              let pubRaw = Data(base64Encoded: autoIslandsPubKeyB64),
+              let pub = try? Curve25519.Signing.PublicKey(rawRepresentation: pubRaw),
+              let sigStr = String(data: sigData, encoding: .utf8),
+              let sig = Data(base64Encoded: sigStr.trimmingCharacters(in: .whitespacesAndNewlines)),
+              pub.isValidSignature(sig, for: data)
+        else { return nil }
+        struct Doc: Decodable { let islands: [String] }
+        return (try? JSONDecoder().decode(Doc.self, from: data))?.islands
     }
 
     private static func healthy(_ host: String) async -> Bool {
