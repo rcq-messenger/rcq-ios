@@ -1046,6 +1046,19 @@ final class MessageService {
         let wasInNSECache: Bool
     }
 
+    /// A short plaintext preview of a quarantined cross-island request message.
+    static func requestPreview(for env: Envelope) -> String {
+        switch env {
+        case .text(_, let text, _, _, _): return text
+        case .photo(_, _, _, let caption, _, _, _, _): return caption?.isEmpty == false ? caption! : "📷"
+        case .video(_, _, _, _, _, let caption, _, _, _, _): return caption?.isEmpty == false ? caption! : "🎬"
+        case .voice: return "🎤"
+        case .file(_, _, _, let fname, _, _, _, _, _, _): return "📎 \(fname)"
+        case .location: return "📍"
+        default: return ""
+        }
+    }
+
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket) -> IngestOutcome? {
@@ -1076,6 +1089,21 @@ final class MessageService {
                 guard let dest else { return nil }
                 appendCarbonMessage(inner: inner, thread: dest, serverTime: ws.serverTime)
                 return IngestOutcome(thread: dest, isNewContent: false, wasInNSECache: fromNSE)
+            }
+
+            // Variant A consent: a 1:1 message from an un-accepted CROSS-ISLAND
+            // sender (its `from_host` isn't ours and we haven't added them) is
+            // QUARANTINED as a "message request" instead of landing in the chat
+            // list. Accepted → normal flow. Blocked → hold() no-ops but we still
+            // ACK so the queue stops redelivering.
+            if ws.groupID == nil, let fromHost = decrypted.senderHost,
+               fromHost != Multihome.ownHost(), decrypted.senderUIN != ownUIN,
+               !CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost }) {
+                CrossIslandRequestsStore.shared.hold(
+                    uin: decrypted.senderUIN, host: fromHost,
+                    payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope)
+                )
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
             // Route to ephemeral random buffer when sender is the active anonymous peer.

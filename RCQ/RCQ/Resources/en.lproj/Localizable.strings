@@ -1262,6 +1262,8 @@
 "pending.empty.body" = "New contact invites will show up here.";
 "pending.row.body" = "RCQ user %@ (%@) wants to add you to their contact list. Allow?";
 "pending.cta.accept" = "Accept";
+"ci.section" = "Message requests (other islands)";
+"ci.block" = "Block";
 "pending.cta.decline" = "Decline";
 
 /* ── Inventory / Lootbox ──────────────────────────────────── */

@@ -816,6 +816,7 @@ final class AppState: ObservableObject {
         // this, a cross-island contact added on one local account bled into the
         // others (founder report).
         CrossIslandStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
         NotificationPrefsService.shared.wipe()
         // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows

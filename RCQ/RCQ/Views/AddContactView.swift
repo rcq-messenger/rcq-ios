@@ -469,22 +469,36 @@ private struct AddDetailView: View {
 struct PendingRequestsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var contacts = ContactService.shared
+    // Variant A: cross-island "message requests" (consent) — held locally.
+    @State private var ciRequests: [CrossIslandRequestsStore.Request] = []
+    @State private var ciBusy: String? = nil
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                if contacts.pendingRequests.isEmpty {
+                if contacts.pendingRequests.isEmpty && ciRequests.isEmpty {
                     emptyState
                 } else {
                     List {
-                        ForEach(contacts.pendingRequests) { req in
-                            requestRow(req)
-                                .listRowBackground(Theme.Color.bgSecondary)
-                                .transition(.asymmetric(
-                                    insertion: .opacity,
-                                    removal: .opacity.combined(with: .move(edge: .trailing))
-                                ))
+                        if !ciRequests.isEmpty {
+                            Section("ci.section".localized) {
+                                ForEach(ciRequests) { r in
+                                    ciRow(r).listRowBackground(Theme.Color.bgSecondary)
+                                }
+                            }
+                        }
+                        if !contacts.pendingRequests.isEmpty {
+                            Section {
+                                ForEach(contacts.pendingRequests) { req in
+                                    requestRow(req)
+                                        .listRowBackground(Theme.Color.bgSecondary)
+                                        .transition(.asymmetric(
+                                            insertion: .opacity,
+                                            removal: .opacity.combined(with: .move(edge: .trailing))
+                                        ))
+                                }
+                            }
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -499,9 +513,60 @@ struct PendingRequestsView: View {
             .navigationDestination(for: Int.self) { uin in
                 UserInfoView(uin: uin, isOwn: false)
             }
+            .onAppear { ciRequests = CrossIslandRequestsStore.shared.list() }
         }
         .presentationDetents([.fraction(0.32), .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func ciRow(_ r: CrossIslandRequestsStore.Request) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(r.uin)@\(r.host)")
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(Theme.Color.textPrimary)
+            if !r.preview.isEmpty {
+                Text(r.preview)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 12) {
+                Button("pending.cta.accept".localized) { acceptCI(r) }
+                    .buttonStyle(.borderedProminent).tint(Theme.Color.statusOnline)
+                    .disabled(ciBusy == r.id)
+                Button("ci.block".localized) { blockCI(r) }
+                    .buttonStyle(.bordered).tint(Theme.Color.statusBusy)
+                    .disabled(ciBusy == r.id)
+            }
+        }
+    }
+
+    private func acceptCI(_ r: CrossIslandRequestsStore.Request) {
+        ciBusy = r.id
+        Task {
+            // Save the sender as a cross-island contact FIRST, so the held
+            // payloads pass the ingest consent-gate (now an accepted contact)
+            // and file with the correct sender + kind when replayed.
+            let ok = await ContactService.shared.addCrossIslandContact(uin: r.uin, host: r.host)
+            await MainActor.run {
+                if ok, let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host) {
+                    for h in held.msgs {
+                        let packet = WebSocketService.EnvelopePacket(
+                            type: "message", payload: h.payload, serverTime: Date(),
+                            offline: true, groupID: nil
+                        )
+                        _ = MessageService.shared.ingest(envelope: packet)
+                    }
+                }
+                ciBusy = nil
+                ciRequests = CrossIslandRequestsStore.shared.list()
+            }
+        }
+    }
+
+    private func blockCI(_ r: CrossIslandRequestsStore.Request) {
+        CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
+        ciRequests = CrossIslandRequestsStore.shared.list()
     }
 
     private func requestRow(_ req: ContactService.PendingRequest) -> some View {

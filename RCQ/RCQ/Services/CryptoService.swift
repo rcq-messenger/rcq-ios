@@ -329,6 +329,9 @@ struct ReplyContext: Codable, Hashable {
 
 struct DecryptedEnvelope {
     let senderUIN: Int
+    /// The sender's island host if they included it (v=1 `from_host`); nil for
+    /// pre-`from_host` senders and all v=2 (same-island). Drives Variant A.
+    var senderHost: String? = nil
     let envelope: Envelope
 }
 
@@ -438,9 +441,20 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         let toSign = ephemeralPubBytes + envelopeJSON
         let signature = try signingPriv.signature(for: toSign)
 
-        // signature is over the JSONEncoder bytes, so ship them as-is (no re-serialisation)
+        // `from_host` (the sender's island) lets the recipient tell a cross-island
+        // sender from a local one (Variant A consent + correct labeling). Additive:
+        // old decoders ignore it; the authenticated identity stays `spub`. Read
+        // the host from the AccountManager-mirrored `rcq.baseURL` (NSE-safe:
+        // UserDefaults.standard, no app-only deps — encrypt only runs in the app).
+        let fromHost: String = {
+            if let url = UserDefaults.standard.string(forKey: "rcq.baseURL"),
+               let h = URL(string: url)?.host { return h }
+            return "api.rcq.app"
+        }()
+        // signature is over the JSONEncoder bytes, so ship them as-is (no re-serialisation).
         let plaintext = try JSONSerialization.data(withJSONObject: [
             "from": ownUIN,
+            "from_host": fromHost,
             "spub": signingPubB64,
             "sig":  signature.base64EncodedString(),
             "env":  envelopeJSON.base64EncodedString(),
@@ -657,7 +671,8 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             throw CryptoError.signatureVerifyFailed
         }
         let env = try JSONDecoder().decode(Envelope.self, from: envBytes)
-        return DecryptedEnvelope(senderUIN: from, envelope: env)
+        let fromHost = inner["from_host"] as? String
+        return DecryptedEnvelope(senderUIN: from, senderHost: fromHost, envelope: env)
     }
 
     private func decryptV2(wire: [String: Any]) throws -> DecryptedEnvelope {
