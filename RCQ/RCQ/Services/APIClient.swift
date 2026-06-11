@@ -372,6 +372,7 @@ actor APIClient {
         data blob: Data,
         authenticated: Bool = false,
         extraFields: [String: String] = [:],
+        method: String = "POST",
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> T {
         let boundary = "----RCQBoundary\(UUID().uuidString)"
@@ -389,7 +390,7 @@ actor APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
-        req.httpMethod = "POST"
+        req.httpMethod = method
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         // Always attach the bearer when available — the server uses it
         // for traffic-pay accounting on big uploads. Anonymous uploads

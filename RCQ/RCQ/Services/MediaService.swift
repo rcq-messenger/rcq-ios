@@ -56,12 +56,14 @@ final class MediaService {
     enum Failure: Error, LocalizedError {
         case compressionFailed
         case encryptionFailed
+        case crossIslandDepositFailed
         case tooLarge(actualBytes: Int)
 
         var errorDescription: String? {
             switch self {
             case .compressionFailed: return "media.error.compression".localized
             case .encryptionFailed:  return "media.error.encryption".localized
+            case .crossIslandDepositFailed: return "media.error.deposit".localized
             case .tooLarge(let n):
                 let mb = Double(n) / (1024 * 1024)
                 return String(
@@ -78,8 +80,82 @@ final class MediaService {
         let keyBase64: String
     }
 
+    private struct UploadOut: Decodable { let media_id: String; let size: Int }
+
+    /// Client-chosen media id (uuid4 hex) for the cross-island deposit — the
+    /// same id must resolve on every island the blob is PUT to.
+    private nonisolated static func newMediaID() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+
+    /// Deposit an already-encrypted blob under a client-chosen id
+    /// (`PUT /media/{id}`, idempotent, no auth — same trust model as the
+    /// envelope deposit). Plain URLSession to the peer's island, the same
+    /// accepted simplification as `CrossIslandSender`.
+    private nonisolated static func putBlob(host: String, mediaID: String, data: Data) async -> Bool {
+        guard let url = URL(string: "https://\(host)/media/\(mediaID)") else { return false }
+        let boundary = "----RCQBoundary\(UUID().uuidString)"
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"blob\"; filename=\"photo.bin\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        do {
+            let (_, resp) = try await URLSession.shared.upload(for: req, from: body)
+            guard let http = resp as? HTTPURLResponse else { return false }
+            return (200..<300).contains(http.statusCode)
+        } catch {
+            return false
+        }
+    }
+
+    /// Upload an encrypted blob. Same-island sends POST /media/upload (the
+    /// server mints the id). For a CROSS-ISLAND peer (`peerHost` set) the
+    /// recipient fetches media from their OWN island, so the blob is
+    /// DEPOSITED there under a client-chosen id (deposit-the-blob — islands
+    /// never talk; the message survives our island dying), plus a copy on our
+    /// island for carbons + own re-fetch. Mirrors web-chat media.ts / Android.
+    private func uploadCombined(
+        _ combined: Data,
+        filename: String,
+        peerHost: String?,
+        onProgress: ((Double) -> Void)?
+    ) async throws -> UploadOut {
+        guard let peerHost else {
+            return try await APIClient.shared.uploadBlob(
+                "/media/upload",
+                field: "blob",
+                filename: filename,
+                contentType: "application/octet-stream",
+                data: combined,
+                onProgress: onProgress
+            )
+        }
+        let mediaID = Self.newMediaID()
+        // The peer-island copy is REQUIRED — that's the one they read.
+        guard await Self.putBlob(host: peerHost, mediaID: mediaID, data: combined) else {
+            throw Failure.crossIslandDepositFailed
+        }
+        // Own-island copy (carbons + re-fetch), via APIClient so it rides the
+        // same transport as every own-island call. Best-effort.
+        let _: UploadOut? = try? await APIClient.shared.uploadBlob(
+            "/media/\(mediaID)",
+            field: "blob",
+            filename: filename,
+            contentType: "application/octet-stream",
+            data: combined,
+            method: "PUT",
+            onProgress: onProgress
+        )
+        return UploadOut(media_id: mediaID, size: combined.count)
+    }
+
     /// Compress, encrypt, and upload an image. Returns server media id + AES key for the envelope.
-    func uploadImage(_ image: UIImage, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
+    func uploadImage(_ image: UIImage, peerHost: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
         guard let jpeg = ImageCompressor.compress(image, maxSide: 1200, quality: 0.8) else {
             throw Failure.compressionFailed
         }
@@ -92,15 +168,7 @@ final class MediaService {
             throw Failure.tooLarge(actualBytes: combined.count)
         }
 
-        struct UploadOut: Decodable { let media_id: String; let size: Int }
-        let out: UploadOut = try await APIClient.shared.uploadBlob(
-            "/media/upload",
-            field: "blob",
-            filename: "photo.bin",
-            contentType: "application/octet-stream",
-            data: combined,
-            onProgress: onProgress
-        )
+        let out: UploadOut = try await uploadCombined(combined, filename: "photo.bin", peerHost: peerHost, onProgress: onProgress)
 
         let keyB64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
 
@@ -117,7 +185,7 @@ final class MediaService {
     /// `ImageCompressor.compress` (which JPEG-encodes and kills the
     /// animation). Receiver detects the GIF via magic-byte check on
     /// the decrypted blob and routes through `AnimatedGIFView`.
-    func uploadGIF(data: Data, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
+    func uploadGIF(data: Data, peerHost: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
         if data.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: data.count)
         }
@@ -129,15 +197,7 @@ final class MediaService {
         if combined.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: combined.count)
         }
-        struct UploadOut: Decodable { let media_id: String; let size: Int }
-        let out: UploadOut = try await APIClient.shared.uploadBlob(
-            "/media/upload",
-            field: "blob",
-            filename: "photo.bin",
-            contentType: "application/octet-stream",
-            data: combined,
-            onProgress: onProgress
-        )
+        let out: UploadOut = try await uploadCombined(combined, filename: "photo.bin", peerHost: peerHost, onProgress: onProgress)
         let keyB64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
         // Seed the data cache so the sender's own bubble doesn't have
         // to re-download + re-decrypt the bytes we already have.
@@ -149,6 +209,7 @@ final class MediaService {
     /// Encrypt + upload an arbitrary file (used for video + documents).
     func uploadFile(
         at fileURL: URL,
+        peerHost: String? = nil,
         onProgress: ((Double) -> Void)? = nil,
     ) async throws -> UploadResult {
         // Pre-flight on raw size before encrypting; AES-GCM tag overhead is negligible at the cap.
@@ -166,19 +227,7 @@ final class MediaService {
         if combined.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: combined.count)
         }
-        struct UploadOut: Decodable {
-            let media_id: String
-            let size: Int
-        }
-        let out: UploadOut = try await APIClient.shared.uploadBlob(
-            "/media/upload",
-            field: "blob",
-            filename: fileURL.lastPathComponent,
-            contentType: "application/octet-stream",
-            data: combined,
-            extraFields: [:],
-            onProgress: onProgress,
-        )
+        let out: UploadOut = try await uploadCombined(combined, filename: fileURL.lastPathComponent, peerHost: peerHost, onProgress: onProgress)
         let keyB64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
         return UploadResult(mediaID: out.media_id, keyBase64: keyB64)
     }

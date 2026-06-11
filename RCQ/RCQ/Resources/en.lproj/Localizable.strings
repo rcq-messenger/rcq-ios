@@ -872,6 +872,7 @@
 
 "media.error.compression" = "Couldn't compress that media. Try a smaller file.";
 "media.error.encryption" = "Couldn't encrypt that media. Try again.";
+"media.error.deposit" = "Couldn't deposit the media to the recipient's island. Try again.";
 "media.error.too_large" = "This file is %@ MB — over the %@ MB limit. Try a shorter clip or lower-resolution capture.";
 "media.bubble.failed" = "Failed";
 

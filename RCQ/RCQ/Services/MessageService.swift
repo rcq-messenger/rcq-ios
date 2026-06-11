@@ -135,7 +135,7 @@ final class MessageService {
             guard let self else { return }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadImage(image) { p in
+                upload = try await MediaService.shared.uploadImage(image, peerHost: contact.host) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -179,7 +179,7 @@ final class MessageService {
             guard let self else { return }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadGIF(data: data) { p in
+                upload = try await MediaService.shared.uploadGIF(data: data, peerHost: contact.host) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -221,7 +221,7 @@ final class MessageService {
             defer { try? FileManager.default.removeItem(at: fileURL) }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
+                upload = try await MediaService.shared.uploadFile(at: fileURL, peerHost: contact.host) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -281,7 +281,7 @@ final class MessageService {
             defer { try? FileManager.default.removeItem(at: fileURL) }
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: fileURL) { p in
+                upload = try await MediaService.shared.uploadFile(at: fileURL, peerHost: contact.host) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
@@ -395,7 +395,7 @@ final class MessageService {
             )
             let upload: MediaService.UploadResult
             do {
-                upload = try await MediaService.shared.uploadFile(at: processed.url) { p in
+                upload = try await MediaService.shared.uploadFile(at: processed.url, peerHost: contact.host) { p in
                     MediaProgressStore.shared.set(local.id, value: p)
                 }
             } catch {
