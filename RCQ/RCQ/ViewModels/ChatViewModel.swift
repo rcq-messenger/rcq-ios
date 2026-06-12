@@ -147,6 +147,13 @@ final class ChatViewModel: ObservableObject {
         return messages[idx].id
     }
 
+    /// How many messages sit AFTER [id] in the loaded list (i.e. below it in
+    /// the timeline). Used to shrink the scroll-down unread badge as you read.
+    func messagesBelow(_ id: UUID) -> Int {
+        guard let i = messages.firstIndex(where: { $0.id == id }) else { return 0 }
+        return messages.count - 1 - i
+    }
+
     func onAppear() {
         if !didCaptureUnread {
             didCaptureUnread = true

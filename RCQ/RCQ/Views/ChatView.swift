@@ -361,6 +361,10 @@ struct ChatView: View {
         return false
     }
     @State private var showScrollToBottom: Bool = false
+    /// Live count of unread messages still BELOW the viewport (#15): seeded with
+    /// the at-open unread count, then decremented (monotonic) as deeper rows
+    /// appear, so the badge shrinks to 0 by the time you reach the newest.
+    @State private var unreadBelow: Int = 0
     /// Hides the scroll surface during the initial settle window so
     /// users don't see LazyVStack realizing rows on chat-open. We
     /// flip it to true after the multi-pass scrollTo loop has had a
@@ -627,6 +631,8 @@ struct ChatView: View {
         }
         .onAppear {
             vm.onAppear()
+            // Seed the live unread-below counter (#15); decremented as rows appear.
+            unreadBelow = vm.openUnreadCount
             // Per-conversation screen-secure: arm blanking + screenshot
             // detection only if THIS chat has secure mode on.
             reconcileScreenSecure()
@@ -1256,7 +1262,14 @@ struct ChatView: View {
                                 currentGroupMembers: currentGroupMembers,
                                 viewCount: viewCountForBubble(msg)
                             )
-                            .onAppear { pingViewIfCloseGroup(msg) }
+                            .onAppear {
+                                pingViewIfCloseGroup(msg)
+                                // Monotonic: as deeper rows appear, fewer unread
+                                // remain below — badge shrinks to 0 at the newest.
+                                if unreadBelow > 0 {
+                                    unreadBelow = min(unreadBelow, vm.messagesBelow(msg.id))
+                                }
+                            }
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
                                      ? 0
@@ -1444,6 +1457,10 @@ struct ChatView: View {
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
                 let unreadID = vm.openFirstUnreadID
+                // Opening scrolled UP means the bottom anchor never "appeared",
+                // so its onDisappear (which shows the arrow) never fires — show
+                // the jump-down arrow + unread badge immediately (#15).
+                if unreadID != nil { showScrollToBottom = true }
                 func settle() {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
@@ -1493,11 +1510,12 @@ struct ChatView: View {
                         .overlay(
                             Circle().stroke(Theme.Color.divider, lineWidth: 0.5)
                         )
-                        // Unread count badge (#15): how many unread sit below
-                        // when the chat opened scrolled up to the first unread.
+                        // Unread count badge (#15): how many unread still sit
+                        // below the viewport — decremented live as you scroll
+                        // down, gone by the time you reach the newest.
                         .overlay(alignment: .topTrailing) {
-                            if vm.openUnreadCount > 0 {
-                                Text(vm.openUnreadCount > 99 ? "99+" : "\(vm.openUnreadCount)")
+                            if unreadBelow > 0 {
+                                Text(unreadBelow > 99 ? "99+" : "\(unreadBelow)")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
