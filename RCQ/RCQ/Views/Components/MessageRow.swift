@@ -290,12 +290,10 @@ struct MessageRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            if message.receivedWhileAway {
-                Text(String(format: "chat.received_while_away".localized, DateFormatters.receivedWhileAway.string(from: message.sentAt)))
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .padding(.bottom, 2)
-            }
+            // (Removed the per-message "received while you were away" timestamp
+            // label — founder asked to drop it from chats; it cluttered the
+            // timeline. The receivedWhileAway flag stays on the model, unused
+            // here.)
             HStack(alignment: .bottom, spacing: 6) {
                 bubbleContent
                     // Determinate width cap so the body wraps at a fixed width

@@ -309,6 +309,10 @@ struct ChatView: View {
         [.text, .photo, .video, .file]
     /// Non-nil = the pinned-announcement expansion sheet is open.
     @State private var pinnedExpansion: PinExpansion?
+    /// Measured natural height of the expanded-pin content, so the pin's
+    /// ScrollView shrinks to fit short pins instead of always reserving the
+    /// 240pt cap (#13). Capped at 240 with scroll beyond.
+    @State private var pinContentHeight: CGFloat = 0
     /// Non-nil = a `#<uin>` mention in the pin (for a current group member)
     /// was tapped; opens that member's profile.
     @State private var pinnedMemberUIN: Int?
@@ -1731,8 +1735,15 @@ struct ChatView: View {
                             }
                         }
                     }
+                    // Measure the content so the ScrollView fits short pins
+                    // instead of always reserving the full cap (#13).
+                    .background(GeometryReader { geo in
+                        Color.clear.preference(key: PinHeightKey.self, value: geo.size.height)
+                    })
                 }
-                .frame(maxHeight: 240)
+                // Shrink to content, cap at 240 (scroll beyond).
+                .frame(height: min(pinContentHeight, 240))
+                .onPreferenceChange(PinHeightKey.self) { pinContentHeight = $0 }
             }
             Spacer(minLength: 6)
             Button {
@@ -2695,6 +2706,15 @@ struct ChatView: View {
             if ca != cb { return ca > cb }
             return false
         }
+    }
+}
+
+/// Carries the expanded-pin content's natural height up so the pin ScrollView
+/// can shrink to fit short pins (#13).
+private struct PinHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

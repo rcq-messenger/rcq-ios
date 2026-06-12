@@ -241,20 +241,29 @@ final class ChatViewModel: ObservableObject {
         }
         guard !text.isEmpty else { return }
         if let editing = editingTarget {
-            if text != editing.text {
-                EmoticonUsageStore.shared.bump(forText: text)
-                do {
-                    switch target {
-                    case .peer(let c):       try await MessageService.shared.edit(message: editing, newText: text, to: c)
-                    case .group(let g):      try await MessageService.shared.edit(message: editing, newText: text, in: g)
-                    case .randomPeer(let p): try await MessageService.shared.edit(message: editing, newText: text, toRandom: p)
-                    }
-                } catch { }
-            }
+            // Optimistic: dismiss the edit composer + clear input NOW, send in
+            // the background. MessageService.edit applies the local edit to the
+            // store synchronously before its own await, so the bubble updates
+            // immediately too — only the network round-trip is deferred (the
+            // composer used to linger until the server ACKed).
+            let newText = text
+            let editTarget = target
             withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                 editingTarget = nil
             }
             input = ""
+            if newText != editing.text {
+                EmoticonUsageStore.shared.bump(forText: newText)
+                Task {
+                    do {
+                        switch editTarget {
+                        case .peer(let c):       try await MessageService.shared.edit(message: editing, newText: newText, to: c)
+                        case .group(let g):      try await MessageService.shared.edit(message: editing, newText: newText, in: g)
+                        case .randomPeer(let p): try await MessageService.shared.edit(message: editing, newText: newText, toRandom: p)
+                        }
+                    } catch { }
+                }
+            }
             return
         }
         input = ""
