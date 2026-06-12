@@ -360,11 +360,19 @@ struct ChatView: View {
         }
         return false
     }
+    /// Jump-down arrow visibility. GEOMETRY-driven (see the scroll-metrics
+    /// preference in scrollBody): true while the content's bottom edge
+    /// extends meaningfully below the viewport. The previous approach
+    /// toggled this from the bottom anchor's onAppear/onDisappear, but in a
+    /// LazyVStack those fire on row REALIZATION, which runs ahead of actual
+    /// visibility — with a handful of unread below the fold the anchor was
+    /// "visible" immediately, so the arrow never showed on open and flapped
+    /// in short chats (beta report).
     @State private var showScrollToBottom: Bool = false
-    /// Live count of unread messages still BELOW the viewport (#15): seeded with
-    /// the at-open unread count, then decremented (monotonic) as deeper rows
-    /// appear, so the badge shrinks to 0 by the time you reach the newest.
-    @State private var unreadBelow: Int = 0
+    /// Content frame metrics published by the scroll-metrics preference.
+    @State private var chatContentMinY: CGFloat = 0
+    @State private var chatContentHeight: CGFloat = 0
+    @State private var chatViewportHeight: CGFloat = 0
     /// Hides the scroll surface during the initial settle window so
     /// users don't see LazyVStack realizing rows on chat-open. We
     /// flip it to true after the multi-pass scrollTo loop has had a
@@ -630,9 +638,9 @@ struct ChatView: View {
             Text("chat.voice.permission.body".localized)
         }
         .onAppear {
+            // The unread-below badge counter is seeded in ChatViewModel.init
+            // (#15) — onAppear is too late, rows realize before it runs.
             vm.onAppear()
-            // Seed the live unread-below counter (#15); decremented as rows appear.
-            unreadBelow = vm.openUnreadCount
             // Per-conversation screen-secure: arm blanking + screenshot
             // detection only if THIS chat has secure mode on.
             reconcileScreenSecure()
@@ -1199,6 +1207,12 @@ struct ChatView: View {
                             switch unit {
                             case .album(_, let items):
                                 albumRow(items: items)
+                                    // Same badge decrement as the single-message
+                                    // rows below — albums used to skip it, so a
+                                    // photo-heavy backlog never shrank the count.
+                                    .onAppear {
+                                        if let last = items.last { vm.sawRow(last.id) }
+                                    }
                             case .single(let msg):
                                 MessageRow(
                                 message: msg,
@@ -1266,9 +1280,7 @@ struct ChatView: View {
                                 pingViewIfCloseGroup(msg)
                                 // Monotonic: as deeper rows appear, fewer unread
                                 // remain below — badge shrinks to 0 at the newest.
-                                if unreadBelow > 0 {
-                                    unreadBelow = min(unreadBelow, vm.messagesBelow(msg.id))
-                                }
+                                vm.sawRow(msg.id)
                             }
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
@@ -1287,29 +1299,54 @@ struct ChatView: View {
                             }
                         }
                     }
-                    // Bottom anchor — drives initial scroll-to-latest and the FAB visibility flag.
+                    // Bottom anchor — the scrollTo target for "jump to latest".
+                    // It no longer drives the arrow: its onAppear/onDisappear
+                    // fire on LazyVStack REALIZATION, not visibility, so the
+                    // arrow logic now reads the geometry preference below.
                     Color.clear
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
-                        .onAppear {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                showScrollToBottom = false
-                            }
-                        }
-                        .onDisappear {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                showScrollToBottom = true
-                            }
-                        }
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
+                // Content-frame probe for the jump-down arrow: minY tracks the
+                // scroll offset (in the scroll view's space), height the full
+                // content height. Geometry, not onAppear — see showScrollToBottom.
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(
+                            key: ChatScrollMetricsKey.self,
+                            value: ChatScrollMetrics(
+                                minY: g.frame(in: .named(Self.scrollSpaceName)).minY,
+                                height: g.size.height
+                            )
+                        )
+                    }
+                )
                 // Animate when a new message lands at the bottom only,
                 // by watching the last id instead of the raw count.
                 // Watching count would also fire when `loadOlder()`
                 // prepends a page of history, causing a stutter for
                 // every prepend.
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
+            }
+            .coordinateSpace(name: Self.scrollSpaceName)
+            // Viewport-height probe (the metrics pair with the content probe
+            // above): the named-space minY plus content height against this
+            // gives the distance the content bottom hangs below the fold.
+            .background(
+                GeometryReader { g in
+                    Color.clear.preference(key: ChatViewportHeightKey.self, value: g.size.height)
+                }
+            )
+            .onPreferenceChange(ChatViewportHeightKey.self) { h in
+                chatViewportHeight = h
+                updateScrollToBottomArrow()
+            }
+            .onPreferenceChange(ChatScrollMetricsKey.self) { m in
+                chatContentMinY = m.minY
+                chatContentHeight = m.height
+                updateScrollToBottomArrow()
             }
             // Initial-settle mask. While the 350ms scrollTo loop in
             // `.task` chases the moving bottom (LazyVStack realizes
@@ -1456,11 +1493,10 @@ struct ChatView: View {
             .task {
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
+                // The jump-down arrow needs no manual nudge here — the scroll-
+                // metrics preference shows it as soon as content actually
+                // extends below the fold (#15).
                 let unreadID = vm.openFirstUnreadID
-                // Opening scrolled UP means the bottom anchor never "appeared",
-                // so its onDisappear (which shows the arrow) never fires — show
-                // the jump-down arrow + unread badge immediately (#15).
-                if unreadID != nil { showScrollToBottom = true }
                 func settle() {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
@@ -1501,6 +1537,23 @@ struct ChatView: View {
                     withAnimation(.easeOut(duration: 0.3)) {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                     }
+                    // A tap mid-fling used to do nothing: the deceleration's
+                    // own offset updates override the animated scrollTo (beta
+                    // report; Telegram honours the tap). After the animation
+                    // window, re-assert the target for a short burst — each
+                    // tick re-snaps against the CURRENT offset, beating any
+                    // leftover momentum.
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        let endDate = Date().addingTimeInterval(0.25)
+                        while showScrollToBottom, Date() < endDate {
+                            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                            try? await Task.sleep(nanoseconds: 16_000_000)
+                        }
+                        // The jump consumed everything below, even rows that
+                        // never got to fire onAppear on the way down.
+                        vm.clearUnreadBelow()
+                    }
                 } label: {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 16, weight: .semibold))
@@ -1514,8 +1567,8 @@ struct ChatView: View {
                         // below the viewport — decremented live as you scroll
                         // down, gone by the time you reach the newest.
                         .overlay(alignment: .topTrailing) {
-                            if unreadBelow > 0 {
-                                Text(unreadBelow > 99 ? "99+" : "\(unreadBelow)")
+                            if vm.unreadBelow > 0 {
+                                Text(vm.unreadBelow > 99 ? "99+" : "\(vm.unreadBelow)")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
@@ -1534,6 +1587,23 @@ struct ChatView: View {
     }
 
     private static let bottomAnchorID = "__rcq_chat_bottom_anchor"
+    private static let scrollSpaceName = "__rcq_chat_scroll"
+
+    /// Geometry-driven arrow toggle: visible while the content's bottom edge
+    /// hangs more than ~a bubble's worth below the viewport bottom. minY is
+    /// negative once scrolled (content top above the viewport top), so
+    /// minY + contentHeight is where the content bottom sits in viewport
+    /// coordinates. The 80pt slack absorbs the bottom paddings/insets and
+    /// keeps the arrow from flapping right at the edge.
+    private func updateScrollToBottomArrow() {
+        guard chatViewportHeight > 0 else { return }
+        let bottomOverhang = (chatContentMinY + chatContentHeight) - chatViewportHeight
+        let shouldShow = bottomOverhang > 80
+        guard shouldShow != showScrollToBottom else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            showScrollToBottom = shouldShow
+        }
+    }
 
     // MARK: - report-with-evidence helpers
 
@@ -2811,4 +2881,26 @@ struct PendingEvidenceReport: Identifiable {
     let bytes: Data
     let mime: String
     var id: UUID { message.id }
+}
+
+/// Content-frame metrics for the jump-down arrow (see ChatView.scrollBody):
+/// `minY` = content top in the scroll view's coordinate space (goes negative
+/// as you scroll down), `height` = full content height.
+private struct ChatScrollMetrics: Equatable {
+    var minY: CGFloat = 0
+    var height: CGFloat = 0
+}
+
+private struct ChatScrollMetricsKey: PreferenceKey {
+    static var defaultValue = ChatScrollMetrics()
+    static func reduce(value: inout ChatScrollMetrics, nextValue: () -> ChatScrollMetrics) {
+        value = nextValue()
+    }
+}
+
+private struct ChatViewportHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }

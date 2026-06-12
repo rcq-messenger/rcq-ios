@@ -120,6 +120,8 @@ final class ChatViewModel: ObservableObject {
                 self?.groupedUnits = ChatViewModel.computeGroupedUnits(msgs)
             }
             .store(in: &cancellables)
+
+        captureUnreadIfNeeded()
     }
 
     private static func draftKey(for target: ChatTarget) -> String {
@@ -131,10 +133,34 @@ final class ChatViewModel: ObservableObject {
     }
 
     private var didCaptureUnread = false
-    /// Unread count snapshotted the first time the chat appears, BEFORE
-    /// markThreadSeen() clears it — so we can open scrolled to the first
-    /// unread message (every-messenger behaviour), not the bottom.
+    /// Unread count snapshotted at init, BEFORE markThreadSeen() clears it —
+    /// so we can open scrolled to the first unread message (every-messenger
+    /// behaviour), not the bottom.
     private(set) var openUnreadCount = 0
+
+    /// Live "unread still below the viewport" counter behind the jump-down
+    /// arrow badge (#15). Seeded with [openUnreadCount] at init — before any
+    /// LazyVStack row can realize — and only ever shrinks (sawRow). It used
+    /// to be @State in ChatView seeded from the root onAppear, which raced
+    /// the rows' own onAppear: rows that realized first saw 0, skipped the
+    /// decrement, and the badge then showed the original count forever
+    /// (beta report). A nav push/pop also re-ran the seeding and resurrected
+    /// the stale number.
+    @Published private(set) var unreadBelow = 0
+
+    /// A row materialized — at most messagesBelow(id) messages can still be
+    /// unread below it. Monotonic shrink; LazyVStack realization runs a bit
+    /// ahead of actual visibility, which only errs toward "read sooner".
+    func sawRow(_ id: UUID) {
+        guard unreadBelow > 0 else { return }
+        unreadBelow = min(unreadBelow, messagesBelow(id))
+    }
+
+    /// Jump-to-bottom consumed everything below — badge off, regardless of
+    /// which rows got a chance to fire onAppear on the way down.
+    func clearUnreadBelow() {
+        if unreadBelow != 0 { unreadBelow = 0 }
+    }
 
     /// The first unread message to open at, or nil → open at the bottom.
     /// Clamps when there are MORE unread than currently-loaded messages (a
@@ -155,18 +181,25 @@ final class ChatViewModel: ObservableObject {
     }
 
     func onAppear() {
-        if !didCaptureUnread {
-            didCaptureUnread = true
-            switch target {
-            case .peer(let c):
-                openUnreadCount = ContactService.shared.contacts.first(where: { $0.uin == c.uin })?.unread ?? 0
-            case .group(let g):
-                openUnreadCount = GroupService.shared.unread[g.id] ?? 0
-            case .randomPeer:
-                openUnreadCount = 0
-            }
-        }
+        captureUnreadIfNeeded()
         markThreadSeen()
+    }
+
+    /// Snapshot the unread count. Runs at init — onAppear is too late: the
+    /// LazyVStack rows can realize (and call sawRow) before the root
+    /// onAppear fires, and markThreadSeen() clears the source counters.
+    private func captureUnreadIfNeeded() {
+        guard !didCaptureUnread else { return }
+        didCaptureUnread = true
+        switch target {
+        case .peer(let c):
+            openUnreadCount = ContactService.shared.contacts.first(where: { $0.uin == c.uin })?.unread ?? 0
+        case .group(let g):
+            openUnreadCount = GroupService.shared.unread[g.id] ?? 0
+        case .randomPeer:
+            openUnreadCount = 0
+        }
+        unreadBelow = openUnreadCount
     }
 
     /// Pull the next page of older messages from CoreData and prepend
