@@ -219,6 +219,27 @@ struct PINSettingsView: View {
             .listRowBackground(Theme.Color.bgSecondary)
         }
 
+        // Auto-lock grace (#10): how long backgrounded before the PIN is asked
+        // again. 0 = immediately. Replaces the old hardcoded 30s.
+        Section {
+            Picker("panic_pin.autolock".localized, selection: Binding(
+                get: { panicPIN.lockTimeout },
+                set: { panicPIN.lockTimeout = $0 }
+            )) {
+                Text("panic_pin.autolock.immediate".localized).tag(0)
+                Text("panic_pin.autolock.30s".localized).tag(30)
+                Text("panic_pin.autolock.1m".localized).tag(60)
+                Text("panic_pin.autolock.5m".localized).tag(300)
+                Text("panic_pin.autolock.15m".localized).tag(900)
+            }
+            .tint(Theme.Color.textSecondary)
+        } header: {
+            Text("panic_pin.autolock.section".localized)
+        } footer: {
+            Text("panic_pin.autolock.footer".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+
         Section {
             if panicPIN.hasWipePIN {
                 Button {

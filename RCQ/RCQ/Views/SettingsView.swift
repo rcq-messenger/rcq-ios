@@ -41,6 +41,13 @@ struct SettingsView: View {
                                 Text(t.label).tag(t)
                             }
                         }
+                        // #3 accessibility: in-app text size (scales the whole
+                        // app via Dynamic Type; "System" follows the OS setting).
+                        Picker("settings.textsize".localized, selection: $theme.textSize) {
+                            ForEach(AppTextSize.allCases) { s in
+                                Text(s.label).tag(s)
+                            }
+                        }
                         if AppIconManager.shared.supportsAlternateIcons {
                             NavigationLink {
                                 AppIconView()

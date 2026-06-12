@@ -141,50 +141,6 @@ struct PrivacySettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {
-                        Toggle(isOn: $hofOptIn) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.privacy.hof_opt_in".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.privacy.hof_opt_in.desc".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        .tint(Theme.Color.accent)
-                        .onChange(of: hofOptIn) { newValue in
-                            Task { await pushBoolField("hof_opt_in", newValue) }
-                        }
-                        if hofOptIn {
-                            HStack(spacing: 12) {
-                                hofAvatarPreview
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Button(hofAvatar == nil
-                                           ? "settings.privacy.hof_add_image".localized
-                                           : "settings.privacy.hof_change_image".localized) {
-                                        showHofPicker = true
-                                    }
-                                    .font(.callout)
-                                    .foregroundColor(Theme.Color.accent)
-                                    .disabled(hofBusy)
-                                    if hofAvatar != nil {
-                                        Button("settings.privacy.hof_remove_image".localized) {
-                                            Task { await setHofAvatar("") }
-                                        }
-                                        .font(.callout)
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                        .disabled(hofBusy)
-                                    }
-                                }
-                                Spacer()
-                                if hofBusy { ProgressView().scaleEffect(0.8) }
-                            }
-                            if let err = hofError {
-                                Text(err).font(.caption2).foregroundColor(.red)
-                            }
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
                         scopePicker(
                             title: "settings.privacy.gender_visible".localized,
                             selection: $genderVisibility,
@@ -244,6 +200,7 @@ struct PrivacySettingsView: View {
                     securitySection
                     networkSection
                     migrationSection
+                    hofSection   // #27: Hall of Fame at the very bottom (under migration)
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -398,6 +355,55 @@ struct PrivacySettingsView: View {
         } footer: {
             Text("settings.network.proxy.intro".localized)
                 .font(.caption2)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// Hall of Fame opt-in + avatar — pinned to the very bottom of the screen
+    /// (#27), under migration, where it's least in the way.
+    private var hofSection: some View {
+        Section {
+            Toggle(isOn: $hofOptIn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.privacy.hof_opt_in".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("settings.privacy.hof_opt_in.desc".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .tint(Theme.Color.accent)
+            .onChange(of: hofOptIn) { newValue in
+                Task { await pushBoolField("hof_opt_in", newValue) }
+            }
+            if hofOptIn {
+                HStack(spacing: 12) {
+                    hofAvatarPreview
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button(hofAvatar == nil
+                               ? "settings.privacy.hof_add_image".localized
+                               : "settings.privacy.hof_change_image".localized) {
+                            showHofPicker = true
+                        }
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.accent)
+                        .disabled(hofBusy)
+                        if hofAvatar != nil {
+                            Button("settings.privacy.hof_remove_image".localized) {
+                                Task { await setHofAvatar("") }
+                            }
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .disabled(hofBusy)
+                        }
+                    }
+                    Spacer()
+                    if hofBusy { ProgressView().scaleEffect(0.8) }
+                }
+                if let err = hofError {
+                    Text(err).font(.caption2).foregroundColor(.red)
+                }
+            }
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }
@@ -619,7 +625,11 @@ struct PrivacySettingsView: View {
     @ViewBuilder private var hofAvatarPreview: some View {
         ZStack {
             Circle().fill(Theme.Color.accent.opacity(0.12))
-            if let img = hofPreview {
+            if let gif = hofGifData {
+                // Animate a GIF avatar here too (#27) — it animates on the
+                // public wall, so the settings preview shouldn't be frozen.
+                AnimatedGIFView(data: gif, contentMode: .fill)
+            } else if let img = hofPreview {
                 Image(uiImage: img).resizable().scaledToFill()
             } else {
                 Image(systemName: "photo").foregroundColor(Theme.Color.textSecondary)
@@ -627,6 +637,14 @@ struct PrivacySettingsView: View {
         }
         .frame(width: 48, height: 48)
         .clipShape(Circle())
+    }
+
+    /// Raw bytes of the HoF avatar when it's a GIF data-URI, else nil (so the
+    /// preview can animate instead of showing a frozen first frame).
+    private var hofGifData: Data? {
+        guard let s = hofAvatar, s.hasPrefix("data:image/gif;base64,"),
+              let r = s.range(of: ";base64,") else { return nil }
+        return Data(base64Encoded: String(s[r.upperBound...]))
     }
 
     /// Normalize a picked image into a capped (~256KB) data-URI and upload it.

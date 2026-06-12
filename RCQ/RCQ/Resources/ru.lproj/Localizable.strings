@@ -5,6 +5,11 @@
 "settings.title" = "Настройки";
 "settings.appearance" = "Оформление";
 "settings.appearance.theme" = "Тема";
+"settings.textsize" = "Размер текста";
+"settings.textsize.system" = "Системный";
+"settings.textsize.large" = "Крупный";
+"settings.textsize.larger" = "Очень крупный";
+"settings.textsize.largest" = "Максимальный";
 "settings.appearance.theme.system" = "Системная";
 "settings.appearance.theme.light" = "Светлая";
 "settings.appearance.theme.dark" = "Тёмная";
@@ -1979,6 +1984,14 @@
 "panic_pin.biometric.reason" = "Разблокировать RCQ";
 "panic_pin.lock.use_biometric" = "Войти по Face ID";
 "panic_pin.biometric.section" = "Face ID";
+"panic_pin.autolock" = "Автоблокировка";
+"panic_pin.autolock.section" = "Автоблокировка";
+"panic_pin.autolock.footer" = "Сколько приложение может оставаться в фоне, прежде чем снова запросит PIN.";
+"panic_pin.autolock.immediate" = "Сразу";
+"panic_pin.autolock.30s" = "30 сек";
+"panic_pin.autolock.1m" = "1 мин";
+"panic_pin.autolock.5m" = "5 мин";
+"panic_pin.autolock.15m" = "15 мин";
 "panic_pin.biometric.toggle" = "Разблокировка по Face ID";
 "panic_pin.biometric.footer" = "Используйте Face ID для быстрого входа каждый день. PIN-код остаётся запасным вариантом. Важно: Face ID — это удобство, он не защищает от принуждения разблокировать — телефон могут поднести к вашему лицу. Для этого используйте режимы PIN-кода ниже.";
 "panic_pin.biometric.footer.conflict" = "Face ID нельзя использовать вместе с PIN для стирания — биометрия не различает режимы, а принудительная разблокировка по лицу обойдёт их. Удалите PIN для стирания, чтобы включить Face ID.";

@@ -51,6 +51,14 @@ final class PanicPINService: ObservableObject {
     @Published private(set) var biometricEnabled: Bool
     @Published private(set) var lockoutUntil: Date?
 
+    /// Re-lock grace in SECONDS (#10): how long the app can sit backgrounded
+    /// before it asks for the PIN again on return. 0 = immediately. Default 30
+    /// preserves the old hardcoded behaviour; user-configurable in PIN settings.
+    @Published var lockTimeout: Int {
+        didSet { UserDefaults.standard.set(lockTimeout, forKey: Self.lockTimeoutKey) }
+    }
+    private static let lockTimeoutKey = "rcq.pin.lock_timeout"
+
     var biometricAvailable: Bool { BiometricUnlock.isAvailable }
 
     var isConfigured: Bool { PINVault.isConfigured }
@@ -70,6 +78,8 @@ final class PanicPINService: ObservableObject {
         biometricEnabled = BiometricUnlock.isEnabled
         let until = PINVault.loadAttemptState().lockoutUntil
         lockoutUntil = (until ?? .distantPast) > Date() ? until : nil
+        // Default 30s = the old hardcoded grace; absent key → 30.
+        lockTimeout = UserDefaults.standard.object(forKey: Self.lockTimeoutKey) as? Int ?? 30
     }
 
     // MARK: - unlock / lock

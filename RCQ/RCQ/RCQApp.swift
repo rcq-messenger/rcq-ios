@@ -240,6 +240,7 @@ struct RCQApp: App {
                 .environmentObject(appState)
                 .environmentObject(themeManager)
                 .preferredColorScheme(themeManager.theme.colorScheme)
+                .modifier(AppTextSizeModifier(size: themeManager.textSize))
                 .tint(Theme.Color.accent)
                 .onOpenURL { url in appState.handle(deepLink: url) }
         }
@@ -256,8 +257,6 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("rcq.onboarded") private var didOnboard: Bool = false
     @State private var backgroundedAt: Date?
-
-    private static let relockGrace: TimeInterval = 30
 
     /// How long the app must have been backgrounded before we treat the
     /// WebSocket as suspect on resume. iOS suspends the process during
@@ -350,7 +349,7 @@ struct RootView: View {
         let backgroundedFor = backgroundedAt.map { Date().timeIntervalSince($0) }
 
         if panicPIN.isConfigured, !panicPIN.isLocked, let since = backgroundedAt,
-           Date().timeIntervalSince(since) > Self.relockGrace {
+           Date().timeIntervalSince(since) >= TimeInterval(panicPIN.lockTimeout) {
             panicPIN.lock()
         }
         backgroundedAt = nil

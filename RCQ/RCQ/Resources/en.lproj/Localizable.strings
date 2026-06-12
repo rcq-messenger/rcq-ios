@@ -14,6 +14,11 @@
 "settings.title" = "Settings";
 "settings.appearance" = "Appearance";
 "settings.appearance.theme" = "Theme";
+"settings.textsize" = "Text size";
+"settings.textsize.system" = "System";
+"settings.textsize.large" = "Large";
+"settings.textsize.larger" = "Larger";
+"settings.textsize.largest" = "Largest";
 "settings.appearance.theme.system" = "System";
 "settings.appearance.theme.light" = "Light";
 "settings.appearance.theme.dark" = "Dark";
@@ -2003,6 +2008,14 @@
 "panic_pin.biometric.reason" = "Unlock RCQ";
 "panic_pin.lock.use_biometric" = "Unlock with Face ID";
 "panic_pin.biometric.section" = "Face ID";
+"panic_pin.autolock" = "Auto-lock";
+"panic_pin.autolock.section" = "Auto-lock";
+"panic_pin.autolock.footer" = "How long the app can stay in the background before it asks for the PIN again.";
+"panic_pin.autolock.immediate" = "Immediately";
+"panic_pin.autolock.30s" = "30 sec";
+"panic_pin.autolock.1m" = "1 min";
+"panic_pin.autolock.5m" = "5 min";
+"panic_pin.autolock.15m" = "15 min";
 "panic_pin.biometric.toggle" = "Unlock with Face ID";
 "panic_pin.biometric.footer" = "Use Face ID for everyday quick unlock. The PIN stays as a fallback. Note: Face ID is a convenience — it does not protect against being forced to unlock, since someone can hold the phone to your face. For that, use the PIN modes below.";
 "panic_pin.biometric.footer.conflict" = "Face ID can't be used together with a wipe PIN — a biometric unlock can't tell the modes apart, and a forced face-unlock would bypass them. Remove the wipe PIN to enable Face ID.";
