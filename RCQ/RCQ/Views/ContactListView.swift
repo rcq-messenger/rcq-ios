@@ -554,7 +554,15 @@ struct ContactListView: View {
                 }
                 .pickerStyle(.inline)
             } label: {
-                StatusIcon(status: presence.status, size: 26)
+                // #16: persistent connection dot on the identity flower —
+                // green = socket up, orange = offline/reconnecting.
+                ZStack(alignment: .bottomTrailing) {
+                    StatusIcon(status: presence.status, size: 26)
+                    Circle()
+                        .fill(appState.isOffline ? Color.orange : Color.green)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
+                }
             }
             Button { showProfile = true } label: {
                 VStack(spacing: 0) {
