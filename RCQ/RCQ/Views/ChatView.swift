@@ -1421,7 +1421,11 @@ struct ChatView: View {
             }
             // Bottom-chrome growth (emoji panel, reply/edit, keyboard) needs an explicit re-anchor —
             // we don't use defaultScrollAnchor. Duration matches the 0.22s on the safeAreaInset.
+            // ONLY when already at the bottom: a reader scrolled up into
+            // history must stay where they are (founder report — opening the
+            // emoji panel yanked the chat to the newest message).
             .onChange(of: showEmojiPanel) { _ in
+                guard !showScrollToBottom else { return }
                 withAnimation(.easeOut(duration: 0.22)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
@@ -1456,6 +1460,10 @@ struct ChatView: View {
                 if showEmojiPanel {
                     showEmojiPanel = false
                 }
+                // Same at-bottom-only rule as the emoji panel above: the
+                // keyboard must not yank a reader out of history either
+                // (keyboardWillHide already had this guard).
+                guard !showScrollToBottom else { return }
                 // Match the system keyboard's 0.25s easeOut so the scroll glides in sync.
                 withAnimation(.easeOut(duration: 0.25)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)

@@ -196,11 +196,15 @@ struct ReactionsWhoSheet: View {
                             }
                         }
                     } header: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
+                            // 18pt read as tiny against the row text (founder
+                            // report) — the smiley IS the section's subject,
+                            // let it lead.
                             if GIFImage.cachedImage(for: g.asset) != nil {
-                                GIFImage(name: g.asset).frame(width: 18, height: 18)
+                                GIFImage(name: g.asset).frame(width: 30, height: 30)
                             }
                             Text("\(g.uins.count)")
+                                .font(.subheadline.weight(.semibold))
                         }
                     }
                 }

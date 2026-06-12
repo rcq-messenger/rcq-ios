@@ -7,7 +7,11 @@ struct EmoticonText: View {
     let text: String
     var font: Font = Theme.Font.bubble
     var color: Color = Theme.Color.textPrimary
-    var emoticonSize: CGFloat = 22
+    // Default drives the CHAT BUBBLES (MessageRow body + captions use it
+    // unparameterized) — founder asked for bigger inline smileys in chat,
+    // 22 → 26. Previews/quotes pass their own smaller sizes explicitly;
+    // reaction chips render their own GIFImage and are not affected.
+    var emoticonSize: CGFloat = 26
     var lineSpacing: CGFloat = 2
     /// Group members used to resolve `@nickname` mentions. Pass [] for
     /// 1:1 chats — mentions stay as plain text there.
