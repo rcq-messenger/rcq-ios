@@ -180,8 +180,40 @@ final class SingBoxTransport {
 
     private static func buildConfig(port: Int) -> String {
         let ordered = orderedRelays()
+        let vless = ordered.filter { $0.proto == .vless }
         let outbounds: [[String: Any]] = {
             var out: [[String: Any]] = []
+            // ONION (M3): when the signed config turns it on AND we have ≥2 VLESS
+            // relays, route through a 2-hop chain so no single relay sees the
+            // client IP AND the destination island together. A STICKY entry (the
+            // first VLESS relay — O4 refines selection) carries opaque tunnels to
+            // EXIT relays (each `detour`ed through the entry); a urltest races the
+            // EXIT chains so the exit rotates while the entry stays sticky (Tor
+            // guard lesson). Falls back to single-hop below when off or <2 VLESS,
+            // so connectivity is never worse. Proven via a local sing-box
+            // prototype + Android emulator (RCQ/docs/onion-design.md).
+            if RelayConfigStore.onionEnabled, vless.count >= 2 {
+                let entry = vless[0]
+                let exits = Array(vless.dropFirst())
+                out.append([
+                    "type": "urltest",
+                    "tag": "out",
+                    "outbounds": exits.map { "onion-\($0.tag)" },
+                    "url": "https://api.rcq.app/health",
+                    "interval": "5m",
+                    "tolerance": 50,
+                ])
+                var entryOut = vlessOutbound(for: entry)
+                entryOut["tag"] = "onion-entry"
+                out.append(entryOut)
+                for ex in exits {
+                    var exOut = vlessOutbound(for: ex)
+                    exOut["tag"] = "onion-\(ex.tag)"
+                    exOut["detour"] = "onion-entry"
+                    out.append(exOut)
+                }
+                return out
+            }
             out.append([
                 "type": "urltest",
                 "tag": "out",

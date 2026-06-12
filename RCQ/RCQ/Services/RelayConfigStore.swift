@@ -95,22 +95,33 @@ final class RelayConfigStore {
         }
     }
 
+    struct OnionPolicy: Codable { let enabled: Bool? }
+
     struct Payload: Codable {
         let version: Int
         let issuedAt: String
         let relays: [RelayEntry]
+        let onion: OnionPolicy?
 
         enum CodingKeys: String, CodingKey {
-            case version, relays
+            case version, relays, onion
             case issuedAt = "issued_at"
         }
     }
+
+    /// Onion routing policy from the signed config (`onion.enabled`, O3). When
+    /// true AND ≥2 VLESS relays exist, SingBoxTransport builds a 2-hop chain
+    /// (M3 metadata resistance, RCQ/docs/onion-design.md). Default OFF — only a
+    /// signature-valid payload that explicitly sets it flips onion on, so
+    /// rollout is a signed-config push to a cohort, ZERO app release.
+    static var onionEnabled = false
 
     private var cached: [RelayEntry]?
 
     private init() {
         if let onDisk = Self.loadFromDisk() {
             cached = onDisk.relays.sorted { $0.priority < $1.priority }
+            Self.onionEnabled = onDisk.onion?.enabled ?? false
         }
     }
 
@@ -134,6 +145,7 @@ final class RelayConfigStore {
                 guard let payload = Self.verifyAndDecode(data) else { continue }
                 let sorted = payload.relays.sorted { $0.priority < $1.priority }
                 cached = sorted
+                Self.onionEnabled = payload.onion?.enabled ?? false
                 Self.saveToDisk(data)
                 return
             } catch {
