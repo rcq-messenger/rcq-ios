@@ -947,11 +947,16 @@ final class MessageService {
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
 
         let envType = envelopeType(for: envelope)
+        // owner_only (broadcast) MESSAGE posts attach our token so the server
+        // can verify we're the owner (sealed sender hides nothing here — every
+        // post is the owner's). Reactions/edits and all 'all'-group sends stay
+        // anonymous to preserve sealed sender.
+        let authPost = group.postPolicy == "owner_only" && envType == "message"
         do {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/messages/group-sealed",
                 body: Body(group_id: group.id, envelope_type: envType, payloads: entries),
-                authenticated: false,
+                authenticated: authPost,
                 retries: 2
             )
             if let localID {
