@@ -377,33 +377,97 @@ enum Multihome {
         return delivered
     }
 
+    // MARK: gossip mirror (address-mobility B1)
+    // A peer's self-signed record is mirrorable by global identity (sk) so it
+    // can be served from any honest island a contact uses. The server
+    // re-verifies the signature on write; this client re-verifies on read —
+    // gossip adds redundancy, not trust.
+
+    /// Best-effort mirror a verified record's RAW bytes onto `host`'s gossip
+    /// store. Never throws.
+    static func mirrorRecord(host: String, body: Data) async {
+        guard let url = URL(string: "https://\(host)/federation/gossip-record") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    /// Fetch a peer's mirrored record by its Ed25519 signing key from `host`'s
+    /// gossip store. Returns the decoded doc, or nil (404 / unreachable).
+    static func fetchGossipRecord(host: String, signingKey: String) async -> [String: Any]? {
+        guard let sk = signingKey.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              let url = URL(string: "https://\(host)/federation/gossip-record?sk=\(sk)"),
+              let (data, resp) = try? await URLSession.shared.data(from: url),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func homesOf(_ rec: [String: Any]) -> [RcqFederation.Home] {
+        (rec["homes"] as? [[String: Any]] ?? []).compactMap { h in
+            guard let host = h["host"] as? String, let uin = h["uin"] as? Int else { return nil }
+            return RcqFederation.Home(host: host, uin: uin)
+        }
+    }
+
+    /// Resolve a peer's home list. Sources, in order: (1) OUR island's by-uin
+    /// owner record (peer is on / multi-homed onto us), seeded into our gossip
+    /// store on success; (2) OUR island's GOSSIP mirror by sk (survives the
+    /// peer's own island being blocked/gone). Verified against the peer's
+    /// locally-pinned signing key. TTL cached; a total miss serves the stale cache.
     private static func resolvePeerHomesCached(peerUin: Int, peerSigningKey: String) async -> [RcqFederation.Home] {
         if let cached = MultihomeStore.shared.cachedPeerHomes(peerUin),
            Date().timeIntervalSince(cached.ts) < peerCacheTTL {
             return cached.homes
         }
-        guard let url = URL(string: "https://\(ownHost())/federation/island-record/\(peerUin)") else { return [] }
-        guard let (data, resp) = try? await URLSession.shared.data(from: url),
-              let http = resp as? HTTPURLResponse else {
-            // Primary unreachable — serve the stale cache (the failover moment).
-            return MultihomeStore.shared.cachedPeerHomes(peerUin)?.homes ?? []
+        let own = ownHost()
+        // (1) by-uin owner record on our island.
+        if let url = URL(string: "https://\(own)/federation/island-record/\(peerUin)"),
+           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let http = resp as? HTTPURLResponse {
+            if http.statusCode == 404 {
+                // Clean miss; still try gossip below before caching empty.
+            } else if (200..<300).contains(http.statusCode),
+                      let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                      case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
+                await mirrorRecord(host: own, body: data)  // seed gossip for other islands
+                let homes = homesOf(rec)
+                MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes)
+                return homes
+            }
         }
-        if http.statusCode == 404 {
-            MultihomeStore.shared.cachePeerHomes(peerUin, homes: [])
-            return []
+        // (2) gossip mirror by sk on our island.
+        if let rec = await fetchGossipRecord(host: own, signingKey: peerSigningKey),
+           case .success(let v) = RcqFederation.verifyRecord(rec, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
+            let homes = homesOf(v)
+            MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes)
+            return homes
         }
-        guard (200..<300).contains(http.statusCode),
-              let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)),
-              let homesRaw = rec["homes"] as? [[String: Any]] else {
-            return MultihomeStore.shared.cachedPeerHomes(peerUin)?.homes ?? []
+        // Nothing reachable: serve stale cache, else cache empty (single-homed).
+        if let stale = MultihomeStore.shared.cachedPeerHomes(peerUin)?.homes { return stale }
+        MultihomeStore.shared.cachePeerHomes(peerUin, homes: [])
+        return []
+    }
+
+    /// Resolve a peer's homes from THEIR OWN island, mirror the verified record
+    /// onto our island's gossip store, and fall back to our gossip mirror if
+    /// their island is unreachable. The cross-island entry point.
+    static func resolveAndMirrorHomes(peerHost: String, peerUin: Int, peerSigningKey: String) async -> [RcqFederation.Home] {
+        let own = ownHost()
+        if let url = URL(string: "https://\(peerHost)/federation/island-record/\(peerUin)"),
+           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+           let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
+            await mirrorRecord(host: own, body: data)
+            return homesOf(rec)
         }
-        let homes = homesRaw.compactMap { h -> RcqFederation.Home? in
-            guard let host = h["host"] as? String, let uin = h["uin"] as? Int else { return nil }
-            return RcqFederation.Home(host: host, uin: uin)
+        if let rec = await fetchGossipRecord(host: own, signingKey: peerSigningKey),
+           case .success(let v) = RcqFederation.verifyRecord(rec, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
+            return homesOf(v)
         }
-        MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes)
-        return homes
+        return []
     }
 
     // MARK: raw HTTP helpers (arbitrary hosts — APIClient is pinned to the primary)
