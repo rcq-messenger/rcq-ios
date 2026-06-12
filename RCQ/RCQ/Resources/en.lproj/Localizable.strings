@@ -163,7 +163,7 @@
 "weblink.error" = "Couldn't connect. The code may have expired — reload the page and try again.";
 "linkeddevices.title" = "Linked devices";
 "linkeddevices.nav" = "Devices";
-"multihome.title" = "Backup island";
+"multihome.title" = "Backup on another island";
 "multihome.body" = "Your account can also live on a second, independent RCQ island (server). Messages are then delivered into both mailboxes, so if one island goes down, nothing is lost — the other keeps receiving.";
 "multihome.row_uin" = "your number there: #%@";
 "multihome.auto.title" = "Keep a backup on another island";
