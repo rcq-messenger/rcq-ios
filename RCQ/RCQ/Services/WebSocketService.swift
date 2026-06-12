@@ -60,6 +60,16 @@ final class WebSocketService: ObservableObject {
 
     @Published private(set) var isConnected: Bool = false
 
+    /// True only while we have CONFIRMED end-to-end evidence the server is
+    /// on the other side of this socket: set on every inbound frame,
+    /// cleared on connect (until the first frame arrives) and on any
+    /// disconnect. `isConnected` is optimistic — it flips true at
+    /// `task.resume()`, before the upgrade handshake even completes —
+    /// which suits the internal send/reconnect gating but must not drive
+    /// UI: the identity-flower dot would show green while we're dialing a
+    /// server that is unreachable (VPN pulled, route blocked). UI reads this.
+    @Published private(set) var linkUp: Bool = false
+
     /// Wall-clock time of the most recent inbound frame (any kind —
     /// pong, presence, envelope...). Drives the staleness watchdog:
     /// if more than `staleThreshold` seconds pass with the socket
@@ -82,6 +92,11 @@ final class WebSocketService: ObservableObject {
 
     private var task: URLSessionWebSocketTask?
     private var session: URLSession = .shared
+    /// Whether the current task rides the local sing-box proxy. A write
+    /// through the proxy only proves the loopback hop to sing-box, not the
+    /// tunnel behind it, so the watchdog must not count send-success as
+    /// liveness there (see `sendPing`).
+    private var viaProxy = false
     private var reconnectAttempt = 0
     private var pingTimer: Timer?
     private var pendingReconnect: DispatchWorkItem?
@@ -93,8 +108,8 @@ final class WebSocketService: ObservableObject {
 
     private init() {}
 
-    private static func makeSession() -> URLSession {
-        guard let proxy = SingBoxTransport.proxyDictionary() else { return .shared }
+    private static func makeSession(proxy: [String: Any]?) -> URLSession {
+        guard let proxy else { return .shared }
         let cfg = URLSessionConfiguration.default
         cfg.connectionProxyDictionary = proxy
         return URLSession(configuration: cfg)
@@ -120,7 +135,9 @@ final class WebSocketService: ObservableObject {
         comp.queryItems = [URLQueryItem(name: "token", value: token)]
         guard let url = comp.url else { return }
 
-        session = Self.makeSession()
+        let proxy = SingBoxTransport.proxyDictionary()
+        viaProxy = proxy != nil
+        session = Self.makeSession(proxy: proxy)
 
         // URLRequest-based handshake (vs `webSocketTask(with: url)`) so
         // we can attach the optional masquerade header. When the active
@@ -136,12 +153,18 @@ final class WebSocketService: ObservableObject {
         self.task = task
         task.resume()
         isConnected = true
+        linkUp = false
         reconnectAttempt = 0
         lastFrameAt = Date()
         events.send(.opened)
         startPingTimer()
         startStaleWatchdog()
         receiveLoop()
+        // Immediate ping: the server's pong is the first inbound frame and
+        // confirms the link (flips `linkUp`) within one round-trip instead
+        // of waiting a full ping interval. On a dead route the queued send
+        // errors out and fails this attempt fast.
+        sendPing()
     }
 
     func disconnect() {
@@ -151,6 +174,7 @@ final class WebSocketService: ObservableObject {
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         isConnected = false
+        linkUp = false
         pingTimer?.invalidate()
         pingTimer = nil
         staleWatchdog?.invalidate()
@@ -162,6 +186,9 @@ final class WebSocketService: ObservableObject {
     /// through (or without) the new proxy instead of waiting for a failure.
     /// No-op if we've never connected.
     func reconnectNow() {
+        // Never resurrect a deliberately torn-down socket (logout, panic
+        // lock) — only redial while we're supposed to be connected.
+        guard shouldStayConnected else { return }
         pendingReconnect?.cancel()
         guard let uin = lastUIN, let token = lastToken, let base = lastBaseURL else { return }
         connect(uin: uin, token: token, baseURL: base, serverToken: lastServerToken)
@@ -189,6 +216,12 @@ final class WebSocketService: ObservableObject {
     /// OS background-suspend, which the foreground-resume forced
     /// reconnect now handles independently. A genuinely dead write side
     /// still errors → handleDisconnect below.
+    ///
+    /// Exception: through the local sing-box proxy a "successful" write
+    /// only reached the loopback hop — the tunnel behind it may be dead
+    /// (VPN pulled, relay blocked) — so via-proxy sockets count inbound
+    /// frames only. A dead tunnel then gets reaped by the watchdog
+    /// instead of staying masked as healthy forever.
     private func sendPing() {
         guard let task else { return }
         let issuedTask = task
@@ -197,7 +230,7 @@ final class WebSocketService: ObservableObject {
                 guard let self, self.task === issuedTask else { return }
                 if error != nil {
                     self.handleDisconnect()
-                } else {
+                } else if !self.viaProxy {
                     self.lastFrameAt = Date()
                 }
             }
@@ -373,6 +406,7 @@ final class WebSocketService: ObservableObject {
         // payload. Pong frames especially: they're the only inbound
         // traffic during a quiet stretch.
         lastFrameAt = Date()
+        linkUp = true
         let data: Data
         switch msg {
         case .data(let d): data = d
@@ -677,6 +711,7 @@ final class WebSocketService: ObservableObject {
         // shouldn't queue multiple reconnects.
         guard isConnected || task != nil else { return }
         isConnected = false
+        linkUp = false
         events.send(.closed)
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil

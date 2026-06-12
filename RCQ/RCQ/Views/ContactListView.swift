@@ -17,6 +17,7 @@ struct ContactListView: View {
     // Variant A: held cross-island "message requests" count into the pending
     // banner — without it a cross-island request was invisible (no entry point).
     @ObservedObject private var ciRequests = CrossIslandRequestsStore.shared
+    @ObservedObject private var socket = WebSocketService.shared
     // Cross-island contacts render from the store directly: the merged
     // ContactService list drops them when a same-uin LOCAL contact exists.
     @ObservedObject private var ciStore = CrossIslandStore.shared
@@ -555,11 +556,16 @@ struct ContactListView: View {
                 .pickerStyle(.inline)
             } label: {
                 // #16: persistent connection dot on the identity flower —
-                // green = socket up, orange = offline/reconnecting.
+                // green = confirmed live link to the server, orange =
+                // device offline OR socket down/dialing/unconfirmed. The
+                // device-network flag alone isn't enough: with the VPN
+                // pulled but Wi-Fi up the path stays "satisfied" while the
+                // server is unreachable — `linkUp` (server evidence) is
+                // what makes the dot honest there.
                 ZStack(alignment: .bottomTrailing) {
                     StatusIcon(status: presence.status, size: 26)
                     Circle()
-                        .fill(appState.isOffline ? Color.orange : Color.green)
+                        .fill(appState.isOffline || !socket.linkUp ? Color.orange : Color.green)
                         .frame(width: 9, height: 9)
                         .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
                 }

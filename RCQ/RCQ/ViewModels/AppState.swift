@@ -73,6 +73,13 @@ final class AppState: ObservableObject {
     private let pathMonitor = NWPathMonitor()
     private let pathQueue = DispatchQueue(label: "rcq.path-monitor")
     private var pendingOnlineSync: Task<Void, Never>?
+    /// Fingerprint of the last seen network path (status + interface set).
+    /// A VPN drop with Wi-Fi still up keeps `status == .satisfied` so the
+    /// offline flag never moves — but the interface list changes, and the
+    /// socket left behind is bound to a dead route. Any change while
+    /// online forces a redial (debounced below).
+    private var lastPathSignature: String?
+    private var pendingPathReconnect: Task<Void, Never>?
 
     /// UserDefaults key for a referral inviter UIN captured before
     /// register. Consumed by the fresh-register path; ignored for
@@ -244,15 +251,19 @@ final class AppState: ObservableObject {
             .store(in: &cancellables)
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let offline = path.status != .satisfied
+            let signature = "\(path.status)|"
+                + path.availableInterfaces.map(\.name).sorted().joined(separator: ",")
             Task { @MainActor in
-                self?.handlePathChange(offline: offline)
+                self?.handlePathChange(offline: offline, signature: signature)
             }
         }
         pathMonitor.start(queue: pathQueue)
     }
 
-    private func handlePathChange(offline: Bool) {
+    private func handlePathChange(offline: Bool, signature: String) {
         let wasOffline = isOffline
+        let routeChanged = lastPathSignature != nil && lastPathSignature != signature
+        lastPathSignature = signature
         isOffline = offline
         // Coming back online after an offline boot — replay the network
         // half of the boot sequence so caches/contacts/wallet sync up.
@@ -260,6 +271,18 @@ final class AppState: ObservableObject {
             pendingOnlineSync?.cancel()
             pendingOnlineSync = Task { [weak self] in
                 await self?.runOnlineSync()
+            }
+        } else if routeChanged && !offline && booted {
+            // Still "online" but the route itself changed (VPN on/off,
+            // Wi-Fi ↔ cellular). Redial through the new route instead of
+            // letting the old socket sit half-dead for the full watchdog
+            // window. Debounced: NWPathMonitor fires several updates during
+            // one transition.
+            pendingPathReconnect?.cancel()
+            pendingPathReconnect = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self, !Task.isCancelled, !self.isOffline else { return }
+                WebSocketService.shared.reconnectNow()
             }
         }
     }
