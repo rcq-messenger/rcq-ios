@@ -109,19 +109,28 @@ final class AuthService: ObservableObject {
     /// Mirrors the web + Android wiring. Internal so the Settings backup-island
     /// surface can republish after an add/remove.
     func publishHomeIslandRecord(ownUIN: Int) async {
+        guard let doc = buildOwnRecordDoc(ownUIN: ownUIN),
+              let body = try? JSONSerialization.data(withJSONObject: doc) else { return }
+        _ = await APIClient.shared.publishIslandRecord(body)
+        let homeCount = (doc["homes"] as? [[String: Any]])?.count ?? 1
+        if homeCount > 1 { await Multihome.publishToBackups(ownUin: ownUIN, recordBody: body) }
+    }
+
+    /// Build + sign this account's current home-island record (primary + backup
+    /// homes). Shared by the F1 publish above and the gossip B1 self-push so
+    /// both sign the exact same bytes. Returns nil before the libsignal device
+    /// or signing key exists.
+    func buildOwnRecordDoc(ownUIN: Int) -> [String: Any]? {
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
-              let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return }
+              let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return nil }
         let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
         let ik = local.identityKeyPair.publicKey.serialize().base64EncodedString()
         let host = APIClient.shared.baseURL.host ?? RcqFederation.flagshipHost
         let homes = [RcqFederation.Home(host: host, uin: ownUIN)] +
             MultihomeStore.shared.list(ownUin: ownUIN).map { RcqFederation.Home(host: $0.host, uin: $0.uin) }
         let ts = Int(Date().timeIntervalSince1970)
-        guard let doc = try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts),
-              let body = try? JSONSerialization.data(withJSONObject: doc) else { return }
-        _ = await APIClient.shared.publishIslandRecord(body)
-        if homes.count > 1 { await Multihome.publishToBackups(ownUin: ownUIN, recordBody: body) }
+        return try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts)
     }
 
     /// The active account's 24-word recovery phrase, or nil for a legacy

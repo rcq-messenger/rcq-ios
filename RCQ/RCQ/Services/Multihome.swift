@@ -34,9 +34,12 @@ final class MultihomeStore {
 
     /// Resolved peer homes + freshness. A STALE entry is still served when the
     /// record can't be re-fetched — that staleness IS the send-failover path.
+    /// `recTs` is the signed record's OWN ts (Unix seconds, 0 if unknown), the
+    /// anti-rollback floor for a self-pushed record (gossip B1).
     struct PeerHomes {
         let homes: [RcqFederation.Home]
         let ts: Date
+        var recTs: Int = 0
     }
     private struct CodableHome: Codable { let host: String; let uin: Int }
 
@@ -102,20 +105,20 @@ final class MultihomeStore {
         guard let data = defaults.data(forKey: Self.peerCacheKey),
               let map = try? JSONDecoder().decode([String: StoredPeer].self, from: data),
               let s = map[String(peerUin)] else { return nil }
-        return PeerHomes(homes: s.homes.map { RcqFederation.Home(host: $0.host, uin: $0.uin) }, ts: s.ts)
+        return PeerHomes(homes: s.homes.map { RcqFederation.Home(host: $0.host, uin: $0.uin) }, ts: s.ts, recTs: s.recTs ?? 0)
     }
 
-    func cachePeerHomes(_ peerUin: Int, homes: [RcqFederation.Home]) {
+    func cachePeerHomes(_ peerUin: Int, homes: [RcqFederation.Home], recTs: Int = 0) {
         var map: [String: StoredPeer] = [:]
         if let data = defaults.data(forKey: Self.peerCacheKey),
            let m = try? JSONDecoder().decode([String: StoredPeer].self, from: data) {
             map = m
         }
-        map[String(peerUin)] = StoredPeer(homes: homes.map { CodableHome(host: $0.host, uin: $0.uin) }, ts: Date())
+        map[String(peerUin)] = StoredPeer(homes: homes.map { CodableHome(host: $0.host, uin: $0.uin) }, ts: Date(), recTs: recTs)
         if let data = try? JSONEncoder().encode(map) { defaults.set(data, forKey: Self.peerCacheKey) }
     }
 
-    private struct StoredPeer: Codable { let homes: [CodableHome]; let ts: Date }
+    private struct StoredPeer: Codable { let homes: [CodableHome]; let ts: Date; let recTs: Int? }
 }
 
 enum Multihome {
@@ -427,6 +430,24 @@ enum Multihome {
         }
     }
 
+    private static func tsOf(_ rec: [String: Any]) -> Int { rec["ts"] as? Int ?? 0 }
+
+    /// Apply a contact's SELF-PUSHED home-island record (gossip B1): verify it
+    /// is signed by `senderSigningKey` (the same Ed25519 key that signed the
+    /// envelope it arrived in — binds the record to its real sender), reject a
+    /// ts rollback against what we've cached, and cache the homes for future
+    /// sends. Returns true when the cache was updated. Never throws.
+    @discardableResult
+    static func applyPushedRecord(senderUIN: Int, senderSigningKey: String, rec: Envelope.IslandRecordWire) -> Bool {
+        guard let data = try? JSONEncoder().encode(rec),
+              let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        let prevTs = MultihomeStore.shared.cachedPeerHomes(senderUIN)?.recTs ?? 0
+        let opts = RcqFederation.VerifyOpts(expectedSk: senderSigningKey, minTs: prevTs > 0 ? prevTs : nil)
+        guard case .success(let v) = RcqFederation.verifyRecord(doc, opts: opts) else { return false }
+        MultihomeStore.shared.cachePeerHomes(senderUIN, homes: homesOf(v), recTs: tsOf(v))
+        return true
+    }
+
     /// Resolve a peer's home list. Sources, in order: (1) OUR island's by-uin
     /// owner record (peer is on / multi-homed onto us), seeded into our gossip
     /// store on success; (2) OUR island's GOSSIP mirror by sk (survives the
@@ -449,7 +470,7 @@ enum Multihome {
                       case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
                 await mirrorRecord(host: own, body: data)  // seed gossip for other islands
                 let homes = homesOf(rec)
-                MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes)
+                MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes, recTs: tsOf(rec))
                 return homes
             }
         }
@@ -457,7 +478,7 @@ enum Multihome {
         if let rec = await fetchGossipRecord(host: own, signingKey: peerSigningKey),
            case .success(let v) = RcqFederation.verifyRecord(rec, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
             let homes = homesOf(v)
-            MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes)
+            MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes, recTs: tsOf(v))
             return homes
         }
         // Nothing reachable: serve stale cache, else cache empty (single-homed).

@@ -976,6 +976,7 @@ struct BackupIslandView: View {
                     Multihome.disableAutoBackup(ownUin: uin)
                 }
                 await AuthService.shared.publishHomeIslandRecord(ownUIN: uin)
+                await MessageService.shared.pushHomeRecordToContacts()
                 if on { await Multihome.drainBackupQueues(ownUin: uin) }
                 await MainActor.run {
                     autoBusy = false
@@ -1008,6 +1009,7 @@ struct BackupIslandView: View {
             do {
                 _ = try await Multihome.addBackupIsland(ownUin: uin, hostInput: host, nickname: nickname)
                 await AuthService.shared.publishHomeIslandRecord(ownUIN: uin)
+                await MessageService.shared.pushHomeRecordToContacts()
                 await Multihome.drainBackupQueues(ownUin: uin)
                 await MainActor.run {
                     host = ""
@@ -1036,6 +1038,6 @@ struct BackupIslandView: View {
         let uin = MessageService.shared.ownUIN
         MultihomeStore.shared.remove(ownUin: uin, host: home.host)
         reload()
-        Task { await AuthService.shared.publishHomeIslandRecord(ownUIN: uin) }
+        Task { await AuthService.shared.publishHomeIslandRecord(ownUIN: uin); await MessageService.shared.pushHomeRecordToContacts() }
     }
 }

@@ -734,6 +734,9 @@ final class AppState: ObservableObject {
             )
         )
         await rebootForActiveAccount()
+        // Self-push the new home order to contacts (gossip B1) once the new
+        // session has booted (its contact roster is loaded by boot()).
+        await MessageService.shared.pushHomeRecordToContacts()
         return nil
     }
 

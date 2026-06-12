@@ -870,6 +870,41 @@ final class MessageService {
         }
     }
 
+    /// Federation gossip B1 (second half) — SELF-PUSH the signed home-island
+    /// record to every contact as a v=1 `homerec` envelope, so contacts cache
+    /// where to reach us even if our island later dies (the server mirror can't
+    /// cover "both my islands gone at once"). Call AFTER a record change
+    /// (add/remove backup, promote) — NOT on every boot. Best-effort per
+    /// contact. Only shares OUR homes with people already our contacts → no
+    /// social-graph leak (founder rejected the pull-from-mutuals variant).
+    func pushHomeRecordToContacts() async {
+        let uin = ownUIN
+        guard uin != 0,
+              let doc = AuthService.shared.buildOwnRecordDoc(ownUIN: uin),
+              let data = try? JSONSerialization.data(withJSONObject: doc),
+              let wire = try? JSONDecoder().decode(Envelope.IslandRecordWire.self, from: data) else { return }
+        let env = Envelope.homeRecord(rec: wire)
+        struct Ack: Decodable {}
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        for c in ContactService.shared.contacts where !c.blocked && c.uin != uin && !c.identityKey.isEmpty {
+            let bundle = PeerBundle(uin: c.uin, identityKey: c.identityKey, signingKey: c.signingKey)
+            guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { continue }  // v=1
+            if let host = c.host {
+                // Cross-island contact: deposit to their home(s) (gossip-aware).
+                var homes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: c.uin, peerSigningKey: c.signingKey)
+                if homes.isEmpty { homes = [RcqFederation.Home(host: host, uin: c.uin)] }
+                for h in homes { _ = await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: blob) }
+            } else {
+                // Flagship contact: non-pushable type so it doesn't buzz them.
+                _ = try? await APIClient.shared.request(
+                    "POST", "/messages/sealed",
+                    body: Body(to_uin: c.uin, envelope_type: "homerec", payload: blob),
+                    authenticated: false
+                ) as Ack
+            }
+        }
+    }
+
     private func encryptForPeer(envelope: Envelope, peer: PeerBundle, peerSignalIdentityKey: String?) async throws -> String {
         guard let psk = peerSignalIdentityKey, !psk.isEmpty else {
             return try crypto.encrypt(envelope: envelope, for: peer)
@@ -1165,6 +1200,17 @@ final class MessageService {
                 }
                 CallService.shared.handleCrossIslandSignal(sig: sig, fromUIN: decrypted.senderUIN, callID: cid, data: data)
                 return outcome
+            }
+
+            // Federation gossip B1 self-push: a contact handed us their fresh
+            // signed home-island record. Verify it's signed by the SAME key that
+            // signed this envelope (binds it to the real sender), reject a ts
+            // rollback, cache their homes. Never reaches the store/quarantine.
+            if case .homeRecord(let rec) = decrypted.envelope {
+                if let sk = decrypted.senderSigningKey {
+                    Multihome.applyPushedRecord(senderUIN: decrypted.senderUIN, senderSigningKey: sk, rec: rec)
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
             // Variant A consent: a 1:1 message from an un-accepted CROSS-ISLAND
@@ -1558,6 +1604,10 @@ final class MessageService {
             case .callSignal:
                 // §5d: intercepted before this switch (routed to CallService).
                 // Unreachable here; present only for exhaustiveness.
+                break
+            case .homeRecord:
+                // Gossip B1: intercepted before this switch (cached via
+                // applyPushedRecord). Unreachable here; for exhaustiveness.
                 break
             }
             os_log(

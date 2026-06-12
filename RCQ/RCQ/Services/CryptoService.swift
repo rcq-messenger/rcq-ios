@@ -85,12 +85,31 @@ enum Envelope: Codable, Hashable {
     /// the call id, `ts` = sender epoch SECONDS (receivers drop stale offers),
     /// `data` = the signal extras (sdp/candidate/media/reason — all strings).
     case callSignal(id: UUID, sig: String, cid: String, ts: Int, data: [String: String])
+    /// Home-island record self-push (federation gossip B1, wire kind "homerec").
+    /// Carries the SENDER's own signed home-island record so a contact caches
+    /// where to reach them even after the sender's island dies. Verified against
+    /// the sender's pinned signing key on receipt; never rendered. Cross-client
+    /// identical (`{"kind":"homerec","rec":{v,ik,sk,homes,ts,sig}}`).
+    case homeRecord(rec: IslandRecordWire)
+
+    /// Codable mirror of the signed home-island record (RcqFederation builds it
+    /// as `[String: Any]`; this is the wire-typed form carried in an envelope).
+    struct IslandRecordWire: Codable, Hashable {
+        let v: Int
+        let ik: String
+        let sk: String
+        let homes: [HomeWire]
+        let ts: Int
+        let sig: String
+        struct HomeWire: Codable, Hashable { let host: String; let uin: Int }
+    }
 
     private enum K: String, CodingKey {
         case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
         case on
         case to, gid, env
         case sig, cid, ts, data
+        case rec
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
@@ -218,6 +237,9 @@ enum Envelope: Codable, Hashable {
             try c.encode(cid, forKey: .cid)
             try c.encode(ts, forKey: .ts)
             try c.encode(data, forKey: .data)
+        case .homeRecord(let rec):
+            try c.encode("homerec", forKey: .kind)
+            try c.encode(rec, forKey: .rec)
         }
     }
 
@@ -340,6 +362,8 @@ enum Envelope: Codable, Hashable {
                 ts: try c.decode(Int.self, forKey: .ts),
                 data: try c.decodeIfPresent([String: String].self, forKey: .data) ?? [:]
             )
+        case "homerec":
+            self = .homeRecord(rec: try c.decode(IslandRecordWire.self, forKey: .rec))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")
         }
@@ -359,6 +383,10 @@ struct DecryptedEnvelope {
     /// The sender's island host if they included it (v=1 `from_host`); nil for
     /// pre-`from_host` senders and all v=2 (same-island). Drives Variant A.
     var senderHost: String? = nil
+    /// Base64 Ed25519 key (`spub`) that signed this envelope — proven by the
+    /// signature check. Lets a `homerec` self-push bind the carried record to
+    /// its real sender (rec.sk must equal this). nil for v=2.
+    var senderSigningKey: String? = nil
     let envelope: Envelope
 }
 
@@ -713,7 +741,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         }
         let env = try JSONDecoder().decode(Envelope.self, from: envBytes)
         let fromHost = inner["from_host"] as? String
-        return DecryptedEnvelope(senderUIN: from, senderHost: fromHost, envelope: env)
+        return DecryptedEnvelope(senderUIN: from, senderHost: fromHost, senderSigningKey: spubB64, envelope: env)
     }
 
     private func decryptV2(wire: [String: Any]) throws -> DecryptedEnvelope {
