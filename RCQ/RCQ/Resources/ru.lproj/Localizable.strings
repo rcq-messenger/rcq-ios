@@ -192,7 +192,7 @@
 "settings.network.custom_server" = "Сервер";
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.onion" = "Луковая маршрутизация (эксперимент)";
-"settings.network.onion.desc" = "Два релея, чтобы ни один не видел вас и сервер сразу. Нужна включённая маскировка соединения. Немного увеличивает задержку.";
+"settings.network.onion.desc" = "Два релея, чтобы ни один не видел вас и сервер сразу. Маскировку соединения включает автоматически. Немного медленнее.";
 "settings.network.custom_server.intro.title" = "Свой сервер";
 "settings.network.custom_server.intro.body" = "Можно добавить аккаунт на другом совместимом сервере RCQ рядом с текущим. Открытый код сервера: github.com/rcq-messenger/rcq-server-ref, можно поднять свой или подключиться к серверу знакомого.";
 "settings.network.custom_server.current.label" = "АКТИВНЫЙ СЕРВЕР";

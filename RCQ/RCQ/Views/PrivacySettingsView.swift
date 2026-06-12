@@ -315,9 +315,9 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
-            // Onion routing (M3, experimental). Per-device opt-in for the 2-hop
-            // chain so no single relay sees both the user and the server. Only
-            // meaningful when the obfuscated connection (stealth) is engaged.
+            // Onion routing (M3, experimental). One switch for the user: turning
+            // it on ALSO engages the obfuscated connection, because onion routes
+            // THROUGH the obfuscated tunnel and can't work without it.
             Toggle(isOn: $onionOptIn) {
                 HStack(spacing: 12) {
                     Image(systemName: "point.3.connected.trianglepath.dotted")
@@ -332,7 +332,14 @@ struct PrivacySettingsView: View {
                     }
                 }
             }
-            .onChange(of: onionOptIn) { on in SingBoxTransport.setOnionOptIn(on) }
+            .onChange(of: onionOptIn) { on in
+                SingBoxTransport.setOnionOptIn(on)
+                // Onion implies the protected connection: engage it so this is
+                // the only switch the user touches.
+                if on, !SingBoxTransport.isEnabled {
+                    Task { await SingBoxTransport.shared.setEnabled(true) }
+                }
+            }
             Button {
                 showCustomServer = true
             } label: {
