@@ -64,10 +64,15 @@ struct MessageRow: View {
     @State private var bubblePressed: Bool = false
     /// Telegram-style collapse of a very long text body (#2): tap "Show more".
     @State private var bodyExpanded: Bool = false
-    /// Measured heights to decide if the body is ACTUALLY truncated (so the
-    /// "Show more" button only appears when there's hidden text).
-    @State private var collapsedBodyHeight: CGFloat = 0
-    @State private var fullBodyHeight: CGFloat = 0
+
+    /// Conservative estimate of how many wrapped lines [body] takes in a chat
+    /// bubble (~38 chars/line): sum over hard lines of ceil(len/38). Used only
+    /// to decide whether to collapse + offer "Show more"; lineLimit does the
+    /// actual cut. Biased to not over-trigger on short messages.
+    static func estimatedLineCount(_ body: String) -> Int {
+        body.split(separator: "\n", omittingEmptySubsequences: false)
+            .reduce(0) { $0 + max(1, ($1.count + 37) / 38) }
+    }
 
     private static let swipeTriggerDistance: CGFloat = 60
     private static let swipeMaxDistance: CGFloat = 80
@@ -425,30 +430,23 @@ struct MessageRow: View {
                 if isTranslated { translatedFooter }
             }
         } else {
-            // A very long message collapses to ~14 lines with a "Show more"
-            // toggle (#2, Telegram-style). Only LONG candidates collapse; the
-            // button shows ONLY when the text is ACTUALLY truncated (measured:
-            // full height > collapsed height), so a message that fits in <14
-            // lines never gets a pointless "Show more". NB no vertical fixedSize
-            // while collapsed — it would force full height and defeat lineLimit.
-            let candidate = displayBody.count > 280
-            let collapsed = candidate && !bodyExpanded
-            let isTruncated = fullBodyHeight > collapsedBodyHeight + 1
+            // Collapse a very long message to 14 lines with a "Show more" toggle
+            // (#2, Telegram-style). The gate is a conservative ESTIMATE of the
+            // wrapped line count (sum of per-paragraph ceil(len/38)); when it
+            // clears 14, lineLimit(14) then actually truncates. We estimate
+            // rather than measure: the old dual-GeometryReader compared the
+            // whole-VStack height to the text height, so the button showed on
+            // every long candidate even when nothing was cut (founder report).
+            // No vertical fixedSize while collapsed — it would defeat lineLimit.
+            let collapsed = !bodyExpanded && Self.estimatedLineCount(displayBody) > 14
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
                     .lineLimit(collapsed ? 14 : nil)
                     .fixedSize(horizontal: false, vertical: !collapsed)
-                    .background {
-                        if candidate {
-                            GeometryReader { g in
-                                Color.clear.preference(key: CollapsedBodyHeightKey.self, value: g.size.height)
-                            }
-                        }
-                    }
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
-                if collapsed && isTruncated {
+                if collapsed {
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) { bodyExpanded = true }
                     } label: {
@@ -465,21 +463,6 @@ struct MessageRow: View {
                     LinkPreviewCard(url: url)
                 }
             }
-            // Hidden full-text copy (same width) to learn the UNtruncated height,
-            // so we only offer "Show more" when the body really overflows.
-            .background {
-                if candidate {
-                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(GeometryReader { g in
-                            Color.clear.preference(key: FullBodyHeightKey.self, value: g.size.height)
-                        })
-                        .hidden()
-                }
-            }
-            .onPreferenceChange(CollapsedBodyHeightKey.self) { collapsedBodyHeight = $0 }
-            .onPreferenceChange(FullBodyHeightKey.self) { fullBodyHeight = $0 }
         }
     }
 
@@ -507,13 +490,3 @@ struct MessageRow: View {
 
 }
 
-/// Height of the (possibly line-limited) message body, vs the full untruncated
-/// copy — their difference tells us whether to offer "Show more" (#2).
-private struct CollapsedBodyHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-private struct FullBodyHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
