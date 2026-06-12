@@ -1331,22 +1331,34 @@ struct ChatView: View {
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
             }
             .coordinateSpace(name: Self.scrollSpaceName)
-            // Viewport-height probe (the metrics pair with the content probe
-            // above): the named-space minY plus content height against this
-            // gives the distance the content bottom hangs below the fold.
+            // Authoritative on iOS 18+ (incl. 26): the first-party scroll
+            // geometry callback. The GeometryReader/preference pair below
+            // stops updating DURING scrolls on the new ScrollView
+            // architecture (offset changes apply without a layout pass), so
+            // on iOS 26 the arrow never showed at all (founder report) —
+            // there it is fed by this observer instead.
+            .modifier(ChatBottomGapObserver { gap in
+                updateScrollToBottomArrow(bottomGap: gap)
+            })
+            // Viewport-height probe (pairs with the content probe above):
+            // the named-space minY plus content height against this gives
+            // the distance the content bottom hangs below the fold.
+            // iOS 16/17 fallback only — see ChatBottomGapObserver.
             .background(
                 GeometryReader { g in
                     Color.clear.preference(key: ChatViewportHeightKey.self, value: g.size.height)
                 }
             )
             .onPreferenceChange(ChatViewportHeightKey.self) { h in
+                if #available(iOS 18.0, *) { return }
                 chatViewportHeight = h
-                updateScrollToBottomArrow()
+                updateScrollToBottomArrowLegacy()
             }
             .onPreferenceChange(ChatScrollMetricsKey.self) { m in
+                if #available(iOS 18.0, *) { return }
                 chatContentMinY = m.minY
                 chatContentHeight = m.height
-                updateScrollToBottomArrow()
+                updateScrollToBottomArrowLegacy()
             }
             // Initial-settle mask. While the 350ms scrollTo loop in
             // `.task` chases the moving bottom (LazyVStack realizes
@@ -1493,10 +1505,13 @@ struct ChatView: View {
             .task {
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
-                // The jump-down arrow needs no manual nudge here — the scroll-
-                // metrics preference shows it as soon as content actually
-                // extends below the fold (#15).
                 let unreadID = vm.openFirstUnreadID
+                // Arrow on immediately when opening scrolled up (#15) — the
+                // geometry observers correct it within the first layout if
+                // the unread block actually fits on one screen.
+                if unreadID != nil, vm.openUnreadCount > 2 {
+                    showScrollToBottom = true
+                }
                 func settle() {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
@@ -1590,19 +1605,25 @@ struct ChatView: View {
     private static let scrollSpaceName = "__rcq_chat_scroll"
 
     /// Geometry-driven arrow toggle: visible while the content's bottom edge
-    /// hangs more than ~a bubble's worth below the viewport bottom. minY is
-    /// negative once scrolled (content top above the viewport top), so
-    /// minY + contentHeight is where the content bottom sits in viewport
-    /// coordinates. The 80pt slack absorbs the bottom paddings/insets and
-    /// keeps the arrow from flapping right at the edge.
-    private func updateScrollToBottomArrow() {
-        guard chatViewportHeight > 0 else { return }
-        let bottomOverhang = (chatContentMinY + chatContentHeight) - chatViewportHeight
-        let shouldShow = bottomOverhang > 80
+    /// hangs more than ~a bubble's worth below the viewport bottom. The 80pt
+    /// slack absorbs the bottom paddings/insets and keeps the arrow from
+    /// flapping right at the edge.
+    private func updateScrollToBottomArrow(bottomGap: CGFloat) {
+        let shouldShow = bottomGap > 80
         guard shouldShow != showScrollToBottom else { return }
         withAnimation(.easeInOut(duration: 0.18)) {
             showScrollToBottom = shouldShow
         }
+    }
+
+    /// iOS 16/17 path: derive the bottom gap from the preference probes.
+    /// minY goes negative as you scroll down, so minY + contentHeight is
+    /// where the content bottom sits in viewport coordinates.
+    private func updateScrollToBottomArrowLegacy() {
+        guard chatViewportHeight > 0 else { return }
+        updateScrollToBottomArrow(
+            bottomGap: (chatContentMinY + chatContentHeight) - chatViewportHeight
+        )
     }
 
     // MARK: - report-with-evidence helpers
@@ -2902,5 +2923,32 @@ private struct ChatViewportHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// Reports how far the scroll content's bottom edge hangs below the visible
+/// bottom (0 = at rest at the bottom). On iOS 18+ this is the first-party
+/// `onScrollGeometryChange`, which keeps firing DURING scrolls — the
+/// GeometryReader/preference fallback doesn't on the new ScrollView
+/// architecture, which is exactly why the arrow vanished on iOS 26. On
+/// iOS 16/17 this modifier is inert and the preference probes drive the
+/// arrow instead.
+private struct ChatBottomGapObserver: ViewModifier {
+    let onChange: (CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { g in
+                // Apple's own "scrolled to bottom" arithmetic, rearranged
+                // into a gap: content bottom (incl. bottom inset) minus the
+                // visible bottom edge.
+                (g.contentSize.height + g.contentInsets.bottom)
+                    - (g.contentOffset.y + g.containerSize.height)
+            } action: { _, gap in
+                onChange(gap)
+            }
+        } else {
+            content
+        }
     }
 }
