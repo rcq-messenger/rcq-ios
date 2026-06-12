@@ -66,12 +66,46 @@ struct MessageRow: View {
     @State private var bodyExpanded: Bool = false
 
     /// Conservative estimate of how many wrapped lines [body] takes in a chat
-    /// bubble (~38 chars/line): sum over hard lines of ceil(len/38). Used only
-    /// to decide whether to collapse + offer "Show more"; lineLimit does the
-    /// actual cut. Biased to not over-trigger on short messages.
+    /// bubble (~38 chars/line): sum over hard lines of ceil(len/38). Decides
+    /// whether to collapse + offer "Show more"; `collapsedPrefix` below does
+    /// the actual cut with the SAME math, so the button appears exactly when
+    /// text was removed. Biased to not over-trigger on short messages.
     static func estimatedLineCount(_ body: String) -> Int {
         body.split(separator: "\n", omittingEmptySubsequences: false)
             .reduce(0) { $0 + max(1, ($1.count + 37) / 38) }
+    }
+
+    /// The collapsed body: [body] cut after ~[maxLines] estimated wrapped
+    /// lines, at a whitespace boundary, with a trailing ellipsis. STRING-level
+    /// truncation, not lineLimit: EmoticonText renders each hard line as its
+    /// own Text, and an environment lineLimit caps every one of them
+    /// SEPARATELY — a 20-paragraph message never got cut at all (founder
+    /// screenshot: "collapsed" message filling two screens), while dropping
+    /// the vertical fixedSize to let lineLimit work resurrected the
+    /// LazyVStack mis-measure that squeezed each paragraph to a couple of
+    /// lines with "…" (the other founder screenshot).
+    static func collapsedPrefix(_ body: String, maxLines: Int = 14) -> String {
+        var remaining = maxLines
+        var kept: [Substring] = []
+        for para in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            let est = max(1, (para.count + 37) / 38)
+            if est < remaining {
+                kept.append(para)
+                remaining -= est
+            } else {
+                // Budget ends inside this paragraph — cut at the last
+                // whitespace before it so words (and emoticon codes)
+                // survive whole.
+                var cut = para.prefix(remaining * 38)
+                if cut.count < para.count,
+                   let sp = cut.lastIndex(where: { $0.isWhitespace }) {
+                    cut = cut[..<sp]
+                }
+                kept.append(cut)
+                break
+            }
+        }
+        return kept.joined(separator: "\n") + "…"
     }
 
     private static let swipeTriggerDistance: CGFloat = 60
@@ -283,7 +317,12 @@ struct MessageRow: View {
                                     .lineLimit(1)
                             }
                             EmoticonText(
-                                text: snippet,
+                                // Newlines flattened: EmoticonText renders each hard
+                                // line as its OWN Text, so a lineLimit can only cap
+                                // them per-line — a multi-paragraph quote would still
+                                // render every paragraph. One flat line + lineLimit(2)
+                                // is the whole preview contract.
+                                text: snippet.replacingOccurrences(of: "\n", with: " "),
                                 font: .caption2,
                                 color: Theme.Color.textSecondary,
                                 emoticonSize: 15,
@@ -298,6 +337,14 @@ struct MessageRow: View {
                     }
                     .padding(.vertical, 2)
                     .padding(.horizontal, 4)
+                    // Pin the quote to its natural (text-driven) height. The 3pt
+                    // accent bar is the only height-flexible child here, so any
+                    // tall proposal from an ancestor stretches IT — founder
+                    // screenshot: the bar ran from the bubble to the top of the
+                    // screen in a near-empty chat, quote text centred in the
+                    // void. With fixedSize the ideal height wins no matter what
+                    // the ancestor proposes.
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(
                         maxWidth: 240,
                         alignment: message.isFromMe ? .trailing : .leading
@@ -434,19 +481,23 @@ struct MessageRow: View {
                 if isTranslated { translatedFooter }
             }
         } else {
-            // Collapse a very long message to 14 lines with a "Show more" toggle
-            // (#2, Telegram-style). The gate is a conservative ESTIMATE of the
-            // wrapped line count (sum of per-paragraph ceil(len/38)); when it
-            // clears 14, lineLimit(14) then actually truncates. We estimate
-            // rather than measure: the old dual-GeometryReader compared the
-            // whole-VStack height to the text height, so the button showed on
-            // every long candidate even when nothing was cut (founder report).
-            // No vertical fixedSize while collapsed — it would defeat lineLimit.
+            // Collapse a very long message to ~14 lines with a "Show more"
+            // toggle (#2, Telegram-style). The gate is a conservative ESTIMATE
+            // of the wrapped line count; when it clears 14, the BODY STRING is
+            // cut by the same math (collapsedPrefix). lineLimit can't do this
+            // cut — EmoticonText is one Text PER hard line, so an environment
+            // lineLimit caps each paragraph separately and a multi-paragraph
+            // message never shrinks. The vertical fixedSize stays on in BOTH
+            // states: without it the LazyVStack mis-measure squeezes the
+            // paragraphs to arbitrary couple-line stubs with "…".
             let collapsed = !bodyExpanded && Self.estimatedLineCount(displayBody) > 14
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
-                EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
-                    .lineLimit(collapsed ? 14 : nil)
-                    .fixedSize(horizontal: false, vertical: !collapsed)
+                EmoticonText(
+                    text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
+                    members: currentGroupMembers,
+                    uinNick: uinNick
+                )
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
