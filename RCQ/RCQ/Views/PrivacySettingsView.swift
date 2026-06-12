@@ -18,6 +18,8 @@ struct PrivacySettingsView: View {
     /// past the staleness window. Lets the user appear "around" with
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = false
+    /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
+    @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
     @State private var hofOptIn: Bool = false
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
@@ -313,6 +315,24 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            // Onion routing (M3, experimental). Per-device opt-in for the 2-hop
+            // chain so no single relay sees both the user and the server. Only
+            // meaningful when the obfuscated connection (stealth) is engaged.
+            Toggle(isOn: $onionOptIn) {
+                HStack(spacing: 12) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("settings.network.onion".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Text("settings.network.onion.desc".localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+            }
+            .onChange(of: onionOptIn) { on in SingBoxTransport.setOnionOptIn(on) }
             Button {
                 showCustomServer = true
             } label: {

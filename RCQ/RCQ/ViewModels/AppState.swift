@@ -321,7 +321,7 @@ final class AppState: ObservableObject {
                 // the next entry and rebuild the transport so a blocked guard
                 // self-heals. Dormant unless onion is enabled (off by default).
                 deadStreak += 1
-                if RelayConfigStore.onionEnabled, deadStreak >= 6, SingBoxTransport.rotateEntry() {
+                if SingBoxTransport.onionMode, deadStreak >= 6, SingBoxTransport.rotateEntry() {
                     deadStreak = 0
                     SingBoxTransport.shared.stop()
                     try? await SingBoxTransport.shared.start()

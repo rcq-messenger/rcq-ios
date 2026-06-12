@@ -200,6 +200,8 @@
 "settings.network.accounts" = "Accounts";
 "settings.network.custom_server" = "Server";
 "settings.network.custom_server.default" = "api.rcq.app";
+"settings.network.onion" = "Onion routing (experimental)";
+"settings.network.onion.desc" = "Two relays, so none sees both you and the server. Needs the obfuscated connection on. Adds a little latency.";
 "settings.network.custom_server.intro.title" = "Use a different server";
 "settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref — self-host or use a friend's instance.";
 "settings.network.custom_server.current.label" = "ACTIVE SERVER";

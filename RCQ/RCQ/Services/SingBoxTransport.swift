@@ -21,7 +21,21 @@ final class SingBoxTransport {
         /// Sticky onion ENTRY guard tag (O4): pin the entry across launches,
         /// rotate only on confirmed block (Tor guard lesson).
         static let onionEntry = "rcq.singbox.onionEntryTag"
+        /// Per-device onion opt-in (O5): the experimental Settings toggle.
+        static let onionOptIn = "rcq.singbox.onionOptIn"
     }
+
+    nonisolated static var onionOptIn: Bool {
+        UserDefaults.standard.bool(forKey: Keys.onionOptIn)
+    }
+    nonisolated static func setOnionOptIn(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Keys.onionOptIn)
+    }
+    /// Onion routing is ON when the signed config enables it (cohort flip) OR
+    /// this device opted in (the experimental toggle, O5). Per-device opt-in
+    /// lets volunteers self-select for real-world testing WITHOUT the
+    /// all-or-nothing signed-config flip. Default OFF.
+    static var onionMode: Bool { RelayConfigStore.onionEnabled || onionOptIn }
 
     /// Sticky onion ENTRY guard. Returns the persisted entry if it's still a
     /// VLESS relay in `pool`; else picks the highest-priority VLESS (pool is
@@ -224,7 +238,7 @@ final class SingBoxTransport {
             // guard lesson). Falls back to single-hop below when off or <2 VLESS,
             // so connectivity is never worse. Proven via a local sing-box
             // prototype + Android emulator (RCQ/docs/onion-design.md).
-            if RelayConfigStore.onionEnabled, vless.count >= 2 {
+            if Self.onionMode, vless.count >= 2 {
                 let entry = stickyEntry(vless)          // O4: persisted guard, not just vless[0]
                 let exits = vless.filter { $0.tag != entry.tag }
                 out.append([
