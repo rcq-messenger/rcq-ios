@@ -19,6 +19,11 @@ protocol CryptoService {
     /// the wrapped form. Used by the premium-content paywall flow.
     func wrapKey(_ keyB64: String, for recipient: PeerBundle) throws -> String
     func unwrapKey(_ wrappedB64: String) throws -> String
+
+    /// Sender-keys group encrypt-once: seal `envelope` under message key `mk`
+    /// (signing with our long-term key, inside the AEAD) into the `gmsg` wire.
+    /// Returns base64(JSON of the gmsg wire). See SenderKeys / sender-keys-design.md.
+    func sealGmsg(envelope: Envelope, gid: Int, kid: String, epoch: Int, index: Int, mk: Data) throws -> String
 }
 
 struct RegistrationBundle {
@@ -92,6 +97,16 @@ enum Envelope: Codable, Hashable {
     /// identical (`{"kind":"homerec","rec":{v,ik,sk,homes,ts,sig}}`).
     case homeRecord(rec: IslandRecordWire)
 
+    /// Sender-key distribution (wire kind "skdm"): hands one group member the
+    /// chain key for a (kid, epoch) so they derive message keys for the
+    /// encrypt-once `gmsg` broadcasts. Rides the per-member ECIES seal via
+    /// /messages/group-sealed; never rendered. The receiver binds the kid to
+    /// the decrypt's authenticated sender. See RCQ/docs/sender-keys-design.md.
+    case skdm(gid: Int, kid: String, epoch: Int, index: Int, ck: String)
+    /// Sender-key recovery request (wire kind "sknack"): I got a gmsg for a kid
+    /// I don't hold; the kid's owner re-seals a fresh SKDM. Per-member sealed.
+    case sknack(gid: Int, kid: String)
+
     /// Codable mirror of the signed home-island record (RcqFederation builds it
     /// as `[String: Any]`; this is the wire-typed form carried in an envelope).
     struct IslandRecordWire: Codable, Hashable {
@@ -110,6 +125,7 @@ enum Envelope: Codable, Hashable {
         case to, gid, env
         case sig, cid, ts, data
         case rec
+        case kid, e, i, ck
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
         case albumID = "album"
@@ -240,6 +256,17 @@ enum Envelope: Codable, Hashable {
         case .homeRecord(let rec):
             try c.encode("homerec", forKey: .kind)
             try c.encode(rec, forKey: .rec)
+        case .skdm(let gid, let kid, let epoch, let index, let ck):
+            try c.encode("skdm", forKey: .kind)
+            try c.encode(gid, forKey: .gid)
+            try c.encode(kid, forKey: .kid)
+            try c.encode(epoch, forKey: .e)
+            try c.encode(index, forKey: .i)
+            try c.encode(ck, forKey: .ck)
+        case .sknack(let gid, let kid):
+            try c.encode("sknack", forKey: .kind)
+            try c.encode(gid, forKey: .gid)
+            try c.encode(kid, forKey: .kid)
         }
     }
 
@@ -364,6 +391,19 @@ enum Envelope: Codable, Hashable {
             )
         case "homerec":
             self = .homeRecord(rec: try c.decode(IslandRecordWire.self, forKey: .rec))
+        case "skdm":
+            self = .skdm(
+                gid: try c.decode(Int.self, forKey: .gid),
+                kid: try c.decode(String.self, forKey: .kid),
+                epoch: try c.decode(Int.self, forKey: .e),
+                index: try c.decode(Int.self, forKey: .i),
+                ck: try c.decode(String.self, forKey: .ck)
+            )
+        case "sknack":
+            self = .sknack(
+                gid: try c.decode(Int.self, forKey: .gid),
+                kid: try c.decode(String.self, forKey: .kid)
+            )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")
         }
@@ -542,6 +582,31 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         ]
         let wireJSON = try JSONSerialization.data(withJSONObject: wire)
         return wireJSON.base64EncodedString()
+    }
+
+    // MARK: - sender keys (group encrypt-once)
+
+    func sealGmsg(envelope: Envelope, gid: Int, kid: String, epoch: Int, index: Int, mk: Data) throws -> String {
+        let envBytes = try JSONEncoder().encode(envelope)
+        let aad = SenderKeys.gmsgAAD(gid: gid, kid: kid, epoch: epoch, index: index)
+        let sig = try signingPriv.signature(for: aad + envBytes)
+        let plaintext = try JSONSerialization.data(withJSONObject: [
+            "env": envBytes.base64EncodedString(),
+            "sig": sig.base64EncodedString(),
+        ])
+        // The gmsg wire keeps the nonce SEPARATE (`n`) and ct = ciphertext||tag
+        // (NOT CryptoKit's combined nonce||ct||tag) to match web/Android.
+        let nonce = ChaChaPoly.Nonce()
+        let box = try ChaChaPoly.seal(plaintext, using: SymmetricKey(data: mk), nonce: nonce, authenticating: aad)
+        let wire: [String: Any] = [
+            "v": 1,
+            "kid": kid,
+            "e": epoch,
+            "i": index,
+            "n": Data(nonce).base64EncodedString(),
+            "ct": (box.ciphertext + box.tag).base64EncodedString(),
+        ]
+        return try JSONSerialization.data(withJSONObject: wire).base64EncodedString()
     }
 
     /// Seal [plaintext] to a web client's ephemeral Curve25519 pubkey for the
@@ -819,3 +884,75 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
     }
 }
 
+
+/// RCQ Sender Keys (custom v=1) — group encrypt-once primitives. Byte-for-byte
+/// compatible with web (sender-keys.ts) + Android (SenderKeys.kt): same
+/// HMAC-SHA256 ratchet, ChaCha20-Poly1305 framing, AAD string, gmsg JSON, and
+/// Ed25519 signature. `openGmsg` is keyless (just mk + spub); `sealGmsg` needs
+/// the signing key and lives on SignalCryptoService. Spec: sender-keys-design.md.
+enum SenderKeys {
+    static let MAX_SKIP = 512
+
+    // mk_i = HMAC-SHA256(ck_i, 0x01); ck_{i+1} = HMAC-SHA256(ck_i, 0x02).
+    static func deriveMessageKey(_ chainKey: Data) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: Data([0x01]), using: SymmetricKey(data: chainKey)))
+    }
+    static func nextChainKey(_ chainKey: Data) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: Data([0x02]), using: SymmetricKey(data: chainKey)))
+    }
+
+    static func gmsgAAD(gid: Int, kid: String, epoch: Int, index: Int) -> Data {
+        Data("rcq.gmsg.v1|\(gid)|\(kid)|\(epoch)|\(index)".utf8)
+    }
+
+    struct GmsgHeader { let kid: String; let epoch: Int; let index: Int }
+
+    /// Peek the routing header of a gmsg payload without the chain key.
+    static func parseGmsgHeader(_ payloadB64: String) -> GmsgHeader? {
+        guard let data = Data(base64Encoded: payloadB64),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              (obj["v"] as? Int) == 1,
+              let kid = obj["kid"] as? String,
+              let e = obj["e"] as? Int, let i = obj["i"] as? Int else { return nil }
+        return GmsgHeader(kid: kid, epoch: e, index: i)
+    }
+
+    struct OpenedGmsg { let envelope: Envelope; let verified: Bool }
+
+    /// Decrypt + verify a gmsg payload under `mk`, checking the signature
+    /// against `expectedSpubB64`. Returns nil on AEAD failure (wrong key/tamper).
+    static func openGmsg(_ payloadB64: String, gid: Int, mk: Data, expectedSpubB64: String) -> OpenedGmsg? {
+        guard let data = Data(base64Encoded: payloadB64),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let kid = obj["kid"] as? String, let e = obj["e"] as? Int, let i = obj["i"] as? Int,
+              let nB64 = obj["n"] as? String, let ctB64 = obj["ct"] as? String,
+              let nonceData = Data(base64Encoded: nB64), let ctTag = Data(base64Encoded: ctB64),
+              ctTag.count >= 16 else { return nil }
+        let aad = gmsgAAD(gid: gid, kid: kid, epoch: e, index: i)
+        let ciphertext = ctTag.prefix(ctTag.count - 16)
+        let tag = ctTag.suffix(16)
+        guard let nonce = try? ChaChaPoly.Nonce(data: nonceData),
+              let box = try? ChaChaPoly.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag),
+              let plaintext = try? ChaChaPoly.open(box, using: SymmetricKey(data: mk), authenticating: aad),
+              let inner = (try? JSONSerialization.jsonObject(with: plaintext)) as? [String: Any],
+              let envB64 = inner["env"] as? String, let sigB64 = inner["sig"] as? String,
+              let envBytes = Data(base64Encoded: envB64), let sig = Data(base64Encoded: sigB64),
+              let env = try? JSONDecoder().decode(Envelope.self, from: envBytes) else { return nil }
+        var verified = false
+        if let spub = Data(base64Encoded: expectedSpubB64),
+           let pub = try? Curve25519.Signing.PublicKey(rawRepresentation: spub) {
+            verified = pub.isValidSignature(sig, for: aad + envBytes)
+        }
+        return OpenedGmsg(envelope: env, verified: verified)
+    }
+
+    /// 16 random bytes, base64 — a fresh distribution id.
+    static func newKid() -> String {
+        var b = Data(count: 16); _ = b.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+        return b.base64EncodedString()
+    }
+    static func randomChainKey() -> Data {
+        var b = Data(count: 32); _ = b.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        return b
+    }
+}

@@ -555,3 +555,174 @@ enum Multihome {
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
+
+/// Persistent sender-key chain state (group encrypt-once). Outbound chains
+/// (one per group I post to) + inbound chains (one per kid handed via SKDM).
+/// Mirrors the web sender-key-store.ts and Android GroupSenderKeyStore. App-group
+/// UserDefaults like MultihomeStore; chain keys are base64 on disk. The NSE
+/// never writes here (it can't advance the ratchet out-of-process); only the
+/// app mutates this. Scoped by `ownUin` so a multi-account device never mixes
+/// an outbound chain across accounts.
+final class GroupSenderKeyStore {
+    static let shared = GroupSenderKeyStore()
+
+    private struct OutChain: Codable {
+        let kid: String
+        let epoch: Int
+        var index: Int
+        var ck: String
+        var distributed: [Int]
+    }
+    private struct InChain: Codable {
+        let gid: Int
+        let senderUin: Int
+        var spub: String
+        let epoch: Int
+        var index: Int
+        var ck: String
+        var skipped: [Int: String]
+    }
+
+    private static let appGroup = "group.app.rcq.shared"
+    private static let outKey = "rcq.senderkeys.out.v1"   // [ "<ownUin>:<gid>" : OutChain ]
+    private static let inKey = "rcq.senderkeys.in.v1"     // [ kid : InChain ]
+    private static let ownedKey = "rcq.senderkeys.owned.v1" // [kid] rolling
+    private static let ownedCap = 64
+
+    private let defaults: UserDefaults
+    private let lock = NSLock()
+    private init() { defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard }
+
+    private func loadOut() -> [String: OutChain] {
+        guard let d = defaults.data(forKey: Self.outKey),
+              let m = try? JSONDecoder().decode([String: OutChain].self, from: d) else { return [:] }
+        return m
+    }
+    private func saveOut(_ m: [String: OutChain]) {
+        if let d = try? JSONEncoder().encode(m) { defaults.set(d, forKey: Self.outKey) }
+    }
+    private func loadIn() -> [String: InChain] {
+        guard let d = defaults.data(forKey: Self.inKey),
+              let m = try? JSONDecoder().decode([String: InChain].self, from: d) else { return [:] }
+        return m
+    }
+    private func saveIn(_ m: [String: InChain]) {
+        if let d = try? JSONEncoder().encode(m) { defaults.set(d, forKey: Self.inKey) }
+    }
+    private func loadOwned() -> [String] { (defaults.array(forKey: Self.ownedKey) as? [String]) ?? [] }
+    private func saveOwned(_ l: [String]) { defaults.set(l, forKey: Self.ownedKey) }
+
+    private func outK(_ ownUin: Int, _ gid: Int) -> String { "\(ownUin):\(gid)" }
+
+    struct OwnSendStep {
+        let kid: String
+        let epoch: Int
+        let index: Int
+        let mk: Data
+        let needDistribution: [Int]
+        let ckAtI: String
+    }
+
+    /// Resolve the outbound chain for a group send. Rotates (fresh kid, e+1,
+    /// i=0) when a previously-distributed member is gone (forward secrecy).
+    /// Caller MUST call `advanceOwn` after the broadcast lands.
+    func prepareOwnSend(ownUin: Int, gid: Int, capableUins: [Int]) -> OwnSendStep {
+        lock.lock(); defer { lock.unlock() }
+        var out = loadOut()
+        let k = outK(ownUin, gid)
+        let capable = Set(capableUins)
+        var c = out[k]
+        let rotate = c == nil || c!.distributed.contains { !capable.contains($0) }
+        if rotate {
+            let kid = SenderKeys.newKid()
+            c = OutChain(kid: kid, epoch: (c?.epoch ?? -1) + 1, index: 0,
+                         ck: SenderKeys.randomChainKey().base64EncodedString(), distributed: [])
+            var owned = loadOwned().filter { $0 != kid }
+            owned.insert(kid, at: 0)
+            saveOwned(Array(owned.prefix(Self.ownedCap)))
+        }
+        out[k] = c!
+        saveOut(out)
+        let ckData = Data(base64Encoded: c!.ck) ?? Data()
+        let mk = SenderKeys.deriveMessageKey(ckData)
+        let need = capableUins.filter { !c!.distributed.contains($0) }
+        return OwnSendStep(kid: c!.kid, epoch: c!.epoch, index: c!.index, mk: mk, needDistribution: need, ckAtI: c!.ck)
+    }
+
+    func markDistributed(ownUin: Int, gid: Int, uins: [Int]) {
+        lock.lock(); defer { lock.unlock() }
+        var out = loadOut()
+        guard var c = out[outK(ownUin, gid)] else { return }
+        var set = Set(c.distributed); uins.forEach { set.insert($0) }
+        c.distributed = Array(set)
+        out[outK(ownUin, gid)] = c
+        saveOut(out)
+    }
+
+    func advanceOwn(ownUin: Int, gid: Int) {
+        lock.lock(); defer { lock.unlock() }
+        var out = loadOut()
+        guard var c = out[outK(ownUin, gid)], let ck = Data(base64Encoded: c.ck) else { return }
+        c.ck = SenderKeys.nextChainKey(ck).base64EncodedString()
+        c.index += 1
+        out[outK(ownUin, gid)] = c
+        saveOut(out)
+    }
+
+    /// Store / refresh an inbound chain from an SKDM, bound to its
+    /// authenticated sender. Returns false if a known kid is claimed by a
+    /// DIFFERENT sender (rejected).
+    @discardableResult
+    func acceptSkdm(kid: String, gid: Int, senderUIN: Int, spub: String, epoch: Int, index: Int, ck: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        var inn = loadIn()
+        if let ex = inn[kid], ex.senderUin != senderUIN { return false }
+        if var ex = inn[kid], ex.epoch == epoch, ex.index >= index {
+            ex.spub = spub; inn[kid] = ex; saveIn(inn); return true
+        }
+        inn[kid] = InChain(gid: gid, senderUin: senderUIN, spub: spub, epoch: epoch, index: index, ck: ck, skipped: [:])
+        saveIn(inn)
+        return true
+    }
+
+    struct InboundKey { let mk: Data; let spub: String; let senderUin: Int }
+
+    /// Derive the message key for (kid, epoch, index), ratcheting forward and
+    /// caching skipped keys. nil when the kid is unknown (caller should NACK),
+    /// the epoch mismatches, the index is in the past with no cached key
+    /// (replay), or it's beyond MAX_SKIP.
+    func deriveInbound(kid: String, epoch: Int, index: Int) -> InboundKey? {
+        lock.lock(); defer { lock.unlock() }
+        var inn = loadIn()
+        guard var c = inn[kid], c.epoch == epoch else { return nil }
+        if let cached = c.skipped[index], let mk = Data(base64Encoded: cached) {
+            c.skipped[index] = nil; inn[kid] = c; saveIn(inn)
+            return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
+        }
+        if index < c.index { return nil }
+        if index - c.index > SenderKeys.MAX_SKIP { return nil }
+        guard var ck = Data(base64Encoded: c.ck) else { return nil }
+        var idx = c.index
+        while idx < index {
+            c.skipped[idx] = SenderKeys.deriveMessageKey(ck).base64EncodedString()
+            ck = SenderKeys.nextChainKey(ck)
+            idx += 1
+        }
+        let mk = SenderKeys.deriveMessageKey(ck)
+        c.ck = SenderKeys.nextChainKey(ck).base64EncodedString()
+        c.index = index + 1
+        inn[kid] = c
+        saveIn(inn)
+        return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
+    }
+
+    func knowsKid(_ kid: String) -> Bool { loadIn()[kid] != nil }
+    func ownsKid(_ kid: String) -> Bool { loadOwned().contains(kid) }
+    func ownKidForGroup(ownUin: Int, gid: Int) -> String? { loadOut()[outK(ownUin, gid)]?.kid }
+
+    struct OwnSnapshot { let kid: String; let epoch: Int; let index: Int; let ck: String }
+    func ownChainSnapshot(ownUin: Int, gid: Int) -> OwnSnapshot? {
+        guard let c = loadOut()[outK(ownUin, gid)] else { return nil }
+        return OwnSnapshot(kid: c.kid, epoch: c.epoch, index: c.index, ck: c.ck)
+    }
+}

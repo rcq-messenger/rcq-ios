@@ -299,7 +299,7 @@ class NotificationService: UNNotificationServiceExtension {
                 content.body = "Call update"
             }
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon, .homeRecord:
+             .secureScreen, .carbon, .homeRecord, .skdm, .sknack:
             content.body = "Message"
         }
 
@@ -450,7 +450,7 @@ class NotificationService: UNNotificationServiceExtension {
              .systemNotice, .poll, .screenshotTaken:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon, .callSignal, .homeRecord:
+             .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack:
             return false
         }
     }
@@ -476,6 +476,8 @@ class NotificationService: UNNotificationServiceExtension {
         case .carbon:           return "carbon"
         case .callSignal:       return "call"
         case .homeRecord:       return "homerec"
+        case .skdm:             return "skdm"
+        case .sknack:           return "sknack"
         }
     }
 

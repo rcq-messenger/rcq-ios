@@ -928,57 +928,9 @@ final class MessageService {
                                                host: host, guestUIN: guest.uin, localID: localID)
             return
         }
-        // Per-member encrypt (skipping self) — keeps sealed-sender intact
-        // at the cost of N session encrypts vs one Sender-Keys groupEncrypt.
         struct Entry: Encodable { let to_uin: Int; let payload: String }
-        let recipients = group.members.filter { m in
-            guard m.uin != ownUIN else { return false }
-            if m.identityKey.isEmpty {
-                print("[MessageService] group member \(m.uin) has no identity key — skipping")
-                return false
-            }
-            return true
-        }
-        let entries: [Entry] = await withTaskGroup(of: Entry?.self) { taskGroup in
-            for member in recipients {
-                taskGroup.addTask { [self] in
-                    let bundle = PeerBundle(
-                        uin: member.uin,
-                        identityKey: member.identityKey,
-                        signingKey: member.signingKey
-                    )
-                    do {
-                        // Groups ALWAYS use v=1 sealed-sender (stateless ECIES),
-                        // never the v=2 Double Ratchet. The per-recipient group
-                        // fan-out + multi-device desynced the v=2 ratchet, which
-                        // silently dropped group messages/reactions/edits (the
-                        // invalidMessage / duplicatedMessage failures in the
-                        // device logs) AND made group pushes fall back to the
-                        // generic banner. v=1 has no ratchet to desync, so group
-                        // delivery is reliable. Android already sends groups v=1.
-                        // Passing peerSignalIdentityKey: nil routes encryptForPeer
-                        // down its v=1 path (and keeps the main-actor hop intact).
-                        let blob = try await encryptForPeer(
-                            envelope: envelope,
-                            peer: bundle,
-                            peerSignalIdentityKey: nil
-                        )
-                        return Entry(to_uin: member.uin, payload: blob)
-                    } catch {
-                        // Skip one bad pubkey rather than failing the whole send.
-                        print("[MessageService] encrypt for \(member.uin) failed: \(error)")
-                        return nil
-                    }
-                }
-            }
-            var collected: [Entry] = []
-            for await result in taskGroup {
-                if let r = result { collected.append(r) }
-            }
-            return collected
-        }
-
         struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
+        struct BroadcastBody: Encodable { let group_id: Int; let envelope_type: String; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
 
         let envType = envelopeType(for: envelope)
@@ -987,13 +939,67 @@ final class MessageService {
         // post is the owner's). Reactions/edits and all 'all'-group sends stay
         // anonymous to preserve sealed sender.
         let authPost = group.postPolicy == "owner_only" && envType == "message"
+
+        func legacySeal(_ member: RCQGroupMember) async -> Entry? {
+            let bundle = PeerBundle(uin: member.uin, identityKey: member.identityKey, signingKey: member.signingKey)
+            // Groups ALWAYS use v=1 sealed-sender (stateless ECIES); the v=2
+            // ratchet desynced across the per-recipient fan-out. nil routes v=1.
+            guard let blob = try? await encryptForPeer(envelope: envelope, peer: bundle, peerSignalIdentityKey: nil)
+            else { print("[MessageService] encrypt for \(member.uin) failed"); return nil }
+            return Entry(to_uin: member.uin, payload: blob)
+        }
+
+        let sendable = group.members.filter { $0.uin != ownUIN && !$0.identityKey.isEmpty }
+        // Sender keys (encrypt-once) for any capable member. Foreign groups keep
+        // the legacy path (their capability lookup + broadcast endpoint live on
+        // the foreign island) — but this method's foreign case already returned
+        // above, so here `group.host == nil`.
+        let capable = sendable.filter { $0.senderKeys }
+
         do {
-            let out: Out = try await APIClient.shared.request(
-                "POST", "/messages/group-sealed",
-                body: Body(group_id: group.id, envelope_type: envType, payloads: entries),
-                authenticated: authPost,
-                retries: 2
-            )
+            let out: Out
+            if !capable.isEmpty {
+                let step = GroupSenderKeyStore.shared.prepareOwnSend(ownUin: ownUIN, gid: group.id, capableUins: capable.map { $0.uin })
+                let gmsg = try crypto.sealGmsg(envelope: envelope, gid: group.id, kid: step.kid, epoch: step.epoch, index: step.index, mk: step.mk)
+                // Distribute the chain key to capable members who need it FIRST,
+                // so a recipient never gets a gmsg for an unknown kid.
+                let skdmTargets = capable.filter { step.needDistribution.contains($0.uin) }
+                if !skdmTargets.isEmpty {
+                    let skdmEnv: Envelope = .skdm(gid: group.id, kid: step.kid, epoch: step.epoch, index: step.index, ck: step.ckAtI)
+                    var skdmEntries: [Entry] = []
+                    for m in skdmTargets {
+                        let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
+                        if let blob = try? crypto.encrypt(envelope: skdmEnv, for: bundle) { skdmEntries.append(Entry(to_uin: m.uin, payload: blob)) }
+                    }
+                    if !skdmEntries.isEmpty {
+                        let _: Out = try await APIClient.shared.request("POST", "/messages/group-sealed",
+                            body: Body(group_id: group.id, envelope_type: "skdm", payloads: skdmEntries), authenticated: false, retries: 1)
+                    }
+                }
+                out = try await APIClient.shared.request("POST", "/messages/group-broadcast",
+                    body: BroadcastBody(group_id: group.id, envelope_type: envType, payload: gmsg), authenticated: true, retries: 2)
+                GroupSenderKeyStore.shared.markDistributed(ownUin: ownUIN, gid: group.id, uins: skdmTargets.map { $0.uin })
+                GroupSenderKeyStore.shared.advanceOwn(ownUin: ownUIN, gid: group.id)
+                // Legacy members (not yet updated) still get their per-member copy.
+                let legacy = sendable.filter { !$0.senderKeys }
+                if !legacy.isEmpty {
+                    var legacyEntries: [Entry] = []
+                    for m in legacy { if let e = await legacySeal(m) { legacyEntries.append(e) } }
+                    if !legacyEntries.isEmpty {
+                        let _: Out = try await APIClient.shared.request("POST", "/messages/group-sealed",
+                            body: Body(group_id: group.id, envelope_type: envType, payloads: legacyEntries), authenticated: authPost, retries: 1)
+                    }
+                }
+            } else {
+                // No capable member: original per-member fan-out.
+                var entries: [Entry] = []
+                await withTaskGroup(of: Entry?.self) { tg in
+                    for m in sendable { tg.addTask { [self] in await legacySeal(m) } }
+                    for await r in tg { if let r { entries.append(r) } }
+                }
+                out = try await APIClient.shared.request("POST", "/messages/group-sealed",
+                    body: Body(group_id: group.id, envelope_type: envType, payloads: entries), authenticated: authPost, retries: 2)
+            }
             if let localID {
                 let next: DeliveryState = out.delivered ? .delivered : .sent
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: next)
@@ -1006,6 +1012,70 @@ final class MessageService {
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .failed)
             }
             throw error
+        }
+    }
+
+    // MARK: - sender-keys receive helpers
+
+    /// Decode a `gmsg` broadcast via the stored chain. Returns the inner
+    /// envelope + real sender, or nil when the message is mine (carbon handles
+    /// it), a replay, unverifiable, or pending an SKDM (a NACK is fired then).
+    private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> DecryptedEnvelope? {
+        guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return nil }
+        if GroupSenderKeyStore.shared.ownsKid(hdr.kid) { return nil } // my own echoed broadcast
+        guard let key = GroupSenderKeyStore.shared.deriveInbound(kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
+            if !GroupSenderKeyStore.shared.knowsKid(hdr.kid) { sendSknack(gid: gid, kid: hdr.kid) }
+            return nil
+        }
+        guard let opened = SenderKeys.openGmsg(payloadB64, gid: gid, mk: key.mk, expectedSpubB64: key.spub) else { return nil }
+        guard opened.verified else {
+            print("[MessageService] gmsg sig did not verify; dropping gid=\(gid) kid=\(hdr.kid)")
+            return nil
+        }
+        return DecryptedEnvelope(senderUIN: key.senderUin, envelope: opened.envelope)
+    }
+
+    private static var lastSknack: [String: Date] = [:]
+
+    /// Fire one recovery request for an unknown kid to the group's capable
+    /// members (we don't know whose kid it is). Debounced per kid.
+    private func sendSknack(gid: Int, kid: String) {
+        if let prev = Self.lastSknack[kid], Date().timeIntervalSince(prev) < 600 { return }
+        Self.lastSknack[kid] = Date()
+        guard let group = GroupService.shared.groups.first(where: { $0.id == gid }) else { return }
+        let targets = group.members.filter { $0.senderKeys && $0.uin != ownUIN && !$0.identityKey.isEmpty }
+        struct Entry: Encodable { let to_uin: Int; let payload: String }
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        let env: Envelope = .sknack(gid: gid, kid: kid)
+        Task {
+            var entries: [Entry] = []
+            for m in targets {
+                let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
+                if let blob = try? crypto.encrypt(envelope: env, for: bundle) { entries.append(Entry(to_uin: m.uin, payload: blob)) }
+            }
+            guard !entries.isEmpty else { return }
+            let _: Out? = try? await APIClient.shared.request("POST", "/messages/group-sealed",
+                body: Body(group_id: gid, envelope_type: "sknack", payloads: entries), authenticated: false, retries: 0)
+        }
+    }
+
+    /// Answer a recovery request: if I own this group's chain, re-seal a current
+    /// SKDM to the requester so they can read going forward.
+    private func answerSknack(gid: Int, requesterUIN: Int, kid: String) {
+        guard GroupSenderKeyStore.shared.ownKidForGroup(ownUin: ownUIN, gid: gid) == kid,
+              let snap = GroupSenderKeyStore.shared.ownChainSnapshot(ownUin: ownUIN, gid: gid),
+              let group = GroupService.shared.groups.first(where: { $0.id == gid }),
+              let m = group.members.first(where: { $0.uin == requesterUIN }), !m.identityKey.isEmpty else { return }
+        struct Entry: Encodable { let to_uin: Int; let payload: String }
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        let env: Envelope = .skdm(gid: gid, kid: snap.kid, epoch: snap.epoch, index: snap.index, ck: snap.ck)
+        Task {
+            let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
+            guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { return }
+            let _: Out? = try? await APIClient.shared.request("POST", "/messages/group-sealed",
+                body: Body(group_id: gid, envelope_type: "skdm", payloads: [Entry(to_uin: m.uin, payload: blob)]), authenticated: false, retries: 0)
         }
     }
 
@@ -1038,6 +1108,12 @@ final class MessageService {
             }
             throw error
         }
+    }
+
+    /// Advertise this client's capabilities (fire-and-forget at boot).
+    func advertiseSenderKeysCapability() async {
+        struct Body: Encodable { let sender_keys: Bool }
+        let _: EmptyResponse? = try? await APIClient.shared.request("POST", "/users/me/capabilities", body: Body(sender_keys: true), authenticated: true)
     }
 
     private func envelopeType(for envelope: Envelope) -> String {
@@ -1154,7 +1230,12 @@ final class MessageService {
             // twice would advance the Double Ratchet twice and fail.
             let decrypted: DecryptedEnvelope
             let fromNSE: Bool
-            if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
+            if ws.type == "gmsg" {
+                // Sender-keys broadcast: not a sealed envelope — decode via the chain.
+                guard let gid = ws.groupID, let opened = openIncomingGmsg(ws.payload, gid: gid) else { return nil }
+                decrypted = opened
+                fromNSE = false
+            } else if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
                 decrypted = cached
                 fromNSE = true
             } else {
@@ -1162,6 +1243,20 @@ final class MessageService {
                 fromNSE = false
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
+
+            // Sender-keys distribution / recovery (never rendered). SKDM binds
+            // the chain to its authenticated sender; SKNACK asks the kid owner to
+            // re-distribute. Both ride the per-member sealed path.
+            if case .skdm(let gid, let kid, let epoch, let index, let ck) = decrypted.envelope {
+                if let sk = decrypted.senderSigningKey {
+                    GroupSenderKeyStore.shared.acceptSkdm(kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck)
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+            if case .sknack(let gid, let kid) = decrypted.envelope {
+                answerSknack(gid: ws.groupID ?? gid, requesterUIN: decrypted.senderUIN, kid: kid)
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
 
             // Multi-device carbon: a message I sent from ANOTHER device, echoed
             // to my own uin. Unwrap and file the inner message as fromMe in its
@@ -1608,6 +1703,10 @@ final class MessageService {
             case .homeRecord:
                 // Gossip B1: intercepted before this switch (cached via
                 // applyPushedRecord). Unreachable here; for exhaustiveness.
+                break
+            case .skdm, .sknack:
+                // Sender-keys distribution/recovery: intercepted before this
+                // switch. Unreachable here; present only for exhaustiveness.
                 break
             }
             os_log(
