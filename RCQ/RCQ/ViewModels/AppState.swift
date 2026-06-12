@@ -504,6 +504,9 @@ final class AppState: ObservableObject {
             await NotificationService.shared.refreshTokenSubmission()
             await NotificationPrefsService.shared.refresh()
             await VoIPPushService.shared.refreshTokenSubmission()
+            // Advertise sender-keys support so others broadcast to us
+            // (encrypt-once) instead of the legacy per-member fan-out.
+            await MessageService.shared.advertiseSenderKeysCapability()
 
             booted = true
         } catch {

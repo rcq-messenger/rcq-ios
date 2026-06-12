@@ -108,6 +108,10 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     /// Granular moderator caps the owner granted (subset of delete|members|info).
     /// Owner implicitly has all; a non-owner with any cap is a moderator.
     let permissions: [String]
+    /// This member's client(s) understand the sender-keys group path (gmsg
+    /// broadcast + skdm). False → only the legacy per-member fan-out reaches
+    /// them (dual-send migration). See RCQ/docs/sender-keys-design.md.
+    let senderKeys: Bool
 
     var id: Int { uin }
 
@@ -119,6 +123,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case identityKey = "identity_key"
         case signingKey = "signing_key"
         case signalIdentityKey = "signal_identity_key"
+        case senderKeys = "sender_keys"
     }
 
     init(from decoder: Decoder) throws {
@@ -133,6 +138,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.signingKey = (try? c.decodeIfPresent(String.self, forKey: .signingKey)) ?? ""
         self.signalIdentityKey = try? c.decodeIfPresent(String.self, forKey: .signalIdentityKey)
         self.permissions = (try? c.decodeIfPresent([String].self, forKey: .permissions)) ?? []
+        self.senderKeys = (try? c.decodeIfPresent(Bool.self, forKey: .senderKeys)) ?? false
     }
 }
 

@@ -684,7 +684,7 @@ final class WebSocketService: ObservableObject {
         case "pong":
             break
 
-        case "message", "delete", "system", "read", "reaction", "bounce", "visit", "edit":
+        case "message", "delete", "system", "read", "reaction", "bounce", "visit", "edit", "gmsg":
             guard let payload = dict["payload"] as? String else { return }
             let serverTime = (dict["server_time"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
             let offline = dict["offline"] as? Bool ?? false
