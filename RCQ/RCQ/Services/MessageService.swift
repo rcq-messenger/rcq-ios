@@ -806,7 +806,14 @@ final class MessageService {
             let ciBundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
             let ciBlob = try crypto.encrypt(envelope: envelope, for: ciBundle)
             var ok = false
-            for h in await CrossIslandSender.resolveHomes(host: host, uin: contact.uin) {
+            // Gossip-aware home resolution anchored to the LOCALLY-pinned signing
+            // key, so the send reaches the peer via our gossip mirror even when
+            // their own island is blocked or dead (the seal above already uses
+            // the local identity key — no live card fetch). Floor to the single
+            // address we have when nothing verifies anywhere.
+            var ciHomes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: contact.uin, peerSigningKey: contact.signingKey)
+            if ciHomes.isEmpty { ciHomes = [RcqFederation.Home(host: host, uin: contact.uin)] }
+            for h in ciHomes {
                 if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob) { ok = true }
             }
             if let localID {
