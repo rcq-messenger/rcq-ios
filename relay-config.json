@@ -1,7 +1,19 @@
 {
-  "version": 10,
-  "issued_at": "2026-06-05T21:30:51Z",
+  "version": 11,
+  "issued_at": "2026-06-12T19:15:56Z",
   "relays": [
+    {
+      "port": 443,
+      "priority": 0,
+      "proto": "vless",
+      "public_key": "ord-QgtxD57vOVLMsXwGC6Qj7kaK4kb8Tq3MxImQch4",
+      "server": "45.151.101.221",
+      "short_id": "5d88ef2912b4fa39",
+      "sni": "www.yandex.ru",
+      "tag": "relay-msk-aeza",
+      "uuid": "9c7174e7-2cb9-4d03-bffb-259bd534b65b",
+      "flow": "xtls-rprx-vision"
+    },
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
       "password": "JN0qzA4LJfhHPKKN3QHj4eN8",
@@ -91,5 +103,5 @@
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "mORiMPJooWJK/5NHOGUSQ7/UBxSZnhD0s+PD6MuziaLon+naCb0W56sxKHzG4l3CL7uIgKV2pAQXcd3wFJCNAg=="
+  "sig": "henSGst4JcZfvegg+QsKEHPZW8E/adXa0UKO3QfqAWIuftQHwPKw+Ms1cjSsQIRnyum6YynZ9v6DpWjWZFZdAw=="
 }
