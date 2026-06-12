@@ -305,12 +305,41 @@ final class WebSocketService: ObservableObject {
         // island never sees our WS) — wrap it as Envelope.callSignal, v=1-seal
         // and deposit it to their island instead. Same-island stays WS.
         if let ci = CrossIslandStore.shared.find(uin: toUIN), let host = ci.host {
+            // §5d v1-limit fix — BATCH ICE: each trickle candidate was its own
+            // sealed deposit = its own NSE banner (~12/call). Micro-batch a
+            // burst into ONE `call_ice` envelope (`candidates` JSON-array
+            // string). Other signal types flush any pending ICE first so none
+            // are stranded behind them. Cross-island only; same-island WS below
+            // is untouched.
+            if type == "call_ice", let cand = extras["candidate"] as? String {
+                ciIceBuffer[callID, default: []].append(cand)
+                ciIceFlushWork[callID]?.cancel()
+                let work = DispatchWorkItem { [weak self] in self?.flushCrossIslandIce(callID: callID, contact: ci, host: host) }
+                ciIceFlushWork[callID] = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.ciIceDebounce, execute: work)
+                return
+            }
+            flushCrossIslandIce(callID: callID, contact: ci, host: host)
             CrossIslandSender.depositCallSignal(type: type, callID: callID, extras: extras, contact: ci, host: host)
             return
         }
         var payload: [String: Any] = ["type": type, "to_uin": toUIN, "call_id": callID]
         for (k, v) in extras { payload[k] = v }
         send(payload)
+    }
+
+    // Cross-island ICE micro-batch state (keyed by call id), main-actor only.
+    private var ciIceBuffer: [String: [String]] = [:]
+    private var ciIceFlushWork: [String: DispatchWorkItem] = [:]
+    private static let ciIceDebounce: TimeInterval = 0.35
+
+    /// Deposit all buffered cross-island ICE candidates for `callID` as one
+    /// sealed `call_ice` envelope (`candidates` = JSON array). No-op when empty.
+    private func flushCrossIslandIce(callID: String, contact: Contact, host: String) {
+        ciIceFlushWork.removeValue(forKey: callID)?.cancel()
+        guard let cands = ciIceBuffer.removeValue(forKey: callID), !cands.isEmpty else { return }
+        let arr = (try? JSONSerialization.data(withJSONObject: cands)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        CrossIslandSender.depositCallSignal(type: "call_ice", callID: callID, extras: ["candidates": arr], contact: contact, host: host)
     }
 
     func sendRoomEnter(roomID: Int) {

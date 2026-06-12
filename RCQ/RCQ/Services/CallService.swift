@@ -374,7 +374,17 @@ final class CallService: ObservableObject {
         case "call_answer":
             handle(.callAnswer(fromUIN: fromUIN, callID: callID, sdp: sdp))
         case "call_ice":
-            handle(.callIce(fromUIN: fromUIN, callID: callID, candidateJSON: data["candidate"] ?? ""))
+            // Cross-island calls may batch a burst of trickle candidates into
+            // one envelope (`candidates` = JSON array string); fall back to a
+            // single `candidate` for older senders / same-island.
+            if let batch = data["candidates"],
+               let arr = (try? JSONSerialization.jsonObject(with: Data(batch.utf8))) as? [String] {
+                for cand in arr {
+                    handle(.callIce(fromUIN: fromUIN, callID: callID, candidateJSON: cand))
+                }
+            } else {
+                handle(.callIce(fromUIN: fromUIN, callID: callID, candidateJSON: data["candidate"] ?? ""))
+            }
         case "call_end":
             handle(.callEnd(fromUIN: fromUIN, callID: callID, reason: data["reason"] ?? "ended"))
         case "call_renegotiate":
