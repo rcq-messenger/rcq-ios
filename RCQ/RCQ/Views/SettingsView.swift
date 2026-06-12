@@ -323,7 +323,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
-            .sheet(isPresented: $showBackupIsland) { BackupIslandView() }
+            .sheet(isPresented: $showBackupIsland) { BackupIslandView().environmentObject(appState) }
             .confirmationDialog(
                 "settings.history.confirm.title".localized,
                 isPresented: $confirmClearHistory,
@@ -783,6 +783,7 @@ struct AppIconView: View {
 /// this view just lists/adds/removes backup homes and republishes the record.
 struct BackupIslandView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
 
     @State private var homes: [MultihomeStore.Home] = []
     @State private var host = ""
@@ -790,6 +791,8 @@ struct BackupIslandView: View {
     @State private var autoBusy = false
     @State private var advanced = false
     @State private var error: String? = nil
+    // §5a.5 promote: confirm-first — the number and connected island change.
+    @State private var promoteTarget: MultihomeStore.Home? = nil
 
     private var autoHomes: [MultihomeStore.Home] { homes.filter { $0.auto == true } }
     private var manualHomes: [MultihomeStore.Home] { homes.filter { $0.auto != true } }
@@ -871,10 +874,20 @@ struct BackupIslandView: View {
                                             .foregroundColor(Theme.Color.textSecondary)
                                     }
                                     Spacer()
-                                    Button("multihome.remove".localized) { remove(h) }
-                                        .font(.callout)
-                                        .foregroundColor(Theme.Color.accent)
-                                        .disabled(busy)
+                                    // Two buttons in one Form row need .borderless
+                                    // or a row tap fires BOTH.
+                                    VStack(alignment: .trailing, spacing: 6) {
+                                        Button("multihome.remove".localized) { remove(h) }
+                                            .font(.callout)
+                                            .foregroundColor(Theme.Color.accent)
+                                            .buttonStyle(.borderless)
+                                            .disabled(busy)
+                                        Button("multihome.promote".localized) { promoteTarget = h }
+                                            .font(.callout)
+                                            .foregroundColor(Theme.Color.textSecondary)
+                                            .buttonStyle(.borderless)
+                                            .disabled(busy)
+                                    }
                                 }
                             }
                             TextField("multihome.host_hint".localized, text: $host)
@@ -914,12 +927,39 @@ struct BackupIslandView: View {
                 // island by hand; everyone else sees just the toggle.
                 if !manualHomes.isEmpty { advanced = true }
             }
+            .alert(
+                "multihome.promote.title".localized,
+                isPresented: Binding(
+                    get: { promoteTarget != nil },
+                    set: { if !$0 { promoteTarget = nil } }
+                ),
+                presenting: promoteTarget
+            ) { h in
+                Button("multihome.promote.confirm".localized) { promote(h) }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: { h in
+                Text(String(format: "multihome.promote.body".localized, h.host))
+            }
         }
     }
 
     private func reload() {
         let uin = MessageService.shared.ownUIN
         homes = uin != 0 ? MultihomeStore.shared.list(ownUin: uin) : []
+    }
+
+    /// §5a.5: the heavy lifting (recover-first, abort-if-unreachable, store
+    /// swap, session reboot) lives in AppState.promoteBackupToPrimary.
+    private func promote(_ home: MultihomeStore.Home) {
+        busy = true
+        error = nil
+        Task {
+            let err = await appState.promoteBackupToPrimary(host: home.host)
+            await MainActor.run {
+                busy = false
+                if let err { error = err } else { reload() }
+            }
+        }
     }
 
     private func setAuto(_ on: Bool) {

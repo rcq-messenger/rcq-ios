@@ -70,6 +70,22 @@ final class MultihomeStore {
         })
     }
 
+    /// Promote bookkeeping (§5a.5): drop the promoted host's backup entry,
+    /// re-key this account's remaining entries to the NEW primary uin, and file
+    /// the old primary as a manual backup home (senders keep depositing there
+    /// until they re-resolve the record, so its mailbox must stay drained).
+    func promoteSwap(oldOwnUin: Int, newOwnUin: Int, promotedHost: String, oldPrimary: Home) {
+        var next: [Home] = all()
+            .filter { !($0.ownUin == oldOwnUin && $0.host == promotedHost) }
+            .map { h in
+                guard h.ownUin == oldOwnUin else { return h }
+                return Home(ownUin: newOwnUin, host: h.host, uin: h.uin, jwt: h.jwt,
+                            addedAt: h.addedAt, auto: h.auto)
+            }
+        next.append(oldPrimary)
+        persist(next)
+    }
+
     private func all() -> [Home] {
         guard let data = defaults.data(forKey: Self.homesKey),
               let list = try? JSONDecoder().decode([Home].self, from: data) else { return [] }

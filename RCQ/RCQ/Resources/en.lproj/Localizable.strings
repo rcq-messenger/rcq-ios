@@ -180,6 +180,11 @@
 "multihome.err.primary" = "That is already your primary island.";
 "multihome.err.already" = "This island is already added.";
 "multihome.err.generic" = "Could not connect to the island.";
+"multihome.promote" = "Make primary";
+"multihome.promote.title" = "Make this island primary?";
+"multihome.promote.body" = "The app will switch to %@: your number and address become the ones from that island, and the current primary island becomes a backup. Chat history stays on this device. Contacts will see a routine security-code change.";
+"multihome.promote.confirm" = "Make primary";
+"multihome.err.unreachable" = "Island unreachable. Nothing was changed.";
 "linkeddevices.hint" = "Browsers connected to your account. To connect one, open chat.rcq.app, choose Connect phone, and scan the code with your camera.";
 "linkeddevices.empty" = "No browsers are connected.";
 "linkeddevices.error" = "Couldn't load linked devices.";

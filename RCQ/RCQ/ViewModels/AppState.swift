@@ -684,6 +684,59 @@ final class AppState: ObservableObject {
         await rebootForActiveAccount()
     }
 
+    /// Federation §5a.5: make backup `host` the PRIMARY home — one-tap
+    /// disaster recovery for a dead/blocked primary island. Refreshes the
+    /// target's token FIRST (recover challenge-response: possession of the
+    /// signing key IS the credential, no phrase) and ABORTS if the island is
+    /// unreachable — a failed promote is a no-op, never a stranded account.
+    /// Only then swaps primary/backup in Keychain/AccountManager/
+    /// MultihomeStore and reboots the session onto the new island. History is
+    /// per-account local, it survives the move; the v=2 prekey bundle is
+    /// per-island, so contacts see a routine safety-number change. boot()'s
+    /// bootstrap republishes the record (new primary first, old demoted).
+    /// Returns a localized error string, or nil on success.
+    func promoteBackupToPrimary(host: String) async -> String? {
+        guard let accountID = AccountManager.shared.activeAccountID,
+              let uinStr = KeychainStore.string(KeychainStore.Keys.uin),
+              let oldUin = Int(uinStr),
+              let oldToken = KeychainStore.string(KeychainStore.Keys.token),
+              let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else {
+            return "multihome.err.generic".localized
+        }
+        let oldHost = Multihome.ownHost()
+        guard host != oldHost,
+              MultihomeStore.shared.list(ownUin: oldUin).contains(where: { $0.host == host }) else {
+            return "multihome.err.generic".localized
+        }
+        let cred: Multihome.Credentials
+        do {
+            guard let c = try await Multihome.recoverOn(host: host, signingPriv: signingPriv) else {
+                // 404 = this identity never registered there (island wiped us):
+                // nothing to promote onto, and nothing was changed.
+                return "multihome.err.unreachable".localized
+            }
+            cred = c
+        } catch {
+            return "multihome.err.unreachable".localized
+        }
+
+        // Token in hand — the swap below is pure local bookkeeping.
+        WebSocketService.shared.disconnect()
+        KeychainStore.setString(KeychainStore.Keys.uin, String(cred.uin))
+        KeychainStore.setString(KeychainStore.Keys.token, cred.token)
+        AccountManager.shared.update(accountID, serverURL: "https://\(host)")
+        MultihomeStore.shared.promoteSwap(
+            oldOwnUin: oldUin, newOwnUin: cred.uin, promotedHost: host,
+            oldPrimary: MultihomeStore.Home(
+                ownUin: cred.uin, host: oldHost, uin: oldUin, jwt: oldToken,
+                addedAt: Date(), auto: nil
+            )
+        )
+        await rebootForActiveAccount()
+        return nil
+    }
+
     /// Add a brand-new account on `serverURL`, switch active to it,
     /// and let boot mint a fresh identity on the new server. Returns
     /// false when AccountManager refuses the add (roster at limit) —
