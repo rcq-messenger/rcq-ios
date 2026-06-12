@@ -172,7 +172,10 @@ enum Multihome {
                         "nickname": nickname,
                         "identity_key": identityPriv.publicKey.rawRepresentation.base64EncodedString(),
                         "signing_key": signingPriv.publicKey.rawRepresentation.base64EncodedString(),
-                    ]
+                    ],
+                    // Ask to keep our primary number on this backup island
+                    // (best-effort; server mints a fresh uin if it's taken).
+                    extra: ["desired_uin": ownUin]
                 )
             }
             let home = MultihomeStore.Home(
@@ -407,12 +410,16 @@ enum Multihome {
 
     enum HttpError: Error { case status(Int, String) }
 
-    private static func post<T: Decodable>(_ urlString: String, json: [String: String?]) async throws -> T {
+    private static func post<T: Decodable>(_ urlString: String, json: [String: String?], extra: [String: Any] = [:]) async throws -> T {
         guard let url = URL(string: urlString) else { throw HttpError.status(0, "bad url") }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
+        // `extra` carries non-string fields (e.g. desired_uin: Int) so they
+        // serialize as real JSON numbers, not quoted strings.
+        var obj = json.compactMapValues { $0 } as [String: Any]
+        for (k, v) in extra { obj[k] = v }
+        req.httpBody = try JSONSerialization.data(withJSONObject: obj)
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw HttpError.status(0, "no response") }
         guard (200..<300).contains(http.statusCode) else {
