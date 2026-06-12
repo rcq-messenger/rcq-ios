@@ -42,6 +42,14 @@ struct AddContactView: View {
         return a
     }
 
+    /// True when [a] is one of MY OWN backup-island homes — a backup is the
+    /// SAME identity, so "adding" your own copy just hangs as a self-request
+    /// (the "four numbers" confusion). Show "this is you" instead.
+    private func isOwnAddress(_ a: RcqFederation.Address) -> Bool {
+        guard let me = AuthService.shared.ownUIN else { return false }
+        return MultihomeStore.shared.list(ownUin: me).contains { $0.host == a.host && $0.uin == a.uin }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -91,7 +99,21 @@ struct AddContactView: View {
                                         Divider().background(Theme.Color.divider)
                                     }
                                 }
-                                if let ci = crossIsland {
+                                if let ci = crossIsland, isOwnAddress(ci) {
+                                    // Your own backup-island copy — not a contact.
+                                    sectionHeader("Cross-island")
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "person.crop.circle.badge.checkmark").foregroundColor(Theme.Color.textSecondary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(verbatim: "\(ci.uin)@\(ci.host)").foregroundColor(Theme.Color.textPrimary)
+                                            Text("ci.add_self".localized)
+                                                .font(.caption).foregroundColor(Theme.Color.textSecondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16).padding(.vertical, 12)
+                                    Divider().background(Theme.Color.divider)
+                                } else if let ci = crossIsland {
                                     sectionHeader("Cross-island")
                                     Button {
                                         ciBusy = true

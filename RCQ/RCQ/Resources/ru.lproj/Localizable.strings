@@ -1239,6 +1239,7 @@
 "ci.section" = "Запросы на переписку (другие острова)";
 "ci.block" = "Заблокировать";
 "ci.add_row.subtitle" = "Контакт с другого острова RCQ";
+"ci.add_self" = "Это вы, ваш аккаунт на этом острове";
 "contact_list.section.cross_island" = "Другие острова";
 "pending.cta.decline" = "Отклонить";
 
