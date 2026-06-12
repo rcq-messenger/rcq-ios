@@ -988,6 +988,7 @@
 "group.pin.placeholder" = "Rules, links, anything new joiners should see";
 "group.pin.hint" = "Visible to all members above the chat. Up to 500 chars.";
 "chat.pin.title" = "Pinned";
+"chat.show_more" = "Show more";
 "group.section.manage" = "Manage";
 "group.section.settings" = "Settings";
 "group.section.description" = "Description";

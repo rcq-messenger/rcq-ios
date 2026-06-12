@@ -953,6 +953,7 @@
 "group.pin.placeholder" = "Правила, ссылка, что важно знать новым участникам";
 "group.pin.hint" = "Видно всем участникам поверх чата. До 500 знаков.";
 "chat.pin.title" = "Закреплено";
+"chat.show_more" = "Показать полностью";
 "group.section.manage" = "Управление";
 "group.section.settings" = "Настройки";
 "group.section.description" = "Описание";

@@ -137,9 +137,14 @@ final class ChatViewModel: ObservableObject {
     private(set) var openUnreadCount = 0
 
     /// The first unread message to open at, or nil → open at the bottom.
+    /// Clamps when there are MORE unread than currently-loaded messages (a
+    /// group with a big backlog, only the latest page loaded) — without the
+    /// clamp it returned nil and the chat opened at the bottom past all the
+    /// unread (founder report). Anchor to the oldest loaded message instead.
     var openFirstUnreadID: UUID? {
-        guard openUnreadCount > 0, openUnreadCount <= messages.count else { return nil }
-        return messages[messages.count - openUnreadCount].id
+        guard openUnreadCount > 0, !messages.isEmpty else { return nil }
+        let idx = max(0, messages.count - openUnreadCount)
+        return messages[idx].id
     }
 
     func onAppear() {

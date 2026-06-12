@@ -62,6 +62,8 @@ struct MessageRow: View {
     @State private var swipeOffset: CGFloat = 0
     @State private var swipeArmed: Bool = false
     @State private var bubblePressed: Bool = false
+    /// Telegram-style collapse of a very long text body (#2): tap "Show more".
+    @State private var bodyExpanded: Bool = false
 
     private static let swipeTriggerDistance: CGFloat = 60
     private static let swipeMaxDistance: CGFloat = 80
@@ -419,8 +421,14 @@ struct MessageRow: View {
                 if isTranslated { translatedFooter }
             }
         } else {
+            // A very long message collapses to ~14 lines with a "Show more"
+            // toggle so one wall of text doesn't fill the whole timeline (#2,
+            // Telegram-style). Heuristic by length / line count; tap expands.
+            let collapsible = !bodyExpanded &&
+                (displayBody.count > 700 || displayBody.filter { $0 == "\n" }.count >= 14)
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    .lineLimit(collapsible ? 14 : nil)
                     // Guarantee the body takes its full height so it never
                     // truncates vertically (e.g. when a reply quote above it
                     // narrows the layout proposal).
@@ -428,6 +436,17 @@ struct MessageRow: View {
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
+                if collapsible {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { bodyExpanded = true }
+                    } label: {
+                        Text("chat.show_more".localized)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+                }
                 if isTranslated { translatedFooter }
                 // Read off the original body so a translation that mangles the URL still gets a preview.
                 if let url = LinkDetector.firstURL(in: message.text) {

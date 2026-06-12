@@ -1493,6 +1493,18 @@ struct ChatView: View {
                         .overlay(
                             Circle().stroke(Theme.Color.divider, lineWidth: 0.5)
                         )
+                        // Unread count badge (#15): how many unread sit below
+                        // when the chat opened scrolled up to the first unread.
+                        .overlay(alignment: .topTrailing) {
+                            if vm.openUnreadCount > 0 {
+                                Text(vm.openUnreadCount > 99 ? "99+" : "\(vm.openUnreadCount)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                                    .background(Theme.Color.accent, in: Capsule())
+                                    .offset(x: 6, y: -6)
+                            }
+                        }
                         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                 }
                 .padding(.trailing, 14)
