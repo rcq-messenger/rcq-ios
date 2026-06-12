@@ -18,6 +18,38 @@ final class SingBoxTransport {
         /// past the splash and there's no signal for "why is stealth
         /// not engaging".
         static let lastError = "rcq.singbox.lastError"
+        /// Sticky onion ENTRY guard tag (O4): pin the entry across launches,
+        /// rotate only on confirmed block (Tor guard lesson).
+        static let onionEntry = "rcq.singbox.onionEntryTag"
+    }
+
+    /// Sticky onion ENTRY guard. Returns the persisted entry if it's still a
+    /// VLESS relay in `pool`; else picks the highest-priority VLESS (pool is
+    /// priority-sorted), persists it, and returns that.
+    private static func stickyEntry(_ pool: [Relay]) -> Relay {
+        if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
+           let hit = pool.first(where: { $0.tag == tag }) {
+            return hit
+        }
+        let pick = pool[0]
+        UserDefaults.standard.set(pick.tag, forKey: Keys.onionEntry)
+        return pick
+    }
+
+    /// Rotate the onion ENTRY guard to the next VLESS relay (round-robin),
+    /// persisting it. Called when the current entry is confirmed blocked (the
+    /// whole onion path dies with its single entry). Returns true when a
+    /// different entry was chosen; the caller restarts the transport.
+    static func rotateEntry() -> Bool {
+        let vless = RelayConfigStore.shared.currentRelays().filter { $0.proto == .vless }
+        guard vless.count >= 2 else { return false }
+        let cur = UserDefaults.standard.string(forKey: Keys.onionEntry)
+        let idx = vless.firstIndex(where: { $0.tag == cur }) ?? -1
+        let next = vless[(idx + 1) % vless.count]
+        guard next.tag != cur else { return false }
+        UserDefaults.standard.set(next.tag, forKey: Keys.onionEntry)
+        print("[SingBoxTransport] onion entry rotated -> \(next.tag)")
+        return true
     }
 
     private var box: RcqboxBoxService?
@@ -193,8 +225,8 @@ final class SingBoxTransport {
             // so connectivity is never worse. Proven via a local sing-box
             // prototype + Android emulator (RCQ/docs/onion-design.md).
             if RelayConfigStore.onionEnabled, vless.count >= 2 {
-                let entry = vless[0]
-                let exits = Array(vless.dropFirst())
+                let entry = stickyEntry(vless)          // O4: persisted guard, not just vless[0]
+                let exits = vless.filter { $0.tag != entry.tag }
                 out.append([
                     "type": "urltest",
                     "tag": "out",

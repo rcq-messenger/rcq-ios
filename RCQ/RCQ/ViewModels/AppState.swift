@@ -304,6 +304,7 @@ final class AppState: ObservableObject {
         guard SingBoxTransport.shared.isActive else { return }
         pendingOnlineSync?.cancel()
         pendingOnlineSync = Task { [weak self] in
+            var deadStreak = 0
             for _ in 0..<18 {  // ~3 minutes of 10s retries
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 if Task.isCancelled { return }
@@ -313,6 +314,18 @@ final class AppState: ObservableObject {
                     self.isOffline = false
                     await self.runOnlineSync()
                     return
+                }
+                // O4b onion ENTRY-guard rotation: if onion is on and the route
+                // has stayed dead for ~1 min, the sticky ENTRY is likely blocked
+                // (the whole 2-hop path dies with its single entry) — rotate to
+                // the next entry and rebuild the transport so a blocked guard
+                // self-heals. Dormant unless onion is enabled (off by default).
+                deadStreak += 1
+                if RelayConfigStore.onionEnabled, deadStreak >= 6, SingBoxTransport.rotateEntry() {
+                    deadStreak = 0
+                    SingBoxTransport.shared.stop()
+                    try? await SingBoxTransport.shared.start()
+                    await APIClient.shared.applyTransportProxy()
                 }
             }
         }
