@@ -360,19 +360,11 @@ struct ChatView: View {
         }
         return false
     }
-    /// Jump-down arrow visibility. GEOMETRY-driven (see the scroll-metrics
-    /// preference in scrollBody): true while the content's bottom edge
-    /// extends meaningfully below the viewport. The previous approach
-    /// toggled this from the bottom anchor's onAppear/onDisappear, but in a
-    /// LazyVStack those fire on row REALIZATION, which runs ahead of actual
-    /// visibility — with a handful of unread below the fold the anchor was
-    /// "visible" immediately, so the arrow never showed on open and flapped
-    /// in short chats (beta report).
+    /// Jump-down arrow visibility. Driven by the bottom sentinel's
+    /// onAppear/onDisappear (lifecycle events — reliable on iOS 26, unlike
+    /// the geometry probes/onScrollGeometryChange that regressed it). On
+    /// open scrolled to an unread message the `.task` insurance turns it on.
     @State private var showScrollToBottom: Bool = false
-    /// Content frame metrics published by the scroll-metrics preference.
-    @State private var chatContentMinY: CGFloat = 0
-    @State private var chatContentHeight: CGFloat = 0
-    @State private var chatViewportHeight: CGFloat = 0
     /// Hides the scroll surface during the initial settle window so
     /// users don't see LazyVStack realizing rows on chat-open. We
     /// flip it to true after the multi-pass scrollTo loop has had a
@@ -1299,66 +1291,34 @@ struct ChatView: View {
                             }
                         }
                     }
-                    // Bottom anchor — the scrollTo target for "jump to latest".
-                    // It no longer drives the arrow: its onAppear/onDisappear
-                    // fire on LazyVStack REALIZATION, not visibility, so the
-                    // arrow logic now reads the geometry preference below.
+                    // Bottom anchor — the scrollTo target AND the arrow's
+                    // visibility driver. onAppear/onDisappear are lifecycle
+                    // events (they fire on iOS 26 too, unlike the geometry-
+                    // preference probes that froze mid-scroll there and the
+                    // onScrollGeometryChange gap math that mis-counted the
+                    // composer inset and showed the arrow even at the bottom —
+                    // both regressions, reverted). When this 1pt sentinel is
+                    // realized at the list's end you're effectively at the
+                    // bottom → hide; when it scrolls off → show. The open-at-
+                    // unread case is handled by the insurance in `.task`.
                     Color.clear
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
+                        .onAppear {
+                            withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
+                        }
+                        .onDisappear {
+                            withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = true }
+                        }
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
-                // Content-frame probe for the jump-down arrow: minY tracks the
-                // scroll offset (in the scroll view's space), height the full
-                // content height. Geometry, not onAppear — see showScrollToBottom.
-                .background(
-                    GeometryReader { g in
-                        Color.clear.preference(
-                            key: ChatScrollMetricsKey.self,
-                            value: ChatScrollMetrics(
-                                minY: g.frame(in: .named(Self.scrollSpaceName)).minY,
-                                height: g.size.height
-                            )
-                        )
-                    }
-                )
                 // Animate when a new message lands at the bottom only,
                 // by watching the last id instead of the raw count.
                 // Watching count would also fire when `loadOlder()`
                 // prepends a page of history, causing a stutter for
                 // every prepend.
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
-            }
-            .coordinateSpace(name: Self.scrollSpaceName)
-            // Authoritative on iOS 18+ (incl. 26): the first-party scroll
-            // geometry callback. The GeometryReader/preference pair below
-            // stops updating DURING scrolls on the new ScrollView
-            // architecture (offset changes apply without a layout pass), so
-            // on iOS 26 the arrow never showed at all (founder report) —
-            // there it is fed by this observer instead.
-            .modifier(ChatBottomGapObserver { gap in
-                updateScrollToBottomArrow(bottomGap: gap)
-            })
-            // Viewport-height probe (pairs with the content probe above):
-            // the named-space minY plus content height against this gives
-            // the distance the content bottom hangs below the fold.
-            // iOS 16/17 fallback only — see ChatBottomGapObserver.
-            .background(
-                GeometryReader { g in
-                    Color.clear.preference(key: ChatViewportHeightKey.self, value: g.size.height)
-                }
-            )
-            .onPreferenceChange(ChatViewportHeightKey.self) { h in
-                if #available(iOS 18.0, *) { return }
-                chatViewportHeight = h
-                updateScrollToBottomArrowLegacy()
-            }
-            .onPreferenceChange(ChatScrollMetricsKey.self) { m in
-                if #available(iOS 18.0, *) { return }
-                chatContentMinY = m.minY
-                chatContentHeight = m.height
-                updateScrollToBottomArrowLegacy()
             }
             // Initial-settle mask. While the 350ms scrollTo loop in
             // `.task` chases the moving bottom (LazyVStack realizes
@@ -1610,29 +1570,6 @@ struct ChatView: View {
     }
 
     private static let bottomAnchorID = "__rcq_chat_bottom_anchor"
-    private static let scrollSpaceName = "__rcq_chat_scroll"
-
-    /// Geometry-driven arrow toggle: visible while the content's bottom edge
-    /// hangs more than ~a bubble's worth below the viewport bottom. The 80pt
-    /// slack absorbs the bottom paddings/insets and keeps the arrow from
-    /// flapping right at the edge.
-    private func updateScrollToBottomArrow(bottomGap: CGFloat) {
-        let shouldShow = bottomGap > 80
-        guard shouldShow != showScrollToBottom else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
-            showScrollToBottom = shouldShow
-        }
-    }
-
-    /// iOS 16/17 path: derive the bottom gap from the preference probes.
-    /// minY goes negative as you scroll down, so minY + contentHeight is
-    /// where the content bottom sits in viewport coordinates.
-    private func updateScrollToBottomArrowLegacy() {
-        guard chatViewportHeight > 0 else { return }
-        updateScrollToBottomArrow(
-            bottomGap: (chatContentMinY + chatContentHeight) - chatViewportHeight
-        )
-    }
 
     // MARK: - report-with-evidence helpers
 
@@ -2912,51 +2849,3 @@ struct PendingEvidenceReport: Identifiable {
     var id: UUID { message.id }
 }
 
-/// Content-frame metrics for the jump-down arrow (see ChatView.scrollBody):
-/// `minY` = content top in the scroll view's coordinate space (goes negative
-/// as you scroll down), `height` = full content height.
-private struct ChatScrollMetrics: Equatable {
-    var minY: CGFloat = 0
-    var height: CGFloat = 0
-}
-
-private struct ChatScrollMetricsKey: PreferenceKey {
-    static var defaultValue = ChatScrollMetrics()
-    static func reduce(value: inout ChatScrollMetrics, nextValue: () -> ChatScrollMetrics) {
-        value = nextValue()
-    }
-}
-
-private struct ChatViewportHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-/// Reports how far the scroll content's bottom edge hangs below the visible
-/// bottom (0 = at rest at the bottom). On iOS 18+ this is the first-party
-/// `onScrollGeometryChange`, which keeps firing DURING scrolls — the
-/// GeometryReader/preference fallback doesn't on the new ScrollView
-/// architecture, which is exactly why the arrow vanished on iOS 26. On
-/// iOS 16/17 this modifier is inert and the preference probes drive the
-/// arrow instead.
-private struct ChatBottomGapObserver: ViewModifier {
-    let onChange: (CGFloat) -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: CGFloat.self) { g in
-                // Apple's own "scrolled to bottom" arithmetic, rearranged
-                // into a gap: content bottom (incl. bottom inset) minus the
-                // visible bottom edge.
-                (g.contentSize.height + g.contentInsets.bottom)
-                    - (g.contentOffset.y + g.containerSize.height)
-            } action: { _, gap in
-                onChange(gap)
-            }
-        } else {
-            content
-        }
-    }
-}
