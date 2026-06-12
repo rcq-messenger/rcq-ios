@@ -290,6 +290,10 @@ struct MessageRow: View {
                                 members: currentGroupMembers,
                                 uinNick: uinNick
                             )
+                            // A reply PREVIEW is at most ~2 lines — without this
+                            // a long quoted message stretched the quote (and its
+                            // accent bar) to full height (founder report).
+                            .lineLimit(2)
                         }
                     }
                     .padding(.vertical, 2)
