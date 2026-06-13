@@ -438,6 +438,17 @@ final class AppState: ObservableObject {
                     print("[boot] sing-box transport failed to start: \(error)")
                 }
             }
+            // A directly-reachable CUSTOM ISLAND (user-picked rcq.baseURL) must
+            // connect DIRECT. The relays/onion exist to reach a BLOCKED flagship;
+            // forcing a reachable custom island through a flagship relay stalls the
+            // heavier register/sync over the SOCKS proxy past the 25s watchdog,
+            // even though a quick /health probe slipped through (the "reachable=true,
+            // then Couldn't connect" bug). The flagship keeps its normal behavior.
+            let activeBase = APIClient.activeDirectBase()
+            if activeBase != APIClient.prodBaseURL, await APIClient.shared.probeDirectReachable() {
+                print("[boot] custom island \(activeBase) reachable direct — API session DIRECT (bypassing relays)")
+                await APIClient.shared.useDirectSession()
+            }
             var reach = await APIClient.shared.refreshActiveBase()
             // Auto-engage when direct is unreachable — unless the user
             // explicitly opted out (they route through their own proxy
@@ -473,11 +484,13 @@ final class AppState: ObservableObject {
                 }
                 return
             }
+            print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,
                   let token = KeychainStore.string(KeychainStore.Keys.token) else {
                 throw NSError(domain: "boot", code: 1)
             }
+            print("[boot] identity ok uin=\(uin) — syncing")
             MessageService.shared.configure(ownUIN: uin)
 
             // Capability fetch. Failure is non-fatal — we keep the
@@ -509,6 +522,7 @@ final class AppState: ObservableObject {
             // (encrypt-once) instead of the legacy per-member fan-out.
             await MessageService.shared.advertiseSenderKeysCapability()
 
+            print("[boot] complete — booted")
             booted = true
         } catch {
             // If we have a cached identity, fall back to offline-mode

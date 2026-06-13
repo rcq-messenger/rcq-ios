@@ -88,6 +88,18 @@ actor APIClient {
         self.probeSession = Self.makeProbeSession(proxy: proxy)
     }
 
+    /// Force the API sessions DIRECT (no proxy), undoing any applyTransportProxy.
+    /// Used when the active base is a directly-reachable custom island: the relays
+    /// exist to reach a BLOCKED flagship, and routing a reachable island through
+    /// the SOCKS proxy stalls the register/sync past the boot watchdog (a quick
+    /// /health probe slips through with waitsForConnectivity=false, but the main
+    /// session's heavier requests wait on connectivity over the proxy and time out
+    /// against the watchdog → the "reachable=true, then Couldn't connect" bug).
+    func useDirectSession() {
+        self.session = Self.makeMainSession(proxy: nil)
+        self.probeSession = Self.makeProbeSession(proxy: nil)
+    }
+
     private static let dateFormatters: [DateFormatter] = {
         let formats = [
             "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX",
