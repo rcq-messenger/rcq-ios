@@ -174,6 +174,19 @@ actor APIClient {
         return !(p ?? "").isEmpty
     }
 
+    /// The base URL the user actually targets, normalised (no trailing slash):
+    /// a custom island (rcq.baseURL) if one is selected, else the flagship.
+    /// Boot reachability probes THIS, not a hardcoded api.rcq.app — otherwise a
+    /// fresh account on a reachable custom island wrongly engaged the transport
+    /// (and could then fail to reach it over the relay) just because the flagship
+    /// was blocked.
+    static func activeDirectBase() -> String {
+        let custom = (UserDefaults.standard.string(forKey: "rcq.baseURL") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !custom.isEmpty else { return prodBaseURL }
+        return custom.hasSuffix("/") ? String(custom.dropLast()) : custom
+    }
+
     @discardableResult
     func refreshActiveBase() async -> BaseReachability {
         if Self.hasManualProxy {
@@ -185,13 +198,11 @@ actor APIClient {
         // its boot on api.rcq.app's reachability falsely showed "Couldn't connect"
         // when the chosen island was in fact up (e.g. a censored network where
         // api.rcq.app is blocked but the custom server is reachable).
-        let customBase = (UserDefaults.standard.string(forKey: "rcq.baseURL") ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !customBase.isEmpty {
-            let base = customBase.hasSuffix("/") ? String(customBase.dropLast()) : customBase
-            if base != Self.prodBaseURL {
-                return await probe(base) ? .primary : .unreachable
-            }
+        let activeBase = Self.activeDirectBase()
+        if activeBase != Self.prodBaseURL {
+            let ok = await probe(activeBase)
+            print("[APIClient] custom island \(activeBase) reachable=\(ok)")
+            return ok ? .primary : .unreachable
         }
         let key = "rcq.autoProxyActive"
 
@@ -245,7 +256,11 @@ actor APIClient {
     /// ensureTransportForHost). 5s so a DPI'd network that hangs doesn't
     /// stall onboarding.
     func probeDirectReachable() async -> Bool {
-        guard let url = URL(string: Self.prodBaseURL + "/health") else { return false }
+        // Probe the ACTIVE base (the custom island if one is selected), not a
+        // hardcoded api.rcq.app — else a fresh account on a reachable custom
+        // island needlessly engages the transport when only the flagship is blocked.
+        let base = Self.activeDirectBase()
+        guard let url = URL(string: base + "/health") else { return false }
         var req = URLRequest(url: url)
         req.timeoutInterval = 5
         req.cachePolicy = .reloadIgnoringLocalCacheData
@@ -258,8 +273,11 @@ actor APIClient {
         defer { direct.invalidateAndCancel() }
         do {
             let (_, resp) = try await direct.data(for: req)
-            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            let ok = (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            print("[APIClient] probeDirectReachable \(base) -> \(ok)")
+            return ok
         } catch {
+            print("[APIClient] probeDirectReachable \(base) -> error \(error.localizedDescription)")
             return false
         }
     }
