@@ -38,9 +38,20 @@ final class GroupService: ObservableObject {
             // ids rewritten to the local alias + host stamped. Per-island
             // failures degrade to "no groups from there" — never block the own
             // list (the 30s drain refreshes expired guest creds).
+            // The host can be a visited/guest island OR one of our BACKUP islands
+            // (multihome). A group on a backup island MUST be listed here too or
+            // it shows message-only with no name/roster ("Группа / 0 участников").
+            // Dedup hosts (one can be both).
+            let ownUIN = AuthService.shared.ownUIN
             var foreign: [RCQGroup] = []
-            for v in VisitedIslandsStore.shared.list() {
-                foreign += await CrossIslandGroups.guestGroups(host: v.host)
+            var seenHosts = Set<String>()
+            for v in VisitedIslandsStore.shared.list() where seenHosts.insert(v.host.lowercased()).inserted {
+                foreign += await CrossIslandGroups.guestGroups(host: v.host, ownUIN: ownUIN)
+            }
+            if let me = ownUIN {
+                for h in MultihomeStore.shared.list(ownUin: me) where seenHosts.insert(h.host.lowercased()).inserted {
+                    foreign += await CrossIslandGroups.guestGroups(host: h.host, ownUIN: ownUIN)
+                }
             }
             self.groups = list + foreign
             // Mirror id → name into the App Group so the NSE can title a

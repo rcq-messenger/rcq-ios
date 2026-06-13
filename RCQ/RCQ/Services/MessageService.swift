@@ -942,9 +942,9 @@ final class MessageService {
         // must be our per-island uin so the roster resolves it; keys identical)
         // and deposit to the group's island. Handled on its own path.
         if let host = group.host, let ref = VisitedIslandsStore.shared.refByAlias(group.id),
-           let guest = VisitedIslandsStore.shared.get(host: host) {
+           let creds = CrossIslandGroups.foreignCreds(host: host, ownUIN: AuthService.shared.ownUIN) {
             try await sendForeignGroupEnvelope(envelope, to: group, remoteId: ref.remoteId,
-                                               host: host, guestUIN: guest.uin, localID: localID)
+                                               host: host, guestUIN: creds.uin, localID: localID)
             return
         }
         struct Entry: Encodable { let to_uin: Int; let payload: String }
