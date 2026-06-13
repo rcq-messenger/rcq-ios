@@ -20,8 +20,25 @@ final class AuthService: ObservableObject {
     /// launches validates the cached identity against the server and self-heals
     /// if our UIN no longer exists (burn from another device, dev DB wipe).
     func bootstrapIfNeeded(suggestedNickname: String? = nil) async throws {
-        let probeToken = KeychainStore.string(KeychainStore.Keys.token)
-        let probeUIN = KeychainStore.string(KeychainStore.Keys.uin)
+        // Decide register-vs-validate from the ACTIVE account's OWN credentials.
+        // KeychainStore.string() falls back to the legacy UNPREFIXED slot when the
+        // per-account slot is empty — a safety net meant only for the legacy first
+        // account before migration. A FRESH account added on a custom server has an
+        // empty own-slot, so that fallback handed it the flagship's creds (911) and
+        // boot validated the flagship instead of registering on the new island
+        // (founder: is2 worked because it has its own creds; a brand-new custom
+        // server did not). Only the legacy/first account may use the unprefixed
+        // fallback; every other account reads strictly its own slot → so a fresh
+        // custom-server account registers instead of inheriting the flagship.
+        let am = AccountManager.shared
+        let legacyOwner = am.accounts.count <= 1 || am.activeAccountID == am.accounts.first?.id
+        let probeToken: String? = legacyOwner
+            ? KeychainStore.string(KeychainStore.Keys.token)
+            : am.activeAccountID.flatMap { KeychainStore.string(KeychainStore.Keys.token, forAccount: $0) }
+        let probeUIN: String? = legacyOwner
+            ? KeychainStore.string(KeychainStore.Keys.uin)
+            : am.activeAccountID.flatMap { KeychainStore.string(KeychainStore.Keys.uin, forAccount: $0) }
+        print("[boot] bootstrap: active=\(am.activeAccountID?.uuidString.prefix(8).description ?? "nil") base=\(APIClient.shared.baseURL.absoluteString) legacyOwner=\(legacyOwner) probeUIN=\(probeUIN ?? "nil")")
         if let token = probeToken,
            let uinStr = probeUIN,
            let uin = Int(uinStr) {
@@ -40,9 +57,11 @@ final class AuthService: ObservableObject {
             } catch APIError.http(404, _), APIError.http(401, _) {
                 // 404 → server forgot us. 401 → JWT signed with a different
                 // server's secret. Wipe and re-register.
+                print("[boot] cached uin=\(uin) rejected by \(APIClient.shared.baseURL.absoluteString) — re-registering")
                 await wipeLocalIdentity()
             } catch {
                 // Transient — keep cached identity for now.
+                print("[boot] cached uin=\(uin) kept (transient: \(error.localizedDescription))")
                 self.ownUIN = uin
                 self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
                 isReady = true
@@ -71,17 +90,25 @@ final class AuthService: ObservableObject {
         let serverInvite = UserDefaults.standard.string(forKey: AppState.pendingServerInviteKey)
         UserDefaults.standard.removeObject(forKey: AppState.pendingServerInviteKey)
 
-        let out: Out = try await APIClient.shared.request(
-            "POST",
-            "/auth/register",
-            body: Body(
-                nickname: nick,
-                identity_key: bundle.identityKey,
-                signing_key: bundle.signingKey,
-                inviter_uin: inviterUIN,
-                invite: serverInvite
+        print("[boot] registering fresh @ \(APIClient.shared.baseURL.absoluteString)")
+        let out: Out
+        do {
+            out = try await APIClient.shared.request(
+                "POST",
+                "/auth/register",
+                body: Body(
+                    nickname: nick,
+                    identity_key: bundle.identityKey,
+                    signing_key: bundle.signingKey,
+                    inviter_uin: inviterUIN,
+                    invite: serverInvite
+                )
             )
-        )
+        } catch {
+            print("[boot] register FAILED @ \(APIClient.shared.baseURL.absoluteString): \(error)")
+            throw error
+        }
+        print("[boot] register ok uin=\(out.uin) @ \(APIClient.shared.baseURL.absoluteString)")
         UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
 
         KeychainStore.setString(KeychainStore.Keys.uin, String(out.uin))
