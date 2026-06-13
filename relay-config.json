@@ -1,6 +1,6 @@
 {
-  "version": 11,
-  "issued_at": "2026-06-12T19:15:56Z",
+  "version": 12,
+  "issued_at": "2026-06-13T14:50:27Z",
   "relays": [
     {
       "port": 443,
@@ -103,5 +103,8 @@
       "flow": "xtls-rprx-vision"
     }
   ],
-  "sig": "henSGst4JcZfvegg+QsKEHPZW8E/adXa0UKO3QfqAWIuftQHwPKw+Ms1cjSsQIRnyum6YynZ9v6DpWjWZFZdAw=="
+  "onion": {
+    "enabled": true
+  },
+  "sig": "vDTl/WAyyNonaSeRtcqjCq83CqprO/8OFZj3GMxtyF8qSRz2smoH5MTQRg7y4dY+REHlZW2rlrpYUcKsTbs8Aw=="
 }
