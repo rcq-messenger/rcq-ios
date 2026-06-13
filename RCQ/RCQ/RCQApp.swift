@@ -532,11 +532,11 @@ private struct ErrorScreen: View {
             Theme.Color.bgPrimary.ignoresSafeArea()
             VStack(spacing: 12) {
                 LogoMark(size: 72).opacity(0.6)
-                Text("Couldn't connect").font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
+                Text("boot.error.title".localized).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
                 Text(message).font(.caption).foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center).padding(.horizontal, 32)
-                Text("Retrying in \(nextAttemptIn)s…").font(.caption2).foregroundColor(Theme.Color.textSecondary)
-                Button("Retry now") {
+                Text("boot.error.retrying".localized(nextAttemptIn)).font(.caption2).foregroundColor(Theme.Color.textSecondary)
+                Button("boot.error.retry_now".localized) {
                     Task { await AppState.shared.boot() }
                 }
                 .buttonStyle(.borderedProminent).tint(Theme.Color.accent)

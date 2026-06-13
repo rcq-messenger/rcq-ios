@@ -70,9 +70,18 @@ struct MessageRow: View {
     /// whether to collapse + offer "Show more"; `collapsedPrefix` below does
     /// the actual cut with the SAME math, so the button appears exactly when
     /// text was removed. Biased to not over-trigger on short messages.
+    /// Realistic chars-per-rendered-line for the bubble body at the default body
+    /// font in a 78%-width bubble. Cyrillic at this size wraps far shorter than
+    /// the ~38 (Latin max) the old estimate assumed, which made the collapse fire
+    /// on modest messages and bake a mid-message "…" into the text. 22 is
+    /// calibrated for Cyrillic; `collapseLineBudget` is deliberately generous so
+    /// only a screen-filling wall of text collapses.
+    static let charsPerLine = 22
+    static let collapseLineBudget = 40
+
     static func estimatedLineCount(_ body: String) -> Int {
         body.split(separator: "\n", omittingEmptySubsequences: false)
-            .reduce(0) { $0 + max(1, ($1.count + 37) / 38) }
+            .reduce(0) { $0 + max(1, ($1.count + charsPerLine - 1) / charsPerLine) }
     }
 
     /// The collapsed body: [body] cut after ~[maxLines] estimated wrapped
@@ -84,11 +93,11 @@ struct MessageRow: View {
     /// the vertical fixedSize to let lineLimit work resurrected the
     /// LazyVStack mis-measure that squeezed each paragraph to a couple of
     /// lines with "…" (the other founder screenshot).
-    static func collapsedPrefix(_ body: String, maxLines: Int = 14) -> String {
+    static func collapsedPrefix(_ body: String, maxLines: Int = MessageRow.collapseLineBudget) -> String {
         var remaining = maxLines
         var kept: [Substring] = []
         for para in body.split(separator: "\n", omittingEmptySubsequences: false) {
-            let est = max(1, (para.count + 37) / 38)
+            let est = max(1, (para.count + charsPerLine - 1) / charsPerLine)
             if est < remaining {
                 kept.append(para)
                 remaining -= est
@@ -96,7 +105,7 @@ struct MessageRow: View {
                 // Budget ends inside this paragraph — cut at the last
                 // whitespace before it so words (and emoticon codes)
                 // survive whole.
-                var cut = para.prefix(remaining * 38)
+                var cut = para.prefix(remaining * charsPerLine)
                 if cut.count < para.count,
                    let sp = cut.lastIndex(where: { $0.isWhitespace }) {
                     cut = cut[..<sp]
@@ -494,7 +503,7 @@ struct MessageRow: View {
             // message never shrinks. The vertical fixedSize stays on in BOTH
             // states: without it the LazyVStack mis-measure squeezes the
             // paragraphs to arbitrary couple-line stubs with "…".
-            let collapsed = !bodyExpanded && Self.estimatedLineCount(displayBody) > 14
+            let collapsed = !bodyExpanded && Self.estimatedLineCount(displayBody) > Self.collapseLineBudget
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 EmoticonText(
                     text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
