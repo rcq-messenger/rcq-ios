@@ -179,6 +179,20 @@ actor APIClient {
         if Self.hasManualProxy {
             return await probe(Self.defaultBaseURL().absoluteString) ? .proxy : .unreachable
         }
+        // A custom island (the user set rcq.baseURL to a non-flagship host):
+        // probe THAT base directly. The api.rcq.app probe + the api.rcq.app-only
+        // built-in proxy below cannot speak for a third-party island, so gating
+        // its boot on api.rcq.app's reachability falsely showed "Couldn't connect"
+        // when the chosen island was in fact up (e.g. a censored network where
+        // api.rcq.app is blocked but the custom server is reachable).
+        let customBase = (UserDefaults.standard.string(forKey: "rcq.baseURL") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !customBase.isEmpty {
+            let base = customBase.hasSuffix("/") ? String(customBase.dropLast()) : customBase
+            if base != Self.prodBaseURL {
+                return await probe(base) ? .primary : .unreachable
+            }
+        }
         let key = "rcq.autoProxyActive"
 
         // ALWAYS prefer the direct path and re-check it every boot — even when

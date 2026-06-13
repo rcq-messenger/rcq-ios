@@ -848,8 +848,20 @@ private struct AddGroupMemberView: View {
         do {
             try await GroupService.shared.addMember(groupID: group.id, uin: uin)
             dismiss()
-        } catch APIError.http(403, _) {
-            addError = "group.add.error.blocked".localized
+        } catch APIError.http(403, let body) {
+            // The add-member endpoint returns 403 for THREE different reasons:
+            // the owner blocked the user, OR the invitee's own group-invite
+            // policy ("contacts"/"nobody") refuses the invite. Only the first is
+            // a real block — don't mislabel a policy refusal as "the creator
+            // blocked this user" (which sent the user hunting for a phantom block).
+            let detail = (body ?? "").lowercased()
+            if detail.contains("blocked this user") {
+                addError = "group.add.error.blocked".localized
+            } else if detail.contains("group invites") {
+                addError = "group.add.error.invite_policy".localized
+            } else {
+                addError = "group.add.error.forbidden".localized
+            }
         } catch {
             addError = String(format: "group.add.error.generic".localized, error.localizedDescription)
         }

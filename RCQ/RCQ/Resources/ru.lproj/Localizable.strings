@@ -1035,6 +1035,8 @@
 "group.add.section.contacts" = "Из ваших контактов";
 "group.add.section.others" = "Другие пользователи";
 "group.add.error.blocked" = "Создатель группы заблокировал этого пользователя.";
+"group.add.error.invite_policy" = "Этот пользователь принимает приглашения в группы только от своих контактов или отключил их.";
+"group.add.error.forbidden" = "Не удалось добавить этого пользователя в группу.";
 "group.add.error.generic" = "Не удалось добавить: %@";
 "group.avatar.change" = "Сменить аватар";
 "group.avatar.remove" = "Убрать аватар";
@@ -2102,7 +2104,10 @@
 "onboard.server.picker.search" = "Поиск сервера";
 "onboard.server.picker.empty" = "Ничего не нашлось";
 
-"boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ — попробуйте VPN.";
+"boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ, попробуйте VPN.";
+"boot.error.title" = "Не удалось подключиться";
+"boot.error.retrying" = "Повтор через %d с…";
+"boot.error.retry_now" = "Повторить сейчас";
 
 /* ── Восстановление аккаунта (seed-фраза) ─────────────────────── */
 "settings.account.recovery" = "Фраза восстановления";

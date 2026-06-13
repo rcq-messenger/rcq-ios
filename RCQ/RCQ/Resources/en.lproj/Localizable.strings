@@ -1070,6 +1070,8 @@
 "group.add.section.contacts" = "From your contacts";
 "group.add.section.others" = "Other users";
 "group.add.error.blocked" = "The group owner has blocked this user.";
+"group.add.error.invite_policy" = "This user only accepts group invites from their contacts, or has turned them off.";
+"group.add.error.forbidden" = "Couldn't add this user to the group.";
 "group.add.error.generic" = "Couldn't add: %@";
 "group.avatar.change" = "Change avatar";
 "group.avatar.remove" = "Remove avatar";
@@ -2127,6 +2129,9 @@
 "onboard.server.picker.empty" = "No matches";
 
 "boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it — try a VPN.";
+"boot.error.title" = "Couldn't connect";
+"boot.error.retrying" = "Retrying in %ds…";
+"boot.error.retry_now" = "Retry now";
 
 /* ── Account recovery (seed phrase) ───────────────────────────── */
 "settings.account.recovery" = "Recovery phrase";
