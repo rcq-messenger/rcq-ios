@@ -288,6 +288,8 @@ class NotificationService: UNNotificationServiceExtension {
             content.body = q.isEmpty ? "📊 New poll" : "📊 \(q)"
         case .screenshotTaken:
             content.body = "📸 Screenshot"
+        case .relayShare:
+            content.body = "🛡️ Shared a connection"
         case .callSignal(_, let sig, _, let ts, _):
             // §5d cross-island call signaling pushed to a backgrounded app.
             // No VoIP push across islands (v1 limit) — at least banner the
@@ -447,7 +449,7 @@ class NotificationService: UNNotificationServiceExtension {
     private static func envelopeIsUserVisible(_ envelope: Envelope) -> Bool {
         switch envelope {
         case .text, .photo, .video, .voice, .file, .location,
-             .systemNotice, .poll, .screenshotTaken:
+             .systemNotice, .poll, .screenshotTaken, .relayShare:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack:
@@ -478,6 +480,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .homeRecord:       return "homerec"
         case .skdm:             return "skdm"
         case .sknack:           return "sknack"
+        case .relayShare:       return "relay_share"
         }
     }
 

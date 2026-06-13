@@ -113,6 +113,25 @@ final class MessageService {
         }
     }
 
+    /// In-chat bridge sharing: hand `contact` a relay from your pool so they can
+    /// route through it when their own relays are blocked (censorship-resistance
+    /// — distribute off-config relays peer-to-peer). Renders as a `.relay` card
+    /// on both sides; the recipient taps Add. See RCQ/docs/bridge-sharing-design.md.
+    func shareRelay(_ relay: RelayConfigStore.RelayEntry, to contact: Contact) async throws {
+        let wire = ContactRelayStore.relayToWire(relay)
+        let local = Message(
+            thread: .peer(uin: contact.uin),
+            senderUIN: ownUIN,
+            isFromMe: true,
+            kind: .relay,
+            text: ContactRelayStore.relayToToken(relay)
+        )
+        MessageStore.shared.append(local)
+        Task { [weak self] in
+            try? await self?.sendEnvelope(.relayShare(id: local.id, relay: wire, note: nil), to: contact, localID: local.id)
+        }
+    }
+
     func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         SmokeTracker.shared.tick(.sendPhoto)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
@@ -1185,6 +1204,7 @@ final class MessageService {
         case .voice(let id, _, _, _, _, _, _): return id
         case .systemNotice(let id, _): return id
         case .poll(let id, _, _, _, _, _): return id
+        case .relayShare(let id, _, _): return id
         default: return nil
         }
     }
@@ -1666,6 +1686,21 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     pollID: pollID
+                ))
+            case .relayShare(let id, let relay, _):
+                // In-chat bridge sharing: a contact handed us a relay to augment
+                // our transport pool. Store the rcq-relay:// token in `text`;
+                // ChatView renders it as an Add card. Drop malformed shares.
+                guard let r = ContactRelayStore.relayFromWire(relay) else { return nil }
+                inserted = MessageStore.shared.append(Message(
+                    id: id,
+                    thread: thread,
+                    senderUIN: decrypted.senderUIN,
+                    isFromMe: decrypted.senderUIN == ownUIN,
+                    kind: .relay, text: ContactRelayStore.relayToToken(r),
+                    sentAt: ws.serverTime,
+                    deliveryState: .delivered,
+                    receivedWhileAway: ws.offline
                 ))
             case .secureScreen(let on):
                 // Peer toggled per-conversation screen-secure mode — mirror it

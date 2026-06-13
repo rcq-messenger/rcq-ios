@@ -359,6 +359,21 @@
 
 "chat.attach.poll" = "Опрос";
 "chat.attach.share_group" = "Пригласить";
+"chat.attach.share_connection" = "Подключение";
+"relay.share.title" = "Способ подключения";
+"relay.share.invalid" = "Подключение не поддерживается";
+"relay.share.sent_note" = "Вы поделились способом подключения";
+"relay.share.added" = "Добавлено в ваши подключения";
+"relay.share.add" = "Добавить";
+"relay.share.pick.title" = "Поделиться подключением";
+"relay.share.pick.body" = "Передайте контакту relay, чтобы он смог пробиться, когда его подключения заблокированы. Он нажмёт Добавить, чтобы использовать его.";
+"relay.import.title" = "Добавить relay";
+"relay.import.body" = "Вставьте ссылку rcq-relay://, которую вы получили вне приложения.";
+"relay.import.add" = "Добавить";
+"relay.shared.section" = "Полученные relay";
+"relay.shared.empty" = "Полученных relay нет. Контакт может прислать relay в чате, или вставьте ссылку.";
+"relay.shared.from" = "от";
+"relay.shared.imported" = "импортирован";
 
 "share_group.title" = "Поделиться группой";
 "share_group.empty" = "У тебя ещё нет групп.";
