@@ -169,6 +169,18 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// Optimistically swap a group's pinned text in the local published list so
+    /// the chat banner updates INSTANTLY when pinning from a message, before the
+    /// PATCH round-trips. The server response (via setPinnedText/upsert or the
+    /// group_membership_changed WS event) reconciles it. Empty string clears.
+    func applyPinnedTextLocally(groupID: Int, pinnedText: String) {
+        guard let idx = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        var g = groups[idx]
+        let trimmed = pinnedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        g.pinnedText = trimmed.isEmpty ? nil : trimmed
+        groups[idx] = g
+    }
+
     /// Owner-only — flip the broadcast mode. `"all"` lets everyone
     /// post, `"owner_only"` makes the group a one-way channel.
     func setPostPolicy(groupID: Int, policy: String) async throws {

@@ -1045,6 +1045,7 @@
 "group.member.action.add" = "Add as contact";
 "group.member.action.add.sent" = "Request sent";
 "group.member.action.profile" = "Open profile";
+"group.member.action.message" = "Message";
 "group.member.action.checking" = "Checking settings…";
 "group.add.title" = "Add Member";
 "group.add.placeholder" = "UIN, nickname, name…";

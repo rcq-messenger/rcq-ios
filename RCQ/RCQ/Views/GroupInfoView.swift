@@ -5,6 +5,7 @@ struct GroupInfoView: View {
     let group: RCQGroup
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
     @StateObject private var groups = GroupService.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var sound = SoundService.shared
@@ -163,6 +164,16 @@ struct GroupInfoView: View {
                 onOpenProfile: {
                     viewInfoForUIN = m.uin
                     actionMember = nil
+                },
+                // Open the 1:1 chat. Pop GroupInfo first (it's pushed via
+                // navigationDestination), then reuse the push-notification
+                // deep-link route (pendingOpenChatUIN) so the root ContactListView
+                // navigates to the peer chat.
+                onMessage: {
+                    let uin = m.uin
+                    actionMember = nil
+                    dismiss()
+                    appState.pendingOpenChatUIN = uin
                 },
                 onDismiss: { actionMember = nil },
             )
@@ -388,6 +399,9 @@ private struct MemberActionSheet: View {
     var canModerate: Bool = false
     var onSetPermissions: ([String]) -> Void = { _ in }
     let onOpenProfile: () -> Void
+    /// Open the 1:1 chat with this member. Only offered when they're already a
+    /// contact (you can't message someone you haven't added).
+    var onMessage: (() -> Void)? = nil
     let onDismiss: () -> Void
 
     @StateObject private var contacts = ContactService.shared
@@ -464,6 +478,17 @@ private struct MemberActionSheet: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(addRequestSent)
+                }
+                if isAlreadyContact, let onMessage {
+                    Button(action: onMessage) {
+                        actionPill(
+                            icon: "bubble.left.fill",
+                            text: "group.member.action.message".localized,
+                            tint: Theme.Color.accent,
+                            background: Theme.Color.bgSecondary,
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
                 Button(action: onOpenProfile) {
                     actionPill(

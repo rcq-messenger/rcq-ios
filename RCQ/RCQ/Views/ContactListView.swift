@@ -650,20 +650,11 @@ struct ContactListView: View {
                     Label("contact_list.menu.saved".localized, systemImage: "bookmark.fill")
                 }
             }
-            // Manual censorship-bypass toggle (Android parity). Engages/drops the
-            // obfuscation transport live + reconnects. Reads the current state at
-            // menu-open so the label flips each time it's reopened.
+            // Censorship bypass is no longer a manual menu toggle — it engages
+            // AUTOMATICALLY when a direct connection is blocked (AppState boot
+            // probes direct first). The override still lives in Settings →
+            // Privacy for power users. Diagnostics stays here for quick access.
             Section {
-                Button {
-                    let newVal = !SingBoxTransport.isEnabled
-                    Task { await AppState.shared.setBypass(newVal) }
-                } label: {
-                    Label(SingBoxTransport.isEnabled ? "bypass.menu.disable".localized
-                                                     : "bypass.menu.enable".localized,
-                          systemImage: SingBoxTransport.isEnabled ? "shield.lefthalf.filled" : "shield")
-                }
-                // Network diagnostics right next to the bypass toggle (Android
-                // parity), so it opens without digging into Settings.
                 Button {
                     showDiagnostics = true
                 } label: {

@@ -55,6 +55,11 @@ struct ChatView: View {
     private func pinMessage(_ message: Message) {
         guard case .group(let snapshot) = vm.target else { return }
         let text = pinTextFor(message)
+        // Optimistic + instant: swap the displayed pin right away, expand the
+        // banner so the change is obvious, then PATCH (which reconciles via
+        // upsert). Makes the new pin replace the old one immediately.
+        groupSvc.applyPinnedTextLocally(groupID: snapshot.id, pinnedText: text)
+        collapsedPinGroups.remove(snapshot.id)
         Task { try? await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text) }
     }
 
