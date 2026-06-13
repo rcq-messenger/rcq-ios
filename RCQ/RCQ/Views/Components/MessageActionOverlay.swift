@@ -20,6 +20,9 @@ struct MessageActionOverlay: View {
     var onReport: (() -> Void)? = nil
     var onSelect: (() -> Void)? = nil
     var onResend: (() -> Void)? = nil
+    /// Group owner / info-moderator only: pin this message into the group's
+    /// single pin slot (replaces whatever was pinned, chat- or settings-set).
+    var onPin: (() -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
 
@@ -169,6 +172,12 @@ struct MessageActionOverlay: View {
                 if canForward {
                     actionRow("chat.action.forward".localized, icon: "arrowshape.turn.up.right", destructive: false) {
                         onForward(); onDismiss()
+                    }
+                    rowDivider
+                }
+                if let onPin {
+                    actionRow("chat.action.pin".localized, icon: "pin", destructive: false) {
+                        onPin(); onDismiss()
                     }
                     rowDivider
                 }

@@ -117,6 +117,9 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
 
     /// True if this member may delete anyone's message (owner OR `delete` cap).
     func canDelete(ownerUIN: Int) -> Bool { uin == ownerUIN || permissions.contains("delete") }
+    /// True if this member may manage group info — pin, rename, etc. (owner OR
+    /// `info` cap). Gates pinning a message from the chat.
+    func canManageInfo(ownerUIN: Int) -> Bool { uin == ownerUIN || permissions.contains("info") }
 
     enum CodingKeys: String, CodingKey {
         case uin, nickname, role, status, permissions
