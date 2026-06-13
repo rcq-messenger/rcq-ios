@@ -34,6 +34,30 @@ struct ChatView: View {
             || live.members.first { $0.uin == me }?.canDelete(ownerUIN: live.ownerUIN) == true
     }
 
+    /// Owner / info-moderator may pin a chat message into the group's single
+    /// pin slot. Only in groups (1:1 has no pin).
+    private func canPinMessage() -> Bool {
+        guard case .group(let snapshot) = vm.target,
+              let me = AuthService.shared.ownUIN else { return false }
+        let live = groupSvc.find(snapshot.id) ?? snapshot
+        return live.members.first { $0.uin == me }?.canManageInfo(ownerUIN: live.ownerUIN) == true
+    }
+
+    /// The plaintext that goes into the pin slot for a message: its text/caption,
+    /// or a short attachment label for media without text (the slot is plaintext
+    /// by design so new joiners see it before key exchange).
+    private func pinTextFor(_ message: Message) -> String {
+        let t = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty { return t }
+        return "chat.pin.attachment".localized
+    }
+
+    private func pinMessage(_ message: Message) {
+        guard case .group(let snapshot) = vm.target else { return }
+        let text = pinTextFor(message)
+        Task { try? await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text) }
+    }
+
     /// View counts are a broadcast-mode affordance: only meaningful
     /// when ONE person (the owner) is talking and everyone else is a
     /// passive audience. In a chat where every member can post, an
@@ -137,6 +161,10 @@ struct ChatView: View {
                 }
             },
             onResend: resendCallback,
+            onPin: canPinMessage() ? {
+                let copy = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinMessage(copy) }
+            } : nil,
         )
     }
 

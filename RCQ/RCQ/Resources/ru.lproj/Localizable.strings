@@ -727,6 +727,8 @@
 "chat.action.resend" = "Отправить заново";
 "chat.action.forward" = "Переслать";
 "chat.action.select" = "Выбрать";
+"chat.action.pin" = "Закрепить";
+"chat.pin.attachment" = "📎 Вложение";
 "chat.selection.delete" = "Удалить (%d)";
 "chat.selection.forward" = "Переслать (%d)";
 "chat.selection.cancel" = "Отмена";

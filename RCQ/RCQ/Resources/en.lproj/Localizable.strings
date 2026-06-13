@@ -762,6 +762,8 @@
 "chat.action.resend" = "Send again";
 "chat.action.forward" = "Forward";
 "chat.action.select" = "Select";
+"chat.action.pin" = "Pin";
+"chat.pin.attachment" = "📎 Attachment";
 "chat.selection.delete" = "Delete (%d)";
 "chat.selection.forward" = "Forward (%d)";
 "chat.selection.cancel" = "Cancel";
