@@ -1010,6 +1010,7 @@
 "group.member.action.add" = "Добавить в контакты";
 "group.member.action.add.sent" = "Заявка отправлена";
 "group.member.action.profile" = "Открыть профиль";
+"group.member.action.message" = "Написать";
 "group.member.action.checking" = "Проверяем настройки…";
 "group.add.title" = "Добавить участника";
 "group.add.placeholder" = "UIN, ник, имя…";
