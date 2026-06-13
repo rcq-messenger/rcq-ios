@@ -170,17 +170,33 @@ enum CrossIslandGroups {
         return VisitedIslandsStore.shared.get(host: host)
     }
 
+    /// Creds for a foreign host: a visited/guest island OR one of our BACKUP
+    /// islands (multihome). A cross-island group can be hosted on EITHER — both
+    /// stores hold this identity's (uin, jwt) for that host. Without the backup
+    /// fallback, a group on your backup island has no roster/name and its sends
+    /// misroute to your own island (the "Группа / 0 участников / не дошло" bug).
+    static func foreignCreds(host: String, ownUIN: Int?) -> (uin: Int, jwt: String)? {
+        if let v = VisitedIslandsStore.shared.get(host: host) { return (v.uin, v.jwt) }
+        guard let me = ownUIN else { return nil }
+        if let h = MultihomeStore.shared.list(ownUin: me).first(where: { $0.host.lowercased() == host.lowercased() }) {
+            return (h.uin, h.jwt)
+        }
+        return nil
+    }
+
     /// Groups we joined on `host`, ids rewritten to the local alias + host
-    /// stamped. A 401 refreshes the guest jwt once. [] on any failure.
-    static func guestGroups(host: String) async -> [RCQGroup] {
-        guard let v = VisitedIslandsStore.shared.get(host: host) else { return [] }
+    /// stamped. A 401 refreshes the guest jwt once (visited islands only; a
+    /// backup island's token is long-lived + refreshed by the backup drain).
+    /// [] on any failure.
+    static func guestGroups(host: String, ownUIN: Int?) async -> [RCQGroup] {
+        guard let creds = foreignCreds(host: host, ownUIN: ownUIN) else { return [] }
         func fetch(_ jwt: String) async throws -> [RCQGroup] {
             try await getJSON("https://\(host)/groups", jwt: jwt)
         }
         do {
             var groups: [RCQGroup]
             do {
-                groups = try await fetch(v.jwt)
+                groups = try await fetch(creds.jwt)
             } catch CIGError.http(401) {
                 guard let fresh = await refreshGuest(host: host) else { return [] }
                 groups = try await fetch(fresh.jwt)
