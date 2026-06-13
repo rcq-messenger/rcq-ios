@@ -475,6 +475,10 @@ struct MessageRow: View {
             // button so only the original creator sees the affordance.
             // PollBubble owns its own background + max-width clip.
             PollBubble(message: message, creatorIsMe: message.isFromMe)
+        } else if message.kind == .relay {
+            // In-chat bridge sharing: a relay a contact handed you (Add) or you
+            // sent. RelayShareBubble owns its own background.
+            RelayShareBubble(message: message)
         } else if let share = GroupLinkParser.parse(message.text) {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 GroupLinkBubble(groupID: share.groupID, host: share.host, rawURL: share.url)
@@ -543,5 +547,53 @@ struct MessageRow: View {
         }
     }
 
+}
+
+/// In-chat bridge sharing: a relay a contact handed you (Add it to your
+/// transport pool) or one you sent. The rcq-relay:// token lives in
+/// `message.text`. See RCQ/docs/bridge-sharing-design.md.
+private struct RelayShareBubble: View {
+    let message: Message
+    @State private var added = false
+
+    private var relay: RelayConfigStore.RelayEntry? { ContactRelayStore.relayFromToken(message.text) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "shield.lefthalf.filled").foregroundColor(Theme.Color.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("relay.share.title".localized)
+                        .font(.subheadline).bold().foregroundColor(Theme.Color.textPrimary)
+                    if let r = relay {
+                        Text("\(r.proto.rawValue.uppercased()) · \(r.server):\(r.port)")
+                            .font(.caption2).foregroundColor(Theme.Color.textSecondary).lineLimit(1)
+                    }
+                }
+            }
+            if relay == nil {
+                Text("relay.share.invalid".localized).font(.caption).foregroundColor(Theme.Color.textSecondary)
+            } else if message.isFromMe {
+                Text("relay.share.sent_note".localized).font(.caption2).foregroundColor(Theme.Color.textSecondary)
+            } else if added {
+                Text("relay.share.added".localized).font(.caption).bold().foregroundColor(Theme.Color.accent)
+            } else {
+                Button {
+                    if let r = relay { ContactRelayStore.shared.add(r, fromUin: message.senderUIN, fromName: nil) }
+                    added = true
+                } label: {
+                    Text("relay.share.add".localized)
+                        .font(.caption).bold().foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(Theme.Color.accent).cornerRadius(8)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 280, alignment: .leading)
+        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+        .cornerRadius(Theme.Metrics.bubbleRadius)
+        .onAppear { if let r = relay { added = ContactRelayStore.shared.has(r) } }
+    }
 }
 

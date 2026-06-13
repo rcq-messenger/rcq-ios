@@ -320,6 +320,7 @@ struct ChatView: View {
     }
     @State private var showPollComposer: Bool = false
     @State private var showShareGroupPicker: Bool = false
+    @State private var showRelayPicker: Bool = false
     @State private var headerShowsLastSeen: Bool = false
     @State private var showLocationPicker: Bool = false
     @State private var showTTLPicker = false
@@ -602,8 +603,17 @@ struct ChatView: View {
                 // affordance — sharing into the same group is
                 // contrived. Hidden in random-chat (privacy) and
                 // hidden in group chats (no use-case).
-                onShareGroup: shareGroupPickerHandler
+                onShareGroup: shareGroupPickerHandler,
+                onShareConnection: shareConnectionHandler
             )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showRelayPicker) {
+            RelaySharePickerSheet { relay in
+                showRelayPicker = false
+                Task { await vm.shareRelay(relay) }
+            }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -2469,6 +2479,22 @@ struct ChatView: View {
         }
     }
 
+    /// In-chat bridge sharing: 1:1 only (handing a relay to a peer). Hidden in
+    /// groups + random.
+    private var shareConnectionHandler: (() -> Void)? {
+        switch vm.target {
+        case .peer:
+            return {
+                showAttachmentMenu = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    showRelayPicker = true
+                }
+            }
+        case .group, .randomPeer:
+            return nil
+        }
+    }
+
     /// Wire a finished poll-composer draft into the send pipeline:
     /// create the server-side poll (gets back `poll_id`), then
     /// broadcast a `.poll` envelope so every group member's chat
@@ -2880,5 +2906,43 @@ struct PendingEvidenceReport: Identifiable {
     let bytes: Data
     let mime: String
     var id: UUID { message.id }
+}
+
+/// In-chat bridge sharing: pick a relay from your pool to hand the 1:1 peer so
+/// they can route through it when their own relays are blocked. See
+/// RCQ/docs/bridge-sharing-design.md.
+private struct RelaySharePickerSheet: View {
+    let onPick: (RelayConfigStore.RelayEntry) -> Void
+
+    private var pool: [RelayConfigStore.RelayEntry] {
+        var seen = Set<String>()
+        return SingBoxTransport.poolRelays().filter {
+            seen.insert("\($0.proto.rawValue):\($0.server):\($0.port)").inserted
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("relay.share.pick.body".localized)
+                        .font(.caption).foregroundColor(Theme.Color.textSecondary)
+                }
+                ForEach(pool, id: \.tag) { r in
+                    Button {
+                        onPick(r)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "shield.lefthalf.filled").foregroundColor(Theme.Color.accent)
+                            Text("\(r.proto.rawValue.uppercased()) · \(r.server):\(r.port)")
+                                .foregroundColor(Theme.Color.textPrimary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("relay.share.pick.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
 }
 

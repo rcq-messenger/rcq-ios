@@ -107,6 +107,29 @@ enum Envelope: Codable, Hashable {
     /// I don't hold; the kid's owner re-seals a fresh SKDM. Per-member sealed.
     case sknack(gid: Int, kid: String)
 
+    /// In-chat bridge sharing (wire kind "relay_share"): a contact hands you a
+    /// relay descriptor to AUGMENT your transport pool (censorship-resistance:
+    /// distribute off-config relays peer-to-peer). Stored as a relay-kind chat
+    /// message + rendered as an Add card; never auto-applied. Cross-client
+    /// identical with Android. See RCQ/docs/bridge-sharing-design.md.
+    case relayShare(id: UUID, relay: RelayShareWire, note: String? = nil)
+
+    /// Wire form of a shared relay (the `relay` object inside a relay_share).
+    /// Terse keys shared byte-for-byte with Android (ContactRelayStore.relayToJson).
+    struct RelayShareWire: Codable, Hashable {
+        let proto: String
+        let server: String
+        let port: Int
+        let sni: String
+        let uuid: String?
+        let pbk: String?
+        let sid: String?
+        let flow: String?
+        let pw: String?
+        let obfs: String?
+        let label: String?
+    }
+
     /// Codable mirror of the signed home-island record (RcqFederation builds it
     /// as `[String: Any]`; this is the wire-typed form carried in an envelope).
     struct IslandRecordWire: Codable, Hashable {
@@ -125,6 +148,7 @@ enum Envelope: Codable, Hashable {
         case to, gid, env
         case sig, cid, ts, data
         case rec
+        case relay, note
         case kid, e, i, ck
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
@@ -267,6 +291,11 @@ enum Envelope: Codable, Hashable {
             try c.encode("sknack", forKey: .kind)
             try c.encode(gid, forKey: .gid)
             try c.encode(kid, forKey: .kid)
+        case .relayShare(let id, let relay, let note):
+            try c.encode("relay_share", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(relay, forKey: .relay)
+            try c.encodeIfPresent(note, forKey: .note)
         }
     }
 
@@ -403,6 +432,12 @@ enum Envelope: Codable, Hashable {
             self = .sknack(
                 gid: try c.decode(Int.self, forKey: .gid),
                 kid: try c.decode(String.self, forKey: .kid)
+            )
+        case "relay_share":
+            self = .relayShare(
+                id: try c.decode(UUID.self, forKey: .id),
+                relay: try c.decode(RelayShareWire.self, forKey: .relay),
+                note: try c.decodeIfPresent(String.self, forKey: .note)
             )
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")

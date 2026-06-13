@@ -392,6 +392,21 @@
 
 "chat.attach.poll" = "Poll";
 "chat.attach.share_group" = "Invite";
+"chat.attach.share_connection" = "Connection";
+"relay.share.title" = "Connection method";
+"relay.share.invalid" = "Unsupported connection";
+"relay.share.sent_note" = "You shared a way to connect";
+"relay.share.added" = "Added to your connections";
+"relay.share.add" = "Add";
+"relay.share.pick.title" = "Share a connection";
+"relay.share.pick.body" = "Hand this contact a relay so they can get through when their own connections are blocked. They tap Add to use it.";
+"relay.import.title" = "Add a relay";
+"relay.import.body" = "Paste an rcq-relay:// link you received out of band.";
+"relay.import.add" = "Add";
+"relay.shared.section" = "Shared relays";
+"relay.shared.empty" = "No shared relays. A contact can send you one in chat, or paste a link.";
+"relay.shared.from" = "from";
+"relay.shared.imported" = "imported";
 
 "share_group.title" = "Share a group";
 "share_group.empty" = "You're not a member of any groups yet.";

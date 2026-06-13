@@ -16,6 +16,7 @@ enum MessageKind: String, Codable {
     case systemNotice      // join/leave/rename, rendered as centred line
     case deleteForEveryone // tombstone
     case poll              // group poll: pollID + JSON-encoded {question, options, ...} in `text`
+    case relay             // in-chat bridge share: an rcq-relay:// token in `text`, rendered as an Add card
 }
 
 enum ThreadID: Hashable, Codable {

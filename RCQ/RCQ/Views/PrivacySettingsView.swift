@@ -20,6 +20,10 @@ struct PrivacySettingsView: View {
     @State private var presencePersistent: Bool = false
     /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
     @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
+    /// In-chat bridge sharing: relays a contact shared / the user imported.
+    @State private var sharedRelays: [ContactRelayStore.Entry] = ContactRelayStore.shared.list()
+    @State private var showRelayImport = false
+    @State private var relayImportText = ""
     @State private var hofOptIn: Bool = false
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
@@ -201,6 +205,7 @@ struct PrivacySettingsView: View {
 
                     securitySection
                     networkSection
+                    relaySharingSection
                     migrationSection
                     hofSection   // #27: Hall of Fame at the very bottom (under migration)
                 }
@@ -208,6 +213,20 @@ struct PrivacySettingsView: View {
             }
             .navigationTitle("settings.privacy_network".localized)
             .navigationBarTitleDisplayMode(.inline)
+            .alert("relay.import.title".localized, isPresented: $showRelayImport) {
+                TextField("rcq-relay://...", text: $relayImportText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                Button("relay.import.add".localized) {
+                    if let r = ContactRelayStore.relayFromToken(relayImportText) {
+                        ContactRelayStore.shared.add(r, fromUin: 0, fromName: nil)
+                        sharedRelays = ContactRelayStore.shared.list()
+                    }
+                }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: {
+                Text("relay.import.body".localized)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
@@ -431,6 +450,49 @@ struct PrivacySettingsView: View {
                     Text(err).font(.caption2).foregroundColor(.red)
                 }
             }
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// In-chat bridge sharing: relays a contact handed you / you imported,
+    /// augmenting the transport pool. See RCQ/docs/bridge-sharing-design.md.
+    private var relaySharingSection: some View {
+        Section {
+            if sharedRelays.isEmpty {
+                Text("relay.shared.empty".localized)
+                    .font(.caption).foregroundColor(Theme.Color.textSecondary)
+            } else {
+                ForEach(sharedRelays, id: \.relay.tag) { e in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(e.relay.proto.rawValue.uppercased()) · \(e.relay.server):\(e.relay.port)")
+                                .foregroundColor(Theme.Color.textPrimary)
+                            Text(e.fromUin == 0
+                                 ? "relay.shared.imported".localized
+                                 : "\("relay.shared.from".localized) #\(e.fromUin)")
+                                .font(.caption2).foregroundColor(Theme.Color.textSecondary)
+                        }
+                        Spacer()
+                        Button(role: .destructive) {
+                            ContactRelayStore.shared.remove(tag: e.relay.tag)
+                            sharedRelays = ContactRelayStore.shared.list()
+                        } label: {
+                            Image(systemName: "trash").foregroundColor(Theme.Color.statusBusy)
+                        }
+                    }
+                }
+            }
+            Button {
+                relayImportText = ""
+                showRelayImport = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent).frame(width: 24)
+                    Text("relay.import.title".localized).foregroundColor(Theme.Color.accent)
+                }
+            }
+        } header: {
+            Text("relay.shared.section".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }

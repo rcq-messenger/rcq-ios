@@ -55,7 +55,7 @@ final class SingBoxTransport {
     /// whole onion path dies with its single entry). Returns true when a
     /// different entry was chosen; the caller restarts the transport.
     static func rotateEntry() -> Bool {
-        let vless = RelayConfigStore.shared.currentRelays().filter { $0.proto == .vless }
+        let vless = poolRelays().filter { $0.proto == .vless }
         guard vless.count >= 2 else { return false }
         let cur = UserDefaults.standard.string(forKey: Keys.onionEntry)
         let idx = vless.firstIndex(where: { $0.tag == cur }) ?? -1
@@ -151,8 +151,18 @@ final class SingBoxTransport {
 
     typealias Relay = RelayConfigStore.RelayEntry
 
+    /// The full relay pool: the verified/bundled signed-config relays PLUS any
+    /// relays a contact shared / the user imported (ContactRelayStore). Shared
+    /// relays carry priority 1000 so they sort at the BACK = extra fallback
+    /// capacity that never displaces a canary-verified relay nor becomes the
+    /// onion sticky entry; if every signed-config relay is blocked, the urltest
+    /// race lets a working shared relay win. See RCQ/docs/bridge-sharing-design.md.
+    static func poolRelays() -> [Relay] {
+        RelayConfigStore.shared.currentRelays() + ContactRelayStore.shared.relays()
+    }
+
     private static func orderedRelays() -> [Relay] {
-        let base = RelayConfigStore.shared.currentRelays()
+        let base = poolRelays()
         guard
             let tag = UserDefaults.standard.string(forKey: Keys.lastGoodRelay),
             let idx = base.firstIndex(where: { $0.tag == tag }),
@@ -164,7 +174,7 @@ final class SingBoxTransport {
     }
 
     private static func refreshLastGoodInBackground() async {
-        let probeOrder = RelayConfigStore.shared.currentRelays()
+        let probeOrder = poolRelays()
         let winner: String? = await withTaskGroup(of: String?.self) { group in
             for r in probeOrder {
                 group.addTask { await Self.probeTCP(host: r.server, port: r.port) ? r.tag : nil }

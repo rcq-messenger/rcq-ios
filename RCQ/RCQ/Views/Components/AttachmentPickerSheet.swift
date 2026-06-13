@@ -30,6 +30,9 @@ struct AttachmentPickerSheet: View {
     /// caller is a group OWNER (so others' membership stays a
     /// privacy choice); nil hides the action.
     var onShareGroup: (() -> Void)? = nil
+    /// In-chat bridge sharing: hand the peer a relay from your pool. Non-nil
+    /// only in 1:1 chats; nil hides the action.
+    var onShareConnection: (() -> Void)? = nil
 
     @State private var assets: [PHAsset] = []
     @State private var authStatus: PHAuthorizationStatus = .notDetermined
@@ -77,6 +80,9 @@ struct AttachmentPickerSheet: View {
                 }
                 if let onShareGroup {
                     actionChip(icon: "person.3.fill", labelKey: "chat.attach.share_group", action: onShareGroup)
+                }
+                if let onShareConnection {
+                    actionChip(icon: "shield.lefthalf.filled", labelKey: "chat.attach.share_connection", action: onShareConnection)
                 }
             }
         }
