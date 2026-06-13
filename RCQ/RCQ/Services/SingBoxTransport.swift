@@ -158,7 +158,15 @@ final class SingBoxTransport {
     /// onion sticky entry; if every signed-config relay is blocked, the urltest
     /// race lets a working shared relay win. See RCQ/docs/bridge-sharing-design.md.
     static func poolRelays() -> [Relay] {
-        RelayConfigStore.shared.currentRelays() + ContactRelayStore.shared.relays()
+        let combined = RelayConfigStore.shared.currentRelays()
+            + ContactRelayStore.shared.relays()
+            + BrokerRelayStore.shared.relays()
+        var seen = Set<String>()
+        var out: [Relay] = []
+        for r in combined where seen.insert("\(r.proto.rawValue):\(r.server):\(r.port)").inserted {
+            out.append(r)
+        }
+        return out
     }
 
     private static func orderedRelays() -> [Relay] {

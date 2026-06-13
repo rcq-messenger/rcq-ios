@@ -333,6 +333,7 @@ final class AppState: ObservableObject {
 
     func boot(suggestedNickname: String? = nil) async {
         RelayConfigStore.shared.refreshInBackground()
+        BrokerRelayStore.shared.refreshInBackground()   // anti-enumeration bridges -> transport pool
         // Push the active account's masquerade token to APIClient
         // BEFORE any HTTP fires. Defaults to nil for public backends
         // (api.rcq.app), set per-account by the operator at add-time
