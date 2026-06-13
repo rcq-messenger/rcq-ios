@@ -1635,6 +1635,12 @@
 "onboard.status.kicker" = "STATUS";
 "onboard.status.title" = "Pick your status";
 "onboard.status.body" = "Online, Away, DND, Invisible, Offline. The classic five — and they actually mean something. Tap your status icon to switch.";
+"onboard.federation.kicker" = "FEDERATION";
+"onboard.federation.title" = "No single owner";
+"onboard.federation.body" = "RCQ isn't one company's server. Every server is an independent island, and anyone can run one. Your account lives on the island you pick, and you keep your number if you move.";
+"onboard.relay.kicker" = "CIRCUMVENTION";
+"onboard.relay.title" = "Built to get through";
+"onboard.relay.body" = "When the network blocks RCQ, the app routes itself through a relay, disguised as ordinary traffic. The relay network is community-run, and onion routing chains it so no single relay sees both you and your island.";
 
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "Sealed-sender chat";

@@ -45,10 +45,16 @@ struct OnboardingView: View {
                 hero: .symbol("lock.shield.fill"),
             ),
             Page(
-                kicker: "onboard.status.kicker".localized,
-                title: "onboard.status.title".localized,
-                body: "onboard.status.body".localized,
-                hero: .statusRow,
+                kicker: "onboard.federation.kicker".localized,
+                title: "onboard.federation.title".localized,
+                body: "onboard.federation.body".localized,
+                hero: .symbol("square.stack.3d.up.fill"),
+            ),
+            Page(
+                kicker: "onboard.relay.kicker".localized,
+                title: "onboard.relay.title".localized,
+                body: "onboard.relay.body".localized,
+                hero: .symbol("shield.lefthalf.filled"),
             ),
         ]
     }
