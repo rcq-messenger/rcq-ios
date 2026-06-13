@@ -15,16 +15,15 @@ final class AppState: ObservableObject {
     @Published var isOffline: Bool = false
     @Published var bootStatus: BootStatus = .connecting
 
-    // boot() serialization. AppState is @MainActor but boot() suspends at every
+    // boot() single-flight. AppState is @MainActor but boot() suspends at every
     // await, so concurrent boot() calls (account switch + the error-screen
-    // auto-retry + path-reconnect) interleaved and stomped APIClient's SHARED base
-    // — flipping a custom-island boot back to the flagship mid-flight so the island
-    // never connected (founder log: base flip-flopped project26 ↔ api.rcq.app, UIN
-    // 911 booted instead of project26). Run at most ONE boot at a time; coalesce
-    // concurrent requests into a single re-run after the current finishes.
+    // auto-retry every 5s + path-reconnect) interleaved and stomped APIClient's
+    // SHARED base — flipping a custom-island boot back to the flagship mid-flight
+    // so the island never connected (founder log: base flip-flopped project26 ↔
+    // api.rcq.app, UIN 911 booted instead of project26). Run at most ONE boot at a
+    // time; concurrent callers are dropped (they retry on their own cadence). No
+    // re-run loop (that churned connections → iOS "Cannot allocate memory").
     private var booting = false
-    private var rebootRequested = false
-    private var pendingNick: String?
 
     enum BootStatus {
         case connecting
@@ -343,28 +342,18 @@ final class AppState: ObservableObject {
     }
 
     func boot(suggestedNickname: String? = nil) async {
-        // Serialize: only one doBoot runs at a time. A request arriving while a
-        // boot is in flight sets rebootRequested → exactly one re-run after the
-        // current finishes (so an account switch isn't dropped, but two boots never
-        // run concurrently and stomp APIClient's shared base).
-        if booting {
-            rebootRequested = true
-            pendingNick = suggestedNickname
-            return
-        }
+        // Single-flight: drop a boot request while one is already running. The
+        // root view is booted → bootError → splash, so a successful boot dismisses
+        // the error screen on its own; we must NOT clear bootError on entry (that
+        // flipped error↔loading every retry — the rapid flicker — and the churn
+        // exhausted iOS network flows).
+        if booting { return }
         booting = true
         defer { booting = false }
-        var nick = suggestedNickname
-        repeat {
-            rebootRequested = false
-            await doBoot(suggestedNickname: nick)
-            nick = pendingNick
-            pendingNick = nil
-        } while rebootRequested
+        await doBoot(suggestedNickname: suggestedNickname)
     }
 
     private func doBoot(suggestedNickname: String? = nil) async {
-        bootError = nil   // each attempt starts clean; on success this stays nil so the error screen dismisses
         RelayConfigStore.shared.refreshInBackground()
         BrokerRelayStore.shared.refreshInBackground()   // anti-enumeration bridges -> transport pool
         // Push the active account's masquerade token to APIClient
