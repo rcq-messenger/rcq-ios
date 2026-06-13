@@ -5,10 +5,13 @@ struct GroupInfoView: View {
     let group: RCQGroup
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var appState: AppState
     @StateObject private var groups = GroupService.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var sound = SoundService.shared
+    /// Set to push the 1:1 chat with a member straight from this screen (the
+    /// "Message" action). Kept LOCAL — pushing within this NavigationStack
+    /// avoids the path/deep-link conflict that flashed a blank screen.
+    @State private var messagePeer: Contact?
     @State private var showAddMember = false
     @State private var confirmLeave = false
     @State private var error: String?
@@ -21,6 +24,7 @@ struct GroupInfoView: View {
     /// — on big groups the info screen was unscrollable with every member
     /// rendered eagerly.
     @State private var showAllMembers = false
+    @State private var memberSearch = ""
     private static let memberPreviewLimit: Int = 5
 
     private var currentGroup: RCQGroup {
@@ -165,20 +169,25 @@ struct GroupInfoView: View {
                     viewInfoForUIN = m.uin
                     actionMember = nil
                 },
-                // Open the 1:1 chat. Pop GroupInfo first (it's pushed via
-                // navigationDestination), then reuse the push-notification
-                // deep-link route (pendingOpenChatUIN) so the root ContactListView
-                // navigates to the peer chat.
+                // Open the 1:1 chat by pushing it within THIS NavigationStack
+                // (clean back stack: chat → back → group info). Avoids the
+                // path/deep-link conflict that flashed a blank screen.
                 onMessage: {
                     let uin = m.uin
                     actionMember = nil
-                    dismiss()
-                    appState.pendingOpenChatUIN = uin
+                    messagePeer = contacts.contacts.first(where: { $0.uin == uin })
                 },
                 onDismiss: { actionMember = nil },
             )
             .presentationDetents([.height(540)])
             .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(
+            isPresented: Binding(get: { messagePeer != nil }, set: { if !$0 { messagePeer = nil } })
+        ) {
+            if let messagePeer {
+                ChatView(target: .peer(messagePeer))
+            }
         }
         .confirmationDialog(
             amOwner ? "group.confirm.delete".localized : "group.confirm.leave".localized,
@@ -233,16 +242,58 @@ struct GroupInfoView: View {
             let ra = rank(a.element.role), rb = rank(b.element.role)
             return ra != rb ? ra < rb : a.offset < b.offset
         }.map { $0.element }
+        let q = memberSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        let searching = !q.isEmpty
+        let filtered = searching
+            ? ordered.filter { $0.nickname.lowercased().contains(q) || "\($0.uin)".contains(q) }
+            : ordered
+        // While searching, show every match; otherwise fold past the preview limit.
         let visible: [RCQGroupMember] = {
-            if showAllMembers || ordered.count <= Self.memberPreviewLimit {
-                return ordered
+            if searching || showAllMembers || filtered.count <= Self.memberPreviewLimit {
+                return filtered
             }
-            return Array(ordered.prefix(Self.memberPreviewLimit))
+            return Array(filtered.prefix(Self.memberPreviewLimit))
         }()
-        let hidden = max(0, currentGroup.members.count - visible.count)
+        let hidden = searching ? 0 : max(0, ordered.count - visible.count)
+        let canCollapse = showAllMembers && !searching && ordered.count > Self.memberPreviewLimit
+        let bigGroup = currentGroup.members.count > Self.memberPreviewLimit
         return section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+            // Search field — only worth showing on a group big enough to scroll.
+            if bigGroup {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundColor(Theme.Color.textSecondary).font(.system(size: 13))
+                    TextField("group.members.search".localized, text: $memberSearch)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.callout)
+                    if !memberSearch.isEmpty {
+                        Button { memberSearch = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundColor(Theme.Color.textSecondary).font(.system(size: 14))
+                        }.buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            // Collapse control lives at the TOP of the list (right under the
+            // search) so you never have to scroll to the bottom to fold it.
+            if canCollapse {
+                Button {
+                    withAnimation { showAllMembers = false }
+                } label: {
+                    HStack {
+                        Image(systemName: "chevron.up.circle").foregroundColor(Theme.Color.accent).frame(width: 22)
+                        Text("group.members.collapse".localized).foregroundColor(Theme.Color.accent)
+                        Spacer()
+                    }.padding(.vertical, 6)
+                }.buttonStyle(.plain)
+            }
             ForEach(visible) { m in
                 memberRow(m)
+            }
+            if searching && filtered.isEmpty {
+                Text("group.members.no_matches".localized)
+                    .font(.callout).foregroundColor(Theme.Color.textSecondary)
+                    .padding(.vertical, 6)
             }
             if hidden > 0 && !showAllMembers {
                 Button {
@@ -457,48 +508,51 @@ private struct MemberActionSheet: View {
                 if loading {
                     pillLoading
                 }
-                if !isAlreadyContact {
-                    Button {
-                        Task {
-                            do {
-                                try await contacts.sendAddRequest(to: member.uin)
-                                addRequestSent = true
-                            } catch {
-                                addError = error.localizedDescription
-                            }
+                // Primary action (Message for a contact, Add for a non-contact)
+                // sits on the SAME row as Open Profile — side by side, not stacked.
+                HStack(spacing: 10) {
+                    if isAlreadyContact, let onMessage {
+                        Button(action: onMessage) {
+                            actionPill(
+                                icon: "bubble.left.fill",
+                                text: "group.member.action.message".localized,
+                                tint: Color.white,
+                                background: Theme.Color.accent,
+                            )
                         }
-                    } label: {
-                        actionPill(
-                            icon: addRequestSent ? "checkmark.circle.fill" : "person.crop.circle.badge.plus",
-                            text: addRequestSent
-                                ? "group.member.action.add.sent".localized
-                                : "group.member.action.add".localized,
-                            tint: addRequestSent ? Theme.Color.textSecondary : Theme.Color.accent,
-                        )
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            Task {
+                                do {
+                                    try await contacts.sendAddRequest(to: member.uin)
+                                    addRequestSent = true
+                                } catch {
+                                    addError = error.localizedDescription
+                                }
+                            }
+                        } label: {
+                            actionPill(
+                                icon: addRequestSent ? "checkmark.circle.fill" : "person.crop.circle.badge.plus",
+                                text: addRequestSent
+                                    ? "group.member.action.add.sent".localized
+                                    : "group.member.action.add".localized,
+                                tint: addRequestSent ? Theme.Color.textSecondary : Theme.Color.accent,
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(addRequestSent)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(addRequestSent)
-                }
-                if isAlreadyContact, let onMessage {
-                    Button(action: onMessage) {
+                    Button(action: onOpenProfile) {
                         actionPill(
-                            icon: "bubble.left.fill",
-                            text: "group.member.action.message".localized,
-                            tint: Theme.Color.accent,
+                            icon: "person.crop.circle",
+                            text: "group.member.action.profile".localized,
+                            tint: Theme.Color.textPrimary,
                             background: Theme.Color.bgSecondary,
                         )
                     }
                     .buttonStyle(.plain)
                 }
-                Button(action: onOpenProfile) {
-                    actionPill(
-                        icon: "person.crop.circle",
-                        text: "group.member.action.profile".localized,
-                        tint: Theme.Color.textPrimary,
-                        background: Theme.Color.bgSecondary,
-                    )
-                }
-                .buttonStyle(.plain)
                 if let addError {
                     Text(addError)
                         .font(.caption2)

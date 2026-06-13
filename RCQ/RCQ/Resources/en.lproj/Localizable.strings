@@ -998,6 +998,9 @@
 "group.notifications.muted.hint" = "Messages arrive silently, no banner.";
 "group.notifications.unmuted.hint" = "Messages arrive with sound and banner.";
 "group.members.show_more" = "Show all (+%d)";
+"group.members.collapse" = "Show less";
+"group.members.search" = "Search members";
+"group.members.no_matches" = "No members found";
 "group.section.pin" = "Pinned announcement";
 "group.pin.placeholder" = "Rules, links, anything new joiners should see";
 "group.pin.hint" = "Visible to all members above the chat. Up to 500 chars.";

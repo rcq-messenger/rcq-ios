@@ -963,6 +963,9 @@
 "group.notifications.muted.hint" = "Сообщения приходят без звука и пуша.";
 "group.notifications.unmuted.hint" = "Сообщения приходят со звуком и пушем.";
 "group.members.show_more" = "Показать всех (+%d)";
+"group.members.collapse" = "Свернуть";
+"group.members.search" = "Поиск участников";
+"group.members.no_matches" = "Участники не найдены";
 "group.section.pin" = "Закреплённое сообщение";
 "group.pin.placeholder" = "Правила, ссылка, что важно знать новым участникам";
 "group.pin.hint" = "Видно всем участникам поверх чата. До 500 знаков.";
