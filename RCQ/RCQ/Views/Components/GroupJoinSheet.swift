@@ -260,7 +260,11 @@ struct GroupJoinSheet: View {
         }()
         Button {
             if alreadyMember {
-                if let g = cachedGroup {
+                // Foreign groups live in the roster under an ALIAS id, so the
+                // bare-id `cachedGroup` lookup misses them — use the (host,
+                // remoteId) cache so "Open" actually navigates a cross-island
+                // group the caller already belongs to (was a silent no-op).
+                if let g = foreignHost != nil ? cachedForeignGroup : cachedGroup {
                     onJoined(g)
                 }
                 dismiss()

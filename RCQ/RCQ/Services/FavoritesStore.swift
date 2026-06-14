@@ -5,6 +5,16 @@ import Foundation
 /// dedicated section at the top of the contact list, surviving across
 /// launches in UserDefaults. Server doesn't see the list — it's a pure
 /// per-device organizational hint, like iOS Mail's flags.
+///
+/// ## Per-account scoping
+///
+/// The stored set is keyed by the **active account's id**
+/// (`rcq.favorites.<accountUUID>`) so two accounts on one device never
+/// bleed each other's stars. `rebindActiveAccount()` reloads the set
+/// after an account switch (called from `rebootForActiveAccount`). The
+/// pre-per-account global `rcq.favorites` slot is migrated ONCE into the
+/// first account that loads with a real active id, then deleted, so it
+/// can't leak into every account.
 @MainActor
 final class FavoritesStore: ObservableObject {
     static let shared = FavoritesStore()
@@ -35,7 +45,16 @@ final class FavoritesStore: ObservableObject {
 
     @Published private(set) var entries: Set<Entry> = []
 
-    private static let storageKey = "rcq.favorites"
+    /// Pre-per-account global slot. Migrated once, then removed.
+    private static let legacyKey = "rcq.favorites"
+
+    /// UserDefaults key for the CURRENTLY active account. Falls back to the
+    /// legacy global key only when no account is active yet (fresh launch
+    /// before onboarding), which is harmless — there are no favorites then.
+    private var storageKey: String {
+        guard let id = AppGroup.readActiveAccountID() else { return Self.legacyKey }
+        return "rcq.favorites.\(id.uuidString)"
+    }
 
     private init() { load() }
 
@@ -64,20 +83,34 @@ final class FavoritesStore: ObservableObject {
         if entries.remove(.group(id: id)) != nil { save() }
     }
 
-    /// Burn-account hook — clears the list along with everything else.
+    /// Reload the set for the now-active account. Call after an account
+    /// switch so favorites don't carry over from the previous account.
+    func rebindActiveAccount() { load() }
+
+    /// Burn-account hook — clears the active account's list.
     func wipe() {
         entries.removeAll()
-        UserDefaults.standard.removeObject(forKey: Self.storageKey)
+        UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
     // MARK: - persistence
 
     private func load() {
-        let raw = (UserDefaults.standard.array(forKey: Self.storageKey) as? [String]) ?? []
+        let key = storageKey
+        // One-time migration: adopt the legacy GLOBAL favorites into the
+        // first account that loads with a real active id, then clear the
+        // global slot so it can't bleed into every other account.
+        if key != Self.legacyKey,
+           UserDefaults.standard.object(forKey: key) == nil,
+           let legacy = UserDefaults.standard.array(forKey: Self.legacyKey) as? [String] {
+            UserDefaults.standard.set(legacy, forKey: key)
+            UserDefaults.standard.removeObject(forKey: Self.legacyKey)
+        }
+        let raw = (UserDefaults.standard.array(forKey: key) as? [String]) ?? []
         entries = Set(raw.compactMap(Entry.decode))
     }
 
     private func save() {
-        UserDefaults.standard.set(entries.map(\.key), forKey: Self.storageKey)
+        UserDefaults.standard.set(entries.map(\.key), forKey: storageKey)
     }
 }
