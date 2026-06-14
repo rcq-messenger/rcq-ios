@@ -17,6 +17,21 @@ final class MessageService {
 
     private init() {}
 
+    /// True if `text` mentions the local user. `#<ownUIN>` is always
+    /// reliable (the UIN is stable); `@<ownNick>` is best-effort and
+    /// case-insensitive (skipped when we have no own nickname). Used to set
+    /// the home-row @ indicator on inbound group messages.
+    func bodyMentionsMe(_ text: String) -> Bool {
+        guard ownUIN > 0 else { return false }
+        if text.contains("#\(ownUIN)") { return true }
+        let nick = AuthService.shared.nickname
+        if !nick.isEmpty,
+           text.range(of: "@\(nick)", options: [.caseInsensitive]) != nil {
+            return true
+        }
+        return false
+    }
+
     func configure(ownUIN: Int) {
         self.ownUIN = ownUIN
         // Throwaway identity fallback for wiped Keychain — AuthService's
@@ -1523,6 +1538,15 @@ final class MessageService {
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName
                 ))
+                // Home-row @ indicator: group-only, from someone else, when
+                // the thread isn't open, and the body mentions us (#uin or
+                // @nick). Same gates as the reaction inbox.
+                if case .group = thread,
+                   decrypted.senderUIN != ownUIN,
+                   !MessageBannerService.shared.isViewing(thread),
+                   bodyMentionsMe(text) {
+                    MentionInboxStore.shared.mark(thread)
+                }
             case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply, let album):
                 inserted = MessageStore.shared.append(Message(
                     id: id,

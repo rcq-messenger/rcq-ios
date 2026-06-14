@@ -230,9 +230,11 @@ final class ChatViewModel: ObservableObject {
         case .peer(let contact):
             ContactService.shared.clearUnread(for: contact.uin)
             ReactionInboxStore.shared.clear(.peer(uin: contact.uin))
+            MentionInboxStore.shared.clear(.peer(uin: contact.uin))
         case .group(let group):
             GroupService.shared.clearUnread(group.id)
             ReactionInboxStore.shared.clear(.group(id: group.id))
+            MentionInboxStore.shared.clear(.group(id: group.id))
         case .randomPeer:
             return
         }
