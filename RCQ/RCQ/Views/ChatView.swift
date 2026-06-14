@@ -447,6 +447,9 @@ struct ChatView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
+            // Global chat wallpaper behind the messages (Android parity). Renders
+            // nothing on the default ("") so the theme bg shows through.
+            ChatBackgroundView().ignoresSafeArea()
 
             messageScroll
 
@@ -2857,14 +2860,29 @@ private struct BottomAnchoredScroll: ViewModifier {
 
 private struct DateDivider: View {
     let label: String
+    @StateObject private var bg = ChatBackgroundStore.shared
     var body: some View {
-        HStack {
-            Rectangle().fill(Theme.Color.divider).frame(height: 1)
-            Text(label)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(Theme.Color.textSecondary)
-                .padding(.horizontal, 6)
-            Rectangle().fill(Theme.Color.divider).frame(height: 1)
+        Group {
+            if bg.selection.isEmpty {
+                HStack {
+                    Rectangle().fill(Theme.Color.divider).frame(height: 1)
+                    Text(label)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .padding(.horizontal, 6)
+                    Rectangle().fill(Theme.Color.divider).frame(height: 1)
+                }
+            } else {
+                // The flanking lines + gray label wash out on a wallpaper, so
+                // show a centered contrast pill instead (Android parity).
+                Text(label)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .background(Theme.Color.bgSecondary.opacity(0.85))
+                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity)
+            }
         }
         // Extra top breathing room so the FIRST divider doesn't butt
         // against the navbar / safe-area when a chat opens with
@@ -2872,6 +2890,50 @@ private struct DateDivider: View {
         // bubbles sit close to their day's label.
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Chat wallpaper (global, Android parity)
+
+struct ChatBgPreset: Identifiable {
+    let id: String
+    let label: String
+    let colors: [Color]
+}
+
+enum ChatBackgrounds {
+    /// Mirrors the Android ChatBackgrounds presets (same ids + gradients).
+    static let presets: [ChatBgPreset] = [
+        ChatBgPreset(id: "ocean", label: "Ocean", colors: [Color(hex: 0x1A2980), Color(hex: 0x26D0CE)]),
+        ChatBgPreset(id: "midnight", label: "Midnight", colors: [Color(hex: 0x0F2027), Color(hex: 0x203A43), Color(hex: 0x2C5364)]),
+        ChatBgPreset(id: "forest", label: "Forest", colors: [Color(hex: 0x134E5E), Color(hex: 0x71B280)]),
+        ChatBgPreset(id: "sunset", label: "Sunset", colors: [Color(hex: 0xFF8008), Color(hex: 0xFFC837)]),
+        ChatBgPreset(id: "lavender", label: "Lavender", colors: [Color(hex: 0xE0C3FC), Color(hex: 0x8EC5FC)]),
+        ChatBgPreset(id: "rose", label: "Rose", colors: [Color(hex: 0xFFDEE9), Color(hex: 0xB5FFFC)]),
+        ChatBgPreset(id: "cream", label: "Cream", colors: [Color(hex: 0xF3EFE7), Color(hex: 0xF3EFE7)]),
+        ChatBgPreset(id: "graphite", label: "Graphite", colors: [Color(hex: 0x232526), Color(hex: 0x414345)]),
+    ]
+    static func preset(_ id: String) -> ChatBgPreset? { presets.first { $0.id == id } }
+}
+
+/// Renders the selected wallpaper behind the message list. Nothing on default.
+struct ChatBackgroundView: View {
+    @StateObject private var bg = ChatBackgroundStore.shared
+    @State private var custom: UIImage?
+    var body: some View {
+        Group {
+            if bg.selection.hasPrefix("preset:"),
+               let p = ChatBackgrounds.preset(String(bg.selection.dropFirst(7))) {
+                LinearGradient(colors: p.colors, startPoint: .top, endPoint: .bottom)
+            } else if bg.selection == "custom", let img = custom {
+                Image(uiImage: img).resizable().scaledToFill()
+            }
+        }
+        .task(id: "\(bg.selection)#\(bg.customStamp)") {
+            custom = bg.selection == "custom"
+                ? UIImage(contentsOfFile: ChatBackgroundStore.customImageURL.path)
+                : nil
+        }
     }
 }
 

@@ -61,6 +61,11 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        NavigationLink {
+                            ChatBackgroundPicker()
+                        } label: {
+                            Text("settings.chat_bg".localized)
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -1039,5 +1044,68 @@ struct BackupIslandView: View {
         MultihomeStore.shared.remove(ownUin: uin, host: home.host)
         reload()
         Task { await AuthService.shared.publishHomeIslandRecord(ownUIN: uin); await MessageService.shared.pushHomeRecordToContacts() }
+    }
+}
+
+/// Global chat-wallpaper picker (Android parity): None + custom-from-gallery +
+/// built-in gradient presets. The selection applies behind every chat.
+private struct ChatBackgroundPicker: View {
+    @StateObject private var bg = ChatBackgroundStore.shared
+    @State private var showPicker = false
+    private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: cols, spacing: 12) {
+                tile(label: "chat_bg.none".localized, selected: bg.selection.isEmpty,
+                     fill: AnyView(Theme.Color.bgSecondary)) { bg.set("") }
+                tile(label: "chat_bg.custom".localized, selected: bg.selection == "custom",
+                     fill: AnyView(Theme.Color.bgSecondary), icon: "photo.on.rectangle") { showPicker = true }
+                ForEach(ChatBackgrounds.presets) { p in
+                    tile(label: p.label, selected: bg.selection == "preset:\(p.id)",
+                         fill: AnyView(LinearGradient(colors: p.colors, startPoint: .top, endPoint: .bottom))) {
+                        bg.set("preset:\(p.id)")
+                    }
+                }
+            }
+            .padding(12)
+        }
+        .background(Theme.Color.bgPrimary.ignoresSafeArea())
+        .navigationTitle("settings.chat_bg".localized)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPicker) {
+            PhotoPicker(selectionLimit: 1) { images in
+                showPicker = false
+                guard let img = images.first, let data = img.jpegData(compressionQuality: 0.85) else { return }
+                bg.saveCustom(data)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(label: String, selected: Bool, fill: AnyView, icon: String? = nil, onTap: @escaping () -> Void) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                fill.clipShape(RoundedRectangle(cornerRadius: 12))
+                if let icon { Image(systemName: icon).foregroundColor(Theme.Color.textPrimary) }
+                if selected {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(Theme.Color.accent)
+                                .padding(6)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .aspectRatio(0.72, contentMode: .fit)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Theme.Color.accent : .clear, lineWidth: 2.5))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            Text(label).font(.system(size: 11, weight: .medium))
+                .foregroundColor(Theme.Color.textPrimary).lineLimit(1)
+        }
     }
 }
