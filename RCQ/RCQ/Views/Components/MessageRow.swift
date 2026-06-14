@@ -347,10 +347,14 @@ struct MessageRow: View {
                 }
                 metaRow
             }
-            .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
             .cornerRadius(Theme.Metrics.bubbleRadius)
+            // maxWidth cap LAST (outermost) so the bubble HUGS its content and
+            // only caps the wrap width — like the original bubbleContent. With
+            // the frame innermost the VStack filled the full width (founder:
+            // short bubbles were full-width).
+            .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             if isTranslated { translatedFooter }
             // Read off the original body so a translation that mangles the URL still gets a preview.
             if let url = LinkDetector.firstURL(in: message.text) {
