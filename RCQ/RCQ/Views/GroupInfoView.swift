@@ -63,11 +63,16 @@ struct GroupInfoView: View {
                     }
                     if true {
                         section("group.section.manage".localized) {
-                            Button {
-                                showAddMember = true
-                            } label: {
-                                Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
-                                    .foregroundColor(Theme.Color.textPrimary)
+                            // Any member can add to an OPEN group (the server
+                            // allows it — same as sharing the link); a CLOSED
+                            // group locks adds to the owner/admin.
+                            if !currentGroup.isClosed || canEditChrome {
+                                Button {
+                                    showAddMember = true
+                                } label: {
+                                    Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                }
                             }
                             // Copy the group's invite link — paste it into a
                             // chat, or into a group's pinned announcement to
