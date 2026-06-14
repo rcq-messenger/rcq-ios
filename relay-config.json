@@ -1,6 +1,6 @@
 {
-  "version": 12,
-  "issued_at": "2026-06-13T14:50:27Z",
+  "version": 13,
+  "issued_at": "2026-06-14T18:53:23Z",
   "relays": [
     {
       "port": 443,
@@ -79,32 +79,10 @@
       "tag": "relay-gcp",
       "uuid": "8e3b35d3-18a6-406d-9ac6-c5558a806663",
       "flow": "xtls-rprx-vision"
-    },
-    {
-      "obfs_password": "yBlwN4J7IMzQi3VCMo0oKZHh",
-      "password": "IjO9NlfvuXuP8w4tZNXHZwGL",
-      "port": 443,
-      "priority": 6,
-      "proto": "hysteria2",
-      "server": "47.129.249.170",
-      "sni": "www.amazon.com",
-      "tag": "relay-aws-sg-hy2"
-    },
-    {
-      "port": 443,
-      "priority": 7,
-      "proto": "vless",
-      "public_key": "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
-      "server": "47.129.249.170",
-      "short_id": "533142a04b016a00",
-      "sni": "www.amazon.com",
-      "tag": "relay-aws-sg",
-      "uuid": "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
-      "flow": "xtls-rprx-vision"
     }
   ],
   "onion": {
     "enabled": true
   },
-  "sig": "vDTl/WAyyNonaSeRtcqjCq83CqprO/8OFZj3GMxtyF8qSRz2smoH5MTQRg7y4dY+REHlZW2rlrpYUcKsTbs8Aw=="
+  "sig": "GYTrIbKyEnNZtCIj8zNbUxEGGc1LKycZ4gax6GDDy3zPaDF/k7Lo9oUOWvagW3wmA5b2f7IQU8Q/xTY8md8nAQ=="
 }
