@@ -212,11 +212,14 @@ enum CrossIslandGroups {
         }
     }
 
-    /// Preview a foreign group — ONLY for an island already VISITED (privacy:
-    /// seeing a link must not touch an unvisited island). Returns nil otherwise.
+    /// Preview a foreign group. The invite LINK is the capability, so we read the
+    /// PUBLIC card (name/avatar/member count) even on an island we haven't visited
+    /// — the server's /groups/{id}/preview is optional-auth. Sends the guest token
+    /// when we have one (visited), otherwise unauthenticated. So a received
+    /// cross-island invite shows the real group, not a blank card.
     static func previewForeign(host: String, remoteId: Int) async -> GroupService.GroupPreview? {
-        guard let v = VisitedIslandsStore.shared.get(host: host) else { return nil }
-        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview", jwt: v.jwt)
+        let jwt = VisitedIslandsStore.shared.get(host: host)?.jwt
+        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview", jwt: jwt)
     }
 
     /// §5c join: guest-register (explicit user action — seeing a link never
@@ -302,10 +305,10 @@ enum CrossIslandGroups {
 
     // MARK: raw HTTP
 
-    private static func getJSON<T: Decodable>(_ urlString: String, jwt: String) async throws -> T {
+    private static func getJSON<T: Decodable>(_ urlString: String, jwt: String?) async throws -> T {
         guard let url = URL(string: urlString) else { throw CIGError.http(0) }
         var req = URLRequest(url: url)
-        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw CIGError.http(code) }
