@@ -119,7 +119,7 @@
 "settings.masking" = "Маскировка";
 "settings.network.stealth" = "Стелз-режим";
 "settings.network.diag" = "Диагностика связи";
-"diag.title" = "Диагностика связи";
+"diag.title" = "Проверка";
 "diag.run" = "Проверить";
 "diag.checking" = "Проверяем…";
 "diag.verdict.ok" = "Всё в порядке. Вы на связи.";
@@ -157,7 +157,7 @@
 "weblink.error" = "Не удалось подключить. Код мог истечь — обновите страницу и попробуйте снова.";
 "linkeddevices.title" = "Подключённые устройства";
 "linkeddevices.nav" = "Устройства";
-"multihome.title" = "Резервная копия на другом острове";
+"multihome.title" = "Ваша копия";
 "multihome.body" = "Ваш аккаунт может жить ещё и на втором, независимом острове RCQ (сервере). Сообщения доставляются сразу в оба почтовых ящика: если один остров упадёт, ничего не потеряется — второй продолжит принимать.";
 "multihome.row_uin" = "ваш номер там: #%@";
 "multihome.auto.title" = "Хранить резервную копию на другом острове";
@@ -194,7 +194,7 @@
 "settings.network.accounts" = "Аккаунты";
 "settings.network.custom_server" = "Сервер";
 "settings.network.custom_server.default" = "api.rcq.app";
-"settings.network.onion" = "Луковая маршрутизация (эксперимент)";
+"settings.network.onion" = "Луковая маршрутизация";
 "settings.network.onion.desc" = "Два релея, чтобы ни один не видел вас и сервер сразу. Маскировку соединения включает автоматически. Немного медленнее.";
 "settings.network.custom_server.intro.title" = "Свой сервер";
 "settings.network.custom_server.intro.body" = "Можно добавить аккаунт на другом совместимом сервере RCQ рядом с текущим. Открытый код сервера: github.com/rcq-messenger/rcq-server-ref, можно поднять свой или подключиться к серверу знакомого.";

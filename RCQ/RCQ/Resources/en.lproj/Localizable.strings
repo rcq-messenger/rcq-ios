@@ -128,7 +128,7 @@
 "settings.masking" = "Masking";
 "settings.network.stealth" = "Stealth mode";
 "settings.network.diag" = "Connection diagnostics";
-"diag.title" = "Connection diagnostics";
+"diag.title" = "Check";
 "diag.run" = "Run";
 "diag.checking" = "Checking…";
 "diag.verdict.ok" = "Everything looks good. You're connected.";
@@ -166,7 +166,7 @@
 "weblink.error" = "Couldn't connect. The code may have expired — reload the page and try again.";
 "linkeddevices.title" = "Linked devices";
 "linkeddevices.nav" = "Devices";
-"multihome.title" = "Backup on another island";
+"multihome.title" = "Your backup";
 "multihome.body" = "Your account can also live on a second, independent RCQ island (server). Messages are then delivered into both mailboxes, so if one island goes down, nothing is lost — the other keeps receiving.";
 "multihome.row_uin" = "your number there: #%@";
 "multihome.auto.title" = "Keep a backup on another island";
@@ -203,7 +203,7 @@
 "settings.network.accounts" = "Accounts";
 "settings.network.custom_server" = "Server";
 "settings.network.custom_server.default" = "api.rcq.app";
-"settings.network.onion" = "Onion routing (experimental)";
+"settings.network.onion" = "Onion routing";
 "settings.network.onion.desc" = "Two relays, so none sees both you and the server. Turns on the protected connection automatically. A little slower.";
 "settings.network.custom_server.intro.title" = "Use a different server";
 "settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref — self-host or use a friend's instance.";
