@@ -1241,11 +1241,27 @@ final class AppState: ObservableObject {
 /// rule: pick the default that preserves the old behaviour.
 struct ServerCapabilities: Decodable, Equatable {
     var uinShop: Bool
+    var hallOfFame: Bool
 
-    static let defaultLegacy = ServerCapabilities(uinShop: true)
+    init(uinShop: Bool, hallOfFame: Bool = true) {
+        self.uinShop = uinShop
+        self.hallOfFame = hallOfFame
+    }
+
+    static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
 
     private enum CodingKeys: String, CodingKey {
         case uinShop = "uin_shop"
+        case hallOfFame = "hall_of_fame"
+    }
+
+    // hall_of_fame is decode-optional (default false) so an old server that
+    // omits it hides the surface; uin_shop stays required to preserve its
+    // existing fetch behaviour (a response without it falls back to defaultLegacy).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        uinShop = try c.decode(Bool.self, forKey: .uinShop)
+        hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
     }
 }
 
