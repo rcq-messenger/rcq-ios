@@ -2986,15 +2986,21 @@ private struct RelaySharePickerSheet: View {
     let onPick: (RelayConfigStore.RelayEntry) -> Void
 
     private var pool: [RelayConfigStore.RelayEntry] {
-        var seen = Set<String>()
         // Off-config only (community: contact-shared + broker), NOT the
         // signed-config pool. Sharing official relays is redundant (every user
         // already has them) and surfacing their IPs just helps a censor
         // enumerate them. Mirrors Android shareableRelays(). The routing pool
         // (poolRelays()) still includes the official relays — only this
-        // share-picker list is filtered.
-        return (ContactRelayStore.shared.relays() + BrokerRelayStore.shared.relays()).filter {
-            seen.insert("\($0.proto.rawValue):\($0.server):\($0.port)").inserted
+        // share-picker list is filtered. NB: official relays are ALSO in the
+        // broker, so subtract the signed-config set explicitly.
+        let official = Set(RelayConfigStore.shared.currentRelays().map {
+            "\($0.proto.rawValue):\($0.server):\($0.port)"
+        })
+        var seen = Set<String>()
+        return (ContactRelayStore.shared.relays() + BrokerRelayStore.shared.relays()).filter { r in
+            let key = "\(r.proto.rawValue):\(r.server):\(r.port)"
+            guard !official.contains(key) else { return false }
+            return seen.insert(key).inserted
         }
     }
 
