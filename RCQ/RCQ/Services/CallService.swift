@@ -51,6 +51,22 @@ final class CallService: ObservableObject {
     private var pendingRenegotiationOffer: String?
     private var pendingRemoteIce: [String] = []
 
+    // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
+    // — only the original caller restarts); the callee waits for that re-offer
+    // and ends the call if it never recovers.
+    private var disconnectGraceTask: Task<Void, Never>?
+    private var calleeFailsafeTask: Task<Void, Never>?
+    private var iceRestarting = false
+    private var iceRestartAttempts = 0
+    // iOS marks .connected on the SDP answer (before ICE connects), so gate
+    // recovery on whether ICE actually came up — a setup-time failure should
+    // fail fast, not run the full restart budget. Mirrors Android connectedSince.
+    private var iceEverConnected = false
+    private static let iceDisconnectGraceNs: UInt64 = 4_000_000_000
+    private static let iceRestartTimeoutNs: UInt64 = 12_000_000_000
+    private static let calleeFailsafeNs: UInt64 = 32_000_000_000
+    private static let maxIceRestarts = 2
+
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
@@ -61,6 +77,9 @@ final class CallService: ObservableObject {
         WebRTCManager.shared.onLocalIceCandidate = { [weak self] candidateJSON in
             self?.shipLocalIce(candidateJSON: candidateJSON)
         }
+        WebRTCManager.shared.onIceConnected = { [weak self] in self?.onIceConnected() }
+        WebRTCManager.shared.onIceDisconnected = { [weak self] in self?.onIceDisconnected() }
+        WebRTCManager.shared.onIceFailed = { [weak self] in self?.onIceFailed() }
     }
 
     // MARK: - public API
@@ -359,6 +378,171 @@ final class CallService: ObservableObject {
         }
     }
 
+    // MARK: - ICE recovery
+
+    /// Media reconnected (or first connected): clear any in-flight recovery and
+    /// restore the per-incident restart budget (it's per-drop, not per-call).
+    private func onIceConnected() {
+        cancelRecoveryTimers()
+        iceRestarting = false
+        iceRestartAttempts = 0
+        iceEverConnected = true
+    }
+
+    /// Transient DISCONNECTED on a live call: give ICE a grace window to
+    /// self-heal before forcing a restart, so a brief network hiccup doesn't
+    /// tear down a working call.
+    private func onIceDisconnected() {
+        guard case .connected(let c) = state, iceEverConnected, disconnectGraceTask == nil else { return }
+        disconnectGraceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.iceDisconnectGraceNs)
+            guard let self else { return }
+            self.disconnectGraceTask = nil
+            if case .connected(let cur) = self.state, cur.id == c.id {
+                self.attemptIceRestartOrEnd(call: cur)
+            }
+        }
+    }
+
+    /// Hard ICE FAILED — connectivity checks are exhausted; try to recover.
+    /// (Previously iOS ignored ICE failure entirely, leaving a dead-media call
+    /// stuck on "connected" until the user hung up.)
+    private func onIceFailed() {
+        guard case .connected(let c) = state else { return }
+        // A failure before ICE ever connected is a setup failure (cross-NAT /
+        // dead TURN) — end fast rather than burn the full restart budget on a
+        // call that never carried media. Mirrors Android's connectedSince gate.
+        guard iceEverConnected else { endWithPeerDisconnected(call: c); return }
+        cancelDisconnectGrace()
+        attemptIceRestartOrEnd(call: c)
+    }
+
+    /// Only the original caller re-offers (glare avoidance); the callee waits
+    /// for that re-offer and ends if it never recovers. The caller retries up
+    /// to `maxIceRestarts` times, then gives up with "peer_disconnected".
+    private func attemptIceRestartOrEnd(call: Call) {
+        // An ICE restart reuses the offer/answer machinery — don't collide with
+        // a video-upgrade renegotiation mid-handshake; just end if one's live.
+        if outgoingVideoUpgradePending || pendingRenegotiationOffer != nil || incomingVideoUpgrade {
+            endWithPeerDisconnected(call: call); return
+        }
+        guard call.direction == .outgoing else {
+            scheduleCalleeFailsafe(call: call); return
+        }
+        if iceRestarting { return } // a restart is already in flight; let it run
+        if iceRestartAttempts >= Self.maxIceRestarts { endWithPeerDisconnected(call: call); return }
+        iceRestarting = true
+        iceRestartAttempts += 1
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let sdp = try await WebRTCManager.shared.restartIce()
+                WebSocketService.shared.sendCallSignal(
+                    type: "call_ice_restart",
+                    toUIN: call.peerUIN,
+                    callID: call.id,
+                    extras: ["sdp": sdp]
+                )
+                self.armIceRestartTimeout(call: call)
+            } catch {
+                print("[CallService] ICE restart offer failed: \(error)")
+                self.iceRestarting = false
+                self.endWithPeerDisconnected(call: call)
+            }
+        }
+    }
+
+    /// If a caller's restart hasn't reconnected in time, retry (within budget)
+    /// or give up. No-op once media reconnects (onIceConnected clears the flag).
+    private func armIceRestartTimeout(call: Call) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.iceRestartTimeoutNs)
+            guard let self, self.iceRestarting else { return }
+            guard case .connected(let cur) = self.state, cur.id == call.id else { return }
+            self.iceRestarting = false
+            self.attemptIceRestartOrEnd(call: cur)
+        }
+    }
+
+    /// Callee side: the caller owns the restart, so just wait. If the call
+    /// hasn't recovered after a generous window (spanning the caller's whole
+    /// restart budget), end it rather than sit on dead media forever.
+    private func scheduleCalleeFailsafe(call: Call) {
+        guard calleeFailsafeTask == nil else { return }
+        calleeFailsafeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.calleeFailsafeNs)
+            guard let self else { return }
+            self.calleeFailsafeTask = nil
+            if case .connected(let cur) = self.state, cur.id == call.id {
+                self.endWithPeerDisconnected(call: cur)
+            }
+        }
+    }
+
+    /// Peer's ICE-restart offer (its connection dropped and it re-gathered);
+    /// answer it in place so media resumes without re-ringing.
+    private func handleIncomingIceRestart(callID: String, sdp: String) {
+        guard case .connected(let c) = state, c.id == callID, !sdp.isEmpty else { return }
+        // Don't answer a restart while our own renegotiation (video upgrade) is
+        // mid-handshake — the pc isn't stable, so setRemote(offer) would throw.
+        if outgoingVideoUpgradePending || pendingRenegotiationOffer != nil || incomingVideoUpgrade { return }
+        let call = c
+        Task { @MainActor in
+            do {
+                let answerSdp = try await WebRTCManager.shared.handleIceRestartOffer(remoteSdp: sdp)
+                WebSocketService.shared.sendCallSignal(
+                    type: "call_ice_restart_answer",
+                    toUIN: call.peerUIN,
+                    callID: call.id,
+                    extras: ["sdp": answerSdp]
+                )
+            } catch {
+                print("[CallService] handleIceRestartOffer failed: \(error)")
+            }
+        }
+    }
+
+    private func handleIceRestartAnswer(callID: String, sdp: String) {
+        guard case .connected(let c) = state, c.id == callID, !sdp.isEmpty else { return }
+        Task { @MainActor in
+            do {
+                try await WebRTCManager.shared.handleIceRestartAnswer(remoteSdp: sdp)
+            } catch {
+                print("[CallService] handleIceRestartAnswer failed: \(error)")
+            }
+        }
+    }
+
+    /// Local decision to end an unrecoverable call: signal the peer, then end.
+    private func endWithPeerDisconnected(call: Call) {
+        guard case .connected = state else { return }
+        sendEnd(call: call, reason: "peer_disconnected")
+        state = .ended(call, reason: "peer_disconnected")
+        CallProvider.shared.reportEnded(
+            callID: call.id,
+            reason: callKitReason(forWireReason: "peer_disconnected")
+        )
+        teardownAfterEnd()
+        scheduleEndedClear()
+    }
+
+    private func cancelDisconnectGrace() {
+        disconnectGraceTask?.cancel()
+        disconnectGraceTask = nil
+    }
+
+    private func cancelRecoveryTimers() {
+        disconnectGraceTask?.cancel(); disconnectGraceTask = nil
+        calleeFailsafeTask?.cancel(); calleeFailsafeTask = nil
+    }
+
+    private func resetRecoveryState() {
+        cancelRecoveryTimers()
+        iceRestarting = false
+        iceRestartAttempts = 0
+        iceEverConnected = false
+    }
+
     // MARK: - cross-island signaling (§5d)
 
     /// A decrypted cross-island call envelope (inner kind "call") re-enters
@@ -393,6 +577,10 @@ final class CallService: ObservableObject {
             handle(.callRenegotiateAnswer(fromUIN: fromUIN, callID: callID, sdp: sdp))
         case "call_renegotiate_decline":
             handle(.callRenegotiateDecline(fromUIN: fromUIN, callID: callID))
+        case "call_ice_restart":
+            handle(.callIceRestart(fromUIN: fromUIN, callID: callID, sdp: sdp))
+        case "call_ice_restart_answer":
+            handle(.callIceRestartAnswer(fromUIN: fromUIN, callID: callID, sdp: sdp))
         default:
             break
         }
@@ -480,6 +668,10 @@ final class CallService: ObservableObject {
             handleRenegotiateAnswer(callID: callID, sdp: sdp)
         case .callRenegotiateDecline(_, let callID):
             handleRenegotiateDecline(callID: callID)
+        case .callIceRestart(_, let callID, let sdp):
+            handleIncomingIceRestart(callID: callID, sdp: sdp)
+        case .callIceRestartAnswer(_, let callID, let sdp):
+            handleIceRestartAnswer(callID: callID, sdp: sdp)
         default:
             break
         }
@@ -563,6 +755,7 @@ final class CallService: ObservableObject {
         pendingRenegotiationOffer = nil
         incomingVideoUpgrade = false
         outgoingVideoUpgradePending = false
+        resetRecoveryState()
     }
 
     private func sendEnd(call: Call, reason: String) {
@@ -589,6 +782,7 @@ final class CallService: ObservableObject {
         pendingRenegotiationOffer = nil
         incomingVideoUpgrade = false
         outgoingVideoUpgradePending = false
+        resetRecoveryState()
         connectedAt = nil
         lastCallDuration = nil
         isMinimized = false
