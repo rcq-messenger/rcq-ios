@@ -282,125 +282,183 @@ struct MessageRow: View {
         }
     }
 
+    /// A plain text bubble carries the sender name + reply quote + body + time
+    /// INSIDE the coloured bubble (Telegram-style, founder parity with Android).
+    /// Media/voice/file/poll/location/relay/group-link keep the legacy layout
+    /// (name above, time below) — they have no clean inline slot.
+    private var isPlainTextBubble: Bool {
+        if message.deletedForEveryone { return false }
+        switch message.kind {
+        case .photo, .video, .voice, .file, .location, .poll, .relay: return false
+        default: break
+        }
+        return GroupLinkParser.parse(message.text) == nil
+    }
+
+    @ViewBuilder
     private var bubble: some View {
+        if isPlainTextBubble {
+            plainTextBubble
+        } else {
+            nonTextBubble
+        }
+    }
+
+    /// Non-text bubble: sender name + reply quote ABOVE the coloured content,
+    /// time/ticks BELOW it (the original layout, unchanged).
+    private var nonTextBubble: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-            if showSender {
-                Button {
-                    AppState.shared.pendingOpenUserProfile = message.senderUIN
-                } label: {
-                    Text(senderNickname)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(Theme.Color.accent)
-                }
-                .buttonStyle(.plain)
-            }
-            if let fwdName = message.forwardedFromName, !fwdName.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrowshape.turn.up.right.fill")
-                        .font(.system(size: 9))
-                    Text(String(format: "chat.forwarded_from".localized, fwdName))
-                        .font(.caption2.italic())
-                }
-                .foregroundColor(Theme.Color.textSecondary)
-            }
-            if let snippet = message.replyToSnippet, !snippet.isEmpty {
-                Button {
-                    if let target = message.replyToID {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onTapReplyQuote(target)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        // Same 3pt stroke as the composer reply strip
-                        // at line 1232 so the bubble-side quote rule
-                        // visually matches the in-progress reply
-                        // preview a sender just sent from.
-                        Rectangle()
-                            .fill(Theme.Color.accent)
-                            .frame(width: 3)
-                        VStack(alignment: .leading, spacing: 1) {
-                            if let author = replyAuthorOverride ?? message.replyToAuthorName, !author.isEmpty {
-                                Text(author)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundColor(Theme.Color.accent)
-                                    .lineLimit(1)
-                            }
-                            EmoticonText(
-                                // Newlines flattened: EmoticonText renders each hard
-                                // line as its OWN Text, so a lineLimit can only cap
-                                // them per-line — a multi-paragraph quote would still
-                                // render every paragraph. One flat line + lineLimit(2)
-                                // is the whole preview contract.
-                                text: snippet.replacingOccurrences(of: "\n", with: " "),
-                                font: .caption2,
-                                color: Theme.Color.textSecondary,
-                                emoticonSize: 15,
-                                members: currentGroupMembers,
-                                uinNick: uinNick
-                            )
-                            // A reply PREVIEW is at most ~2 lines — without this
-                            // a long quoted message stretched the quote (and its
-                            // accent bar) to full height (founder report).
-                            .lineLimit(2)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                    .padding(.horizontal, 4)
-                    // Pin the quote to its natural (text-driven) height. The 3pt
-                    // accent bar is the only height-flexible child here, so any
-                    // tall proposal from an ancestor stretches IT — founder
-                    // screenshot: the bar ran from the bubble to the top of the
-                    // screen in a near-empty chat, quote text centred in the
-                    // void. With fixedSize the ideal height wins no matter what
-                    // the ancestor proposes.
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(
-                        maxWidth: 240,
-                        alignment: message.isFromMe ? .trailing : .leading
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            // (Removed the per-message "received while you were away" timestamp
-            // label — founder asked to drop it from chats; it cluttered the
-            // timeline. The receivedWhileAway flag stays on the model, unused
-            // here.)
+            if showSender { senderLabel }
+            forwardedLabel
+            replyQuote
             HStack(alignment: .bottom, spacing: 6) {
                 bubbleContent
                     // Determinate width cap so the body wraps at a fixed width
-                    // and the LazyVStack measures its height right on first
-                    // layout. A reply quote above the text used to leave the
-                    // width ambiguous, truncating the body to ~2 lines until a
-                    // re-render (e.g. on long-press). The coloured bubble still
-                    // hugs its content; this only bounds where text wraps.
+                    // and the LazyVStack measures its height right on first layout.
                     .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             }
-            HStack(spacing: 4) {
-                Text(DateFormatters.timeOfDay.string(from: message.sentAt))
-                    .font(Theme.Font.timestamp)
-                    .foregroundColor(Theme.Color.textSecondary)
-                if message.editedAt != nil {
-                    Text("chat.edited_suffix".localized)
-                        .font(Theme.Font.timestamp.italic())
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                if message.ttlSeconds != nil {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                if let n = viewCount, n > 0 {
-                    HStack(spacing: 2) {
-                        Image(systemName: "eye.fill")
-                            .font(.system(size: 9))
-                        Text("\(n)")
-                            .font(Theme.Font.timestamp)
+            metaRow
+        }
+    }
+
+    /// Plain text bubble: everything inside ONE coloured container (Telegram).
+    private var plainTextBubble: some View {
+        let collapsed = !bodyExpanded && Self.estimatedLineCount(displayBody) > Self.collapseLineBudget
+        return VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 3) {
+                if showSender { senderLabel }
+                forwardedLabel
+                replyQuote
+                EmoticonText(
+                    text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
+                    members: currentGroupMembers,
+                    uinNick: uinNick
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                if collapsed {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) { bodyExpanded = true }
+                    } label: {
+                        Text("chat.show_more".localized)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Theme.Color.accent)
                     }
+                    .buttonStyle(.plain)
+                }
+                metaRow
+            }
+            .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+            .cornerRadius(Theme.Metrics.bubbleRadius)
+            if isTranslated { translatedFooter }
+            // Read off the original body so a translation that mangles the URL still gets a preview.
+            if let url = LinkDetector.firstURL(in: message.text) {
+                LinkPreviewCard(url: url)
+            }
+        }
+    }
+
+    /// Group sender name (tappable → profile). Shown inside a text bubble,
+    /// above a non-text one.
+    @ViewBuilder
+    private var senderLabel: some View {
+        Button {
+            AppState.shared.pendingOpenUserProfile = message.senderUIN
+        } label: {
+            Text(senderNickname)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(Theme.Color.accent)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var forwardedLabel: some View {
+        if let fwdName = message.forwardedFromName, !fwdName.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.system(size: 9))
+                Text(String(format: "chat.forwarded_from".localized, fwdName))
+                    .font(.caption2.italic())
+            }
+            .foregroundColor(Theme.Color.textSecondary)
+        }
+    }
+
+    @ViewBuilder
+    private var replyQuote: some View {
+        if let snippet = message.replyToSnippet, !snippet.isEmpty {
+            Button {
+                if let target = message.replyToID {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onTapReplyQuote(target)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Rectangle()
+                        .fill(Theme.Color.accent)
+                        .frame(width: 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        if let author = replyAuthorOverride ?? message.replyToAuthorName, !author.isEmpty {
+                            Text(author)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(Theme.Color.accent)
+                                .lineLimit(1)
+                        }
+                        EmoticonText(
+                            // Newlines flattened: EmoticonText renders each hard line
+                            // as its OWN Text, so one flat line + lineLimit(2) is the
+                            // whole preview contract.
+                            text: snippet.replacingOccurrences(of: "\n", with: " "),
+                            font: .caption2,
+                            color: Theme.Color.textSecondary,
+                            emoticonSize: 15,
+                            members: currentGroupMembers,
+                            uinNick: uinNick
+                        )
+                        .lineLimit(2)
+                    }
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(
+                    maxWidth: 240,
+                    alignment: message.isFromMe ? .trailing : .leading
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Time + edited + ttl + view-count + delivery ticks.
+    private var metaRow: some View {
+        HStack(spacing: 4) {
+            Text(DateFormatters.timeOfDay.string(from: message.sentAt))
+                .font(Theme.Font.timestamp)
+                .foregroundColor(Theme.Color.textSecondary)
+            if message.editedAt != nil {
+                Text("chat.edited_suffix".localized)
+                    .font(Theme.Font.timestamp.italic())
                     .foregroundColor(Theme.Color.textSecondary)
+            }
+            if message.ttlSeconds != nil {
+                Image(systemName: "clock")
+                    .font(.system(size: 9))
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            if let n = viewCount, n > 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 9))
+                    Text("\(n)")
+                        .font(Theme.Font.timestamp)
                 }
-                if message.isFromMe {
-                    deliveryIcon
-                }
+                .foregroundColor(Theme.Color.textSecondary)
+            }
+            if message.isFromMe {
+                deliveryIcon
             }
         }
     }
