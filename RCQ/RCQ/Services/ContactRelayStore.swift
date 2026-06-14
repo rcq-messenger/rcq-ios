@@ -30,7 +30,9 @@ final class ContactRelayStore {
 
     private let key = "rcq.contactRelays.v1"
     private let maxEntries = 30
-    private static let sharedPriority = 1000  // sort after all signed-config relays
+    // nonisolated: an immutable Sendable constant the nonisolated wire/token
+    // helpers read without hopping to the main actor (Swift 6 isolation).
+    nonisolated private static let sharedPriority = 1000  // sort after all signed-config relays
 
     private func load() -> [Entry] {
         guard let data = UserDefaults.standard.data(forKey: key),

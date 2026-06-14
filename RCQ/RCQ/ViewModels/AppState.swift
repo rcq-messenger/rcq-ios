@@ -1017,6 +1017,9 @@ final class AppState: ObservableObject {
         // only runs once at app launch, so without this the chat list stayed
         // EMPTY after an account switch until an app restart (founder report).
         MessageStore.shared.reloadFromDB()
+        // Favorites are per-account — reload the new account's set so stars
+        // don't bleed over from the previously active account.
+        FavoritesStore.shared.rebindActiveAccount()
 
         booted = false
         bootError = nil

@@ -458,26 +458,25 @@ struct ContactListView: View {
                         // server"), especially when two accounts
                         // happen to live on the same backend.
                         let primary = accountTitle(for: account)
-                        let uin = KeychainStore.string(
-                            KeychainStore.Keys.uin,
-                            forAccount: account.id
-                        )
-                        // host + UIN on ONE secondary line — a SwiftUI Menu
-                        // (UIMenu) renders a multi-line label unreliably and was
-                        // dropping the UIN line; "host · #uin" survives.
-                        let secondary = uin.map { "\(account.displayHost) · #\($0)" } ?? account.displayHost
-                        let lines = VStack(alignment: .leading) {
-                            Text(primary)
-                            Text(secondary)
-                        }
+                        // The UIN normally lives in the account's per-account
+                        // Keychain slot. The very first (legacy) account may
+                        // still carry it in the pre-migration unprefixed slot,
+                        // so fall back to that ONLY for account[0].
+                        let firstAccountID = accountManager.accounts
+                            .sorted(by: { $0.createdAt < $1.createdAt }).first?.id
+                        let uin = KeychainStore.string(KeychainStore.Keys.uin, forAccount: account.id)
+                            ?? (account.id == firstAccountID ? KeychainStore.string(KeychainStore.Keys.uin) : nil)
+                        // A SwiftUI Menu (UIMenu) collapses a multi-line VStack
+                        // label down to its FIRST line, which was silently
+                        // hiding the UIN. Keep the label to ONE line so
+                        // "<name> · #<uin>" always renders — the UIN is the
+                        // disambiguator a user remembers, so it leads the
+                        // suffix and never truncates off the end.
+                        let title = uin.map { "\(primary) · #\($0)" } ?? primary
                         if account.id == accountManager.activeAccountID {
-                            Label {
-                                lines
-                            } icon: {
-                                Image(systemName: "checkmark")
-                            }
+                            Label(title, systemImage: "checkmark")
                         } else {
-                            lines
+                            Text(title)
                         }
                     }
                 }
@@ -734,7 +733,14 @@ struct ContactListView: View {
     @ViewBuilder
     private var favoritesSection: some View {
         let favGroups = groups.groups.filter { favorites.contains(group: $0.id) }
-        let favContacts = vm.contacts.filter { favorites.contains(peer: $0.uin) }
+        // Suppress a self-contact (our own UIN on our own island) from
+        // Favorites — an account can momentarily surface itself as a contact,
+        // and starring a chat-with-myself row shouldn't be possible.
+        let myUIN = AuthService.shared.ownUIN
+        let favContacts = vm.contacts.filter {
+            favorites.contains(peer: $0.uin)
+                && !($0.uin == myUIN && ($0.host == nil || $0.host == Multihome.ownHost()))
+        }
             .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
         let total = favGroups.count + favContacts.count
         if total > 0 {

@@ -427,9 +427,13 @@ struct MessageRow: View {
                 .padding(.vertical, 2)
                 .padding(.horizontal, 4)
                 .fixedSize(horizontal: false, vertical: true)
+                // Always leading: the accent bar sits at the content's LEFT
+                // edge for both incoming and outgoing. Trailing-aligning an
+                // outgoing quote floated the bar inward off the body's left
+                // edge — the "crooked" reply on my own messages.
                 .frame(
                     maxWidth: 240,
-                    alignment: message.isFromMe ? .trailing : .leading
+                    alignment: .leading
                 )
             }
             .buttonStyle(.plain)

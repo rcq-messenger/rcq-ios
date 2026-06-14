@@ -1013,7 +1013,7 @@ final class MessageService {
                 // No capable member: original per-member fan-out.
                 var entries: [Entry] = []
                 await withTaskGroup(of: Entry?.self) { tg in
-                    for m in sendable { tg.addTask { [self] in await legacySeal(m) } }
+                    for m in sendable { tg.addTask { await legacySeal(m) } }
                     for await r in tg { if let r { entries.append(r) } }
                 }
                 out = try await APIClient.shared.request("POST", "/messages/group-sealed",

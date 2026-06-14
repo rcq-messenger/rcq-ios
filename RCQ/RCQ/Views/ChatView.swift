@@ -361,6 +361,9 @@ struct ChatView: View {
     struct PinExpansion: Identifiable {
         let id = UUID()
         let text: String
+        // The pinned group's host, so bare `/g/<id>` links inside the pin
+        // resolve to the SAME island the group lives on (cross-island cards).
+        var host: String? = nil
     }
 
     struct MentionTarget: Identifiable {
@@ -718,7 +721,7 @@ struct ChatView: View {
                         // each card sits under its own introducing line —
                         // tapping a card dismisses this sheet first, then
                         // the root presents the join sheet.
-                        ForEach(Array(pinnedSegments(exp.text).enumerated()), id: \.offset) { _, seg in
+                        ForEach(Array(pinnedSegments(exp.text, defaultHost: exp.host).enumerated()), id: \.offset) { _, seg in
                             switch seg {
                             case .text(let t):
                                 Text(pinnedAttributed(t, linkable: true))
@@ -1526,7 +1529,10 @@ struct ChatView: View {
                 if unreadID != nil, vm.openUnreadCount > 2 {
                     showScrollToBottom = true
                 }
-                func settle() {
+                // @MainActor so the nested function shares the .task's main-actor
+                // isolation — otherwise it captures the non-Sendable ScrollViewProxy
+                // and the main-actor static anchor from a nonisolated context.
+                @MainActor func settle() {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
                 }
@@ -1831,7 +1837,7 @@ struct ChatView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         // Text runs and group cards laid out IN ORDER, so each card
                         // sits under the line that introduced it (raw URLs stripped).
-                        ForEach(Array(pinnedSegments(text).enumerated()), id: \.offset) { _, seg in
+                        ForEach(Array(pinnedSegments(text, defaultHost: group.host).enumerated()), id: \.offset) { _, seg in
                             switch seg {
                             case .text(let t):
                                 Text(pinnedAttributed(t, linkable: false))
@@ -1883,7 +1889,7 @@ struct ChatView: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .onTapGesture {
-            pinnedExpansion = PinExpansion(text: text)
+            pinnedExpansion = PinExpansion(text: text, host: group.host)
         }
     }
 
@@ -1910,7 +1916,7 @@ struct ChatView: View {
         case group(Int, String?)
     }
 
-    private func pinnedSegments(_ text: String) -> [PinSegment] {
+    private func pinnedSegments(_ text: String, defaultHost: String? = nil) -> [PinSegment] {
         guard let rx = try? NSRegularExpression(
             pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)", options: [.caseInsensitive]
         ) else { return [.text(text)] }
@@ -1930,7 +1936,7 @@ struct ChatView: View {
             let idStr = g1.location != NSNotFound ? ns.substring(with: g1)
                 : (g3.location != NSNotFound ? ns.substring(with: g3) : "")
             let hostRange = g1.location != NSNotFound ? g2 : g4
-            let host: String? = hostRange.location != NSNotFound ? ns.substring(with: hostRange).lowercased() : nil
+            let host: String? = hostRange.location != NSNotFound ? ns.substring(with: hostRange).lowercased() : defaultHost
             if let gid = Int(idStr), gid > 0 { out.append(.group(gid, host)) }
             cursor = m.range.location + m.range.length
         }
