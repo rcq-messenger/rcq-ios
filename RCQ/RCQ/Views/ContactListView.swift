@@ -1469,6 +1469,7 @@ private struct ContactRow: View {
     var onTapStory: (() -> Void)? = nil
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
+    @ObservedObject private var mentionInbox = MentionInboxStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .peer(uin: contact.uin))
@@ -1476,6 +1477,12 @@ private struct ContactRow: View {
 
     private var hasReaction: Bool {
         reactionInbox.has(.peer(uin: contact.uin))
+    }
+
+    // Mentions are group-only, so a 1:1 row never carries one — kept for
+    // symmetry with GroupRow (always false in practice, harmless).
+    private var hasMention: Bool {
+        mentionInbox.has(.peer(uin: contact.uin))
     }
 
     var body: some View {
@@ -1542,10 +1549,19 @@ private struct ContactRow: View {
                 }
             }
             Spacer()
-            if hasReaction {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(.pink)
+            // Trailing indicators, left→right: @ then heart. Mention-only ⇒
+            // @ sits at the right edge; both ⇒ heart far right, @ to its left.
+            HStack(spacing: 6) {
+                if hasMention {
+                    Image(systemName: "at")
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.Color.accent)
+                }
+                if hasReaction {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.pink)
+                }
             }
             if let storyGroup, let onTapStory {
                 // Rightmost: circular thumbnail with segmented ring
@@ -1618,6 +1634,7 @@ private struct GroupRow: View {
     @StateObject private var groups = GroupService.shared
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
+    @ObservedObject private var mentionInbox = MentionInboxStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .group(id: group.id))
@@ -1625,6 +1642,10 @@ private struct GroupRow: View {
 
     private var hasReaction: Bool {
         reactionInbox.has(.group(id: group.id))
+    }
+
+    private var hasMention: Bool {
+        mentionInbox.has(.group(id: group.id))
     }
 
     var body: some View {
@@ -1678,10 +1699,19 @@ private struct GroupRow: View {
                     .lineLimit(1)
             }
             Spacer()
-            if hasReaction {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(.pink)
+            // Trailing indicators, left→right: @ then heart. Mention-only ⇒
+            // @ sits at the right edge; both ⇒ heart far right, @ to its left.
+            HStack(spacing: 6) {
+                if hasMention {
+                    Image(systemName: "at")
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.Color.accent)
+                }
+                if hasReaction {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.pink)
+                }
             }
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)

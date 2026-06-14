@@ -649,6 +649,7 @@ final class AppState: ObservableObject {
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
+        MentionInboxStore.shared.wipe()
         SignalProtocolDB.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()
         PresenceService.shared.status = .online
@@ -704,6 +705,7 @@ final class AppState: ObservableObject {
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
+        MentionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
@@ -999,6 +1001,7 @@ final class AppState: ObservableObject {
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
+        MentionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
