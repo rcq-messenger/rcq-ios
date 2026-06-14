@@ -455,17 +455,17 @@ struct ContactListView: View {
                         // server"), especially when two accounts
                         // happen to live on the same backend.
                         let primary = accountTitle(for: account)
-                        let secondary = account.displayHost
                         let uin = KeychainStore.string(
                             KeychainStore.Keys.uin,
                             forAccount: account.id
                         )
+                        // host + UIN on ONE secondary line — a SwiftUI Menu
+                        // (UIMenu) renders a multi-line label unreliably and was
+                        // dropping the UIN line; "host · #uin" survives.
+                        let secondary = uin.map { "\(account.displayHost) · #\($0)" } ?? account.displayHost
                         let lines = VStack(alignment: .leading) {
                             Text(primary)
                             Text(secondary)
-                            if let uin {
-                                Text(verbatim: "#\(uin)")
-                            }
                         }
                         if account.id == accountManager.activeAccountID {
                             Label {
@@ -650,11 +650,19 @@ struct ContactListView: View {
                     Label("contact_list.menu.saved".localized, systemImage: "bookmark.fill")
                 }
             }
-            // Censorship bypass is no longer a manual menu toggle — it engages
-            // AUTOMATICALLY when a direct connection is blocked (AppState boot
-            // probes direct first). The override still lives in Settings →
-            // Privacy for power users. Diagnostics stays here for quick access.
+            // Censorship bypass engages AUTOMATICALLY when a direct connection
+            // is blocked, but auto-detect can be wrong ("connected" yet nothing
+            // flows), so the manual on/off lives here too (Android home-menu
+            // parity). Diagnostics stays here for quick access.
             Section {
+                Button {
+                    Task { await SingBoxTransport.shared.setEnabled(!SingBoxTransport.isEnabled) }
+                } label: {
+                    Label(
+                        (SingBoxTransport.isEnabled ? "contact_list.menu.bypass_off" : "contact_list.menu.bypass_on").localized,
+                        systemImage: "shield.lefthalf.filled"
+                    )
+                }
                 Button {
                     showDiagnostics = true
                 } label: {

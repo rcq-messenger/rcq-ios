@@ -740,6 +740,8 @@
 "inventory.menu.hide" = "Hide inventory";
 "inventory.menu.show" = "Show inventory";
 "contact_list.menu.search" = "Search";
+"contact_list.menu.bypass_on" = "Turn on bypass";
+"contact_list.menu.bypass_off" = "Turn off bypass";
 "contact_list.menu.saved" = "Saved Messages";
 "bypass.menu.enable" = "Turn on censorship bypass";
 "bypass.menu.disable" = "Turn off censorship bypass";
@@ -2115,6 +2117,7 @@
 "add_account.search" = "Search servers";
 "add_account.empty" = "No matches";
 "add_account.custom.label" = "OR ENTER A URL MANUALLY";
+"add_account.custom.placeholder" = "Server URL";
 "add_account.custom.cta" = "Add";
 "add_account.custom.invalid" = "URL must start with https:// and have a hostname.";
 "add_account.custom.token" = "Auth token (optional, for hidden servers)";
@@ -2149,6 +2152,7 @@
 "recovery.unavailable.body" = "There is no backup phrase available for this account on this device.";
 
 "recovery.restore.title" = "Restore from phrase";
+"recovery.restore.title.short" = "Restore";
 "recovery.restore.subtitle" = "Enter your recovery phrase (24 words, or 48 for an older account) to bring your account back on this device.";
 "recovery.restore.placeholder" = "Type or paste your words, separated by spaces";
 "recovery.restore.word_count" = "%d words";

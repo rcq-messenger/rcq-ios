@@ -15,6 +15,9 @@ struct RestoreFromSeedView: View {
 
     @State private var input: String = ""
     @State private var server: String
+    /// Masquerade token for a PRIVATE island (Caddy X-RCQ-Auth gate) — same as
+    /// the new-account flow. Empty for public backends.
+    @State private var serverToken: String = ""
     @State private var showServer = false
     @State private var restoring = false
     @State private var error: String?
@@ -51,7 +54,7 @@ struct RestoreFromSeedView: View {
                     form
                 }
             }
-            .navigationTitle("recovery.restore.title".localized)
+            .navigationTitle("recovery.restore.title.short".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -121,6 +124,14 @@ struct RestoreFromSeedView: View {
                             .font(.system(.callout, design: .monospaced))
                             .padding(12)
                             .background(RoundedRectangle(cornerRadius: 10).fill(Theme.Color.bgSecondary))
+                        // Access token for a PRIVATE island (parity with the
+                        // new-account form) — recovering there needs it too.
+                        TextField("add_account.custom.token".localized, text: $serverToken)
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.never)
+                            .font(.system(.caption, design: .monospaced))
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.Color.bgSecondary))
                     }
                 }
 
@@ -165,7 +176,9 @@ struct RestoreFromSeedView: View {
         }
         restoring = true
         error = nil
-        let result = await AppState.shared.recoverAccount(phrase: words, serverURL: url)
+        let token = serverToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = await AppState.shared.recoverAccount(
+            phrase: words, serverURL: url, serverToken: token.isEmpty ? nil : token)
         restoring = false
         if let result {
             error = result

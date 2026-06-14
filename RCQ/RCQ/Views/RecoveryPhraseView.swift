@@ -162,9 +162,6 @@ struct RecoveryPhraseView: View {
 
     private var reissueSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Divider()
-                .overlay(Theme.Color.textSecondary.opacity(0.2))
-                .padding(.vertical, 4)
             Text("reissue.title".localized)
                 .font(.callout.weight(.semibold))
                 .foregroundColor(Theme.Color.textPrimary)
