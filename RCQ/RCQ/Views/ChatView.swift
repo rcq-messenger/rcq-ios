@@ -2987,7 +2987,13 @@ private struct RelaySharePickerSheet: View {
 
     private var pool: [RelayConfigStore.RelayEntry] {
         var seen = Set<String>()
-        return SingBoxTransport.poolRelays().filter {
+        // Off-config only (community: contact-shared + broker), NOT the
+        // signed-config pool. Sharing official relays is redundant (every user
+        // already has them) and surfacing their IPs just helps a censor
+        // enumerate them. Mirrors Android shareableRelays(). The routing pool
+        // (poolRelays()) still includes the official relays — only this
+        // share-picker list is filtered.
+        return (ContactRelayStore.shared.relays() + BrokerRelayStore.shared.relays()).filter {
             seen.insert("\($0.proto.rawValue):\($0.server):\($0.port)").inserted
         }
     }
