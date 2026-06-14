@@ -12,6 +12,12 @@ final class WebRTCManager: NSObject, ObservableObject {
     @Published private(set) var remoteVideoTrack: RTCVideoTrack?
 
     var onLocalIceCandidate: ((String) -> Void)?
+    /// ICE connectivity transitions (MainActor-hopped from the delegate).
+    /// CallService owns the recovery policy (grace on a transient drop, an ICE
+    /// restart before giving up).
+    var onIceConnected: (() -> Void)?
+    var onIceDisconnected: (() -> Void)?
+    var onIceFailed: (() -> Void)?
 
     @Published private(set) var micMuted: Bool = false
     @Published private(set) var cameraOff: Bool = false
@@ -91,6 +97,54 @@ final class WebRTCManager: NSObject, ObservableObject {
     }
 
     func handleAnswer(remoteSdp: String) async throws {
+        guard let pc = peerConnection else { return }
+        let remote = RTCSessionDescription(type: .answer, sdp: remoteSdp)
+        try await pc.setRemoteDescription(remote)
+    }
+
+    // MARK: - ICE restart (recover a dropped connection without losing tracks)
+
+    /// Caller side: re-offer with fresh ICE credentials (new ufrag/pwd) so a
+    /// stalled/failed connection re-gathers candidates. Tracks are untouched —
+    /// this is transport recovery, not a media renegotiation.
+    func restartIce() async throws -> String {
+        guard let pc = peerConnection else {
+            throw NSError(domain: "WebRTCManager", code: 4, userInfo: [NSLocalizedDescriptionKey: "no active peer connection"])
+        }
+        let constraints = RTCMediaConstraints(
+            mandatoryConstraints: [
+                "OfferToReceiveAudio": "true",
+                "OfferToReceiveVideo": localVideoTrack != nil ? "true" : "false",
+                "IceRestart": "true",
+            ],
+            optionalConstraints: nil
+        )
+        let offer = try await pc.offer(for: constraints)
+        try await pc.setLocalDescription(offer)
+        return offer.sdp
+    }
+
+    /// Callee side: answer the caller's ICE-restart offer (no track changes;
+    /// the new remote ufrag triggers our ICE restart automatically).
+    func handleIceRestartOffer(remoteSdp: String) async throws -> String {
+        guard let pc = peerConnection else {
+            throw NSError(domain: "WebRTCManager", code: 5, userInfo: [NSLocalizedDescriptionKey: "no active peer connection"])
+        }
+        let remote = RTCSessionDescription(type: .offer, sdp: remoteSdp)
+        try await pc.setRemoteDescription(remote)
+        let constraints = RTCMediaConstraints(
+            mandatoryConstraints: [
+                "OfferToReceiveAudio": "true",
+                "OfferToReceiveVideo": localVideoTrack != nil ? "true" : "false",
+            ],
+            optionalConstraints: nil
+        )
+        let answer = try await pc.answer(for: constraints)
+        try await pc.setLocalDescription(answer)
+        return answer.sdp
+    }
+
+    func handleIceRestartAnswer(remoteSdp: String) async throws {
         guard let pc = peerConnection else { return }
         let remote = RTCSessionDescription(type: .answer, sdp: remoteSdp)
         try await pc.setRemoteDescription(remote)
@@ -312,21 +366,33 @@ final class WebRTCManager: NSObject, ObservableObject {
             let credential: String
             let ttl: Int
         }
-        do {
-            let resp: Resp = try await APIClient.shared.request("GET", "/users/me/turn-credentials")
-            guard !resp.urls.isEmpty, !resp.username.isEmpty else {
-                cachedTurn = nil
+        // Retry a transient fetch failure a few times before giving up — a
+        // single blip used to silently leave the call STUN-only, which dooms a
+        // cross-NAT (symmetric) call to the connect timeout.
+        for attempt in 0..<3 {
+            do {
+                let resp: Resp = try await APIClient.shared.request("GET", "/users/me/turn-credentials")
+                guard !resp.urls.isEmpty, !resp.username.isEmpty else {
+                    print("[WebRTCManager] TURN endpoint returned no servers — STUN-only call")
+                    cachedTurn = nil
+                    return
+                }
+                let server = RTCIceServer(
+                    urlStrings: resp.urls,
+                    username: resp.username,
+                    credential: resp.credential
+                )
+                cachedTurn = (server, Date().addingTimeInterval(TimeInterval(resp.ttl)))
                 return
+            } catch {
+                if attempt < 2 {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                } else {
+                    // STUN-only fallback; cross-NAT calls won't connect.
+                    print("[WebRTCManager] TURN fetch failed after 3 attempts — STUN-only (cross-NAT may fail): \(error)")
+                    cachedTurn = nil
+                }
             }
-            let server = RTCIceServer(
-                urlStrings: resp.urls,
-                username: resp.username,
-                credential: resp.credential
-            )
-            cachedTurn = (server, Date().addingTimeInterval(TimeInterval(resp.ttl)))
-        } catch {
-            // STUN-only fallback; cross-NAT calls won't connect.
-            cachedTurn = nil
         }
     }
 
@@ -361,7 +427,21 @@ extension WebRTCManager: RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
     nonisolated func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {}
+    nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+        Task { @MainActor [weak self] in
+            // Drop a late callback from a closed/superseded pc — only the
+            // current connection's ICE state drives recovery.
+            guard let self, peerConnection === self.peerConnection else { return }
+            switch newState {
+            case .connected, .completed: self.onIceConnected?()
+            case .disconnected:          self.onIceDisconnected?()
+            case .failed:                self.onIceFailed?()
+            // .closed arrives only when we tear the pc down ourselves; the call
+            // is already ending, so there is nothing to recover.
+            default:                     break
+            }
+        }
+    }
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}

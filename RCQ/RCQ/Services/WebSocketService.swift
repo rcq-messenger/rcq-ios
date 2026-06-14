@@ -26,6 +26,8 @@ final class WebSocketService: ObservableObject {
         case callRenegotiate(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateAnswer(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateDecline(fromUIN: Int, callID: String)
+        case callIceRestart(fromUIN: Int, callID: String, sdp: String)
+        case callIceRestartAnswer(fromUIN: Int, callID: String, sdp: String)
         case roomEnterRejected(roomID: Int, reason: String)
         case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, mutedByOwner: Bool)], ownerOnlySpeaking: Bool)
         case roomMemberEntered(roomID: Int, uin: Int, nickname: String, mutedByOwner: Bool)
@@ -554,6 +556,18 @@ final class WebSocketService: ObservableObject {
             guard let from = dict["from_uin"] as? Int,
                   let callID = dict["call_id"] as? String else { return }
             events.send(.callRenegotiateDecline(fromUIN: from, callID: callID))
+
+        case "call_ice_restart":
+            guard let from = dict["from_uin"] as? Int,
+                  let callID = dict["call_id"] as? String else { return }
+            let sdp = (dict["sdp"] as? String) ?? ""
+            events.send(.callIceRestart(fromUIN: from, callID: callID, sdp: sdp))
+
+        case "call_ice_restart_answer":
+            guard let from = dict["from_uin"] as? Int,
+                  let callID = dict["call_id"] as? String else { return }
+            let sdp = (dict["sdp"] as? String) ?? ""
+            events.send(.callIceRestartAnswer(fromUIN: from, callID: callID, sdp: sdp))
 
         case "room_enter_rejected":
             guard let roomID = dict["room_id"] as? Int else { return }
