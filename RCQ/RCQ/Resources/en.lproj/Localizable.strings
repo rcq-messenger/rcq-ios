@@ -23,6 +23,7 @@
 "settings.appearance.theme.light" = "Light";
 "settings.appearance.theme.dark" = "Dark";
 "settings.chat_bg" = "Chat background";
+"settings.home_bg" = "Home background";
 "chat_bg.none" = "None";
 "chat_bg.custom" = "Custom";
 "settings.app_icon" = "App icon";

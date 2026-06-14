@@ -85,6 +85,9 @@ struct ContactListView: View {
         NavigationStack(path: $path) {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
+                // Optional home wallpaper (separate from the chat one). Behind
+                // the list; no-op on the default. (Android parity.)
+                ChatBackgroundView(home: true).ignoresSafeArea()
                 list
                 if showSearch {
                     SearchOverlay(
