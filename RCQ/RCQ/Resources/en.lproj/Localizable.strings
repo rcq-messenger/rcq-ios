@@ -22,6 +22,9 @@
 "settings.appearance.theme.system" = "System";
 "settings.appearance.theme.light" = "Light";
 "settings.appearance.theme.dark" = "Dark";
+"settings.chat_bg" = "Chat background";
+"chat_bg.none" = "None";
+"chat_bg.custom" = "Custom";
 "settings.app_icon" = "App icon";
 "settings.app_icon.default" = "Default";
 "settings.app_icon.footer" = "Pick a different home-screen icon. Changing it shows a brief system confirmation.";

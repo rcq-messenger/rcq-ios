@@ -118,3 +118,45 @@ final class ChatSettingsStore: ObservableObject {
         UserDefaults.standard.set(secureByThread, forKey: Self.secureKey)
     }
 }
+
+/// GLOBAL chat wallpaper (one for the whole app, Android parity). The
+/// selection is `""` (default theme bg), `preset:<id>`, or `custom` (a JPEG
+/// saved on disk). Persisted in UserDefaults; the custom image is a file.
+@MainActor
+final class ChatBackgroundStore: ObservableObject {
+    static let shared = ChatBackgroundStore()
+
+    @Published private(set) var selection: String = ""
+    /// Bumped when the custom image file is replaced, so views re-read it.
+    @Published private(set) var customStamp: Int = 0
+
+    private static let key = "rcq.chat.background"
+
+    private init() {
+        selection = UserDefaults.standard.string(forKey: Self.key) ?? ""
+    }
+
+    static var customImageURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return dir.appendingPathComponent("rcq-chat-bg.jpg")
+    }
+
+    func set(_ s: String) {
+        selection = s
+        UserDefaults.standard.set(s, forKey: Self.key)
+    }
+
+    /// Save a picked image (already JPEG-compressed) as the custom wallpaper.
+    func saveCustom(_ data: Data) {
+        let url = Self.customImageURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url)
+        customStamp &+= 1
+        set("custom")
+    }
+
+    func wipe() {
+        set("")
+        try? FileManager.default.removeItem(at: Self.customImageURL)
+    }
+}
