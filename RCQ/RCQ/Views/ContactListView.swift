@@ -1657,7 +1657,7 @@ private struct GroupRow: View {
                         : "contact_list.members_many").localized,
                     group.members.count
                 ) + (group.host.map { " · \($0)" } ?? ""))
-                    .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    .font(.caption).foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
             }
             Spacer()

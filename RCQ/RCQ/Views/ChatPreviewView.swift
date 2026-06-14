@@ -51,9 +51,14 @@ struct ChatPreviewView: View {
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                    Text("\(live.members.count) member\(live.members.count == 1 ? "" : "s")")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Color.textMono)
+                    Text(String(
+                        format: (live.members.count == 1
+                            ? "contact_list.members_one"
+                            : "contact_list.members_many").localized,
+                        live.members.count
+                    ))
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
                 }
             case .randomPeer:
                 EmptyView()
