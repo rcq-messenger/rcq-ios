@@ -835,7 +835,7 @@ final class AppState: ObservableObject {
     /// onboarding "Restore from phrase" entry (fresh install: no previous
     /// account, the gate in `boot()` having suppressed the launch throwaway)
     /// and Settings "Add account → Restore".
-    func recoverAccount(phrase words: [String], serverURL: String) async -> String? {
+    func recoverAccount(phrase words: [String], serverURL: String, serverToken: String? = nil) async -> String? {
         if AccountManager.shared.isAtAccountLimit {
             return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
         }
@@ -861,7 +861,7 @@ final class AppState: ObservableObject {
         } catch { return "recovery.restore.error.generic".localized }
 
         let previousActiveID = AccountManager.shared.activeAccountID
-        guard let acct = AccountManager.shared.add(serverURL: serverURL) else {
+        guard let acct = AccountManager.shared.add(serverURL: serverURL, serverToken: serverToken) else {
             return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
         }
         // The new account is now active: AccountManager.add already mirrored
@@ -873,7 +873,10 @@ final class AppState: ObservableObject {
         // recovery works on a censored network too.
         WebSocketService.shared.disconnect()
         AuthService.shared.resetForAccountSwitch()
-        await APIClient.shared.setServerToken(nil)
+        // A private island gates ALL requests behind a Caddy X-RCQ-Auth header,
+        // so the (user-)unauthenticated recover probes still need the masquerade
+        // token to get through. Nil for public backends.
+        await APIClient.shared.setServerToken(serverToken)
         await APIClient.shared.setToken(nil)
         _ = await APIClient.shared.refreshActiveBase()
 

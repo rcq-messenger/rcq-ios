@@ -197,7 +197,7 @@ struct AddAccountSheet: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .padding(.top, 8)
             HStack(spacing: 8) {
-                TextField("https://your-domain.example", text: $customURL)
+                TextField("add_account.custom.placeholder".localized, text: $customURL)
                     .keyboardType(.URL)
                     .textContentType(.URL)
                     .autocorrectionDisabled(true)
