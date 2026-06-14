@@ -207,7 +207,12 @@ struct PrivacySettingsView: View {
                     networkSection
                     relaySharingSection
                     migrationSection
-                    hofSection   // #27: Hall of Fame at the very bottom (under migration)
+                    // Hall of Fame is a flagship-only surface — hidden on
+                    // self-hosted islands (gated on the server's hall_of_fame
+                    // capability, like the UIN shop).
+                    if AppState.shared.serverCapabilities.hallOfFame {
+                        hofSection   // #27: Hall of Fame at the very bottom (under migration)
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
