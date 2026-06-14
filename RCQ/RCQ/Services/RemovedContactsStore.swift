@@ -47,6 +47,46 @@ final class RemovedContactsStore {
     }
 }
 
+/// Local "I blocked this UIN" set. Like [RemovedContactsStore] but for the
+/// explicit Block action — and it is the SOURCE OF TRUTH, because the server's
+/// `/contacts/{uin}/block` 404s for non-contacts (so you can't block a stranger
+/// group member there) and group messages are sealed-sender (the server can't
+/// filter). Drives ingest filtering + the Blocked list. App-group-scoped so the
+/// NSE can suppress a blocked sender's push too. Mirrors Android's local
+/// blocked set.
+final class BlockedContactsStore {
+    static let shared = BlockedContactsStore()
+
+    private static let key = "rcq.blocked_contacts"
+    private static let appGroup = "group.app.rcq.shared"
+
+    private let defaults: UserDefaults
+    private var cache: Set<Int>
+
+    private init() {
+        let suite = UserDefaults(suiteName: Self.appGroup) ?? .standard
+        self.defaults = suite
+        self.cache = Set((suite.array(forKey: Self.key) as? [Int]) ?? [])
+    }
+
+    func contains(_ uin: Int) -> Bool { cache.contains(uin) }
+    func all() -> [Int] { Array(cache) }
+
+    func set(_ uin: Int, blocked: Bool) {
+        if blocked {
+            guard cache.insert(uin).inserted else { return }
+        } else {
+            guard cache.remove(uin) != nil else { return }
+        }
+        defaults.set(Array(cache), forKey: Self.key)
+    }
+
+    func wipe() {
+        cache.removeAll()
+        defaults.removeObject(forKey: Self.key)
+    }
+}
+
 /// App-group mirror of the mute lists so the NSE + foreground presentation can
 /// suppress a muted sender/group locally (sealed sender hides 1:1 senders from
 /// the server). Reads hit UserDefaults directly so a reused NSE process stays current.

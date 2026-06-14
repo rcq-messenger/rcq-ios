@@ -220,11 +220,18 @@ final class ContactService: ObservableObject {
     }
 
     func toggleBlock(_ uin: Int) async throws {
-        struct Out: Decodable { let blocked: Bool }
-        let out: Out = try await APIClient.shared.request("POST", "/contacts/\(uin)/block")
+        // The local store is the source of truth: it works for non-contacts /
+        // strangers (the server endpoint 404s for those) and drives ingest
+        // filtering + the Blocked list. Flip it first, then best-effort sync the
+        // server's contact `blocked` flag (the endpoint toggles it for real
+        // contacts; 404s for strangers, swallowed).
+        let nowBlocked = !BlockedContactsStore.shared.contains(uin)
+        BlockedContactsStore.shared.set(uin, blocked: nowBlocked)
         if let idx = contacts.firstIndex(where: { $0.uin == uin }) {
-            contacts[idx].blocked = out.blocked
+            contacts[idx].blocked = nowBlocked
         }
+        struct Out: Decodable { let blocked: Bool }
+        let _: Out? = try? await APIClient.shared.request("POST", "/contacts/\(uin)/block")
     }
 
     func incrementUnread(for uin: Int) {
