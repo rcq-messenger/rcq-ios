@@ -328,6 +328,9 @@ struct ChatView: View {
     @State private var showAllMedia = false
     @State private var pendingScrollID: UUID?
     @State private var flashHighlightID: UUID?
+    /// Cursor into `mentionIDs` for the @-mention jump FAB. Each tap steps to
+    /// the next mentioning message and wraps around.
+    @State private var mentionCursor: Int = 0
     @State private var videoError: String?
     @State private var composerHeight: CGFloat = 36
     /// Tracks the last seen `composerHeight` so the scroll handler can
@@ -396,6 +399,36 @@ struct ChatView: View {
             return snapshot.uin == (AuthService.shared.ownUIN ?? -1)
         }
         return false
+    }
+
+    /// Ordered ids of loaded messages in the OPEN group thread that @mention me
+    /// and were sent by someone else. Drives the @-mention jump FAB (Telegram-
+    /// style step-through). Empty for 1:1 threads (mentions are group-only).
+    private var mentionIDs: [UUID] {
+        guard vm.target.thread.isGroup else { return [] }
+        let me = AuthService.shared.ownUIN ?? -1
+        return vm.messages
+            .filter { $0.senderUIN != me && MessageService.shared.bodyMentionsMe($0.text) }
+            .map { $0.id }
+    }
+
+    /// Scroll to `id` (centered) and pulse the transient bubble highlight,
+    /// clearing it after the same 1.4s window the reply-jump uses. Shared by
+    /// the mention-jump FAB and the reaction-jump-on-open.
+    @MainActor private func jumpAndFlash(to id: UUID, proxy: ScrollViewProxy) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            proxy.scrollTo(id, anchor: .center)
+        }
+        withAnimation(.easeIn(duration: 0.2)) {
+            flashHighlightID = id
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            if flashHighlightID == id {
+                withAnimation(.easeOut(duration: 0.5)) {
+                    flashHighlightID = nil
+                }
+            }
+        }
     }
     /// Jump-down arrow visibility. Driven by the bottom sentinel's
     /// onAppear/onDisappear (lifecycle events — reliable on iOS 26, unlike
@@ -1520,6 +1553,17 @@ struct ChatView: View {
             // screen and the opacity transition hides the residual
             // motion.
             .task {
+                // Snapshot any unseen-reaction targets BEFORE the settle loop —
+                // row acks (markThreadSeen) consume the inbox once bubbles
+                // appear, so we must read it first. We jump to the first one
+                // after settle, then clear the thread so it doesn't re-flash on
+                // reopen. Filtered to ids actually loaded in this window.
+                let reactedJumpID: UUID? = {
+                    let pending = ReactionInboxStore.shared.reactedIDs(vm.target.thread)
+                    guard !pending.isEmpty else { return nil }
+                    let loaded = Set(vm.messages.map { $0.id })
+                    return pending.first { loaded.contains($0) }
+                }()
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
                 let unreadID = vm.openFirstUnreadID
@@ -1545,6 +1589,17 @@ struct ChatView: View {
                 withAnimation(.easeOut(duration: 0.15)) {
                     chatVisible = true
                 }
+                // Reaction-jump-on-open: someone reacted to my message while I
+                // was away — scroll to + flash it once the layout has settled,
+                // then consume the thread's reacted set so reopening is quiet.
+                if let reactedJumpID {
+                    // Let the settle's final scroll land first, then override it
+                    // with the reaction target (a small delay beats the residual
+                    // settle motion the same way the chevron tap-burst does).
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    jumpAndFlash(to: reactedJumpID, proxy: proxy)
+                    ReactionInboxStore.shared.clear(vm.target.thread)
+                }
                 // Pull view counts for the currently-loaded window in
                 // broadcast-mode groups only — that's the surface where
                 // view-counts under owner posts are meaningful. Filtered
@@ -1565,6 +1620,48 @@ struct ChatView: View {
                         )
                     }
                 }
+            }
+            // @-mention jump FAB — a second circular button directly above the
+            // scroll-to-bottom chevron, stepping through the open thread's
+            // messages that @mention me (Telegram-style). Shown whenever the
+            // thread has any such message, independent of scroll position.
+            if !mentionIDs.isEmpty {
+                Button {
+                    let ids = mentionIDs
+                    guard !ids.isEmpty else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let idx = mentionCursor % ids.count
+                    jumpAndFlash(to: ids[idx], proxy: proxy)
+                    mentionCursor = (idx + 1) % ids.count
+                } label: {
+                    Image(systemName: "at")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .frame(width: 38, height: 38)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(
+                            Circle().stroke(Theme.Color.divider, lineWidth: 0.5)
+                        )
+                        // Remaining-count badge: how many mentioning messages
+                        // are still in the thread (mirrors the chevron's unread
+                        // badge styling).
+                        .overlay(alignment: .topTrailing) {
+                            if mentionIDs.count > 1 {
+                                Text(mentionIDs.count > 99 ? "99+" : "\(mentionIDs.count)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                                    .background(Theme.Color.accent, in: Capsule())
+                                    .offset(x: 6, y: -6)
+                            }
+                        }
+                        .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+                }
+                .padding(.trailing, 14)
+                // Sit just above the scroll-to-bottom chevron (38pt tall +
+                // its 12pt bottom inset + a small gap).
+                .padding(.bottom, showScrollToBottom ? 62 : 12)
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
             if showScrollToBottom {
                 Button {
