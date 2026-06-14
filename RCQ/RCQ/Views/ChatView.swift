@@ -2916,22 +2916,25 @@ enum ChatBackgrounds {
     static func preset(_ id: String) -> ChatBgPreset? { presets.first { $0.id == id } }
 }
 
-/// Renders the selected wallpaper behind the message list. Nothing on default.
+/// Renders the selected wallpaper behind the message list (or the home list
+/// when home==true). Nothing on default. The two slots are independent.
 struct ChatBackgroundView: View {
+    var home = false
     @StateObject private var bg = ChatBackgroundStore.shared
     @State private var custom: UIImage?
     var body: some View {
+        let sel = bg.selection(home: home)
         Group {
-            if bg.selection.hasPrefix("preset:"),
-               let p = ChatBackgrounds.preset(String(bg.selection.dropFirst(7))) {
+            if sel.hasPrefix("preset:"),
+               let p = ChatBackgrounds.preset(String(sel.dropFirst(7))) {
                 LinearGradient(colors: p.colors, startPoint: .top, endPoint: .bottom)
-            } else if bg.selection == "custom", let img = custom {
+            } else if sel == "custom", let img = custom {
                 Image(uiImage: img).resizable().scaledToFill()
             }
         }
-        .task(id: "\(bg.selection)#\(bg.customStamp)") {
-            custom = bg.selection == "custom"
-                ? UIImage(contentsOfFile: ChatBackgroundStore.customImageURL.path)
+        .task(id: "\(sel)#\(bg.customStamp(home: home))") {
+            custom = sel == "custom"
+                ? UIImage(contentsOfFile: ChatBackgroundStore.imageURL(home: home).path)
                 : nil
         }
     }

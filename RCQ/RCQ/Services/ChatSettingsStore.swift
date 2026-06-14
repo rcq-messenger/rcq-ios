@@ -127,36 +127,51 @@ final class ChatBackgroundStore: ObservableObject {
     static let shared = ChatBackgroundStore()
 
     @Published private(set) var selection: String = ""
-    /// Bumped when the custom image file is replaced, so views re-read it.
+    /// HOME / chat-list wallpaper (a SEPARATE selection, founder's choice).
+    @Published private(set) var homeSelection: String = ""
+    /// Bumped when a custom image file is replaced, so views re-read it.
     @Published private(set) var customStamp: Int = 0
+    @Published private(set) var homeCustomStamp: Int = 0
 
     private static let key = "rcq.chat.background"
+    private static let homeKey = "rcq.home.background"
 
     private init() {
         selection = UserDefaults.standard.string(forKey: Self.key) ?? ""
+        homeSelection = UserDefaults.standard.string(forKey: Self.homeKey) ?? ""
     }
 
-    static var customImageURL: URL {
+    static func imageURL(home: Bool) -> URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent("rcq-chat-bg.jpg")
+        return dir.appendingPathComponent(home ? "rcq-home-bg.jpg" : "rcq-chat-bg.jpg")
     }
+    static var customImageURL: URL { imageURL(home: false) }
 
-    func set(_ s: String) {
-        selection = s
-        UserDefaults.standard.set(s, forKey: Self.key)
+    func selection(home: Bool) -> String { home ? homeSelection : selection }
+    func customStamp(home: Bool) -> Int { home ? homeCustomStamp : customStamp }
+
+    func set(_ s: String, home: Bool = false) {
+        if home {
+            homeSelection = s
+            UserDefaults.standard.set(s, forKey: Self.homeKey)
+        } else {
+            selection = s
+            UserDefaults.standard.set(s, forKey: Self.key)
+        }
     }
 
     /// Save a picked image (already JPEG-compressed) as the custom wallpaper.
-    func saveCustom(_ data: Data) {
-        let url = Self.customImageURL
+    func saveCustom(_ data: Data, home: Bool = false) {
+        let url = Self.imageURL(home: home)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url)
-        customStamp &+= 1
-        set("custom")
+        if home { homeCustomStamp &+= 1 } else { customStamp &+= 1 }
+        set("custom", home: home)
     }
 
     func wipe() {
-        set("")
-        try? FileManager.default.removeItem(at: Self.customImageURL)
+        set(""); set("", home: true)
+        try? FileManager.default.removeItem(at: Self.imageURL(home: false))
+        try? FileManager.default.removeItem(at: Self.imageURL(home: true))
     }
 }

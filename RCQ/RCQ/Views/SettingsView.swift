@@ -66,6 +66,11 @@ struct SettingsView: View {
                         } label: {
                             Text("settings.chat_bg".localized)
                         }
+                        NavigationLink {
+                            ChatBackgroundPicker(home: true)
+                        } label: {
+                            Text("settings.home_bg".localized)
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
@@ -1050,34 +1055,37 @@ struct BackupIslandView: View {
 /// Global chat-wallpaper picker (Android parity): None + custom-from-gallery +
 /// built-in gradient presets. The selection applies behind every chat.
 private struct ChatBackgroundPicker: View {
+    /// false = chat wallpaper, true = home / chat-list wallpaper.
+    var home = false
     @StateObject private var bg = ChatBackgroundStore.shared
     @State private var showPicker = false
     private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
+        let sel = bg.selection(home: home)
         ScrollView {
             LazyVGrid(columns: cols, spacing: 12) {
-                tile(label: "chat_bg.none".localized, selected: bg.selection.isEmpty,
-                     fill: AnyView(Theme.Color.bgSecondary)) { bg.set("") }
-                tile(label: "chat_bg.custom".localized, selected: bg.selection == "custom",
+                tile(label: "chat_bg.none".localized, selected: sel.isEmpty,
+                     fill: AnyView(Theme.Color.bgSecondary)) { bg.set("", home: home) }
+                tile(label: "chat_bg.custom".localized, selected: sel == "custom",
                      fill: AnyView(Theme.Color.bgSecondary), icon: "photo.on.rectangle") { showPicker = true }
                 ForEach(ChatBackgrounds.presets) { p in
-                    tile(label: p.label, selected: bg.selection == "preset:\(p.id)",
+                    tile(label: p.label, selected: sel == "preset:\(p.id)",
                          fill: AnyView(LinearGradient(colors: p.colors, startPoint: .top, endPoint: .bottom))) {
-                        bg.set("preset:\(p.id)")
+                        bg.set("preset:\(p.id)", home: home)
                     }
                 }
             }
             .padding(12)
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        .navigationTitle("settings.chat_bg".localized)
+        .navigationTitle((home ? "settings.home_bg" : "settings.chat_bg").localized)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPicker) {
             PhotoPicker(selectionLimit: 1) { images in
                 showPicker = false
                 guard let img = images.first, let data = img.jpegData(compressionQuality: 0.85) else { return }
-                bg.saveCustom(data)
+                bg.saveCustom(data, home: home)
             }
         }
     }
