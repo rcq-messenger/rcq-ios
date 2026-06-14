@@ -190,18 +190,32 @@ class NotificationService: UNNotificationServiceExtension {
             os_log("decrypt failed: envType=%{public}@ %{public}@",
                    log: Self.log, type: .error,
                    envType, String(describing: error))
-            // Even when we can't decrypt (e.g. the WS path already advanced the
-            // ratchet), label a group push with the group name + a LOCALIZED
-            // body so it reads "My Group" / "Новое сообщение" rather than the
-            // generic English "RCQ" / "New group message" (#9).
+            // A sender-keys group broadcast (`gmsg`) is NOT decryptable in the
+            // NSE process, so the do-block's mute / self-suppress / badge / title
+            // never run for it — that was the "RCQ / New group message" banner,
+            // no badge, and muted-group-still-alerts report. Reproduce the
+            // essentials here for the group fallback.
             if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue {
-                if let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
+                // Muted group → no alert (the in-do mute gate isn't reached here).
+                if MutedStore.shared.isGroupMuted(gid) {
+                    contentHandler(UNNotificationContent())
+                    return
+                }
+                // Title with the group name. The backend now sends it plaintext
+                // in `group_name` (GroupNameCache is usually empty in the NSE
+                // process); fall back to the cache. Localized body.
+                let payloadName = userInfo["group_name"] as? String
+                let gname = (payloadName?.isEmpty == false ? payloadName : GroupNameCache.name(for: gid))
+                if let gname, !gname.isEmpty {
                     content.title = gname
                 }
                 let localized = Self.pushLocalized("push.group_message.body")
                 if !localized.isEmpty && localized != "push.group_message.body" {
                     content.body = localized
                 }
+                // Bump the icon badge even though we couldn't decrypt — a group
+                // message still counts as unread (keyed to the group thread).
+                content.badge = NSNumber(value: BadgeCounter.increment(threadKey: "group-\(gid)"))
             }
             contentHandler(content)
         }

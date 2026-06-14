@@ -76,4 +76,23 @@ struct Contact: Identifiable, Hashable, Codable {
             lastSeen: nil
         )
     }
+
+    /// Minimal placeholder for a blocked UIN we have no contact row for (e.g. a
+    /// blocked group member who was never a contact) so it can still appear in
+    /// the Blocked list. Display-only; keys are empty (never used to send).
+    static func blockedStub(uin: Int) -> Contact {
+        Contact(
+            uin: uin,
+            nickname: "#\(uin)",
+            status: .offline,
+            statusMessage: nil,
+            blocked: true,
+            identityKey: "",
+            signingKey: "",
+            signalIdentityKey: nil,
+            gender: nil,
+            unread: 0,
+            lastSeen: nil
+        )
+    }
 }

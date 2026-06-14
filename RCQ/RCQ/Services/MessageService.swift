@@ -1465,9 +1465,16 @@ final class MessageService {
             }
 
             // Block-list enforcement is client-side only under sealed sender.
-            // Bounce a tombstone so sender's bubble flips to .failed.
+            // The local BlockedContactsStore is the source of truth — it covers
+            // strangers / non-contacts and group senders (the server can't block
+            // a non-contact and can't filter sealed messages); the server
+            // `blocked` contact flag is also honored. Bounce a tombstone for a
+            // blocked CONTACT (their bubble flips to .failed); a blocked stranger
+            // (no contact row) is just dropped silently. Runs before the 1:1 gate
+            // so it covers group messages too.
             let senderContact = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
-            if let blocked = senderContact?.blocked, blocked {
+            let isBlocked = BlockedContactsStore.shared.contains(decrypted.senderUIN) || (senderContact?.blocked ?? false)
+            if isBlocked {
                 if let messageID = Self.messageID(in: decrypted.envelope), let contact = senderContact {
                     Task { try? await self.sendEnvelope(.bounce(targetID: messageID), to: contact, localID: nil) }
                 }

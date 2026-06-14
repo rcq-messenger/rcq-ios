@@ -15,10 +15,17 @@ struct BlockedUsersView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var contacts = ContactService.shared
     @State private var pendingUnblock: Int?
+    @State private var refreshTick = 0
 
     private var blocked: [Contact] {
-        contacts.contacts
-            .filter { $0.blocked }
+        _ = refreshTick  // recompute after a local blocked-set change (stranger unblock)
+        let byUin = Dictionary(contacts.contacts.map { ($0.uin, $0) }, uniquingKeysWith: { a, _ in a })
+        // Union of server-blocked contacts + the LOCAL blocked set (covers
+        // blocked strangers with no contact row, shown as #uin stubs).
+        let uins = Set(BlockedContactsStore.shared.all())
+            .union(contacts.contacts.filter { $0.blocked }.map { $0.uin })
+        return uins
+            .map { byUin[$0] ?? Contact.blockedStub(uin: $0) }
             .sorted { $0.nickname.localizedCaseInsensitiveCompare($1.nickname) == .orderedAscending }
     }
 
@@ -49,8 +56,12 @@ struct BlockedUsersView: View {
             ) {
                 if let uin = pendingUnblock {
                     Button("blocked_users.unblock.confirm.cta".localized) {
-                        Task { try? await contacts.toggleBlock(uin) }
+                        let u = uin
                         pendingUnblock = nil
+                        Task { @MainActor in
+                            try? await contacts.toggleBlock(u)
+                            refreshTick += 1
+                        }
                     }
                     Button("common.cancel".localized, role: .cancel) {
                         pendingUnblock = nil
