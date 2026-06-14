@@ -1673,6 +1673,9 @@ final class MessageService {
                    MessageStore.shared.messages(for: reactThread)
                        .first(where: { $0.id == targetID })?.isFromMe == true {
                     ReactionInboxStore.shared.mark(reactThread)
+                    // Also stash the reacted message UUID so opening the chat
+                    // can scroll to + flash it (reaction-jump-on-open).
+                    ReactionInboxStore.shared.markMsg(reactThread, id: targetID)
                 }
             case .bounce(let targetID):
                 MessageStore.shared.updateState(messageID: targetID, thread: thread, state: .failed)
