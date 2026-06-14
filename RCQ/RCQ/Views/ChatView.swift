@@ -2867,7 +2867,7 @@ private struct DateDivider: View {
                 HStack {
                     Rectangle().fill(Theme.Color.divider).frame(height: 1)
                     Text(label)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10))
                         .foregroundColor(Theme.Color.textSecondary)
                         .padding(.horizontal, 6)
                     Rectangle().fill(Theme.Color.divider).frame(height: 1)
@@ -2876,7 +2876,7 @@ private struct DateDivider: View {
                 // The flanking lines + gray label wash out on a wallpaper, so
                 // show a centered contrast pill instead (Android parity).
                 Text(label)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10))
                     .foregroundColor(Theme.Color.textPrimary)
                     .padding(.horizontal, 10).padding(.vertical, 3)
                     .background(Theme.Color.bgSecondary.opacity(0.85))

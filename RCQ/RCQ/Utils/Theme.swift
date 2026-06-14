@@ -39,12 +39,15 @@ enum Theme {
     }
 
     enum Font {
-        static let mono         = SwiftUI.Font.system(.footnote, design: .monospaced)
-        static let monoSmall    = SwiftUI.Font.system(.caption, design: .monospaced)
+        // De-mono'd per founder preference (monospace read as ugly everywhere).
+        // Names kept for call-site stability; UIN/host/timestamp labels now use
+        // the normal proportional font.
+        static let mono         = SwiftUI.Font.system(.footnote)
+        static let monoSmall    = SwiftUI.Font.system(.caption)
         static let nickname     = SwiftUI.Font.system(.body, weight: .semibold)
         static let statusLabel  = SwiftUI.Font.system(.caption)
         static let bubble       = SwiftUI.Font.system(.body)
-        static let timestamp    = SwiftUI.Font.system(.caption2, design: .monospaced)
+        static let timestamp    = SwiftUI.Font.system(.caption2)
     }
 
     enum Metrics {
