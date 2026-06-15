@@ -2102,6 +2102,9 @@
 "add_account.empty" = "Ничего не нашлось";
 "add_account.custom.label" = "ИЛИ ВВЕДИ URL ВРУЧНУЮ";
 "add_account.custom.placeholder" = "Адрес сервера";
+"access_token.label" = "Токен доступа (необязательно)";
+"access_token.hint" = "Для приватного (закрытого) острова вставьте выданный токен доступа.";
+"access_token.bad" = "Неверный или просроченный токен доступа для острова.";
 "add_account.custom.cta" = "Добавить";
 "add_account.custom.invalid" = "URL должен начинаться с https:// и содержать домен.";
 "add_account.custom.token" = "Токен доступа (опционально, для скрытых серверов)";

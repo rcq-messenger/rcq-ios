@@ -11,6 +11,8 @@ struct AddContactView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var joinPreview: GroupService.Preview?
     @State private var ciBusy = false
+    @State private var ciToken = ""        // optional access token for a foreign PRIVATE island
+    @State private var ciTokenErr: String?
     /// Pre-filled UIN from an `rcq://add/{uin}` deep link.
     var prefillUIN: Int? = nil
     /// Island host from the link's `?h=` (spec §5): pre-fills `uin@host` so
@@ -115,9 +117,30 @@ struct AddContactView: View {
                                     Divider().background(Theme.Color.divider)
                                 } else if let ci = crossIsland {
                                     sectionHeader("Cross-island")
+                                    // Optional access token for a foreign PRIVATE (closed) island.
+                                    TextField("access_token.label".localized, text: $ciToken)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled(true)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                        .padding(.horizontal, 16).padding(.vertical, 8)
+                                    if let e = ciTokenErr {
+                                        Text(e).font(.caption).foregroundColor(Theme.Color.statusBusy)
+                                            .padding(.horizontal, 16)
+                                    }
                                     Button {
-                                        ciBusy = true
+                                        ciBusy = true; ciTokenErr = nil
                                         Task {
+                                            // Redeem the access token for the host FIRST (stores the
+                                            // durable token so fetchCard/deposit pass the gate); a bad
+                                            // token aborts so the user can fix it.
+                                            if !ciToken.trimmingCharacters(in: .whitespaces).isEmpty {
+                                                let r = await AccessRedeemer.redeem(host: ci.host, entered: ciToken)
+                                                if r == .badToken {
+                                                    ciTokenErr = "access_token.bad".localized
+                                                    ciBusy = false
+                                                    return
+                                                }
+                                            }
                                             let ok = await ContactService.shared.addCrossIslandContact(uin: ci.uin, host: ci.host)
                                             ciBusy = false
                                             if ok { dismiss() }
