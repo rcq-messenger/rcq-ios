@@ -28,6 +28,14 @@ final class WebRTCManager: NSObject, ObservableObject {
     private var localAudioTrack: RTCAudioTrack?
     private var videoCapturer: RTCCameraVideoCapturer?
     private var currentCameraPosition: AVCaptureDevice.Position = .front
+    /// True once an outgoing call manually activated the audio session (no
+    /// CallKit in that path). iOS 26's CallKit treats a still-active voice-call
+    /// session as an in-progress call and AUTO-ENDS the next *incoming* call
+    /// (~1s CXEndCallAction → the peer sees a spurious "declined"). Inbound
+    /// calls are released by CallKit's didDeactivate; outbound calls have no
+    /// such hook, so close() must deactivate the session itself or every
+    /// subsequent incoming call on this device auto-declines until app restart.
+    private var manuallyActivatedSession = false
 
     private let stunServers: RTCIceServer = RTCIceServer(urlStrings: [
         "stun:stun.l.google.com:19302",
@@ -244,6 +252,7 @@ final class WebRTCManager: NSObject, ObservableObject {
         cameraOff = false
         speakerOn = false
         currentCameraPosition = .front
+        deactivateManualAudioSessionIfNeeded()
     }
 
     // MARK: - in-call controls
@@ -414,9 +423,30 @@ final class WebRTCManager: NSObject, ObservableObject {
         }
         session.unlockForConfiguration()
         if activateNow {
-            // No CallKit didActivate path here; explicit enable.
+            // No CallKit didActivate path here; explicit enable. Remember we
+            // own this session so close() can release it — CallKit won't.
             session.isAudioEnabled = true
+            manuallyActivatedSession = true
         }
+    }
+
+    /// Release a session WE activated (outgoing-call path). MUST run on
+    /// teardown: a still-held playAndRecord/voiceChat session makes iOS 26
+    /// CallKit auto-end the next incoming call before the user can answer.
+    /// Inbound (CallKit) sessions are released by iOS via didDeactivate, so we
+    /// only touch the ones we manually activated — never fighting CallKit.
+    private func deactivateManualAudioSessionIfNeeded() {
+        guard manuallyActivatedSession else { return }
+        manuallyActivatedSession = false
+        let session = RTCAudioSession.sharedInstance()
+        session.isAudioEnabled = false
+        session.lockForConfiguration()
+        do {
+            try session.setActive(false)
+        } catch {
+            print("[WebRTCManager] audio session deactivate failed: \(error)")
+        }
+        session.unlockForConfiguration()
     }
 }
 

@@ -51,6 +51,14 @@ final class CallService: ObservableObject {
     private var pendingRenegotiationOffer: String?
     private var pendingRemoteIce: [String] = []
 
+    // True from the moment the user accepts an inbound call until the WebRTC
+    // handshake completes (.connected) or fails. iOS 26's CallKit can auto-fire
+    // a CXEndCallAction mid-handshake (the held-audio-session regression); that
+    // stray end must NOT be relayed to the caller as a "declined", or it kills
+    // a call the user is actively answering — exactly the end-then-answer race
+    // seen on the wire. Cleared on connect / decline / teardown / new call.
+    private var answering = false
+
     // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
     // — only the original caller restarts); the callee waits for that re-offer
     // and ends the call if it never recovers.
@@ -93,6 +101,7 @@ final class CallService: ObservableObject {
             direction: .outgoing
         )
         print("[CallService] start outgoing call=\(call.id) to uin=\(contact.uin) media=\(media)")
+        answering = false
         state = .outgoingRinging(call)
         armRingTimeout(callID: call.id)
         // outgoing bypasses CallKit: CXStartCallAction + libwebrtc on iOS 17/18 fires an
@@ -123,16 +132,21 @@ final class CallService: ObservableObject {
             return
         }
         print("[CallService] accept requested -> CallKit (callID=\(c.id))")
+        // Set BEFORE routing through CallKit so a CallKit auto-end that races
+        // the answer (iOS 26) is recognised as spurious in endFromCallKit.
+        answering = true
         CallProvider.shared.requestAnswerCall(callID: c.id)
     }
 
     func decline() {
         guard case .incomingRinging(let c) = state else { return }
         print("[CallService] decline requested -> CallKit (callID=\(c.id))")
+        answering = false
         CallProvider.shared.requestEndCall(callID: c.id)
     }
 
     func hangUp() {
+        answering = false
         switch state {
         case .outgoingRinging(let c):
             sendEnd(call: c, reason: "cancelled")
@@ -162,8 +176,10 @@ final class CallService: ObservableObject {
               let offerSdp = pendingRemoteOffer
         else {
             print("[CallService] acceptFromCallKit ignored, state=\(state)")
+            answering = false
             return
         }
+        answering = true
         let call = c
         print("[CallService] acceptFromCallKit running handleOffer (callID=\(call.id))")
         Task {
@@ -173,6 +189,7 @@ final class CallService: ObservableObject {
                     media: call.media
                 )
                 print("[CallService] handleOffer OK, going connected, sending answer (\(answerSdp.count)ch)")
+                answering = false
                 state = .connected(call)
                 WebSocketService.shared.sendCallSignal(
                     type: "call_answer",
@@ -187,6 +204,7 @@ final class CallService: ObservableObject {
                 pendingRemoteOffer = nil
             } catch {
                 print("[CallService] handleOffer failed: \(error)")
+                answering = false
                 sendEnd(call: call, reason: "setup_failed")
                 state = .ended(call, reason: "setup_failed")
                 CallProvider.shared.reportEnded(callID: call.id, reason: .failed)
@@ -199,6 +217,14 @@ final class CallService: ObservableObject {
     /// CXEndCallAction handler; reportEnded is implicit in the action fulfilment.
     func endFromCallKit(uuid: UUID) {
         guard let c = state.call else { return }
+        // iOS 26 CallKit can fire CXEndCallAction on its own while the user is
+        // mid-answer (the held-audio-session regression). The user is accepting,
+        // not declining — swallow this stray end so we don't ship a bogus
+        // "declined" to the caller and kill the call the handshake is completing.
+        if answering {
+            print("[CallService] endFromCallKit IGNORED — answer in flight (callID=\(c.id))")
+            return
+        }
         print("[CallService] endFromCallKit (state=\(stateLabel)) callID=\(c.id)")
         let reason: String
         switch state {
@@ -241,6 +267,7 @@ final class CallService: ObservableObject {
         )
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
+        answering = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
     }
@@ -718,6 +745,7 @@ final class CallService: ObservableObject {
         )
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
+        answering = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
         CallProvider.shared.reportIncoming(
@@ -748,6 +776,7 @@ final class CallService: ObservableObject {
     }
 
     private func teardownAfterEnd() {
+        answering = false
         WebRTCManager.shared.close()
         RingbackPlayer.shared.stop()
         pendingRemoteOffer = nil
