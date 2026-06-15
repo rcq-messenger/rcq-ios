@@ -340,7 +340,13 @@ class NotificationService: UNNotificationServiceExtension {
         // of just "Alice" / "hi" (founder ask). Falls back to the sender as
         // title when the group name isn't cached yet.
         if let gid = groupID {
-            if let gname = GroupNameCache.name(for: gid), !gname.isEmpty {
+            // Title the banner with the group's name so the user can tell WHICH
+            // group. Prefer the plaintext name the backend now sends in the push
+            // payload (GroupNameCache is usually empty in the NSE process), fall
+            // back to the cache, then leave the sender nick as a last resort.
+            let payloadName = content.userInfo["group_name"] as? String
+            let gname = (payloadName?.isEmpty == false ? payloadName : GroupNameCache.name(for: gid))
+            if let gname, !gname.isEmpty {
                 content.title = gname
             }
             content.body = "\(senderNick): \(content.body)"
