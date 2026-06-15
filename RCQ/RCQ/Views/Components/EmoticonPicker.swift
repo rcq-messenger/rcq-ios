@@ -98,20 +98,15 @@ struct EmoticonPickerSheet: View {
                             Button {
                                 if tab == 0 { prefs.togglePanel(asset) } else { prefs.toggleReaction(asset) }
                             } label: {
-                                ZStack(alignment: .topTrailing) {
+                                // Selection is shown by the green background tint
+                                // alone — no check badge (the tint reads as chosen).
+                                ZStack {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(selected ? Theme.Color.accent.opacity(0.22) : Color.clear)
+                                        .fill(selected ? Theme.Color.accent.opacity(0.30) : Color.clear)
                                         .frame(width: 46, height: 46)
                                     GIFImage(name: asset)
                                         .frame(width: 30, height: 30)
                                         .frame(width: 46, height: 46)
-                                    if selected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 15))
-                                            .foregroundColor(Theme.Color.accent)
-                                            .background(Circle().fill(Color.white))
-                                            .padding(1)
-                                    }
                                 }
                             }
                         }
@@ -128,5 +123,9 @@ struct EmoticonPickerSheet: View {
                 }
             }
         }
+        // Slide-up drawer (not a full window): a tall bottom sheet with a grab
+        // handle, draggable down to dismiss.
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 }
