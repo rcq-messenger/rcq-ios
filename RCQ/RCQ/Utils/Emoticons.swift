@@ -12,6 +12,17 @@ enum Emoticons {
         let name: String
     }
 
+    /// 20 extra hand-picked koloboks (founder's selection) the user can add to
+    /// their composer panel / reactions via the customise sheet, on top of the
+    /// default palette below. Asset names are the `:code:` wire form and MUST be
+    /// bundled identically on iOS + Android (matches Emoticon.kt `extraKoloboks`).
+    static let extraKoloboks: [String] = [
+        "Cherna_01", "FinouCat_02", "Koshechka_06", "Laie_74", "Mauridia_02",
+        "Rulezzz_03", "WhiteVoid_1", "d_clock", "kirtsun_05", "l_girl_kiss",
+        "l_lovers", "l_teddy", "snoozer_likelinux_man", "viannen_03", "viannen_06",
+        "viannen_09", "viannen_35", "viannen_48", "viannen_76", "viannen_88",
+    ]
+
     static let entries: [Entry] = {
         var raw: [Entry] = []
         func add(_ asset: String, _ name: String) {
@@ -61,6 +72,11 @@ enum Emoticons {
         add("girl_angel",   "Angel")
         add("hang1",        "Hang")
 
+        // Extra koloboks — added to the entry table (not just a side list) so a
+        // peer's `:viannen_03:` tokenizes + renders here too, not just shows as
+        // text. They also become pickable in the customise sheet via `fullSet`.
+        for extra in Emoticons.extraKoloboks { add(extra, extra) }
+
         return raw.sorted { $0.code.count > $1.code.count }
     }()
 
@@ -75,6 +91,11 @@ enum Emoticons {
         }
         return out
     }
+
+    /// Every bundled emoticon asset (palette + extra koloboks), in asset order —
+    /// the full pickable set the customise sheet offers. Extras are already part
+    /// of `entries`, so `paletteAssets` covers them.
+    static var fullSet: [String] { paletteAssets.map { $0.asset } }
 
     /// Default palette + every equipped cosmetic pack appended in equip order.
     static func paletteAssets(

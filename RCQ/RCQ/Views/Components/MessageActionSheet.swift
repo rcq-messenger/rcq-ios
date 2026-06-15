@@ -13,6 +13,10 @@ struct MessageActionSheet: View {
     let onDeleteForMe: () -> Void
     let onDeleteForEveryone: (() -> Void)?
 
+    /// The user's chosen quick reactions (≤6), defaulting to the six below
+    /// until customised in the emoji picker.
+    @ObservedObject private var emojiPrefs = EmoticonPrefsStore.shared
+
     /// Six classic KOLOBOK reactions — covers the same semantic ground as the
     /// six default emoji reactions on Telegram/Slack. We pick from the existing
     /// kolobok pack instead of inventing emojis, since the user already has
@@ -35,7 +39,7 @@ struct MessageActionSheet: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 6) {
-                ForEach(Self.reactionAssets, id: \.self) { asset in
+                ForEach(emojiPrefs.reactions, id: \.self) { asset in
                     Button { onReact(asset) } label: {
                         ReactionTile(asset: asset, selected: message.reactions.values.contains(asset))
                     }
