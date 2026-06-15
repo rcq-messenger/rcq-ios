@@ -206,33 +206,55 @@ struct GroupInfoView: View {
         }
     }
 
-    /// Mute group notifications toggle. Hits the same path as the
-    /// long-press menu on a chat row, but surfaces it explicitly here
-    /// because testers reported they couldn't find the long-press
-    /// affordance (and the in-chat header was the wrong place for it).
+    /// Per-group notification mode: All / Mentions only / None. A busy group
+    /// (e.g. a 1000+ member beta) is the main source of push noise; "None"
+    /// is the server-backed mute (silent everywhere), "Mentions only" stays
+    /// quiet for ordinary messages but still surfaces an @mention in-app.
     private var notificationsSection: some View {
         let thread: ThreadID = .group(id: currentGroup.id)
-        let muted = sound.isMuted(thread: thread)
+        let mode = sound.notifyMode(thread: thread)
         return section("group.section.notifications".localized) {
-            Button {
-                sound.toggleMute(thread: thread)
-            } label: {
-                HStack {
-                    Image(systemName: muted ? "bell.slash.fill" : "bell.fill")
-                        .foregroundColor(muted ? Theme.Color.statusBusy : Theme.Color.accent)
-                        .frame(width: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text((muted ? "group.notifications.unmute" : "group.notifications.mute").localized)
-                            .foregroundColor(Theme.Color.textPrimary)
-                        Text((muted ? "group.notifications.muted.hint" : "group.notifications.unmuted.hint").localized)
-                            .font(.caption)
-                            .foregroundColor(Theme.Color.textSecondary)
-                    }
-                    Spacer()
+            VStack(spacing: 0) {
+                notifyModeRow(.all, current: mode, thread: thread,
+                              icon: "bell.fill", title: "group.notify.all", hint: "group.notify.all.hint")
+                Divider()
+                notifyModeRow(.mentions, current: mode, thread: thread,
+                              icon: "at", title: "group.notify.mentions", hint: "group.notify.mentions.hint")
+                Divider()
+                notifyModeRow(.none, current: mode, thread: thread,
+                              icon: "bell.slash.fill", title: "group.notify.none", hint: "group.notify.none.hint")
+            }
+        }
+    }
+
+    private func notifyModeRow(
+        _ rowMode: SoundService.NotifyMode, current: SoundService.NotifyMode,
+        thread: ThreadID, icon: String, title: String, hint: String
+    ) -> some View {
+        Button {
+            sound.setNotifyMode(rowMode, thread: thread)
+        } label: {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(rowMode == .none ? Theme.Color.statusBusy : Theme.Color.accent)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title.localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text(hint.localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                Spacer()
+                if current == rowMode {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(Theme.Color.accent)
                 }
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .padding(.vertical, 6)
         }
+        .buttonStyle(.plain)
     }
 
     /// Members section: collapses past `memberPreviewLimit` so a 200+

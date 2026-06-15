@@ -983,6 +983,12 @@
 "group.notifications.unmute" = "Включить уведомления";
 "group.notifications.muted.hint" = "Сообщения приходят без звука и пуша.";
 "group.notifications.unmuted.hint" = "Сообщения приходят со звуком и пушем.";
+"group.notify.all" = "Все сообщения";
+"group.notify.all.hint" = "Уведомлять о каждом сообщении.";
+"group.notify.mentions" = "Только упоминания";
+"group.notify.mentions.hint" = "Тихо, но уведомлять, когда упоминают меня.";
+"group.notify.none" = "Выключены";
+"group.notify.none.hint" = "Тихо везде, без баннера и звука.";
 "group.members.show_more" = "Показать всех (+%d)";
 "group.members.collapse" = "Свернуть";
 "group.members.search" = "Поиск участников";

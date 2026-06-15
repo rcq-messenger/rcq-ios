@@ -178,6 +178,14 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // Mentions-only group: alert only when THIS message mentions us
+            // (#<our uin>). Cached above so it still threads in-app; just no
+            // banner for an ordinary message in a group set to "mentions only".
+            if let gid = mutedGroupID, MutedStore.shared.isGroupMentionsOnly(gid),
+               !Self.envelopeMentions(decrypted.envelope, uin: toUIN ?? 0) {
+                contentHandler(UNNotificationContent())
+                return
+            }
             apply(decrypted: decrypted, to: content)
             os_log("modified: title=%{public}@ body=%{public}@",
                    log: Self.log, type: .default,
@@ -198,6 +206,14 @@ class NotificationService: UNNotificationServiceExtension {
             if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue {
                 // Muted group → no alert (the in-do mute gate isn't reached here).
                 if MutedStore.shared.isGroupMuted(gid) {
+                    contentHandler(UNNotificationContent())
+                    return
+                }
+                // Mentions-only group + undecryptable gmsg: a mention can't be
+                // verified out-of-process, so stay quiet. The in-app path and
+                // the home-row @ indicator still surface mentions when the app
+                // runs; an offline @mention won't push (sender-keys limit).
+                if MutedStore.shared.isGroupMentionsOnly(gid) {
                     contentHandler(UNNotificationContent())
                     return
                 }
@@ -468,6 +484,24 @@ class NotificationService: UNNotificationServiceExtension {
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack:
             return false
+        }
+    }
+
+    /// True if a decryptable message mentions us by `#<uin>`. Used by the
+    /// mentions-only group gate. `@<nick>` mentions aren't checked here (the
+    /// NSE has no reliable own-nickname); they still surface in-app. An
+    /// undecryptable sender-keys `gmsg` never reaches this (handled in the
+    /// catch block).
+    private static func envelopeMentions(_ envelope: Envelope, uin: Int) -> Bool {
+        guard uin > 0 else { return false }
+        let needle = "#\(uin)"
+        switch envelope {
+        case .text(_, let t, _, _, _):                      return t.contains(needle)
+        case .photo(_, _, _, let c, _, _, _, _):            return (c ?? "").contains(needle)
+        case .video(_, _, _, _, _, let c, _, _, _, _):      return (c ?? "").contains(needle)
+        case .file(_, _, _, _, _, _, let c, _, _, _):       return (c ?? "").contains(needle)
+        case .location(_, _, _, let c, _, _, _):            return (c ?? "").contains(needle)
+        default:                                            return false
         }
     }
 
