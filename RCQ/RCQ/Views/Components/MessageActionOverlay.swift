@@ -26,6 +26,10 @@ struct MessageActionOverlay: View {
 
     @State private var showDeleteSubmenu = false
 
+    /// The user's chosen quick reactions (≤6), defaulting to the historical six
+    /// until customised in the emoji picker.
+    @ObservedObject private var emojiPrefs = EmoticonPrefsStore.shared
+
     private static let assets: [String] = [
         "good", "give_heart", "biggrin", "rofl", "shok", "cray",
         "mad", "diablo", "cool", "kiss", "give_rose", "man_in_love",
@@ -95,7 +99,7 @@ struct MessageActionOverlay: View {
         // a comfortable reading width even when content fits.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                ForEach(Self.assets, id: \.self) { asset in
+                ForEach(emojiPrefs.reactions, id: \.self) { asset in
                     Button {
                         onReact(asset)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()

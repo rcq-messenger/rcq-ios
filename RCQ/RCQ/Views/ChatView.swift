@@ -270,7 +270,9 @@ struct ChatView: View {
     @StateObject private var calls = CallService.shared
     @StateObject private var chatSettings = ChatSettingsStore.shared
     @StateObject private var emoticonUsage = EmoticonUsageStore.shared
+    @StateObject private var emojiPrefs = EmoticonPrefsStore.shared
     @State private var showEmojiPanel = false
+    @State private var showEmojiPicker = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
     // Per-conversation screen-secure: whether protection is currently armed
@@ -583,6 +585,9 @@ struct ChatView: View {
         // Random chat presents this view inside a sheet without an enclosing NavigationStack.
         .applyIfNotRandom(vm.target) {
             $0.navigationDestination(isPresented: $showInfo) { infoDestination }
+        }
+        .sheet(isPresented: $showEmojiPicker) {
+            EmoticonPickerSheet()
         }
         .sheet(item: $forwardTarget) { msg in
             ForwardPickerSheet(message: msg) { destination in
@@ -2893,7 +2898,34 @@ struct ChatView: View {
 
     private var emojiPanel: some View {
         VStack(spacing: 0) {
-            grid(entries: emoticonEntries())
+            if emojiPrefs.panel.isEmpty {
+                // Empty by default: a centered CTA inviting the user to choose
+                // their own panel set (and, in the same sheet, their reactions).
+                VStack(spacing: 12) {
+                    Text("Choose the emoticons for your panel")
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                    Button { showEmojiPicker = true } label: {
+                        Text("Choose")
+                            .font(.callout.weight(.semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 22).padding(.vertical, 10)
+                            .background(Theme.Color.accent, in: Capsule())
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(16)
+            } else {
+                HStack {
+                    Spacer()
+                    Button { showEmojiPicker = true } label: {
+                        Text("Edit").font(.footnote).foregroundColor(Theme.Color.accent)
+                    }
+                    .padding(.trailing, 12).padding(.top, 6)
+                }
+                grid(entries: panelEntries())
+            }
         }
         .frame(height: 240)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -2903,6 +2935,12 @@ struct ChatView: View {
         )
         .padding(.horizontal, 8)
         .padding(.bottom, 6)
+    }
+
+    /// The user's chosen panel emoticons (pick order) as grid entries. Empty →
+    /// the CTA branch above runs instead, so this is only built when non-empty.
+    private func panelEntries() -> [(asset: String, name: String, primaryCode: String)] {
+        emojiPrefs.panel.map { (asset: $0, name: $0, primaryCode: ":\($0):") }
     }
 
     /// Splice an emoticon shortcode at the current caret position in
