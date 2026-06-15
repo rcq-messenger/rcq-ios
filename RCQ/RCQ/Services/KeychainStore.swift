@@ -230,5 +230,26 @@ enum KeychainStore {
         static let recoverySeed = "rcq.recovery.seed"
         static let pinPepper = "rcq.pin.pepper"
         static let pinAttempts = "rcq.pin.attempts"
+        /// Stable per-INSTALL id (device-global, NOT per-account). The
+        /// Keychain survives an app reinstall, so this lets the server
+        /// recognise that a freshly reinstalled app (new APNs token) is the
+        /// same physical device and REPLACE its old push token instead of
+        /// piling up duplicates. Not in `perAccountKeys` → uses the global slot.
+        static let deviceID = "rcq.device.id"
+    }
+
+    // MARK: - Stable install id
+
+    /// A stable per-install identifier sent with the APNs/VoIP push-token
+    /// registration so the server can dedupe a reinstall's tokens (see
+    /// `device_id` on the backend `device_tokens` table). Generated once and
+    /// kept in the (device-global) Keychain, which survives a reinstall.
+    static func deviceID() -> String {
+        if let existing = string(Keys.deviceID), !existing.isEmpty {
+            return existing
+        }
+        let fresh = UUID().uuidString
+        setString(Keys.deviceID, fresh)
+        return fresh
     }
 }
