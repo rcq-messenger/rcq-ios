@@ -329,6 +329,10 @@ struct ChatView: View {
     @State private var showInChatSearch = false
     @State private var showAllMedia = false
     @State private var pendingScrollID: UUID?
+    /// #1 reply-jump return: the reply message the user was reading when they
+    /// tapped its quote, so the scroll-to-bottom chevron takes them BACK there
+    /// (Telegram-style) instead of all the way to the latest message.
+    @State private var replyReturnID: UUID?
     @State private var flashHighlightID: UUID?
     /// Cursor into `mentionIDs` for the @-mention jump FAB. Each tap steps to
     /// the next mentioning message and wraps around.
@@ -1361,6 +1365,8 @@ struct ChatView: View {
                                 },
                                 onTapReplyQuote: { targetID in
                                     guard vm.messages.contains(where: { $0.id == targetID }) else { return }
+                                    // Remember the reply we jumped FROM so the chevron returns here.
+                                    replyReturnID = msg.id
                                     pendingScrollID = targetID
                                     withAnimation(.easeIn(duration: 0.2)) {
                                         flashHighlightID = targetID
@@ -1420,6 +1426,8 @@ struct ChatView: View {
                         .id(Self.bottomAnchorID)
                         .onAppear {
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
+                            // Reached the bottom on your own → drop any stale reply-return target.
+                            replyReturnID = nil
                         }
                         .onDisappear {
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = true }
@@ -1700,25 +1708,33 @@ struct ChatView: View {
             if showScrollToBottom {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                    }
-                    // A tap mid-fling used to do nothing: the deceleration's
-                    // own offset updates override the animated scrollTo (beta
-                    // report; Telegram honours the tap). After the animation
-                    // window, re-assert the target for a short burst — each
-                    // tick re-snaps against the CURRENT offset, beating any
-                    // leftover momentum.
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 350_000_000)
-                        let endDate = Date().addingTimeInterval(0.25)
-                        while showScrollToBottom, Date() < endDate {
-                            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                            try? await Task.sleep(nanoseconds: 16_000_000)
+                    if let ret = replyReturnID {
+                        // Return to the reply a quote-jump came FROM, not the bottom.
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(ret, anchor: .center)
                         }
-                        // The jump consumed everything below, even rows that
-                        // never got to fire onAppear on the way down.
-                        vm.clearUnreadBelow()
+                        replyReturnID = nil
+                    } else {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                        }
+                        // A tap mid-fling used to do nothing: the deceleration's
+                        // own offset updates override the animated scrollTo (beta
+                        // report; Telegram honours the tap). After the animation
+                        // window, re-assert the target for a short burst — each
+                        // tick re-snaps against the CURRENT offset, beating any
+                        // leftover momentum.
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 350_000_000)
+                            let endDate = Date().addingTimeInterval(0.25)
+                            while showScrollToBottom, Date() < endDate {
+                                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                                try? await Task.sleep(nanoseconds: 16_000_000)
+                            }
+                            // The jump consumed everything below, even rows that
+                            // never got to fire onAppear on the way down.
+                            vm.clearUnreadBelow()
+                        }
                     }
                 } label: {
                     Image(systemName: "chevron.down")
