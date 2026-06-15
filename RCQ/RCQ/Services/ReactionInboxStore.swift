@@ -133,3 +133,45 @@ final class MentionInboxStore: ObservableObject {
         UserDefaults.standard.set(Array(threads), forKey: Self.storageKey)
     }
 }
+
+/// Per-group high-water mark of the newest @mention the user has already SEEN
+/// (epoch seconds). The in-chat @-jump FAB counts only mentions NEWER than
+/// this, so reopening a thread you've already read doesn't resurface the FAB
+/// for old mentions — the "собачка always shows / jumps to an old mention"
+/// report. Advanced on chat close to the newest loaded mention; monotonic.
+@MainActor
+final class MentionSeenStore: ObservableObject {
+    static let shared = MentionSeenStore()
+
+    @Published private(set) var seenAt: [Int: Double] = [:]   // group id → epoch seconds
+
+    private static let storageKey = "rcq.mention_seen_at"
+
+    private init() {
+        if let stored = UserDefaults.standard.dictionary(forKey: Self.storageKey) as? [String: Double] {
+            seenAt = stored.reduce(into: [:]) { acc, kv in if let g = Int(kv.key) { acc[g] = kv.value } }
+        }
+    }
+
+    /// The cut-off: only mentions sent AFTER this are still "unseen".
+    func lastSeen(group id: Int) -> Date {
+        Date(timeIntervalSince1970: seenAt[id] ?? 0)
+    }
+
+    /// Mark every mention up to [date] in [group] as seen. Monotonic — never
+    /// moves the cut-off backwards.
+    func markSeen(group id: Int, upTo date: Date) {
+        let t = date.timeIntervalSince1970
+        guard t > (seenAt[id] ?? 0) else { return }
+        seenAt[id] = t
+        UserDefaults.standard.set(
+            seenAt.reduce(into: [String: Double]()) { $0[String($1.key)] = $1.value },
+            forKey: Self.storageKey
+        )
+    }
+
+    func wipe() {
+        seenAt = [:]
+        UserDefaults.standard.removeObject(forKey: Self.storageKey)
+    }
+}

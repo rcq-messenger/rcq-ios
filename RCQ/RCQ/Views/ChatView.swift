@@ -409,8 +409,13 @@ struct ChatView: View {
     private var mentionIDs: [UUID] {
         guard vm.target.thread.isGroup else { return [] }
         let me = AuthService.shared.ownUIN ?? -1
+        // Only mentions NEWER than the per-group seen cut-off. Reopening a
+        // thread you've already read must not resurface the @-jump FAB for
+        // mentions you saw last time (the "@ FAB always shows" report); a
+        // genuinely new mention (newer sentAt) still brings it back.
+        let seen = MentionSeenStore.shared.lastSeen(group: vm.target.thread.rawKey)
         return vm.messages
-            .filter { $0.senderUIN != me && MessageService.shared.bodyMentionsMe($0.text) }
+            .filter { $0.senderUIN != me && $0.sentAt > seen && MessageService.shared.bodyMentionsMe($0.text) }
             .map { $0.id }
     }
 
@@ -749,6 +754,16 @@ struct ChatView: View {
         .onDisappear {
             teardownScreenSecure()
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
+            // Mark every currently-loaded @mention as seen so the @-jump FAB
+            // doesn't resurface for them when this read thread is reopened.
+            if vm.target.thread.isGroup {
+                let me = AuthService.shared.ownUIN ?? -1
+                if let newest = vm.messages
+                    .filter({ $0.senderUIN != me && MessageService.shared.bodyMentionsMe($0.text) })
+                    .map({ $0.sentAt }).max() {
+                    MentionSeenStore.shared.markSeen(group: vm.target.thread.rawKey, upTo: newest)
+                }
+            }
         }
         .onChange(of: chatSettings.secureByThread) { _ in reconcileScreenSecure() }
         .modifier(InPlaceTranslator(vm: vm))
