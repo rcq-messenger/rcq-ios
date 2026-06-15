@@ -412,6 +412,13 @@ struct ChatView: View {
             .map { $0.id }
     }
 
+    /// Mentions the user hasn't stepped to yet. The @-FAB steps WITHOUT
+    /// wrapping and HIDES at 0 — tapping the last mention dismisses it instead
+    /// of leaving the FAB up forever with the full count (the "собачка always
+    /// shows" bug). A new inbound mention grows the list past the cursor and
+    /// brings the FAB back for it.
+    private var mentionsLeft: Int { max(0, mentionIDs.count - mentionCursor) }
+
     /// Scroll to `id` (centered) and pulse the transient bubble highlight,
     /// clearing it after the same 1.4s window the reply-jump uses. Shared by
     /// the mention-jump FAB and the reaction-jump-on-open.
@@ -1630,14 +1637,16 @@ struct ChatView: View {
             // scroll-to-bottom chevron, stepping through the open thread's
             // messages that @mention me (Telegram-style). Shown whenever the
             // thread has any such message, independent of scroll position.
-            if !mentionIDs.isEmpty {
+            if mentionsLeft > 0 {
                 Button {
                     let ids = mentionIDs
                     guard !ids.isEmpty else { return }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    let idx = mentionCursor % ids.count
+                    let idx = min(mentionCursor, ids.count - 1)
                     jumpAndFlash(to: ids[idx], proxy: proxy)
-                    mentionCursor = (idx + 1) % ids.count
+                    // Advance WITHOUT wrapping: stepping past the last mention
+                    // takes the cursor to count, hiding the FAB (mentionsLeft 0).
+                    mentionCursor = idx + 1
                 } label: {
                     Image(systemName: "at")
                         .font(.system(size: 16, weight: .semibold))
@@ -1651,8 +1660,8 @@ struct ChatView: View {
                         // are still in the thread (mirrors the chevron's unread
                         // badge styling).
                         .overlay(alignment: .topTrailing) {
-                            if mentionIDs.count > 1 {
-                                Text(mentionIDs.count > 99 ? "99+" : "\(mentionIDs.count)")
+                            if mentionsLeft > 1 {
+                                Text(mentionsLeft > 99 ? "99+" : "\(mentionsLeft)")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
