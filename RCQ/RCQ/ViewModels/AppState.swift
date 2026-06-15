@@ -1158,12 +1158,19 @@ final class AppState: ObservableObject {
                 if !viewing { GroupService.shared.incrementUnread(id) }
                 title = GroupService.shared.find(id)?.name ?? "Group"
             }
-            // Muted thread: it still counts as unread (incremented above) and
-            // lands in the chat, but produces NO banner, NO sound, and NO
-            // backgrounded local notification — mute means silent everywhere,
-            // inside the app too.
-            let muted = SoundService.shared.isMuted(thread: thread)
-            let bannerShown = !muted && MessageBannerService.shared.tryPresent(
+            // Notification mode: .none = silent everywhere (still unread + in
+            // the chat, but NO banner/sound/local-notification). .mentions =
+            // same suppression UNLESS this message @mentions us (group only;
+            // 1:1 has no mentions concept so it's only ever .all/.none).
+            let mode = SoundService.shared.notifyMode(thread: thread)
+            let mentionsMe: Bool = {
+                if case .group = thread, let t = latest?.text {
+                    return MessageService.shared.bodyMentionsMe(t)
+                }
+                return false
+            }()
+            let suppressed = (mode == .none) || (mode == .mentions && !mentionsMe)
+            let bannerShown = !suppressed && MessageBannerService.shared.tryPresent(
                 thread: thread, title: title, body: preview,
             )
             // Sound is tied to banner visibility — silent when the
@@ -1173,7 +1180,7 @@ final class AppState: ObservableObject {
             if bannerShown {
                 SoundService.shared.playIncoming(fromUIN: sender, thread: thread)
             }
-            if !muted {
+            if !suppressed {
                 NotificationService.shared.presentIfBackgrounded(
                     title: title, body: preview, threadKey: "\(thread.kindString)-\(thread.rawKey)"
                 )

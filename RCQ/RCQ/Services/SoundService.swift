@@ -50,6 +50,18 @@ final class SoundService: ObservableObject {
         (UserDefaults.standard.array(forKey: "sound.muted_threads") as? [String]) ?? []
     )
 
+    /// Per-thread "mentions only" set (group threads). Disjoint from
+    /// `mutedThreads`: a thread is at most one of all/mentions/none.
+    @Published private(set) var mentionsOnlyThreads: Set<String> = Set(
+        (UserDefaults.standard.array(forKey: "sound.mentions_only_threads") as? [String]) ?? []
+    )
+
+    /// Per-thread notification preference. `.none` = silent everywhere
+    /// (server-backed mute). `.mentions` = quiet except when @mentioned
+    /// (client-side; the server still pushes since it can't read sealed
+    /// content, and the NSE/foreground gate filters). `.all` = default.
+    enum NotifyMode: String { case all, mentions, none }
+
     private var players: [Cue: AVAudioPlayer] = [:]
 
     private init() {
@@ -117,6 +129,44 @@ final class SoundService: ObservableObject {
 
     func isMuted(thread: ThreadID) -> Bool {
         mutedThreads.contains(Self.key(for: thread))
+    }
+
+    /// Current 3-way notification mode for a thread.
+    func notifyMode(thread: ThreadID) -> NotifyMode {
+        let k = Self.key(for: thread)
+        if mutedThreads.contains(k) { return .none }
+        if mentionsOnlyThreads.contains(k) { return .mentions }
+        return .all
+    }
+
+    /// Set the 3-way notification mode. `.none` flips the server-backed mute
+    /// on (so the fan-out skips the push entirely); `.mentions`/`.all` clear
+    /// it (the client filters instead). The mentions-only group set is
+    /// mirrored to the App Group so the NSE can drop non-mention pushes.
+    func setNotifyMode(_ mode: NotifyMode, thread: ThreadID) {
+        let k = Self.key(for: thread)
+        let wasMuted = mutedThreads.contains(k)
+        switch mode {
+        case .none:     mutedThreads.insert(k);  mentionsOnlyThreads.remove(k)
+        case .mentions: mutedThreads.remove(k);  mentionsOnlyThreads.insert(k)
+        case .all:      mutedThreads.remove(k);  mentionsOnlyThreads.remove(k)
+        }
+        UserDefaults.standard.set(Array(mutedThreads), forKey: "sound.muted_threads")
+        UserDefaults.standard.set(Array(mentionsOnlyThreads), forKey: "sound.mentions_only_threads")
+        // Server push-mute reflects ONLY the none-state (server can't tell a
+        // mention from sealed content). Only call when it actually changed.
+        let nowMuted = (mode == .none)
+        if nowMuted != wasMuted {
+            switch thread {
+            case .peer(let uin):  Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted) }
+            case .group(let gid): Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted) }
+            }
+        }
+        // Mirror the mentions-only GROUP ids to the App Group for the NSE.
+        let mentionGroupIDs: [Int] = mentionsOnlyThreads.compactMap { key in
+            key.hasPrefix("group:") ? Int(key.dropFirst("group:".count)) : nil
+        }
+        MutedStore.shared.setMentionsOnlyGroups(mentionGroupIDs)
     }
 
     func toggleMute(thread: ThreadID) {

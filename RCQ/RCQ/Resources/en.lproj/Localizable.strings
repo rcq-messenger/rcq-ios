@@ -1018,6 +1018,12 @@
 "group.notifications.unmute" = "Unmute notifications";
 "group.notifications.muted.hint" = "Messages arrive silently, no banner.";
 "group.notifications.unmuted.hint" = "Messages arrive with sound and banner.";
+"group.notify.all" = "All messages";
+"group.notify.all.hint" = "Notify me about every message.";
+"group.notify.mentions" = "Mentions only";
+"group.notify.mentions.hint" = "Quiet, but still notify when someone mentions me.";
+"group.notify.none" = "None";
+"group.notify.none.hint" = "Silent everywhere, no banner or sound.";
 "group.members.show_more" = "Show all (+%d)";
 "group.members.collapse" = "Show less";
 "group.members.search" = "Search members";

@@ -105,7 +105,14 @@ final class MutedStore {
     // a STALE snapshot — so a freshly-muted group/user still pushed (the exact
     // bug). The file dodges that layer (same fix as AppGroup.languageFileURL).
     // UserDefaults is kept written for back-compat with in-flight installs.
-    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int] }
+    // `mentionGroupIDs` is the "mentions only" set: groups the user wants
+    // QUIET for ordinary messages but still surfaced when @mentioned. It is
+    // OPTIONAL in the Codable so a muted.json written by an older build (no
+    // such field) still decodes. None-mode groups live in `groupIDs` (the
+    // server-backed mute), mentions-only groups live here (client-only —
+    // the server can't read sealed content to know about a mention).
+    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int]; var mentionGroupIDs: [Int]? }
+    private static let mentionGroupKey = "rcq.mention_only_group_ids"
     private var fileURL: URL { AppGroup.containerURL.appendingPathComponent("muted.json") }
 
     private func read() -> Lists {
@@ -117,17 +124,34 @@ final class MutedStore {
         return Lists(
             uins: (defaults.array(forKey: Self.uinKey) as? [Int]) ?? [],
             groupIDs: (defaults.array(forKey: Self.groupKey) as? [Int]) ?? [],
+            mentionGroupIDs: (defaults.array(forKey: Self.mentionGroupKey) as? [Int]) ?? [],
         )
     }
 
     func isMuted(_ uin: Int) -> Bool { read().uins.contains(uin) }
     func isGroupMuted(_ groupID: Int) -> Bool { read().groupIDs.contains(groupID) }
+    /// Group set to "mentions only" — the NSE drops a group push that
+    /// doesn't mention the user (and, for an undecryptable sender-keys
+    /// `gmsg`, drops it outright since a mention can't be verified
+    /// out-of-process; the in-app path catches mentions when online).
+    func isGroupMentionsOnly(_ groupID: Int) -> Bool { (read().mentionGroupIDs ?? []).contains(groupID) }
 
-    /// Mirror the authoritative lists from NotificationPrefsService.
+    /// Mirror the authoritative muted lists from NotificationPrefsService.
+    /// Preserves the client-only mentions-only set (not server-backed).
     func setMuted(uins: [Int], groupIDs: [Int]) {
+        let mentions = read().mentionGroupIDs ?? []
         defaults.set(uins, forKey: Self.uinKey)
         defaults.set(groupIDs, forKey: Self.groupKey)
-        if let data = try? JSONEncoder().encode(Lists(uins: uins, groupIDs: groupIDs)) {
+        if let data = try? JSONEncoder().encode(Lists(uins: uins, groupIDs: groupIDs, mentionGroupIDs: mentions)) {
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+
+    /// Mirror the mentions-only group set (client-only) for the NSE.
+    func setMentionsOnlyGroups(_ groupIDs: [Int]) {
+        let cur = read()
+        defaults.set(groupIDs, forKey: Self.mentionGroupKey)
+        if let data = try? JSONEncoder().encode(Lists(uins: cur.uins, groupIDs: cur.groupIDs, mentionGroupIDs: groupIDs)) {
             try? data.write(to: fileURL, options: .atomic)
         }
     }
@@ -135,6 +159,7 @@ final class MutedStore {
     func wipe() {
         defaults.removeObject(forKey: Self.uinKey)
         defaults.removeObject(forKey: Self.groupKey)
+        defaults.removeObject(forKey: Self.mentionGroupKey)
         try? FileManager.default.removeItem(at: fileURL)
     }
 }
