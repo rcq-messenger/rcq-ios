@@ -4,6 +4,7 @@ import SwiftUI
 struct UserInfoView: View {
     let uin: Int
     let isOwn: Bool
+    @Environment(\.dismiss) private var dismiss
 
     @State private var profile: UserProfile?
     /// §5c: the peer's island when this is a cross-island contact (gray flower,
@@ -156,6 +157,19 @@ struct UserInfoView: View {
             .disabled(!saveEnabled)
         } else if let p = profile {
             Menu {
+                // Open the 1:1 chat — shown only when the person is already a
+                // contact (mutually exclusive with Add-to-contacts below).
+                if ContactService.shared.contacts.contains(where: { $0.uin == p.uin }) {
+                    Button {
+                        // Set the intent BEFORE dismissing (the root NavigationStack
+                        // consumes pendingOpenChatUIN; dismissing tears this sheet out).
+                        AppState.shared.pendingOpenChatUIN = p.uin
+                        dismiss()
+                    } label: {
+                        Label("profile.cta.open_chat".localized, systemImage: "bubble.left.and.bubble.right")
+                    }
+                    Divider()
+                }
                 // Add-to-contacts: shown only when target isn't the
                 // viewer themselves and isn't already a confirmed
                 // contact. If the user already sent the same request
