@@ -309,14 +309,21 @@ struct MessageRow: View {
     private var nonTextBubble: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
             if showSender { senderLabel }
-            forwardedLabel
-            replyQuote
-            HStack(alignment: .bottom, spacing: 6) {
+            // Forwarded label + reply quote share a LEFT edge with the media,
+            // same fix as plainTextBubble. On an outgoing media reply the
+            // trailing-aligned quote used to float right of the media's left
+            // edge (the "crooked reply quote" on my own photos/videos). The
+            // media self-sizes (PhotoBubble/VideoBubble are a fixed width), so
+            // dropping the per-content trailing frame is safe; the whole block
+            // is still right-positioned for outgoing by the outer maxWidth cap.
+            // metaRow stays OUTSIDE this block so the time/ticks keep their
+            // bottom-right placement.
+            VStack(alignment: .leading, spacing: 2) {
+                forwardedLabel
+                replyQuote
                 bubbleContent
-                    // Determinate width cap so the body wraps at a fixed width
-                    // and the LazyVStack measures its height right on first layout.
-                    .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             }
+            .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             metaRow
         }
     }
