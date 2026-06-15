@@ -131,18 +131,32 @@ final class CallService: ObservableObject {
             print("[CallService] accept() ignored, state not incomingRinging")
             return
         }
-        print("[CallService] accept requested -> CallKit (callID=\(c.id))")
         // Set BEFORE routing through CallKit so a CallKit auto-end that races
         // the answer (iOS 26) is recognised as spurious in endFromCallKit.
         answering = true
+        #if targetEnvironment(simulator)
+        // No CallKit on the simulator — answer the handshake straight away.
+        print("[CallService] accept (simulator) -> direct handshake, no CallKit (callID=\(c.id))")
+        performAnswerHandshake()
+        #else
+        print("[CallService] accept requested -> CallKit (callID=\(c.id))")
         CallProvider.shared.requestAnswerCall(callID: c.id)
+        #endif
     }
 
     func decline() {
         guard case .incomingRinging(let c) = state else { return }
-        print("[CallService] decline requested -> CallKit (callID=\(c.id))")
         answering = false
+        #if targetEnvironment(simulator)
+        print("[CallService] decline (simulator) -> direct end (callID=\(c.id))")
+        sendEnd(call: c, reason: "declined")
+        state = .ended(c, reason: "declined")
+        teardownAfterEnd()
+        scheduleEndedClear()
+        #else
+        print("[CallService] decline requested -> CallKit (callID=\(c.id))")
         CallProvider.shared.requestEndCall(callID: c.id)
+        #endif
     }
 
     func hangUp() {
@@ -172,16 +186,24 @@ final class CallService: ObservableObject {
 
     /// CXAnswerCallAction handler; runs the WebRTC handshake.
     func acceptFromCallKit(uuid: UUID) {
+        performAnswerHandshake()
+    }
+
+    /// Runs the WebRTC answer + ships `call_answer`. Shared by the CallKit
+    /// CXAnswerCallAction path and the simulator's direct-accept path — CallKit
+    /// can't present an incoming call on the simulator (reportNewIncomingCall
+    /// "succeeds" then iOS instantly auto-ends), so the sim answers without it.
+    private func performAnswerHandshake() {
         guard case .incomingRinging(let c) = state,
               let offerSdp = pendingRemoteOffer
         else {
-            print("[CallService] acceptFromCallKit ignored, state=\(state)")
+            print("[CallService] performAnswerHandshake ignored, state=\(state)")
             answering = false
             return
         }
         answering = true
         let call = c
-        print("[CallService] acceptFromCallKit running handleOffer (callID=\(call.id))")
+        print("[CallService] performAnswerHandshake running handleOffer (callID=\(call.id))")
         Task {
             do {
                 let answerSdp = try await WebRTCManager.shared.handleOffer(
@@ -748,11 +770,19 @@ final class CallService: ObservableObject {
         answering = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
+        #if targetEnvironment(simulator)
+        // CallKit can't present an incoming call on the simulator (it
+        // reportNewIncomingCall-OKs then instantly fires CXEndCallAction). The
+        // in-app CallScreen (fullScreenCover on .incomingRinging) shows
+        // Answer/Decline instead, so the sim can actually receive calls.
+        print("[CallService] simulator: in-app incoming UI, skipping CallKit (callID=\(callID))")
+        #else
         CallProvider.shared.reportIncoming(
             callID: callID,
             peerName: displayName,
             hasVideo: media == .video
         )
+        #endif
     }
 
     private func callKitReason(forWireReason reason: String) -> CXCallEndedReason {
