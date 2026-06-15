@@ -802,6 +802,40 @@ final class AppState: ObservableObject {
     /// reason to the user. Returns true on a successful add even if
     /// the subsequent register fails (the user can retry via the
     /// switcher; the dangling account stays in the roster).
+    /// Outcome of resolving a pasted access token for a (possibly closed) island.
+    enum ResolvedToken: Equatable {
+        case open               // public island / empty token — no header
+        case durable(String)    // redeemed invite -> durable device token
+        case keep(String)       // standing token or a transient error — use as-is
+        case badToken           // gated island, token wrong/expired -> abort
+        var token: String? {
+            switch self {
+            case .durable(let t), .keep(let t): return t
+            default: return nil
+            }
+        }
+    }
+
+    private static func hostOnly(_ serverURL: String) -> String {
+        let s = serverURL.trimmingCharacters(in: .whitespaces)
+        let withScheme = s.contains("://") ? s : "https://\(s)"
+        return URLComponents(string: withScheme)?.host ?? s
+    }
+
+    /// Redeem a pasted access token for `serverURL`. A one-time invite is
+    /// exchanged for a durable per-device token (so it's actually consumed); an
+    /// open island returns `.open`; a bad token returns `.badToken` (caller aborts).
+    static func resolveAccessToken(serverURL: String, entered: String?) async -> ResolvedToken {
+        guard let t = entered?.trimmingCharacters(in: .whitespaces), !t.isEmpty else { return .open }
+        let host = hostOnly(serverURL)
+        switch await AccessRedeemer.redeem(host: host, entered: t) {
+        case .ok: return .durable(AccessTokenStore.token(for: host) ?? t)
+        case .noGate: return .open
+        case .badToken: return .badToken
+        case .error: return .keep(t)   // standing token / blip — keep the entered token
+        }
+    }
+
     @discardableResult
     func addAccount(serverURL: String, serverToken: String? = nil, invite: String? = nil) async -> Bool {
         // Stash the server-join invite for the fresh register that boot() runs
@@ -810,13 +844,22 @@ final class AppState: ObservableObject {
         if let invite, !invite.isEmpty {
             UserDefaults.standard.set(invite, forKey: Self.pendingServerInviteKey)
         }
+        // Closed (masquerade) island: a one-time INVITE access token must be
+        // redeemed into a durable per-device token here, else stamping the raw
+        // invite forever would never consume it (= reshareable). Returns the
+        // durable; nil on an open island; aborts on a bad token.
+        let effToken = await Self.resolveAccessToken(serverURL: serverURL, entered: serverToken)
+        if effToken == .badToken {
+            UserDefaults.standard.removeObject(forKey: Self.pendingServerInviteKey)
+            return false
+        }
         // AccountManager.add also setActive(new.id) and triggers
         // mirrorActiveToLegacy → App Group file + rcq.baseURL
         // already point at the new account by the time
         // rebootForActiveAccount runs. serverToken optional; non-nil
         // for self-host backends behind a Caddy X-RCQ-Auth gate, nil
         // for public deployments (api.rcq.app, default self-host).
-        guard AccountManager.shared.add(serverURL: serverURL, serverToken: serverToken) != nil else {
+        guard AccountManager.shared.add(serverURL: serverURL, serverToken: effToken.token) != nil else {
             UserDefaults.standard.removeObject(forKey: Self.pendingServerInviteKey)
             return false
         }
@@ -862,8 +905,14 @@ final class AppState: ObservableObject {
             }
         } catch { return "recovery.restore.error.generic".localized }
 
+        // Closed island: redeem a one-time invite into a durable token before the
+        // recover probes (which need the gate header to get through).
+        let resolved = await Self.resolveAccessToken(serverURL: serverURL, entered: serverToken)
+        if resolved == .badToken { return "access_token.bad".localized }
+        let effToken = resolved.token
+
         let previousActiveID = AccountManager.shared.activeAccountID
-        guard let acct = AccountManager.shared.add(serverURL: serverURL, serverToken: serverToken) else {
+        guard let acct = AccountManager.shared.add(serverURL: serverURL, serverToken: effToken) else {
             return String(format: "add_account.limit".localized, AccountManager.maxAccounts)
         }
         // The new account is now active: AccountManager.add already mirrored
@@ -877,8 +926,9 @@ final class AppState: ObservableObject {
         AuthService.shared.resetForAccountSwitch()
         // A private island gates ALL requests behind a Caddy X-RCQ-Auth header,
         // so the (user-)unauthenticated recover probes still need the masquerade
-        // token to get through. Nil for public backends.
-        await APIClient.shared.setServerToken(serverToken)
+        // token to get through. Nil for public backends. effToken = the redeemed
+        // durable token (or the entered standing token), never the raw invite.
+        await APIClient.shared.setServerToken(effToken)
         await APIClient.shared.setToken(nil)
         _ = await APIClient.shared.refreshActiveBase()
 
