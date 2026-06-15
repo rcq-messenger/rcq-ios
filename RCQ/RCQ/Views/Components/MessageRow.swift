@@ -327,23 +327,31 @@ struct MessageRow: View {
         return VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 3) {
                 if showSender { senderLabel }
-                forwardedLabel
-                replyQuote
-                EmoticonText(
-                    text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
-                    members: currentGroupMembers,
-                    uinNick: uinNick
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                if collapsed {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.18)) { bodyExpanded = true }
-                    } label: {
-                        Text("chat.show_more".localized)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Theme.Color.accent)
+                // Reply quote + body always share a LEFT edge, regardless of which
+                // side the bubble is on, so the accent bar lines up with the
+                // message text. In a trailing-aligned (outgoing) VStack the wider
+                // quote and the shorter body diverged left — the "crooked reply on
+                // my own messages". Keeping the meta row OUTSIDE this leading block
+                // preserves the bottom-right time/ticks for outgoing.
+                VStack(alignment: .leading, spacing: 3) {
+                    forwardedLabel
+                    replyQuote
+                    EmoticonText(
+                        text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
+                        members: currentGroupMembers,
+                        uinNick: uinNick
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                    if collapsed {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) { bodyExpanded = true }
+                        } label: {
+                            Text("chat.show_more".localized)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Theme.Color.accent)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 metaRow
             }
