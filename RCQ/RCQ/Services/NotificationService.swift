@@ -72,11 +72,11 @@ final class NotificationService: ObservableObject {
         if !force && !aged && UserDefaults.standard.string(forKey: Self.lastSentTokenKey) == cacheKey {
             return
         }
-        struct Body: Encodable { let token: String; let platform: String }
+        struct Body: Encodable { let token: String; let platform: String; let device_id: String }
         do {
             let _: EmptyResponse = try await APIClient.shared.request(
                 "POST", "/users/me/push-token",
-                body: Body(token: token, platform: "ios")
+                body: Body(token: token, platform: "ios", device_id: KeychainStore.deviceID())
             )
             UserDefaults.standard.set(cacheKey, forKey: Self.lastSentTokenKey)
             UserDefaults.standard.set(now, forKey: Self.lastSentAtKey)
