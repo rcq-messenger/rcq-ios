@@ -1232,6 +1232,7 @@
 "profile.audience.last_7" = "· за 7 дней";
 "profile.cta.propose_trade" = "Предложить обмен";
 "profile.cta.add_contact" = "Добавить в контакты";
+"profile.cta.open_chat" = "Открыть чат";
 "profile.cta.view_inventory" = "Открыть инвентарь";
 "profile.cta.reset_session" = "Сбросить защищённую сессию";
 "profile.cta.share_my_rcq" = "Поделиться RCQ";

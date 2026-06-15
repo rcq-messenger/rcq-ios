@@ -1118,10 +1118,15 @@ struct ChatView: View {
                     .tint(.red)
                 }
             case .group:
-                Button {
-                    showTTLPicker = true
-                } label: {
-                    Label(disappearingLabel, systemImage: ttlActive ? "clock.fill" : "clock")
+                // Hide the disappearing-timer toggle when you can't post here
+                // (owner-only broadcast group, non-owner): setting a TTL you can't
+                // act on is meaningless. Read-only => broadcastReadOnly != nil.
+                if vm.target.broadcastReadOnly(viewerUIN: AuthService.shared.ownUIN) == nil {
+                    Button {
+                        showTTLPicker = true
+                    } label: {
+                        Label(disappearingLabel, systemImage: ttlActive ? "clock.fill" : "clock")
+                    }
                 }
                 // Premium-content moved entirely to the `+` attach menu —
                 // same entry point as Photo / Video / Camera, since
