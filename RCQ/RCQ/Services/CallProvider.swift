@@ -29,16 +29,15 @@ final class CallProvider: NSObject, @unchecked Sendable {
         let rtcSession = RTCAudioSession.sharedInstance()
         rtcSession.useManualAudio = true
         rtcSession.isAudioEnabled = false
-        // Pre-configure category at startup; otherwise CallKit's CXStartCallAction
-        // activation can land while category is still .soloAmbient, libwebrtc rejects
-        // the device and the outgoing call drops a moment after dialing.
-        rtcSession.lockForConfiguration()
-        try? rtcSession.setCategory(
-            AVAudioSession.Category.playAndRecord,
-            with: [.allowBluetoothHFP, .defaultToSpeaker]
-        )
-        try? rtcSession.setMode(AVAudioSession.Mode.voiceChat)
-        rtcSession.unlockForConfiguration()
+        // Do NOT pre-configure the playAndRecord/voiceChat category at app
+        // startup. iOS 26's CallKit treats a held voice-call audio session as an
+        // already-active call and AUTO-ENDS a freshly reported incoming call
+        // (~2s CXEndCallAction before the user can answer — the "call declined"
+        // regression). The category is set per-call instead: WebRTCManager does
+        // it in createOffer (outgoing) / handleOffer (inbound), and `didActivate`
+        // below sets it right before CallKit activates the session. The old
+        // startup config was for an outgoing CXStartCallAction path that no
+        // longer exists (outgoing bypasses CallKit), so it was pure downside.
     }
 
     // MARK: - mapping helpers (lock-protected, callable from any thread)
@@ -209,6 +208,16 @@ extension CallProvider: CXProviderDelegate {
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("[CallProvider] didActivate audio session")
         let rtcSession = RTCAudioSession.sharedInstance()
+        // Ensure the voice-call category is in place before activation. On answer
+        // this and WebRTCManager.handleOffer's per-call config can run in either
+        // order, so set it here too (now that it's no longer pinned at startup).
+        rtcSession.lockForConfiguration()
+        try? rtcSession.setCategory(
+            AVAudioSession.Category.playAndRecord,
+            with: [.allowBluetoothHFP, .defaultToSpeaker]
+        )
+        try? rtcSession.setMode(AVAudioSession.Mode.voiceChat)
+        rtcSession.unlockForConfiguration()
         rtcSession.audioSessionDidActivate(audioSession)
         rtcSession.isAudioEnabled = true
     }
