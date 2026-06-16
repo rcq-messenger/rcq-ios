@@ -94,6 +94,13 @@ final class ChatViewModel: ObservableObject {
             self.messages = MessageStore.shared.threads[thread] ?? []
             MessageStore.shared.$threads
                 .map { $0[thread] ?? [] }
+                // MessageStore publishes the WHOLE thread dictionary on any
+                // thread's mutation. Without this, an UNRELATED thread's
+                // reaction/read-receipt re-emits this thread's (unchanged)
+                // array, re-firing the O(n) computeGroupedUnits sink + a full
+                // list diff. Message is Equatable, so only re-emit when THIS
+                // thread's messages actually changed.
+                .removeDuplicates()
                 .assign(to: &$messages)
             self.fadingOutIDs = MessageStore.shared.fadingOutIDs
             MessageStore.shared.$fadingOutIDs

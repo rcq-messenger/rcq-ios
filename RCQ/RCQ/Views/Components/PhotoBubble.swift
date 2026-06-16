@@ -24,6 +24,28 @@ struct PhotoBubble: View {
     @State private var fullscreen = false
     @StateObject private var progress = MediaProgressStore.shared
 
+    init(message: Message, maxWidth: CGFloat = 240, forcedSize: CGSize? = nil, disableTap: Bool = false) {
+        self.message = message
+        self.maxWidth = maxWidth
+        self.forcedSize = forcedSize
+        self.disableTap = disableTap
+        // Warm-cache seed: if this photo is already decrypted+decoded, show it
+        // on the FIRST frame — skips the `.task` actor hop, the nil->image
+        // placeholder flash, and a redundant re-decode every time the cell
+        // recycles into view while scrolling a media-heavy thread. Seed only
+        // when BOTH image+data are cached so a GIF never sticks on a static
+        // frame; otherwise fall through to the normal async load().
+        if let raw = message.mediaID {
+            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+            if parts.count == 2,
+               let img = MediaService.shared.cachedImage(mediaID: parts[0], keyBase64: parts[1]),
+               let data = MediaService.shared.cachedData(mediaID: parts[0], keyBase64: parts[1]) {
+                _image = State(initialValue: img)
+                _gifData = State(initialValue: AnimatedGIFView.isGIF(data) ? data : nil)
+            }
+        }
+    }
+
     private var didFailUpload: Bool {
         message.mediaID == nil && message.deliveryState == .failed
     }
@@ -123,6 +145,9 @@ struct PhotoBubble: View {
     }
 
     private func load() async {
+        // The warm-cache seed (init) already populated `image` — don't re-hop
+        // the actor or re-decode.
+        if image != nil { return }
         loadFailed = false
         guard let raw = message.mediaID else { return }
         let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)

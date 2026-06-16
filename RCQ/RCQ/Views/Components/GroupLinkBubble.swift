@@ -206,6 +206,11 @@ enum GroupLinkParser {
     }
 
     static func parse(_ body: String) -> (groupID: Int, host: String?, url: URL)? {
+        // Cheap substring pre-gate: only group-share links carry these tokens.
+        // Skips the trim allocation + URL(string:) construction for ordinary
+        // text bubbles, which call this every render (isPlainTextBubble + the
+        // group-link branch). Matches parse's own host/scheme checks below.
+        guard body.contains("rcq.app/g/") || body.contains("rcq://group") else { return nil }
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         guard let url = URL(string: trimmed) else { return nil }

@@ -165,6 +165,11 @@ enum LinkDetector {
 
     static func firstURL(in text: String) -> URL? {
         guard let detector, !text.isEmpty else { return nil }
+        // Cheap substring pre-gate: skip the full NSDataDetector scan for the
+        // vast majority of bodies that contain no URL. Mirrors
+        // EmoticonText.linkify's gate so inline link styling and preview cards
+        // agree on what counts as a link. Called per text bubble per render.
+        guard text.contains("://") || text.contains("www.") else { return nil }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         if let match = detector.firstMatch(in: text, options: [], range: range),
            let url = match.url,
