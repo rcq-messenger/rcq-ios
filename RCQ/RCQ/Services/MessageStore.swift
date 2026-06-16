@@ -104,7 +104,8 @@ final class MessageStore: ObservableObject {
                 return msg.sentAt.addingTimeInterval(TimeInterval(ttl)) >= now
             }
             if kept.count != msgs.count {
-                let toDelete = msgs.filter { keep in !kept.contains(where: { $0.id == keep.id }) }
+                let keptIDs = Set(kept.map(\.id))
+                let toDelete = msgs.filter { !keptIDs.contains($0.id) }
                 withAnimation(.easeInOut(duration: 0.25)) {
                     threads[thread] = kept
                 }

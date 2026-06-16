@@ -24,7 +24,7 @@ extension Message {
 /// Self-contained: every dependency travels as an init parameter
 /// (target, callbacks, group-member list for @mention rendering),
 /// so the row knows nothing about the surrounding chat lifecycle.
-struct MessageRow: View {
+struct MessageRow: View, Equatable {
     let message: Message
     let showSender: Bool
     let senderNickname: String
@@ -49,6 +49,29 @@ struct MessageRow: View {
     /// means "no badge" (1:1, open group, or count not yet fetched).
     /// Renders next to the timestamp as `👁 N`.
     var viewCount: Int? = nil
+
+    /// Make the row diff-skippable. Without Equatable, SwiftUI re-runs `body`
+    /// for EVERY realized row on any parent (ChatView) state change — a
+    /// keystroke, an incoming reaction, the flash-highlight timer — and each
+    /// re-run re-executes the per-row text/link/mention helpers. We compare
+    /// ONLY the value inputs that affect rendering; the ~12 escaping closures
+    /// are freshly allocated each parent render and are deliberately ignored
+    /// (they're invoked, never displayed). `@State` (swipe/expand) is unaffected
+    /// — internal state changes always re-render the owning row regardless of
+    /// Equatable. `.equatable()` at the call site turns this into the skip.
+    static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
+        lhs.message == rhs.message
+            && lhs.showSender == rhs.showSender
+            && lhs.senderNickname == rhs.senderNickname
+            && lhs.replyAuthorOverride == rhs.replyAuthorOverride
+            && lhs.displayBody == rhs.displayBody
+            && lhs.isTranslated == rhs.isTranslated
+            && lhs.isHighlighted == rhs.isHighlighted
+            && lhs.isSelected == rhs.isSelected
+            && lhs.showSelectionAffordance == rhs.showSelectionAffordance
+            && lhs.viewCount == rhs.viewCount
+            && lhs.currentGroupMembers == rhs.currentGroupMembers
+    }
 
     /// Resolve a `#<uin>` in the body to a nick (group member / contact) so it
     /// renders as the clickable nick that opens the profile — Android parity.

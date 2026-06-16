@@ -1388,6 +1388,10 @@ struct ChatView: View {
                                 currentGroupMembers: currentGroupMembers,
                                 viewCount: viewCountForBubble(msg)
                             )
+                            // Skip re-running this row's body unless its own
+                            // value inputs changed (see MessageRow.==). Stops
+                            // the per-keystroke/-reaction re-render storm.
+                            .equatable()
                             .onAppear {
                                 pingViewIfCloseGroup(msg)
                                 // Monotonic: as deeper rows appear, fewer unread
