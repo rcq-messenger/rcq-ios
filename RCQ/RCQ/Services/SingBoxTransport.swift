@@ -68,8 +68,10 @@ final class SingBoxTransport {
     }
 
     /// Sticky onion ENTRY guard. Returns the persisted entry if it's still a
-    /// VLESS relay in `pool`; else picks the highest-priority VLESS (pool is
-    /// priority-sorted), persists it, and returns that.
+    /// VLESS relay in `pool`; else falls back to the highest-priority VLESS
+    /// (pool is priority-sorted). The actual SELECTION among trusted entries
+    /// (nearest + spread) happens in `selectEntryIfNeeded()` before the config
+    /// is built — this reader just resolves the pinned tag into a Relay.
     private static func stickyEntry(_ pool: [Relay]) -> Relay {
         if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
            let hit = pool.first(where: { $0.tag == tag }) {
@@ -80,17 +82,78 @@ final class SingBoxTransport {
         return pick
     }
 
+    /// VLESS relays eligible to be the onion ENTRY (hydra step 3). An entry sees
+    /// the client IP (but never the destination), so it must be VETTED: the
+    /// signed-config relays (Ed25519-curated = trusted by provenance) plus broker
+    /// relays the operator promoted to `tier=trusted`. Social-shared relays
+    /// (ContactRelayStore) are deliberately excluded — they only ever serve as
+    /// exits / fallback. Dedup by server:port.
+    static func trustedVlessEntries() -> [Relay] {
+        let combined = RelayConfigStore.shared.currentRelays() + BrokerRelayStore.shared.trustedRelays()
+        var seen = Set<String>()
+        var out: [Relay] = []
+        for r in combined where r.proto == .vless && seen.insert("\(r.server):\(r.port)").inserted {
+            out.append(r)
+        }
+        return out
+    }
+
+    /// Hydra step 3: pick the onion ENTRY among TRUSTED VLESS relays by
+    /// reachability + NEAREST-with-SPREAD, persisted as the sticky guard. Run
+    /// once before building the onion config. A no-op when a valid trusted entry
+    /// is already pinned — that preserves the Tor-guard property (pick once,
+    /// keep; don't reshuffle every launch). Only the FIRST pick (or a pick after
+    /// the pinned entry leaves the trusted set) probes; confirmed-block rotation
+    /// is handled separately by `rotateEntry()`. With a single trusted entry this
+    /// degrades to today's behaviour; it spreads only once >1 trusted entry
+    /// exists (e.g. гидра promotes more domestic relays to trusted).
+    static func selectEntryIfNeeded() async {
+        guard onionMode, !localProxyMode else { return }
+        let candidates = trustedVlessEntries()
+        guard !candidates.isEmpty else { return }   // nothing to choose; buildConfig falls back to pool[0]
+        // Keep the pinned guard if it's still a trusted candidate.
+        if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
+           candidates.contains(where: { $0.tag == tag }) { return }
+        // (Re)select: probe reachability + latency in parallel.
+        let measured: [(tag: String, ms: Double)] = await withTaskGroup(of: (String, Double?).self) { group in
+            for c in candidates {
+                group.addTask { (c.tag, await Self.probeLatencyMS(host: c.server, port: c.port)) }
+            }
+            var ok: [(tag: String, ms: Double)] = []
+            for await (tag, ms) in group { if let ms { ok.append((tag: tag, ms: ms)) } }
+            return ok
+        }
+        let pickTag: String
+        if measured.isEmpty {
+            // Every probe failed (probing the relay port may itself be filtered):
+            // still SPREAD — a random trusted candidate beats always camping pool[0].
+            pickTag = candidates.randomElement()!.tag
+        } else {
+            // NEAREST with SPREAD: pick at random among entries within `tolerance`
+            // of the fastest, so near-equals share load while a clearly-closer
+            // (e.g. domestic) entry still wins.
+            let best = measured.map { $0.ms }.min()!
+            let tolerance = 50.0   // ms — mirrors the urltest tolerance
+            let near = measured.filter { $0.ms <= best + tolerance }
+            pickTag = near.randomElement()!.tag
+        }
+        UserDefaults.standard.set(pickTag, forKey: Keys.onionEntry)
+        print("[SingBoxTransport] onion entry selected -> \(pickTag) (trusted=\(candidates.count), reachable=\(measured.count))")
+    }
+
     /// Rotate the onion ENTRY guard to the next VLESS relay (round-robin),
     /// persisting it. Called when the current entry is confirmed blocked (the
     /// whole onion path dies with its single entry). Returns true when a
     /// different entry was chosen; the caller restarts the transport.
     static func rotateEntry() -> Bool {
         guard !localProxyMode else { return false }   // no onion entry under a user proxy
-        let vless = poolRelays().filter { $0.proto == .vless }
-        guard vless.count >= 2 else { return false }
+        // Rotate only among TRUSTED entries — never onto a community/shared relay
+        // that would then see the client IP.
+        let candidates = trustedVlessEntries()
+        guard candidates.count >= 2 else { return false }
         let cur = UserDefaults.standard.string(forKey: Keys.onionEntry)
-        let idx = vless.firstIndex(where: { $0.tag == cur }) ?? -1
-        let next = vless[(idx + 1) % vless.count]
+        let idx = candidates.firstIndex(where: { $0.tag == cur }) ?? -1
+        let next = candidates[(idx + 1) % candidates.count]
         guard next.tag != cur else { return false }
         UserDefaults.standard.set(next.tag, forKey: Keys.onionEntry)
         print("[SingBoxTransport] onion entry rotated -> \(next.tag)")
@@ -119,6 +182,10 @@ final class SingBoxTransport {
     func start() async throws {
         guard !isActive else { return }
         let service = RcqboxBoxService()
+        // Hydra step 3: settle the sticky onion ENTRY (nearest trusted, spread)
+        // before the config is built. A no-op when an entry is already pinned or
+        // onion is off, so it adds latency only on the first onion engage.
+        await Self.selectEntryIfNeeded()
         let configJSON = Self.buildConfig(port: Self.localPort)
         do {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
@@ -309,6 +376,40 @@ final class SingBoxTransport {
                 if gate.tryClaim() {
                     conn.cancel()
                     cont.resume(returning: false)
+                }
+            }
+        }
+    }
+
+    /// Like `probeTCP` but returns the TCP-connect latency in milliseconds (nil
+    /// on failure/timeout). Used to rank trusted onion-entry candidates.
+    private static func probeLatencyMS(host: String, port: Int, timeoutSec: Double = 4) async -> Double? {
+        await withCheckedContinuation { (cont: CheckedContinuation<Double?, Never>) in
+            let conn = NWConnection(
+                host: NWEndpoint.Host(host),
+                port: NWEndpoint.Port(integerLiteral: UInt16(port)),
+                using: .tcp,
+            )
+            let gate = ProbeGate()
+            let start = DispatchTime.now()
+            conn.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    if gate.tryClaim() {
+                        let ms = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
+                        conn.cancel()
+                        cont.resume(returning: ms)
+                    }
+                case .failed, .cancelled:
+                    if gate.tryClaim() { cont.resume(returning: nil) }
+                default: break
+                }
+            }
+            conn.start(queue: .global(qos: .utility))
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeoutSec) {
+                if gate.tryClaim() {
+                    conn.cancel()
+                    cont.resume(returning: nil)
                 }
             }
         }
