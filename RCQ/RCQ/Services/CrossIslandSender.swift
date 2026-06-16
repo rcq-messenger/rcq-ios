@@ -81,15 +81,27 @@ enum CrossIslandSender {
     }
 
     /// Deposit a pre-sealed blob to `host`'s `/messages/sealed` (no auth — sealed
-    /// sender). Returns true on a 2xx.
+    /// sender). Returns true on a 2xx. When `mintToken` is set, attach an F3
+    /// anonymous blinded deposit token if the island offers one, so the deposit
+    /// isn't throttled by the blunt per-IP cap (and survives a future
+    /// require-token flip). Best-effort — no token = the legacy path. Off for
+    /// real-time call signaling (latency-sensitive).
     @discardableResult
-    static func deposit(host: String, uin: Int, payload: String) async -> Bool {
+    static func deposit(host: String, uin: Int, payload: String, mintToken: Bool = false) async -> Bool {
         guard let url = URL(string: "https://\(host)/messages/sealed") else { return false }
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable {
+            let to_uin: Int
+            let envelope_type: String
+            let payload: String
+            let deposit_token: [String: String]?
+        }
+        let token = mintToken ? await DepositAuthStore.shared.tokenFor(host: host) : nil
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONEncoder().encode(Body(to_uin: uin, envelope_type: "message", payload: payload))
+        req.httpBody = try? JSONEncoder().encode(
+            Body(to_uin: uin, envelope_type: "message", payload: payload, deposit_token: token),
+        )
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
         guard let (_, resp) = try? await URLSession.shared.data(for: req),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }

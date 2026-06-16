@@ -848,7 +848,9 @@ final class MessageService {
             var ciHomes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: contact.uin, peerSigningKey: contact.signingKey)
             if ciHomes.isEmpty { ciHomes = [RcqFederation.Home(host: host, uin: contact.uin)] }
             for h in ciHomes {
-                if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob) { ok = true }
+                // F3: attach an anonymous deposit token (mintToken) on the
+                // cross-island 1:1 message path — the permissionless-spam vector.
+                if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob, mintToken: true) { ok = true }
             }
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: ok ? .sent : .failed)
