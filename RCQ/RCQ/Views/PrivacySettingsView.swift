@@ -20,6 +20,14 @@ struct PrivacySettingsView: View {
     @State private var presencePersistent: Bool = false
     /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
     @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
+    /// Local-proxy transport (route through the user's own Tor/i2p). Exclusive of
+    /// relays/onion — while on, the onion toggle is disabled.
+    @State private var localProxy: Bool = SingBoxTransport.localProxyMode
+    @State private var lpHost: String = SingBoxTransport.lpHost
+    @State private var lpPort: String = String(SingBoxTransport.lpPort)
+    @State private var lpType: String = SingBoxTransport.lpType
+    @State private var lpTesting = false
+    @State private var lpTestOk: Bool? = nil
     /// In-chat bridge sharing: relays a contact shared / the user imported.
     @State private var sharedRelays: [ContactRelayStore.Entry] = ContactRelayStore.shared.list()
     @State private var showRelayImport = false
@@ -363,6 +371,81 @@ struct PrivacySettingsView: View {
                 if on, !SingBoxTransport.isEnabled {
                     Task { await SingBoxTransport.shared.setEnabled(true) }
                 }
+            }
+            .disabled(localProxy)
+            // Local proxy: route everything through the user's OWN local Tor /
+            // i2p SOCKS5/HTTP. Mutually exclusive with relays/onion.
+            Toggle(isOn: $localProxy) {
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.shield")
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("settings.network.localproxy".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Text("settings.network.localproxy.desc".localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+            }
+            .onChange(of: localProxy) { on in
+                let port = Int(lpPort) ?? 9050
+                if on, lpHost.trimmingCharacters(in: .whitespaces).isEmpty || !(1...65535).contains(port) {
+                    localProxy = false
+                    lpTestOk = false
+                    return
+                }
+                if on { onionOptIn = false }
+                Task { await SingBoxTransport.shared.setLocalProxyEnabled(on, host: lpHost, port: port, type: lpType) }
+            }
+            if localProxy {
+                HStack {
+                    Text("settings.network.localproxy.host".localized)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Spacer()
+                    TextField("127.0.0.1", text: $lpHost)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                HStack {
+                    Text("settings.network.localproxy.port".localized)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Spacer()
+                    TextField("9050", text: $lpPort)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(.numberPad)
+                }
+                Picker("settings.network.localproxy.type".localized, selection: $lpType) {
+                    Text("SOCKS5").tag("socks")
+                    Text("HTTP").tag("http")
+                }
+                Button {
+                    let port = Int(lpPort) ?? 9050
+                    lpTesting = true
+                    lpTestOk = nil
+                    Task {
+                        let ok = await SingBoxTransport.testLocalProxy(host: lpHost, port: port, type: lpType)
+                        await MainActor.run { lpTestOk = ok; lpTesting = false }
+                    }
+                } label: {
+                    HStack {
+                        Text("settings.network.localproxy.test".localized)
+                            .foregroundColor(Theme.Color.accent)
+                        Spacer()
+                        if lpTesting {
+                            ProgressView()
+                        } else if let ok = lpTestOk {
+                            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(ok ? Theme.Color.accent : Theme.Color.statusBusy)
+                        }
+                    }
+                }
+                .disabled(lpTesting)
+                Text("settings.network.localproxy.hint".localized)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.textSecondary)
             }
             Button {
                 showCustomServer = true
