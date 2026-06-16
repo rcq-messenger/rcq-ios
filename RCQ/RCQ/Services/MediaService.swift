@@ -92,7 +92,16 @@ final class MediaService {
     /// media lives on the GROUP's island (the sender deposits it there, not
     /// ours), so on an own-island miss fall back to each VISITED island's open
     /// `GET /media/{id}`. Zero view changes — every fetcher routes through here.
-    nonisolated static func fetchBlob(mediaID: String) async throws -> Data {
+    nonisolated static func fetchBlob(mediaID: String, host: String? = nil) async throws -> Data {
+        // When the caller knows the blob's island (a cross-island GROUP avatar
+        // lives on the GROUP's host), try it FIRST — relying on the visited-island
+        // fallback was flaky because the group's island isn't always visited (the
+        // "group avatar sometimes shows" report).
+        if let host, let url = URL(string: "https://\(host)/media/\(mediaID)"),
+           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+            return data
+        }
         do {
             return try await APIClient.shared.downloadBlob("/media/\(mediaID)")
         } catch {
@@ -365,7 +374,7 @@ final class MediaService {
     /// animated GIF based on magic-byte detection. UIImage path is
     /// shared with `loadImage` cache; the data tuple is independently
     /// cached because UIImage doesn't preserve the source bytes.
-    func loadImageWithData(mediaID: String, keyBase64: String) async -> (UIImage, Data)? {
+    func loadImageWithData(mediaID: String, keyBase64: String, host: String? = nil) async -> (UIImage, Data)? {
         let cacheKey = (mediaID + ":" + keyBase64) as NSString
         if let img = decryptedCache.object(forKey: cacheKey),
            let nsData = decryptedDataCache.object(forKey: cacheKey) {
@@ -379,7 +388,7 @@ final class MediaService {
             } else if let onDisk = await EncryptedBlobDiskCache.shared.loadBlob(mediaID: mediaID) {
                 blob = onDisk
             } else {
-                blob = try await Self.fetchBlob(mediaID: mediaID)
+                blob = try await Self.fetchBlob(mediaID: mediaID, host: host)
                 EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
             }
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }

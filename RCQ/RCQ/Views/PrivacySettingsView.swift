@@ -12,12 +12,12 @@ import UniformTypeIdentifiers
 struct PrivacySettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var lastSeenVisibility: String = "everyone"
+    @State private var lastSeenVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.lastSeen") ?? "everyone"
     /// Opt-in: when ON, the server keeps showing the user's chosen
     /// status to contacts even after the WS connection has been gone
     /// past the staleness window. Lets the user appear "around" with
     /// Online / Away / DND even when the app is not running.
-    @State private var presencePersistent: Bool = false
+    @State private var presencePersistent: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.presencePersistent")
     /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
     @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
     /// Local-proxy transport (route through the user's own Tor/i2p). Exclusive of
@@ -32,7 +32,7 @@ struct PrivacySettingsView: View {
     @State private var sharedRelays: [ContactRelayStore.Entry] = ContactRelayStore.shared.list()
     @State private var showRelayImport = false
     @State private var relayImportText = ""
-    @State private var hofOptIn: Bool = false
+    @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
     @State private var hofAvatar: String? = nil
@@ -43,20 +43,24 @@ struct PrivacySettingsView: View {
     /// Allowed values match the server allow-list: 0 (forever), 30,
     /// 60, 180, 480, 1440. Picker labels render to the localised
     /// strings below.
-    @State private var presenceTTLMinutes: Int = 0
+    @State private var presenceTTLMinutes: Int = UserDefaults.standard.integer(forKey: "rcq.privacy.presenceTTL")
     @State private var gender: String = ""
-    @State private var genderVisibility: String = "nobody"
-    @State private var profileVisibility: String = "everyone"
-    @State private var groupInvitePolicy: String = "everyone"
+    // Seed visibility pickers from the cached last-known values so they render
+    // their real state instantly instead of snapping from the defaults when the
+    // server load lands (the "ползунки едут на глазах" report). loadVisibility
+    // reconciles + re-caches.
+    @State private var genderVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.genderVisibility") ?? "nobody"
+    @State private var profileVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.profileVisibility") ?? "everyone"
+    @State private var groupInvitePolicy: String = UserDefaults.standard.string(forKey: "rcq.privacy.groupInvitePolicy") ?? "everyone"
     /// Mirrored to `@AppStorage("rcq.privacy.callPolicy")` so
     /// `ChatView` can gate the call-button affordance without
     /// re-fetching `/users/me/info` on every render.
-    @State private var callPolicy: String = "everyone"
+    @State private var callPolicy: String = UserDefaults.standard.string(forKey: "rcq.privacy.callPolicy") ?? "everyone"
     @AppStorage("rcq.privacy.callPolicy") private var callPolicyCache: String = "everyone"
     /// Mirrored to `@AppStorage("rcq.privacy.readReceiptsVisibility")`
     /// so `MessageService.markRead` can suppress outbound receipts
     /// without re-fetching `/users/me/info` per read.
-    @State private var readReceiptsVisibility: String = "everyone"
+    @State private var readReceiptsVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.readReceiptsVisibility") ?? "everyone"
     @State private var showMigrateConfirm = false
     @State private var migrating = false
     @State private var migrateError: String? = nil
@@ -673,10 +677,13 @@ struct PrivacySettingsView: View {
         guard let uin = AuthService.shared.ownUIN else { return }
         do {
             let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
-            if let v = p.lastSeenVisibility { lastSeenVisibility = v }
-            if let v = p.genderVisibility { genderVisibility = v }
-            if let v = p.profileVisibility { profileVisibility = v }
-            if let v = p.groupInvitePolicy { groupInvitePolicy = v }
+            // Cache each loaded value so the next open seeds the pickers instantly
+            // (no flicker); the @State seeds above read these keys.
+            let d = UserDefaults.standard
+            if let v = p.lastSeenVisibility { lastSeenVisibility = v; d.set(v, forKey: "rcq.privacy.lastSeen") }
+            if let v = p.genderVisibility { genderVisibility = v; d.set(v, forKey: "rcq.privacy.genderVisibility") }
+            if let v = p.profileVisibility { profileVisibility = v; d.set(v, forKey: "rcq.privacy.profileVisibility") }
+            if let v = p.groupInvitePolicy { groupInvitePolicy = v; d.set(v, forKey: "rcq.privacy.groupInvitePolicy") }
             if let v = p.callPolicy {
                 callPolicy = v
                 callPolicyCache = v
@@ -685,8 +692,8 @@ struct PrivacySettingsView: View {
                 readReceiptsVisibility = v
                 readReceiptsCache = v
             }
-            if let v = p.presencePersistent { presencePersistent = v }
-            if let v = p.hofOptIn { hofOptIn = v }
+            if let v = p.presencePersistent { presencePersistent = v; d.set(v, forKey: "rcq.privacy.presencePersistent") }
+            if let v = p.hofOptIn { hofOptIn = v; d.set(v, forKey: "rcq.privacy.hofOptIn") }
             hofAvatar = p.hofAvatar
             hofPreview = p.hofAvatar.flatMap(Self.decodeDataUri)
             // Seed the local countdown anchor if the feature is on but we
@@ -703,6 +710,7 @@ struct PrivacySettingsView: View {
                 // removed because it lies about presence: app closed for
                 // days, contacts still see "online".
                 presenceTTLMinutes = v == 0 ? 1440 : v
+                d.set(presenceTTLMinutes, forKey: "rcq.privacy.presenceTTL")
                 if v == 0 {
                     Task { await pushIntField("presence_ttl_minutes", 1440) }
                 }

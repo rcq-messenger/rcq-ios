@@ -741,6 +741,9 @@
 "contact_list.ctx.mute" = "Без звука";
 "contact_list.ctx.unmute" = "Включить звук";
 "contact_list.ctx.archive" = "В архив";
+"contact_list.ctx.lock" = "Запрашивать PIN";
+"contact_list.ctx.unlock" = "Не запрашивать PIN";
+"pin_verify.title.chat" = "Открыть чат";
 "contact_list.ctx.unarchive" = "Из архива";
 "contact_list.ctx.delete_group" = "Удалить группу";
 "contact_list.ctx.leave_group" = "Покинуть группу";
@@ -1044,7 +1047,7 @@
 "group.perm.info" = "Инфо";
 "group.member.remove.confirm" = "Исключить %@ из группы?";
 "group.member.action.trade" = "Предложить обмен";
-"group.member.action.add" = "Добавить в контакты";
+"group.member.action.add" = "Добавить";
 "group.member.action.add.sent" = "Заявка отправлена";
 "group.member.action.profile" = "Открыть профиль";
 "group.member.action.message" = "Написать";

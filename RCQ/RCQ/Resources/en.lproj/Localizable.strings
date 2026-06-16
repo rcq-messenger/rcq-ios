@@ -776,6 +776,9 @@
 "contact_list.ctx.mute" = "Mute";
 "contact_list.ctx.unmute" = "Unmute";
 "contact_list.ctx.archive" = "Archive";
+"contact_list.ctx.lock" = "Require PIN";
+"contact_list.ctx.unlock" = "Don't require PIN";
+"pin_verify.title.chat" = "Unlock chat";
 "contact_list.ctx.unarchive" = "Unarchive";
 "contact_list.ctx.delete_group" = "Delete group";
 "contact_list.ctx.leave_group" = "Leave group";
@@ -1079,7 +1082,7 @@
 "group.perm.info" = "Info";
 "group.member.remove.confirm" = "Remove %@ from the group?";
 "group.member.action.trade" = "Propose trade";
-"group.member.action.add" = "Add as contact";
+"group.member.action.add" = "Add";
 "group.member.action.add.sent" = "Request sent";
 "group.member.action.profile" = "Open profile";
 "group.member.action.message" = "Message";

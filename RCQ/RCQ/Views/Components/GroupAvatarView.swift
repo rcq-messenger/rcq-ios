@@ -6,6 +6,9 @@ import SwiftUI
 struct GroupAvatarView: View {
     let mediaID: String?
     let keyBase64: String?
+    /// The group's home island — a cross-island group's avatar blob lives there,
+    /// not on ours, so the fetch must target it (else it loads flakily / not at all).
+    var host: String? = nil
     let size: CGFloat
     var glyphSize: CGFloat? = nil
 
@@ -15,9 +18,10 @@ struct GroupAvatarView: View {
 
     private var resolvedGlyph: CGFloat { glyphSize ?? size * 0.42 }
 
-    init(mediaID: String?, keyBase64: String?, size: CGFloat, glyphSize: CGFloat? = nil) {
+    init(mediaID: String?, keyBase64: String?, host: String? = nil, size: CGFloat, glyphSize: CGFloat? = nil) {
         self.mediaID = mediaID
         self.keyBase64 = keyBase64
+        self.host = host
         self.size = size
         self.glyphSize = glyphSize
         // Seed @State from the decrypted cache so the first render frame
@@ -76,7 +80,7 @@ struct GroupAvatarView: View {
             gifData = nil
             return
         }
-        if let pair = await MediaService.shared.loadImageWithData(mediaID: id, keyBase64: key) {
+        if let pair = await MediaService.shared.loadImageWithData(mediaID: id, keyBase64: key, host: host) {
             image = pair.0
             gifData = AnimatedGIFView.isGIF(pair.1) ? pair.1 : nil
         }
