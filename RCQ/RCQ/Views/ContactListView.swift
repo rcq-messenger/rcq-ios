@@ -1194,6 +1194,14 @@ struct ContactListView: View {
                     : "contact_list.ctx.archive").localized,
             systemImage: archive.contains(group: group.id) ? "tray.and.arrow.up" : "archivebox"
         ) { archive.toggle(group: group.id) })
+        if PanicPINService.shared.isConfigured {
+            out.append(ContextAction(
+                title: (LockedChatsStore.shared.contains(group: group.id)
+                        ? "contact_list.ctx.unlock"
+                        : "contact_list.ctx.lock").localized,
+                systemImage: LockedChatsStore.shared.contains(group: group.id) ? "lock.open" : "lock"
+            ) { LockedChatsStore.shared.toggle(group: group.id) })
+        }
         if group.ownerUIN == AuthService.shared.ownUIN {
             out.append(ContextAction(
                 title: "contact_list.ctx.delete_group".localized,
@@ -1238,6 +1246,14 @@ struct ContactListView: View {
                     : "contact_list.ctx.archive").localized,
             systemImage: archive.contains(peer: contact.uin) ? "tray.and.arrow.up" : "archivebox"
         ) { archive.toggle(peer: contact.uin) })
+        if PanicPINService.shared.isConfigured {
+            out.append(ContextAction(
+                title: (LockedChatsStore.shared.contains(peer: contact.uin)
+                        ? "contact_list.ctx.unlock"
+                        : "contact_list.ctx.lock").localized,
+                systemImage: LockedChatsStore.shared.contains(peer: contact.uin) ? "lock.open" : "lock"
+            ) { LockedChatsStore.shared.toggle(peer: contact.uin) })
+        }
         out.append(ContextAction(
             title: (contact.blocked
                     ? "contact_list.ctx.unblock"
@@ -1323,6 +1339,14 @@ struct ContactListView: View {
                     : "contact_list.ctx.archive").localized,
                   systemImage: archive.contains(group: group.id) ? "tray.and.arrow.up" : "archivebox")
         }
+        if PanicPINService.shared.isConfigured {
+            Button { LockedChatsStore.shared.toggle(group: group.id) } label: {
+                Label((LockedChatsStore.shared.contains(group: group.id)
+                        ? "contact_list.ctx.unlock"
+                        : "contact_list.ctx.lock").localized,
+                      systemImage: LockedChatsStore.shared.contains(group: group.id) ? "lock.open" : "lock")
+            }
+        }
         Divider()
         if group.ownerUIN == AuthService.shared.ownUIN {
             Button(role: .destructive) {
@@ -1373,6 +1397,14 @@ struct ContactListView: View {
                     ? "contact_list.ctx.unarchive"
                     : "contact_list.ctx.archive").localized,
                   systemImage: archive.contains(peer: contact.uin) ? "tray.and.arrow.up" : "archivebox")
+        }
+        if PanicPINService.shared.isConfigured {
+            Button { LockedChatsStore.shared.toggle(peer: contact.uin) } label: {
+                Label((LockedChatsStore.shared.contains(peer: contact.uin)
+                        ? "contact_list.ctx.unlock"
+                        : "contact_list.ctx.lock").localized,
+                      systemImage: LockedChatsStore.shared.contains(peer: contact.uin) ? "lock.open" : "lock")
+            }
         }
         Divider()
         Button(role: contact.blocked ? .none : .destructive) {
@@ -1667,6 +1699,7 @@ private struct GroupRow: View {
                 GroupAvatarView(
                     mediaID: group.avatarMediaID,
                     keyBase64: group.avatarMediaKey,
+                    host: group.host,
                     size: 28,
                     glyphSize: 12,
                 )

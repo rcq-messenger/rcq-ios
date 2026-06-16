@@ -498,6 +498,19 @@ struct ChatView: View {
         _vm = StateObject(wrappedValue: ChatViewModel(target: .peer(contact)))
     }
 
+    // Per-chat PIN lock: when this chat is locked + a PIN is set, the content is
+    // hidden behind a PIN gate until the real PIN is entered (cancel pops back).
+    @State private var chatPinUnlocked = false
+    @State private var showChatLockGate = false
+    private var chatIsLocked: Bool {
+        guard PanicPINService.shared.isConfigured else { return false }
+        switch vm.target {
+        case .peer(let c): return LockedChatsStore.shared.contains(peer: c.uin)
+        case .group(let g): return LockedChatsStore.shared.contains(group: g.id)
+        case .randomPeer: return false
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
@@ -732,7 +745,19 @@ struct ChatView: View {
         } message: {
             Text("chat.voice.permission.body".localized)
         }
+        // Per-chat PIN: cover the content + present the gate until unlocked.
+        .overlay {
+            if chatIsLocked && !chatPinUnlocked {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+            }
+        }
+        .fullScreenCover(isPresented: $showChatLockGate, onDismiss: {
+            if !chatPinUnlocked { dismiss() }   // cancelled → leave the chat
+        }) {
+            PINVerifySheet(title: "pin_verify.title.chat".localized) { chatPinUnlocked = true }
+        }
         .onAppear {
+            if chatIsLocked && !chatPinUnlocked { showChatLockGate = true }
             // The unread-below badge counter is seeded in ChatViewModel.init
             // (#15) — onAppear is too late, rows realize before it runs.
             vm.onAppear()
@@ -1035,6 +1060,7 @@ struct ChatView: View {
                     GroupAvatarView(
                         mediaID: live.avatarMediaID,
                         keyBase64: live.avatarMediaKey,
+                        host: live.host,
                         size: 24,
                         glyphSize: 11,
                     )

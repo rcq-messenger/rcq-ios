@@ -158,6 +158,8 @@ struct GroupInfoView: View {
         .sheet(item: $actionMember) { m in
             MemberActionSheet(
                 member: m,
+                // Cross-island group: resolve the member from the group's island.
+                groupHost: currentGroup.host,
                 // Owner can kick any non-owner member (not themselves).
                 canKick: amOwner && m.uin != currentGroup.ownerUIN && m.uin != (AuthService.shared.ownUIN ?? -1),
                 onKick: {
@@ -363,6 +365,7 @@ struct GroupInfoView: View {
             GroupAvatarView(
                 mediaID: currentGroup.avatarMediaID,
                 keyBase64: currentGroup.avatarMediaKey,
+                host: currentGroup.host,
                 size: 56,
                 glyphSize: 26,
             )
@@ -471,6 +474,9 @@ private struct ViewInfoUIN: Identifiable, Hashable { let uin: Int; var id: Int {
 
 private struct MemberActionSheet: View {
     let member: RCQGroupMember
+    /// Host of a CROSS-ISLAND group — the member lives on that island, not ours,
+    /// so profile-resolution + add must go there. nil for a same-island group.
+    var groupHost: String? = nil
     var canKick: Bool = false
     var onKick: () -> Void = {}
     /// Owner viewing a non-owner, non-self member: may grant/revoke caps.
@@ -551,11 +557,21 @@ private struct MemberActionSheet: View {
                     } else {
                         Button {
                             Task {
-                                do {
-                                    try await contacts.sendAddRequest(to: member.uin)
-                                    addRequestSent = true
-                                } catch {
-                                    addError = error.localizedDescription
+                                if let groupHost {
+                                    // Cross-island member: add directly (works even
+                                    // though they're on another server).
+                                    if await contacts.addCrossIslandContact(uin: member.uin, host: groupHost) {
+                                        addRequestSent = true
+                                    } else {
+                                        addError = "common.error".localized
+                                    }
+                                } else {
+                                    do {
+                                        try await contacts.sendAddRequest(to: member.uin)
+                                        addRequestSent = true
+                                    } catch {
+                                        addError = error.localizedDescription
+                                    }
                                 }
                             }
                         } label: {
@@ -694,6 +710,11 @@ private struct MemberActionSheet: View {
 
     private func loadProfile() async {
         defer { loading = false }
+        // Cross-island member: their profile lives on the GROUP's island and our
+        // own /users/{uin}/info would 404 ("no such user" — the founder's report).
+        // The sheet already shows their name + status from the roster, so skip the
+        // own-island load entirely rather than surface a misleading error.
+        if groupHost != nil { return }
         do {
             let p: UserProfile = try await APIClient.shared.request(
                 "GET", "/users/\(member.uin)/info"
