@@ -56,7 +56,18 @@ final class AccountManager: ObservableObject {
     /// add a sixth account and explain why. The limit is local-only;
     /// nothing in the server enforces it (server can't tell if two
     /// UINs share a device anyway).
-    static let maxAccounts: Int = 5
+    /// Hard ceiling the app supports regardless of server.
+    static let hardCap: Int = 5
+
+    /// Operator-advertised cap from the ACTIVE server's `/server/info`
+    /// (`max_accounts_per_device`). AppState writes it when it adopts new
+    /// capabilities; `nonisolated(unsafe)` because the limit checks read it off
+    /// the main actor and it's a plain Int that changes rarely.
+    nonisolated(unsafe) static var serverMaxAccounts: Int = hardCap
+
+    /// Effective per-device account cap. The operator can LOWER it per island,
+    /// but never above the app's hard ceiling.
+    static var maxAccounts: Int { max(1, min(hardCap, serverMaxAccounts)) }
 
     /// True when the roster is full. UI surfaces consult this before
     /// offering the 'Add' / 'New server' affordance.

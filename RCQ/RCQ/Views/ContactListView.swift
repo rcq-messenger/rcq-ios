@@ -119,7 +119,10 @@ struct ContactListView: View {
                 // One HStack collapses iOS 26's two-pill spacing into a single capsule.
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 8) {
-                        ownStoryButton
+                        // Operator can hide Stories via the admin console (Features).
+                        if appState.serverCapabilities.stories {
+                            ownStoryButton
+                        }
                         contactListMenu
                     }
                 }
@@ -1403,8 +1406,13 @@ struct ContactListView: View {
         HStack(spacing: 0) {
             barButton(icon: "person.badge.plus", label: "contact_list.bar.add".localized) { showAddContact = true }
             barButton(icon: "qrcode.viewfinder", label: "contact_list.bar.qr".localized) { showQR = true }
-            barButton(icon: "shuffle", label: "contact_list.bar.random".localized) { showRandom = true }
-            barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
+            // Operator can hide Random / Nearby via the admin console (Features).
+            if appState.serverCapabilities.randomChat {
+                barButton(icon: "shuffle", label: "contact_list.bar.random".localized) { showRandom = true }
+            }
+            if appState.serverCapabilities.nearby {
+                barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
+            }
             barButton(icon: "gearshape", label: "contact_list.bar.settings".localized) { showSettings = true }
         }
         .padding(.horizontal, 12)

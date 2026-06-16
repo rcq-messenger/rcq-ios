@@ -524,6 +524,7 @@ final class AppState: ObservableObject {
             // surface stays.
             if let caps = await ServerInfoService.fetch() {
                 serverCapabilities = caps
+                AccountManager.serverMaxAccounts = caps.maxAccountsPerDevice
             }
 
             let baseURL = APIClient.shared.baseURL
@@ -1019,6 +1020,7 @@ final class AppState: ObservableObject {
         // briefly show the UIN-shop row in Settings until the new
         // /server/info reply lands.
         serverCapabilities = .defaultLegacy
+        AccountManager.serverMaxAccounts = AccountManager.hardCap
 
         ContactService.shared.wipe()
         GroupService.shared.wipe()
@@ -1299,10 +1301,34 @@ final class AppState: ObservableObject {
 struct ServerCapabilities: Decodable, Equatable {
     var uinShop: Bool
     var hallOfFame: Bool
+    // Operator-toggleable optional features (admin console → Features). Each
+    // defaults TRUE so a legacy server that omits the field keeps showing the
+    // tab (pre-flag behaviour); the operator hides a feature by turning it off,
+    // and the backing route is also 404-gated server-side.
+    var nearby: Bool
+    var randomChat: Bool
+    var hood: Bool
+    var stories: Bool
+    // How many accounts one device may hold (operator-set). Caps the account
+    // switcher; defaults to the historical 5.
+    var maxAccountsPerDevice: Int
 
-    init(uinShop: Bool, hallOfFame: Bool = true) {
+    init(
+        uinShop: Bool,
+        hallOfFame: Bool = true,
+        nearby: Bool = true,
+        randomChat: Bool = true,
+        hood: Bool = true,
+        stories: Bool = true,
+        maxAccountsPerDevice: Int = 5
+    ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
+        self.nearby = nearby
+        self.randomChat = randomChat
+        self.hood = hood
+        self.stories = stories
+        self.maxAccountsPerDevice = maxAccountsPerDevice
     }
 
     static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
@@ -1310,15 +1336,27 @@ struct ServerCapabilities: Decodable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case uinShop = "uin_shop"
         case hallOfFame = "hall_of_fame"
+        case nearby
+        case randomChat = "random_chat"
+        case hood
+        case stories
+        case maxAccountsPerDevice = "max_accounts_per_device"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
     // omits it hides the surface; uin_shop stays required to preserve its
     // existing fetch behaviour (a response without it falls back to defaultLegacy).
+    // The feature toggles are decode-optional + default TRUE so an old server
+    // (or one that omits them) keeps the tabs visible.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
+        nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true
+        randomChat = try c.decodeIfPresent(Bool.self, forKey: .randomChat) ?? true
+        hood = try c.decodeIfPresent(Bool.self, forKey: .hood) ?? true
+        stories = try c.decodeIfPresent(Bool.self, forKey: .stories) ?? true
+        maxAccountsPerDevice = try c.decodeIfPresent(Int.self, forKey: .maxAccountsPerDevice) ?? 5
     }
 }
 
