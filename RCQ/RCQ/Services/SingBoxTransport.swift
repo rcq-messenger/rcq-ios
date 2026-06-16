@@ -21,21 +21,51 @@ final class SingBoxTransport {
         /// Sticky onion ENTRY guard tag (O4): pin the entry across launches,
         /// rotate only on confirmed block (Tor guard lesson).
         static let onionEntry = "rcq.singbox.onionEntryTag"
-        /// Per-device onion opt-in (O5): the experimental Settings toggle.
+        /// Legacy per-device onion opt-in (O5); migrated into transportMode.
         static let onionOptIn = "rcq.singbox.onionOptIn"
+        /// Unified transport topology (once enabled): relays | onion | localProxy.
+        static let transportMode = "rcq.singbox.transportMode"
+        static let lpHost = "rcq.singbox.lpHost"
+        static let lpPort = "rcq.singbox.lpPort"
+        static let lpType = "rcq.singbox.lpType"   // socks | http
     }
 
-    nonisolated static var onionOptIn: Bool {
-        UserDefaults.standard.bool(forKey: Keys.onionOptIn)
+    enum TransportMode: String { case relays, onion, localProxy }
+
+    /// The selected transport topology. `transportMode` is the source of truth;
+    /// the first read after upgrade migrates the legacy onion opt-in bool.
+    nonisolated static var transportMode: TransportMode {
+        if let s = UserDefaults.standard.string(forKey: Keys.transportMode),
+           let m = TransportMode(rawValue: s) { return m }
+        return UserDefaults.standard.bool(forKey: Keys.onionOptIn) ? .onion : .relays
     }
-    nonisolated static func setOnionOptIn(_ on: Bool) {
-        UserDefaults.standard.set(on, forKey: Keys.onionOptIn)
+    nonisolated static func setTransportMode(_ m: TransportMode) {
+        UserDefaults.standard.set(m.rawValue, forKey: Keys.transportMode)
     }
-    /// Onion routing is ON when the signed config enables it (cohort flip) OR
-    /// this device opted in (the experimental toggle, O5). Per-device opt-in
-    /// lets volunteers self-select for real-world testing WITHOUT the
-    /// all-or-nothing signed-config flip. Default OFF.
-    static var onionMode: Bool { RelayConfigStore.onionEnabled || onionOptIn }
+
+    /// Route everything through the user's OWN local SOCKS5/HTTP proxy (Tor/i2p);
+    /// exclusive of relays/onion.
+    static var localProxyMode: Bool { transportMode == .localProxy }
+    nonisolated static var lpHost: String { UserDefaults.standard.string(forKey: Keys.lpHost) ?? "127.0.0.1" }
+    nonisolated static var lpPort: Int { let p = UserDefaults.standard.integer(forKey: Keys.lpPort); return p > 0 ? p : 9050 }
+    nonisolated static var lpType: String { UserDefaults.standard.string(forKey: Keys.lpType) ?? "socks" }
+    nonisolated static func setLocalProxy(host: String, port: Int, type: String) {
+        UserDefaults.standard.set(host.trimmingCharacters(in: .whitespaces), forKey: Keys.lpHost)
+        UserDefaults.standard.set(port, forKey: Keys.lpPort)
+        UserDefaults.standard.set(type == "http" ? "http" : "socks", forKey: Keys.lpType)
+    }
+
+    // Legacy onion opt-in shims (the existing onion Settings toggle): route
+    // through the unified mode so they can never disagree.
+    nonisolated static var onionOptIn: Bool { transportMode == .onion }
+    nonisolated static func setOnionOptIn(_ on: Bool) { setTransportMode(on ? .onion : .relays) }
+
+    /// Onion routing is ON when this device selected it OR the signed config
+    /// enables it (cohort flip) — EXCEPT an explicit local-proxy choice always
+    /// wins (never silently route a Tor-only user through relays). Default OFF.
+    static var onionMode: Bool {
+        transportMode == .onion || (RelayConfigStore.onionEnabled && transportMode != .localProxy)
+    }
 
     /// Sticky onion ENTRY guard. Returns the persisted entry if it's still a
     /// VLESS relay in `pool`; else picks the highest-priority VLESS (pool is
@@ -55,6 +85,7 @@ final class SingBoxTransport {
     /// whole onion path dies with its single entry). Returns true when a
     /// different entry was chosen; the caller restarts the transport.
     static func rotateEntry() -> Bool {
+        guard !localProxyMode else { return false }   // no onion entry under a user proxy
         let vless = poolRelays().filter { $0.proto == .vless }
         guard vless.count >= 2 else { return false }
         let cur = UserDefaults.standard.string(forKey: Keys.onionEntry)
@@ -145,6 +176,58 @@ final class SingBoxTransport {
             stop()
         }
         await APIClient.shared.applyTransportProxy()
+    }
+
+    /// Switch to / from local-proxy transport (route through the user's OWN
+    /// local Tor/i2p). Persists mode + the proxy, then rebuilds sing-box
+    /// (`start()` only reads `buildConfig` fresh, so stop first when switching
+    /// while engaged) and re-points the app proxy — the same serialized path as
+    /// `setEnabled`. NO auto-fallback to relays if the proxy is down (that would
+    /// leak around Tor); the connect just fails and the user switches back.
+    func setLocalProxyEnabled(_ on: Bool, host: String, port: Int, type: String) async {
+        if on {
+            Self.setLocalProxy(host: host, port: port, type: type)
+            Self.setTransportMode(.localProxy)
+            UserDefaults.standard.set(true, forKey: Keys.enabled)
+        } else {
+            Self.setTransportMode(.relays)
+            UserDefaults.standard.set(false, forKey: Keys.enabled)
+        }
+        if isActive { stop() }
+        if on {
+            do { try await start() }
+            catch { print("[SingBoxTransport] local-proxy start failed: \(error)") }
+        }
+        await APIClient.shared.applyTransportProxy()
+    }
+
+    /// One-shot reachability check of a user proxy WITHOUT touching the live
+    /// transport: dial the proxy directly via an ephemeral URLSession and GET
+    /// /health (judging a 2xx, not a bare socket-open — a SOCKS port can accept
+    /// yet the Tor circuit be down). Hard timeout; a dead/DPI'd proxy hangs.
+    nonisolated static func testLocalProxy(host: String, port: Int, type: String) async -> Bool {
+        let h = host.trimmingCharacters(in: .whitespaces)
+        guard !h.isEmpty, port > 0, port <= 65535 else { return false }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 6
+        cfg.timeoutIntervalForResource = 6
+        if type == "http" {
+            cfg.connectionProxyDictionary = [
+                "HTTPEnable": 1, "HTTPProxy": h, "HTTPPort": port,
+                "HTTPSEnable": 1, "HTTPSProxy": h, "HTTPSPort": port,
+            ]
+        } else {
+            cfg.connectionProxyDictionary = [
+                "SOCKSEnable": 1, "SOCKSProxy": h, "SOCKSPort": port,
+            ]
+        }
+        guard let url = URL(string: "https://api.rcq.app/health") else { return false }
+        do {
+            let (_, resp) = try await URLSession(configuration: cfg).data(from: url)
+            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Config
@@ -247,6 +330,22 @@ final class SingBoxTransport {
         let vless = ordered.filter { $0.proto == .vless }
         let outbounds: [[String: Any]] = {
             var out: [[String: Any]] = []
+            // LOCAL PROXY: a single socks/http outbound to the user's OWN Tor/i2p;
+            // no relays, no urltest, no onion. The user's proxy IS the
+            // circumvention + metadata layer. Reuse the same mixed inbound so the
+            // rest of the pipeline is untouched. NO fallback to relays (that would
+            // leak traffic around the user's Tor).
+            if Self.localProxyMode {
+                var lp: [String: Any] = [
+                    "type": Self.lpType == "http" ? "http" : "socks",
+                    "tag": "out",
+                    "server": Self.lpHost,
+                    "server_port": Self.lpPort,
+                ]
+                if Self.lpType != "http" { lp["version"] = "5" }
+                out.append(lp)
+                return out
+            }
             // ONION (M3): when the signed config turns it on AND we have ≥2 VLESS
             // relays, route through a 2-hop chain so no single relay sees the
             // client IP AND the destination island together. A STICKY entry (the
