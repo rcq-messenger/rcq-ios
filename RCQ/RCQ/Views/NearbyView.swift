@@ -203,7 +203,8 @@ struct NearbyView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Theme.Color.bgSecondary)
 
-            if let bucket = bucketTag {
+            // Operator can hide Hood Chat via the admin console (Features).
+            if let bucket = bucketTag, AppState.shared.serverCapabilities.hood {
                 hoodChatButton(bucket: bucket)
                     .sheet(isPresented: $showHood) {
                         HoodChatView(bucket: bucket)
