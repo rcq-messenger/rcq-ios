@@ -94,20 +94,13 @@ struct LinkPreviewCard: View {
     }
 
     private func fetch() async {
-        if let cached = await LinkPreviewCache.shared.get(url) {
-            metadata = cached
-            status = .loaded
-            return
-        }
-        let provider = LPMetadataProvider()
-        provider.timeout = 8
-        do {
-            let m = try await provider.startFetchingMetadata(for: url)
-            await LinkPreviewCache.shared.set(m, for: url)
+        // All cache lookup, in-flight dedup, and concurrency throttling live in
+        // LinkPreviewCache — see its note on why LPMetadataProvider must be
+        // rate-limited (it spawns a WebKit process per fetch).
+        if let m = await LinkPreviewCache.shared.metadata(for: url) {
             metadata = m
             status = .loaded
-        } catch {
-            await LinkPreviewCache.shared.markFailed(url)
+        } else {
             status = .failed
         }
     }
@@ -141,21 +134,87 @@ private struct LinkImageView: UIViewRepresentable {
     }
 }
 
-/// Per-URL metadata cache, process-wide. `failed` tombstones cap retries.
+/// Per-URL link-metadata cache + fetch coordinator, process-wide.
+///
+/// `LPMetadataProvider` spawns a WebKit `WebContent` + GPU process for EVERY
+/// fetch. A chat screen full of distinct links would launch a swarm of them at
+/// once — observed on-device as cumulative heat, `WebContent didBecomeUnresponsive`,
+/// and main-thread contention that made even sending a message lag after a long
+/// session. So this actor:
+///  - serves a process-wide cache (`failed` tombstones cap retries),
+///  - coalesces concurrent requests for the SAME url onto one fetch (`inFlight`),
+///  - caps how many LP fetches — and thus WebContent processes — run at once,
+///  - bounds the resident cache (LPLinkMetadata retains image data) so it can't
+///    grow without limit over a long session.
 actor LinkPreviewCache {
     static let shared = LinkPreviewCache()
 
     private var hits: [URL: LPLinkMetadata] = [:]
+    private var order: [URL] = []                       // FIFO eviction order
     private var failed: Set<URL> = []
+    private var inFlight: [URL: Task<LPLinkMetadata?, Never>] = [:]
+    private static let maxCached = 60
 
-    func get(_ url: URL) -> LPLinkMetadata? {
+    // Counting semaphore (actor-serialized): at most `maxConcurrent` LP fetches
+    // alive at any moment, so the WebContent/GPU process count stays bounded.
+    private var active = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private static let maxConcurrent = 2
+
+    func metadata(for url: URL) async -> LPLinkMetadata? {
         if failed.contains(url) { return nil }
-        return hits[url]
+        if let hit = hits[url] { return hit }
+        if let existing = inFlight[url] { return await existing.value }
+
+        let task = Task<LPLinkMetadata?, Never> { [weak self] in
+            guard let self else { return nil }
+            await self.acquire()
+            let provider = LPMetadataProvider()
+            provider.timeout = 8
+            let result = try? await provider.startFetchingMetadata(for: url)
+            await self.release()
+            return result
+        }
+        inFlight[url] = task
+        let m = await task.value
+        inFlight[url] = nil
+        if let m {
+            store(m, for: url)
+        } else {
+            failed.insert(url)
+        }
+        return m
     }
 
-    func wasFailed(_ url: URL) -> Bool { failed.contains(url) }
-    func set(_ m: LPLinkMetadata, for url: URL) { hits[url] = m }
-    func markFailed(_ url: URL) { failed.insert(url) }
+    private func store(_ m: LPLinkMetadata, for url: URL) {
+        if hits[url] == nil {
+            order.append(url)
+            if order.count > Self.maxCached {
+                hits[order.removeFirst()] = nil
+            }
+        }
+        hits[url] = m
+    }
+
+    // Hand-off counting semaphore. A releaser with a waiter passes its slot
+    // straight on (active unchanged); only an idle release decrements.
+    private func acquire() async {
+        if active < Self.maxConcurrent {
+            active += 1
+            return
+        }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            waiters.append(c)
+        }
+    }
+
+    private func release() {
+        if waiters.isEmpty {
+            active -= 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
 }
 
 enum LinkDetector {
