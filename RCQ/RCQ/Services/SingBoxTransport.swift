@@ -45,7 +45,7 @@ final class SingBoxTransport {
 
     /// Route everything through the user's OWN local SOCKS5/HTTP proxy (Tor/i2p);
     /// exclusive of relays/onion.
-    static var localProxyMode: Bool { transportMode == .localProxy }
+    nonisolated static var localProxyMode: Bool { transportMode == .localProxy }
     nonisolated static var lpHost: String { UserDefaults.standard.string(forKey: Keys.lpHost) ?? "127.0.0.1" }
     nonisolated static var lpPort: Int { let p = UserDefaults.standard.integer(forKey: Keys.lpPort); return p > 0 ? p : 9050 }
     nonisolated static var lpType: String { UserDefaults.standard.string(forKey: Keys.lpType) ?? "socks" }
@@ -289,8 +289,11 @@ final class SingBoxTransport {
         let h = host.trimmingCharacters(in: .whitespaces)
         guard !h.isEmpty, port > 0, port <= 65535 else { return false }
         let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 6
-        cfg.timeoutIntervalForResource = 6
+        // 25s, not 6s: i2p/Tor can take many seconds to build the first circuit, so
+        // a too-short Test wrongly reports a WORKING proxy as unreachable (the i2p
+        // "works in Telegram but the RCQ Test fails" report).
+        cfg.timeoutIntervalForRequest = 25
+        cfg.timeoutIntervalForResource = 25
         if type == "http" {
             cfg.connectionProxyDictionary = [
                 "HTTPEnable": 1, "HTTPProxy": h, "HTTPPort": port,
