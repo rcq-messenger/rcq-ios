@@ -58,7 +58,13 @@ actor APIClient {
     private static func makeMainSession(proxy: [String: Any]?) -> URLSession {
         let cfg = URLSessionConfiguration.default
         cfg.waitsForConnectivity = true
-        cfg.timeoutIntervalForRequest = 20
+        // A user-chosen local proxy (Tor/i2p/AWG) is slow to build its first
+        // circuit (seconds to tens of seconds); give it a far longer leash or a
+        // connect/send gives up before the tunnel is ready (the "works in Telegram
+        // but not RCQ" i2p report — TG is patient, we weren't). Only local-proxy
+        // users pay it; relay/direct keep the tight ceiling.
+        let slowProxy = SingBoxTransport.localProxyMode
+        cfg.timeoutIntervalForRequest = slowProxy ? 30 : 20
         // Hard ceiling on the WHOLE request including connectivity-wait.
         // Without this, timeoutIntervalForResource defaults to 7 days, and
         // because waitsForConnectivity=true a POST through a wedged
@@ -67,8 +73,9 @@ actor APIClient {
         // the message bubble stays on the .sending spinner until the user
         // force-quits, and the text is lost on relaunch. 30s lets a
         // genuinely slow relay through while guaranteeing a stuck send
-        // surfaces as .failed → tap-to-retry, text intact.
-        cfg.timeoutIntervalForResource = 30
+        // surfaces as .failed → tap-to-retry, text intact. Local-proxy users
+        // get 90s for the same i2p/Tor-slowness reason.
+        cfg.timeoutIntervalForResource = slowProxy ? 90 : 30
         if let proxy { cfg.connectionProxyDictionary = proxy }
         return URLSession(configuration: cfg)
     }
