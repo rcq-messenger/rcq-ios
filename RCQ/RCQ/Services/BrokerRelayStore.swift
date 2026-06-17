@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 /// Relays pulled from the BROKER (`GET /broker/bridges`) — the per-request,
 /// anti-enumeration distribution channel that complements the fully-public
@@ -25,9 +26,13 @@ final class BrokerRelayStore {
     /// fallback. The tier rides the TLS-authenticated `/broker/bridges` response
     /// (broker.py serves `d["tier"]`) — same trust anchor as the app's own API.
     private let trustedKey = "rcq.brokerRelays.trusted.v1"
+    private let reportTSKey = "rcq.brokerRelays.reachReportTS.v1"
     private static let host = "api.rcq.app"   // the broker lives on the flagship
     private static let want = 3
     private static let sharedPriority = 1000  // sort at the back, like contact relays
+    private static let reportInterval: TimeInterval = 3600   // report at most hourly
+    private static let probeTimeout: TimeInterval = 2.5
+    private static let maxProbe = 20
 
     private struct BridgesResponse: Codable { let relays: [Envelope.RelayShareWire] }
     /// Parsed in parallel with `BridgesResponse` (same array, positionally
@@ -93,6 +98,80 @@ final class BrokerRelayStore {
             UserDefaults.standard.set(trusted, forKey: trustedKey)
         } catch {
             // best-effort — keep the cached set
+        }
+    }
+
+    func reportReachabilityInBackground() { Task { await self.reportReachability() } }
+
+    /// Report which known relays are reachable FROM THIS NETWORK so the broker can
+    /// serve them region-by-region (POST /broker/reachability — the server side of
+    /// region quorum). Probes the relay union (signed-config + shared + broker) with
+    /// a DIRECT TCP connect (that IS the reachability measurement), then posts the
+    /// ok/fail verdicts THROUGH the tunnel when up (a blocked user can't reach the
+    /// flagship direct). Best-effort, throttled hourly.
+    ///
+    /// SKIPPED under a user local proxy (Tor/I2P): a direct probe to relay IPs would
+    /// bypass the proxy and leak the real IP — the Tor-leak rule.
+    func reportReachability() async {
+        if SingBoxTransport.localProxyMode { return }
+        let now = Date().timeIntervalSince1970
+        if now - UserDefaults.standard.double(forKey: reportTSKey) < Self.reportInterval { return }
+        var seen = Set<String>()
+        let targets = (RelayConfigStore.shared.currentRelays() + ContactRelayStore.shared.relays() + relays())
+            .filter { !$0.server.isEmpty && (1...65535).contains($0.port)
+                && seen.insert("\($0.server):\($0.port)").inserted }
+            .prefix(Self.maxProbe)
+        if targets.isEmpty { return }
+        var verdicts: [(String, Int, Bool)] = []
+        await withTaskGroup(of: (String, Int, Bool).self) { group in
+            for r in targets {
+                let server = r.server, port = r.port
+                group.addTask { (server, port, await Self.probe(host: server, port: port, timeout: Self.probeTimeout)) }
+            }
+            for await v in group { verdicts.append(v) }
+        }
+        if verdicts.isEmpty { return }
+        let reports = verdicts.map { ["server": $0.0, "port": $0.1, "ok": $0.2] as [String: Any] }
+        guard let body = try? JSONSerialization.data(withJSONObject: ["reports": reports]),
+              let url = URL(string: "https://\(Self.host)/broker/reachability") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        let config = URLSessionConfiguration.ephemeral
+        if SingBoxTransport.shared.isActive, let proxy = SingBoxTransport.proxyDictionary() {
+            config.connectionProxyDictionary = proxy
+        }
+        _ = try? await URLSession(configuration: config).data(for: req)
+        UserDefaults.standard.set(now, forKey: reportTSKey)
+    }
+
+    /// Direct TCP reachability probe: true if a connection to host:port reaches
+    /// `.ready` within `timeout`, false on failure/timeout. nonisolated so it runs
+    /// off the main actor in the task group.
+    private nonisolated static func probe(host: String, port: Int, timeout: TimeInterval) async -> Bool {
+        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return false }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            let q = DispatchQueue(label: "rcq.reach.probe")
+            var done = false
+            func finish(_ ok: Bool) {
+                q.async {
+                    guard !done else { return }
+                    done = true
+                    conn.cancel()
+                    cont.resume(returning: ok)
+                }
+            }
+            conn.stateUpdateHandler = { state in
+                switch state {
+                case .ready: finish(true)
+                case .failed, .cancelled: finish(false)
+                default: break   // .waiting (e.g. blocked) rides to the timeout below
+                }
+            }
+            conn.start(queue: q)
+            q.asyncAfter(deadline: .now() + timeout) { finish(false) }
         }
     }
 }

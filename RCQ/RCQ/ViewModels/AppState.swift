@@ -531,6 +531,9 @@ final class AppState: ObservableObject {
             // already orders it this way (Session.kt after engage). Best-effort.
             RelayConfigStore.shared.refreshInBackground()
             BrokerRelayStore.shared.refreshInBackground()   // anti-enumeration bridges -> transport pool
+            // Report which known relays are reachable from this network so the
+            // broker serves them region-by-region (throttled hourly inside).
+            BrokerRelayStore.shared.reportReachabilityInBackground()
             print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,
