@@ -1,19 +1,7 @@
 {
-  "version": 34,
-  "issued_at": "2026-06-17T23:39:03Z",
+  "version": 35,
+  "issued_at": "2026-06-17T23:49:04Z",
   "relays": [
-    {
-      "port": 443,
-      "priority": 0,
-      "proto": "vless",
-      "public_key": "ord-QgtxD57vOVLMsXwGC6Qj7kaK4kb8Tq3MxImQch4",
-      "server": "45.151.101.221",
-      "short_id": "5d88ef2912b4fa39",
-      "sni": "www.yandex.ru",
-      "tag": "relay-msk-aeza",
-      "uuid": "9c7174e7-2cb9-4d03-bffb-259bd534b65b",
-      "flow": "xtls-rprx-vision"
-    },
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
       "password": "JN0qzA4LJfhHPKKN3QHj4eN8",
@@ -47,6 +35,18 @@
       "tag": "relay-oracle-il-hy2"
     },
     {
+      "port": 443,
+      "priority": 3,
+      "proto": "vless",
+      "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
+      "server": "129.159.143.135",
+      "short_id": "318567678ac9878e",
+      "sni": "www.microsoft.com",
+      "tag": "relay-oracle-il",
+      "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
+      "flow": "xtls-rprx-vision"
+    },
+    {
       "obfs_password": "fLpJ2c211xjnZcP9VNcNpbZP",
       "password": "QaY3uT8EmfZxfON65jaT5bSu",
       "port": 443,
@@ -72,5 +72,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "PGX0YiKMyoZSXbTD6pbcxeoNeFsVX40u6xsS2ivWtmY7JNPKy204gRk6tbQUJLpUQOIZN/8rCcEQsX4pESyRDg=="
+  "sig": "vS+fVBzpu9WFRfoH+uoo04K0CWgcwqsG0DicFjselksCBpkGSdEOOPsCypl1WRyP4xMYKuCsuJufc5dFmlj5Bg=="
 }
