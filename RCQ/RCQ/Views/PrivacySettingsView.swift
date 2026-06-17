@@ -10,6 +10,14 @@ import UniformTypeIdentifiers
 /// a render before the GET completes doesn't flicker through a
 /// wrong-looking value.
 struct PrivacySettingsView: View {
+    // Two panes from one view: Settings opens it as either Privacy (visibility,
+    // presence, security, migration, HoF) or Network (server, proxy, obfuscation,
+    // relays). Splitting the surfaces was a user request; keeping one struct
+    // avoids duplicating the large shared state. Default .privacy preserves any
+    // existing call site.
+    enum Pane { case privacy, network }
+    var pane: Pane = .privacy
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var lastSeenVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.lastSeen") ?? "everyone"
@@ -99,6 +107,7 @@ struct PrivacySettingsView: View {
                     // picker instead of dumping all five descriptions
                     // in one bottom block. Reads top-down, no need to
                     // hunt for the right paragraph.
+                  if pane == .privacy {
                     Section {
                         scopePicker(
                             title: "settings.privacy.profile".localized,
@@ -216,8 +225,6 @@ struct PrivacySettingsView: View {
                     .listRowBackground(Theme.Color.bgSecondary)
 
                     securitySection
-                    networkSection
-                    relaySharingSection
                     migrationSection
                     // Hall of Fame is a flagship-only surface — hidden on
                     // self-hosted islands (gated on the server's hall_of_fame
@@ -225,10 +232,15 @@ struct PrivacySettingsView: View {
                     if AppState.shared.serverCapabilities.hallOfFame {
                         hofSection   // #27: Hall of Fame at the very bottom (under migration)
                     }
+                  }
+                  if pane == .network {
+                    networkSection
+                    relaySharingSection
+                  }
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("settings.privacy_network".localized)
+            .navigationTitle((pane == .network ? "settings.network" : "settings.privacy").localized)
             .navigationBarTitleDisplayMode(.inline)
             .alert("relay.import.title".localized, isPresented: $showRelayImport) {
                 TextField("rcq-relay://...", text: $relayImportText)
@@ -261,7 +273,7 @@ struct PrivacySettingsView: View {
                     Task { await applyPickedHofImage(data: data, mime: mime) }
                 }
             }
-            .task { await loadVisibility() }
+            .task { if pane == .privacy { await loadVisibility() } }
         }
     }
 
@@ -412,6 +424,12 @@ struct PrivacySettingsView: View {
                         .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        // Persist on every edit (not only on the enable toggle), so a
+                        // custom host/port survives leaving Settings. setLocalProxy is a
+                        // bare UserDefaults write (no transport restart).
+                        .onChange(of: lpHost) { v in
+                            SingBoxTransport.setLocalProxy(host: v, port: Int(lpPort) ?? 9050, type: lpType)
+                        }
                 }
                 HStack {
                     Text("settings.network.localproxy.port".localized)
@@ -420,10 +438,18 @@ struct PrivacySettingsView: View {
                     TextField("9050", text: $lpPort)
                         .multilineTextAlignment(.trailing)
                         .keyboardType(.numberPad)
+                        .onChange(of: lpPort) { v in
+                            if let p = Int(v), (1...65535).contains(p) {
+                                SingBoxTransport.setLocalProxy(host: lpHost, port: p, type: lpType)
+                            }
+                        }
                 }
                 Picker("settings.network.localproxy.type".localized, selection: $lpType) {
                     Text("SOCKS5").tag("socks")
                     Text("HTTP").tag("http")
+                }
+                .onChange(of: lpType) { v in
+                    SingBoxTransport.setLocalProxy(host: lpHost, port: Int(lpPort) ?? 9050, type: v)
                 }
                 Button {
                     let port = Int(lpPort) ?? 9050

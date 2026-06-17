@@ -123,7 +123,7 @@
 "settings.inventory.public" = "Public inventory";
 "settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
 
-"settings.network" = "Privacy & network";
+"settings.network" = "Network";
 "settings.network.proxy" = "Connection & bypass";
 "settings.network.title" = "Network";
 "settings.masking" = "Masking";
@@ -206,13 +206,13 @@
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.onion" = "Onion routing";
 "settings.network.onion.desc" = "Two relays, so none sees both you and the server. Turns on the protected connection automatically. A little slower.";
-"settings.network.localproxy" = "Local proxy (Tor / I2P)";
-"settings.network.localproxy.desc" = "Route the app through your own local Tor or I2P proxy. Replaces relays and onion.";
+"settings.network.localproxy" = "Proxy";
+"settings.network.localproxy.desc" = "Route the app through any local proxy: Tor, I2P, AWG/wiresocks, etc. Replaces relays and onion.";
 "settings.network.localproxy.host" = "Host";
 "settings.network.localproxy.port" = "Port";
 "settings.network.localproxy.type" = "Protocol";
 "settings.network.localproxy.test" = "Test connection";
-"settings.network.localproxy.hint" = "Orbot (Tor): 127.0.0.1:9050 · i2pd: 127.0.0.1:4447. Start your proxy first. On iPhone, Orbot's VPN mode already covers the whole app.";
+"settings.network.localproxy.hint" = "Orbot (Tor): 127.0.0.1:9050 · i2pd: 127.0.0.1:4447 · AWG/wiresocks: 127.0.0.1:25344. Start your proxy first. On iPhone, Orbot's VPN mode already covers the whole app.";
 "settings.network.custom_server.intro.title" = "Use a different server";
 "settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref — self-host or use a friend's instance.";
 "settings.network.custom_server.current.label" = "ACTIVE SERVER";
@@ -411,6 +411,7 @@
 "relay.share.add" = "Add";
 "relay.share.pick.title" = "Share a connection";
 "relay.share.pick.body" = "Hand this contact a relay so they can get through when their own connections are blocked. They tap Add to use it.";
+"relay.share.group.warn" = "Every group member will see this relay. Only share scarce domestic relays in groups you trust.";
 "relay.import.title" = "Add a relay";
 "relay.import.body" = "Paste an rcq-relay:// link you received out of band.";
 "relay.import.add" = "Add";

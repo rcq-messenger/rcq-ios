@@ -60,7 +60,17 @@ final class BrokerRelayStore {
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
-            let (data, response) = try await URLSession(configuration: .ephemeral).data(for: req)
+            // Through the tunnel when it's up: a BLOCKED user can't reach
+            // api.rcq.app directly, so without this they NEVER receive broker
+            // bridges (incl. the community relays operators raise). Once a bundled
+            // relay carries the tunnel, the fetch rides it. Tradeoff: the broker
+            // then buckets by the relay IP, not the user IP (weaker anti-enum) —
+            // acceptable, since some bridges beats none. Unblocked users: direct.
+            let config = URLSessionConfiguration.ephemeral
+            if SingBoxTransport.shared.isActive, let proxy = SingBoxTransport.proxyDictionary() {
+                config.connectionProxyDictionary = proxy
+            }
+            let (data, response) = try await URLSession(configuration: config).data(for: req)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let parsed = try JSONDecoder().decode(BridgesResponse.self, from: data)
             let tiers = (try? JSONDecoder().decode(TierResponse.self, from: data))?.relays ?? []

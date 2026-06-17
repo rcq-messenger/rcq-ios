@@ -683,7 +683,7 @@ struct ChatView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showRelayPicker) {
-            RelaySharePickerSheet { relay in
+            RelaySharePickerSheet(isGroup: { if case .group = vm.target { return true } else { return false } }()) { relay in
                 showRelayPicker = false
                 Task { await vm.shareRelay(relay) }
             }
@@ -2665,18 +2665,19 @@ struct ChatView: View {
         }
     }
 
-    /// In-chat bridge sharing: 1:1 only (handing a relay to a peer). Hidden in
-    /// groups + random.
+    /// In-chat bridge sharing: hand a relay to a peer OR drop it into a group (the
+    /// highest-reach censorship-resistant path — every member can Add it). Hidden
+    /// only in random/stranger mode.
     private var shareConnectionHandler: (() -> Void)? {
         switch vm.target {
-        case .peer:
+        case .peer, .group:
             return {
                 showAttachmentMenu = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                     showRelayPicker = true
                 }
             }
-        case .group, .randomPeer:
+        case .randomPeer:
             return nil
         }
     }
@@ -3193,6 +3194,7 @@ struct PendingEvidenceReport: Identifiable {
 /// they can route through it when their own relays are blocked. See
 /// RCQ/docs/bridge-sharing-design.md.
 private struct RelaySharePickerSheet: View {
+    var isGroup: Bool = false
     let onPick: (RelayConfigStore.RelayEntry) -> Void
 
     private var pool: [RelayConfigStore.RelayEntry] {
@@ -3220,6 +3222,10 @@ private struct RelaySharePickerSheet: View {
                 Section {
                     Text("relay.share.pick.body".localized)
                         .font(.caption).foregroundColor(Theme.Color.textSecondary)
+                    if isGroup {
+                        Text("relay.share.group.warn".localized)
+                            .font(.caption2).foregroundColor(.orange)
+                    }
                 }
                 ForEach(pool, id: \.tag) { r in
                     Button {

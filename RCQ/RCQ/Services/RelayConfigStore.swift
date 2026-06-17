@@ -135,7 +135,17 @@ final class RelayConfigStore {
     }
 
     private func refresh() async {
-        let session = URLSession(configuration: .ephemeral)
+        // Route through the tunnel when it's up. A BLOCKED user can't reach the
+        // mirrors directly (github raw + Cloudflare relay.rcq.app are DPI-throttled
+        // in RU), so before this they were stuck on the bundled pool forever. Once
+        // a bundled relay carries the tunnel, the fetch rides it and picks up the
+        // domestic relay + rotations for next launch. Unblocked users fetch direct.
+        // The signed config is PUBLIC, so tunnelling it leaks nothing.
+        let config = URLSessionConfiguration.ephemeral
+        if SingBoxTransport.shared.isActive, let proxy = SingBoxTransport.proxyDictionary() {
+            config.connectionProxyDictionary = proxy
+        }
+        let session = URLSession(configuration: config)
         for url in Self.endpoints {
             var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
             req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -204,6 +214,24 @@ final class RelayConfigStore {
     // MARK: - Bundled fallback
 
     private static let bundledFallback: [RelayEntry] = [
+        // DOMESTIC (RU) relay FIRST: both signed-config mirrors (github raw,
+        // Cloudflare relay.rcq.app) and the broker (api.rcq.app, fetched direct)
+        // are themselves DPI-blockable, so a censored fresh install may ONLY ever
+        // see this bundled list. A domestic IP is far costlier for a censor to
+        // block (collateral) than the foreign cloud relays below. Matches
+        // relay-msk-aeza (priority 0) in signed config v13.
+        RelayEntry(
+            tag: "relay-msk-aeza",
+            server: "45.151.101.221",
+            port: 443,
+            sni: "www.yandex.ru",
+            priority: 0,
+            proto: .vless,
+            uuid: "9c7174e7-2cb9-4d03-bffb-259bd534b65b",
+            publicKey: "ord-QgtxD57vOVLMsXwGC6Qj7kaK4kb8Tq3MxImQch4",
+            shortID: "5d88ef2912b4fa39",
+            flow: "xtls-rprx-vision",
+        ),
         // Hysteria2 (UDP/443) on the yandex relay — defeats DPI that
         // matches the Reality TLS handshake. Highest priority so
         // urltest tries it first on hostile networks. Restored after
@@ -254,17 +282,6 @@ final class RelayConfigStore {
             shortID: "b5b8979af1f27aab",
             flow: "xtls-rprx-vision",
         ),
-        RelayEntry(
-            tag: "relay-aws-sg",
-            server: "47.129.249.170",
-            port: 443,
-            sni: "www.amazon.com",
-            priority: 4,
-            proto: .vless,
-            uuid: "2b0a3318-7bfc-4ff2-83ae-2f322cb91ef8",
-            publicKey: "xxasGveo2BtMx4doxftb-AJcvIXL-9LpymZcV9tIRxo",
-            shortID: "533142a04b016a00",
-            flow: "xtls-rprx-vision",
-        ),
+        // relay-aws-sg (47.129.249.170) removed — retired server-side in v13 (dead host).
     ]
 }

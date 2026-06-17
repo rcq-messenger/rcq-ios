@@ -147,6 +147,28 @@ final class MessageService {
         }
     }
 
+    /// Share a relay into a GROUP — the highest-reach censorship-resistant
+    /// distribution: one drop in a community group hands the relay to every member
+    /// over the E2E group fan-out (sender keys), invisible to a censor. Renders as
+    /// a `.relay` card; each member taps Add (never auto-applied). A group-shared
+    /// relay stays exit/fallback only and onion-entry-INELIGIBLE (ContactRelayStore
+    /// is excluded from trustedVlessEntries), so a poisoned share can't become
+    /// anyone's entry guard. See RCQ/docs/relay-distribution-v2.md.
+    func shareRelay(_ relay: RelayConfigStore.RelayEntry, toGroup group: RCQGroup) async throws {
+        let wire = ContactRelayStore.relayToWire(relay)
+        let local = Message(
+            thread: .group(id: group.id),
+            senderUIN: ownUIN,
+            isFromMe: true,
+            kind: .relay,
+            text: ContactRelayStore.relayToToken(relay)
+        )
+        MessageStore.shared.append(local)
+        Task { [weak self] in
+            try? await self?.sendGroupEnvelope(.relayShare(id: local.id, relay: wire, note: nil), to: group, localID: local.id)
+        }
+    }
+
     func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
         SmokeTracker.shared.tick(.sendPhoto)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
