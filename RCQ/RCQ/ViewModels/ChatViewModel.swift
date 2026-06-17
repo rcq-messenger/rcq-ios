@@ -290,8 +290,14 @@ final class ChatViewModel: ObservableObject {
 
     /// In-chat bridge sharing: hand the 1:1 peer a relay from your pool.
     func shareRelay(_ relay: RelayConfigStore.RelayEntry) async {
-        guard case .peer(let c) = target else { return }
-        try? await MessageService.shared.shareRelay(relay, to: c)
+        switch target {
+        case .peer(let c):
+            try? await MessageService.shared.shareRelay(relay, to: c)
+        case .group(let g):
+            try? await MessageService.shared.shareRelay(relay, toGroup: g)
+        case .randomPeer:
+            break
+        }
     }
 
     func send() async {

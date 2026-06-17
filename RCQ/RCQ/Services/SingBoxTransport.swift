@@ -108,12 +108,17 @@ final class SingBoxTransport {
     /// degrades to today's behaviour; it spreads only once >1 trusted entry
     /// exists (e.g. гидра promotes more domestic relays to trusted).
     static func selectEntryIfNeeded() async {
+        onionEntryReachable = false
         guard onionMode, !localProxyMode else { return }
         let candidates = trustedVlessEntries()
-        guard !candidates.isEmpty else { return }   // nothing to choose; buildConfig falls back to pool[0]
-        // Keep the pinned guard if it's still a trusted candidate.
+        guard !candidates.isEmpty else { return }   // no trusted entry -> onion can't form -> single-hop fallback
+        // Keep the pinned guard if it's still a trusted candidate, but confirm it's
+        // reachable (gates onion-vs-single-hop; a blocked guard => single-hop).
         if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
-           candidates.contains(where: { $0.tag == tag }) { return }
+           let pinned = candidates.first(where: { $0.tag == tag }) {
+            onionEntryReachable = await Self.probeLatencyMS(host: pinned.server, port: pinned.port) != nil
+            return
+        }
         // (Re)select: probe reachability + latency in parallel.
         let measured: [(tag: String, ms: Double)] = await withTaskGroup(of: (String, Double?).self) { group in
             for c in candidates {
@@ -138,6 +143,9 @@ final class SingBoxTransport {
             pickTag = near.randomElement()!.tag
         }
         UserDefaults.standard.set(pickTag, forKey: Keys.onionEntry)
+        // Reachable only if the chosen entry was among the successful probes; an
+        // all-probes-failed random pick is NOT reachable -> single-hop fallback.
+        onionEntryReachable = measured.contains { $0.tag == pickTag }
         print("[SingBoxTransport] onion entry selected -> \(pickTag) (trusted=\(candidates.count), reachable=\(measured.count))")
     }
 
@@ -159,6 +167,11 @@ final class SingBoxTransport {
         print("[SingBoxTransport] onion entry rotated -> \(next.tag)")
         return true
     }
+
+    // Onion single-hop-first (parity with Android `onionEntryReachable`): set by
+    // selectEntryIfNeeded()'s reachability probe; buildConfig degrades onion -> single-hop
+    // over TRUSTED relays only when the sticky entry can't carry traffic.
+    nonisolated(unsafe) static var onionEntryReachable = false
 
     private var box: RcqboxBoxService?
     private(set) var isActive = false
@@ -456,7 +469,7 @@ final class SingBoxTransport {
             // guard lesson). Falls back to single-hop below when off or <2 VLESS,
             // so connectivity is never worse. Proven via a local sing-box
             // prototype + Android emulator (RCQ/docs/onion-design.md).
-            if Self.onionMode, vless.count >= 2 {
+            if Self.onionMode, vless.count >= 2, Self.onionEntryReachable {
                 let entry = stickyEntry(vless)          // O4: persisted guard, not just vless[0]
                 let exits = vless.filter { $0.tag != entry.tag }
                 out.append([
@@ -475,6 +488,31 @@ final class SingBoxTransport {
                     exOut["tag"] = "onion-\(ex.tag)"
                     exOut["detour"] = "onion-entry"
                     out.append(exOut)
+                }
+                return out
+            }
+            // Onion DESIRED but the 2-hop chain can't form (sticky entry unreachable,
+            // or <2 VLESS): single-hop race over the TRUSTED signed-config/bundled relays
+            // ONLY. Connectivity-first (a trusted single hop beats a dead chain), but it
+            // NEVER races the untrusted shared/community pool here — single-hopping an
+            // onion user through a relay they didn't vouch for would expose their IP +
+            // destination island. The domestic bundled entry keeps this reachable for a
+            // blocked user even when the foreign trusted relays are down.
+            if Self.onionMode {
+                let trusted = RelayConfigStore.shared.currentRelays()
+                out.append([
+                    "type": "urltest",
+                    "tag": "out",
+                    "outbounds": trusted.map { $0.tag },
+                    "url": "https://api.rcq.app/health",
+                    "interval": "5m",
+                    "tolerance": 50,
+                ])
+                for r in trusted {
+                    switch r.proto {
+                    case .vless: out.append(vlessOutbound(for: r))
+                    case .hysteria2: out.append(hysteria2Outbound(for: r))
+                    }
                 }
                 return out
             }

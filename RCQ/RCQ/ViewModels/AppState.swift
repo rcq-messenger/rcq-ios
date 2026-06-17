@@ -354,8 +354,9 @@ final class AppState: ObservableObject {
     }
 
     private func doBoot(suggestedNickname: String? = nil) async {
-        RelayConfigStore.shared.refreshInBackground()
-        BrokerRelayStore.shared.refreshInBackground()   // anti-enumeration bridges -> transport pool
+        // (relay-list + broker refresh moved BELOW the transport-engage block so a
+        // blocked user pulls them THROUGH the tunnel — see after the reachability
+        // gate. Android orders it the same way.)
         // Push the active account's masquerade token to APIClient
         // BEFORE any HTTP fires. Defaults to nil for public backends
         // (api.rcq.app), set per-account by the operator at add-time
@@ -492,6 +493,23 @@ final class AppState: ObservableObject {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 reach = await APIClient.shared.refreshActiveBase()
             }
+            // Tunnel engaged but STILL unreachable, while a DIRECT connection
+            // works — the "Резерв включён, туннель сломан, работает только с VPN"
+            // trap for the FLAGSHIP (the useDirectSession bypass above only covers
+            // a reachable custom island, not prod). Drop to direct. Mirrors the
+            // Android boot fallback. Gated so a genuinely-blocked user is NEVER
+            // silently de-tunnelled: only when a fresh direct probe SUCCEEDS, and
+            // NEVER under the user's own local proxy (Tor-leak rule) or an explicit
+            // onion opt-in (keep the metadata-resistance they deliberately chose).
+            if reach == .unreachable, SingBoxTransport.shared.isActive,
+               !SingBoxTransport.localProxyMode, !SingBoxTransport.onionOptIn,
+               await APIClient.shared.probeDirectReachable() {
+                print("[boot] tunnel unreachable, direct works — falling back to direct")
+                SingBoxTransport.shared.stop()
+                await APIClient.shared.useDirectSession()
+                reach = await APIClient.shared.refreshActiveBase()
+                bootStatus = .connecting
+            }
             if reach != .unreachable, SingBoxTransport.shared.isActive {
                 bootStatus = .stealthActive
             }
@@ -506,6 +524,13 @@ final class AppState: ObservableObject {
                 }
                 return
             }
+            // Pull the fresh signed-config + broker bridges NOW (not at the top of
+            // doBoot) so a BLOCKED user — whose direct fetch to the mirrors/broker
+            // would fail — pulls them THROUGH the now-engaged tunnel (both stores
+            // route via SingBoxTransport.proxyDictionary() when isActive). Android
+            // already orders it this way (Session.kt after engage). Best-effort.
+            RelayConfigStore.shared.refreshInBackground()
+            BrokerRelayStore.shared.refreshInBackground()   // anti-enumeration bridges -> transport pool
             print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,

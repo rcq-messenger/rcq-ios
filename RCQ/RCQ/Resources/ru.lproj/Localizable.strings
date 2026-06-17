@@ -114,7 +114,7 @@
 "settings.inventory.public" = "Открытый инвентарь";
 "settings.inventory.public.footer" = "Другие пользователи RCQ смогут просматривать ваши предметы из вашего профиля. Выкл — инвентарь приватный. Тот же тумблер, что и иконка-глаз в инвентаре.";
 
-"settings.network" = "Приватность и сеть";
+"settings.network" = "Сеть";
 "settings.network.proxy" = "Подключение и обход";
 "settings.network.title" = "Сеть";
 "settings.masking" = "Маскировка";
@@ -197,13 +197,13 @@
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.onion" = "Луковая маршрутизация";
 "settings.network.onion.desc" = "Два релея, чтобы ни один не видел вас и сервер сразу. Маскировку соединения включает автоматически. Немного медленнее.";
-"settings.network.localproxy" = "Локальный прокси (Tor / I2P)";
-"settings.network.localproxy.desc" = "Пускать приложение через ваш локальный Tor или I2P. Заменяет релеи и onion.";
+"settings.network.localproxy" = "Прокси";
+"settings.network.localproxy.desc" = "Пускать приложение через любой локальный прокси: Tor, I2P, AWG/wiresocks и другие. Заменяет релеи и onion.";
 "settings.network.localproxy.host" = "Хост";
 "settings.network.localproxy.port" = "Порт";
 "settings.network.localproxy.type" = "Протокол";
 "settings.network.localproxy.test" = "Проверить соединение";
-"settings.network.localproxy.hint" = "Orbot (Tor): 127.0.0.1:9050 · i2pd: 127.0.0.1:4447. Сначала запустите прокси. На iPhone режим VPN в Orbot уже покрывает всё приложение.";
+"settings.network.localproxy.hint" = "Orbot (Tor): 127.0.0.1:9050 · i2pd: 127.0.0.1:4447 · AWG/wiresocks: 127.0.0.1:25344. Сначала запустите прокси. На iPhone режим VPN в Orbot уже покрывает всё приложение.";
 "settings.network.custom_server.intro.title" = "Свой сервер";
 "settings.network.custom_server.intro.body" = "Можно добавить аккаунт на другом совместимом сервере RCQ рядом с текущим. Открытый код сервера: github.com/rcq-messenger/rcq-server-ref, можно поднять свой или подключиться к серверу знакомого.";
 "settings.network.custom_server.current.label" = "АКТИВНЫЙ СЕРВЕР";
@@ -378,6 +378,7 @@
 "relay.share.add" = "Добавить";
 "relay.share.pick.title" = "Поделиться подключением";
 "relay.share.pick.body" = "Передайте контакту relay, чтобы он смог пробиться, когда его подключения заблокированы. Он нажмёт Добавить, чтобы использовать его.";
+"relay.share.group.warn" = "Relay увидят все участники группы. Делитесь дефицитными домашними relay только в проверенных группах.";
 "relay.import.title" = "Добавить relay";
 "relay.import.body" = "Вставьте ссылку rcq-relay://, которую вы получили вне приложения.";
 "relay.import.add" = "Добавить";

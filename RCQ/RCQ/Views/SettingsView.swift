@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var showSoundSheet = false
     @State private var showLinkWeb = false
     @State private var showPrivacy = false
+    @State private var showNetwork = false
     @State private var showNotifications = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
@@ -137,7 +138,20 @@ struct SettingsView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "lock.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.privacy_network".localized)
+                                Text("settings.privacy".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        Button {
+                            showNetwork = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "network").foregroundColor(Theme.Color.accent)
+                                Text("settings.network".localized)
                                     .foregroundColor(Theme.Color.textPrimary)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -328,7 +342,8 @@ struct SettingsView: View {
                     .presentationDetents([.height(360), .large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showPrivacy) { PrivacySettingsView() }
+            .sheet(isPresented: $showPrivacy) { PrivacySettingsView(pane: .privacy) }
+            .sheet(isPresented: $showNetwork) { PrivacySettingsView(pane: .network) }
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
