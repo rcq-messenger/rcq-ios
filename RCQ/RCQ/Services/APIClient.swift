@@ -19,7 +19,15 @@ actor APIClient {
 
     static let prodBaseURL = "https://api.rcq.app"
 
-    static let builtInProxyURL = "https://gateway.app-edge-relay.workers.dev"
+    // Collateral-resistant Cloudflare front (the `rcq-front` Worker, custom
+    // domain cdn.rcq.app) that transparently reverse-proxies the flagship API
+    // — REST and the /ws WebSocket — over Cloudflare's anycast edge. A blocked
+    // client whose direct api.rcq.app /health probe fails falls back to THIS
+    // base (see refreshActiveBase). The previous gateway.app-edge-relay
+    // .workers.dev host served the web SPA, not the API, so the fallback
+    // engaged but every API call decoded HTML and the app broke on a censored
+    // network — exactly the path this front is meant to rescue.
+    static let builtInProxyURL = "https://cdn.rcq.app"
 
     /// Computed (not stored) so UserDefaults changes — namely the
     /// censorship-fallback `rcq.proxyURL` flipped from Settings —
