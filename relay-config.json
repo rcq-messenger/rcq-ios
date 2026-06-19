@@ -1,6 +1,6 @@
 {
-  "version": 56,
-  "issued_at": "2026-06-19T09:26:39Z",
+  "version": 57,
+  "issued_at": "2026-06-19T15:46:42Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -35,6 +35,18 @@
       "tag": "relay-oracle-il-hy2"
     },
     {
+      "port": 443,
+      "priority": 3,
+      "proto": "vless",
+      "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
+      "server": "129.159.143.135",
+      "short_id": "318567678ac9878e",
+      "sni": "www.microsoft.com",
+      "tag": "relay-oracle-il",
+      "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
+      "flow": "xtls-rprx-vision"
+    },
+    {
       "obfs_password": "fLpJ2c211xjnZcP9VNcNpbZP",
       "password": "QaY3uT8EmfZxfON65jaT5bSu",
       "port": 443,
@@ -60,5 +72,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "bw1UrYFGWLRQpGevSOocJdCr+CsKJjOONNHW9+GJBXXjLCcViFMdnf4vwprCQyGLbHK6JfCeaIt/GEN8vC33CQ=="
+  "sig": "KCLPhIeExi4/GVPQ6EtrzGVpmKHR8WL+C4Tx6L1VXvN0GJbXhypv1UGxSBBGvJvMHqeZn88WrFk401hQUVwhCg=="
 }
