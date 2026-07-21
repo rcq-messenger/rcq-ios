@@ -40,6 +40,8 @@ struct PrivacySettingsView: View {
     @State private var sharedRelays: [ContactRelayStore.Entry] = ContactRelayStore.shared.list()
     @State private var showRelayImport = false
     @State private var relayImportText = ""
+    /// Relay tag pending a delete confirmation (set by the trash button).
+    @State private var relayPendingDelete: String? = nil
     @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
@@ -255,6 +257,23 @@ struct PrivacySettingsView: View {
                 Button("common.cancel".localized, role: .cancel) {}
             } message: {
                 Text("relay.import.body".localized)
+            }
+            .confirmationDialog(
+                "relay.shared.delete.title".localized,
+                isPresented: Binding(
+                    get: { relayPendingDelete != nil },
+                    set: { if !$0 { relayPendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("relay.shared.delete.confirm".localized, role: .destructive) {
+                    if let tag = relayPendingDelete {
+                        ContactRelayStore.shared.remove(tag: tag)
+                        sharedRelays = ContactRelayStore.shared.list()
+                    }
+                    relayPendingDelete = nil
+                }
+                Button("common.cancel".localized, role: .cancel) { relayPendingDelete = nil }
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -592,11 +611,15 @@ struct PrivacySettingsView: View {
                         }
                         Spacer()
                         Button(role: .destructive) {
-                            ContactRelayStore.shared.remove(tag: e.relay.tag)
-                            sharedRelays = ContactRelayStore.shared.list()
+                            relayPendingDelete = e.relay.tag
                         } label: {
                             Image(systemName: "trash").foregroundColor(Theme.Color.statusBusy)
                         }
+                        // Without this a Button inside a List row expands its
+                        // hit target to the WHOLE row, so tapping anywhere on
+                        // the relay deleted it (user report). Borderless keeps
+                        // the tap on the trash glyph only.
+                        .buttonStyle(.borderless)
                     }
                 }
             }
