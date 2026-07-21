@@ -78,6 +78,9 @@ final class AppState: ObservableObject {
         let id = UUID()
         let token: String
         let webPub: String
+        /// Client kind from the QR's `c` param ("Desktop"/"Web"), shown in the
+        /// phone's Linked-devices list. Defaults to "Web" for old QRs.
+        var clientLabel: String = "Web"
     }
 
     private let pathMonitor = NWPathMonitor()
@@ -123,7 +126,7 @@ final class AppState: ObservableObject {
         let jwt: String
         do {
             let resp: LinkDeviceResp = try await APIClient.shared.request(
-                "POST", "/devices/link", body: LinkDeviceBody(label: "Web")
+                "POST", "/devices/link", body: LinkDeviceBody(label: req.clientLabel)
             )
             jwt = resp.token
         } catch { return false }
@@ -185,7 +188,9 @@ final class AppState: ObservableObject {
             let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             if let token = q?.first(where: { $0.name == "t" })?.value, !token.isEmpty,
                let webPub = q?.first(where: { $0.name == "k" })?.value, !webPub.isEmpty {
-                pendingWebLink = WebLinkRequest(token: token, webPub: webPub)
+                let c = q?.first(where: { $0.name == "c" })?.value?.trimmingCharacters(in: .whitespaces)
+                let label = (c?.isEmpty == false) ? String(c!.prefix(24)) : "Web"
+                pendingWebLink = WebLinkRequest(token: token, webPub: webPub, clientLabel: label)
             }
             return
         }
