@@ -55,10 +55,47 @@ final class AuthService: ObservableObject {
                 isReady = true
                 return
             } catch APIError.http(404, _), APIError.http(401, _) {
-                // 404 → server forgot us. 401 → JWT signed with a different
-                // server's secret. Wipe and re-register.
-                print("[boot] cached uin=\(uin) rejected by \(APIClient.shared.baseURL.absoluteString) — re-registering")
-                await wipeLocalIdentity()
+                // 404 → the island answers "no such uin". 401 → the token no
+                // longer authenticates (rotated server secret; servers before
+                // 2026-07 also 401'd tokens idle past their 30-day exp).
+                // NEITHER proves the account is gone, and the old response
+                // here — wipe + silent fresh-register — destroyed real
+                // identities (July reports: long-idle users opened the app to
+                // a fresh 9-digit UIN). We hold the Ed25519 signing key, so
+                // ask the island to re-mint a token for the SAME identity
+                // first; only when a real island completes the recover
+                // handshake and itself answers "identity unknown" (true burn
+                // / server DB wipe) fall through to the historical
+                // wipe + fresh-register self-heal — after stashing the keys.
+                print("[boot] cached uin=\(uin) rejected by \(APIClient.shared.baseURL.absoluteString) — attempting key recover")
+                switch await recoverOwnSession(expectedUIN: uin) {
+                case .recovered(let creds):
+                    print("[boot] recovered uin=\(creds.uin) with a fresh token")
+                    KeychainStore.setString(KeychainStore.Keys.uin, String(creds.uin))
+                    KeychainStore.setString(KeychainStore.Keys.token, creds.token)
+                    await APIClient.shared.setToken(creds.token)
+                    self.ownUIN = creds.uin
+                    self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
+                    try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: creds.uin)
+                    await publishHomeIslandRecord(ownUIN: creds.uin)
+                    UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
+                    isReady = true
+                    return
+                case .identityUnknown:
+                    print("[boot] island confirmed identity unknown — wiping + re-registering")
+                    stashWipedIdentityBackup(uin: uin)
+                    await wipeLocalIdentity()
+                case .transient:
+                    // Can't prove the account is gone (no signing key, the
+                    // recover endpoint unreachable / unsupported, or the key
+                    // resolved to a DIFFERENT uin). Keep the cached identity
+                    // — never destroy what we cannot re-mint.
+                    print("[boot] rejection unconfirmed — keeping cached identity")
+                    self.ownUIN = uin
+                    self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
+                    isReady = true
+                    return
+                }
             } catch {
                 // Transient — keep cached identity for now.
                 print("[boot] cached uin=\(uin) kept (transient: \(error.localizedDescription))")
@@ -125,6 +162,56 @@ final class AuthService: ObservableObject {
         await publishHomeIslandRecord(ownUIN: out.uin)
 
         isReady = true
+    }
+
+    /// Outcome of asking the active island to re-mint a session token for the
+    /// locally-held identity keys.
+    private enum RecoverOutcome {
+        case recovered(Multihome.Credentials)
+        case identityUnknown
+        case transient
+    }
+
+    /// Challenge-response `/auth/recover` against the ACTIVE base using the
+    /// account's own Ed25519 key. `identityUnknown` only when a real RCQ
+    /// island completed the challenge handshake and then 404'd the recover —
+    /// a decoy site, an old island without the endpoint, or any network error
+    /// is `transient` (never grounds for wiping). A recover that lands on a
+    /// DIFFERENT uin (the legacy-slot fallback handing us another account's
+    /// key) is also `transient`: proving THAT key exists says nothing about
+    /// THIS account.
+    private func recoverOwnSession(expectedUIN: Int) async -> RecoverOutcome {
+        guard let host = APIClient.shared.baseURL.host,
+              let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else {
+            return .transient
+        }
+        do {
+            guard let creds = try await Multihome.recoverOn(host: host, signingPriv: signingPriv) else {
+                return .identityUnknown
+            }
+            return creds.uin == expectedUIN ? .recovered(creds) : .transient
+        } catch {
+            return .transient
+        }
+    }
+
+    /// Last-resort escape hatch: before the wipe + fresh-register self-heal
+    /// destroys an identity, keep its key material under a single global
+    /// Keychain slot (latest wipe only) so support can still rescue a user
+    /// whose account turns out not to have been gone after all.
+    private func stashWipedIdentityBackup(uin: Int) {
+        var dict: [String: String] = [
+            "uin": String(uin),
+            "ts": String(Int(Date().timeIntervalSince1970)),
+        ]
+        dict["nickname"] = KeychainStore.string(KeychainStore.Keys.nickname)
+        dict["seed"] = KeychainStore.data(KeychainStore.Keys.recoverySeed)?.base64EncodedString()
+        dict["identityPriv"] = KeychainStore.data(KeychainStore.Keys.identityPriv)?.base64EncodedString()
+        dict["signingPriv"] = KeychainStore.data(KeychainStore.Keys.signingPriv)?.base64EncodedString()
+        if let data = try? JSONSerialization.data(withJSONObject: dict) {
+            KeychainStore.set("rcq.wiped.identity.backup", data)
+        }
     }
 
     /// Federation Layer B (F1): build + publish this account's signed home-island
