@@ -740,7 +740,9 @@ private struct WebLinkScannerSheet: View {
               let token = q.first(where: { $0.name == "t" })?.value, !token.isEmpty,
               let webPub = q.first(where: { $0.name == "k" })?.value, !webPub.isEmpty
         else { return } // not a connect-to-web QR; keep scanning
-        onLink(AppState.WebLinkRequest(token: token, webPub: webPub))
+        let c = q.first(where: { $0.name == "c" })?.value?.trimmingCharacters(in: .whitespaces)
+        let label = (c?.isEmpty == false) ? String(c!.prefix(24)) : "Web"
+        onLink(AppState.WebLinkRequest(token: token, webPub: webPub, clientLabel: label))
     }
 }
 
