@@ -191,6 +191,19 @@ final class SoundService: ObservableObject {
         }
     }
 
+    /// The group ids the UI currently holds fully muted (mode == .none).
+    /// Backed by UserDefaults, so this survives relaunches even when the
+    /// optimistic server PUT failed (offline, expired token) —
+    /// NotificationPrefsService re-asserts these after its next successful
+    /// sync instead of letting the server's stale (empty) list win.
+    func mutedGroupIDsSnapshot() -> [Int] {
+        mutedThreads.compactMap { $0.hasPrefix("group:") ? Int($0.dropFirst("group:".count)) : nil }
+    }
+
+    func mutedUINsSnapshot() -> [Int] {
+        mutedThreads.compactMap { $0.hasPrefix("peer:") ? Int($0.dropFirst("peer:".count)) : nil }
+    }
+
     private static func key(for thread: ThreadID) -> String {
         "\(thread.kindString):\(thread.rawKey)"
     }

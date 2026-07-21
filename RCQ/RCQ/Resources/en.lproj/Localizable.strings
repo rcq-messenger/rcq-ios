@@ -419,6 +419,8 @@
 "relay.shared.empty" = "No shared relays. A contact can send you one in chat, or paste a link.";
 "relay.shared.from" = "from";
 "relay.shared.imported" = "imported";
+"relay.shared.delete.title" = "Remove this relay?";
+"relay.shared.delete.confirm" = "Remove";
 
 "share_group.title" = "Share a group";
 "share_group.empty" = "You're not a member of any groups yet.";

@@ -22,29 +22,37 @@ struct ContactPreviewOverlay: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.regularMaterial)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { onDismiss() }
-            VStack(spacing: 12) {
-                // Scrollable chat preview card. ChatPreviewView in
-                // `compact: true` mode caps itself to 340x520 and
-                // renders with a header strip + scrollable message
-                // list. A normal SwiftUI ScrollView inside it works
-                // natively here — no contextMenu slot to fight.
-                ChatPreviewView(target: target, compact: true)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
-                actionList
+        GeometryReader { geo in
+            ZStack {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onDismiss() }
+                // Cap the preview card so the card + the full action list
+                // fit within the safe area. On a short screen (iPhone SE)
+                // the fixed 520pt card pushed the last actions (Block /
+                // Report / Remove) off the bottom, unreachable. Reserve room
+                // for the action list (~52pt per row) + spacing, then let the
+                // whole column scroll if it still overflows so every action
+                // is always reachable.
+                let reservedForActions = CGFloat(actions.count) * 52 + 40
+                let previewCap = max(200, geo.size.height - reservedForActions)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        ChatPreviewView(target: target, compact: true)
+                            .frame(maxHeight: previewCap)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
+                        actionList
+                    }
+                    .padding(.vertical, 16)
+                    // Center the column when it's shorter than the screen,
+                    // scroll when it's taller.
+                    .frame(minHeight: geo.size.height)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .center)))
             }
-            // Lift-up transition. Larger scale delta (0.94) combined
-            // with the parent's tight spring reads as a snappy lift
-            // rather than a drawn-out fade. The opacity half makes
-            // the regularMaterial backdrop melt in over the same
-            // window so the eye doesn't see two stacked animations.
-            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .center)))
         }
     }
 

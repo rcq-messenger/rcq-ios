@@ -12,7 +12,7 @@ enum ImperativePicker {
             onPick([])
             return
         }
-        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        var cfg = Self.libraryFreeConfig()
         cfg.filter = .images
         cfg.selectionLimit = limit
         cfg.preferredAssetRepresentationMode = .current
@@ -32,7 +32,7 @@ enum ImperativePicker {
             onPick(nil)
             return
         }
-        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        var cfg = Self.libraryFreeConfig()
         cfg.filter = .images
         cfg.selectionLimit = 1
         // `.current` keeps the GIF's animation frames; `.compatible`
@@ -83,7 +83,7 @@ enum ImperativePicker {
             onPick([])
             return
         }
-        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        var cfg = Self.libraryFreeConfig()
         // No filter == show everything in Photos. `.any(of: [.images,
         // .videos])` is supposed to do the same on iOS 15+ but in
         // practice it sometimes silently hides the videos tab on
@@ -105,7 +105,7 @@ enum ImperativePicker {
             onPick(nil)
             return
         }
-        var cfg = PHPickerConfiguration(photoLibrary: .shared())
+        var cfg = Self.libraryFreeConfig()
         cfg.filter = .videos
         cfg.selectionLimit = 1
         cfg.preferredAssetRepresentationMode = .compatible
@@ -114,6 +114,20 @@ enum ImperativePicker {
         picker.delegate = coord
         objc_setAssociatedObject(picker, &Self.coordKey, coord, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         presenter.present(picker, animated: true)
+    }
+
+    /// A PHPicker config NOT bound to a `PHPhotoLibrary`. Binding to
+    /// `.shared()` makes the picker respect the app's Limited-Access
+    /// selection: it then shows ONLY the user's pinned subset plus a
+    /// "Select More Photos" prompt, and a fresh grant doesn't refresh
+    /// the already-open picker (both reported: "can only pick my 2
+    /// allowed photos", "allowing one more needs a re-open"). Without
+    /// the binding the picker runs fully out-of-process, needs NO photo
+    /// permission, and always shows the entire library. None of our
+    /// coordinators read `result.assetIdentifier` (they load bytes via
+    /// the itemProvider), so dropping the binding costs nothing.
+    private static func libraryFreeConfig() -> PHPickerConfiguration {
+        PHPickerConfiguration()
     }
 
     // MARK: - top VC lookup

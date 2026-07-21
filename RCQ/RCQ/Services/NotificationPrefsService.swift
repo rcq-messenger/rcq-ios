@@ -59,6 +59,22 @@ final class NotificationPrefsService: ObservableObject {
         do {
             let out: Prefs = try await APIClient.shared.request("GET", "/users/me/push-preferences")
             self.prefs = out
+            // Self-heal lost mutes. Mute toggles PUT optimistically; a failed
+            // PUT (offline, and until 2026-07 an expired token 401ing every
+            // call) left the server behind the UI — and this refresh then
+            // OVERWROTE the local mirror with the server's stale empty list,
+            // so muted groups pushed again after every relaunch. The UI's
+            // mute state persists in SoundService: re-assert anything it
+            // holds muted that the server list is missing. Union-only —
+            // unmutes still travel exclusively through their own PUT.
+            let missingGroups = Set(SoundService.shared.mutedGroupIDsSnapshot()).subtracting(out.mutedGroupIDs)
+            let missingUINs = Set(SoundService.shared.mutedUINsSnapshot()).subtracting(out.mutedUINs)
+            if !missingGroups.isEmpty || !missingUINs.isEmpty {
+                await update { current in
+                    current.mutedGroupIDs = Array(Set(current.mutedGroupIDs).union(missingGroups)).sorted()
+                    current.mutedUINs = Array(Set(current.mutedUINs).union(missingUINs)).sorted()
+                }
+            }
         } catch {
         }
         self.loaded = true
