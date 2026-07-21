@@ -160,10 +160,10 @@
 "serverjoin.body_open" = "Add this RCQ server as a separate account with its own identity.";
 "serverjoin.join" = "Join";
 "serverjoin.error" = "Couldn't join. The invite may be wrong or expired, or the server is unreachable.";
-"weblink.title" = "Connect to web?";
-"weblink.body" = "This will log chat.rcq.app in as your account so you can chat from a browser. Only continue if you opened this QR on chat.rcq.app yourself.";
+"weblink.title" = "Connect %@?";
+"weblink.body" = "This will log %@ in as your account so you can chat there. Only continue if you opened this QR yourself.";
 "weblink.confirm" = "Connect";
-"weblink.done" = "Web connected. Your browser should log in now.";
+"weblink.done" = "Connected. The device should log in now.";
 "weblink.error" = "Couldn't connect. The code may have expired — reload the page and try again.";
 "linkeddevices.title" = "Linked devices";
 "linkeddevices.nav" = "Devices";
