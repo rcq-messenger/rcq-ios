@@ -123,11 +123,11 @@ struct WebLinkSheet: View {
                 .foregroundColor(Theme.Color.accent)
                 .padding(.top, 8)
 
-            Text("weblink.title".localized)
+            Text(String(format: "weblink.title".localized, request.clientLabel))
                 .font(.title3.weight(.semibold))
                 .foregroundColor(Theme.Color.textPrimary)
 
-            Text(done ? "weblink.done".localized : "weblink.body".localized)
+            Text(done ? "weblink.done".localized : String(format: "weblink.body".localized, request.clientLabel))
                 .font(.footnote)
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)

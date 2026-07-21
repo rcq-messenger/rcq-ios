@@ -615,11 +615,10 @@ struct LinkedDevicesView: View {
             .sheet(isPresented: $showScanner) {
                 WebLinkScannerSheet { req in showScanner = false; pendingLink = req }
             }
-            .sheet(item: $pendingLink) { req in
-                WebLinkSheet(request: req, onClose: {
-                    pendingLink = nil
-                    Task { await reload() }
-                })
+            // onDismiss fires on ANY dismissal (Close button OR swipe-down), so
+            // the just-linked device shows up without re-opening the drawer.
+            .sheet(item: $pendingLink, onDismiss: { Task { await reload() } }) { req in
+                WebLinkSheet(request: req, onClose: { pendingLink = nil })
             }
         }
     }
