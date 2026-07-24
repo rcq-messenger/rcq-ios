@@ -11,6 +11,9 @@ struct VideoBubble: View {
     @State private var thumb: UIImage?
     @State private var preparing = false
     @State private var playerURL: URL?
+    /// Spoiler video renders a blurred thumbnail until the first tap
+    /// (which reveals; the second tap plays). Session-only state.
+    @State private var spoilerRevealed = false
     @StateObject private var progress = MediaProgressStore.shared
 
     private var isUploading: Bool {
@@ -21,6 +24,10 @@ struct VideoBubble: View {
         message.mediaID == nil && message.deliveryState == .failed
     }
 
+    private var spoilerCovered: Bool {
+        message.isSpoiler && !spoilerRevealed
+    }
+
     var body: some View {
         ZStack {
             if let thumb {
@@ -28,11 +35,12 @@ struct VideoBubble: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: maxWidth, height: maxWidth * 0.75)
+                    .blur(radius: spoilerCovered ? 18 : 0, opaque: true)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 placeholderFill
             }
-            if !isUploading && !didFailUpload, message.durationSec > 0 {
+            if !isUploading && !didFailUpload, !spoilerCovered, message.durationSec > 0 {
                 VStack {
                     HStack {
                         Text(durationLabel(message.durationSec))
@@ -53,6 +61,11 @@ struct VideoBubble: View {
                 uploadFailed
             } else if preparing {
                 ProgressView().tint(.white).scaleEffect(1.2)
+            } else if spoilerCovered {
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 26))
+                    .foregroundColor(.white.opacity(0.92))
+                    .shadow(color: .black.opacity(0.5), radius: 4)
             } else if thumb != nil {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 56))
@@ -64,6 +77,10 @@ struct VideoBubble: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture {
+            if spoilerCovered {
+                withAnimation(.easeOut(duration: 0.25)) { spoilerRevealed = true }
+                return
+            }
             guard !isUploading, !didFailUpload, thumb != nil else { return }
             // Route through the album viewer (single-item album) so
             // standalone video shares the same chrome and gestures

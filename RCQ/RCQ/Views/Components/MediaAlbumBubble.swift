@@ -137,8 +137,23 @@ private struct AlbumTile: View {
     let onTap: () -> Void
     let onLongPress: () -> Void
 
+    /// Spoiler tiles blur until the first tap; the Button action does
+    /// the reveal (the cover is visual-only here) so the second tap
+    /// opens the album viewer as usual.
+    @State private var spoilerRevealed = false
+
+    private var spoilerCovered: Bool {
+        message.isSpoiler && !spoilerRevealed
+    }
+
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if spoilerCovered {
+                withAnimation(.easeOut(duration: 0.25)) { spoilerRevealed = true }
+            } else {
+                onTap()
+            }
+        }) {
             ZStack {
                 switch message.kind {
                 case .photo:
@@ -154,6 +169,7 @@ private struct AlbumTile: View {
                 }
             }
             .frame(width: width, height: height)
+            .modifier(SpoilerCover(active: spoilerCovered, tapToReveal: false) {})
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

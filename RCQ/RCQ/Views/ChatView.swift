@@ -2589,7 +2589,24 @@ struct ChatView: View {
                 }
             }
             .frame(width: 64, height: 64)
+            // Tap-to-blur (Android parity): tapping a pending photo/video
+            // tile marks it a spoiler — it ships blurred and the receiver
+            // taps to reveal. GIFs have no spoiler lane on the wire.
+            .blur(radius: vm.spoilerMedia.contains(item.id) ? 6 : 0, opaque: true)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .bottomLeading) {
+                if !isGIF(item) {
+                    Image(systemName: vm.spoilerMedia.contains(item.id) ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white)
+                        .padding(4)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
+                        .padding(3)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { vm.toggleSpoilerMedia(item.id) }
+            .accessibilityLabel(Text("chat.spoiler.mark".localized))
             Button {
                 vm.removePendingMedia(item.id)
             } label: {
@@ -2606,6 +2623,11 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .offset(x: 4, y: -4)
         }
+    }
+
+    private func isGIF(_ item: ChatViewModel.PendingMediaItem) -> Bool {
+        if case .gif = item { return true }
+        return false
     }
 
     private var sendButton: some View {

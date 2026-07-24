@@ -101,6 +101,9 @@ struct Message: Identifiable, Hashable, Codable {
     /// vote/close round-trips. The actual question + options live
     /// in `text` as JSON (PollPayload). Nil for other kinds.
     var pollID: Int?
+    /// Sender marked this photo/video a spoiler: renders blurred until
+    /// the viewer taps to reveal (reveal is per-session, not persisted).
+    var isSpoiler: Bool
 
     init(
         id: UUID = UUID(),
@@ -129,7 +132,8 @@ struct Message: Identifiable, Hashable, Codable {
         fileSizeBytes: Int? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil,
-        pollID: Int? = nil
+        pollID: Int? = nil,
+        isSpoiler: Bool = false
     ) {
         self.id = id
         self.thread = thread
@@ -158,5 +162,6 @@ struct Message: Identifiable, Hashable, Codable {
         self.latitude = latitude
         self.longitude = longitude
         self.pollID = pollID
+        self.isSpoiler = isSpoiler
     }
 }
