@@ -243,6 +243,10 @@ struct RCQApp: App {
                 .modifier(AppTextSizeModifier(size: themeManager.textSize))
                 .tint(Theme.Color.accent)
                 .onOpenURL { url in appState.handle(deepLink: url) }
+                // In-app browser: any http(s) link tapped inside the app
+                // opens over the app in SFSafariViewController; rcq deep
+                // links keep routing into AppState (see InAppBrowser).
+                .environment(\.openURL, OpenURLAction { url in InAppBrowser.open(url) })
         }
     }
 }

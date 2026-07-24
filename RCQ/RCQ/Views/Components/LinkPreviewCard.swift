@@ -34,7 +34,7 @@ struct LinkPreviewCard: View {
     @ViewBuilder
     private func content(_ m: LPLinkMetadata) -> some View {
         Button {
-            UIApplication.shared.open(url)
+            InAppBrowser.open(url)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 if m.imageProvider != nil || m.iconProvider != nil {
