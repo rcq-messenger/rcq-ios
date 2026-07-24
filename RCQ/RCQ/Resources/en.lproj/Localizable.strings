@@ -2198,3 +2198,7 @@
 "reissue.confirm.body" = "Your old recovery phrase stops working and is replaced by a new one, so write the new one down. Your contacts will see a security-code-changed warning, and messages sent to you during the switch may not arrive. Your UIN stays the same.";
 "reissue.done" = "Keys re-issued. Write down your new recovery phrase.";
 "reissue.failed" = "Couldn't re-issue keys. Check your connection and try again.";
+
+/* Tap-to-blur spoiler media */
+"chat.spoiler.mark" = "Hide with spoiler";
+"chat.spoiler.reveal" = "Show spoiler";

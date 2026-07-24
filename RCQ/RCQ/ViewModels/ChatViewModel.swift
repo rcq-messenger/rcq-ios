@@ -35,6 +35,9 @@ final class ChatViewModel: ObservableObject {
     /// instead of the picker firing each item off as a standalone
     /// message the moment it returns.
     @Published var pendingMedia: [PendingMediaItem] = []
+    /// Pending photo/video ids the user marked as spoilers (tap on the
+    /// pending tile toggles). Consumed + cleared by the send drain.
+    @Published var spoilerMedia: Set<UUID> = []
     /// Multi-select state for batch delete / forward. Entered via the
     /// "Select" action on the message context menu and exited via the
     /// Cancel button on the selection action bar.
@@ -390,6 +393,7 @@ final class ChatViewModel: ObservableObject {
             try? FileManager.default.removeItem(at: url)
         }
         pendingMedia.removeAll { $0.id == id }
+        spoilerMedia.remove(id)
     }
 
     func clearPendingMedia() {
@@ -399,6 +403,15 @@ final class ChatViewModel: ObservableObject {
             }
         }
         pendingMedia = []
+        spoilerMedia = []
+    }
+
+    /// Tap-to-blur on a pending tile (photo/video only — the GIF path
+    /// has no spoiler lane on the wire).
+    func toggleSpoilerMedia(_ id: UUID) {
+        guard let item = pendingMedia.first(where: { $0.id == id }) else { return }
+        if case .gif = item { return }
+        if spoilerMedia.contains(id) { spoilerMedia.remove(id) } else { spoilerMedia.insert(id) }
     }
 
     /// Drains `pendingMedia`, attaching the composer text to the LAST
@@ -427,17 +440,19 @@ final class ChatViewModel: ObservableObject {
             // it still reads like a separate chat message.
             let isLast = (idx == queue.count - 1)
             let cap: String? = (isLast && !caption.isEmpty) ? caption : nil
+            let spoiler = spoilerMedia.contains(item.id)
             let err: String?
             switch item {
             case .photo(_, let img):
-                err = await sendPhoto(img, caption: cap, albumID: album)
+                err = await sendPhoto(img, caption: cap, albumID: album, spoiler: spoiler)
             case .video(_, let url, let thumb):
-                err = await sendVideo(from: url, previewThumbnail: thumb, caption: cap, albumID: album)
+                err = await sendVideo(from: url, previewThumbnail: thumb, caption: cap, albumID: album, spoiler: spoiler)
             case .gif(_, let data, let preview):
                 err = await sendGIF(data: data, preview: preview, caption: cap, albumID: album)
             }
             if let e = err, firstError == nil { firstError = e }
         }
+        spoilerMedia = []
         return firstError
     }
 
@@ -459,13 +474,13 @@ final class ChatViewModel: ObservableObject {
     }
 
     @discardableResult
-    func sendPhoto(_ image: UIImage, caption: String? = nil, albumID: UUID? = nil) async -> String? {
+    func sendPhoto(_ image: UIImage, caption: String? = nil, albumID: UUID? = nil, spoiler: Bool = false) async -> String? {
         let reply = consumeReplyContext()
         do {
             switch target {
-            case .peer(let c):       try await MessageService.shared.sendPhoto(image, to: c, caption: caption, replyTo: reply, albumID: albumID)
-            case .group(let g):      try await MessageService.shared.sendPhoto(image, to: g, caption: caption, replyTo: reply, albumID: albumID)
-            case .randomPeer(let p): try await MessageService.shared.sendPhoto(image, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
+            case .peer(let c):       try await MessageService.shared.sendPhoto(image, to: c, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler)
+            case .group(let g):      try await MessageService.shared.sendPhoto(image, to: g, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler)
+            case .randomPeer(let p): try await MessageService.shared.sendPhoto(image, toRandom: p, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler)
             }
             return nil
         } catch let err as MediaService.Failure {
@@ -581,6 +596,7 @@ final class ChatViewModel: ObservableObject {
         previewThumbnail: UIImage? = nil,
         caption: String? = nil,
         albumID: UUID? = nil,
+        spoiler: Bool = false,
     ) async -> String? {
         let reply = consumeReplyContext()
         // Picker-strip thumbnail (small JPEG) ships down so the bubble
@@ -596,12 +612,12 @@ final class ChatViewModel: ObservableObject {
             case .peer(let c):
                 try await MessageService.shared.sendVideo(
                     from: sourceURL, previewThumbnailB64: previewB64,
-                    to: c, caption: caption, replyTo: reply, albumID: albumID,
+                    to: c, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler,
                 )
             case .group(let g):
                 try await MessageService.shared.sendVideo(
                     from: sourceURL, previewThumbnailB64: previewB64,
-                    to: g, caption: caption, replyTo: reply, albumID: albumID,
+                    to: g, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler,
                 )
             case .randomPeer(let p):
                 // Random-chat keeps the legacy pre-process flow — single
@@ -609,7 +625,7 @@ final class ChatViewModel: ObservableObject {
                 // thread is throwaway anyway.
                 let processed = try await VideoProcessor.process(sourceURL: sourceURL)
                 try? FileManager.default.removeItem(at: sourceURL)
-                try await MessageService.shared.sendVideo(processed: processed, toRandom: p, caption: caption, replyTo: reply, albumID: albumID)
+                try await MessageService.shared.sendVideo(processed: processed, toRandom: p, caption: caption, replyTo: reply, albumID: albumID, spoiler: spoiler)
             }
             return nil
         } catch let err as VideoProcessor.Failure {

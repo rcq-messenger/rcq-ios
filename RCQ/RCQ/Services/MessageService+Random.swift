@@ -45,7 +45,7 @@ extension MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    func sendPhoto(_ image: UIImage, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
             senderUIN: ownUIN,
@@ -56,7 +56,8 @@ extension MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         RandomChatService.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -74,7 +75,7 @@ extension MessageService {
         let combined = upload.mediaID + "|" + upload.keyBase64
         RandomChatService.shared.updateMediaID(messageID: local.id, mediaID: combined)
         try await sendRandomEnvelope(
-            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID),
+            .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, replyTo: replyTo, albumID: albumID, spoiler: spoiler),
             to: peer,
             localID: local.id
         )
@@ -158,7 +159,7 @@ extension MessageService {
         )
     }
 
-    func sendVideo(processed: VideoProcessor.Output, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    func sendVideo(processed: VideoProcessor.Output, toRandom peer: RandomPeer, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
         let local = Message(
             thread: .peer(uin: peer.uin),
             senderUIN: ownUIN,
@@ -171,7 +172,8 @@ extension MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         RandomChatService.shared.append(local)
         defer { try? FileManager.default.removeItem(at: processed.url) }
@@ -197,7 +199,8 @@ extension MessageService {
                 durationSec: processed.durationSec,
                 caption: caption,
                 replyTo: replyTo,
-                albumID: albumID
+                albumID: albumID,
+                spoiler: spoiler
             ),
             to: peer,
             localID: local.id

@@ -297,10 +297,10 @@ class NotificationService: UNNotificationServiceExtension {
         switch decrypted.envelope {
         case .text(_, let text, _, _, _):
             content.body = text.isEmpty ? "Message" : text
-        case .photo(_, _, _, let caption, _, _, _, _):
+        case .photo(_, _, _, let caption, _, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📷 Photo" : "📷 \(cap)"
-        case .video(_, _, _, _, _, let caption, _, _, _, _):
+        case .video(_, _, _, _, _, let caption, _, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "🎬 Video" : "🎬 \(cap)"
         case .voice:
@@ -503,8 +503,8 @@ class NotificationService: UNNotificationServiceExtension {
         let needle = "#\(uin)"
         switch envelope {
         case .text(_, let t, _, _, _):                      return t.contains(needle)
-        case .photo(_, _, _, let c, _, _, _, _):            return (c ?? "").contains(needle)
-        case .video(_, _, _, _, _, let c, _, _, _, _):      return (c ?? "").contains(needle)
+        case .photo(_, _, _, let c, _, _, _, _, _):         return (c ?? "").contains(needle)
+        case .video(_, _, _, _, _, let c, _, _, _, _, _):   return (c ?? "").contains(needle)
         case .file(_, _, _, _, _, _, let c, _, _, _):       return (c ?? "").contains(needle)
         case .location(_, _, _, let c, _, _, _):            return (c ?? "").contains(needle)
         default:                                            return false

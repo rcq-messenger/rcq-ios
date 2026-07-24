@@ -22,6 +22,10 @@ struct PhotoBubble: View {
     /// finishing does not flash the error triangle.
     @State private var loadFailed = false
     @State private var fullscreen = false
+    /// Spoiler media renders blurred until the first tap. Per-view
+    /// session state — scrolling far away and back re-blurs, which
+    /// matches the Android renderer.
+    @State private var spoilerRevealed = false
     @StateObject private var progress = MediaProgressStore.shared
 
     init(message: Message, maxWidth: CGFloat = 240, forcedSize: CGSize? = nil, disableTap: Bool = false) {
@@ -50,6 +54,13 @@ struct PhotoBubble: View {
         message.mediaID == nil && message.deliveryState == .failed
     }
 
+    /// Album tiles (`disableTap`) let the tile own BOTH taps — the
+    /// reveal and the viewer open — so the bubble only self-manages
+    /// the cover when it owns its tap.
+    private var spoilerCovered: Bool {
+        message.isSpoiler && !spoilerRevealed && !disableTap
+    }
+
     var body: some View {
         Group {
             if let image {
@@ -70,7 +81,10 @@ struct PhotoBubble: View {
                 .frame(width: frameSize.width, height: frameSize.height)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
-                .modifier(TapToFullscreen(enabled: !disableTap, message: message))
+                .modifier(SpoilerCover(active: spoilerCovered) {
+                    withAnimation(.easeOut(duration: 0.25)) { spoilerRevealed = true }
+                })
+                .modifier(TapToFullscreen(enabled: !disableTap && !spoilerCovered, message: message))
             } else if didFailUpload {
                 failedPlaceholder
             } else if isUploading {
@@ -260,6 +274,41 @@ final class PhotoSaveDelegate: NSObject {
 /// same swipe-down dismiss, same close + save chrome. When
 /// `enabled = false`, taps fall through to the parent (album tiles
 /// own the routing themselves).
+/// Telegram-style spoiler cover: blurs the media, shows the eye-slash
+/// badge and swallows the first tap to reveal. Shared by PhotoBubble,
+/// VideoBubble and the album tiles (same module).
+struct SpoilerCover: ViewModifier {
+    let active: Bool
+    /// Album tiles pass `false` — their Button owns the tap and calls
+    /// the reveal itself, so the cover is visual-only there.
+    var tapToReveal: Bool = true
+    let onReveal: () -> Void
+
+    func body(content: Content) -> some View {
+        if active {
+            let covered = content
+                .blur(radius: 18, opaque: true)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    Image(systemName: "eye.slash.fill")
+                        .font(.system(size: 26))
+                        .foregroundColor(.white.opacity(0.92))
+                        .shadow(color: .black.opacity(0.5), radius: 4)
+                )
+            if tapToReveal {
+                covered
+                    .contentShape(Rectangle())
+                    .onTapGesture { onReveal() }
+                    .accessibilityLabel(Text("chat.spoiler.reveal".localized))
+            } else {
+                covered
+            }
+        } else {
+            content
+        }
+    }
+}
+
 private struct TapToFullscreen: ViewModifier {
     let enabled: Bool
     let message: Message

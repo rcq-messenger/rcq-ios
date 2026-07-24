@@ -72,9 +72,9 @@ final class MessageService {
                 let caption: String? = message.text.isEmpty ? nil : message.text
                 switch message.kind {
                 case .photo:
-                    return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
+                    return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
                 case .video:
-                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID)
+                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
                 case .file:
                     return .file(id: message.id, mediaID: mediaID, mediaKey: key, fileName: message.fileName ?? "file", mime: message.fileMime ?? "application/octet-stream", sizeBytes: message.fileSizeBytes ?? 0, caption: caption, ttl: ttl, replyTo: reply)
                 case .voice:
@@ -169,7 +169,7 @@ final class MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
         SmokeTracker.shared.tick(.sendPhoto)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
@@ -183,7 +183,8 @@ final class MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -203,7 +204,7 @@ final class MessageService {
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: local.id, thread: .peer(uin: contact.uin), mediaID: combined)
             try? await self.sendEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID, spoiler: spoiler),
                 to: contact, localID: local.id
             )
         }
@@ -414,6 +415,7 @@ final class MessageService {
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
         albumID: UUID? = nil,
+        spoiler: Bool = false,
     ) async throws {
         SmokeTracker.shared.tick(.sendVideo)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
@@ -430,7 +432,8 @@ final class MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -471,7 +474,8 @@ final class MessageService {
                     caption: caption,
                     ttl: ttl,
                     replyTo: replyTo,
-                    albumID: albumID
+                    albumID: albumID,
+                    spoiler: spoiler
                 ),
                 to: contact, localID: local.id
             )
@@ -512,7 +516,8 @@ final class MessageService {
                 mediaID: mediaID, mediaKey: mediaKey,
                 caption: source.text.isEmpty ? nil : source.text,
                 ttl: ttl,
-                forwardedFromName: authorName
+                forwardedFromName: authorName,
+                spoiler: source.isSpoiler
             )
         case .video:
             let parts = (source.mediaID ?? "").split(separator: "|", maxSplits: 1).map(String.init)
@@ -525,7 +530,8 @@ final class MessageService {
                 durationSec: source.durationSec,
                 caption: source.text.isEmpty ? nil : source.text,
                 ttl: ttl,
-                forwardedFromName: authorName
+                forwardedFromName: authorName,
+                spoiler: source.isSpoiler
             )
         case .voice:
             let parts = (source.mediaID ?? "").split(separator: "|", maxSplits: 1).map(String.init)
@@ -557,7 +563,8 @@ final class MessageService {
             thumbnailB64: source.thumbnailB64,
             durationSec: source.durationSec,
             ttlSeconds: ChatSettingsStore.shared.ttl(for: thread),
-            forwardedFromName: authorName
+            forwardedFromName: authorName,
+            isSpoiler: source.isSpoiler
         )
     }
 
@@ -770,16 +777,16 @@ final class MessageService {
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
             ))
-        case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let fwd, let reply, let album):
+        case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: true,
                 kind: .photo, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
-                albumID: album
+                albumID: album, isSpoiler: spoiler
             ))
-        case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album):
+        case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: true,
                 kind: .video, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
@@ -787,7 +794,7 @@ final class MessageService {
                 receivedWhileAway: false, thumbnailB64: thumb, durationSec: dur,
                 ttlSeconds: ttl, forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
-                albumID: album
+                albumID: album, isSpoiler: spoiler
             ))
         case .voice(let id, let mediaID, let mediaKey, let dur, let ttl, let fwd, let reply):
             return MessageStore.shared.append(Message(
@@ -1238,8 +1245,8 @@ final class MessageService {
     static func messageID(in envelope: Envelope) -> UUID? {
         switch envelope {
         case .text(let id, _, _, _, _): return id
-        case .photo(let id, _, _, _, _, _, _, _): return id
-        case .video(let id, _, _, _, _, _, _, _, _, _): return id
+        case .photo(let id, _, _, _, _, _, _, _, _): return id
+        case .video(let id, _, _, _, _, _, _, _, _, _, _): return id
         case .voice(let id, _, _, _, _, _, _): return id
         case .systemNotice(let id, _): return id
         case .poll(let id, _, _, _, _, _): return id
@@ -1272,8 +1279,8 @@ final class MessageService {
     static func requestPreview(for env: Envelope) -> String {
         switch env {
         case .text(_, let text, _, _, _): return text
-        case .photo(_, _, _, let caption, _, _, _, _): return caption?.isEmpty == false ? caption! : "📷"
-        case .video(_, _, _, _, _, let caption, _, _, _, _): return caption?.isEmpty == false ? caption! : "🎬"
+        case .photo(_, _, _, let caption, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "📷"
+        case .video(_, _, _, _, _, let caption, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "🎬"
         case .voice: return "🎤"
         case .file(_, _, _, let fname, _, _, _, _, _, _): return "📎 \(fname)"
         case .location: return "📍"
@@ -1402,7 +1409,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, let reply, let album):
+                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, let reply, let album, let spoiler):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1415,11 +1422,12 @@ final class MessageService {
                         replyToID: reply?.id,
                         replyToSnippet: reply?.snippet,
                         replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply),
-                        albumID: album
+                        albumID: album,
+                        isSpoiler: spoiler
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, let reply, let album):
+                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, let reply, let album, let spoiler):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1434,7 +1442,8 @@ final class MessageService {
                         replyToID: reply?.id,
                         replyToSnippet: reply?.snippet,
                         replyToAuthorName: Self.resolveRandomReplyAuthor(reply: reply),
-                        albumID: album
+                        albumID: album,
+                        isSpoiler: spoiler
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
@@ -1571,7 +1580,7 @@ final class MessageService {
                    bodyMentionsMe(text) {
                     MentionInboxStore.shared.mark(thread)
                 }
-            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply, let album):
+            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply, let album, let spoiler):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1587,9 +1596,10 @@ final class MessageService {
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName,
-                    albumID: album
+                    albumID: album,
+                    isSpoiler: spoiler
                 ))
-            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album):
+            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album, let spoiler):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -1607,7 +1617,8 @@ final class MessageService {
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName,
-                    albumID: album
+                    albumID: album,
+                    isSpoiler: spoiler
                 ))
             case .voice(let id, let mediaID, let mediaKey, let dur, let envTTL, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(

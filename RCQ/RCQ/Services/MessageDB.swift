@@ -55,6 +55,9 @@ final class MessageRecord: NSManagedObject {
     /// button rendered but the tap silently no-op'd because
     /// `message.pollID` was nil.
     @NSManaged var pollID: Int64
+    /// Sender-flagged spoiler media (blur until tapped). `false`
+    /// default keeps lightweight migration happy on existing stores.
+    @NSManaged var isSpoiler: Bool
 }
 
 @MainActor
@@ -299,6 +302,7 @@ final class MessageDB {
             // existing stores — non-poll rows just hold 0, the
             // model layer surfaces it as nil.
             attr("pollID",             .integer64AttributeType, defaultValue: 0),
+            attr("isSpoiler",          .booleanAttributeType, defaultValue: false),
         ]
         let model = NSManagedObjectModel()
         model.entities = [entity]
@@ -522,6 +526,7 @@ final class MessageDB {
         row.latitude = msg.latitude.map { NSNumber(value: $0) }
         row.longitude = msg.longitude.map { NSNumber(value: $0) }
         row.pollID = Int64(msg.pollID ?? 0)
+        row.isSpoiler = msg.isSpoiler
     }
 
     private func toModel(_ row: MessageRecord) -> Message {
@@ -556,7 +561,8 @@ final class MessageDB {
             fileSizeBytes: row.fileSizeBytes > 0 ? Int(row.fileSizeBytes) : nil,
             latitude: row.latitude?.doubleValue,
             longitude: row.longitude?.doubleValue,
-            pollID: row.pollID > 0 ? Int(row.pollID) : nil
+            pollID: row.pollID > 0 ? Int(row.pollID) : nil,
+            isSpoiler: row.isSpoiler
         )
     }
 

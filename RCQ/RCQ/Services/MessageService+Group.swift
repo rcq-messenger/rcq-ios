@@ -82,7 +82,7 @@ extension MessageService {
         }
     }
 
-    func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
+    func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
             thread: .group(id: group.id),
@@ -94,7 +94,8 @@ extension MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -114,7 +115,7 @@ extension MessageService {
             let combined = upload.mediaID + "|" + upload.keyBase64
             MessageStore.shared.updateMediaID(messageID: local.id, thread: .group(id: group.id), mediaID: combined)
             try? await self.sendGroupEnvelope(
-                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID),
+                .photo(id: local.id, mediaID: upload.mediaID, mediaKey: upload.keyBase64, caption: caption, ttl: ttl, replyTo: replyTo, albumID: albumID, spoiler: spoiler),
                 to: group, localID: local.id
             )
         }
@@ -304,6 +305,7 @@ extension MessageService {
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
         albumID: UUID? = nil,
+        spoiler: Bool = false,
     ) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
@@ -319,7 +321,8 @@ extension MessageService {
             replyToID: replyTo?.id,
             replyToSnippet: replyTo?.snippet,
             replyToAuthorName: replyTo?.authorName,
-            albumID: albumID
+            albumID: albumID,
+            isSpoiler: spoiler
         )
         MessageStore.shared.append(local)
         MediaProgressStore.shared.begin(local.id)
@@ -360,7 +363,8 @@ extension MessageService {
                     caption: caption,
                     ttl: ttl,
                     replyTo: replyTo,
-                    albumID: albumID
+                    albumID: albumID,
+                    spoiler: spoiler
                 ),
                 to: group, localID: local.id
             )
