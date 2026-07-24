@@ -179,6 +179,26 @@ enum PINVault {
         try writeVault(vault)
     }
 
+    /// Re-seal whichever slot `oldKey` currently opens under a key derived from
+    /// `newPIN`, keeping `payload` (dataKey unchanged → the store is not
+    /// re-encrypted). Used to change the DECOY PIN from within a duress session
+    /// WITHOUT the real slot key — the caller holds only the decoy slot's key.
+    /// Rejects a `newPIN` that opens a DIFFERENT existing slot (a collision
+    /// could make the new decoy PIN accidentally match the real slot). Returns
+    /// the new derived key on success, or nil (slot not found / collision).
+    static func reSealUnderNewPIN(oldKey: SymmetricKey, payload: SlotPayload, newPIN: String) -> SymmetricKey? {
+        guard var vault = readVault() else { return nil }
+        guard let idx = vault.slots.firstIndex(where: { openSlot($0, key: oldKey) != nil }) else { return nil }
+        let newKey = deriveKey(pin: newPIN, salt: vault.salt)
+        for (i, slot) in vault.slots.enumerated() where i != idx {
+            if openSlot(slot, key: newKey) != nil { return nil }
+        }
+        guard let sealed = try? sealSlot(payload, key: newKey) else { return nil }
+        vault.slots[idx] = sealed
+        guard (try? writeVault(vault)) != nil else { return nil }
+        return newKey
+    }
+
     static func freeSlotIndex(layout: Layout) -> Int? {
         let used = Set([layout.realSlot, layout.decoySlot, layout.wipeSlot].compactMap { $0 })
         return (0..<slotCount).first { !used.contains($0) }

@@ -2090,7 +2090,7 @@
 
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "Decoy PIN";
-"panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens an empty decoy account that works offline — your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app.";
+"panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens a separate decoy account that works offline — your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app. Tip: unlock into the decoy now and then and use it a little (a few everyday contacts and messages) — a blank account looks staged.";
 "panic_pin.decoy.footer.biometric" = "Turn off Face ID to set a decoy PIN. The two can't be used together — a face-unlock can't open the decoy.";
 "panic_pin.decoy.action" = "Add a decoy PIN";
 "panic_pin.decoy.change" = "Change decoy PIN";

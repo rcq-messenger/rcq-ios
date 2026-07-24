@@ -73,6 +73,13 @@ final class PanicPINService: ObservableObject {
     @Published private var realPayload: PINVault.SlotPayload?
     private var realSlotKey: SymmetricKey?
 
+    // Decoy session custody (report #237): while unlocked into the decoy view
+    // we keep the decoy slot's payload + derived key so a "change PIN" from
+    // that view re-seals the DECOY slot only — never the real one, whose key we
+    // deliberately do not hold in a decoy session. Both nil in a real session.
+    private var decoyPayload: PINVault.SlotPayload?
+    private var decoySlotKey: SymmetricKey?
+
     private init() {
         lockState = PINVault.isConfigured ? .locked : .unlocked
         biometricEnabled = BiometricUnlock.isEnabled
@@ -119,6 +126,8 @@ final class PanicPINService: ObservableObject {
         case .decoy:
             realPayload = nil
             realSlotKey = nil
+            decoyPayload = unlock.payload
+            decoySlotKey = unlock.slotKey
             guard let keyData = unlock.payload.dataKey else { return .wrong }
             dataKey = SymmetricKey(data: keyData)
             mode = .decoy
@@ -146,6 +155,38 @@ final class PanicPINService: ObservableObject {
         return unlock?.payload.mode == .real
     }
 
+    /// Verify the pin for the CURRENT session: the real pin in a real session,
+    /// the decoy pin in a decoy session. Used to re-gate PIN settings so a
+    /// coercer in the decoy view can re-enter their (decoy) pin plausibly
+    /// instead of it failing as "wrong" — which would betray a second pin.
+    func verifySessionPIN(_ pin: String) async -> Bool {
+        let unlock = await Task.detached(priority: .userInitiated) {
+            PINVault.unlock(pin: pin)
+        }.value
+        guard let unlock else { return false }
+        return mode == .decoy ? unlock.payload.mode == .decoy : unlock.payload.mode == .real
+    }
+
+    /// True while unlocked into the decoy (duress) view.
+    var inDecoySession: Bool { mode == .decoy }
+
+    /// Change the PIN from within a decoy session: re-seal the DECOY slot under
+    /// `pin`. The real slot is untouched, so the hidden real identity stays
+    /// hidden and its pin unchanged. Rejects a `pin` that collides with another
+    /// slot. Report #237: a coercer given the decoy pin can change "their" pin
+    /// without it ever exposing — or hinting at — the real account.
+    func changeDecoyPIN(_ pin: String) async throws {
+        guard pin.count >= Self.minPINLength else { throw PINError.pinTooShort }
+        guard mode == .decoy, let payload = decoyPayload, let oldKey = decoySlotKey else {
+            throw PINError.notRealSession
+        }
+        let newKey = await Task.detached(priority: .userInitiated) {
+            PINVault.reSealUnderNewPIN(oldKey: oldKey, payload: payload, newPIN: pin)
+        }.value
+        guard let newKey else { throw PINError.pinInUse }
+        decoySlotKey = newKey
+    }
+
     func unlockWithBiometrics() async -> Bool {
         guard biometricEnabled else { return false }
         guard let blob = await BiometricUnlock.read(
@@ -171,6 +212,8 @@ final class PanicPINService: ObservableObject {
         dataKey = nil
         realPayload = nil
         realSlotKey = nil
+        decoyPayload = nil
+        decoySlotKey = nil
         mode = .none
         AuthService.shared.restoreRealIdentity()
         MessageDB.shared.configure(decoy: false, dataKey: nil)
@@ -184,6 +227,8 @@ final class PanicPINService: ObservableObject {
         dataKey = nil
         realPayload = nil
         realSlotKey = nil
+        decoyPayload = nil
+        decoySlotKey = nil
         mode = .none
         lockState = .unlocked
     }
@@ -328,6 +373,8 @@ final class PanicPINService: ObservableObject {
         biometricEnabled = false
         realPayload = nil
         realSlotKey = nil
+        decoyPayload = nil
+        decoySlotKey = nil
         dataKey = nil
         mode = .none
         lockState = .unlocked

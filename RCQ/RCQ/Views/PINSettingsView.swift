@@ -114,7 +114,9 @@ struct PINSettingsView: View {
 
     private func verifyReauth() async {
         reauthBusy = true
-        let ok = await panicPIN.verifyRealPIN(reauthPIN)
+        // Session-aware: the decoy pin re-auths in a decoy session, so a
+        // coercer's pin doesn't fail here and betray a second pin (report #237).
+        let ok = await panicPIN.verifySessionPIN(reauthPIN)
         reauthBusy = false
         if ok {
             reauthError = nil
@@ -160,6 +162,25 @@ struct PINSettingsView: View {
         }
         .listRowBackground(Theme.Color.bgSecondary)
 
+        // Report #237 (deniability): in a decoy session the screen must not
+        // reveal that a decoy/wipe pin — or a hidden real identity — exists.
+        // Show ONLY a plausible Change-PIN (which re-seals the decoy slot) and
+        // the benign auto-lock control; hide every duress/biometric/remove row.
+        if !panicPIN.isDecoy {
+            decoySection
+            biometricSection
+        }
+
+        autoLockSection
+
+        if !panicPIN.isDecoy {
+            wipeSection
+            removeAllSection
+        }
+    }
+
+    @ViewBuilder
+    private var decoySection: some View {
         Section {
             if panicPIN.hasDecoyPIN {
                 Button {
@@ -190,7 +211,10 @@ struct PINSettingsView: View {
                  : "panic_pin.decoy.footer".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
 
+    @ViewBuilder
+    private var biometricSection: some View {
         if panicPIN.biometricAvailable {
             Section {
                 Toggle(isOn: Binding(
@@ -218,9 +242,11 @@ struct PINSettingsView: View {
             }
             .listRowBackground(Theme.Color.bgSecondary)
         }
+    }
 
-        // Auto-lock grace (#10): how long backgrounded before the PIN is asked
-        // again. 0 = immediately. Replaces the old hardcoded 30s.
+    // Auto-lock grace (#10): how long backgrounded before the PIN is asked
+    // again. 0 = immediately. Replaces the old hardcoded 30s.
+    private var autoLockSection: some View {
         Section {
             Picker("panic_pin.autolock".localized, selection: Binding(
                 get: { panicPIN.lockTimeout },
@@ -239,7 +265,10 @@ struct PINSettingsView: View {
             Text("panic_pin.autolock.footer".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
 
+    @ViewBuilder
+    private var wipeSection: some View {
         Section {
             if panicPIN.hasWipePIN {
                 Button {
@@ -270,7 +299,9 @@ struct PINSettingsView: View {
                  : "panic_pin.wipe.footer".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
 
+    private var removeAllSection: some View {
         Section {
             Button(role: .destructive) {
                 confirmRemoveAll = true
@@ -431,7 +462,13 @@ struct PINEntrySheet: View {
         do {
             switch purpose {
             case .setReal, .changeReal:
-                try await PanicPINService.shared.setRealPIN(pin)
+                // In a decoy session "change PIN" re-seals the DECOY slot only,
+                // never the real one (report #237). setRealPIN is real-only.
+                if PanicPINService.shared.isDecoy {
+                    try await PanicPINService.shared.changeDecoyPIN(pin)
+                } else {
+                    try await PanicPINService.shared.setRealPIN(pin)
+                }
             case .setDecoy:
                 try await PanicPINService.shared.setDecoyPIN(pin)
             case .setWipe:
