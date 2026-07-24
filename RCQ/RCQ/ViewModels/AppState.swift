@@ -162,6 +162,17 @@ final class AppState: ObservableObject {
         return (v?.isEmpty == false) ? v : nil
     }
 
+    /// True when `url` is one of RCQ's own deep-link forms (rcq:// or an
+    /// https rcq.app /s/ /r/ /u/ /g/ path) that `handle(deepLink:)` consumes.
+    /// The in-app browser uses this to keep deep links out of the web view.
+    nonisolated static func isDeepLink(_ url: URL) -> Bool {
+        if url.scheme == "rcq" { return true }
+        guard url.scheme == "https" || url.scheme == "http",
+              url.host == "rcq.app",
+              url.pathComponents.count >= 3 else { return false }
+        return ["s", "r", "u", "g"].contains(url.pathComponents[1])
+    }
+
     func handle(deepLink url: URL) {
         // Invite-only server join — rcq://server/<host>?invite=<code> (the
         // QR/link an island operator shares) or https://rcq.app/s/<host>?invite=.

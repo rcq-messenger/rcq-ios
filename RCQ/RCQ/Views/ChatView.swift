@@ -847,7 +847,7 @@ struct ChatView: View {
             .presentationDragIndicator(.visible)
             // A `rcq://member/<uin>` mention tap opens that member's profile;
             // a group-share link opens the in-app join sheet; other
-            // http(s) links fall through to the system (Safari).
+            // http(s) links open in the in-app browser.
             .environment(\.openURL, OpenURLAction { url in
                 if url.scheme == "rcq", url.host == "member", let uin = Int(url.lastPathComponent) {
                     pinnedExpansion = nil
@@ -862,7 +862,7 @@ struct ChatView: View {
                     }
                     return .handled
                 }
-                return .systemAction
+                return InAppBrowser.open(url)
             })
         }
         .sheet(item: Binding(

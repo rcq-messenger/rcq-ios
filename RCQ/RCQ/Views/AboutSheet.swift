@@ -154,9 +154,7 @@ struct AboutSheet: View {
 
     private func contactLink(icon: String, label: String, value: String, url: URL?) -> some View {
         Button {
-            if let url, UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-            }
+            if let url { InAppBrowser.open(url) }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon)
