@@ -1,6 +1,6 @@
 {
-  "version": 127,
-  "issued_at": "2026-07-31T00:41:29Z",
+  "version": 128,
+  "issued_at": "2026-07-31T00:42:06Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -35,6 +35,18 @@
       "tag": "relay-oracle-il-hy2"
     },
     {
+      "port": 443,
+      "priority": 3,
+      "proto": "vless",
+      "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
+      "server": "129.159.143.135",
+      "short_id": "318567678ac9878e",
+      "sni": "www.apple.com",
+      "tag": "relay-oracle-il",
+      "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
+      "flow": "xtls-rprx-vision"
+    },
+    {
       "obfs_password": "fLpJ2c211xjnZcP9VNcNpbZP",
       "password": "QaY3uT8EmfZxfON65jaT5bSu",
       "port": 443,
@@ -60,5 +72,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "JUCv/3kcBKfa4bBAH5yYN9Md3PIhA6WOllWiqpd94eLcBamNX54mG4vgoISQAUzz+X9gyuqJA4Cm/BUc4qqGDw=="
+  "sig": "hSBuL/lseY7z5mYfgRFDAXbDoH0LEUiHIquTf+hho8qfXJXB3//IhQyfLNtl3beG1RIRe5z3pZa7b5Ir233cAg=="
 }
