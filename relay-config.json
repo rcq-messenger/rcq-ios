@@ -1,6 +1,6 @@
 {
-  "version": 126,
-  "issued_at": "2026-06-23T18:57:36Z",
+  "version": 127,
+  "issued_at": "2026-07-31T00:41:29Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -60,5 +60,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "rywJbVl3DzWuxDG5fAdHaJKWaznpBq+clY8eCGgZzgATFLgFkhQvePgwXiNf7Ory3P3fN2Yvk2fcLfS26Ww8CA=="
+  "sig": "JUCv/3kcBKfa4bBAH5yYN9Md3PIhA6WOllWiqpd94eLcBamNX54mG4vgoISQAUzz+X9gyuqJA4Cm/BUc4qqGDw=="
 }
