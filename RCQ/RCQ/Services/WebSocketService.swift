@@ -698,7 +698,19 @@ final class WebSocketService: ObservableObject {
         case "pong":
             break
 
-        case "message", "delete", "system", "read", "reaction", "bounce", "visit", "edit", "gmsg":
+        // Every event name here carries a sealed envelope in `payload`. The
+        // server echoes back whatever `envelope_type` the sender declared, so
+        // this list has to cover every type any client sends, not just the ones
+        // that draw a bubble. It previously stopped at "edit"/"gmsg", which
+        // silently dropped the rest on the live socket: a sender-key
+        // distribution ("skdm") arriving while the app was open was ignored,
+        // so the following group message could not be decrypted until the next
+        // reconnect drained the offline queue — and we send skdm ourselves
+        // (MessageService), so the gap was self-inflicted. Same for a carbon of
+        // your own message from another device, a screenshot notice, a shared
+        // relay and a gossiped island record.
+        case "message", "delete", "system", "read", "reaction", "bounce", "visit", "edit", "gmsg",
+             "skdm", "sknack", "carbon", "secscreen", "relay_share", "homerec":
             guard let payload = dict["payload"] as? String else { return }
             let serverTime = (dict["server_time"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
             let offline = dict["offline"] as? Bool ?? false
