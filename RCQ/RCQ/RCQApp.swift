@@ -166,6 +166,8 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
             switch target {
             case .peer(let uin):
                 AppState.shared.pendingOpenChatUIN = uin
+            case .group(let gid):
+                AppState.shared.pendingOpenGroupID = gid
             case .pending:
                 AppState.shared.pendingOpenPending = true
             case .none:
@@ -196,14 +198,26 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
 
     enum PushTarget {
         case peer(Int)
+        case group(Int)
         case pending
     }
 
+    /// The backend sets `thread_id` on every message push: "peer-<uin>" for a
+    /// 1:1, "group-<id>" for a group, "pending" for a contact request (see
+    /// services/apns.py). The group case was missing here, so tapping a
+    /// notification about a group message opened the app on the chat list and
+    /// left the user to find the group themselves. AppState already carries
+    /// `pendingOpenGroupID` for the in-app deep links, so routing is only a
+    /// matter of parsing the id out.
     private static func parsePushTarget(fromThreadID threadID: String) -> PushTarget? {
         if threadID == "pending" { return .pending }
-        let prefix = "peer-"
-        if threadID.hasPrefix(prefix), let uin = Int(threadID.dropFirst(prefix.count)) {
+        let peerPrefix = "peer-"
+        if threadID.hasPrefix(peerPrefix), let uin = Int(threadID.dropFirst(peerPrefix.count)) {
             return .peer(uin)
+        }
+        let groupPrefix = "group-"
+        if threadID.hasPrefix(groupPrefix), let gid = Int(threadID.dropFirst(groupPrefix.count)) {
+            return .group(gid)
         }
         return nil
     }
