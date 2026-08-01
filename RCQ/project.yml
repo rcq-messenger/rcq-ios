@@ -313,7 +313,7 @@ targets:
         # Match the main app's marketing/build versions so the
         # validator doesn't complain about extension/host mismatch.
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        CFBundleVersion: "98"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
