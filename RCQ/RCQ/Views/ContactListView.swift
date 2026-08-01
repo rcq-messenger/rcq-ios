@@ -58,6 +58,10 @@ struct ContactListView: View {
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
     @State private var showStealthInfo: Bool = false
     @State private var refreshAttemptedFor: Set<Int> = []
+    /// Group ids we already re-fetched the roster for, so a push tap that
+    /// arrives before the group list exists gets exactly one retry instead of
+    /// staying armed for the session (see tryOpenPendingGroup).
+    @State private var groupRefreshAttemptedFor: Set<Int> = []
     @State private var reportContact: Contact?
     @AppStorage("rcq.singbox.activePort") private var singboxActivePort: Int = 0
 
@@ -347,13 +351,28 @@ struct ContactListView: View {
     }
 
     private func tryOpenPendingGroup() {
-        guard let id = appState.pendingOpenGroupID else { return }
+        guard let id = appState.pendingOpenGroupID else {
+            groupRefreshAttemptedFor.removeAll()
+            return
+        }
         guard let group = groups.groups.first(where: { $0.id == id }) else {
-            // Group list hasn't loaded yet — leave the flag set; the
-            // `onChange(of: groups.groups)` hook retries when it does.
+            // The roster is not persisted, so on a cold launch (and on a
+            // censored network, where boot can take the offline branch) it is
+            // empty exactly when a push tap needs it. Fetch it once, and if the
+            // group still is not there, DROP the request: leaving it armed used
+            // to be harmless because every setter guaranteed the group existed,
+            // but a notification tap does not, and a stale flag would later
+            // shove that chat on screen the moment anything mutated the roster.
+            if !groupRefreshAttemptedFor.contains(id) {
+                groupRefreshAttemptedFor.insert(id)
+                Task { await groups.refresh() }
+            } else {
+                appState.pendingOpenGroupID = nil
+            }
             return
         }
         appState.pendingOpenGroupID = nil
+        groupRefreshAttemptedFor.removeAll()
         path.append(group)
     }
 

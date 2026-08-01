@@ -2025,6 +2025,8 @@
 "secscreen.menu_off" = "Screenshot alerts";
 "secscreen.you_screenshotted" = "You took a screenshot";
 "secscreen.peer_screenshotted" = "%@ took a screenshot";
+"secscreen.preview" = "Screenshot";
+"chat.preview.relay" = "Shared a connection";
 "secscreen.peer_fallback" = "Your contact";
 "reactions.who_title" = "Reactions";
 "panic_pin.lock.title" = "Enter PIN";

@@ -37,6 +37,20 @@ extension Message {
             let question = PollPayload.decode(from: text)?.question
                 ?? "chat.preview.poll".localized
             raw = "📊 \(question)"
+        case .systemNotice:
+            // A screenshot notice stores a control-char sentinel as its text so
+            // the screenshotter's name can resolve at display time (see
+            // Message.systemNoticeText). Previews run off the main actor and
+            // cannot resolve the contact, but they must never fall through to
+            // `raw = text` and print "\u{1}rcq.secscreen\u{1}" into a banner.
+            // This became reachable when the live socket started accepting
+            // "secscreen": before that the notice only arrived on the silent
+            // queue drain, which never banners.
+            raw = text == Message.screenshotSentinel
+                ? "📸 \("secscreen.preview".localized)"
+                : (text.isEmpty ? "chat.preview.generic".localized : text)
+        case .relay:
+            raw = "🛡️ \("chat.preview.relay".localized)"
         default:            raw = text.isEmpty ? "chat.preview.generic".localized : text
         }
         if raw.count <= 80 { return raw }

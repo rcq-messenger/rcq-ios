@@ -2001,6 +2001,8 @@
 "secscreen.menu_off" = "Уведомлять о скриншотах";
 "secscreen.you_screenshotted" = "Вы сделали скриншот";
 "secscreen.peer_screenshotted" = "%@ сделал скриншот";
+"secscreen.preview" = "Скриншот";
+"chat.preview.relay" = "Поделился подключением";
 "secscreen.peer_fallback" = "Собеседник";
 "reactions.who_title" = "Реакции";
 "panic_pin.lock.title" = "Введите PIN-код";
