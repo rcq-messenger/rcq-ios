@@ -242,6 +242,18 @@ struct AddContactView: View {
         guard !q.isEmpty else { return }
         loading = true
         defer { loading = false }
+        // `#911` means THAT number and nothing else. A plain `911` keeps the
+        // fuzzy search, which is what you want when half-remembering a number or
+        // looking for a name — searching for a UIN you already know used to bury
+        // it under every account that merely contained those digits (user
+        // report). Android parity.
+        if q.hasPrefix("#"), let exact = Int(q.dropFirst().trimmingCharacters(in: .whitespaces)), exact > 0 {
+            let me = AuthService.shared.ownUIN
+            if exact == me { self.results = []; return }
+            let hit: UserProfile? = try? await APIClient.shared.request("GET", "/users/\(exact)/info")
+            self.results = [hit].compactMap { $0 }
+            return
+        }
         do {
             let rows: [UserProfile] = try await APIClient.shared.request(
                 "GET", "/users/search", query: ["q": q, "limit": "30"]
