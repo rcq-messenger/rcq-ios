@@ -599,3 +599,157 @@ final class SingBoxTransport {
         return node
     }
 }
+
+extension SingBoxTransport {
+    /// Bring the tunnel up for a destination that is unreachable DIRECTLY, for
+    /// callers that reach an island other than the active one.
+    ///
+    /// The boot ladder in `AppState` only ever probes the ACTIVE base, and the
+    /// Cloudflare front only proxies the flagship. So when a network blocks a
+    /// DIFFERENT island — a backup home, a visited island, the island hosting a
+    /// cross-island group — nothing engaged the transport for it and that island
+    /// simply stayed unreachable while everything else looked healthy (a tester
+    /// hit exactly this: "the main server started working, is2 did not", with
+    /// is2 answering fine from other networks).
+    ///
+    /// Same guards as the boot-time auto-engage: never against the user's
+    /// opt-out, and never in local-proxy mode, where their own proxy is the only
+    /// allowed route and stacking sing-box under it would be a leak.
+    @discardableResult
+    static func engageForBlockedDestination(_ reason: String) async -> Bool {
+        if shared.isActive { return true }
+        guard !localProxyMode else { return false }
+        guard !UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled") else { return false }
+        do {
+            try await shared.start()
+        } catch {
+            return false
+        }
+        print("[SingBoxTransport] engaged the tunnel for \(reason) (direct route blocked)")
+        return shared.isActive
+    }
+}
+
+/// HTTP to an island that is not the active one (and to the small number of
+/// out-of-band fetches that feed island discovery).
+///
+/// Every cross-island call used to go through `URLSession.shared`, which carries
+/// no proxy configuration at all: on a censored network those calls failed even
+/// while the tunnel was up, and they also put the foreign host and our real IP
+/// outside a tunnel the user had deliberately engaged. This routes them through
+/// the transport when it is active, and — for island hosts — engages it when the
+/// direct route to that specific host turns out to be blocked.
+enum IslandHTTP {
+    private final class State: @unchecked Sendable {
+        let lock = NSLock()
+        var session: URLSession?
+        /// Separate session for media: same proxy, far longer resource ceiling.
+        var transferSession: URLSession?
+        /// sing-box local port the cached sessions were built for; -1 = none yet.
+        var port = -1
+        /// Hosts whose direct route already failed, so the wasted direct attempt
+        /// is paid once per host rather than once per call.
+        var blocked = Set<String>()
+    }
+
+    private static let state = State()
+
+    /// A session carrying the circumvention proxy when it is up. Rebuilt when
+    /// the transport starts or stops, which `URLSession.shared` could never do.
+    ///
+    /// `transfer: true` is for media blobs: the request ceilings that keep a
+    /// stuck API call from hanging a chat bubble forever would fail a perfectly
+    /// healthy 40 MB deposit over a slow relay, and `URLSession.shared` (which
+    /// these calls used before) had no ceiling worth speaking of.
+    static func session(transfer: Bool = false) -> URLSession {
+        let port = UserDefaults.standard.integer(forKey: "rcq.singbox.activePort")
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        if state.port != port {
+            state.session = nil
+            state.transferSession = nil
+            state.port = port
+        }
+        if let cached = transfer ? state.transferSession : state.session { return cached }
+        let cfg = URLSessionConfiguration.default
+        cfg.waitsForConnectivity = false
+        let slowProxy = SingBoxTransport.localProxyMode
+        cfg.timeoutIntervalForRequest = slowProxy ? 30 : 20
+        cfg.timeoutIntervalForResource = transfer ? (slowProxy ? 300 : 120) : (slowProxy ? 90 : 30)
+        if let proxy = SingBoxTransport.proxyDictionary() { cfg.connectionProxyDictionary = proxy }
+        let built = URLSession(configuration: cfg)
+        if transfer { state.transferSession = built } else { state.session = built }
+        return built
+    }
+
+    static func data(
+        for request: URLRequest,
+        allowTunnelFallback: Bool = true,
+        transfer: Bool = false,
+    ) async throws -> (Data, URLResponse) {
+        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
+            try await $0.data(for: request)
+        }
+    }
+
+    static func data(
+        from url: URL,
+        allowTunnelFallback: Bool = true,
+        transfer: Bool = false,
+    ) async throws -> (Data, URLResponse) {
+        try await run(host: url.host, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
+            try await $0.data(from: url)
+        }
+    }
+
+    static func upload(
+        for request: URLRequest,
+        from body: Data,
+        allowTunnelFallback: Bool = true,
+    ) async throws -> (Data, URLResponse) {
+        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: true) {
+            try await $0.upload(for: request, from: body)
+        }
+    }
+
+    /// `allowTunnelFallback: false` for hosts that are not islands (the signed
+    /// island catalogue on GitHub): route them through an already-running tunnel,
+    /// but never turn one ON because a third party is unreachable.
+    private static func run(
+        host: String?,
+        allowTunnelFallback: Bool,
+        transfer: Bool,
+        _ call: (URLSession) async throws -> (Data, URLResponse),
+    ) async throws -> (Data, URLResponse) {
+        let key = host ?? ""
+        if allowTunnelFallback, isKnownBlocked(key),
+           await SingBoxTransport.engageForBlockedDestination(key) {
+            return try await call(session(transfer: transfer))
+        }
+        do {
+            return try await call(session(transfer: transfer))
+        } catch {
+            // Already tunnelled: this is the island or the relay path, and a
+            // second attempt would only double the wait. A thrown error here is
+            // always transport-level — an HTTP status comes back in the response.
+            guard allowTunnelFallback,
+                  SingBoxTransport.proxyDictionary() == nil,
+                  await SingBoxTransport.engageForBlockedDestination(key)
+            else { throw error }
+            markBlocked(key)
+            return try await call(session(transfer: transfer))
+        }
+    }
+
+    private static func isKnownBlocked(_ host: String) -> Bool {
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        return state.blocked.contains(host)
+    }
+
+    private static func markBlocked(_ host: String) {
+        state.lock.lock()
+        defer { state.lock.unlock() }
+        state.blocked.insert(host)
+    }
+}

@@ -127,7 +127,9 @@ final class ServerDirectoryService: ObservableObject {
         // Cache policy is "use protocol cache" — GitHub raw serves
         // sensible Cache-Control headers, no need to fight URLSession.
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            // Through the tunnel when one is up (this list is often the first
+            // thing a censored user needs), but never engage one for GitHub.
+            let (data, response) = try await IslandHTTP.data(for: req, allowTunnelFallback: false)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 lastFetchSucceeded = false
                 return

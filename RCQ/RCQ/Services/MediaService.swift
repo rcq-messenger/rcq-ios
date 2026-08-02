@@ -98,7 +98,7 @@ final class MediaService {
         // fallback was flaky because the group's island isn't always visited (the
         // "group avatar sometimes shows" report).
         if let host, let url = URL(string: "https://\(host)/media/\(mediaID)"),
-           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let (data, resp) = try? await IslandHTTP.data(from: url),
            let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             return data
         }
@@ -107,7 +107,7 @@ final class MediaService {
         } catch {
             for v in VisitedIslandsStore.shared.list() {
                 if let url = URL(string: "https://\(v.host)/media/\(mediaID)"),
-                   let (data, resp) = try? await URLSession.shared.data(from: url),
+                   let (data, resp) = try? await IslandHTTP.data(from: url),
                    let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                     return data
                 }
@@ -133,7 +133,7 @@ final class MediaService {
         req.httpMethod = "PUT"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         do {
-            let (_, resp) = try await URLSession.shared.upload(for: req, from: body)
+            let (_, resp) = try await IslandHTTP.upload(for: req, from: body)
             guard let http = resp as? HTTPURLResponse else { return false }
             return (200..<300).contains(http.statusCode)
         } catch {

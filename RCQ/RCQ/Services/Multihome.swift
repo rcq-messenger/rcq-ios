@@ -246,8 +246,10 @@ enum Multihome {
     private static func fetchSignedAutoIslands() async -> [String]? {
         var jreq = URLRequest(url: autoIslandsURL); jreq.cachePolicy = .reloadIgnoringLocalCacheData
         var sreq = URLRequest(url: autoIslandsSigURL); sreq.cachePolicy = .reloadIgnoringLocalCacheData
-        guard let (data, r1) = try? await URLSession.shared.data(for: jreq),
-              let (sigData, r2) = try? await URLSession.shared.data(for: sreq),
+        // GitHub, not an island: ride an already-running tunnel, but never
+        // turn one ON because a third party is unreachable.
+        guard let (data, r1) = try? await IslandHTTP.data(for: jreq, allowTunnelFallback: false),
+              let (sigData, r2) = try? await IslandHTTP.data(for: sreq, allowTunnelFallback: false),
               (r1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
               (r2 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
               let pubRaw = Data(base64Encoded: autoIslandsPubKeyB64),
@@ -264,7 +266,7 @@ enum Multihome {
         guard let url = URL(string: "https://\(host)/health") else { return false }
         var req = URLRequest(url: url)
         req.timeoutInterval = 6
-        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+        guard let (_, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse else { return false }
         return (200..<300).contains(http.statusCode)
     }
@@ -410,7 +412,7 @@ enum Multihome {
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = body
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await IslandHTTP.data(for: req)
     }
 
     /// Fetch a peer's mirrored record by its Ed25519 signing key from `host`'s
@@ -418,7 +420,7 @@ enum Multihome {
     static func fetchGossipRecord(host: String, signingKey: String) async -> [String: Any]? {
         guard let sk = signingKey.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
               let url = URL(string: "https://\(host)/federation/gossip-record?sk=\(sk)"),
-              let (data, resp) = try? await URLSession.shared.data(from: url),
+              let (data, resp) = try? await IslandHTTP.data(from: url),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
@@ -461,7 +463,7 @@ enum Multihome {
         let own = ownHost()
         // (1) by-uin owner record on our island.
         if let url = URL(string: "https://\(own)/federation/island-record/\(peerUin)"),
-           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let (data, resp) = try? await IslandHTTP.data(from: url),
            let http = resp as? HTTPURLResponse {
             if http.statusCode == 404 {
                 // Clean miss; still try gossip below before caching empty.
@@ -493,7 +495,7 @@ enum Multihome {
     static func resolveAndMirrorHomes(peerHost: String, peerUin: Int, peerSigningKey: String) async -> [RcqFederation.Home] {
         let own = ownHost()
         if let url = URL(string: "https://\(peerHost)/federation/island-record/\(peerUin)"),
-           let (data, resp) = try? await URLSession.shared.data(from: url),
+           let (data, resp) = try? await IslandHTTP.data(from: url),
            let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
            let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
@@ -521,7 +523,7 @@ enum Multihome {
         var obj = json.compactMapValues { $0 } as [String: Any]
         for (k, v) in extra { obj[k] = v }
         req.httpBody = try JSONSerialization.data(withJSONObject: obj)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await IslandHTTP.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw HttpError.status(0, "no response") }
         guard (200..<300).contains(http.statusCode) else {
             throw HttpError.status(http.statusCode, String(data: data, encoding: .utf8) ?? "")
@@ -536,7 +538,7 @@ enum Multihome {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
         req.httpBody = body
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await IslandHTTP.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw HttpError.status(0, "no response") }
         // 409 = an equal-or-newer record is already there; fine.
         guard (200..<300).contains(http.statusCode) || http.statusCode == 409 else {
@@ -548,7 +550,7 @@ enum Multihome {
         guard let url = URL(string: "https://\(host)/messages/queue") else { throw HttpError.status(0, "bad url") }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await IslandHTTP.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw HttpError.status((resp as? HTTPURLResponse)?.statusCode ?? 0, "")
         }
