@@ -2180,3 +2180,13 @@
 /* Tap-to-blur spoiler media */
 "chat.spoiler.mark" = "Скрыть спойлером";
 "chat.spoiler.reveal" = "Показать спойлер";
+
+/* My reports: the answers channel for filed reports (Android v0.77 parity) */
+"settings.my_reports" = "Мои обращения";
+"myreports.title" = "Мои обращения";
+"myreports.empty" = "Вы пока не отправляли обращений. Если отправите, ответ появится здесь.";
+"myreports.answer" = "Ответ";
+"myreports.status.open" = "Ждёт ответа";
+"myreports.status.resolved" = "Решено";
+"myreports.status.dismissed" = "Отклонено";
+"myreports.status.duplicate" = "Дубликат";

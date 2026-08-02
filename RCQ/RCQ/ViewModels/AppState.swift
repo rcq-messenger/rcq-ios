@@ -52,6 +52,9 @@ final class AppState: ObservableObject {
     /// carried one (`/g/<id>@<host>`); nil = own island.
     @Published var pendingJoinGroupHost: String? = nil
     @Published var pendingOpenPending: Bool = false
+    /// Set when a "we answered your report" push is tapped: the reports screen
+    /// is opened directly rather than making the user find it in Settings.
+    @Published var pendingOpenReports: Bool = false
     /// Tap target for @mentions in group chat. ContactListView shows
     /// `UserInfoView` for the UIN as a sheet.
     @Published var pendingOpenUserProfile: Int? = nil
@@ -703,6 +706,7 @@ final class AppState: ObservableObject {
         pendingOpenChatUIN = nil
         pendingOpenGroupID = nil
         pendingOpenPending = false
+        pendingOpenReports = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
         pendingAddHost = nil
@@ -758,6 +762,7 @@ final class AppState: ObservableObject {
         pendingOpenChatUIN = nil
         pendingOpenGroupID = nil
         pendingOpenPending = false
+        pendingOpenReports = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
         pendingAddHost = nil
@@ -1105,6 +1110,7 @@ final class AppState: ObservableObject {
         pendingOpenChatUIN = nil
         pendingOpenGroupID = nil
         pendingOpenPending = false
+        pendingOpenReports = false
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
         pendingAddHost = nil

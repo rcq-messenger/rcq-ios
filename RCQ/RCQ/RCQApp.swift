@@ -170,6 +170,8 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
                 AppState.shared.pendingOpenGroupID = gid
             case .pending:
                 AppState.shared.pendingOpenPending = true
+            case .reports:
+                AppState.shared.pendingOpenReports = true
             case .none:
                 break
             }
@@ -200,6 +202,11 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
         case peer(Int)
         case group(Int)
         case pending
+        /// An answer to a report the user filed (`thread_id: "reports"`,
+        /// `notif_kind: "report_reply"`). The push deliberately carries no part
+        /// of the answer — it traverses APNs in the clear — so the tap only
+        /// opens the screen that fetches the text over our own session.
+        case reports
     }
 
     /// The backend sets `thread_id` on every message push: "peer-<uin>" for a
@@ -211,6 +218,7 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
     /// matter of parsing the id out.
     private static func parsePushTarget(fromThreadID threadID: String) -> PushTarget? {
         if threadID == "pending" { return .pending }
+        if threadID == "reports" { return .reports }
         let peerPrefix = "peer-"
         if threadID.hasPrefix(peerPrefix), let uin = Int(threadID.dropFirst(peerPrefix.count)) {
             return .peer(uin)
