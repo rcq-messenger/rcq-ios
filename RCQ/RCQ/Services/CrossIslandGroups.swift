@@ -245,7 +245,7 @@ enum CrossIslandGroups {
               let url = URL(string: "https://\(host)/federation/uin-for-key?signing_key=\(enc)") else { return nil }
         var ukReq = URLRequest(url: url)
         AccessTokenStore.stamp(&ukReq)   // closed-island gate (foreign host)
-        guard let (data, resp) = try? await URLSession.shared.data(for: ukReq),
+        guard let (data, resp) = try? await IslandHTTP.data(for: ukReq),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         struct Out: Decodable { let uin: Int }
         return (try? decoder.decode(Out.self, from: data))?.uin
@@ -276,7 +276,7 @@ enum CrossIslandGroups {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = body
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
-        let (_, resp) = try await URLSession.shared.data(for: req)
+        let (_, resp) = try await IslandHTTP.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw CIGError.http(code) }
     }
@@ -313,7 +313,7 @@ enum CrossIslandGroups {
         var req = URLRequest(url: url)
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await IslandHTTP.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw CIGError.http(code) }
         return try decoder.decode(T.self, from: data)
@@ -327,7 +327,7 @@ enum CrossIslandGroups {
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
         req.httpBody = try JSONSerialization.data(withJSONObject: json)
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await IslandHTTP.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw CIGError.http(code) }
         return try decoder.decode(T.self, from: data)

@@ -49,7 +49,7 @@ actor DepositAuthStore {
         guard let url = URL(string: "https://\(host)/deposit-auth/params") else { return nil }
         var req = URLRequest(url: url)
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        guard let (data, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse else { return nil }
         if http.statusCode == 404 { disabled.insert(host); return nil }   // island doesn't offer it
         guard (200..<300).contains(http.statusCode),
@@ -102,7 +102,7 @@ actor DepositAuthStore {
             "epoch_id": epochId, "blinded": blindedB64, "pow_nonce": powNonce,
         ])
         AccessTokenStore.stamp(&req)
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+        guard let (data, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse else { return nil }
         if http.statusCode == 409 { params[host] = nil; return nil }
         guard (200..<300).contains(http.statusCode),

@@ -55,7 +55,7 @@ enum CrossIslandSender {
         guard let url = URL(string: "https://\(host)/federation/keys/\(uin)") else { return nil }
         var cardReq = URLRequest(url: url)
         AccessTokenStore.stamp(&cardReq)   // closed-island gate (foreign host)
-        guard let (data, resp) = try? await URLSession.shared.data(for: cardReq),
+        guard let (data, resp) = try? await IslandHTTP.data(for: cardReq),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         return try? JSONDecoder().decode(Card.self, from: data)
     }
@@ -68,7 +68,7 @@ enum CrossIslandSender {
         guard let url = URL(string: "https://\(host)/federation/island-record/\(uin)") else { return fallback }
         var recReq = URLRequest(url: url)
         AccessTokenStore.stamp(&recReq)   // closed-island gate (foreign host)
-        guard let (data, resp) = try? await URLSession.shared.data(for: recReq),
+        guard let (data, resp) = try? await IslandHTTP.data(for: recReq),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return fallback }
         let result = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: card.signal_identity_key, expectedSk: card.signing_key))
@@ -103,7 +103,7 @@ enum CrossIslandSender {
             Body(to_uin: uin, envelope_type: "message", payload: payload, deposit_token: token),
         )
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
-        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+        guard let (_, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
         return true
     }

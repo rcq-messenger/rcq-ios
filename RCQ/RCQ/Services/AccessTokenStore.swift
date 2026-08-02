@@ -6,7 +6,7 @@ import Foundation
 /// carry `X-RCQ-Auth: <token>` or it gets a decoy. The OWN island's token is the
 /// per-account `serverToken` on APIClient; this store holds tokens for FOREIGN
 /// hosts (contact islands, visited-group islands, backup islands) so the bare
-/// `URLSession.shared` cross-island calls can stamp the header. Device-global,
+/// bare `IslandHTTP` cross-island calls can stamp the header. Device-global,
 /// keyed by host. A host with no token gets no header (public islands unaffected).
 enum AccessTokenStore {
     private static let key = "rcq.access_tokens"  // [host: token]
@@ -67,7 +67,7 @@ enum AccessRedeemer {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["device_id": deviceID])
         do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
+            let (data, resp) = try await IslandHTTP.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             if code == 404 { return .noGate }
             guard code == 200,
