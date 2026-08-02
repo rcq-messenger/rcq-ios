@@ -2204,3 +2204,13 @@
 /* Tap-to-blur spoiler media */
 "chat.spoiler.mark" = "Hide with spoiler";
 "chat.spoiler.reveal" = "Show spoiler";
+
+/* My reports: the answers channel for filed reports (Android v0.77 parity) */
+"settings.my_reports" = "My reports";
+"myreports.title" = "My reports";
+"myreports.empty" = "You have not sent any reports. If you do, the answer appears here.";
+"myreports.answer" = "Answer";
+"myreports.status.open" = "Waiting";
+"myreports.status.resolved" = "Resolved";
+"myreports.status.dismissed" = "Declined";
+"myreports.status.duplicate" = "Duplicate";

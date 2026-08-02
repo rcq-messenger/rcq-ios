@@ -28,6 +28,27 @@ struct ContactListView: View {
     @State private var showManageAccounts = false
     @State private var showProfile = false
     @State private var showPending = false
+    @State private var showMyReports = false
+
+    /// Open the reports screen from a tapped "we answered your report" push.
+    /// SwiftUI will not present a sheet over a sheet, and the tap can land while
+    /// Settings (or any other sheet) is already up — which is exactly where the
+    /// user came from if they filed the report a minute ago. So close what is
+    /// open, let the dismissal land, then present.
+    private func openMyReports() {
+        appState.pendingOpenReports = false
+        let wasPresenting = showSettings || showProfile || showPending || showQR
+            || showNearby || showDiagnostics || showAddContact
+        showSettings = false
+        showProfile = false
+        showPending = false
+        showQR = false
+        showNearby = false
+        showDiagnostics = false
+        showAddContact = false
+        guard wasPresenting else { showMyReports = true; return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showMyReports = true }
+    }
     @State private var showSettings = false
     @State private var showCreateGroup = false
     @State private var showAudioRoomSheet = false
@@ -240,6 +261,9 @@ struct ContactListView: View {
                     showPending = true
                     appState.pendingOpenPending = false
                 }
+                if appState.pendingOpenReports {
+                    openMyReports()
+                }
                 // Cold-launch push-tap navigation: didReceive sets
                 // pendingOpenChatUIN before this view mounts, so the
                 // initial value never triggers `.onChange`. Manually
@@ -321,6 +345,10 @@ struct ContactListView: View {
                     appState.pendingOpenPending = false
                 }
             }
+            .onChange(of: appState.pendingOpenReports) { newValue in
+                if newValue { openMyReports() }
+            }
+            .sheet(isPresented: $showMyReports) { MyReportsView() }
             .onChange(of: appState.pendingOpenGroupID) { _ in
                 tryOpenPendingGroup()
             }

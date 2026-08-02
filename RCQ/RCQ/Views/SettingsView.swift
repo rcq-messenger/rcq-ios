@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showPrivacy = false
     @State private var showNetwork = false
     @State private var showNotifications = false
+    @State private var showMyReports = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
@@ -173,6 +174,21 @@ struct SettingsView: View {
                             }
                         }
                         // Apple UGC guidance 1.2 requires a centralised blocked-users surface.
+                        // Sits next to Notifications on purpose: this is where a
+                        // person looks after the "we answered your report" push.
+                        Button {
+                            showMyReports = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "flag.fill").foregroundColor(Theme.Color.accent)
+                                Text("settings.my_reports".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
                         Button {
                             showBlockedUsers = true
                         } label: {
@@ -345,6 +361,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showPrivacy) { PrivacySettingsView(pane: .privacy) }
             .sheet(isPresented: $showNetwork) { PrivacySettingsView(pane: .network) }
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
+            .sheet(isPresented: $showMyReports) { MyReportsView() }
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
