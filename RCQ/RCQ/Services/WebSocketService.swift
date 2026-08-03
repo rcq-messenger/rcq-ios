@@ -422,7 +422,13 @@ final class WebSocketService: ObservableObject {
                 guard self.task === issuedTask else { return }
                 switch result {
                 case .failure:
-                    self.handleDisconnect()
+                    // 4000 = the server superseded this socket: another
+                    // connection claimed the same account+device. Redialling
+                    // on the normal backoff turns that into a ping-pong when
+                    // two installs share a device id — each redial evicts the
+                    // other, forever. Wait a while, with jitter so two evicted
+                    // peers do not come back in step.
+                    self.handleDisconnect(superseded: issuedTask.closeCode.rawValue == 4000)
                 case .success(let msg):
                     self.handle(msg)
                     self.receiveLoop()
@@ -760,7 +766,7 @@ final class WebSocketService: ObservableObject {
         return try? decoder.decode(RCQGroup.self, from: data)
     }
 
-    private func handleDisconnect() {
+    private func handleDisconnect(superseded: Bool = false) {
         // Idempotent — repeated calls from the multiple disconnect
         // signal sources (receive failure, send failure, watchdog)
         // shouldn't queue multiple reconnects.
@@ -775,7 +781,26 @@ final class WebSocketService: ObservableObject {
         staleWatchdog?.invalidate()
         staleWatchdog = nil
         if shouldStayConnected {
-            scheduleReconnect()
+            if superseded {
+                scheduleSupersededReconnect()
+            } else {
+                scheduleReconnect()
+            }
         }
+    }
+
+    /// A superseded close means somebody else is holding this account+device
+    /// right now, so coming back in a second only takes the socket off them
+    /// and invites them to take it back. Wait 30-60s (jittered) instead. The
+    /// app still recovers if the winner goes away for good — this is a pause,
+    /// not a surrender. Android does the same since v0.82.
+    private func scheduleSupersededReconnect() {
+        pendingReconnect?.cancel()
+        let delay = Double.random(in: 30...60)
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in self?.reconnectNow() }
+        }
+        pendingReconnect = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 }
