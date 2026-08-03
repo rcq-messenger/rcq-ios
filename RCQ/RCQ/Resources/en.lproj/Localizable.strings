@@ -274,14 +274,14 @@
 "uin_shop.price.label" = "PRICE";
 "uin_shop.info.what.title" = "What is a UIN";
 "uin_shop.info.what.body" = "Your UIN is your handle in RCQ — a number tied to no phone or email. Other users find you by it; shorter UINs are scarcer, so they cost more.";
-"uin_shop.info.migrate.title" = "Buying migrates your account";
-"uin_shop.info.migrate.body" = "Contacts, groups, profile and audio rooms move with you onto the new UIN. The old UIN returns to the shared pool and may be claimed by someone else later. Local chat history on this device is cleared by the migration.";
+"uin_shop.info.migrate.title" = "Taking a number does not change who you are";
+"uin_shop.info.migrate.body" = "The number joins your collection and you keep answering as you do now. Moving onto it is a separate step on My numbers, and it is reversible: the number you leave stays yours too, so nobody else can take it. Contacts, groups, profile and chat history come with you either way.";
 "uin_shop.info.current" = "Your current UIN · %@";
 "uin_shop.buy.cta" = "Buy for %@";
 "uin_shop.buy.processing" = "Processing…";
 "uin_shop.confirm.title" = "Confirm purchase";
 "uin_shop.confirm.title_priced" = "Buy UIN %@ for %@?";
-"uin_shop.confirm.body" = "We'll migrate your account onto this UIN. Local chats on this device will be wiped. Contacts and groups move with you.";
+"uin_shop.confirm.body" = "The number joins your collection. You keep answering as you do now, and you can move onto it whenever you like.";
 "uin_shop.confirm.cta" = "Buy";
 "uin_shop.confirm.cta_priced" = "Confirm %@";
 "uin_shop.error.taken" = "Someone grabbed it first. Try a different UIN.";
@@ -2214,3 +2214,19 @@
 "myreports.status.resolved" = "Resolved";
 "myreports.status.dismissed" = "Declined";
 "myreports.status.duplicate" = "Duplicate";
+
+/* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
+"my_uins.title" = "My numbers";
+"my_uins.active" = "You answer as";
+"my_uins.active.sub" = "This is the number people reach you at.";
+"my_uins.held" = "Held";
+"my_uins.use" = "Switch";
+"my_uins.empty" = "Nothing here yet. Numbers you take without moving onto them show up here.";
+"my_uins.footer" = "While you answer as one number, the rest are simply reserved for you. Nobody else can take them.";
+"my_uins.confirm.title" = "Answer as %@?";
+"my_uins.confirm.body" = "Contacts, groups, profile and history move onto it. Number %@ stays yours and stays on this screen, so you can move back whenever you like.";
+"my_uins.settings.footer" = "The numbers this account holds, and which one it answers as.";
+"uin_shop.held.title" = "Number %@ is yours";
+"uin_shop.held.body" = "It is in your collection and you still answer as %@. Move onto it now, or later from My numbers.";
+"uin_shop.held.now" = "Move onto it";
+"uin_shop.held.later" = "Later";

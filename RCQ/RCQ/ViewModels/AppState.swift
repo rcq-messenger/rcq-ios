@@ -631,20 +631,79 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Purchase a specific UIN via mock IAP and migrate onto it.
-    /// Reuses the same wipe + re-boot pipeline as the regular
-    /// `migrateAccount` flow.
-    func purchaseUIN(_ uin: Int, receipt: String) async -> MigrationResult {
+    /// One number held but not in use.
+    struct OwnedUIN: Decodable, Identifiable, Equatable {
+        let uin: Int
+        let length: Int
+        var id: Int { uin }
+    }
+
+    struct MyUINs: Decodable, Equatable {
+        /// The number this account answers as right now.
+        let active: Int
+        let owned: [OwnedUIN]
+    }
+
+    /// Everything this account holds. Answers whether or not the island runs
+    /// a shop: closing a shop stops new sales, it does not hide from people
+    /// what they already own. An island too old to know the endpoint 404s and
+    /// this returns nil, which the UI reads as "no vault here".
+    func myUINs() async -> MyUINs? {
+        try? await APIClient.shared.request("GET", "/uin/mine")
+    }
+
+    /// Take a UIN into the collection WITHOUT becoming it. The account keeps
+    /// answering as it does; moving onto the number is `activateUIN`.
+    ///
+    /// Not a migration, so it does not go through `performMigration`: nothing
+    /// local changes except the collection.
+    func holdUIN(_ uin: Int) async -> MigrationResult {
         struct Body: Encodable {
             let uin: Int
-            let receipt: String
+            let `switch`: Bool
         }
-        return await performMigration {
-            try await APIClient.shared.request(
+        do {
+            let _: PurchaseOut = try await APIClient.shared.request(
                 "POST", "/uin/purchase",
-                body: Body(uin: uin, receipt: receipt)
+                body: Body(uin: uin, switch: false)
             )
+            return .success(newUIN: uin)
+        } catch APIError.http(409, _) {
+            return .taken
+        } catch APIError.http(429, _) {
+            return .cooldown
+        } catch APIError.http(_, let body) {
+            return .other(body ?? "Server refused")
+        } catch {
+            return .other(error.localizedDescription)
         }
+    }
+
+    /// Answer as a number already in the collection. The number in use goes
+    /// into the collection in its place, so this is reversible and never
+    /// loses one. Server-side this IS a migration, so it reuses the same
+    /// wipe + re-boot pipeline (and the `account_burned` suppression).
+    func activateUIN(_ uin: Int) async -> MigrationResult {
+        struct Body: Encodable { let uin: Int }
+        return await performMigration {
+            let out: PurchaseOut = try await APIClient.shared.request(
+                "POST", "/uin/activate",
+                body: Body(uin: uin)
+            )
+            guard let newUIN = out.new_uin, let token = out.token else {
+                throw APIError.http(500, "activate did not switch")
+            }
+            return MigrateOut(new_uin: newUIN, token: token)
+        }
+    }
+
+    /// Superset of `MigrateOut`: `new_uin`/`token` are filled exactly when the
+    /// server was asked to switch onto the number.
+    private struct PurchaseOut: Decodable {
+        let new_uin: Int?
+        let token: String?
+        let switched: Bool?
+        let owned: [Int]?
     }
 
     private struct MigrateOut: Decodable {
