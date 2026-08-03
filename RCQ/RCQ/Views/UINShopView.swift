@@ -2,12 +2,19 @@ import SwiftUI
 
 /// UIN marketplace surface. The user types a 3-9 digit number, the
 /// server confirms availability, the price flips from preview-grey to
-/// accent-green, one tap on the bottom capsule starts the migration.
+/// accent-green, one tap on the bottom capsule takes it.
+///
+/// Taking it no longer makes you it. The number lands in the account's
+/// collection (POST /uin/purchase with switch=false) and answering as
+/// it is a second, deliberate step — offered right here for whoever
+/// wants it now, and on My numbers for everyone else. Buying and
+/// changing the identity everybody knows you by used to be the same
+/// tap, which is a bad thing to have one button away from browsing.
 ///
 /// Below the input we keep a short explainer: what a UIN is and what
-/// happens to the account when one is bought. The shop is the only
-/// place in the app where a tester encounters the migration semantics
-/// for the first time, so it has to explain itself.
+/// taking one does. The shop is the only place in the app where a
+/// tester meets these semantics for the first time, so it has to
+/// explain itself.
 struct UINShopView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var fieldFocused: Bool
@@ -19,6 +26,10 @@ struct UINShopView: View {
     @State private var showConfirm = false
     @State private var error: String?
     @State private var quoteTask: Task<Void, Never>?
+    /// Set once the number is in the collection: the "it is yours, move onto
+    /// it now or later?" step.
+    @State private var held: Int?
+    @State private var showMyUINs = false
 
     private var ownUIN: Int? { AuthService.shared.ownUIN }
     private var typedLength: Int { typed.count }
@@ -73,6 +84,12 @@ struct UINShopView: View {
                         statusLine
                         priceLine
                         plateCard
+                        // The collection is a screen away, and this is where
+                        // somebody who just took a number goes looking for it.
+                        Button("my_uins.title".localized) { showMyUINs = true }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Theme.Color.accent)
+                            .padding(.vertical, 2)
                         infoBlock
                     }
                     .padding(.horizontal, 22)
@@ -148,6 +165,30 @@ struct UINShopView: View {
             } message: {
                 Text("uin_shop.confirm.body".localized)
             }
+            // It is yours — the offer to move onto it now. "Later" leaves the
+            // account exactly as it was and the number safely held.
+            .confirmationDialog(
+                held.map { String(format: "uin_shop.held.title".localized, String($0)) } ?? "",
+                isPresented: Binding(
+                    get: { held != nil },
+                    set: { if !$0 { held = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("uin_shop.held.now".localized) {
+                    if let target = held {
+                        held = nil
+                        Task { await moveOnto(target) }
+                    }
+                }
+                Button("uin_shop.held.later".localized, role: .cancel) {
+                    held = nil
+                    typed = ""
+                }
+            } message: {
+                Text(String(format: "uin_shop.held.body".localized, String(ownUIN ?? 0)))
+            }
+            .sheet(isPresented: $showMyUINs) { MyUINsView() }
         }
     }
 
@@ -362,20 +403,38 @@ struct UINShopView: View {
         }
     }
 
+    /// Take the number into the collection. It does NOT change who the
+    /// account answers as — that is `moveOnto`, offered right after.
     private func runPurchase() async {
         guard let parsed = Int(typed) else { return }
         buying = true
         defer { buying = false }
-        let mockReceipt = "mock-iap-\(Date().timeIntervalSince1970)"
-        let result = await AppState.shared.purchaseUIN(parsed, receipt: mockReceipt)
+        let result = await AppState.shared.holdUIN(parsed)
         switch result {
         case .success:
-            dismiss()
+            held = parsed
         case .taken:
             error = "uin_shop.error.taken".localized
             quote = nil
         case .cooldown:
             error = "uin_shop.error.cooldown".localized
+        case .other(let msg):
+            error = msg
+        }
+    }
+
+    /// Answer as a number just taken. This IS a migration: AppState swaps the
+    /// keychain uin+token and re-boots, so the shop closes behind it.
+    private func moveOnto(_ target: Int) async {
+        buying = true
+        defer { buying = false }
+        switch await AppState.shared.activateUIN(target) {
+        case .success:
+            dismiss()
+        case .cooldown:
+            error = "uin_shop.error.cooldown".localized
+        case .taken:
+            error = "uin_shop.error.taken".localized
         case .other(let msg):
             error = msg
         }

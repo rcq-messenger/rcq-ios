@@ -12,6 +12,10 @@ struct SettingsView: View {
     @State private var burning = false
     @State private var showAbout = false
     @State private var showUINShop = false
+    @State private var showMyUINs = false
+    /// How many numbers this account holds besides the one it uses; decides
+    /// whether "My numbers" is worth a row on an island with no shop.
+    @State private var heldUINCount = 0
     @State private var showBugBounty = false
     @State private var showSoundSheet = false
     @State private var showLinkWeb = false
@@ -174,21 +178,6 @@ struct SettingsView: View {
                             }
                         }
                         // Apple UGC guidance 1.2 requires a centralised blocked-users surface.
-                        // Sits next to Notifications on purpose: this is where a
-                        // person looks after the "we answered your report" push.
-                        Button {
-                            showMyReports = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "flag.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.my_reports".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
                         Button {
                             showBlockedUsers = true
                         } label: {
@@ -233,15 +222,38 @@ struct SettingsView: View {
                     // to our developer account regardless of which
                     // backend the user is on. See
                     // project_rcq_monetization_model for the design.
-                    if appState.serverCapabilities.uinShop {
+                    // My numbers has its own condition: it shows whenever
+                    // this account holds anything, shop or no shop. An
+                    // operator who closes the shop must not strand people on
+                    // the wrong number, and a self-hoster can hand a member a
+                    // second one by hand (POST /admin/uin/grant). Islands too
+                    // old to answer /uin/mine leave heldCount at zero and the
+                    // row stays hidden.
+                    if appState.serverCapabilities.uinShop || heldUINCount > 0 {
                         Section {
+                            if appState.serverCapabilities.uinShop {
+                                Button {
+                                    showUINShop = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "number.square.fill")
+                                            .foregroundColor(Theme.Color.accent)
+                                        Text("settings.uin_shop".localized)
+                                            .foregroundColor(Theme.Color.textPrimary)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundColor(Theme.Color.textSecondary)
+                                    }
+                                }
+                            }
                             Button {
-                                showUINShop = true
+                                showMyUINs = true
                             } label: {
                                 HStack {
-                                    Image(systemName: "number.square.fill")
+                                    Image(systemName: "tray.full.fill")
                                         .foregroundColor(Theme.Color.accent)
-                                    Text("settings.uin_shop".localized)
+                                    Text("my_uins.title".localized)
                                         .foregroundColor(Theme.Color.textPrimary)
                                     Spacer()
                                     Image(systemName: "chevron.right")
@@ -250,7 +262,12 @@ struct SettingsView: View {
                                 }
                             }
                         } footer: {
-                            Text("settings.uin_shop.footer".localized)
+                            // The footer describes the SHOP; without one it
+                            // would be advertising a storefront this island
+                            // does not have.
+                            Text(appState.serverCapabilities.uinShop
+                                 ? "settings.uin_shop.footer".localized
+                                 : "my_uins.settings.footer".localized)
                         }
                         .listRowBackground(Theme.Color.bgSecondary)
                     }
@@ -351,6 +368,8 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .fullScreenCover(isPresented: $showUINShop) { UINShopView() }
+            .sheet(isPresented: $showMyUINs) { MyUINsView() }
+            .task { heldUINCount = (await AppState.shared.myUINs())?.owned.count ?? 0 }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
             .sheet(isPresented: $showLinkWeb) {
@@ -447,6 +466,23 @@ struct SettingsView: View {
                 HStack {
                     Image(systemName: "ladybug.fill").foregroundColor(Theme.Color.accent)
                     Text("settings.account.bug_bounty".localized).foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            // Directly under the form that files a report: this is where the
+            // person who just filed one looks for the answer. It used to sit
+            // up next to Notifications, which is where the answer NOTIFICATION
+            // is configured, not where the answer is read (founder, and the
+            // same move the Android client made in v0.79).
+            Button {
+                showMyReports = true
+            } label: {
+                HStack {
+                    Image(systemName: "flag.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.my_reports".localized).foregroundColor(Theme.Color.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption2)
