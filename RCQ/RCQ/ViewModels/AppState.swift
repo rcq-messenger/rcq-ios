@@ -556,11 +556,19 @@ final class AppState: ObservableObject {
             print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
             guard let uin = AuthService.shared.ownUIN,
-                  let token = KeychainStore.string(KeychainStore.Keys.token) else {
+                  let bootToken = KeychainStore.string(KeychainStore.Keys.token) else {
                 throw NSError(domain: "boot", code: 1)
             }
             print("[boot] identity ok uin=\(uin) — syncing")
             MessageService.shared.configure(ownUIN: uin)
+
+            // Name this install to the server if the token predates the claim,
+            // BEFORE the websocket dials: the socket authenticates with the
+            // token it is handed here, and a token with no `dev` keys it as
+            // "primary" — the name every other install of the account uses, so
+            // two of them supersede each other's socket in a loop and share one
+            // offline-queue cursor.
+            let token = await claimInstallTokenIfNeeded(bootToken) ?? bootToken
 
             // Capability fetch. Failure is non-fatal — we keep the
             // permissive defaultLegacy set, which matches every
@@ -605,6 +613,49 @@ final class AppState: ObservableObject {
                 bootError = error.localizedDescription
             }
         }
+    }
+
+
+    // MARK: - install identity
+
+    /// Swap a pre-claim session token for one that names this install.
+    ///
+    /// Tokens minted before the client sent a device id carry no `dev` claim,
+    /// so the server cannot tell this install from any other of the account.
+    /// One call fixes that; the server copies the offline-queue drain cursor
+    /// onto the new id so nothing is re-downloaded. Returns the new token, or
+    /// nil to keep the old one (already claimed, island too old, offline).
+    private func claimInstallTokenIfNeeded(_ token: String) async -> String? {
+        guard !Self.tokenNamesAnInstall(token) else { return nil }
+        struct Body: Encodable { let device_id: String }
+        struct Out: Decodable { let token: String }
+        do {
+            let out: Out = try await APIClient.shared.request(
+                "POST", "/auth/device", body: Body(device_id: KeychainStore.deviceID())
+            )
+            guard !out.token.isEmpty else { return nil }
+            KeychainStore.setString(KeychainStore.Keys.token, out.token)
+            await APIClient.shared.setToken(out.token)
+            print("[boot] install claimed its own device id")
+            return out.token
+        } catch {
+            // 404 on an island that predates the route, or simply offline.
+            return nil
+        }
+    }
+
+    /// Does this JWT already carry a `dev` claim? Payload peek only — the
+    /// signature is the server's business.
+    static func tokenNamesAnInstall(_ token: String) -> Bool {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return false }
+        var b64 = String(parts[1]).replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dev = obj["dev"] as? String else { return false }
+        return !dev.isEmpty
     }
 
     // MARK: - migration
