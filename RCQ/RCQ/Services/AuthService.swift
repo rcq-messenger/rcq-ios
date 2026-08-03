@@ -118,6 +118,12 @@ final class AuthService: ObservableObject {
             let signing_key: String
             let inviter_uin: Int?
             let invite: String?
+            // Which INSTALL this session belongs to. Without it the server
+            // keys us as "primary" like every other install of the account:
+            // their websockets supersede each other in a loop, and they share
+            // one offline-queue cursor so the first to drain leaves the rest
+            // with nothing to read.
+            let device_id: String
         }
         struct Out: Decodable { let uin: Int; let token: String }
 
@@ -138,7 +144,8 @@ final class AuthService: ObservableObject {
                     identity_key: bundle.identityKey,
                     signing_key: bundle.signingKey,
                     inviter_uin: inviterUIN,
-                    invite: serverInvite
+                    invite: serverInvite,
+                    device_id: KeychainStore.deviceID()
                 )
             )
         } catch {
