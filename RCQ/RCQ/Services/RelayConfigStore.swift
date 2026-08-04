@@ -214,28 +214,26 @@ final class RelayConfigStore {
     // MARK: - Bundled fallback
 
     private static let bundledFallback: [RelayEntry] = [
-        // DOMESTIC (RU) relay FIRST: both signed-config mirrors (github raw,
-        // Cloudflare relay.rcq.app) and the broker (api.rcq.app, fetched direct)
-        // are themselves DPI-blockable, so a censored fresh install may ONLY ever
-        // see this bundled list. A domestic IP is far costlier for a censor to
-        // block (collateral) than the foreign cloud relays below. Matches
-        // relay-msk-aeza (priority 0) in signed config v13.
-        RelayEntry(
-            tag: "relay-msk-aeza",
-            server: "45.151.101.221",
-            port: 443,
-            sni: "www.yandex.ru",
-            priority: 0,
-            proto: .vless,
-            uuid: "9c7174e7-2cb9-4d03-bffb-259bd534b65b",
-            publicKey: "ord-QgtxD57vOVLMsXwGC6Qj7kaK4kb8Tq3MxImQch4",
-            shortID: "5d88ef2912b4fa39",
-            flow: "xtls-rprx-vision",
-        ),
-        // Hysteria2 (UDP/443) on the yandex relay — defeats DPI that
-        // matches the Reality TLS handshake. Highest priority so
-        // urltest tries it first on hostile networks. Restored after
-        // Rcqbox.xcframework was rebuilt with `with_quic` tag.
+        // A copy of the live signed config, last synced with **v130
+        // (2026-07-31)**. Last-resort fallback when no verified remote/disk
+        // list is available, and CRITICAL for a blocked user: both
+        // signed-config mirrors (github raw, Cloudflare relay.rcq.app) and the
+        // broker (api.rcq.app, fetched direct) are themselves DPI-blockable, so
+        // a censored fresh install may ONLY ever see this list.
+        //
+        // ⚠ Which is why letting it rot is expensive. Until 2026-08-05 it led
+        // with the domestic RU relay 45.151.101.221, retired server-side on
+        // 06-18 and dead since, so a censored client's first move was to dial a
+        // corpse. The oracle entry also carried www.microsoft.com where the
+        // signed config says www.apple.com — the exact mismatch that once broke
+        // VLESS while Hysteria2 kept working on the same host. And two of the
+        // three machines had no Hysteria2 entry at all, so on a network that
+        // fingerprints the Reality handshake this build had one UDP option
+        // instead of three.
+        //
+        // Keep in step: `curl -s https://relay.rcq.app/v1/config`, compare tag /
+        // server / sni / keys. Hysteria2 leads on each host, matching the signed
+        // priorities.
         RelayEntry(
             tag: "relay-do-fra-yandex-hy2",
             server: "165.22.90.214",
@@ -259,11 +257,21 @@ final class RelayConfigStore {
             flow: "xtls-rprx-vision",
         ),
         RelayEntry(
-            tag: "relay-oracle-il",
+            tag: "relay-oracle-il-hy2",
             server: "129.159.143.135",
             port: 443,
             sni: "www.microsoft.com",
             priority: 2,
+            proto: .hysteria2,
+            password: "bvuvu74CVsiXdcJazcYphnO5",
+            obfsPassword: "PaEHrZABTk36orhfFON7Jure",
+        ),
+        RelayEntry(
+            tag: "relay-oracle-il",
+            server: "129.159.143.135",
+            port: 443,
+            sni: "www.apple.com",
+            priority: 3,
             proto: .vless,
             uuid: "ff005e0c-175e-4475-a166-eeac88f514e2",
             publicKey: "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
@@ -271,17 +279,26 @@ final class RelayConfigStore {
             flow: "xtls-rprx-vision",
         ),
         RelayEntry(
+            tag: "relay-gcp-hy2",
+            server: "35.238.53.96",
+            port: 443,
+            sni: "www.apple.com",
+            priority: 4,
+            proto: .hysteria2,
+            password: "QaY3uT8EmfZxfON65jaT5bSu",
+            obfsPassword: "fLpJ2c211xjnZcP9VNcNpbZP",
+        ),
+        RelayEntry(
             tag: "relay-gcp",
             server: "35.238.53.96",
             port: 443,
             sni: "www.apple.com",
-            priority: 3,
+            priority: 5,
             proto: .vless,
             uuid: "8e3b35d3-18a6-406d-9ac6-c5558a806663",
             publicKey: "mQZ8CJeMWyf7oYGWJG8oOI52or2kx4yTthl6AGZkSTw",
             shortID: "b5b8979af1f27aab",
             flow: "xtls-rprx-vision",
         ),
-        // relay-aws-sg (47.129.249.170) removed — retired server-side in v13 (dead host).
     ]
 }
