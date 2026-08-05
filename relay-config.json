@@ -1,6 +1,6 @@
 {
-  "version": 139,
-  "issued_at": "2026-08-05T04:24:14Z",
+  "version": 140,
+  "issued_at": "2026-08-05T04:41:02Z",
   "relays": [
     {
       "tag": "relay-do-fra-spaces-hy2",
@@ -67,6 +67,30 @@
       "short_id": "b5b8979af1f27aab",
       "flow": "xtls-rprx-vision",
       "priority": 5
+    },
+    {
+      "tag": "relay-vultr-waw",
+      "proto": "vless",
+      "server": "64.176.71.251",
+      "port": 443,
+      "sni": "ams1.vultrobjects.com",
+      "uuid": "2dc3cc4a-3d74-47a4-8f29-657073848dcc",
+      "public_key": "jNGlh9lw8faMZxgjZ0crsqcjD7dyOAySnxi8jwUsa1Y",
+      "short_id": "ec8b28c68570d463",
+      "flow": "xtls-rprx-vision",
+      "priority": 6
+    },
+    {
+      "tag": "relay-vultr-sto",
+      "proto": "vless",
+      "server": "70.34.202.59",
+      "port": 443,
+      "sni": "ams1.vultrobjects.com",
+      "uuid": "3652f269-d343-4206-8a27-dab72305d44b",
+      "public_key": "b8Q-XENkmpr7mAu2_e-_MWBv4WBFUFb0hq1dNSTViCA",
+      "short_id": "b4957b7708c70f80",
+      "flow": "xtls-rprx-vision",
+      "priority": 7
     }
   ],
   "onion": {
@@ -78,5 +102,5 @@
       "name": "cfg.northfieldlabs.fyi"
     }
   ],
-  "sig": "f2fiDGsJ+9FD5BRRD25mJN5xkleCC/KFJFyMNRh0fBOygy8Q9Pe0kBc9xDAmuPRJqEd/S90CAEKW5/ghuHfqDQ=="
+  "sig": "oLfWbqwPGhCEqDcwyDvhfHq35cRDmCRPZ0KCFJtf4NFaiFu5L4Ad4KSoPgfrQFYjW7ArqY4EsfA54ASTLLODBg=="
 }
