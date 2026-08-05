@@ -5,10 +5,16 @@ import Foundation
 final class RelayConfigStore {
     static let shared = RelayConfigStore()
 
-    private static let signingPublicKeyB64 =
-        "TY834OFcBvtUqHcnVw/QrPBOaEAZo7a1GAmABMhjkT8="
+    // Which keys may sign this payload lives in `SigningKeys` — a SET, so the
+    // signing key can change without a release. See that file for why the set is
+    // compiled in rather than carried by the payload it authenticates.
 
-    private static let endpoints: [URL] = [
+    /// The two mirrors compiled into the app.
+    ///
+    /// ⚠ These two names are also the entire attack surface of the delivery
+    /// channel: a censor who blocks both leaves a client with nothing but the
+    /// bundled pool and a hand-pasted token. `remoteSources` is the way out.
+    private static let bundledEndpoints: [URL] = [
         URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-ios/main/relay-config.json")!,
         URL(string: "https://relay.rcq.app/v1/config")!,
     ]
@@ -102,9 +108,11 @@ final class RelayConfigStore {
         let issuedAt: String
         let relays: [RelayEntry]
         let onion: OnionPolicy?
+        /// Extra mirrors this payload names for itself. Absent on older payloads.
+        let sources: [SourceEntry]?
 
         enum CodingKeys: String, CodingKey {
-            case version, relays, onion
+            case version, relays, onion, sources
             case issuedAt = "issued_at"
         }
     }
@@ -115,6 +123,48 @@ final class RelayConfigStore {
     /// signature-valid payload that explicitly sets it flips onion on, so
     /// rollout is a signed-config push to a cohort, ZERO app release.
     static var onionEnabled = false
+
+    /// One entry of the payload's `sources` array. Unknown types are skipped
+    /// rather than rejected, so a payload announcing a channel this build cannot
+    /// speak stays usable for everything else in it.
+    struct SourceEntry: Codable, Equatable {
+        let type: String?
+        let url: String?
+    }
+
+    /// Extra mirrors carried BY the signed config, so a new delivery channel — a
+    /// domain bought at another registrar, a mirror somewhere expensive to block
+    /// wholesale — reaches installed clients without an app release.
+    private static var remoteSources: [URL] = []
+
+    /// Version of the last verified payload, and the floor for the next one.
+    private(set) static var version: Int?
+
+    /// How many mirrors we will walk in one refresh. A refresh runs before the
+    /// transport is up, so each dead entry costs its full timeout; a payload
+    /// listing fifty would turn launch into a stall.
+    private static let maxSources = 8
+
+    /// Mirrors to walk, freshest knowledge first, then the compiled-in pair.
+    ///
+    /// ★ The bundled pair is ALWAYS appended and never replaced. A published
+    /// source list is an ADDITION, not a substitution — otherwise one bad push,
+    /// a typo'd host or a lapsed domain, points every installed client at a dead
+    /// mirror with no route back, and no later push could reach them to fix it.
+    /// Additive, the worst a bad entry costs is one timeout.
+    ///
+    /// Config entries lead because they are the reason this exists: the two
+    /// bundled names are exactly what a censor enumerates first, so on the
+    /// network that needs them the new mirror is the one likely to answer.
+    static func effectiveEndpoints() -> [URL] {
+        var seen = Set<String>()
+        var out: [URL] = []
+        for url in remoteSources + bundledEndpoints where seen.insert(url.absoluteString).inserted {
+            out.append(url)
+            if out.count == maxSources { break }
+        }
+        return out
+    }
 
     private var cached: [RelayEntry]?
 
@@ -146,16 +196,20 @@ final class RelayConfigStore {
             config.connectionProxyDictionary = proxy
         }
         let session = URLSession(configuration: config)
-        for url in Self.endpoints {
+        for url in Self.effectiveEndpoints() {
             var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
             req.setValue("application/json", forHTTPHeaderField: "Accept")
             do {
                 let (data, response) = try await session.data(for: req)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
-                guard let payload = Self.verifyAndDecode(data) else { continue }
+                // The floor is whatever we already trust, so a mirror serving a
+                // stale but genuinely signed payload cannot move us backwards.
+                guard let payload = Self.verifyAndDecode(data, minVersion: Self.version) else { continue }
                 let sorted = payload.relays.sorted { $0.priority < $1.priority }
                 cached = sorted
+                Self.version = payload.version
                 Self.onionEnabled = payload.onion?.enabled ?? false
+                Self.applySources(payload)
                 Self.saveToDisk(data)
                 return
             } catch {
@@ -164,9 +218,36 @@ final class RelayConfigStore {
         }
     }
 
+    /// Adopt the mirrors a payload names. A payload carrying no `sources` leaves
+    /// a previously published list alone: otherwise a rollback would silently
+    /// narrow the channel back to the two compiled-in names.
+    private static func applySources(_ payload: Payload) {
+        guard let entries = payload.sources, !entries.isEmpty else { return }
+        let urls = entries.compactMap { entry -> URL? in
+            guard (entry.type ?? "https") == "https",
+                  let raw = entry.url, raw.hasPrefix("https://"),
+                  let url = URL(string: raw) else { return nil }
+            return url
+        }
+        if !urls.isEmpty { remoteSources = urls }
+    }
+
     // MARK: - Signature verification
 
-    static func verifyAndDecode(_ data: Data) -> Payload? {
+    /// Verify the signature, then decode.
+    ///
+    /// `minVersion` refuses a payload older than one already trusted. A
+    /// signature proves a payload came from us; it says nothing about WHEN.
+    /// Anyone who can answer for a mirror, or sit on the path to one, can replay
+    /// an OLD signed payload and walk a client back onto a relay set retired
+    /// months ago — no forgery, just an old truth served late.
+    ///
+    /// Both app updaters were always safe from this because they compare against
+    /// what is installed. This list had no such check on either side, and the
+    /// guard in the signer only stops us doing it to ourselves by accident.
+    /// Recovering from a bad push means publishing a HIGHER version with
+    /// corrected content, never re-publishing an older number.
+    static func verifyAndDecode(_ data: Data, minVersion: Int? = nil) -> Payload? {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
@@ -180,14 +261,12 @@ final class RelayConfigStore {
             withJSONObject: signedPart,
             options: [.sortedKeys, .withoutEscapingSlashes],
         ) else { return nil }
-        let pubKeyBytes = Data(base64Encoded: signingPublicKeyB64) ?? Data()
-        guard let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: pubKeyBytes) else {
+        guard SigningKeys.verify(.relayConfig, message: canonical, signature: sigBytes) else {
             return nil
         }
-        guard publicKey.isValidSignature(sigBytes, for: canonical) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(Payload.self, from: data)
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return nil }
+        if let minVersion, payload.version < minVersion { return nil }
+        return payload
     }
 
     // MARK: - Disk cache
