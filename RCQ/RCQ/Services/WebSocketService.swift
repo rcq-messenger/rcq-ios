@@ -250,6 +250,10 @@ final class WebSocketService: ObservableObject {
         // so this branch catches the cases where direct HTTP looks
         // fine but the WS layer is blocked. User opt-out
         // (`rcq.singbox.autoDisabled`) still wins.
+        // Raise the tunnel early on a socket that plainly cannot connect, then
+        // leave the rest to AppState's ladder: this branch only ever turned the
+        // tunnel ON, never re-probed the front, and never came back to direct,
+        // so on its own it could strand a client inside a broken tunnel.
         if reconnectAttempt == 4
             && !SingBoxTransport.shared.isActive
             && !UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled") {
