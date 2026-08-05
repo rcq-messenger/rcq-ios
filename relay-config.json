@@ -1,6 +1,6 @@
 {
-  "version": 131,
-  "issued_at": "2026-08-05T01:07:49Z",
+  "version": 132,
+  "issued_at": "2026-08-05T03:59:42Z",
   "relays": [
     {
       "tag": "relay-do-fra-spaces-hy2",
@@ -29,7 +29,7 @@
       "proto": "hysteria2",
       "server": "129.159.143.135",
       "port": 443,
-      "sni": "www.microsoft.com",
+      "sni": "java.com",
       "password": "bvuvu74CVsiXdcJazcYphnO5",
       "obfs_password": "PaEHrZABTk36orhfFON7Jure",
       "priority": 2
@@ -39,7 +39,7 @@
       "proto": "vless",
       "server": "129.159.143.135",
       "port": 443,
-      "sni": "www.apple.com",
+      "sni": "java.com",
       "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
       "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
       "short_id": "318567678ac9878e",
@@ -72,5 +72,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "ALog4c1tXnzu5Bq/800RsGQk0S3AvA3pVHG2XipAL4eliAARqR/lhIYthLVtwGY7o0+EEmPF5sIeuPFKgebRBw=="
+  "sig": "b1LT3e02w7RwpidADRK1xenBsjmxay68SrNO4bNpgBkCsAenicjr08EqeHjGf756H1s8ZQEK5LcDtJeEjvo+Ag=="
 }
