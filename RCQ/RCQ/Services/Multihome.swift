@@ -223,7 +223,9 @@ enum Multihome {
     private static let autoIslandsSigURL = URL(
         string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json.sig"
     )!
-    private static let autoIslandsPubKeyB64 = "TY834OFcBvtUqHcnVw/QrPBOaEAZo7a1GAmABMhjkT8="
+    // Verified against the ISLAND_LIST role in `SigningKeys` — its own role,
+    // because steering a backup mailbox and steering a tunnel are different
+    // powers and should not stay welded to one key.
 
     /// Pick a backup island from the SIGNED island list, minus our own island +
     /// already-added hosts; the FIRST healthy one in list order wins (the order
@@ -252,11 +254,9 @@ enum Multihome {
               let (sigData, r2) = try? await IslandHTTP.data(for: sreq, allowTunnelFallback: false),
               (r1 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
               (r2 as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
-              let pubRaw = Data(base64Encoded: autoIslandsPubKeyB64),
-              let pub = try? Curve25519.Signing.PublicKey(rawRepresentation: pubRaw),
               let sigStr = String(data: sigData, encoding: .utf8),
-              let sig = Data(base64Encoded: sigStr.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pub.isValidSignature(sig, for: data)
+              SigningKeys.verify(.islandList, message: data,
+                                 signatureB64: sigStr.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return nil }
         struct Doc: Decodable { let islands: [String] }
         return (try? JSONDecoder().decode(Doc.self, from: data))?.islands

@@ -48,6 +48,17 @@ targets:
       properties:
         CFBundleDisplayName: RCQ
         CFBundleName: RCQ
+        # ⚠ THE BUILD NUMBER LIVES HERE, and it has to, because xcodegen writes
+        # this plist from the spec: with the key absent it wrote CFBundleVersion
+        # 1 over the 98 the file carried, silently, on every regenerate. Since
+        # the generated project is gitignored, the real number survived only as
+        # a local artefact nobody could reproduce.
+        #
+        # The extension declares the same pair below and must stay equal to it —
+        # App Store validation rejects an app and an embedded extension whose
+        # versions differ. Bump BOTH when cutting a TestFlight build.
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "98"
         UILaunchScreen:
           UIColorName: BootBackground
         NSCameraUsageDescription: "RCQ needs the camera for video calls and to take photos and videos to share in chats."
@@ -234,6 +245,9 @@ targets:
         product: WebRTC
       - package: LibSignalClient
         product: LibSignalClient
+      # Blind-RSA (RFC 9474) for deposit tokens — see DepositAuthStore.
+      - package: SwiftCrypto
+        product: _CryptoExtras
       # Embedded sing-box core for the VLESS+Reality obfuscated
       # transport (censorship circumvention — works without a system
       # VPN). gomobile-bound static framework built from the rcqbox/
@@ -264,6 +278,12 @@ targets:
       # and keeps us free of a separate framework target.
       - path: RCQ/Services/CryptoService.swift
       - path: RCQ/Services/KeychainStore.swift
+      # CryptoService.bootstrap() derives the identity from a recovery seed, so
+      # it does not compile without this. The NSE never registers an account, but
+      # a target either has the symbol or does not build. Adding it was invisible
+      # while the checked-out project.pbxproj carried a hand-made fix — and that
+      # file is gitignored, so the spec was broken for everyone but this laptop.
+      - path: RCQ/Services/RecoveryPhrase.swift
       # Stage 3 protocol-store plumbing — also stateless wrappers, the
       # backing SQLite lives in the shared App Group container so both
       # targets see the same sessions / prekeys / sender keys.
@@ -365,6 +385,15 @@ packages:
   # comment for the rebuild commands.
   LibSignalClient:
     path: Vendor/libsignal/swift
+  # apple/swift-crypto, for `_CryptoExtras` — RFC 9474 blind RSA, which is what
+  # DepositAuthStore mints deposit tokens with. It was never declared here: the
+  # dependency lived only in a project.pbxproj added by hand in Xcode, and that
+  # file is gitignored, so `xcodegen generate` (the documented way to build this
+  # project) produced something that compiled and then failed to link. Pinned to
+  # the version the working checkout had resolved.
+  SwiftCrypto:
+    url: https://github.com/apple/swift-crypto
+    exactVersion: 3.15.1
 
 # Explicit shared schemes. Without this, xcodegen leaves scheme generation
 # to Xcode's lazy user-scheme path — and with two targets in the project,
