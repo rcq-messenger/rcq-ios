@@ -278,6 +278,15 @@ final class AppState: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in self?.handle(event) }
             .store(in: &cancellables)
+        // `linkUp` rather than `isConnected`: the latter flips true at
+        // task.resume(), before the upgrade even completes, so it says "up" on a
+        // route that is being blocked. The ladder must react to the link that
+        // carried a frame, not to one we merely opened.
+        WebSocketService.shared.$linkUp
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] up in self?.socketStateChanged(up: up) }
+            .store(in: &cancellables)
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let offline = path.status != .satisfied
             let signature = "\(path.status)|"
@@ -327,6 +336,93 @@ final class AppState: ObservableObject {
         await ContactService.shared.refresh()
         await GroupService.shared.refresh()
         await MessageService.shared.fetchOfflineQueue()
+    }
+
+    /// elapsedRealtime-ish stamp of the last ladder walk, so a flapping socket
+    /// cannot spend the session probing instead of talking.
+    private var lastLadderAt: Date?
+    /// When the socket first went down, or nil while it is up.
+    private var socketDownSince: Date?
+    private var ladderTask: Task<Void, Never>?
+
+    /// How long the socket must stay down before the route is reconsidered. The
+    /// socket's own backoff handles a blip; this is for a network that has
+    /// STARTED blocking us, which backoff alone never recovers from.
+    private static let offlineBeforeLadder: TimeInterval = 90
+    /// Floor between two walks. A walk costs several probes and can tear the
+    /// tunnel down and back up.
+    private static let ladderCooldown: TimeInterval = 300
+
+    /// Called by the socket whenever it goes up or down.
+    ///
+    /// Until now iOS reconsidered its route at launch and, in one narrow case,
+    /// on the fourth failed reconnect — which raised the tunnel but never
+    /// re-probed the front and never came back to direct. A network that started
+    /// blocking mid-session was otherwise retried forever against the dead
+    /// route, which from the outside is "RCQ broke" while the bypass sits unused.
+    func socketStateChanged(up: Bool) {
+        if up {
+            socketDownSince = nil
+            return
+        }
+        if socketDownSince == nil { socketDownSince = Date() }
+        guard ladderTask == nil else { return }
+        ladderTask = Task { [weak self] in
+            defer { Task { @MainActor in self?.ladderTask = nil } }
+            try? await Task.sleep(nanoseconds: UInt64(Self.offlineBeforeLadder * 1_000_000_000))
+            guard let self else { return }
+            await self.walkLadderIfStillDown()
+        }
+    }
+
+    private func walkLadderIfStillDown() async {
+        guard let down = socketDownSince, Date().timeIntervalSince(down) >= Self.offlineBeforeLadder else { return }
+        if let last = lastLadderAt, Date().timeIntervalSince(last) < Self.ladderCooldown { return }
+        lastLadderAt = Date()
+        print("[route] offline \(Int(Date().timeIntervalSince(down)))s — walking the route ladder again")
+        let changed = await runRouteLadder()
+        print("[route] ladder done, changed=\(changed) tunnel=\(SingBoxTransport.shared.isActive)")
+        if changed { WebSocketService.shared.reconnectNow() }
+    }
+
+    /// Direct probe, then the tunnel, then a post-engage check that can drop back
+    /// to direct. The same sequence boot runs, pulled out so it can run AGAIN.
+    ///
+    /// Returns whether the route CHANGED, so the caller knows the socket has to
+    /// be rebuilt against it.
+    @discardableResult
+    func runRouteLadder() async -> Bool {
+        let before = SingBoxTransport.shared.isActive
+        let autoDisabled = UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled")
+        var reach = await APIClient.shared.refreshActiveBase()
+
+        if reach == .unreachable, !SingBoxTransport.shared.isActive, !autoDisabled,
+           !SingBoxTransport.localProxyMode {
+            do {
+                try await SingBoxTransport.shared.start()
+                await APIClient.shared.applyTransportProxy()
+                reach = await APIClient.shared.refreshActiveBase()
+            } catch {
+                print("[route] transport failed to start: \(error)")
+            }
+        }
+
+        // Tunnel up and still nothing, while direct works: drop back rather than
+        // sit inside a broken tunnel. Never under the user's own local proxy
+        // (the Tor-leak rule) or a deliberate onion opt-in, and only when a FRESH
+        // direct probe succeeds — a genuinely blocked user must never be silently
+        // de-tunnelled.
+        if reach == .unreachable, SingBoxTransport.shared.isActive,
+           !SingBoxTransport.localProxyMode, !SingBoxTransport.onionOptIn,
+           await APIClient.shared.probeDirectReachable() {
+            print("[route] tunnel unreachable, direct works — falling back to direct")
+            SingBoxTransport.shared.stop()
+            await APIClient.shared.useDirectSession()
+            reach = await APIClient.shared.refreshActiveBase()
+        }
+
+        if reach != .unreachable { isOffline = false }
+        return SingBoxTransport.shared.isActive != before
     }
 
     private func scheduleTransportRetry() {
