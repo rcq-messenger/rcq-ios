@@ -1,6 +1,6 @@
 {
-  "version": 135,
-  "issued_at": "2026-08-05T04:03:43Z",
+  "version": 137,
+  "issued_at": "2026-08-05T04:10:00Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -31,7 +31,7 @@
       "priority": 2,
       "proto": "hysteria2",
       "server": "129.159.143.135",
-      "sni": "objectstorage.il-jerusalem-1.oraclecloud.com",
+      "sni": "www.microsoft.com",
       "tag": "relay-oracle-il-hy2"
     },
     {
@@ -60,5 +60,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "WM9I0TjlP1rTkEE3ZtXG6E+eJ/eHi9kNLF1dWZtSvETvBtYfJhY+W9jLME+S6qIciTPcYNOtx2ch3w8zcZqUDA=="
+  "sig": "8BCwNhLYRl1Ms2cH5CT9VETjFue82Ypm4INc928NqgncVEuPlq3f4Y5EcRog8e2ONDUAurTk7AKUg2Dcau8SDQ=="
 }
