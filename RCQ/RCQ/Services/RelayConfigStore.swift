@@ -103,6 +103,23 @@ final class RelayConfigStore {
 
     struct OnionPolicy: Codable { let enabled: Bool? }
 
+    /// Names the transport uses, so moving off the flagship apex is a config
+    /// push rather than a release. Both were compiled in until now, which meant
+    /// the one lever that answers "they blocked the whole apex by name" could
+    /// only be pulled by shipping a build and waiting for people to take it.
+    struct TransportNames: Codable {
+        /// Bare hostname of the CF front (`cdn.rcq.app` until a payload says
+        /// otherwise). Used on a DIRECT connection, so it needs nothing from a
+        /// relay's allow-list.
+        let front: String?
+        /// Full https URL the reachability probe fetches.
+        let probe: String?
+        /// Where the device SUBSCRIBES for wakes. Parsed and ignored here — iOS
+        /// is woken through APNs and has no push socket of its own. Present so
+        /// a payload written for Android does not look malformed to this client.
+        let push: String?
+    }
+
     struct Payload: Codable {
         let version: Int
         let issuedAt: String
@@ -110,9 +127,11 @@ final class RelayConfigStore {
         let onion: OnionPolicy?
         /// Extra mirrors this payload names for itself. Absent on older payloads.
         let sources: [SourceEntry]?
+        /// Transport names. Absent on older payloads.
+        let transport: TransportNames?
 
         enum CodingKeys: String, CodingKey {
-            case version, relays, onion, sources
+            case version, relays, onion, sources, transport
             case issuedAt = "issued_at"
         }
     }
@@ -123,6 +142,30 @@ final class RelayConfigStore {
     /// signature-valid payload that explicitly sets it flips onion on, so
     /// rollout is a signed-config push to a cohort, ZERO app release.
     static var onionEnabled = false
+
+    /// Hostname of the CF front, from the signed config. nil until a payload
+    /// names one, and `APIClient.builtInProxyURL` stands in — so this is purely
+    /// additive and a client that never sees a `transport` block behaves
+    /// exactly as before.
+    ///
+    /// ⚠ Absent must mean UNCHANGED, not "reset to the compiled-in name": a
+    /// rollback to an older payload would otherwise drag every client back onto
+    /// the apex, which is the single thing this mechanism exists to leave.
+    /// nonisolated(unsafe): written only on the main actor while a payload is
+    /// parsed, read from the transport and the API client, which are not
+    /// main-actor bound. A reader racing a config push sees either the old name
+    /// or the new one, and both are valid names to dial.
+    nonisolated(unsafe) private(set) static var frontHost: String?
+
+    /// Full https URL the reachability probe fetches, from the signed config.
+    ///
+    /// ⚠ Unlike `frontHost` this one is ALSO fetched through each relay by the
+    /// selector, so every relay's allow-list has to permit the host first.
+    /// Relays derive that list from this same payload but on a timer, so
+    /// publishing a probe they do not yet allow leaves the client unable to
+    /// measure any relay, and therefore with no tunnel at all. Move the relays
+    /// first.
+    nonisolated(unsafe) private(set) static var probeURL: String?
 
     /// One entry of the payload's `sources` array. Unknown types are skipped
     /// rather than rejected, so a payload announcing a channel this build cannot
@@ -189,6 +232,11 @@ final class RelayConfigStore {
         if let onDisk = Self.loadFromDisk() {
             cached = onDisk.relays.sorted { $0.priority < $1.priority }
             Self.onionEnabled = onDisk.onion?.enabled ?? false
+            // Restore the names too, not just the relays. A blocked client
+            // cannot refresh, so the launch after the block starts is exactly
+            // when the last known front has to survive — reading it back only
+            // on a successful refresh would forget it precisely then.
+            Self.applyTransport(onDisk)
         }
     }
 
@@ -238,11 +286,30 @@ final class RelayConfigStore {
                 Self.version = payload.version
                 Self.onionEnabled = payload.onion?.enabled ?? false
                 Self.applySources(payload)
+                Self.applyTransport(payload)
                 Self.saveToDisk(data)
                 return
             } catch {
                 continue
             }
+        }
+    }
+
+    /// Adopt the transport names a payload carries. Absent block, or an absent
+    /// field inside it, leaves the current value alone for the same reason
+    /// `applySources` does: a rollback must not walk clients back onto the apex.
+    ///
+    /// A `front` with a slash in it is refused. It is a bare hostname by
+    /// contract, and letting a path through would silently produce URLs like
+    /// `https://host/prefix/health` that fail in a way pointing at the network
+    /// rather than at the payload.
+    private static func applyTransport(_ payload: Payload) {
+        guard let t = payload.transport else { return }
+        if let front = t.front, !front.isEmpty, !front.contains("/") {
+            frontHost = front
+        }
+        if let probe = t.probe, probe.hasPrefix("https://") {
+            probeURL = probe
         }
     }
 

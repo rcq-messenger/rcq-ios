@@ -29,6 +29,20 @@ actor APIClient {
     // network — exactly the path this front is meant to rescue.
     static let builtInProxyURL = "https://cdn.rcq.app"
 
+    /// The front to actually use: whatever the signed config last named, else
+    /// the compiled-in one. Computed on every read so a config push takes
+    /// effect without a relaunch, exactly like `baseURL` below.
+    ///
+    /// This is the lever for "they blocked the whole apex by name". The front
+    /// and the island share `rcq.app` today, so one SNI rule takes both; moving
+    /// the front to a domain bought elsewhere has to be doable without shipping
+    /// a build, because the people who need it are the ones who cannot reach us
+    /// to get one.
+    static var proxyURL: String {
+        if let host = RelayConfigStore.frontHost { return "https://\(host)" }
+        return builtInProxyURL
+    }
+
     /// Computed (not stored) so UserDefaults changes — namely the
     /// censorship-fallback `rcq.proxyURL` flipped from Settings —
     /// take effect on the next request without an app relaunch. The
@@ -189,7 +203,7 @@ actor APIClient {
             return url
         }
         if UserDefaults.standard.bool(forKey: "rcq.autoProxyActive"),
-           let url = URL(string: builtInProxyURL) {
+           let url = URL(string: proxyURL) {
             return url
         }
         return URL(string: prodBaseURL)!
@@ -251,8 +265,8 @@ actor APIClient {
             }
             return .primary
         }
-        // Direct genuinely unreachable — fall back to the embedded proxy.
-        if await probe(Self.builtInProxyURL) {
+        // Direct genuinely unreachable — fall back to the front.
+        if await probe(Self.proxyURL) {
             UserDefaults.standard.set(true, forKey: key)
             print("[APIClient] primary unreachable — switched to built-in proxy")
             return .proxy
