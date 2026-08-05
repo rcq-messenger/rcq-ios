@@ -281,6 +281,19 @@ final class SingBoxTransport {
         await APIClient.shared.applyTransportProxy()
     }
 
+    /// What every reachability check fetches: whatever the signed config last
+    /// named, else the compiled-in flagship health endpoint.
+    ///
+    /// ⚠ This one is fetched THROUGH each relay by the selector, so a relay's
+    /// allow-list has to permit the host before a payload names it. Relays
+    /// derive that list from the same payload but on a timer, and a probe they
+    /// do not yet allow makes urltest pick NOTHING — no tunnel at all, for
+    /// everyone, exactly when it is needed. Move the relays first
+    /// (`relay-lockdown.sh --check`).
+    nonisolated static var probeURL: String {
+        RelayConfigStore.probeURL ?? "https://api.rcq.app/health"
+    }
+
     /// One-shot reachability check of a user proxy WITHOUT touching the live
     /// transport: dial the proxy directly via an ephemeral URLSession and GET
     /// /health (judging a 2xx, not a bare socket-open — a SOCKS port can accept
@@ -304,7 +317,7 @@ final class SingBoxTransport {
                 "SOCKSEnable": 1, "SOCKSProxy": h, "SOCKSPort": port,
             ]
         }
-        guard let url = URL(string: "https://api.rcq.app/health") else { return false }
+        guard let url = URL(string: Self.probeURL) else { return false }
         do {
             let (_, resp) = try await URLSession(configuration: cfg).data(from: url)
             return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
@@ -479,7 +492,7 @@ final class SingBoxTransport {
                     "type": "urltest",
                     "tag": "out",
                     "outbounds": exits.map { "onion-\($0.tag)" },
-                    "url": "https://api.rcq.app/health",
+                    "url": Self.probeURL,
                     "interval": "5m",
                     "tolerance": 50,
                 ])
@@ -507,7 +520,7 @@ final class SingBoxTransport {
                     "type": "urltest",
                     "tag": "out",
                     "outbounds": trusted.map { $0.tag },
-                    "url": "https://api.rcq.app/health",
+                    "url": Self.probeURL,
                     "interval": "5m",
                     "tolerance": 50,
                 ])
@@ -523,7 +536,7 @@ final class SingBoxTransport {
                 "type": "urltest",
                 "tag": "out",
                 "outbounds": ordered.map { $0.tag },
-                "url": "https://api.rcq.app/health",
+                "url": Self.probeURL,
                 "interval": "5m",
                 "tolerance": 50,
             ])
