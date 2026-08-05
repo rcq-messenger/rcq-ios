@@ -14,9 +14,9 @@ final class RelayConfigStore {
     /// ⚠ These two names are also the entire attack surface of the delivery
     /// channel: a censor who blocks both leaves a client with nothing but the
     /// bundled pool and a hand-pasted token. `remoteSources` is the way out.
-    private static let bundledEndpoints: [URL] = [
-        URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-ios/main/relay-config.json")!,
-        URL(string: "https://relay.rcq.app/v1/config")!,
+    private static let bundledEndpoints: [Source] = [
+        .https(URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-ios/main/relay-config.json")!),
+        .https(URL(string: "https://relay.rcq.app/v1/config")!),
     ]
     private static let cacheFile = "relay-config.json"
 
@@ -130,12 +130,29 @@ final class RelayConfigStore {
     struct SourceEntry: Codable, Equatable {
         let type: String?
         let url: String?
+        /// For `dns-txt`: the name whose TXT record carries a signed seed.
+        let name: String?
+    }
+
+    /// Where a payload can be read from. `https` is a mirror URL; `dnsTxt` is a
+    /// name read over DoH — a channel that survives both mirror names being
+    /// blocked, since it rides resolvers half the internet needs to stay up.
+    enum Source: Equatable {
+        case https(URL)
+        case dnsTxt(String)
+
+        var key: String {
+            switch self {
+            case .https(let u): return "https:\(u.absoluteString)"
+            case .dnsTxt(let n): return "dns:\(n)"
+            }
+        }
     }
 
     /// Extra mirrors carried BY the signed config, so a new delivery channel — a
     /// domain bought at another registrar, a mirror somewhere expensive to block
     /// wholesale — reaches installed clients without an app release.
-    private static var remoteSources: [URL] = []
+    private static var remoteSources: [Source] = []
 
     /// Version of the last verified payload, and the floor for the next one.
     private(set) static var version: Int?
@@ -156,11 +173,11 @@ final class RelayConfigStore {
     /// Config entries lead because they are the reason this exists: the two
     /// bundled names are exactly what a censor enumerates first, so on the
     /// network that needs them the new mirror is the one likely to answer.
-    static func effectiveEndpoints() -> [URL] {
+    static func effectiveEndpoints() -> [Source] {
         var seen = Set<String>()
-        var out: [URL] = []
-        for url in remoteSources + bundledEndpoints where seen.insert(url.absoluteString).inserted {
-            out.append(url)
+        var out: [Source] = []
+        for source in remoteSources + bundledEndpoints where seen.insert(source.key).inserted {
+            out.append(source)
             if out.count == maxSources { break }
         }
         return out
@@ -196,12 +213,23 @@ final class RelayConfigStore {
             config.connectionProxyDictionary = proxy
         }
         let session = URLSession(configuration: config)
-        for url in Self.effectiveEndpoints() {
-            var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
-            req.setValue("application/json", forHTTPHeaderField: "Accept")
+        for source in Self.effectiveEndpoints() {
+            var data: Data
+            switch source {
+            case .https(let url):
+                var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+                req.setValue("application/json", forHTTPHeaderField: "Accept")
+                guard let (body, response) = try? await session.data(for: req),
+                      let http = response as? HTTPURLResponse, http.statusCode == 200
+                else { continue }
+                data = body
+            case .dnsTxt(let name):
+                guard let encoded = await DnsTxt.fetch(name: name, session: session),
+                      let decoded = Data(base64Encoded: encoded)
+                else { continue }
+                data = decoded
+            }
             do {
-                let (data, response) = try await session.data(for: req)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { continue }
                 // The floor is whatever we already trust, so a mirror serving a
                 // stale but genuinely signed payload cannot move us backwards.
                 guard let payload = Self.verifyAndDecode(data, minVersion: Self.version) else { continue }
@@ -223,13 +251,20 @@ final class RelayConfigStore {
     /// narrow the channel back to the two compiled-in names.
     private static func applySources(_ payload: Payload) {
         guard let entries = payload.sources, !entries.isEmpty else { return }
-        let urls = entries.compactMap { entry -> URL? in
-            guard (entry.type ?? "https") == "https",
-                  let raw = entry.url, raw.hasPrefix("https://"),
-                  let url = URL(string: raw) else { return nil }
-            return url
+        let parsed = entries.compactMap { entry -> Source? in
+            switch entry.type ?? "https" {
+            case "https":
+                guard let raw = entry.url, raw.hasPrefix("https://"),
+                      let url = URL(string: raw) else { return nil }
+                return .https(url)
+            case "dns-txt":
+                guard let name = entry.name, !name.isEmpty else { return nil }
+                return .dnsTxt(name)
+            default:
+                return nil   // a channel this build cannot speak; the rest stays usable
+            }
         }
-        if !urls.isEmpty { remoteSources = urls }
+        if !parsed.isEmpty { remoteSources = parsed }
     }
 
     // MARK: - Signature verification
