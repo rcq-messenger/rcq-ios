@@ -1,6 +1,6 @@
 {
-  "version": 133,
-  "issued_at": "2026-08-05T04:01:22Z",
+  "version": 135,
+  "issued_at": "2026-08-05T04:03:43Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -31,7 +31,7 @@
       "priority": 2,
       "proto": "hysteria2",
       "server": "129.159.143.135",
-      "sni": "java.com",
+      "sni": "objectstorage.il-jerusalem-1.oraclecloud.com",
       "tag": "relay-oracle-il-hy2"
     },
     {
@@ -60,5 +60,5 @@
   "onion": {
     "enabled": true
   },
-  "sig": "IVNLmDRK52JkKvgzWapgvf67cZsVl3RFW1nxPOzh9y9HDsJBskdf4Kc08PO0Ls/sAcJD//FinbE8zA7+KZ3OCw=="
+  "sig": "WM9I0TjlP1rTkEE3ZtXG6E+eJ/eHi9kNLF1dWZtSvETvBtYfJhY+W9jLME+S6qIciTPcYNOtx2ch3w8zcZqUDA=="
 }
