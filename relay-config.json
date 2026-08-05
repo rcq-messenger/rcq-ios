@@ -1,6 +1,6 @@
 {
-  "version": 141,
-  "issued_at": "2026-08-05T04:55:28Z",
+  "version": 142,
+  "issued_at": "2026-08-05T05:01:57Z",
   "relays": [
     {
       "tag": "relay-do-fra-spaces-hy2",
@@ -115,6 +115,46 @@
       "short_id": "ed11110c170bd554",
       "flow": "xtls-rprx-vision",
       "priority": 9
+    },
+    {
+      "tag": "relay-vultr-waw-hy2",
+      "proto": "hysteria2",
+      "server": "64.176.71.251",
+      "port": 443,
+      "sni": "ams1.vultrobjects.com",
+      "password": "c8Hy1pVwL9WD1LwmRJhNGFUo",
+      "obfs_password": "8idmG6yKcCPKsMy64fd3jDcg",
+      "priority": 10
+    },
+    {
+      "tag": "relay-vultr-sto-hy2",
+      "proto": "hysteria2",
+      "server": "70.34.202.59",
+      "port": 443,
+      "sni": "ams1.vultrobjects.com",
+      "password": "2bueOgUc8lnL9GGADukx3V38",
+      "obfs_password": "M8MxAKjD4UgfCT2JOwkeWKYp",
+      "priority": 11
+    },
+    {
+      "tag": "relay-vultr-nrt-hy2",
+      "proto": "hysteria2",
+      "server": "139.180.194.73",
+      "port": 443,
+      "sni": "nrt1.vultrobjects.com",
+      "password": "End6wDZP7I3A1VQfCIdNezbP",
+      "obfs_password": "lXRUg2N6BQztKtho87GJmmos",
+      "priority": 12
+    },
+    {
+      "tag": "relay-vultr-sgp-hy2",
+      "proto": "hysteria2",
+      "server": "45.76.161.32",
+      "port": 443,
+      "sni": "sgp1.vultrobjects.com",
+      "password": "7CGkcQoLzH8piLuhTsO7P7za",
+      "obfs_password": "W50oij0htTu06KYbhVEVtpfU",
+      "priority": 13
     }
   ],
   "onion": {
@@ -126,5 +166,5 @@
       "name": "cfg.northfieldlabs.fyi"
     }
   ],
-  "sig": "ctTDVH2X2FJGrXJPd3YBGnu6E8SQW+M0wMxUvqx7lwiHBDOT1V1VSMHQQ76gDEIlmOL/rrZMnINPM5AnHXouCA=="
+  "sig": "gTUhXtIfe0526dwogPRFhDKyO9Mk5iCMkL73bgVFPL8GxXSQ1kOGqheLX1tvlDOSjLqX14Bt6jn4hAgXcK0DAQ=="
 }
