@@ -1,6 +1,6 @@
 {
-  "version": 142,
-  "issued_at": "2026-08-05T05:01:57Z",
+  "version": 143,
+  "issued_at": "2026-08-05T16:13:40Z",
   "relays": [
     {
       "tag": "relay-do-fra-spaces-hy2",
@@ -39,7 +39,7 @@
       "proto": "vless",
       "server": "129.159.143.135",
       "port": 443,
-      "sni": "www.apple.com",
+      "sni": "identity.oraclecloud.com",
       "uuid": "ff005e0c-175e-4475-a166-eeac88f514e2",
       "public_key": "_Hhc-2pjkvR914mddMdmuoOVaT74vWR8Gby7KmJp9F8",
       "short_id": "318567678ac9878e",
@@ -166,5 +166,5 @@
       "name": "cfg.northfieldlabs.fyi"
     }
   ],
-  "sig": "gTUhXtIfe0526dwogPRFhDKyO9Mk5iCMkL73bgVFPL8GxXSQ1kOGqheLX1tvlDOSjLqX14Bt6jn4hAgXcK0DAQ=="
+  "sig": "WmEB3iDPid7zLqjvVrn3ntm9TEejlDhB0Bz/7LcCrgNc77OontLecgG117/TaugmqH51PNgP4z0e6ndf7aZPBw=="
 }
