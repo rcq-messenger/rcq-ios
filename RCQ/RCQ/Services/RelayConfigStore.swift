@@ -231,24 +231,33 @@ final class RelayConfigStore {
         // fingerprints the Reality handshake this build had one UDP option
         // instead of three.
         //
+        // ⚠ An SNI has to be plausible for the ADDRESS, not just innocuous on
+        // its own. This pair presented `www.yandex.ru` from a DigitalOcean
+        // address until 2026-08-05, and Yandex is never served out of
+        // DigitalOcean — one join of SNI against the address owner finds every
+        // connection we make, and Reality's resistance to ACTIVE probing does
+        // nothing about that. It now presents a name that genuinely lives on
+        // the same ASN and region as the relay. Oracle and GCP still carry
+        // Akamai-hosted names for want of admin access to those two machines.
+        //
         // Keep in step: `curl -s https://relay.rcq.app/v1/config`, compare tag /
         // server / sni / keys. Hysteria2 leads on each host, matching the signed
         // priorities.
         RelayEntry(
-            tag: "relay-do-fra-yandex-hy2",
+            tag: "relay-do-fra-spaces-hy2",
             server: "165.22.90.214",
             port: 443,
-            sni: "www.yandex.ru",
+            sni: "fra1.digitaloceanspaces.com",
             priority: 0,
             proto: .hysteria2,
             password: "JN0qzA4LJfhHPKKN3QHj4eN8",
             obfsPassword: "jXfGkLToOkTihpeJzDiNf8Bb",
         ),
         RelayEntry(
-            tag: "relay-do-fra-yandex",
+            tag: "relay-do-fra-spaces",
             server: "165.22.90.214",
             port: 443,
-            sni: "www.yandex.ru",
+            sni: "fra1.digitaloceanspaces.com",
             priority: 1,
             proto: .vless,
             uuid: "2081b3c4-faaa-4cce-a0ab-607197b28237",
