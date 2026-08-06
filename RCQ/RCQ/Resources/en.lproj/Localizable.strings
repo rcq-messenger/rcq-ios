@@ -2259,3 +2259,4 @@
 "contact.their_name" = "They call themselves %@";
 "contact.name_hint" = "Stays on this device only. The other person is never told.";
 "contact.name_placeholder" = "Name";
+"my_uins.held_count" = "%1$d of %2$d";
