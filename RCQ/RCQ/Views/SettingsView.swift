@@ -40,6 +40,7 @@ struct SettingsView: View {
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
     @State private var showBackupIsland = false
+    @State private var showBackupFile = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
     @EnvironmentObject private var appState: AppState
@@ -215,17 +216,7 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    Section("settings.history".localized) {
-                        Button(role: .destructive) {
-                            confirmClearHistory = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "trash")
-                                Text("settings.history.clear".localized)
-                            }
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
+                    historySection
 
                     // Self-host backends running rcq-server-ref report
                     // uin_shop=false via /server/info and the row hides
@@ -398,6 +389,7 @@ struct SettingsView: View {
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
             .sheet(isPresented: $showBackupIsland) { BackupIslandView().environmentObject(appState) }
+            .sheet(isPresented: $showBackupFile) { BackupFileView() }
             .confirmationDialog(
                 "settings.history.confirm.title".localized,
                 isPresented: $confirmClearHistory,
@@ -449,6 +441,36 @@ struct SettingsView: View {
                     .foregroundColor(Theme.Color.accent)
             }
         }
+    }
+
+    /// Extracted for the same reason as the section below: adding the second
+    /// row here was what tipped `body` past the type-checker's ceiling.
+    @ViewBuilder
+    private var historySection: some View {
+        Section("settings.history".localized) {
+            Button {
+                showBackupFile = true
+            } label: {
+                HStack {
+                    Image(systemName: "doc.zipper").foregroundColor(Theme.Color.accent)
+                    Text("settings.history.file".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            Button(role: .destructive) {
+                confirmClearHistory = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash")
+                    Text("settings.history.clear".localized)
+                }
+            }
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     /// Extracted to keep `body` under the Swift type-checker's

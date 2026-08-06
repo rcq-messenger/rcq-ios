@@ -399,6 +399,19 @@ final class MessageDB {
         save()
     }
 
+    /// Same insert, but says whether the row was new. A restore has to tell
+    /// "added" from "already here" against the WHOLE store rather than against
+    /// the in-memory window `MessageStore` keeps, which is only the last
+    /// hundred rows per thread and would call an old message new.
+    @discardableResult
+    func insertIfAbsent(_ msg: Message) -> Bool {
+        if find(id: msg.id) != nil { return false }
+        let row = MessageRecord(context: ctx)
+        apply(msg, to: row)
+        save()
+        return true
+    }
+
     func updateState(id: UUID, state: DeliveryState) {
         guard let row = find(id: id) else { return }
         row.deliveryState = state.rawValue

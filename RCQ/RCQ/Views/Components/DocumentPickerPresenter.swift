@@ -38,6 +38,27 @@ enum DocumentPickerPresenter {
         top.present(picker, animated: true)
     }
 
+    /// Hand a file already on disk to the system so the person can put it
+    /// wherever they keep things. Exporting a URL rather than a `FileDocument`
+    /// keeps a multi-gigabyte archive out of memory: the file is written first
+    /// and only its path is passed here.
+    static func presentExport(
+        url: URL,
+        onDone: @escaping () -> Void = {},
+        onCancel: @escaping () -> Void = {},
+    ) {
+        guard let top = topViewController() else {
+            onCancel()
+            return
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+        picker.shouldShowFileExtensions = true
+        let delegate = ExportDelegate(onDone: onDone, onCancel: onCancel)
+        picker.delegate = delegate
+        objc_setAssociatedObject(picker, &delegateKey, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        top.present(picker, animated: true)
+    }
+
     private static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -47,6 +68,24 @@ enum DocumentPickerPresenter {
         guard var vc = window?.rootViewController else { return nil }
         while let presented = vc.presentedViewController { vc = presented }
         return vc
+    }
+
+    private final class ExportDelegate: NSObject, UIDocumentPickerDelegate {
+        let onDone: () -> Void
+        let onCancel: () -> Void
+
+        init(onDone: @escaping () -> Void, onCancel: @escaping () -> Void) {
+            self.onDone = onDone
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onDone()
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
     }
 
     private final class Delegate: NSObject, UIDocumentPickerDelegate {
