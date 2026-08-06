@@ -14,6 +14,10 @@ struct UserProfile: Codable, Hashable {
     var homepage: String?
     var status: UserStatus
     var statusMessage: String?
+    /// Profile picture: encrypted blob id + its key. Filled in by the island
+    /// only for people allowed to see it.
+    var avatarMediaID: String?
+    var avatarMediaKey: String?
     var identityKey: String
     var signingKey: String
     var signalIdentityKey: String?
@@ -85,6 +89,8 @@ struct UserProfile: Codable, Hashable {
         case presenceTTLMinutes = "presence_ttl_minutes"
         case hofOptIn = "hof_opt_in"
         case hofAvatar = "hof_avatar"
+        case avatarMediaID = "avatar_media_id"
+        case avatarMediaKey = "avatar_media_key"
     }
 }
 
