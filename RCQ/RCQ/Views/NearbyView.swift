@@ -242,15 +242,13 @@ struct NearbyView: View {
                 }
             }
 
-            // Banner carousel pinned to the bottom of the screen
-            // below the people list / empty state. The Hood-Chat
-            // button stays up top; banners live down here so the
-            // page doesn't feel front-loaded.
-            if let bucket = bucketTag {
-                HoodBannerCarousel(bucket: bucket)
-                    .padding(.top, 6)
-                    .padding(.bottom, 8)
-            }
+            // A paid banner board used to sit here. In three months it took
+            // eight posts from seven people, all of them tests, and none were
+            // alive when it was removed — while the district chat above it is
+            // genuinely used. It also showed dollar prices against a purchase
+            // check that accepted any string, so the price was a fiction the
+            // screen told with a straight face. Carrying that to Android and
+            // the web was work with no demand behind it.
         }
     }
 

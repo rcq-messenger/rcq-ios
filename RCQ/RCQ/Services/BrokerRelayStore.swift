@@ -155,7 +155,7 @@ final class BrokerRelayStore {
         return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
             let q = DispatchQueue(label: "rcq.reach.probe")
             var done = false
-            func finish(_ ok: Bool) {
+            @Sendable func finish(_ ok: Bool) {
                 q.async {
                     guard !done else { return }
                     done = true

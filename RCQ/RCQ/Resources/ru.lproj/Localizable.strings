@@ -294,7 +294,6 @@
 "uin_shop.confirm.cta_priced" = "Подтвердить %@";
 "uin_shop.error.taken" = "Кто-то перехватил. Попробуй другой UIN.";
 "uin_shop.error.cooldown" = "Слишком часто. Попробуй позже.";
-"hood.compose" = "Разместить";
 "hood.author.anonymous" = "Аноним";
 "hood.expired" = "Истёк";
 "hood.left_minutes" = "%d мин";
@@ -304,17 +303,6 @@
 "hood.duration.6h" = "6 часов";
 "hood.duration.24h" = "24 часа";
 "hood.duration.7d" = "7 дней";
-"hood.composer.title" = "Новое объявление";
-"hood.composer.text_header" = "ТЕКСТ";
-"hood.composer.placeholder" = "Продаю / ищу / просто привет соседям…";
-"hood.composer.duration" = "Длительность";
-"hood.composer.anonymous" = "Анонимно";
-"hood.composer.footer" = "Объявления видны всем в радиусе примерно 1 км. Пока мок IAP.";
-"hood.composer.buy" = "Купить за %@";
-"hood.composer.confirm.title" = "Купить %@ объявление за %@?";
-"hood.composer.confirm.cta" = "Подтвердить %@";
-"hood.composer.confirm.body" = "Объявление появится у всех в районе. Пока мок IAP, реальной оплаты нет.";
-"hood.composer.error.bucket_full" = "В этом районе слишком много объявлений. Попробуй позже.";
 
 "bug_bounty.title" = "Сообщить о баге";
 "bug_bounty.heading" = "Нашёл баг? Расскажи";
@@ -371,7 +359,6 @@
 "smoke.item.play_hilo" = "Сыграй раунд HiLo";
 "smoke.item.play_limbo" = "Сыграй раунд Limbo";
 "smoke.item.visit_hood" = "Зайди в Hood";
-"smoke.item.drop_hood_banner" = "Поставь баннер в Hood";
 "smoke.item.create_audio_room" = "Создай аудио-комнату";
 "smoke.item.join_audio_room" = "Зайди в аудио-комнату";
 "smoke.item.pet_hunt" = "Отправь питомца на охоту";
@@ -556,51 +543,6 @@
 
 "contact_list.offline_badge" = "Без сети";
 
-/* ── Hood banners ─────────────────────────────────────────── */
-"hood_banner.section.title" = "ОБЪЯВЛЕНИЯ РАЙОНА";
-"hood_banner.show_all" = "Все";
-"hood_banner.empty.cta" = "Поставить объявление в этом районе";
-"hood_banner.anonymous" = "Анонимно";
-"hood_banner.alert.title" = "Объявление";
-"hood_banner.duration.1h" = "1 час";
-"hood_banner.duration.6h" = "6 часов";
-"hood_banner.duration.24h" = "24 часа";
-"hood_banner.duration.7d" = "7 дней";
-"hood_banner.composer.title" = "Новое";
-"hood_banner.composer.publish" = "Пост";
-"hood_banner.composer.intro_title" = "Что такое объявление в районе?";
-"hood_banner.composer.intro_body" = "Платное локальное объявление, видимое только людям в твоём районе (зона ~1.2 км). Продай, найми, позови, расскажи — все рядом увидят его внизу экрана «Рядом». Висит от 1 часа до 7 дней в зависимости от цены.";
-"hood_banner.composer.text_label" = "ТЕКСТ";
-"hood_banner.composer.photo_label" = "ФОТО";
-"hood_banner.composer.photo_pick" = "Прикрепить фото";
-"hood_banner.composer.photo_uploading" = "Загружаем…";
-"hood_banner.composer.photo_attached" = "Фото готово";
-"hood_banner.composer.photo_remove" = "Убрать";
-"hood_banner.composer.duration_label" = "ДЛИТЕЛЬНОСТЬ";
-"hood_banner.composer.anonymous_label" = "Анонимно";
-"hood_banner.composer.anonymous_hint" = "Никто не увидит твоего ника и UIN";
-"hood_banner.composer.warning" = "После публикации редактировать нельзя. Удаление досрочно НЕ возвращает жетоны.";
-"hood_banner.confirm.message" = "Спишется %d жетонов. Опубликовать?";
-"hood_banner.confirm.publish" = "Пост";
-"hood_banner.error.insufficient" = "Не хватает жетонов: нужно %d, есть %d.";
-"hood_banner.error.bucket_full" = "В этом районе уже максимум объявлений (10). Подожди пока какое-то истечёт.";
-"hood_banner.error.already_have" = "У тебя уже есть активное объявление в этом районе.";
-"hood_banner.error.cooldown" = "Подожди ещё %d секунд перед следующим объявлением.";
-"hood_banner.detail.title" = "Объявление";
-"hood_banner.detail.add_contact" = "В контакты";
-"hood_banner.detail.delete" = "Удалить";
-"hood_banner.detail.report" = "Пожаловаться";
-"hood_banner.detail.reported" = "Жалоба отправлена. Спасибо.";
-"hood_banner.expires_in_days" = "истекает через %d дн.";
-"hood_banner.expires_in_hm" = "истекает через %dч %dм";
-"hood_banner.expires_in_min" = "истекает через %d мин";
-"hood_banner.board.title" = "Доска района";
-"hood_banner.empty.subtitle" = "В этом районе пока ничего нет.";
-"hood_banner.full" = "Лимит достигнут";
-"hood_banner.post_cta" = "Разместить";
-"hood_banner.composer.publish_for" = "Опубликовать за %@";
-"hood_banner.composer.warning.title" = "Важно";
-"hood_banner.composer.warning.body" = "После публикации редактировать нельзя. Удаление досрочно не возвращает оплату.";
 "hood.error.slow_down" = "Не так быстро, дай чату вдохнуть.";
 "hood.error.send_failed" = "Не получилось отправить. Проверь связь.";
 "hood.error.send_failed_code" = "Не отправилось (%d).";
@@ -1595,7 +1537,6 @@
 "hood.empty.body" = "Будьте тем, кто нарушит молчание.";
 "hood.deleted" = "Сообщение удалено";
 "hood.replying_to" = "Отвечаем %@";
-"hood.composer.placeholder" = "Скажите привет району…";
 "hood.profile.anon" = "Анонимно · Hood Chat";
 "hood.profile.body.anon" = "Люди в Hood Chat анонимны. Можете предложить добавить в контакты — после принятия увидите настоящий профиль.";
 "hood.profile.body.real" = "Пользователь отключил анонимный режим — его настоящий аккаунт виден.";

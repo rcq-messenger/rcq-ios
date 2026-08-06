@@ -111,9 +111,7 @@ final class WebSocketService: ObservableObject {
     private var lastBaseURL: URL?
     private var lastServerToken: String?
 
-    private init() {
-        upgradeWatcher.owner = self
-    }
+    private init() {}
 
     /// Watches for the upgrade itself.
     ///
@@ -123,14 +121,15 @@ final class WebSocketService: ObservableObject {
     /// a resume the socket is redialed, `linkUp` drops to false, and the dot
     /// sat orange for that whole stretch while the connection was in fact fine.
     private final class UpgradeWatcher: NSObject, URLSessionWebSocketDelegate {
-        weak var owner: WebSocketService?
-
+        // Reaches the service through the singleton rather than holding it:
+        // a stored reference here would be mutable state on a Sendable class,
+        // which Swift 6 rejects outright.
         func urlSession(
             _ session: URLSession,
             webSocketTask: URLSessionWebSocketTask,
             didOpenWithProtocol proto: String?,
         ) {
-            Task { @MainActor [weak owner] in owner?.noteUpgraded(webSocketTask) }
+            Task { @MainActor in WebSocketService.shared.noteUpgraded(webSocketTask) }
         }
     }
 
