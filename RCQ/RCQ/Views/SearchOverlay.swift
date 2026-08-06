@@ -89,7 +89,10 @@ struct SearchOverlay: View {
         let q = normalized
         guard !q.isEmpty else { return [] }
         return contactSvc.contacts.filter { contact in
+            // Search my own name for them too: renaming someone and then not
+            // finding them by that name is the obvious next complaint.
             contact.nickname.lowercased().contains(q)
+                || (ContactAliasStore.shared.alias(for: contact.uin)?.lowercased().contains(q) ?? false)
                 || String(contact.uin).contains(q)
         }
     }
@@ -179,7 +182,7 @@ struct SearchOverlay: View {
                 HStack(spacing: 10) {
                     StatusIcon(status: contact.status, size: 36)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(contact.nickname)
+                        Text(ContactAliasStore.shared.displayName(for: contact.uin, fallback: contact.nickname))
                             .font(Theme.Font.nickname)
                             .foregroundColor(Theme.Color.textPrimary)
                         Text(verbatim: "#\(contact.uin)")

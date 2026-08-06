@@ -7,6 +7,7 @@ struct ChatView: View {
     @StateObject private var vm: ChatViewModel
     @StateObject private var appState = AppState.shared
     @StateObject private var contacts = ContactService.shared
+    @StateObject private var aliasStore = ContactAliasStore.shared
     @StateObject private var groupSvc = GroupService.shared
     @StateObject private var groupViews = GroupViewsService.shared
 
@@ -567,7 +568,7 @@ struct ChatView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
-                    TypingIndicator(label: "\(c.nickname) is typing…")
+                    TypingIndicator(label: "\(aliasStore.displayName(for: c.uin, fallback: c.nickname)) is typing…")
                 }
                 if case .randomPeer(let peer) = vm.target {
                     randomCTAStrip(peer: peer)
@@ -1028,10 +1029,19 @@ struct ChatView: View {
                         .foregroundColor(Theme.Color.accent)
                         .frame(width: 24, height: 24)
                 } else {
-                    StatusIcon(status: live.status, size: 24, crossIsland: live.host != nil)
+                    PersonAvatarView(
+                        mediaID: live.avatarMediaID, keyBase64: live.avatarMediaKey,
+                        status: live.status, host: live.host, size: 30,
+                        crossIsland: live.host != nil
+                    )
                 }
                 VStack(spacing: 0) {
-                    Text(isSelf ? "contact_list.saved_messages".localized : live.nickname)
+                    // My own name for them, when I gave one — the list already
+                    // used it and the chat header did not, so a renamed contact
+                    // read one way in the list and another inside the chat.
+                    Text(isSelf
+                         ? "contact_list.saved_messages".localized
+                         : aliasStore.displayName(for: live.uin, fallback: live.nickname))
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
