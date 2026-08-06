@@ -112,6 +112,11 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     /// broadcast + skdm). False → only the legacy per-member fan-out reaches
     /// them (dual-send migration). See RCQ/docs/sender-keys-design.md.
     let senderKeys: Bool
+    /// Profile picture, gated by MEMBERSHIP rather than by the contact list:
+    /// sharing a group is the relationship here, the same one that already
+    /// exposes the nickname on this row.
+    var avatarMediaID: String? = nil
+    var avatarMediaKey: String? = nil
 
     var id: Int { uin }
 
@@ -127,6 +132,8 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case signingKey = "signing_key"
         case signalIdentityKey = "signal_identity_key"
         case senderKeys = "sender_keys"
+        case avatarMediaID = "avatar_media_id"
+        case avatarMediaKey = "avatar_media_key"
     }
 
     init(from decoder: Decoder) throws {
@@ -142,6 +149,8 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.signalIdentityKey = try? c.decodeIfPresent(String.self, forKey: .signalIdentityKey)
         self.permissions = (try? c.decodeIfPresent([String].self, forKey: .permissions)) ?? []
         self.senderKeys = (try? c.decodeIfPresent(Bool.self, forKey: .senderKeys)) ?? false
+        self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
+        self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
     }
 }
 

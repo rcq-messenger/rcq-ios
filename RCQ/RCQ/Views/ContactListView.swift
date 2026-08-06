@@ -1575,7 +1575,14 @@ private struct ContactRow: View {
     var body: some View {
         HStack(spacing: 10) {
             ZStack(alignment: .topTrailing) {
-                statusIcon
+                PersonAvatarView(
+                    mediaID: contact.avatarMediaID,
+                    keyBase64: contact.avatarMediaKey,
+                    status: contact.status,
+                    host: contact.host,
+                    size: 28,
+                    crossIsland: contact.host != nil
+                )
                 if contact.unread > 0 {
                     Text("\(contact.unread)")
                         .font(.system(size: 9, weight: .bold))

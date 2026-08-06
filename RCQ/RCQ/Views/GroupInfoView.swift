@@ -414,7 +414,10 @@ struct GroupInfoView: View {
             if !isMe { actionMember = m }
         } label: {
             HStack(spacing: 8) {
-                StatusIcon(status: m.status, size: 22)
+                PersonAvatarView(
+                    mediaID: m.avatarMediaID, keyBase64: m.avatarMediaKey,
+                    status: m.status, size: 28
+                )
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
                         Text(m.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)

@@ -37,6 +37,11 @@ struct Contact: Identifiable, Hashable, Codable {
     /// federation-send instead of the flagship. Must be in CodingKeys so it
     /// survives `CrossIslandStore`'s JSON persistence.
     var host: String? = nil
+    /// Profile picture: an encrypted blob id plus its key. The island fills
+    /// these in only for people allowed to see it (a mutual contact, yourself,
+    /// or a member of a group you are in), so the client never has to gate it.
+    var avatarMediaID: String? = nil
+    var avatarMediaKey: String? = nil
 
     var id: Int { uin }
 
@@ -51,6 +56,8 @@ struct Contact: Identifiable, Hashable, Codable {
         case lastSeen = "last_seen"
         case callable
         case host
+        case avatarMediaID = "avatar_media_id"
+        case avatarMediaKey = "avatar_media_key"
     }
 
     /// Synthetic "Saved Messages" peer — the user's own UIN dressed up

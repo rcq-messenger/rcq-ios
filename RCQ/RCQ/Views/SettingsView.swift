@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -7,6 +8,13 @@ struct SettingsView: View {
     @StateObject private var sound = SoundService.shared
     @StateObject private var auth = AuthService.shared
     @StateObject private var presence = PresenceService.shared
+    // Own profile picture, plus the picker that sets it. Seeded from the
+    // island on appear so the header is right on a cold start rather than
+    // only after the profile screen has been opened.
+    @State private var ownAvatarID: String?
+    @State private var ownAvatarKey: String?
+    @State private var avatarPick: PhotosPickerItem?
+    @State private var avatarBusy = false
     @State private var confirmClearHistory = false
     @State private var confirmBurn = false
     @State private var burning = false
@@ -493,10 +501,77 @@ struct SettingsView: View {
         .listRowBackground(Theme.Color.bgSecondary)
     }
 
+    /// Read my own picture back from the island. `/users/me` answers with the
+    /// owner-self view, which always carries it.
+    private func loadOwnAvatar() async {
+        guard let uin = auth.ownUIN else { return }
+        let p: UserProfile? = try? await APIClient.shared.request("GET", "/users/\(uin)/info")
+        ownAvatarID = p?.avatarMediaID
+        ownAvatarKey = p?.avatarMediaKey
+    }
+
+    /// Encrypt + upload the picked image, then hand the island the id and key.
+    /// GIFs go up as raw bytes so the frames survive; anything else takes the
+    /// still-image path, which JPEG-encodes.
+    private func setOwnAvatar(from item: PhotosPickerItem) async {
+        avatarBusy = true
+        defer { avatarBusy = false }
+        struct Body: Encodable {
+            let avatar_media_id: String
+            let avatar_media_key: String
+        }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            let res: MediaService.UploadResult
+            if AnimatedGIFView.isGIF(data) {
+                res = try await MediaService.shared.uploadGIF(data: data)
+            } else {
+                guard let img = UIImage(data: data) else { return }
+                res = try await MediaService.shared.uploadImage(img)
+            }
+            let _: UserProfile = try await APIClient.shared.request(
+                "PUT", "/users/me",
+                body: Body(avatar_media_id: res.mediaID, avatar_media_key: res.keyBase64),
+            )
+            ownAvatarID = res.mediaID
+            ownAvatarKey = res.keyBase64
+        } catch {
+            // Silent: the header simply keeps the flower, and the user can try
+            // again. A modal here would be louder than the failure deserves.
+        }
+    }
+
+    /// Pulled out of `identityHeader`: inlined, the picker plus the avatar plus
+    /// the surrounding stack blew past what the type-checker will chew through
+    /// in one expression.
+    @ViewBuilder
+    private var avatarPickerButton: some View {
+        PhotosPicker(selection: $avatarPick, matching: .images) {
+            PersonAvatarView(
+                mediaID: ownAvatarID,
+                keyBase64: ownAvatarKey,
+                status: presence.status,
+                size: 48
+            )
+        }
+        .buttonStyle(.plain)
+        // Hung on this small view rather than on `body`: the settings form is
+        // already at the edge of what the type-checker will solve in one go.
+        .task { await loadOwnAvatar() }
+        // Single-argument form: the deployment target is below iOS 17, where
+        // the two-argument onChange does not exist.
+        .onChange(of: avatarPick) { item in
+            guard let item else { return }
+            Task { await setOwnAvatar(from: item); avatarPick = nil }
+        }
+    }
+
     @ViewBuilder
     private var identityHeader: some View {
         HStack(spacing: 12) {
-            StatusIcon(status: presence.status, size: 40)
+            // The picture is the button, the way every messenger does it, and
+            // the status stays ON it rather than being replaced by it.
+            avatarPickerButton
             VStack(alignment: .leading, spacing: 4) {
                 Text(auth.nickname.isEmpty ? "—" : auth.nickname)
                     .font(.system(.title3, weight: .semibold))

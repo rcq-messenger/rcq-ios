@@ -29,7 +29,11 @@ struct ChatPreviewView: View {
             switch target {
             case .peer(let snapshot):
                 let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
-                StatusIcon(status: live.status, size: 22)
+                PersonAvatarView(
+                    mediaID: live.avatarMediaID, keyBase64: live.avatarMediaKey,
+                    status: live.status, host: live.host, size: 28,
+                    crossIsland: live.host != nil
+                )
                 VStack(spacing: 0) {
                     Text(live.nickname)
                         .font(.system(.subheadline, weight: .semibold))

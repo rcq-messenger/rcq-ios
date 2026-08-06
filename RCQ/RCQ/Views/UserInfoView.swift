@@ -210,7 +210,11 @@ struct UserInfoView: View {
     private func header(_ p: UserProfile) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                StatusIcon(status: p.status, size: 48, crossIsland: crossIslandHost != nil)
+                PersonAvatarView(
+                    mediaID: p.avatarMediaID, keyBase64: p.avatarMediaKey,
+                    status: p.status, host: crossIslandHost, size: 64,
+                    crossIsland: crossIslandHost != nil
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
                     Text(verbatim: "#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
