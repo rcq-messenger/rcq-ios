@@ -277,21 +277,17 @@ final class RelayConfigStore {
                 else { continue }
                 data = decoded
             }
-            do {
-                // The floor is whatever we already trust, so a mirror serving a
-                // stale but genuinely signed payload cannot move us backwards.
-                guard let payload = Self.verifyAndDecode(data, minVersion: Self.version) else { continue }
-                let sorted = payload.relays.sorted { $0.priority < $1.priority }
-                cached = sorted
-                Self.version = payload.version
-                Self.onionEnabled = payload.onion?.enabled ?? false
-                Self.applySources(payload)
-                Self.applyTransport(payload)
-                Self.saveToDisk(data)
-                return
-            } catch {
-                continue
-            }
+            // The floor is whatever we already trust, so a mirror serving a
+            // stale but genuinely signed payload cannot move us backwards.
+            guard let payload = Self.verifyAndDecode(data, minVersion: Self.version) else { continue }
+            let sorted = payload.relays.sorted { $0.priority < $1.priority }
+            cached = sorted
+            Self.version = payload.version
+            Self.onionEnabled = payload.onion?.enabled ?? false
+            Self.applySources(payload)
+            Self.applyTransport(payload)
+            Self.saveToDisk(data)
+            return
         }
     }
 

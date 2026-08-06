@@ -29,6 +29,21 @@ import Network
 /// whitelist cannot send us anything at the moment it matters.
 enum NetworkAudit {
 
+    /// One-shot latch. A continuation must be resumed exactly once, and every
+    /// probe here has three racing ways to finish: ready, failed, timeout.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var fired = false
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if fired { return false }
+            fired = true
+            return true
+        }
+    }
+
+
     /// Hosts a network is expected to permit even under a whitelist. If these
     /// are dead the device simply has no internet and nothing else means
     /// anything. Two of them so one operator's quirk does not decide it.
@@ -104,12 +119,12 @@ enum NetworkAudit {
                 port: NWEndpoint.Port(rawValue: port)!,
                 using: params
             )
-            let done = NSLock()
-            var finished = false
-            func finish(_ r: Reach, _ detail: String) {
-                done.lock(); defer { done.unlock() }
-                guard !finished else { return }
-                finished = true
+            // The "did we already answer" flag lives in a reference type, not
+            // in a captured `var`: the lock made it safe all along, but the
+            // compiler cannot see that through a closure and Swift 6 rejects it.
+            let once = Once()
+            @Sendable func finish(_ r: Reach, _ detail: String) {
+                guard once.claim() else { return }
                 conn.cancel()
                 cont.resume(returning: (r, detail))
             }
@@ -127,7 +142,9 @@ enum NetworkAudit {
                         finish(.blocked, "\(code)")
                     case .dns(let code):
                         finish(.blocked, "dns \(code)")
-                    @unknown default:
+                    default:
+                        // Anything else that carries an error is still a
+                        // failure to reach, which is all this asks.
                         finish(.blocked, "unknown")
                     }
                 default:

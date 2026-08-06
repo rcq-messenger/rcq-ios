@@ -303,7 +303,6 @@
 "uin_shop.confirm.cta_priced" = "Confirm %@";
 "uin_shop.error.taken" = "Someone grabbed it first. Try a different UIN.";
 "uin_shop.error.cooldown" = "Too soon. Try again later.";
-"hood.compose" = "Post banner";
 "hood.author.anonymous" = "Anonymous";
 "hood.expired" = "Expired";
 "hood.left_minutes" = "%d min left";
@@ -313,17 +312,6 @@
 "hood.duration.6h" = "6 hours";
 "hood.duration.24h" = "24 hours";
 "hood.duration.7d" = "7 days";
-"hood.composer.title" = "New banner";
-"hood.composer.text_header" = "MESSAGE";
-"hood.composer.placeholder" = "Selling something / looking for someone / random hello…";
-"hood.composer.duration" = "Duration";
-"hood.composer.anonymous" = "Post anonymously";
-"hood.composer.footer" = "Banners are visible to anyone within ~1 km. Mock IAP for now.";
-"hood.composer.buy" = "Buy for %@";
-"hood.composer.confirm.title" = "Buy %@ banner for %@?";
-"hood.composer.confirm.cta" = "Confirm %@";
-"hood.composer.confirm.body" = "Banner goes live for everyone in your area. Mock IAP — no real charge yet.";
-"hood.composer.error.bucket_full" = "Too many banners in this area right now. Try again later.";
 "settings.account.referral" = "Invite friends";
 "settings.account.referral.footer" = "Invite friends — you both earn jetons.";
 
@@ -404,7 +392,6 @@
 "smoke.item.play_hilo" = "Play a HiLo round";
 "smoke.item.play_limbo" = "Play a Limbo round";
 "smoke.item.visit_hood" = "Open your Hood chat";
-"smoke.item.drop_hood_banner" = "Drop a Hood banner";
 "smoke.item.create_audio_room" = "Create an audio room";
 "smoke.item.join_audio_room" = "Join an audio room";
 "smoke.item.pet_hunt" = "Send a pet to hunt";
@@ -591,51 +578,6 @@
 
 "contact_list.offline_badge" = "Offline";
 
-/* ── Hood banners ─────────────────────────────────────────── */
-"hood_banner.section.title" = "AREA BULLETINS";
-"hood_banner.show_all" = "All";
-"hood_banner.empty.cta" = "Post an announcement in this area";
-"hood_banner.anonymous" = "Anonymous";
-"hood_banner.alert.title" = "Banner";
-"hood_banner.duration.1h" = "1 hour";
-"hood_banner.duration.6h" = "6 hours";
-"hood_banner.duration.24h" = "24 hours";
-"hood_banner.duration.7d" = "7 days";
-"hood_banner.composer.title" = "New";
-"hood_banner.composer.publish" = "Post";
-"hood_banner.composer.intro_title" = "What is a Hood Banner?";
-"hood_banner.composer.intro_body" = "A paid local classified visible only to people in your hood (a ~1.2 km area). Sell, hire, invite, announce — anyone nearby sees it at the bottom of People Nearby. Stays up from 1 hour to 7 days depending on the price.";
-"hood_banner.composer.text_label" = "TEXT";
-"hood_banner.composer.photo_label" = "PHOTO";
-"hood_banner.composer.photo_pick" = "Attach a photo";
-"hood_banner.composer.photo_uploading" = "Uploading…";
-"hood_banner.composer.photo_attached" = "Photo attached";
-"hood_banner.composer.photo_remove" = "Remove";
-"hood_banner.composer.duration_label" = "DURATION";
-"hood_banner.composer.anonymous_label" = "Anonymous";
-"hood_banner.composer.anonymous_hint" = "Nobody will see your nickname or UIN";
-"hood_banner.composer.warning" = "Banners are not editable after publication. Early deletion does NOT refund tokens.";
-"hood_banner.confirm.message" = "%d tokens will be deducted. Publish?";
-"hood_banner.confirm.publish" = "Post";
-"hood_banner.error.insufficient" = "Insufficient tokens: need %d, have %d.";
-"hood_banner.error.bucket_full" = "This area already has the max number of banners (10). Wait until one expires.";
-"hood_banner.error.already_have" = "You already have an active banner in this area.";
-"hood_banner.error.cooldown" = "Wait %d more seconds before posting another banner.";
-"hood_banner.detail.title" = "Banner";
-"hood_banner.detail.add_contact" = "Add contact";
-"hood_banner.detail.delete" = "Delete";
-"hood_banner.detail.report" = "Report";
-"hood_banner.detail.reported" = "Report sent. Thank you.";
-"hood_banner.expires_in_days" = "expires in %d d";
-"hood_banner.expires_in_hm" = "expires in %dh %dm";
-"hood_banner.expires_in_min" = "expires in %d min";
-"hood_banner.board.title" = "Area board";
-"hood_banner.empty.subtitle" = "Nothing posted in this area yet.";
-"hood_banner.full" = "Bucket full";
-"hood_banner.post_cta" = "Post banner";
-"hood_banner.composer.publish_for" = "Publish for %@";
-"hood_banner.composer.warning.title" = "Heads up";
-"hood_banner.composer.warning.body" = "After publishing the banner can't be edited. Deleting early doesn't refund the price.";
 "hood.error.slow_down" = "Slow down — give the room a beat.";
 "hood.error.send_failed" = "Couldn't send. Check your connection.";
 "hood.error.send_failed_code" = "Couldn't send (%d).";
@@ -1630,7 +1572,6 @@
 "hood.empty.body" = "Be the one who breaks the silence.";
 "hood.deleted" = "Message deleted";
 "hood.replying_to" = "Replying to %@";
-"hood.composer.placeholder" = "Say hi to the area…";
 "hood.profile.anon" = "Anonymous · Hood Chat";
 "hood.profile.body.anon" = "People in Hood Chat are anonymous. You can offer to add them as a contact — once they accept, you'll see their real profile.";
 "hood.profile.body.real" = "This user opted out of anonymous mode — their real account is visible.";

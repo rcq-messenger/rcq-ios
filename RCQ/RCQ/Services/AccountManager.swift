@@ -57,7 +57,9 @@ final class AccountManager: ObservableObject {
     /// nothing in the server enforces it (server can't tell if two
     /// UINs share a device anyway).
     /// Hard ceiling the app supports regardless of server.
-    static let hardCap: Int = 5
+    /// `nonisolated` for the same reason as `serverMaxAccounts` below: the
+    /// limit checks read it off the main actor, and a constant cannot race.
+    nonisolated static let hardCap: Int = 5
 
     /// Operator-advertised cap from the ACTIVE server's `/server/info`
     /// (`max_accounts_per_device`). AppState writes it when it adopts new

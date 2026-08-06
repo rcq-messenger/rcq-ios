@@ -577,11 +577,15 @@ struct SettingsView: View {
     /// in one expression.
     @ViewBuilder
     private var avatarPickerButton: some View {
+        // `presence.status` is read here rather than inside the picker's label
+        // closure: PhotosPicker takes that closure as Sendable, and touching a
+        // main-actor property from inside it is an error under Swift 6.
+        let status = presence.status
         PhotosPicker(selection: $avatarPick, matching: .images) {
             PersonAvatarView(
                 mediaID: ownAvatarID,
                 keyBase64: ownAvatarKey,
-                status: presence.status,
+                status: status,
                 size: 48
             )
         }
