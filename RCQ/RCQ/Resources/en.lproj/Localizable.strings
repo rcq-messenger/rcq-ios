@@ -2230,3 +2230,24 @@
 "uin_shop.held.body" = "It is in your collection and you still answer as %@. Move onto it now, or later from My numbers.";
 "uin_shop.held.now" = "Move onto it";
 "uin_shop.held.later" = "Later";
+
+/* Full network check (NetworkAudit) */
+"audit.run" = "Full network check";
+"audit.hint" = "Opens plain connections to this island, the front, the relays and two well-known control hosts, to work out what this network filters. Nothing is sent anywhere; copy the result out yourself.";
+"audit.control" = "control %@";
+"audit.dns" = "DNS %@";
+"audit.dns.fail" = "does not resolve";
+"audit.direct" = "island, direct";
+"audit.front" = "front %@";
+"audit.relays" = "relays";
+"audit.relays.detail" = "%d of %d accept TCP";
+"audit.cross.name" = "permitted address + our name";
+"audit.cross.addr" = "our address + permitted name";
+"audit.verdict.ALL_FINE" = "The island answers directly. Nothing is being filtered here.";
+"audit.verdict.NO_INTERNET" = "Even the control hosts are unreachable: this device has no working internet, so nothing below is about RCQ.";
+"audit.verdict.BY_NAME" = "Our address answers under another name. The filter goes by NAME, so a different name in front of the same server should get through.";
+"audit.verdict.BY_ADDRESS" = "Our address is dead under any name while a permitted address takes ours. The filter goes by ADDRESS, and only hosting inside the permitted set helps.";
+"audit.verdict.UNCLEAR" = "Not conclusive. Send us the line below.";
+"audit.copy" = "Copy";
+"audit.copied" = "Copied";
+"common.share" = "Share";

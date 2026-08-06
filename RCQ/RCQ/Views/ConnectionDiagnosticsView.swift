@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Friendly connection diagnostics. Plain-language checks with a clear overall
 /// verdict, green/red/neutral tints, and a Run button to re-test. Mirrors the
@@ -20,6 +21,9 @@ struct ConnectionDiagnosticsView: View {
     @State private var lines: [DiagLine] = []
     @State private var running = false
     @State private var overallOK: Bool? = nil
+    @State private var audit: NetworkAudit.Report?
+    @State private var auditing = false
+    @State private var copied = false
 
     var body: some View {
         NavigationStack {
@@ -38,6 +42,7 @@ struct ConnectionDiagnosticsView: View {
                             }
                             .padding(.top, 2)
                         }
+                        auditSection
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -55,6 +60,55 @@ struct ConnectionDiagnosticsView: View {
                 }
             }
             .task { await run() }
+        }
+    }
+
+    // MARK: - Full network check
+
+    /// Separate button because it opens raw connections to a couple of
+    /// third-party control hosts, which must never happen without the user
+    /// asking for it.
+    @ViewBuilder private var auditSection: some View {
+        Divider().padding(.vertical, 6)
+        Text("audit.hint".localized)
+            .font(.caption)
+            .foregroundColor(Theme.Color.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        Button {
+            Task {
+                auditing = true
+                audit = nil
+                audit = await NetworkAudit.run(islandHost: APIClient.shared.baseURL.host ?? "api.rcq.app")
+                auditing = false
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if auditing { ProgressView() }
+                Text("audit.run".localized).font(.callout.weight(.semibold))
+            }
+        }
+        .disabled(auditing)
+        if let a = audit {
+            ForEach(a.lines) { l in
+                row(DiagLine(title: l.title, detail: l.detail, status: l.ok == nil ? .info : (l.ok! ? .ok : .fail)))
+            }
+            Text("audit.verdict.\(a.verdict.rawValue)".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(a.compact)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(Theme.Color.textSecondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button(copied ? "audit.copied".localized : "audit.copy".localized) {
+                    UIPasteboard.general.string = a.compact
+                    copied = true
+                }
+                ShareLink(item: a.compact) { Text("common.share".localized) }
+            }
+            .font(.callout)
         }
     }
 

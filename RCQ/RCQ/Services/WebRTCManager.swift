@@ -43,8 +43,32 @@ final class WebRTCManager: NSObject, ObservableObject {
         "stun:stun2.l.google.com:19302",
     ])
 
+    /// STUN on the island's OWN TURN host, derived from the credentials it
+    /// hands out. Google's set above is unreachable for a large part of our
+    /// users, and with no reachable STUN there are no server-reflexive
+    /// candidates at all, so a call between two NATs has nothing to try until
+    /// TURN allocates. Reported as "звонки не соединяются ни с обходом, ни без,
+    /// при любых настройках". Ours goes first, Google stays as the fallback for
+    /// everyone whose network is fine.
+    private var ownStun: RTCIceServer?
+
     /// TURN bundle + expiry; refreshed within 5 minutes of expiry.
     private var cachedTurn: (server: RTCIceServer, expiresAt: Date)?
+
+    /// `turn:host:port?transport=...` -> `stun:host:port`. Nil when the island
+    /// handed out nothing parseable, in which case we simply keep Google's.
+    static func stunFrom(turnUrls: [String]) -> RTCIceServer? {
+        for url in turnUrls {
+            guard let range = url.range(of: "^turns?:", options: .regularExpression) else { continue }
+            let rest = String(url[range.upperBound...])
+            let hostPort = rest.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rest
+            let parts = hostPort.split(separator: ":", maxSplits: 1).map(String.init)
+            guard let host = parts.first, !host.isEmpty else { continue }
+            let port = parts.count > 1 ? parts[1] : "3478"
+            return RTCIceServer(urlStrings: ["stun:\(host):\(port)"])
+        }
+        return nil
+    }
 
     private override init() {
         RTCInitializeSSL()
@@ -301,7 +325,9 @@ final class WebRTCManager: NSObject, ObservableObject {
 
     private func makePeerConnection() throws -> RTCPeerConnection {
         let config = RTCConfiguration()
-        var servers = [stunServers]
+        var servers: [RTCIceServer] = []
+        if let own = ownStun { servers.append(own) }
+        servers.append(stunServers)
         if let turn = cachedTurn?.server {
             servers.append(turn)
         }
@@ -392,6 +418,7 @@ final class WebRTCManager: NSObject, ObservableObject {
                     credential: resp.credential
                 )
                 cachedTurn = (server, Date().addingTimeInterval(TimeInterval(resp.ttl)))
+                ownStun = Self.stunFrom(turnUrls: resp.urls)
                 return
             } catch {
                 if attempt < 2 {
