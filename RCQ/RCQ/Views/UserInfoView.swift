@@ -21,6 +21,9 @@ struct UserInfoView: View {
     // assignment changes — without this the picker label kept showing
     // the previous pack until the whole view was rebuilt.
     @StateObject private var contactSounds = ContactSoundStore.shared
+    @StateObject private var aliasStore = ContactAliasStore.shared
+    /// Non-nil while the rename sheet is open; holds the draft.
+    @State private var aliasDraft: String?
 
     var body: some View {
         ZStack {
@@ -136,6 +139,30 @@ struct UserInfoView: View {
             }
         }
         .task { await load() }
+        // Rename sheet. Deliberately an alert-style prompt rather than a
+        // screen: it is one field and one decision.
+        .alert("contact.set_name".localized, isPresented: Binding(
+            get: { aliasDraft != nil },
+            set: { if !$0 { aliasDraft = nil } }
+        )) {
+            TextField("contact.name_placeholder".localized, text: Binding(
+                get: { aliasDraft ?? "" },
+                set: { aliasDraft = $0 }
+            ))
+            Button("common.save".localized) {
+                if let uin = profile?.uin ?? draft?.uin { aliasStore.setAlias(aliasDraft, for: uin) }
+                aliasDraft = nil
+            }
+            if let uin = profile?.uin, aliasStore.alias(for: uin) != nil {
+                Button("contact.clear_name".localized, role: .destructive) {
+                    aliasStore.setAlias(nil, for: uin)
+                    aliasDraft = nil
+                }
+            }
+            Button("common.cancel".localized, role: .cancel) { aliasDraft = nil }
+        } message: {
+            Text("contact.name_hint".localized)
+        }
         .sheet(isPresented: $showSafety) {
             SafetyNumberSheet(peerUIN: uin)
         }
@@ -216,11 +243,31 @@ struct UserInfoView: View {
                     crossIsland: crossIslandHost != nil
                 )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(p.nickname).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(aliasStore.displayName(for: p.uin, fallback: p.nickname))
+                            .font(.title3.bold())
+                            .foregroundColor(Theme.Color.textPrimary)
+                        // What THEY call themselves stays visible whenever it
+                        // differs, so a rename never hides who you are talking to.
+                        if let mine = aliasStore.alias(for: p.uin), mine != p.nickname {
+                            Text(String(format: "contact.their_name".localized, p.nickname))
+                                .font(.caption)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                    }
                     Text(verbatim: "#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
                     // Cross-island: show the island (presence doesn't cross islands).
                     if let h = crossIslandHost {
                         Text(verbatim: h).font(Theme.Font.mono).foregroundColor(Theme.Color.textSecondary)
+                    }
+                    if !isOwn {
+                        Button(aliasStore.alias(for: p.uin) == nil
+                               ? "contact.set_name".localized
+                               : "contact.change_name".localized) {
+                            aliasDraft = aliasStore.alias(for: p.uin) ?? ""
+                        }
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.accent)
                     }
                     if let m = p.statusMessage, !m.isEmpty {
                         Text(m).font(.caption.italic()).foregroundColor(Theme.Color.textSecondary)

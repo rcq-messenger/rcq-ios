@@ -1557,6 +1557,7 @@ private struct ContactRow: View {
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
     @ObservedObject private var mentionInbox = MentionInboxStore.shared
+    @ObservedObject private var aliasStore = ContactAliasStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .peer(uin: contact.uin))
@@ -1596,7 +1597,9 @@ private struct ContactRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(contact.nickname)
+                    // My own name for them wins over the nickname they chose
+                    // (device-only, see ContactAliasStore).
+                    Text(aliasStore.displayName(for: contact.uin, fallback: contact.nickname))
                         .font(Theme.Font.nickname)
                         .foregroundColor(contact.status == .offline ? Theme.Color.textSecondary : Theme.Color.textPrimary)
                     GenderIcon(gender: contact.gender)

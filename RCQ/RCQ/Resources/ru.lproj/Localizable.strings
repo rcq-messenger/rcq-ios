@@ -2227,3 +2227,11 @@
 "audit.copy" = "Копировать";
 "audit.copied" = "Скопировано";
 "common.share" = "Поделиться";
+
+/* Своё имя для контакта (только на устройстве) */
+"contact.set_name" = "Задать своё имя";
+"contact.change_name" = "Изменить заданное имя";
+"contact.clear_name" = "Убрать";
+"contact.their_name" = "Себя называет %@";
+"contact.name_hint" = "Остаётся только на этом устройстве. Собеседник об этом не узнает.";
+"contact.name_placeholder" = "Имя";
