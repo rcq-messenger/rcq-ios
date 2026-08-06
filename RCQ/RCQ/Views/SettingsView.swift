@@ -91,6 +91,15 @@ struct SettingsView: View {
                         } label: {
                             Text("settings.home_bg".localized)
                         }
+                        Toggle(isOn: $theme.animateAvatars) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.animate_avatars".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.animate_avatars.footer".localized)
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 

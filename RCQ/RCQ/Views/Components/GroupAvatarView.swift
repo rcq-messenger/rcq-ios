@@ -4,6 +4,9 @@ import SwiftUI
 /// custom avatar is set, otherwise falls back to the generic `person.3`
 /// glyph. Reused by ContactListView's GroupRow + GroupInfoView header.
 struct GroupAvatarView: View {
+    // Observed, not read statically: without this the toggle would only
+    // take effect on the next fresh appearance of the screen.
+    @ObservedObject private var theme = ThemeManager.shared
     let mediaID: String?
     let keyBase64: String?
     /// The group's home island — a cross-island group's avatar blob lives there,
@@ -48,7 +51,7 @@ struct GroupAvatarView: View {
         ZStack {
             Circle().fill(Theme.Color.accent)
             if let gifData {
-                AnimatedGIFView(data: gifData, contentMode: .fill)
+                AnimatedGIFView(data: gifData, contentMode: .fill, animates: theme.animateAvatars)
                     .frame(width: size, height: size)
                     .clipShape(Circle())
             } else if let image {
