@@ -2251,3 +2251,11 @@
 "audit.copy" = "Copy";
 "audit.copied" = "Copied";
 "common.share" = "Share";
+
+/* My own name for a contact (device-only) */
+"contact.set_name" = "Set your own name";
+"contact.change_name" = "Change the name you gave";
+"contact.clear_name" = "Clear";
+"contact.their_name" = "They call themselves %@";
+"contact.name_hint" = "Stays on this device only. The other person is never told.";
+"contact.name_placeholder" = "Name";

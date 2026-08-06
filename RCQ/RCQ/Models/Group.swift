@@ -171,7 +171,10 @@ enum ChatTarget: Hashable {
 
     var displayName: String {
         switch self {
-        case .peer(let c): return c.nickname
+        // My own name for them, when I gave one. Every surface that names a
+        // chat goes through here, so a rename lands everywhere at once.
+        case .peer(let c):
+            return MainActor.assumeIsolated { ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname) }
         case .group(let g): return g.name
         case .randomPeer: return "chat.random.stranger".localized
         }
