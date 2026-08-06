@@ -14,6 +14,8 @@
 "settings.appearance.theme.light" = "Светлая";
 "settings.appearance.theme.dark" = "Тёмная";
 "settings.chat_bg" = "Фон чата";
+"settings.animate_avatars" = "Живые аватарки";
+"settings.animate_avatars.footer" = "Проигрывать аватарки, которые являются анимированными картинками. Если выключить, будет показан первый кадр, и батарея проживёт дольше.";
 "settings.home_bg" = "Фон главного экрана";
 "chat_bg.none" = "Нет";
 "chat_bg.custom" = "Своё фото";

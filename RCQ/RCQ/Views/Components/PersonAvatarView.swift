@@ -14,6 +14,9 @@ import SwiftUI
 /// to a broken image. Cross-island peers keep the flower too: presence does not
 /// cross islands and neither does the blob.
 struct PersonAvatarView: View {
+    // Observed, not read statically: without this the toggle would only
+    // take effect on the next fresh appearance of the screen.
+    @ObservedObject private var theme = ThemeManager.shared
     let mediaID: String?
     let keyBase64: String?
     let status: UserStatus
@@ -91,7 +94,7 @@ struct PersonAvatarView: View {
 
     @ViewBuilder private var picture: some View {
         if let gifData {
-            AnimatedGIFView(data: gifData, contentMode: .fill)
+            AnimatedGIFView(data: gifData, contentMode: .fill, animates: theme.animateAvatars)
                 .frame(width: size, height: size)
                 .clipShape(Circle())
         } else if let image {

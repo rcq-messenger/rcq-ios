@@ -67,6 +67,17 @@ final class ThemeManager: ObservableObject {
         didSet { UserDefaults.standard.set(textSize.rawValue, forKey: "rcq.textsize") }
     }
 
+    /// Whether an avatar that is an animated picture is allowed to move.
+    ///
+    /// `AnimatedGIFView` drives itself off `TimelineView(.animation)`, which
+    /// ticks at the display's refresh rate for as long as the view is on
+    /// screen. On a chat list that is several avatars redrawing sixty times a
+    /// second for something nobody is watching, and it shows up as battery.
+    /// Off means the first frame, which is what the lists already drew.
+    @Published var animateAvatars: Bool {
+        didSet { UserDefaults.standard.set(animateAvatars, forKey: "rcq.animateAvatars") }
+    }
+
     private init() {
         // Pre-existing installs have only seen `light`/`dark` written
         // here; treat any unknown value as `system` to give the new
@@ -75,6 +86,8 @@ final class ThemeManager: ObservableObject {
         self.theme = stored.flatMap { AppTheme(rawValue: $0) } ?? .system
         let ts = UserDefaults.standard.string(forKey: "rcq.textsize")
         self.textSize = ts.flatMap { AppTextSize(rawValue: $0) } ?? .system
+        // Absent key means "on", which is what every install has done so far.
+        self.animateAvatars = UserDefaults.standard.object(forKey: "rcq.animateAvatars") as? Bool ?? true
     }
 }
 

@@ -16,9 +16,17 @@ import UIKit
 struct AnimatedGIFView: View {
     let data: Data
     var contentMode: ContentMode = .fit
+    /// Off draws the first frame and stops the per-refresh redraw entirely.
+    /// Callers that are avatars pass the person's setting; a picture inside a
+    /// chat, which is looked at deliberately, keeps moving.
+    var animates: Bool = true
 
     var body: some View {
-        if let bundle = Self.cachedFrames(for: data), !bundle.frames.isEmpty {
+        if let bundle = Self.cachedFrames(for: data), !bundle.frames.isEmpty, !animates {
+            Image(uiImage: bundle.frames[0])
+                .resizable()
+                .aspectRatio(contentMode: contentMode)
+        } else if let bundle = Self.cachedFrames(for: data), !bundle.frames.isEmpty {
             TimelineView(.animation) { ctx in
                 let elapsed = ctx.date.timeIntervalSince1970
                 let phase = elapsed.truncatingRemainder(dividingBy: bundle.duration)

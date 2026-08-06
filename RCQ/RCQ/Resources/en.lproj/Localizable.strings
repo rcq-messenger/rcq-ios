@@ -23,6 +23,8 @@
 "settings.appearance.theme.light" = "Light";
 "settings.appearance.theme.dark" = "Dark";
 "settings.chat_bg" = "Chat background";
+"settings.animate_avatars" = "Animated avatars";
+"settings.animate_avatars.footer" = "Play avatars that are animated pictures. Off shows their first frame instead, which is easier on the battery.";
 "settings.home_bg" = "Home background";
 "chat_bg.none" = "None";
 "chat_bg.custom" = "Custom";
