@@ -530,12 +530,21 @@ final class AppState: ObservableObject {
             await MainActor.run {
                 guard !self.booted else { return }
                 if cachedUIN != nil && cachedToken != nil {
-                    self.isOffline = true
+                    // Only claim offline if the socket has not already proved
+                    // otherwise. The boot chain overrunning fifteen seconds is
+                    // a slow server, not a dead network, and this flag is
+                    // sticky: nothing here clears it, so one slow start left
+                    // the header reading "Offline" with an orange dot long
+                    // after the connection was fine, and the client kept
+                    // redialing on the strength of it.
+                    if !WebSocketService.shared.linkUp {
+                        self.isOffline = true
+                        self.scheduleTransportRetry()
+                    }
                     if let uin = cachedUIN {
                         MessageService.shared.configure(ownUIN: uin)
                     }
                     self.booted = true
-                    self.scheduleTransportRetry()
                 } else {
                     self.bootError = "boot.error.unreachable".localized
                 }
@@ -684,20 +693,39 @@ final class AppState: ObservableObject {
                 serverToken: AccountManager.shared.active?.serverToken
             )
 
+            // Only what the first screen genuinely cannot be drawn without.
+            // Contacts because the list IS the first screen; presence because
+            // the header renders the person's own status. Both are small.
             await syncOwnPresenceFromServer(uin: uin)
             await ContactService.shared.refresh()
-            await GroupService.shared.refresh()
-            await MessageService.shared.fetchOfflineQueue()
-            await NotificationService.shared.requestAuthorization()
-            await NotificationService.shared.refreshTokenSubmission()
-            await NotificationPrefsService.shared.refresh()
-            await VoIPPushService.shared.refreshTokenSubmission()
-            // Advertise sender-keys support so others broadcast to us
-            // (encrypt-once) instead of the legacy per-member fan-out.
-            await MessageService.shared.advertiseSenderKeysCapability()
 
             print("[boot] complete — booted")
             booted = true
+
+            // Everything else finishes behind the interface.
+            //
+            // These nine calls used to run one after another with `booted`
+            // waiting at the end of them, so the splash stayed up for the sum
+            // of the whole chain. Two of them are why that hurt: `/groups`
+            // serialises every member of every group with their keys and takes
+            // seconds, and `requestAuthorization` waits on a system permission
+            // dialog, which on a first launch means it waits on a human. None
+            // of it is needed to show a list of chats, and the pieces are
+            // independent, so they go concurrently rather than in single file.
+            Task { @MainActor in
+                async let groups: Void = GroupService.shared.refresh()
+                async let queue: Void = MessageService.shared.fetchOfflineQueue()
+                async let caps: Void = MessageService.shared.advertiseSenderKeysCapability()
+                _ = await (groups, queue, caps)
+            }
+            Task { @MainActor in
+                // Kept in order among themselves: authorisation has to be
+                // answered before a token exists to submit.
+                await NotificationService.shared.requestAuthorization()
+                await NotificationService.shared.refreshTokenSubmission()
+                await NotificationPrefsService.shared.refresh()
+                await VoIPPushService.shared.refreshTokenSubmission()
+            }
         } catch {
             // If we have a cached identity, fall back to offline-mode
             // boot rather than blocking the UI on a transport error.

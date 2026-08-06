@@ -93,7 +93,10 @@ final class WebSocketService: ObservableObject {
     let events = PassthroughSubject<Event, Never>()
 
     private var task: URLSessionWebSocketTask?
-    private var session: URLSession = .shared
+    private var session: URLSession?
+    /// Shape of the proxy the current session was built for, so it is rebuilt
+    /// only when the route really changed.
+    private var sessionProxyKey: String = ""
     /// Whether the current task rides the local sing-box proxy. A write
     /// through the proxy only proves the loopback hop to sing-box, not the
     /// tunnel behind it, so the watchdog must not count send-success as
@@ -108,13 +111,50 @@ final class WebSocketService: ObservableObject {
     private var lastBaseURL: URL?
     private var lastServerToken: String?
 
-    private init() {}
+    private init() {
+        upgradeWatcher.owner = self
+    }
 
-    private static func makeSession(proxy: [String: Any]?) -> URLSession {
-        guard let proxy else { return .shared }
+    /// Watches for the upgrade itself.
+    ///
+    /// The 101 is the earliest honest evidence that a server answered, and it
+    /// arrives a full round trip before the application-level pong the dot used
+    /// to wait for — that pong queues behind the server's own connect work. On
+    /// a resume the socket is redialed, `linkUp` drops to false, and the dot
+    /// sat orange for that whole stretch while the connection was in fact fine.
+    private final class UpgradeWatcher: NSObject, URLSessionWebSocketDelegate {
+        weak var owner: WebSocketService?
+
+        func urlSession(
+            _ session: URLSession,
+            webSocketTask: URLSessionWebSocketTask,
+            didOpenWithProtocol proto: String?,
+        ) {
+            Task { @MainActor [weak owner] in owner?.noteUpgraded(webSocketTask) }
+        }
+    }
+
+    private let upgradeWatcher = UpgradeWatcher()
+
+    /// Called from the delegate when the handshake completed. Guarded on the
+    /// task identity so a late callback from a superseded dial cannot light the
+    /// dot for a socket we have already thrown away.
+    fileprivate func noteUpgraded(_ which: URLSessionWebSocketTask) {
+        guard which === task else { return }
+        lastFrameAt = Date()
+        linkUp = true
+    }
+
+    /// One session per proxy shape, reused across dials.
+    ///
+    /// It used to be `.shared` when direct and a brand-new session on every
+    /// dial when proxied — the latter never invalidated, so a reconnect loop
+    /// leaked a session and a cold connection pool each time round. A delegate
+    /// is required either way now, and `.shared` cannot carry one.
+    private func makeSession(proxy: [String: Any]?) -> URLSession {
         let cfg = URLSessionConfiguration.default
         cfg.connectionProxyDictionary = proxy
-        return URLSession(configuration: cfg)
+        return URLSession(configuration: cfg, delegate: upgradeWatcher, delegateQueue: nil)
     }
 
     func connect(uin: Int, token: String, baseURL: URL, serverToken: String? = nil) {
@@ -139,7 +179,16 @@ final class WebSocketService: ObservableObject {
 
         let proxy = SingBoxTransport.proxyDictionary()
         viaProxy = proxy != nil
-        session = Self.makeSession(proxy: proxy)
+        // Rebuilt only when the route shape actually changed, and the old one
+        // is let go rather than left dangling: a redial every few seconds used
+        // to mint a session per attempt and never invalidate any of them.
+        let proxyKey = proxy.map { String(describing: $0) } ?? ""
+        if session == nil || proxyKey != sessionProxyKey {
+            session?.finishTasksAndInvalidate()
+            session = makeSession(proxy: proxy)
+            sessionProxyKey = proxyKey
+        }
+        guard let session else { return }
 
         // URLRequest-based handshake (vs `webSocketTask(with: url)`) so
         // we can attach the optional masquerade header. When the active
