@@ -34,7 +34,16 @@ struct MyUINsView: View {
                         activeCard
 
                         Spacer().frame(height: 6)
-                        caption("my_uins.held".localized)
+                        // "3 of 10" — the cap exists, so it belongs on screen
+                        // before you hit it, not only in the refusal.
+                        caption(
+                            "my_uins.held".localized + "  " +
+                            String(
+                                format: "my_uins.held_count".localized,
+                                (data?.owned ?? []).count,
+                                data?.maxOwned ?? 10
+                            )
+                        )
 
                         if loading, data == nil {
                             HStack {

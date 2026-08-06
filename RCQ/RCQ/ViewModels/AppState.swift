@@ -789,6 +789,14 @@ final class AppState: ObservableObject {
         /// The number this account answers as right now.
         let active: Int
         let owned: [OwnedUIN]
+        /// How many one account may hold on this island. Defaults to 10 so an
+        /// island too old to send it still gives a sane number to show.
+        var maxOwned: Int = 10
+
+        enum CodingKeys: String, CodingKey {
+            case active, owned
+            case maxOwned = "max_owned"
+        }
     }
 
     /// Everything this account holds. Answers whether or not the island runs

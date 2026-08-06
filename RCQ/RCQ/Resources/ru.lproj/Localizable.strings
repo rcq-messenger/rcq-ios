@@ -2235,3 +2235,4 @@
 "contact.their_name" = "Себя называет %@";
 "contact.name_hint" = "Остаётся только на этом устройстве. Собеседник об этом не узнает.";
 "contact.name_placeholder" = "Имя";
+"my_uins.held_count" = "%1$d из %2$d";
