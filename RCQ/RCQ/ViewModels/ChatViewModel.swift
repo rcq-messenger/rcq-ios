@@ -897,9 +897,15 @@ final class ChatViewModel: ObservableObject {
             return "chat.random.stranger".localized
         }
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
-        if case .group(let g) = target, let m = g.members.first(where: { $0.uin == uin }) { return m.nickname }
-        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) { return c.nickname }
-        return String(uin)
+        // My own name for them wins wherever a person is named, including the
+        // sender line above a group message and a reply quote.
+        if case .group(let g) = target, let m = g.members.first(where: { $0.uin == uin }) {
+            return ContactAliasStore.shared.displayName(for: uin, fallback: m.nickname)
+        }
+        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
+            return ContactAliasStore.shared.displayName(for: uin, fallback: c.nickname)
+        }
+        return ContactAliasStore.shared.alias(for: uin) ?? String(uin)
     }
 
     /// Strip URLs, phone numbers, and @handles from stranger-mode text.
