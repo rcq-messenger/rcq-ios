@@ -247,6 +247,23 @@
 "settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 token per 10 MB — no size limit while you have tokens.";
 
 "settings.history" = "History";
+"settings.history.file" = "Chat history file";
+"backup.intro" = "Save this device's history to a file, encrypted with your recovery phrase. The file is yours: keep it wherever you keep things. Nothing is uploaded to us, and we cannot read it.";
+"backup.media.title" = "Include attachments";
+"backup.media.desc" = "Photos, videos and voice messages go into the file too. It takes longer and the file gets much bigger, but the pictures still open years later, even if the island no longer has them.";
+"backup.export" = "Save a backup";
+"backup.restore" = "Restore from a file";
+"backup.restore.desc" = "Restoring only ADDS. Nothing already on this device is deleted or replaced, and a message that is already here is skipped.";
+"backup.working" = "Working…";
+"backup.media.progress" = "Attachments: %d of %d";
+"backup.restore.progress" = "Messages: %d of %d";
+"backup.saved" = "Saved.";
+"backup.saved.media" = "Saved: %d messages and %d attachments.";
+"backup.saved.media.missed" = "Saved: %d messages and %d attachments. %d attachments could not be fetched and are not in the file.";
+"backup.restored" = "Restored: %d added, %d already here.";
+"backup.restored.unreadable" = "%d this version could not read.";
+"backup.restored.media" = "%d attachments came back too.";
+"backup.warning" = "This file plus your recovery phrase is your whole history. Keep it as carefully as the phrase itself. It does not contain your keys and cannot be used to sign in.";
 "settings.history.clear" = "Clear all chat history";
 "settings.history.confirm.title" = "Clear all messages?";
 "settings.history.confirm.button" = "Clear all history";
