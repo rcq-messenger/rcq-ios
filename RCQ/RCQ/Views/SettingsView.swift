@@ -11,8 +11,13 @@ struct SettingsView: View {
     // Own profile picture, plus the picker that sets it. Seeded from the
     // island on appear so the header is right on a cold start rather than
     // only after the profile screen has been opened.
-    @State private var ownAvatarID: String?
-    @State private var ownAvatarKey: String?
+    // Seeded synchronously from the last known values, then refreshed in the
+    // background. Reading them only from `/users/me/info` meant the header drew
+    // the status flower on every appearance and swapped in the picture a moment
+    // later, which reads as "it loads every time" even though the image itself
+    // was cached all along.
+    @State private var ownAvatarID: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarID")
+    @State private var ownAvatarKey: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
     @State private var avatarPick: PhotosPickerItem?
     @State private var avatarBusy = false
     @State private var confirmClearHistory = false
@@ -505,9 +510,11 @@ struct SettingsView: View {
     /// owner-self view, which always carries it.
     private func loadOwnAvatar() async {
         guard let uin = auth.ownUIN else { return }
-        let p: UserProfile? = try? await APIClient.shared.request("GET", "/users/\(uin)/info")
-        ownAvatarID = p?.avatarMediaID
-        ownAvatarKey = p?.avatarMediaKey
+        guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
+        ownAvatarID = p.avatarMediaID
+        ownAvatarKey = p.avatarMediaKey
+        UserDefaults.standard.set(p.avatarMediaID, forKey: "rcq.ownAvatarID")
+        UserDefaults.standard.set(p.avatarMediaKey, forKey: "rcq.ownAvatarKey")
     }
 
     /// Encrypt + upload the picked image, then hand the island the id and key.
@@ -535,6 +542,8 @@ struct SettingsView: View {
             )
             ownAvatarID = res.mediaID
             ownAvatarKey = res.keyBase64
+            UserDefaults.standard.set(res.mediaID, forKey: "rcq.ownAvatarID")
+            UserDefaults.standard.set(res.keyBase64, forKey: "rcq.ownAvatarKey")
         } catch {
             // Silent: the header simply keeps the flower, and the user can try
             // again. A modal here would be louder than the failure deserves.
