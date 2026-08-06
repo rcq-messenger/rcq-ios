@@ -31,6 +31,10 @@ final class AudioRoomMeshManager: NSObject {
         "stun:stun1.l.google.com:19302",
     ])
     private var cachedTurn: (server: RTCIceServer, expiresAt: Date)?
+    /// STUN on the island's own TURN host — see WebRTCManager.stunFrom. Google's
+    /// set above is unreachable for a large part of our users, and with no
+    /// reachable STUN a room peer behind NAT gathers no reflexive candidate.
+    private var ownStun: RTCIceServer?
 
     private override init() {
         // RTCInitializeSSL is a safe no-op if WebRTCManager already ran it.
@@ -286,7 +290,9 @@ final class AudioRoomMeshManager: NSObject {
 
     private func makePeerConnection(remoteUIN: Int) -> RTCPeerConnection {
         let config = RTCConfiguration()
-        var servers = [stunServers]
+        var servers: [RTCIceServer] = []
+        if let own = ownStun { servers.append(own) }
+        servers.append(stunServers)
         if let turn = cachedTurn?.server { servers.append(turn) }
         config.iceServers = servers
         config.sdpSemantics = .unifiedPlan
@@ -384,6 +390,7 @@ final class AudioRoomMeshManager: NSObject {
                 credential: resp.credential
             )
             cachedTurn = (server, Date().addingTimeInterval(TimeInterval(resp.ttl)))
+            ownStun = WebRTCManager.stunFrom(turnUrls: resp.urls)
         } catch {
             cachedTurn = nil
         }
