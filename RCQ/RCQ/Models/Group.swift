@@ -169,12 +169,21 @@ enum ChatTarget: Hashable {
         }
     }
 
+    /// ⚠ `@MainActor` and not `assumeIsolated`.
+    ///
+    /// It used to reach the alias store through `MainActor.assumeIsolated`,
+    /// which asserts the caller is already on the main actor and traps the
+    /// process when it is not — the same construct that made the full network
+    /// check kill the app every time it ran. Declaring the isolation instead
+    /// hands the question to the compiler, where a wrong caller is a build
+    /// error rather than a crash on someone's phone.
+    @MainActor
     var displayName: String {
         switch self {
         // My own name for them, when I gave one. Every surface that names a
         // chat goes through here, so a rename lands everywhere at once.
         case .peer(let c):
-            return MainActor.assumeIsolated { ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname) }
+            return ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname)
         case .group(let g): return g.name
         case .randomPeer: return "chat.random.stranger".localized
         }
