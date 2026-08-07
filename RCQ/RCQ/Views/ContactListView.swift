@@ -615,11 +615,25 @@ struct ContactListView: View {
                 // server is unreachable — `linkUp` (server evidence) is
                 // what makes the dot honest there.
                 ZStack(alignment: .bottomTrailing) {
-                    StatusIcon(status: presence.status, size: 26)
-                    Circle()
-                        .fill(appState.isOffline || !socket.linkUp ? Color.orange : Color.green)
-                        .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
+                    // The picture, with the status kept as the badge on its
+                    // edge — the same shape Android draws. Without a picture
+                    // this falls back to the plain status flower, so nothing
+                    // changes at all for anyone who never set one.
+                    PersonAvatarView(
+                        mediaID: presence.ownAvatarID,
+                        keyBase64: presence.ownAvatarKey,
+                        status: presence.status,
+                        size: 26
+                    )
+                    // The connection dot is dropped when a picture is up: the
+                    // status badge already sits in that corner, and two dots on
+                    // top of each other read as neither.
+                    if presence.ownAvatarID == nil {
+                        Circle()
+                            .fill(appState.isOffline || !socket.linkUp ? Color.orange : Color.green)
+                            .frame(width: 9, height: 9)
+                            .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
+                    }
                 }
             }
             Button { showProfile = true } label: {

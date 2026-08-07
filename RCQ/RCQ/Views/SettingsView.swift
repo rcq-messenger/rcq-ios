@@ -542,6 +542,7 @@ struct SettingsView: View {
     private func loadOwnAvatar() async {
         guard let uin = auth.ownUIN else { return }
         guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
+        PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
         ownAvatarID = p.avatarMediaID
         ownAvatarKey = p.avatarMediaKey
         UserDefaults.standard.set(p.avatarMediaID, forKey: "rcq.ownAvatarID")
@@ -571,10 +572,11 @@ struct SettingsView: View {
                 "PUT", "/users/me",
                 body: Body(avatar_media_id: res.mediaID, avatar_media_key: res.keyBase64),
             )
+            // Through the shared holder, so the main screen's header lights up
+            // with the new picture instead of waiting for the next launch.
+            PresenceService.shared.setOwnAvatar(id: res.mediaID, key: res.keyBase64)
             ownAvatarID = res.mediaID
             ownAvatarKey = res.keyBase64
-            UserDefaults.standard.set(res.mediaID, forKey: "rcq.ownAvatarID")
-            UserDefaults.standard.set(res.keyBase64, forKey: "rcq.ownAvatarKey")
         } catch {
             // Silent: the header simply keeps the flower, and the user can try
             // again. A modal here would be louder than the failure deserves.

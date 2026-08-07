@@ -1406,6 +1406,9 @@ final class AppState: ObservableObject {
             PresenceService.shared.status = resolved
             PresenceService.shared.statusMessage = me.statusMessage
             AuthService.shared.updateNicknameLocal(me.nickname)
+            // The same response has carried the picture all along and this was
+            // throwing it away, which is why the header had nothing to draw.
+            PresenceService.shared.setOwnAvatar(id: me.avatarMediaID, key: me.avatarMediaKey)
         } catch {
             // Soft-fail.
         }

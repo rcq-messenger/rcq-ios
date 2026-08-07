@@ -10,6 +10,27 @@ final class PresenceService: ObservableObject {
     @Published var status: UserStatus = .online
     @Published var statusMessage: String? = nil
 
+    /// The account's own profile picture, held here rather than in a screen's
+    /// local state.
+    ///
+    /// It used to live only inside SettingsView's `@State`, loaded by a `.task`
+    /// hung on the avatar picker — so it existed only once the settings screen
+    /// had been opened, and the main screen's header had nowhere to read it
+    /// from and drew the status flower forever. Seeded synchronously from the
+    /// last known values so a cold start draws the picture on the first frame
+    /// instead of swapping it in a moment later.
+    @Published var ownAvatarID: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarID")
+    @Published var ownAvatarKey: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
+
+    func setOwnAvatar(id: String?, key: String?) {
+        let id = (id?.isEmpty ?? true) ? nil : id
+        let key = (key?.isEmpty ?? true) ? nil : key
+        ownAvatarID = id
+        ownAvatarKey = key
+        UserDefaults.standard.set(id, forKey: "rcq.ownAvatarID")
+        UserDefaults.standard.set(key, forKey: "rcq.ownAvatarKey")
+    }
+
     private init() {}
 
     func setStatus(_ status: UserStatus, message: String? = nil) async {
