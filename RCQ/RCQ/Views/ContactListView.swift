@@ -619,11 +619,18 @@ struct ContactListView: View {
                     // edge — the same shape Android draws. Without a picture
                     // this falls back to the plain status flower, so nothing
                     // changes at all for anyone who never set one.
+                    //
+                    // With a picture the badge carries BOTH meanings, because
+                    // it is the only mark left: orange while there is no
+                    // confirmed link, the chosen status once there is. Dropping
+                    // the dot without moving what it said left the header
+                    // saying nothing at all about the connection.
                     PersonAvatarView(
                         mediaID: presence.ownAvatarID,
                         keyBase64: presence.ownAvatarKey,
                         status: presence.status,
-                        size: 26
+                        size: 26,
+                        linkDown: appState.isOffline || !socket.linkUp
                     )
                     // The connection dot is dropped when a picture is up: the
                     // status badge already sits in that corner, and two dots on
