@@ -82,7 +82,12 @@ enum BackupService {
         }
         guard let uin = AuthService.shared.ownUIN else { throw Refused("not signed in") }
 
-        let messages = MessageDB.shared.fetchAll()
+        // ⚠ Disappearing messages are left out, and that is the point of them.
+        // Someone who sets a one-day timer is saying this should not exist
+        // tomorrow; writing it into a file that survives on a drive for years,
+        // in the clear, would quietly undo the one guarantee they asked for.
+        // Decided by the founder on 2026-08-07 and written into the format doc.
+        let messages = MessageDB.shared.fetchAll().filter { $0.ttlSeconds == nil }
 
         FileManager.default.createFile(atPath: url.path, contents: nil)
         guard let handle = try? FileHandle(forWritingTo: url) else {
@@ -201,6 +206,14 @@ enum BackupService {
                           let msg = BackupRecordMapping.toMessage(record, ownUIN: me)
                     else {
                         unreadable += 1
+                        continue
+                    }
+                    // An archive written before disappearing messages were
+                    // excluded can still carry one. Its timer did not pause
+                    // because it sat in a file, so anything already past its
+                    // moment stays gone.
+                    if let ttl = msg.ttlSeconds,
+                       msg.sentAt.addingTimeInterval(TimeInterval(ttl)) <= Date() {
                         continue
                     }
                     if MessageDB.shared.insertIfAbsent(msg) { added += 1 } else { skipped += 1 }
