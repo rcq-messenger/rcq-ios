@@ -21,6 +21,26 @@ itself, which is consequently also distributed under AGPL-3.0
 (see top-level LICENSE).
 
 
+sing-box (vendored as Rcqbox.xcframework)
+-----------------------------------------
+Path: RCQ/Vendor/Rcqbox.xcframework/
+Project: https://github.com/SagerNet/sing-box
+License: GPL-3.0-or-later
+
+The transport engine: VLESS+Reality and Hysteria2 outbounds used to
+reach a relay when a direct connection to the island fails. Built
+from unmodified sing-box sources through a gomobile binding
+(`Rcqbox`) and vendored here as a prebuilt xcframework rather than
+resolved from a package registry; see the repository README for how
+it is produced. Linked into the app binary, so the GPL-3.0
+obligation attaches to the RCQ application, which is distributed
+under AGPL-3.0 (see top-level LICENSE).
+
+Note that sing-box terminates only RCQ's own traffic inside the app
+process. RCQ does not use NetworkExtension and does not install a
+system VPN profile.
+
+
 WebRTC (stasel/WebRTC)
 ----------------------
 Project: https://github.com/stasel/WebRTC
