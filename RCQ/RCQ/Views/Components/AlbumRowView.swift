@@ -9,6 +9,10 @@ struct AlbumRowView: View {
     let items: [Message]
     let isInGroupChat: Bool
     let senderNickname: String
+    /// The sender's picture, when they have one — to the LEFT of the nick,
+    /// never instead of it. Nil leaves the line the plain nick it was.
+    var senderAvatarID: String? = nil
+    var senderAvatarKey: String? = nil
     let isSelecting: Bool
     let isSelected: Bool
     let onTapTile: (Int) -> Void
@@ -66,9 +70,16 @@ struct AlbumRowView: View {
                 if isFromMe { Spacer(minLength: 40) }
                 VStack(alignment: isFromMe ? .trailing : .leading, spacing: 4) {
                     if isInGroupChat && !isFromMe && !senderNickname.isEmpty {
-                        Text(senderNickname)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Theme.Color.accent)
+                        HStack(spacing: 5) {
+                            SenderAvatarView(
+                                mediaID: senderAvatarID,
+                                keyBase64: senderAvatarKey,
+                                size: 16
+                            )
+                            Text(senderNickname)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Theme.Color.accent)
+                        }
                     }
                     MediaAlbumBubble(
                         items: items,

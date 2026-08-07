@@ -403,14 +403,27 @@ struct MessageRow: View, Equatable {
 
     /// Group sender name (tappable → profile). Shown inside a text bubble,
     /// above a non-text one.
+    ///
+    /// The sender's picture goes to the LEFT of the nick, never instead of it,
+    /// and only when they have one — without a picture the line is the plain
+    /// nick it has always been. It comes off the roster this row already
+    /// carries for @mentions, so there is nothing extra to thread through.
     @ViewBuilder
     private var senderLabel: some View {
+        let member = currentGroupMembers.first { $0.uin == message.senderUIN }
         Button {
             AppState.shared.pendingOpenUserProfile = message.senderUIN
         } label: {
-            Text(senderNickname)
-                .font(.caption2.weight(.semibold))
-                .foregroundColor(Theme.Color.accent)
+            HStack(spacing: 5) {
+                SenderAvatarView(
+                    mediaID: member?.avatarMediaID,
+                    keyBase64: member?.avatarMediaKey,
+                    size: 15
+                )
+                Text(senderNickname)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
+            }
         }
         .buttonStyle(.plain)
     }
