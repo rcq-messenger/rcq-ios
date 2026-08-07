@@ -17,6 +17,20 @@ final class LanguageManager: ObservableObject {
 
     private static let defaultsKey = "rcq.app_language"
 
+    /// The active bundle, readable from ANY thread.
+    ///
+    /// `String.localized` used to reach `activeBundle` through
+    /// `MainActor.assumeIsolated`, which is not a cast — it asserts, and traps
+    /// the process when the assertion is wrong. Anything localising a string
+    /// off the main actor therefore killed the app; the full network check did
+    /// exactly that, because its first `await` resumes on a network queue and
+    /// every line title after that is a `.localized`.
+    ///
+    /// A Bundle reference is immutable and safe to read concurrently, so the
+    /// answer is to publish it rather than to assert about where the caller is.
+    /// Written only from the main actor, on init and on every language change.
+    nonisolated(unsafe) private(set) static var currentBundle: Bundle = .main
+
     private init() {
         let stored = UserDefaults.standard.string(forKey: Self.defaultsKey)
         if let stored, let lang = AppLanguage(rawValue: stored) {
@@ -29,6 +43,7 @@ final class LanguageManager: ObservableObject {
         }
         applyToBundleSearchPath()
         mirrorToAppGroup()
+        Self.currentBundle = activeBundle
     }
 
     func set(_ language: AppLanguage) {
@@ -37,6 +52,7 @@ final class LanguageManager: ObservableObject {
         UserDefaults.standard.set(language.rawValue, forKey: Self.defaultsKey)
         applyToBundleSearchPath()
         mirrorToAppGroup()
+        Self.currentBundle = activeBundle
         version &+= 1
     }
 
