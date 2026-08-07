@@ -23,6 +23,13 @@ struct PersonAvatarView: View {
     var host: String? = nil
     var size: CGFloat = 28
     var crossIsland: Bool = false
+    /// No confirmed link to the server. Only ever set for your OWN picture,
+    /// where the badge is the one place the header has left to say it: a
+    /// picture covers the corner the connection dot used to sit in, and two
+    /// marks stacked there read as neither. While this is true the badge shows
+    /// the connection instead of the chosen status — a status nobody can see
+    /// is not the thing worth reporting.
+    var linkDown: Bool = false
     /// Set where the badge itself is actionable (the header, where tapping the
     /// flower opens the status picker). Without it the badge is decoration.
     var onStatusTap: (() -> Void)? = nil
@@ -37,6 +44,7 @@ struct PersonAvatarView: View {
         host: String? = nil,
         size: CGFloat = 28,
         crossIsland: Bool = false,
+        linkDown: Bool = false,
         onStatusTap: (() -> Void)? = nil
     ) {
         self.mediaID = mediaID
@@ -45,6 +53,7 @@ struct PersonAvatarView: View {
         self.host = host
         self.size = size
         self.crossIsland = crossIsland
+        self.linkDown = linkDown
         self.onStatusTap = onStatusTap
         // Seed from the decrypted cache so a hot avatar is already there on the
         // first frame instead of flashing the flower — same trick as
@@ -109,7 +118,15 @@ struct PersonAvatarView: View {
     @ViewBuilder private var badgeView: some View {
         let content = ZStack {
             Circle().fill(Theme.Color.bgPrimary)
-            StatusIcon(status: status, size: badge * 0.82, crossIsland: crossIsland)
+            if linkDown {
+                // The same orange the header's connection dot uses, so the two
+                // ways of saying "no link" cannot disagree with each other.
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: badge * 0.62, height: badge * 0.62)
+            } else {
+                StatusIcon(status: status, size: badge * 0.82, crossIsland: crossIsland)
+            }
         }
         .frame(width: badge, height: badge)
         if let onStatusTap {
