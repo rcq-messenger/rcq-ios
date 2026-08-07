@@ -53,7 +53,7 @@ struct GroupInfoView: View {
                     // Roster hidden by the owner → everyone but the
                     // owner sees just the count, not who's in it.
                     if currentGroup.membersHidden && !amOwner {
-                        section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+                        section(String(format: "group.section.members".localized, currentGroup.memberCount)) {
                             Text("group.members.hidden".localized)
                                 .font(.callout)
                                 .foregroundColor(Theme.Color.textSecondary)
@@ -118,6 +118,11 @@ struct GroupInfoView: View {
         }
         .navigationTitle("group.title".localized)
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // The chat list is fetched without rosters, so this screen — the one
+            // place that actually shows the members — asks for it on arrival.
+            await groups.ensureRoster(group.id)
+        }
         .toolbar {
             if canEditChrome {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -286,7 +291,7 @@ struct GroupInfoView: View {
         let hidden = searching ? 0 : max(0, ordered.count - visible.count)
         let canCollapse = showAllMembers && !searching && ordered.count > Self.memberPreviewLimit
         let bigGroup = currentGroup.members.count > Self.memberPreviewLimit
-        return section(String(format: "group.section.members".localized, currentGroup.members.count)) {
+        return section(String(format: "group.section.members".localized, currentGroup.memberCount)) {
             // Search field — only worth showing on a group big enough to scroll.
             if bigGroup {
                 HStack(spacing: 8) {

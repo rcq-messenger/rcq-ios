@@ -42,10 +42,21 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
     var createdAt: Date
+    /// How many people are in the group, independent of whether `members` was
+    /// fetched. Every list row needs the number and nothing else, and the
+    /// roster is the expensive half of a group payload — every member with two
+    /// base64 keys, which on the beta group is most of a megabyte.
+    var memberCount: Int = 0
+    /// ⚠ Can legitimately be EMPTY. The chat list is fetched with `?members=0`,
+    /// so a group in `GroupService.groups` may carry no roster at all until
+    /// something asks for one. Anything that encrypts per recipient must go
+    /// through `GroupService.ensureRoster` first — sending against an empty
+    /// roster delivers to nobody while looking like it worked.
     var members: [RCQGroupMember]
 
     enum CodingKeys: String, CodingKey {
         case id, name, description
+        case memberCount = "member_count"
         case ownerUIN = "owner_uin"
         case avatarSeed = "avatar_seed"
         case postPolicy = "post_policy"
@@ -77,6 +88,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)
         self.members = try c.decode([RCQGroupMember].self, forKey: .members)
+        // Older islands do not send it; the roster's own size is right there.
+        let declared = (try? c.decodeIfPresent(Int.self, forKey: .memberCount)) ?? 0
+        self.memberCount = declared > 0 ? declared : self.members.count
     }
 
     func isAdmin(_ uin: Int) -> Bool {

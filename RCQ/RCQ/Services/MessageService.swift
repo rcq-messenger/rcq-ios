@@ -983,16 +983,22 @@ final class MessageService {
         }
     }
 
-    func sendGroupEnvelope(_ envelope: Envelope, to group: RCQGroup, localID: UUID?) async throws {
+    func sendGroupEnvelope(_ envelope: Envelope, to snapshot: RCQGroup, localID: UUID?) async throws {
         // Cross-island group (§5c): seal AS the guest identity (the sender uin
         // must be our per-island uin so the roster resolves it; keys identical)
         // and deposit to the group's island. Handled on its own path.
-        if let host = group.host, let ref = VisitedIslandsStore.shared.refByAlias(group.id),
+        if let host = snapshot.host, let ref = VisitedIslandsStore.shared.refByAlias(snapshot.id),
            let creds = CrossIslandGroups.foreignCreds(host: host, ownUIN: AuthService.shared.ownUIN) {
-            try await sendForeignGroupEnvelope(envelope, to: group, remoteId: ref.remoteId,
+            try await sendForeignGroupEnvelope(envelope, to: snapshot, remoteId: ref.remoteId,
                                                host: host, guestUIN: creds.uin, localID: localID)
             return
         }
+        // ⚠ The roster, not whatever roster the caller happened to be holding.
+        // The chat list is fetched without one, so the group handed to us can
+        // legitimately have an empty member list — every branch below fans out
+        // per recipient, and an empty list means a message that is delivered to
+        // nobody while every local signal says it was sent.
+        let group = await GroupService.shared.ensureRoster(snapshot.id) ?? snapshot
         struct Entry: Encodable { let to_uin: Int; let payload: String }
         struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
         struct BroadcastBody: Encodable { let group_id: Int; let envelope_type: String; let payload: String }
@@ -1107,13 +1113,15 @@ final class MessageService {
     private func sendSknack(gid: Int, kid: String) {
         if let prev = Self.lastSknack[kid], Date().timeIntervalSince(prev) < 600 { return }
         Self.lastSknack[kid] = Date()
-        guard let group = GroupService.shared.groups.first(where: { $0.id == gid }) else { return }
-        let targets = group.members.filter { $0.senderKeys && $0.uin != ownUIN && !$0.identityKey.isEmpty }
         struct Entry: Encodable { let to_uin: Int; let payload: String }
         struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         let env: Envelope = .sknack(gid: gid, kid: kid)
         Task {
+            // Per-recipient again, so the roster has to be real: with an empty
+            // one this asks nobody for the key and the group stays unreadable.
+            guard let group = await GroupService.shared.ensureRoster(gid) else { return }
+            let targets = group.members.filter { $0.senderKeys && $0.uin != ownUIN && !$0.identityKey.isEmpty }
             var entries: [Entry] = []
             for m in targets {
                 let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
@@ -1129,14 +1137,17 @@ final class MessageService {
     /// SKDM to the requester so they can read going forward.
     private func answerSknack(gid: Int, requesterUIN: Int, kid: String) {
         guard GroupSenderKeyStore.shared.ownKidForGroup(ownUin: ownUIN, gid: gid) == kid,
-              let snap = GroupSenderKeyStore.shared.ownChainSnapshot(ownUin: ownUIN, gid: gid),
-              let group = GroupService.shared.groups.first(where: { $0.id == gid }),
-              let m = group.members.first(where: { $0.uin == requesterUIN }), !m.identityKey.isEmpty else { return }
+              let snap = GroupSenderKeyStore.shared.ownChainSnapshot(ownUin: ownUIN, gid: gid) else { return }
         struct Entry: Encodable { let to_uin: Int; let payload: String }
         struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         let env: Envelope = .skdm(gid: gid, kid: snap.kid, epoch: snap.epoch, index: snap.index, ck: snap.ck)
         Task {
+            // The requester's key comes out of the roster, so ask for one first:
+            // without it nobody is ever found and the request goes unanswered.
+            guard let group = await GroupService.shared.ensureRoster(gid),
+                  let m = group.members.first(where: { $0.uin == requesterUIN }),
+                  !m.identityKey.isEmpty else { return }
             let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
             guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { return }
             let _: Out? = try? await APIClient.shared.request("POST", "/messages/group-sealed",
@@ -1686,7 +1697,23 @@ final class MessageService {
                 let target = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
                 var authorized = target?.senderUIN == deleter
                 if !authorized, case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
-                    authorized = g.members.first { $0.uin == deleter }?.canDelete(ownerUIN: g.ownerUIN) == true
+                    if deleter == g.ownerUIN {
+                        // The owner is named on the group row itself and needs
+                        // no roster to be recognised.
+                        authorized = true
+                    } else if g.members.isEmpty {
+                        // Everyone else's cap lives in the roster, which the
+                        // list no longer carries. Fetch it and decide again
+                        // rather than silently ignoring a moderator's delete.
+                        Task {
+                            guard let full = await GroupService.shared.ensureRoster(gid),
+                                  full.members.first(where: { $0.uin == deleter })?
+                                      .canDelete(ownerUIN: full.ownerUIN) == true else { return }
+                            MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
+                        }
+                    } else {
+                        authorized = g.members.first { $0.uin == deleter }?.canDelete(ownerUIN: g.ownerUIN) == true
+                    }
                 }
                 if authorized {
                     MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)

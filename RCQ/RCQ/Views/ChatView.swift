@@ -757,6 +757,14 @@ struct ChatView: View {
         }) {
             PINVerifySheet(title: "pin_verify.title.chat".localized) { chatPinUnlocked = true }
         }
+        .task {
+            // The chat list is fetched without rosters, and this screen needs
+            // one for more than sending: an author's name, an @mention, and a
+            // moderator's own delete/pin rights all come out of the roster, and
+            // without it the screen shows bare uins where names belong. A no-op
+            // when it is already here or the group lives on another island.
+            if let gid = activeGroupID { await groupSvc.ensureRoster(gid) }
+        }
         .onAppear {
             if chatIsLocked && !chatPinUnlocked { showChatLockGate = true }
             // The unread-below badge counter is seeded in ChatViewModel.init
@@ -1080,10 +1088,10 @@ struct ChatView: View {
                             .foregroundColor(Theme.Color.textPrimary)
                             .lineLimit(1)
                         Text(String(
-                            format: (live.members.count == 1
+                            format: (live.memberCount == 1
                                 ? "contact_list.members_one"
                                 : "contact_list.members_many").localized,
-                            live.members.count
+                            live.memberCount
                         ))
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
