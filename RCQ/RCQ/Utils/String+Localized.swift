@@ -15,8 +15,15 @@ extension String {
     /// Looks the receiver up in the active language's bundle.
     /// Falls back to the main bundle (development language)
     /// when the active lproj doesn't ship the key yet.
+    ///
+    /// ⚠ Readable from any thread on purpose. This used to reach the active
+    /// bundle through `MainActor.assumeIsolated`, which does not move work to
+    /// the main actor — it asserts you are already on it and traps the whole
+    /// process when you are not. Every string localised off the main thread was
+    /// therefore a crash waiting for someone to walk into it, and the full
+    /// network check walked into it every single time.
     var localized: String {
-        let bundle = MainActor.assumeIsolated { LanguageManager.shared.activeBundle }
+        let bundle = LanguageManager.currentBundle
         let value = bundle.localizedString(forKey: self, value: nil, table: nil)
         if value != self { return value }
         // Fallback to the main bundle so a missing key in a
