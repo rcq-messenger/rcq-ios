@@ -3,18 +3,35 @@
 Short UI cues played by `Services/SoundService.swift`. One file per case of
 `SoundService.Cue`; the basenames below are what `filename(for:)` resolves.
 
-| Filename            | Cue                | Shipping? |
-| ------------------- | ------------------ | --------- |
-| `message_incoming`  | inbound message    | no        |
-| `contact_online`    | contact came online  | no      |
-| `contact_offline`   | contact went offline | no      |
-| `message_sent`      | soft click on send | no        |
-| `join-me`           | you joined an audio room | yes |
-| `join-all`          | someone joined the room  | yes |
+| File                    | Cue                      | Provenance      |
+| ----------------------- | ------------------------ | --------------- |
+| `message_incoming.aif`  | inbound message          | ⚠ UNRESOLVED    |
+| `contact_online.aif`    | contact came online      | ⚠ UNRESOLVED    |
+| `contact_offline.aif`   | contact went offline     | ⚠ UNRESOLVED    |
+| `message_sent.aif`      | soft click on send       | ⚠ UNRESOLVED    |
+| `join-me.mp3`           | you joined an audio room | ours            |
+| `join-all.mp3`          | someone joined the room  | ours            |
 
 `preload()` tries `aif`, `aiff`, `wav`, `m4a`, `mp3` in that order, so any of
 those extensions works. Keep each cue under two seconds. Missing files are
-skipped silently, which is why the four unshipped cues cost nothing today.
+skipped silently: deleting a cue makes the app quieter, never broken.
+
+## ⚠ The four `.aif` files are not ours
+
+They have shipped since the initial public release and their licence has never
+been established. They are recognisably another product's cues. Unlike the
+KOLOBOK set, which at least has a stated non-commercial grant, these have no
+grant at all, so this is the weaker of the two asset positions, not the
+stronger one.
+
+Two ways out, both fine, and the choice is a product call:
+
+* replace them with commissioned or CC0 originals, or
+* delete the four files. `preload()` skips what is absent, so the app simply
+  stops making those noises.
+
+What is not an option is shipping them to a commercial store while this
+paragraph is still true and nobody has decided anything.
 
 ## Where these files may come from
 

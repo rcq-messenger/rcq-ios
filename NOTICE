@@ -67,6 +67,25 @@ would like attribution updated, removed, or relicensed, please
 contact security@rcq.app.
 
 
+UI sounds
+---------
+Path: RCQ/Resources/Sounds/
+
+`join-me.mp3` and `join-all.mp3` are ours.
+
+⚠ `message_incoming.aif`, `contact_online.aif`, `contact_offline.aif` and
+`message_sent.aif` are NOT. They have shipped since the initial
+public release and their licence has never been established; they are
+recognisably another product's cues. This entry is an admission, not an
+attribution, and it is the one item in this file that cannot be made
+correct by writing a better paragraph.
+
+They must be replaced with commissioned or CC0 originals, or deleted,
+before a store release. `SoundService.preload()` skips absent files, so
+deleting them leaves the app quieter rather than broken. The same four
+cues ship on Android as res/raw/snd_*.wav; see that repository's NOTICE.
+
+
 SF Symbols
 ----------
 Apple's SF Symbols library is used throughout the UI under the
