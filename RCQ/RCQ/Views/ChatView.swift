@@ -23,6 +23,12 @@ struct ChatView: View {
         return nil
     }
 
+    /// A sender's row in the active group's roster — where their picture lives.
+    private func groupMember(_ uin: Int?) -> RCQGroupMember? {
+        guard let uin else { return nil }
+        return currentGroupMembers.first { $0.uin == uin }
+    }
+
     /// "Delete for everyone" is offered for your own message, OR (in a group)
     /// when you're a moderator: the owner, or a member the owner granted the
     /// `delete` cap. Recipients re-check the same rule on receipt.
@@ -2448,6 +2454,8 @@ struct ChatView: View {
             items: items,
             isInGroupChat: vm.target.thread.isGroup,
             senderNickname: vm.senderNickname(items.first!.senderUIN),
+            senderAvatarID: groupMember(items.first!.senderUIN)?.avatarMediaID,
+            senderAvatarKey: groupMember(items.first!.senderUIN)?.avatarMediaKey,
             isSelecting: vm.isSelecting,
             isSelected: items.allSatisfy { vm.selectedIDs.contains($0.id) },
             onTapTile: { tappedIdx in
