@@ -403,10 +403,10 @@ private struct GroupHit: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
                 Text(String(
-                    format: (group.members.count == 1
+                    format: (group.memberCount == 1
                         ? "contact_list.members_one"
                         : "contact_list.members_many").localized,
-                    group.members.count
+                    group.memberCount
                 ))
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }

@@ -33,7 +33,14 @@ final class GroupService: ObservableObject {
     func refresh() async {
         if PanicPINService.shared.isDecoy { return }
         do {
-            let list: [RCQGroup] = try await APIClient.shared.request("GET", "/groups")
+            // Without the roster: a chat-list row wants a name, a picture and a
+            // count, and the roster is the expensive half — every member with
+            // two base64 keys, which on the beta group is a couple of hundred
+            // kilobytes on the boot path, on every poll. It is fetched per
+            // group, on demand, by `ensureRoster`.
+            let list: [RCQGroup] = try await APIClient.shared.request(
+                "GET", "/groups", query: ["members": "0"]
+            )
             // §5c: groups joined on OTHER islands, fetched with the guest creds;
             // ids rewritten to the local alias + host stamped. Per-island
             // failures degrade to "no groups from there" — never block the own
@@ -53,7 +60,16 @@ final class GroupService: ObservableObject {
                     foreign += await CrossIslandGroups.guestGroups(host: h.host, ownUIN: ownUIN)
                 }
             }
-            self.groups = list + foreign
+            // Keep a roster we already paid for rather than dropping it back to
+            // empty on every poll.
+            let known = Dictionary(self.groups.map { ($0.id, $0.members) }, uniquingKeysWith: { a, _ in a })
+            let own = list.map { g -> RCQGroup in
+                guard g.members.isEmpty, let cached = known[g.id], !cached.isEmpty else { return g }
+                var merged = g
+                merged.members = cached
+                return merged
+            }
+            self.groups = own + foreign
             // Mirror id → name into the App Group so the NSE can title a
             // group-message push with the group's name (not just the sender).
             GroupNameCache.setAll(Dictionary(list.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))
@@ -78,6 +94,29 @@ final class GroupService: ObservableObject {
         let g: RCQGroup = try await APIClient.shared.request("GET", "/groups/\(groupID)")
         upsert(g)
         return g
+    }
+
+    /// The group WITH its roster, fetching it if the list did not carry one.
+    ///
+    /// ⚠ Anything that encrypts per recipient must go through this and not
+    /// through `find`. The list is fetched without rosters now, so a cached
+    /// group can legitimately have an empty member list, and sending against
+    /// that would deliver to nobody while looking like it worked. A foreign
+    /// group is left alone: its roster comes from its own island, and its id
+    /// here is a local negative alias that our island knows nothing about.
+    @discardableResult
+    func ensureRoster(_ groupID: Int) async -> RCQGroup? {
+        guard let cached = find(groupID) else { return nil }
+        if !cached.members.isEmpty || cached.host != nil { return cached }
+        guard let full: RCQGroup = try? await APIClient.shared.request(
+            "GET", "/groups/\(groupID)"
+        ) else { return cached }
+        guard let idx = groups.firstIndex(where: { $0.id == groupID }) else { return full }
+        // Only the roster is taken: everything else on the row is already live
+        // and may have been patched locally while this was in flight.
+        groups[idx].members = full.members
+        groups[idx].memberCount = full.memberCount
+        return groups[idx]
     }
 
     func addMember(groupID: Int, uin: Int) async throws {
@@ -390,15 +429,25 @@ final class GroupService: ObservableObject {
         // group on the leaver's device — they'd leave, see the row
         // vanish from `groups.remove(...)`, then watch the WS event
         // put it right back.
+        //
+        // ⚠ An EMPTY roster is not the same statement as "you are not in it".
+        // Payloads without a roster exist now (the list is fetched with
+        // `?members=0`, and the server sends the compact form for groups over
+        // a hundred people), and reading one as a removal would delete the
+        // biggest groups off the device.
         let myUIN = AuthService.shared.ownUIN
-        if let me = myUIN, !g.members.contains(where: { $0.uin == me }) {
+        if let me = myUIN, !g.members.isEmpty, !g.members.contains(where: { $0.uin == me }) {
             groups.removeAll { $0.id == g.id }
             BadgeCounter.reset(threadKey: BadgeCounter.threadKey(groupID: g.id))
             BadgeCounter.syncIcon()
             return
         }
         if let idx = groups.firstIndex(where: { $0.id == g.id }) {
-            groups[idx] = g
+            var next = g
+            // Keep a roster we already paid for rather than dropping it for a
+            // payload that simply did not carry one.
+            if next.members.isEmpty { next.members = groups[idx].members }
+            groups[idx] = next
         } else {
             groups.insert(g, at: 0)
         }

@@ -1802,10 +1802,10 @@ private struct GroupRow: View {
                     }
                 }
                 Text(String(
-                    format: (group.members.count == 1
+                    format: (group.memberCount == 1
                         ? "contact_list.members_one"
                         : "contact_list.members_many").localized,
-                    group.members.count
+                    group.memberCount
                 ) + (group.host.map { " · \($0)" } ?? ""))
                     .font(.caption).foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)

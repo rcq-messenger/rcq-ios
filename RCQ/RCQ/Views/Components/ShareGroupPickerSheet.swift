@@ -89,7 +89,7 @@ struct ShareGroupPickerSheet: View {
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(String(format: "group_share.members".localized, g.members.count))
+                    Text(String(format: "group_share.members".localized, g.memberCount))
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
                     if g.isClosed {

@@ -56,10 +56,10 @@ struct ChatPreviewView: View {
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
                     Text(String(
-                        format: (live.members.count == 1
+                        format: (live.memberCount == 1
                             ? "contact_list.members_one"
                             : "contact_list.members_many").localized,
-                        live.members.count
+                        live.memberCount
                     ))
                         .font(.caption)
                         .foregroundColor(Theme.Color.textSecondary)

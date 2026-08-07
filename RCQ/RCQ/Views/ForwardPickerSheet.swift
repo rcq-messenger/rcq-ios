@@ -168,7 +168,7 @@ private enum DestinationRow {
             .frame(width: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(g.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text("\(g.members.count) member\(g.members.count == 1 ? "" : "s")")
+                Text("\(g.memberCount) member\(g.memberCount == 1 ? "" : "s")")
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }
             Spacer()
