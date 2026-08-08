@@ -122,12 +122,21 @@ final class MessageStore: ObservableObject {
 
     /// Idempotent insert. Returns `true` for a new row, `false` if id already present.
     @discardableResult
+    /// Returns true only for content this device has never held.
+    ///
+    /// ⚠ Newness is decided by the STORE, not by the window in memory. This
+    /// used to ask `threads`, which keeps the last hundred rows per thread, so
+    /// a re-delivered envelope older than that window was treated as brand new:
+    /// it bumped the unread count and was appended at the END of the thread,
+    /// far from its own timestamp. "Старое сообщение всплыло внизу
+    /// непрочитанным" needs no deletion at all — every envelope is offered to
+    /// this client at least twice by design.
     func append(_ message: Message) -> Bool {
         var t = threads[message.thread, default: []]
         if t.contains(where: { $0.id == message.id }) { return false }
+        guard MessageDB.shared.insertIfAbsent(message) else { return false }
         t.append(message)
         threads[message.thread] = t
-        MessageDB.shared.insert(message)
         return true
     }
 

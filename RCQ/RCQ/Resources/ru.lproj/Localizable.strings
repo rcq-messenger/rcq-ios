@@ -1756,6 +1756,8 @@
 "audio_room.section.title" = "Аудио комнаты";
 "audio_room.section.create_first" = "Создать или войти в комнату";
 "audio_room.menu.copy_key" = "Копировать ключ";
+"audio_room.menu.share_key" = "Отправить ключ";
+"audio_room.share.body" = "Аудиокомната «%1$@» в RCQ. Ключ для входа: %2$@";
 "audio_room.menu.delete" = "Удалить комнату";
 "audio_room.menu.remove" = "Убрать из списка";
 "audio_room.row.idle" = "пусто";
@@ -2063,7 +2065,8 @@
 "manage_accounts.title" = "Аккаунты";
 "manage_accounts.add_by_phrase" = "Добавить аккаунт по фразе восстановления";
 "manage_accounts.intro.title" = "Аккаунты на этом устройстве";
-"manage_accounts.intro.body" = "Активный аккаунт удалить отсюда нельзя, переключись на другой сверху. Удаление с устройства не трогает аккаунт на сервере, для этого используй Burn account в настройках приватности.";
+"manage_accounts.intro.body" = "Активный аккаунт удалить отсюда нельзя, сначала переключись на другой. Удаление с устройства не трогает аккаунт на сервере, для этого используй Burn account в настройках приватности.";
+"manage_accounts.switch" = "Перейти";
 "manage_accounts.active_badge" = "АКТИВНЫЙ";
 "manage_accounts.delete" = "Удалить";
 "manage_accounts.delete.confirm.title" = "Удалить %@?";
@@ -2148,6 +2151,7 @@
 "myreports.empty" = "Вы пока не отправляли обращений. Если отправите, ответ появится здесь.";
 "myreports.answer" = "Ответ";
 "myreports.status.open" = "Ждёт ответа";
+"myreports.status.answered" = "Есть ответ";
 "myreports.status.resolved" = "Решено";
 "myreports.status.dismissed" = "Отклонено";
 "myreports.status.duplicate" = "Дубликат";

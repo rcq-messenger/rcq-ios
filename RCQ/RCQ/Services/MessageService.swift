@@ -733,6 +733,12 @@ final class MessageService {
     private func isCarbonable(_ env: Envelope) -> Bool {
         switch env {
         case .text, .photo, .video, .voice, .file, .location: return true
+        // An edit has to ride along too. Without it the queue held a carbon of
+        // the ORIGINAL wording and never one of the correction, so a message
+        // that came back through that route came back in its pre-edit form —
+        // the third symptom in #415 — and the user's other device never saw the
+        // edit at all.
+        case .edit: return true
         default: return false
         }
     }

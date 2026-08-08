@@ -40,7 +40,7 @@ struct UserInfoView: View {
                             } label: {
                                 HStack(alignment: .top, spacing: 10) {
                                     Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(Theme.Color.statusBusy)
+                                        .foregroundColor(Theme.Color.warning)
                                     Text("profile.safety.changed".localized)
                                         .font(.footnote)
                                         .foregroundColor(Theme.Color.textPrimary)
