@@ -65,10 +65,19 @@ struct MyReportsView: View {
 
     private func card(_ report: MyReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            // A card that says "Waiting" in green with the operator's answer
+            // printed right underneath reads as "we are being ignored" — the
+            // exact complaint in #417. The reply IS the status change; the
+            // server's own `status` only moves when an admin resolves the
+            // ticket, which is a different thing.
+            let answered = !(report.reply ?? "").isEmpty
             HStack {
-                Text(statusLabel(report.status))
+                Text(answered && (report.status ?? "open") == "open"
+                     ? "myreports.status.answered".localized
+                     : statusLabel(report.status))
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(report.status == "open" ? Theme.Color.accent : Theme.Color.textSecondary)
+                    .foregroundColor(report.status == "open" && !answered
+                                     ? Theme.Color.accent : Theme.Color.textSecondary)
                 Spacer()
                 if let when = formatted(report.created_at) {
                     Text(when).font(.caption2).foregroundColor(Theme.Color.textSecondary)

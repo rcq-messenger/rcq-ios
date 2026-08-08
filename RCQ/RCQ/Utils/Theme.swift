@@ -11,6 +11,11 @@ enum Theme {
         static let bgPrimary       = dyn(light: 0xFFFFFF, dark: 0x1A1A1A)
         static let bgSecondary     = dyn(light: 0xF2F2F2, dark: 0x222222)
         static let bgRowHover      = dyn(light: 0xE6EFFA, dark: 0x2A2A2A)
+        /// Amber, not red: a warning asks you to CHECK something, it does not
+        /// forbid it. The safety-number banner used statusBusy (Material Red),
+        /// which a tester read as "blocked". Android moved the same sign to
+        /// amber in 12393e5; this keeps the status-dot palette out of warnings.
+        static let warning         = SwiftUI.Color(hex: 0xF5A524)
         /// A surface that floats ABOVE a dimmed backdrop (the long-press chat
         /// preview). It cannot be `bgPrimary`: over the blurred material scrim
         /// that colour is within a hair of the backdrop in dark mode, so the

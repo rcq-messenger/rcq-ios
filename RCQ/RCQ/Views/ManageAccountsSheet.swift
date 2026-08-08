@@ -168,11 +168,28 @@ struct ManageAccountsSheet: View {
                 }
             }
             Spacer(minLength: 8)
-            if isActive {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.Color.accent)
-            } else {
+            // No checkmark on the active row: it sat in the slot where every
+            // other row keeps an ACTION, so it read as a control that does
+            // nothing, and it repeated the ACTIVE badge two lines above (#409).
+            if !isActive {
+                Button {
+                    // Switching lived only in the account pill on the home
+                    // screen, and the copy on this very sheet sent people there
+                    // — from the screen called "manage accounts". The sheet is
+                    // dismissed first because switching reboots the app around
+                    // the new account.
+                    let id = account.id
+                    dismiss()
+                    Task { await AppState.shared.switchToAccount(id) }
+                } label: {
+                    Text("manage_accounts.switch".localized)
+                        .font(.system(.footnote, weight: .semibold))
+                        .foregroundColor(Theme.Color.accent)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Theme.Color.accent.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
                 Button {
                     pendingDelete = account
                 } label: {

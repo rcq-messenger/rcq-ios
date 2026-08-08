@@ -1791,6 +1791,8 @@
 "audio_room.section.title" = "Audio Rooms";
 "audio_room.section.create_first" = "Create or join a room";
 "audio_room.menu.copy_key" = "Copy join key";
+"audio_room.menu.share_key" = "Share join key";
+"audio_room.share.body" = "Audio room \"%1$@\" in RCQ. Join key: %2$@";
 "audio_room.menu.delete" = "Delete room";
 "audio_room.menu.remove" = "Remove from list";
 "audio_room.row.idle" = "idle";
@@ -2087,7 +2089,8 @@
 "manage_accounts.title" = "Accounts";
 "manage_accounts.add_by_phrase" = "Add account by recovery phrase";
 "manage_accounts.intro.title" = "Accounts on this device";
-"manage_accounts.intro.body" = "The active account can't be removed from here — switch to another one via the pill at the top first. Removing from the device doesn't touch the server-side account; use Burn account in Privacy settings for that.";
+"manage_accounts.intro.body" = "The active account can't be removed from here — switch to another one first. Removing from the device doesn't touch the server-side account; use Burn account in Privacy settings for that.";
+"manage_accounts.switch" = "Switch";
 "manage_accounts.active_badge" = "ACTIVE";
 "manage_accounts.delete" = "Remove";
 "manage_accounts.delete.confirm.title" = "Remove %@?";
@@ -2172,6 +2175,7 @@
 "myreports.empty" = "You have not sent any reports. If you do, the answer appears here.";
 "myreports.answer" = "Answer";
 "myreports.status.open" = "Waiting";
+"myreports.status.answered" = "Answered";
 "myreports.status.resolved" = "Resolved";
 "myreports.status.dismissed" = "Declined";
 "myreports.status.duplicate" = "Duplicate";

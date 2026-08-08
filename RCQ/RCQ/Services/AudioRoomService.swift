@@ -430,6 +430,18 @@ final class AudioRoomService: ObservableObject {
 
     private func tearDownLocal() {
         AudioRoomMeshManager.shared.stop()
+        // Take our own head off the cached count BEFORE activeRoomID is
+        // cleared. Nobody else will: the server sends `room_member_left` only
+        // to the people who REMAIN (so leaving an empty room broadcasts
+        // nothing), the three WS handlers that could lower it are all gated on
+        // `activeRoomID == roomID`, and the room list sits under a
+        // fullScreenCover, so it is not rebuilt and does not refresh when the
+        // cover closes. The row kept saying "1 внутри" next to an icon that had
+        // already gone inactive (#418.1). Doing it here covers all five exits:
+        // both Leave buttons, a kick, a revoked membership and a refused entry.
+        if let id = activeRoomID, let idx = rooms.firstIndex(where: { $0.id == id }) {
+            rooms[idx].activeCount = max(0, rooms[idx].activeCount - 1)
+        }
         activeRoomID = nil
         activeRoomName = nil
         roster.removeAll()

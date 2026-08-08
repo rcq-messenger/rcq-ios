@@ -87,8 +87,32 @@ final class SoundService: ObservableObject {
 
     // MARK: - playback
 
+    /// A conversation is up: our own call, an audio room, or a radio session.
+    ///
+    /// The audio session is configured for voice in all three (playAndRecord +
+    /// voiceChat/videoChat) and is ACTIVE, so a chime does not get suppressed
+    /// by anything — it plays straight into the call route, at call volume.
+    /// That is report #424: a contact coming online announced itself in the
+    /// middle of a conversation.
+    private var inConversation: Bool {
+        if CallService.shared.state.isActive { return true }
+        if AudioRoomService.shared.activeRoomID != nil { return true }
+        if RadioService.shared.activeRoom != nil || RadioService.shared.activeOneToOne != nil { return true }
+        return false
+    }
+
     func play(_ cue: Cue, thread: ThreadID? = nil) {
         guard isEnabled else { return }
+        // ⚠ Deliberately NOT a blanket guard at the top of play(): joinMe and
+        // joinAll are the audio room's own confirmations ("you are in", "someone
+        // joined"), and they are supposed to be heard from INSIDE a room. Only
+        // the chimes that can wait are silenced.
+        switch cue {
+        case .messageIncoming, .contactOnline, .contactOffline, .messageSent:
+            if inConversation { return }
+        case .joinMe, .joinAll:
+            break
+        }
         // Presence chimes ride their own (separate) toggles. Default-
         // off so testers who hate the in-out chatter aren't forced to
         // mute ALL sounds to silence them.

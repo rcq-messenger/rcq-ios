@@ -993,6 +993,11 @@ struct ContactListView: View {
                                 } label: {
                                     Label("audio_room.menu.copy_key".localized, systemImage: "doc.on.doc")
                                 }
+                                ShareLink(
+                                    item: String(format: "audio_room.share.body".localized, room.name, room.joinKey)
+                                ) {
+                                    Label("audio_room.menu.share_key".localized, systemImage: "square.and.arrow.up")
+                                }
                                 if room.ownerUIN == AuthService.shared.ownUIN {
                                     Button {
                                         rotateKeyConfirmRoom = room
@@ -1890,6 +1895,30 @@ private struct AudioRoomRow: View {
                 }
             }
             Spacer()
+            // The join key was printed as plain text next to the counter, and
+            // the only way to take it was a long press nothing advertised. Two
+            // visible controls, same as Android after 12393e5.
+            Button {
+                UIPasteboard.general.string = room.joinKey
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 15))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 34, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("audio_room.menu.copy_key".localized)
+            ShareLink(item: String(format: "audio_room.share.body".localized, room.name, room.joinKey)) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 34, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("audio_room.menu.share_key".localized)
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)

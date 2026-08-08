@@ -33,6 +33,11 @@ struct ChatView: View {
     /// when you're a moderator: the owner, or a member the owner granted the
     /// `delete` cap. Recipients re-check the same rule on receipt.
     private func canDeleteForEveryone(_ message: Message) -> Bool {
+        // Saved messages: there is no "everyone" to delete for. Every message
+        // there is your own, so the plain isFromMe rule below offered "Delete
+        // for everyone" on a note to yourself — harmless (the send short
+        // circuits) but a promise about a person who is not in the thread.
+        if case .peer(let c) = vm.target, c.uin == AuthService.shared.ownUIN { return false }
         if message.isFromMe { return true }
         guard case .group(let snapshot) = vm.target,
               let me = AuthService.shared.ownUIN else { return false }
