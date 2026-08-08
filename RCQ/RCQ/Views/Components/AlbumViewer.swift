@@ -498,14 +498,23 @@ struct AlbumPage: View {
     }
 }
 
-/// Status dot + nickname (or UIN) in a material capsule.
+/// Avatar (or the status flower when there is no picture) + nickname in a
+/// material capsule. A plain dot said less than the picture the person chose,
+/// and the picture is what makes the header read as "who sent this".
 private struct AlbumSenderHeader: View {
     let uin: Int
 
     var body: some View {
         let resolved = Self.resolve(uin)
         HStack(spacing: 6) {
-            StatusDot(status: resolved.status, size: 8)
+            PersonAvatarView(
+                mediaID: resolved.avatarID,
+                keyBase64: resolved.avatarKey,
+                status: resolved.status,
+                host: resolved.host,
+                size: 22,
+                crossIsland: resolved.host != nil
+            )
             Text(resolved.name)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
@@ -517,15 +526,18 @@ private struct AlbumSenderHeader: View {
         .environment(\.colorScheme, .dark)
     }
 
-    private static func resolve(_ uin: Int) -> (name: String, status: UserStatus) {
+    private static func resolve(
+        _ uin: Int
+    ) -> (name: String, status: UserStatus, avatarID: String?, avatarKey: String?, host: String?) {
         if uin == AuthService.shared.ownUIN {
             let nick = AuthService.shared.nickname
-            return (nick.isEmpty ? "UIN \(uin)" : nick, PresenceService.shared.status)
+            let p = PresenceService.shared
+            return (nick.isEmpty ? "UIN \(uin)" : nick, p.status, p.ownAvatarID, p.ownAvatarKey, nil)
         }
         if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
-            return (c.nickname, c.status)
+            return (c.nickname, c.status, c.avatarMediaID, c.avatarMediaKey, c.host)
         }
-        return ("UIN \(uin)", .offline)
+        return ("UIN \(uin)", .offline, nil, nil, nil)
     }
 }
 

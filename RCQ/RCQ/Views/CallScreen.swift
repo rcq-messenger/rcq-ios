@@ -67,7 +67,7 @@ struct CallScreen: View {
     private func ringing(call: Call, label: String) -> some View {
         VStack(spacing: 22) {
             Spacer()
-            avatarOrb(call.peerNickname)
+            avatarOrb(call)
             VStack(spacing: 6) {
                 Text(call.peerNickname).font(.title.bold()).foregroundColor(.white)
                 Text(label).font(.callout).foregroundColor(.white.opacity(0.7))
@@ -82,7 +82,7 @@ struct CallScreen: View {
     private func incoming(call: Call) -> some View {
         VStack(spacing: 22) {
             Spacer()
-            avatarOrb(call.peerNickname)
+            avatarOrb(call)
             VStack(spacing: 6) {
                 Text(call.peerNickname).font(.title.bold()).foregroundColor(.white)
                 Text((call.media == .video
@@ -131,7 +131,7 @@ struct CallScreen: View {
             )
             Spacer()
             if call.media == .audio {
-                avatarOrb(call.peerNickname)
+                avatarOrb(call)
             }
             Spacer()
             controlBar(media: call.media)
@@ -287,18 +287,34 @@ struct CallScreen: View {
 
     // MARK: - subviews
 
-    private func avatarOrb(_ name: String) -> some View {
-        let initial = name.first.map(String.init) ?? "?"
-        return ZStack {
-            Circle()
-                .fill(LinearGradient(
-                    colors: [Theme.Color.accent, Theme.Color.accent.opacity(0.6)],
-                    startPoint: .top, endPoint: .bottom
-                ))
-                .frame(width: 140, height: 140)
-            Text(initial.uppercased())
-                .font(.system(size: 56, weight: .bold))
-                .foregroundColor(.white)
+    /// The person's own picture when they have one, the lettered orb when they
+    /// don't. A call is the one screen with nothing else on it, so showing the
+    /// avatar there is the whole point of having set one.
+    @ViewBuilder
+    private func avatarOrb(_ call: Call) -> some View {
+        let contact = ContactService.shared.contacts.first { $0.uin == call.peerUIN }
+        if let id = contact?.avatarMediaID, !id.isEmpty {
+            PersonAvatarView(
+                mediaID: id,
+                keyBase64: contact?.avatarMediaKey,
+                status: contact?.status ?? .offline,
+                host: contact?.host,
+                size: 140,
+                crossIsland: contact?.host != nil
+            )
+        } else {
+            let initial = call.peerNickname.first.map(String.init) ?? "?"
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [Theme.Color.accent, Theme.Color.accent.opacity(0.6)],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(width: 140, height: 140)
+                Text(initial.uppercased())
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundColor(.white)
+            }
         }
     }
 
