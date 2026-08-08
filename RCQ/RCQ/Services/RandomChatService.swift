@@ -104,6 +104,9 @@ final class RandomChatService: ObservableObject {
 
     func append(_ message: Message) {
         guard activePeer != nil else { return }
+        // The buffer is in memory only, so nothing else dedups it. One redelivered
+        // envelope used to become a second identical bubble (and a second tone).
+        guard !messages.contains(where: { $0.id == message.id }) else { return }
         messages.append(message)
     }
 
