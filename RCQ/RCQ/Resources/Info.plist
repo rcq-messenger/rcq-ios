@@ -20,8 +20,15 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>103</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<!-- Export compliance is declared in App Store Connect, not here.
+	     Saying <true/> in the plist without the paired
+	     ITSEncryptionExportComplianceCode makes the validator read the code as
+	     empty and refuse the upload ("Invalid Export Compliance Code ... key
+	     value []", 2026-08-08). With the key absent, Connect asks the two
+	     questions per build and the answer is recorded there. If a compliance
+	     code is ever issued for the year, put BOTH keys back together:
+	     ITSAppUsesNonExemptEncryption=true AND
+	     ITSEncryptionExportComplianceCode=<the code from Connect>. -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>comgooglemaps</string>
