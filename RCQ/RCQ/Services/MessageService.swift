@@ -1520,7 +1520,15 @@ final class MessageService {
                 default:
                     break
                 }
-                return nil
+                // ⚠ This used to return nil, which fetchOfflineQueue reads as
+                // "ingest failed, do NOT ack" — so the island kept the row and
+                // handed it back on every drain. Random chat is v=1, whose
+                // decrypt succeeds every time (no ratchet to notice a replay),
+                // so there was nothing downstream to catch it either: the same
+                // message played the incoming tone and appended another bubble
+                // on every reconnect, boot and foreground push. It is handled,
+                // so say so.
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
             // Block-list enforcement is client-side only under sealed sender.
