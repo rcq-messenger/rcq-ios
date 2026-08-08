@@ -11,6 +11,12 @@ enum Theme {
         static let bgPrimary       = dyn(light: 0xFFFFFF, dark: 0x1A1A1A)
         static let bgSecondary     = dyn(light: 0xF2F2F2, dark: 0x222222)
         static let bgRowHover      = dyn(light: 0xE6EFFA, dark: 0x2A2A2A)
+        /// A surface that floats ABOVE a dimmed backdrop (the long-press chat
+        /// preview). It cannot be `bgPrimary`: over the blurred material scrim
+        /// that colour is within a hair of the backdrop in dark mode, so the
+        /// card had no visible edge at all and its rounded corners read as
+        /// square — the whole card looked like a rectangle of content.
+        static let bgElevated      = dyn(light: 0xFFFFFF, dark: 0x2E2E2E)
         static let textPrimary     = dyn(light: 0x000000, dark: 0xEDEDED)
         static let textSecondary   = dyn(light: 0x555555, dark: 0x9A9A9A)
         static let textMono        = dyn(light: 0x222222, dark: 0xB8B8B8)

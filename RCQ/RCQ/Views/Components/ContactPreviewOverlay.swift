@@ -40,15 +40,12 @@ struct ContactPreviewOverlay: View {
                 let previewCap = max(200, geo.size.height - reservedForActions)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
-                        ChatPreviewView(target: target, compact: true)
-                            .frame(maxHeight: previewCap)
-                            // 14pt on a card this size reads as square — the
-                            // corner is lost against 360x340 of opaque fill, and
-                            // next to the message preview and the action list
-                            // below it the card was the odd shape out. A
-                            // continuous (squircle) curve is what iOS uses for
-                            // its own context-menu previews.
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        // The cap goes INTO the card, not around it: capping
+                        // from here made the card a flexible view that this
+                        // stack then stretched to the full cap, so the rounding
+                        // curved a rectangle much taller than the card and the
+                        // card itself stayed square. The card owns its shape.
+                        ChatPreviewView(target: target, compact: true, maxHeight: previewCap)
                             .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
                         actionList
                     }
