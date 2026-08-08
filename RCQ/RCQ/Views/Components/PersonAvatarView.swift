@@ -33,6 +33,11 @@ struct PersonAvatarView: View {
     /// Set where the badge itself is actionable (the header, where tapping the
     /// flower opens the status picker). Without it the badge is decoration.
     var onStatusTap: (() -> Void)? = nil
+    /// When set, a decrypted avatar is also written to the App Group as a small
+    /// thumbnail, so the notification-service extension can put this person's
+    /// picture on their system notification. Set it where a real roster row is
+    /// drawn; nothing is fetched or decrypted for the cache's sake.
+    var cacheForUIN: Int? = nil
 
     @State private var image: UIImage?
     @State private var gifData: Data?
@@ -45,7 +50,8 @@ struct PersonAvatarView: View {
         size: CGFloat = 28,
         crossIsland: Bool = false,
         linkDown: Bool = false,
-        onStatusTap: (() -> Void)? = nil
+        onStatusTap: (() -> Void)? = nil,
+        cacheForUIN: Int? = nil
     ) {
         self.mediaID = mediaID
         self.keyBase64 = keyBase64
@@ -55,6 +61,7 @@ struct PersonAvatarView: View {
         self.crossIsland = crossIsland
         self.linkDown = linkDown
         self.onStatusTap = onStatusTap
+        self.cacheForUIN = cacheForUIN
         // Seed from the decrypted cache so a hot avatar is already there on the
         // first frame instead of flashing the flower — same trick as
         // GroupAvatarView, and it matters more here because contact rows
@@ -153,6 +160,27 @@ struct PersonAvatarView: View {
         ) {
             image = pair.0
             gifData = AnimatedGIFView.isGIF(pair.1) ? pair.1 : nil
+            if let uin = cacheForUIN { cacheThumb(pair.0, uin: uin) }
+        }
+    }
+
+    /// 96pt square JPEG — big enough for a notification, small enough that the
+    /// shared container stays a cache and not a photo library.
+    private func cacheThumb(_ img: UIImage, uin: Int) {
+        Task.detached(priority: .utility) {
+            let side: CGFloat = 96
+            let format = UIGraphicsImageRendererFormat.default()
+            format.scale = 1
+            let thumb = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+                .image { _ in
+                    // Fill the square, cropping the long side, so faces stay centred.
+                    let ratio = max(side / img.size.width, side / img.size.height)
+                    let w = img.size.width * ratio, h = img.size.height * ratio
+                    img.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+                }
+            if let data = thumb.jpegData(compressionQuality: 0.7) {
+                AvatarThumbCache.store(data, for: uin)
+            }
         }
     }
 }

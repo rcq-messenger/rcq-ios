@@ -1,4 +1,5 @@
 import os.log
+import Intents
 import UserNotifications
 
 /// Notification Service Extension. Runs in its own process whenever an
@@ -190,7 +191,11 @@ class NotificationService: UNNotificationServiceExtension {
             os_log("modified: title=%{public}@ body=%{public}@",
                    log: Self.log, type: .default,
                    content.title, content.body)
-            contentHandler(content)
+            // Communication notification: hands iOS a sender with a picture, so
+            // the banner shows the person instead of the app icon (and lands in
+            // the Communication section of Focus / Summary). Falls back to the
+            // plain content whenever there is no intent to build.
+            contentHandler(Self.asCommunication(content, senderUIN: decrypted.senderUIN) ?? content)
         } catch {
             // envType logged too — tells us whether v=1 (stateless ECIES, should
             // never fail) or a v=2 ratchet message is the one failing, for
@@ -255,6 +260,51 @@ class NotificationService: UNNotificationServiceExtension {
     /// Sender's name → title; envelope type → body. Falls back to a
     /// non-empty placeholder for any case where the inner content is
     /// empty so iOS doesn't render a notification with a blank body.
+    /// Wrap [content] in an INSendMessageIntent so iOS renders it as a message
+    /// from a person: their name, their picture, and the Communication grouping.
+    ///
+    /// The picture comes from the App Group thumbnail the app writes when it
+    /// decrypts someone's avatar — the extension cannot decrypt media itself,
+    /// and would not have the time budget to if it could. No thumbnail simply
+    /// means no image, which is still a communication notification.
+    ///
+    /// ⚠ Needs the Communication Notifications capability on the App ID. Without
+    /// it `updating(from:)` throws and we return nil, so the notification still
+    /// arrives in its plain form rather than not at all.
+    private static func asCommunication(
+        _ content: UNMutableNotificationContent,
+        senderUIN: Int
+    ) -> UNNotificationContent? {
+        let name = content.title.isEmpty ? "#\(senderUIN)" : content.title
+        var image: INImage?
+        if let data = AvatarThumbCache.data(for: senderUIN) {
+            image = INImage(imageData: data)
+        }
+        let handle = INPersonHandle(value: String(senderUIN), type: .unknown)
+        let sender = INPerson(
+            personHandle: handle,
+            nameComponents: nil,
+            displayName: name,
+            image: image,
+            contactIdentifier: nil,
+            customIdentifier: String(senderUIN)
+        )
+        let intent = INSendMessageIntent(
+            recipients: nil,
+            outgoingMessageType: .outgoingMessageText,
+            content: nil,
+            speakableGroupName: nil,
+            conversationIdentifier: content.threadIdentifier,
+            serviceName: nil,
+            sender: sender,
+            attachments: nil
+        )
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate(completion: nil)
+        return try? content.updating(from: intent)
+    }
+
     private func apply(decrypted: DecryptedEnvelope, to content: UNMutableNotificationContent) {
         // Sender's name. The main app pushes a `uin → nickname` cache
         // into the App Group on every contact-list refresh, so we have

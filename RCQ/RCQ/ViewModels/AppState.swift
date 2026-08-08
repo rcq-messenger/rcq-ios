@@ -936,6 +936,7 @@ final class AppState: ObservableObject {
         VoIPPushService.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        AvatarThumbCache.wipe()
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
@@ -993,6 +994,7 @@ final class AppState: ObservableObject {
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        AvatarThumbCache.wipe()
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
@@ -1382,6 +1384,7 @@ final class AppState: ObservableObject {
         // only burnAccount() (nuclear reset) clears them.
         NearbyService.shared.wipe()
         NicknameCache.wipe()
+        AvatarThumbCache.wipe()
         GroupNameCache.wipe()
         RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
