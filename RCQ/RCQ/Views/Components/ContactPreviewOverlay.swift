@@ -46,13 +46,26 @@ struct ContactPreviewOverlay: View {
                         // curved a rectangle much taller than the card and the
                         // card itself stayed square. The card owns its shape.
                         ChatPreviewView(target: target, compact: true, maxHeight: previewCap)
-                            .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
+                            // Tight, so it reads as lift rather than as a black
+                            // smudge above and below the card: on a dark
+                            // backdrop the old 18pt blur was the only thing
+                            // visible around it.
+                            .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                         actionList
                     }
                     .padding(.vertical, 16)
                     // Center the column when it's shorter than the screen,
                     // scroll when it's taller.
-                    .frame(minHeight: geo.size.height)
+                    //
+                    // ⚠ Full width + a content shape, so the EMPTY space around
+                    // the card is part of this view and dismisses on tap. The
+                    // scroll view covers the whole screen and swallows every tap
+                    // beside the card, so the scrim's own gesture underneath can
+                    // never be reached — tapping above or below the card did
+                    // nothing at all. The buttons inside still win their taps.
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onDismiss() }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .center)))
             }
