@@ -17,6 +17,36 @@ struct BackupFileView: View {
     @State private var busy: String?
     @State private var note: String?
     @State private var error: String?
+    /// A `.rcqbak` is the whole history in one file, and putting one back
+    /// REPLACES what is here. Both directions therefore sit behind the PIN when
+    /// one is set: exporting is the cheapest way to walk history out of a locked
+    /// app, and importing is the cheapest way to overwrite it.
+    ///
+    /// ⚠ Verified against the REAL PIN (PINVerifySheet → verifyRealPIN), so a
+    /// duress PIN cannot reach the true archive. That is the whole point of
+    /// having a duress PIN, and a gate that any PIN opens would undo it.
+    @State private var pinGate: PendingBackupAction?
+
+    private enum PendingBackupAction: Identifiable {
+        case export, restore
+        var id: Int { self == .export ? 0 : 1 }
+    }
+
+    /// Run [action] now, or ask for the PIN first when one is configured.
+    private func gated(_ action: PendingBackupAction) {
+        guard PanicPINService.shared.isConfigured else {
+            perform(action)
+            return
+        }
+        pinGate = action
+    }
+
+    private func perform(_ action: PendingBackupAction) {
+        switch action {
+        case .export: save()
+        case .restore: restore()
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,7 +66,7 @@ struct BackupFileView: View {
                         .disabled(busy != nil)
 
                         Button {
-                            save()
+                            gated(.export)
                         } label: {
                             Label("backup.export".localized, systemImage: "square.and.arrow.up")
                                 .foregroundColor(Theme.Color.accent)
@@ -51,7 +81,7 @@ struct BackupFileView: View {
 
                     Section {
                         Button {
-                            restore()
+                            gated(.restore)
                         } label: {
                             Label("backup.restore".localized, systemImage: "square.and.arrow.down")
                                 .foregroundColor(Theme.Color.accent)
@@ -96,6 +126,12 @@ struct BackupFileView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
+                }
+            }
+            .sheet(item: $pinGate) { action in
+                PINVerifySheet(title: "pin_verify.title.backup".localized) {
+                    pinGate = nil
+                    perform(action)
                 }
             }
         }

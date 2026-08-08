@@ -326,20 +326,9 @@ struct PrivacySettingsView: View {
             }
             .listRowBackground(Theme.Color.bgSecondary)
         }
-
-        // Screen privacy is now PER-CHAT (open a chat → ⋯ → Secure mode),
-        // not a global toggle — so the peer's screenshots blank too and a
-        // screenshot posts a notice. A short pointer where the old switch was.
-        Section {
-            HStack(spacing: 8) {
-                Image(systemName: "eye.slash")
-                    .foregroundColor(Theme.Color.accent)
-                Text("settings.privacy.screen_security.moved".localized)
-                    .font(.caption2)
-                    .foregroundColor(Theme.Color.textSecondary)
-            }
-        }
-        .listRowBackground(Theme.Color.bgSecondary)
+        // No screen-protection row here. It was a pointer saying the setting had
+        // moved into each chat (⋯ → Secure mode), which stopped being news a
+        // long time ago and just took up a section.
     }
 
     private var networkSection: some View {

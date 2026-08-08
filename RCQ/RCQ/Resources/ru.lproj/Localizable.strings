@@ -1982,6 +1982,7 @@
 "pin_verify.wrong" = "Неверный PIN. Попробуйте ещё раз.";
 "pin_verify.title.send_items" = "Подтвердите отправку предметов";
 "pin_verify.title.archive" = "Разблокировать архив контактов";
+"pin_verify.title.backup" = "Подтвердите ПИН-кодом";
 "settings.privacy.item_pin" = "PIN при трейде";
 "settings.privacy.item_pin.desc" = "Спрашивать Security PIN перед отправкой предмета, подарка или обмена.";
 "settings.privacy.item_pin.desc.no_pin" = "Сначала задайте Security PIN, чтобы включить это.";

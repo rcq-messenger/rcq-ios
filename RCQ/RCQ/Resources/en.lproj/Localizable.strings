@@ -2006,6 +2006,7 @@
 "pin_verify.wrong" = "Wrong PIN. Try again.";
 "pin_verify.title.send_items" = "Confirm sending items";
 "pin_verify.title.archive" = "Unlock archived contacts";
+"pin_verify.title.backup" = "Confirm with your PIN";
 "settings.privacy.item_pin" = "PIN on trade";
 "settings.privacy.item_pin.desc" = "Ask for your Security PIN before sending an item, gift or trade.";
 "settings.privacy.item_pin.desc.no_pin" = "Set up a Security PIN first to enable this.";

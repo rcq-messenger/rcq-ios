@@ -124,13 +124,33 @@ private struct BannerCard: View {
                 keyBase64: snapshot?.avatarMediaKey,
                 size: 32,
             )
-        default:
-            Image(systemName: bubbleGlyph)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(Theme.Color.accent))
+        case .thread(.peer(let uin)):
+            // The person's own picture, same as the group above gets. Only when
+            // they actually have one: without a picture this falls back to the
+            // bubble glyph rather than to the status flower, because a banner is
+            // about a message arriving, not about whether they are online.
+            let contact = ContactService.shared.contacts.first { $0.uin == uin }
+            if let id = contact?.avatarMediaID, !id.isEmpty {
+                PersonAvatarView(
+                    mediaID: id,
+                    keyBase64: contact?.avatarMediaKey,
+                    status: contact?.status ?? .offline,
+                    host: contact?.host,
+                    size: 32,
+                    crossIsland: contact?.host != nil
+                )
+            } else {
+                glyphAvatar
+            }
         }
+    }
+
+    private var glyphAvatar: some View {
+        Image(systemName: bubbleGlyph)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(.white)
+            .frame(width: 32, height: 32)
+            .background(Circle().fill(Theme.Color.accent))
     }
 
     private var bubbleGlyph: String {
