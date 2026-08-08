@@ -42,7 +42,13 @@ struct ContactPreviewOverlay: View {
                     VStack(spacing: 12) {
                         ChatPreviewView(target: target, compact: true)
                             .frame(maxHeight: previewCap)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            // 14pt on a card this size reads as square — the
+                            // corner is lost against 360x340 of opaque fill, and
+                            // next to the message preview and the action list
+                            // below it the card was the odd shape out. A
+                            // continuous (squircle) curve is what iOS uses for
+                            // its own context-menu previews.
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                             .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
                         actionList
                     }
@@ -68,7 +74,7 @@ struct ContactPreviewOverlay: View {
             }
         }
         .background(Rectangle().fill(.regularMaterial))
-        .clipShape(RoundedRectangle(cornerRadius: 13))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
         .frame(width: 260)
     }
