@@ -4,6 +4,14 @@ import SwiftUI
 struct ChatPreviewView: View {
     let target: ChatTarget
     var compact: Bool = true
+    /// Ceiling for the compact card on a short screen. Applied HERE, to the
+    /// card's own frame, so the card stays a fixed-size view: capping it from
+    /// the outside with `.frame(maxHeight:)` made it flexible, and the stack
+    /// above then stretched it to the full cap — which put the caller's
+    /// rounded clip on a rectangle far taller than the card, so the corners
+    /// curved somewhere out in empty space and the card itself read as a plain
+    /// square. It also left a large gap between the card and the action list.
+    var maxHeight: CGFloat = .greatestFiniteMagnitude
 
     @StateObject private var store = MessageStore.shared
     @StateObject private var contacts = ContactService.shared
@@ -19,8 +27,15 @@ struct ChatPreviewView: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .modifier(PreviewFrame(compact: compact))
-        .background(Theme.Color.bgPrimary)
+        .modifier(PreviewFrame(compact: compact, maxHeight: maxHeight))
+        // Compact = the floating card over a dimmed backdrop, which needs a
+        // surface that is actually distinguishable from it; full size = a plain
+        // screen, which uses the normal chat background.
+        .background(compact ? Theme.Color.bgElevated : Theme.Color.bgPrimary)
+        // Flatten the subtree (ScrollView, material pill, bubbles) into one
+        // layer, then round it HERE, where the bounds are the card's own.
+        .compositingGroup()
+        .clipShape(Self.cardShape(compact))
     }
 
     @ViewBuilder
@@ -149,6 +164,13 @@ struct ChatPreviewView: View {
 
     private static let bottomAnchorID = "__rcq_chat_preview_bottom"
 
+    /// The card's shape. Continuous (squircle) is what iOS gives its own
+    /// context-menu previews; 22pt is enough to read as a card at 360pt wide.
+    /// A full-size preview is a plain screen and stays square.
+    static func cardShape(_ compact: Bool) -> RoundedRectangle {
+        RoundedRectangle(cornerRadius: compact ? 22 : 0, style: .continuous)
+    }
+
     private func senderNickname(_ uin: Int) -> String {
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
         if case .group(let g) = target, let m = g.members.first(where: { $0.uin == uin }) {
@@ -168,9 +190,10 @@ private struct ChatPreviewBottomVisiblePref: PreferenceKey {
 
 private struct PreviewFrame: ViewModifier {
     let compact: Bool
+    let maxHeight: CGFloat
     func body(content: Content) -> some View {
         if compact {
-            content.frame(width: 360, height: 340)
+            content.frame(width: 360, height: min(340, maxHeight))
         } else {
             content
         }
