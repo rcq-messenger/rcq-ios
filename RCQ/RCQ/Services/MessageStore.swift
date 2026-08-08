@@ -195,10 +195,19 @@ final class MessageStore: ObservableObject {
     }
 
     /// Delete locally with two-phase fade. See `fadingOutIDs`.
+    ///
+    /// The row leaves the chat and leaves the export, but its id stays in the
+    /// database as a hidden tombstone. Nothing is shown in its place. That id is
+    /// the only thing standing between a deleted message and its own re-delivery:
+    /// every envelope is offered to this client at least twice by design (a
+    /// carbon of your own send, plus the at-least-once queue drain), and
+    /// `MessageDB.insert` recognises a copy only by an id it still has. Removing
+    /// the row was report #415 — the message came back after a restart, unread,
+    /// and in its pre-edit wording, because edits are never carboned.
     func deleteLocal(messageID: UUID, thread: ThreadID) {
         let exists = threads[thread]?.contains(where: { $0.id == messageID }) ?? false
         guard exists else {
-            MessageDB.shared.deleteRow(id: messageID)
+            MessageDB.shared.markDeletedLocally(id: messageID)
             return
         }
         fadingOutIDs.insert(messageID)
@@ -208,7 +217,7 @@ final class MessageStore: ObservableObject {
             guard var t = self.threads[thread] else { return }
             t.removeAll(where: { $0.id == messageID })
             self.threads[thread] = t
-            MessageDB.shared.deleteRow(id: messageID)
+            MessageDB.shared.markDeletedLocally(id: messageID)
         }
     }
 

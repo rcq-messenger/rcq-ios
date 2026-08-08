@@ -2148,6 +2148,7 @@
 "recovery.restore.working" = "Restoring your account…";
 "recovery.restore.error.invalid" = "That phrase isn't valid. Check the words and spelling, then try again.";
 "recovery.restore.error.notfound" = "No account was found for this phrase on this server. Check the server, or the phrase may belong elsewhere.";
+"recovery.restore.error.already_here" = "You already have number %d on this device. A second copy cannot be added: a number holds one set of keys on the server, so two copies would stop seeing each other's group messages. Switch to the account you already have from the main screen.";
 "recovery.restore.error.generic" = "Couldn't restore right now. Check your connection and try again.";
 "recovery.restore.error.server" = "Enter a valid server address.";
 "recovery.pin.title" = "Enter your PIN to view the recovery phrase";

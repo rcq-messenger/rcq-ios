@@ -19,6 +19,9 @@ final class MessageRecord: NSManagedObject {
     @NSManaged var deliveryState: String
     @NSManaged var receivedWhileAway: Bool
     @NSManaged var deletedForEveryone: Bool
+    /// Deleted by the user on this device: hidden from every read, id kept so a
+    /// re-delivered copy is still recognised. See the model note in `buildModel`.
+    @NSManaged var deletedLocally: Bool
     /// JSON `{ "<uin>": "<asset>" }`. Empty = `{}`.
     @NSManaged var reactionsJSON: String
     @NSManaged var thumbnailB64: String?
@@ -283,6 +286,17 @@ final class MessageDB {
             attr("deliveryState",      .stringAttributeType),
             attr("receivedWhileAway",  .booleanAttributeType),
             attr("deletedForEveryone", .booleanAttributeType),
+            // Deleted by the user on THIS device. The row stays, hidden from
+            // every read, because the id in the database IS the dedup:
+            // `insert` skips an id it already has. Removing the row threw
+            // that away, and every envelope is offered to the client at
+            // least twice by design (a carbon of your own send, plus the
+            // at-least-once queue drain), so a deleted message had a
+            // delivery path waiting for it. That was report #415: it came
+            // back after a restart, unread, and in its pre-edit wording
+            // because edits are never carboned. Additive with a default so
+            // lightweight migration keeps existing history.
+            attr("deletedLocally",     .booleanAttributeType, defaultValue: false),
             attr("reactionsJSON",      .stringAttributeType),
             attr("thumbnailB64",       .stringAttributeType, optional: true),
             attr("durationSec",        .doubleAttributeType),
@@ -313,6 +327,10 @@ final class MessageDB {
 
     func fetchAll() -> [Message] {
         let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        // Tombstoned rows are excluded here as well: this feeds the backup
+        // export, and a message the user deleted must not reappear because they
+        // exported and restored their own history.
+        req.predicate = NSPredicate(format: "deletedLocally == NO")
         req.sortDescriptors = [NSSortDescriptor(key: "sentAt", ascending: true)]
         let rows = (try? ctx.fetch(req)) ?? []
         return rows.map(toModel)
@@ -382,12 +400,23 @@ final class MessageDB {
         return ((try? ctx.count(for: req)) ?? 0) > 0
     }
 
+    /// Every thread read goes through here, which is why the locally-deleted
+    /// filter lives here too: a tombstoned row must be invisible to the chat,
+    /// to "load earlier" and to the load-more hint, and adding the clause at
+    /// each call site is how one of them ends up forgotten.
     private func threadPredicate(_ thread: ThreadID) -> NSPredicate {
+        let notDeleted = NSPredicate(format: "deletedLocally == NO")
         switch thread {
         case .peer(let uin):
-            return NSPredicate(format: "threadKind == %@ AND threadKey == %d", "peer", Int64(uin))
+            return NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "threadKind == %@ AND threadKey == %d", "peer", Int64(uin)),
+                notDeleted,
+            ])
         case .group(let id):
-            return NSPredicate(format: "threadKind == %@ AND threadKey == %d", "group", Int64(id))
+            return NSCompoundPredicate(andPredicateWithSubpredicates: [
+                NSPredicate(format: "threadKind == %@ AND threadKey == %d", "group", Int64(id)),
+                notDeleted,
+            ])
         }
     }
 
@@ -452,6 +481,20 @@ final class MessageDB {
         save()
     }
 
+    /// Hide a message the user deleted, keeping its id so a re-delivered copy
+    /// is still recognised as known. See the `deletedLocally` note in the model.
+    func markDeletedLocally(id: UUID) {
+        guard let row = find(id: id) else { return }
+        row.deletedLocally = true
+        row.text = ""
+        row.mediaID = nil
+        save()
+    }
+
+    /// Hard delete. Only for rows whose own lifetime ended: a disappearing
+    /// message that reached its TTL, or a whole thread being cleared. Those are
+    /// not user deletions of a single message, and tombstoning them would grow
+    /// the table by every disappearing message the account ever received.
     func deleteRow(id: UUID) {
         guard let row = find(id: id) else { return }
         ctx.delete(row)

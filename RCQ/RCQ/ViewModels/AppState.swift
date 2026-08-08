@@ -1243,6 +1243,47 @@ final class AppState: ObservableObject {
                 authenticated: false
             )
 
+            // Already on this device? Stop here, before anything is written.
+            //
+            // A number holds ONE set of libsignal keys on the server (the
+            // `signal_identity_key` column on the user row; the `devices` table
+            // is for secondary devices and no client registers one). A second
+            // local copy of a number therefore does not merely start empty: on
+            // its first boot `ensureBootstrapped` finds an empty store, runs
+            // `freshBootstrap`, and uploads a NEW identity key under the same
+            // uin. The second copy takes the number's server-side keys and the
+            // first is left holding key material the server no longer knows,
+            // permanently unable to open that number's group messages. Android
+            // had a dialog here and shipped a guard in 913c4f7; iOS had nothing,
+            // so this happened silently, up to `hardCap` copies.
+            //
+            // ⚠ Compared as (uin, serverURL): islands number independently, so
+            // uin 134 here and uin 134 elsewhere are different people and a
+            // genuine restore onto another island must still work.
+            //
+            // ⚠ The legacy fallback matters. `string(_:forAccount:)` reads the
+            // prefixed slot only; an install that predates multi-account keeps
+            // its uin in the unprefixed slot, and without the fallback the
+            // comparison returns nil for account[0] and waves the duplicate
+            // through — on exactly the installs most likely to have one.
+            let firstAccountID = AccountManager.shared.accounts
+                .sorted(by: { $0.createdAt < $1.createdAt }).first?.id
+            let duplicate = AccountManager.shared.accounts.contains { other in
+                guard other.id != acct.id, other.serverURL == serverURL else { return false }
+                let otherUIN = KeychainStore.string(KeychainStore.Keys.uin, forAccount: other.id)
+                    ?? (other.id == firstAccountID ? KeychainStore.string(KeychainStore.Keys.uin) : nil)
+                return otherUIN == String(rec.uin)
+            }
+            if duplicate {
+                KeychainStore.wipeAccount(acct.id)
+                AccountManager.shared.remove(acct.id)
+                if let prev = previousActiveID {
+                    AccountManager.shared.setActive(prev)
+                    await rebootForActiveAccount()
+                }
+                return String(format: "recovery.restore.error.already_here".localized, rec.uin)
+            }
+
             // Server kept the profile — pull the real nickname back.
             await APIClient.shared.setToken(rec.token)
             var nick = "user-\(rec.uin)"

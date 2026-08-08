@@ -1716,6 +1716,11 @@ final class MessageService {
                     }
                 }
                 if authorized {
+                    // The message disappears, with no "deleted" placeholder left
+                    // behind — a deliberate product choice, not an oversight.
+                    // `deleteLocal` now keeps the row's id in the database as a
+                    // hidden tombstone, so the dedup that stops a re-delivered
+                    // copy still holds without anything showing in the chat.
                     MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
                 }
             case .readReceipt(let ids):
