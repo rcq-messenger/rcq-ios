@@ -79,3 +79,50 @@ enum GroupNameCache {
         defaults?.removeObject(forKey: storageKey)
     }
 }
+
+/// App Group-shared avatar thumbnails, so a system notification can carry the
+/// sender's picture (`INSendMessageIntent`) instead of the app icon.
+///
+/// ⚠ Lives in this file on purpose: it is compiled into BOTH the app and the
+/// notification-service extension, and this file already is. A new file would
+/// have to be added to both targets by hand in the project, which is exactly
+/// the kind of edit that silently ends up in one of them.
+///
+/// Written lazily by the app whenever it has actually decrypted someone's
+/// avatar (see PersonAvatarView), so the extension gets a picture for the
+/// people the user has looked at, and nobody's avatar is fetched or decrypted
+/// just to fill a cache. A thumbnail is a small JPEG on disk in the shared
+/// container; the cache is wiped with the account.
+enum AvatarThumbCache {
+    private static var dir: URL? {
+        guard let base = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: AppGroup.identifier
+        ) else { return nil }
+        let d = base.appendingPathComponent("avatar-thumbs", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: d.path) {
+            try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+        return d
+    }
+
+    private static func url(_ uin: Int) -> URL? {
+        dir?.appendingPathComponent("\(uin).jpg")
+    }
+
+    /// Raw JPEG for [uin], or nil when we have never rendered their avatar.
+    static func data(for uin: Int) -> Data? {
+        guard let u = url(uin) else { return nil }
+        return try? Data(contentsOf: u)
+    }
+
+    /// Store a thumbnail. Overwrites; callers pass an already-small image.
+    static func store(_ jpeg: Data, for uin: Int) {
+        guard let u = url(uin) else { return }
+        try? jpeg.write(to: u, options: .atomic)
+    }
+
+    static func wipe() {
+        guard let d = dir else { return }
+        try? FileManager.default.removeItem(at: d)
+    }
+}

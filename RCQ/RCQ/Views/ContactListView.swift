@@ -1608,7 +1608,10 @@ private struct ContactRow: View {
                     status: contact.status,
                     host: contact.host,
                     size: 28,
-                    crossIsland: contact.host != nil
+                    crossIsland: contact.host != nil,
+                    // Feeds the App Group thumbnail the notification extension
+                    // puts on this person's system notifications.
+                    cacheForUIN: contact.uin
                 )
                 if contact.unread > 0 {
                     Text("\(contact.unread)")
