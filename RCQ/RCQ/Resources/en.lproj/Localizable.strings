@@ -419,7 +419,10 @@
 "relay.share.pick.body" = "Hand this contact a relay so they can get through when their own connections are blocked. They tap Add to use it.";
 "relay.share.group.warn" = "Every group member will see this relay. Only share scarce domestic relays in groups you trust.";
 "relay.import.title" = "Add a relay";
-"relay.import.body" = "Paste an rcq-relay:// link you received out of band.";
+"relay.import.hint" = "rcq-relay://… or an access key";
+"relay.key.active" = "Access key entered";
+"relay.key.remove" = "Remove";
+"relay.import.body" = "Paste an rcq-relay:// link somebody gave you, or the access key from your cabinet if you pay for private relays.";
 "relay.import.add" = "Add";
 "relay.shared.section" = "Shared relays";
 "relay.shared.empty" = "No shared relays. A contact can send you one in chat, or paste a link.";

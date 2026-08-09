@@ -27,6 +27,10 @@ final class BrokerRelayStore {
     /// (broker.py serves `d["tier"]`) — same trust anchor as the app's own API.
     private let trustedKey = "rcq.brokerRelays.trusted.v1"
     private let reportTSKey = "rcq.brokerRelays.reachReportTS.v1"
+    /// The paid tenant key, if the user has one. Device-level like everything
+    /// else here: it buys network access, not an identity, and somebody with
+    /// two accounts on one phone bought it once.
+    private let tenantKeyKey = "rcq.brokerRelays.tenantKey.v1"
     private static let host = "api.rcq.app"   // the broker lives on the flagship
     private static let want = 3
     private static let sharedPriority = 1000  // sort at the back, like contact relays
@@ -56,6 +60,22 @@ final class BrokerRelayStore {
         return relays().filter { tags.contains($0.tag) }
     }
 
+    /// The paid access key, or nil.
+    var tenantKey: String? {
+        (UserDefaults.standard.string(forKey: tenantKeyKey))
+            .flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Store (or clear, with nil) the paid access key.
+    func setTenantKey(_ key: String?) {
+        let trimmed = key?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            UserDefaults.standard.set(trimmed, forKey: tenantKeyKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: tenantKeyKey)
+        }
+    }
+
     func refreshInBackground() { Task { await self.refresh() } }
 
     /// Best-effort: pull a few bridges from the broker + cache them. No-op on any
@@ -64,6 +84,14 @@ final class BrokerRelayStore {
         guard let url = URL(string: "https://\(Self.host)/broker/bridges?n=\(Self.want)") else { return }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The paid key, when there is one, rides in Authorization — the broker
+        // adds that tenant's private endpoints to the ordinary answer. A header
+        // rather than a query parameter because proxies redact this one, and a
+        // relay key in an access log is the same mistake as a session token in
+        // one. Without a key nothing about this request changes.
+        if let paid = tenantKey {
+            req.setValue("Bearer \(paid)", forHTTPHeaderField: "Authorization")
+        }
         do {
             // Through the tunnel when it's up: a BLOCKED user can't reach
             // api.rcq.app directly, so without this they NEVER receive broker
