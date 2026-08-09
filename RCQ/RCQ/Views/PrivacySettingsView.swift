@@ -40,6 +40,10 @@ struct PrivacySettingsView: View {
     @State private var sharedRelays: [ContactRelayStore.Entry] = ContactRelayStore.shared.list()
     @State private var showRelayImport = false
     @State private var relayImportText = ""
+    /// Only whether a paid key is present, never the key. The cabinet is where
+    /// it can be read; a settings screen that prints it is one screenshot away
+    /// from handing it over.
+    @State private var hasRelayKey = BrokerRelayStore.shared.tenantKey != nil
     /// Relay tag pending a delete confirmation (set by the trash button).
     @State private var relayPendingDelete: String? = nil
     @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
@@ -245,14 +249,28 @@ struct PrivacySettingsView: View {
             .navigationTitle((pane == .network ? "settings.network" : "settings.privacy").localized)
             .navigationBarTitleDisplayMode(.inline)
             .alert("relay.import.title".localized, isPresented: $showRelayImport) {
-                TextField("rcq-relay://...", text: $relayImportText)
+                TextField("relay.import.hint".localized, text: $relayImportText)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                 Button("relay.import.add".localized) {
-                    if let r = ContactRelayStore.relayFromToken(relayImportText) {
+                    // One field, two things people are handed; the decision
+                    // lives in RelayInput so it is testable and identical to
+                    // Android's.
+                    switch RelayInput.classify(relayImportText) {
+                    case .link(let r):
                         ContactRelayStore.shared.add(r, fromUin: 0, fromName: nil)
                         sharedRelays = ContactRelayStore.shared.list()
+                    case .accessKey(let key):
+                        // Only the broker can say whether the key is good, and
+                        // asking it is this refresh — which also makes the
+                        // endpoints appear now rather than at the next launch.
+                        BrokerRelayStore.shared.setTenantKey(key)
+                        hasRelayKey = true
+                        BrokerRelayStore.shared.refreshInBackground()
+                    case .unusable:
+                        break
                     }
+                    relayImportText = ""
                 }
                 Button("common.cancel".localized, role: .cancel) {}
             } message: {
@@ -610,6 +628,23 @@ struct PrivacySettingsView: View {
                         // the tap on the trash glyph only.
                         .buttonStyle(.borderless)
                     }
+                }
+            }
+            if hasRelayKey {
+                HStack {
+                    Text("relay.key.active".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Button("relay.key.remove".localized) {
+                        BrokerRelayStore.shared.setTenantKey(nil)
+                        hasRelayKey = false
+                        BrokerRelayStore.shared.refreshInBackground()
+                    }
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.accent)
+                    // Same reason as the trash glyph above: a Button in a List
+                    // row otherwise takes the whole row's hit area.
+                    .buttonStyle(.borderless)
                 }
             }
             Button {
