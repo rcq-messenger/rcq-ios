@@ -268,9 +268,19 @@ class NotificationService: UNNotificationServiceExtension {
     /// and would not have the time budget to if it could. No thumbnail simply
     /// means no image, which is still a communication notification.
     ///
-    /// ⚠ Needs the Communication Notifications capability on the App ID. Without
-    /// it `updating(from:)` throws and we return nil, so the notification still
-    /// arrives in its plain form rather than not at all.
+    /// ⚠⚠ DORMANT UNTIL THE App ID GETS "Communication Notifications".
+    /// The entitlement is deliberately NOT in the .entitlements files: adding it
+    /// before the capability exists on the App ID fails the archive outright
+    /// ("Provisioning profile RCQ AppStore Manual doesn't include the
+    /// Communication Notifications capability", 2026-08-09), which is worse
+    /// than a plain banner. The code stays because it costs nothing while it is
+    /// dormant: `updating(from:)` throws without the entitlement and we return
+    /// nil, so the notification arrives in its ordinary form.
+    ///
+    /// To turn it on: enable the capability on app.rcq.client in the developer
+    /// portal, regenerate the AppStore profile, then put
+    /// `com.apple.developer.usernotifications.communication` back into BOTH
+    /// RCQ.entitlements and RCQNotificationService.entitlements.
     private static func asCommunication(
         _ content: UNMutableNotificationContent,
         senderUIN: Int
