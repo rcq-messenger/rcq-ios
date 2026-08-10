@@ -44,6 +44,12 @@ struct PrivacySettingsView: View {
     /// it can be read; a settings screen that prints it is one screenshot away
     /// from handing it over.
     @State private var hasRelayKey = BrokerRelayStore.shared.tenantKey != nil
+    /// Set when a key was accepted: how many endpoints of their own it unlocked.
+    /// Outside the import alert on purpose — that alert is gone by the time the
+    /// broker answers, and a confirmation inside a dismissed sheet says nothing.
+    @State private var relayKeyResult: Int?
+    /// Why a key was refused, already localized.
+    @State private var relayKeyError: String?
     /// Relay tag pending a delete confirmation (set by the trash button).
     @State private var relayPendingDelete: String? = nil
     @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
@@ -248,6 +254,28 @@ struct PrivacySettingsView: View {
             }
             .navigationTitle((pane == .network ? "settings.network" : "settings.privacy").localized)
             .navigationBarTitleDisplayMode(.inline)
+            .alert(
+                "relay.key.ok.title".localized,
+                isPresented: Binding(
+                    get: { relayKeyResult != nil },
+                    set: { if !$0 { relayKeyResult = nil } }
+                )
+            ) {
+                Button("common.ok".localized) { relayKeyResult = nil }
+            } message: {
+                Text(String(format: "relay.key.ok.body".localized, relayKeyResult ?? 0))
+            }
+            .alert(
+                "relay.key.bad.title".localized,
+                isPresented: Binding(
+                    get: { relayKeyError != nil },
+                    set: { if !$0 { relayKeyError = nil } }
+                )
+            ) {
+                Button("common.ok".localized) { relayKeyError = nil }
+            } message: {
+                Text(relayKeyError ?? "")
+            }
             .alert("relay.import.title".localized, isPresented: $showRelayImport) {
                 TextField("relay.import.hint".localized, text: $relayImportText)
                     .textInputAutocapitalization(.never)
@@ -264,9 +292,28 @@ struct PrivacySettingsView: View {
                         // Only the broker can say whether the key is good, and
                         // asking it is this refresh — which also makes the
                         // endpoints appear now rather than at the next launch.
+                        //
+                        // ⚠ And the answer is WAITED FOR. This used to set the
+                        // key and report success on the spot, so a string typed
+                        // at random was accepted exactly like a real key. The
+                        // broker says which it is now.
                         BrokerRelayStore.shared.setTenantKey(key)
-                        hasRelayKey = true
-                        BrokerRelayStore.shared.refreshInBackground()
+                        Task {
+                            await BrokerRelayStore.shared.refresh()
+                            switch BrokerRelayStore.shared.keyVerdict {
+                            case "ok":
+                                hasRelayKey = true
+                                relayKeyResult = BrokerRelayStore.shared.privateRelays().count
+                            case "expired":
+                                BrokerRelayStore.shared.setTenantKey(nil)
+                                relayKeyError = "relay.key.expired".localized
+                            default:
+                                // Not ours: drop it rather than leave a dead key
+                                // in place quietly failing forever.
+                                BrokerRelayStore.shared.setTenantKey(nil)
+                                relayKeyError = "relay.key.unknown".localized
+                            }
+                        }
                     case .unusable:
                         break
                     }

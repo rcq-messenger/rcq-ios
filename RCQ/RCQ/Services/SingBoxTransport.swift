@@ -532,14 +532,51 @@ final class SingBoxTransport {
                 }
                 return out
             }
-            out.append([
-                "type": "urltest",
-                "tag": "out",
-                "outbounds": ordered.map { $0.tag },
-                "url": Self.probeURL,
-                "interval": "5m",
-                "tolerance": 50,
-            ])
+            // PAID NODES FIRST. Somebody who buys private endpoints was getting
+            // them thrown into one latency race against the fourteen everybody
+            // has, and losing it about as often as winning: the thing they paid
+            // for carried a minority of their traffic. What is sold is a route
+            // nobody else is on, so it IS the route.
+            //
+            // The shared pool stays in the config underneath rather than being
+            // dropped: a private node that dies or is blocked must not leave a
+            // paying customer worse off than a free one. urltest picks the best
+            // LIVE member, so racing the paid nodes against one entry that is
+            // itself the shared race gives exactly "theirs while any of theirs
+            // answers, everyone's when none do".
+            let mineTags = Set(BrokerRelayStore.shared.privateRelays().map { $0.tag })
+            let mine = ordered.filter { mineTags.contains($0.tag) }
+            let shared = ordered.filter { !mineTags.contains($0.tag) }
+            if !mine.isEmpty && !shared.isEmpty {
+                out.append([
+                    "type": "urltest",
+                    "tag": "shared",
+                    "outbounds": shared.map { $0.tag },
+                    "url": Self.probeURL,
+                    "interval": "5m",
+                    "tolerance": 50,
+                ])
+                out.append([
+                    "type": "urltest",
+                    "tag": "out",
+                    "outbounds": mine.map { $0.tag } + ["shared"],
+                    "url": Self.probeURL,
+                    "interval": "5m",
+                    // Wide, so a shared node a few tens of milliseconds quicker
+                    // cannot pull a paying customer off their own node. Only a
+                    // real failure should.
+                    "tolerance": 3000,
+                ])
+            } else {
+                out.append([
+                    "type": "urltest",
+                    "tag": "out",
+                    "outbounds": ordered.map { $0.tag },
+                    "url": Self.probeURL,
+                    "interval": "5m",
+                    "tolerance": 50,
+                ])
+            }
             for r in ordered {
                 switch r.proto {
                 case .vless:

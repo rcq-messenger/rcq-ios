@@ -1699,8 +1699,12 @@ struct ServerCapabilities: Decodable, Equatable {
     }
 }
 
-private struct ServerInfoResponse: Decodable {
+struct ServerInfoResponse: Decodable {
     let name: String
+    /// The operator's welcome / rules text. Served since islands existed and
+    /// read by nothing, which is why the admin panel warned that typing here
+    /// changed nothing.
+    let welcome: String?
     let capabilities: ServerCapabilities
 }
 
@@ -1711,6 +1715,23 @@ enum ServerInfoService {
     /// this, and we never collapse a previously-known-good capability
     /// set on a transient miss. Callers should only adopt the returned
     /// value on success; see `AppState.boot` for the gating.
+    /// `/server/info` for an island we are NOT on, by host. The name and the
+    /// house rules belong on the confirm before joining, which is the one
+    /// moment anybody reads them, and that has to ask the island itself rather
+    /// than the one we happen to be on. Nil when it does not answer.
+    static func fetch(host: String) async -> ServerInfoResponse? {
+        guard let url = URL(string: "https://\(host)/server/info") else { return nil }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            let (data, resp) = try await URLSession(configuration: .ephemeral).data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try JSONDecoder().decode(ServerInfoResponse.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
     static func fetch() async -> ServerCapabilities? {
         do {
             let info: ServerInfoResponse = try await APIClient.shared.request(

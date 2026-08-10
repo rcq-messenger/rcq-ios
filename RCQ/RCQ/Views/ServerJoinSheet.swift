@@ -10,6 +10,11 @@ struct ServerJoinSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var joining = false
     @State private var error: String?
+    /// The island's own description, asked of the island. Both fields have been
+    /// served forever and shown nowhere, so an operator could name their island
+    /// and set house rules that no one could ever read. This is the screen they
+    /// are for.
+    @State private var info: ServerInfoResponse?
 
     /// Bare domain from the link → a full https URL the app can register against.
     private var serverURL: String {
@@ -25,9 +30,10 @@ struct ServerJoinSheet: View {
                 .foregroundColor(Theme.Color.accent)
                 .padding(.top, 8)
 
-            Text("serverjoin.title".localized)
+            Text(info?.name.isEmpty == false ? (info?.name ?? "") : "serverjoin.title".localized)
                 .font(.title3.weight(.semibold))
                 .foregroundColor(Theme.Color.textPrimary)
+                .multilineTextAlignment(.center)
 
             Text(request.host)
                 .font(.callout.weight(.medium))
@@ -40,6 +46,19 @@ struct ServerJoinSheet: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // House rules, if the operator wrote any. Scrolls under a cap: a
+            // long set is exactly what pushes the buttons off a sheet.
+            if let rules = info?.welcome, !rules.isEmpty {
+                ScrollView {
+                    Text(rules)
+                        .font(.footnote)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxHeight: 180)
+            }
 
             if let error {
                 Text(error)
@@ -73,6 +92,10 @@ struct ServerJoinSheet: View {
         .frame(maxWidth: .infinity)
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
         .presentationDetents([.medium])
+        .task {
+            // Asked of the island being joined, not of the one we are on.
+            info = await ServerInfoService.fetch(host: request.host)
+        }
     }
 
     private func join() async {

@@ -31,6 +31,15 @@ final class BrokerRelayStore {
     /// else here: it buys network access, not an identity, and somebody with
     /// two accounts on one phone bought it once.
     private let tenantKeyKey = "rcq.brokerRelays.tenantKey.v1"
+    /// Tags of the endpoints this account PAYS for. The broker marks them
+    /// because without the mark a bought node was indistinguishable from one of
+    /// the fourteen everybody gets, so it went into the same latency race and
+    /// lost it about as often as it won.
+    private let privateKey = "rcq.brokerRelays.private.v1"
+    /// What the broker made of the key we last sent: nil (none sent), "ok",
+    /// "unknown", "expired". A wrong key used to be indistinguishable from a
+    /// right one, so the app accepted anything typed into the field.
+    private let verdictKey = "rcq.brokerRelays.keyVerdict.v1"
     private static let host = "api.rcq.app"   // the broker lives on the flagship
     private static let want = 3
     private static let sharedPriority = 1000  // sort at the back, like contact relays
@@ -39,10 +48,12 @@ final class BrokerRelayStore {
     private static let maxProbe = 20
 
     private struct BridgesResponse: Codable { let relays: [Envelope.RelayShareWire] }
+    /// The verdict on the key we sent, alongside the relays.
+    private struct KeyResponse: Codable { let key: String? }
     /// Parsed in parallel with `BridgesResponse` (same array, positionally
     /// aligned) to pull each descriptor's `tier` without touching `RelayShareWire`.
     private struct TierResponse: Codable {
-        struct Item: Codable { let tier: String? }
+        struct Item: Codable { let tier: String?; let `private`: Bool? }
         let relays: [Item]
     }
 
@@ -59,6 +70,16 @@ final class BrokerRelayStore {
         guard !tags.isEmpty else { return [] }
         return relays().filter { tags.contains($0.tag) }
     }
+
+    /// The endpoints this account pays for.
+    func privateRelays() -> [Relay] {
+        let tags = Set(UserDefaults.standard.stringArray(forKey: privateKey) ?? [])
+        guard !tags.isEmpty else { return [] }
+        return relays().filter { tags.contains($0.tag) }
+    }
+
+    /// What the broker said about the key on the last refresh.
+    var keyVerdict: String? { UserDefaults.standard.string(forKey: verdictKey) }
 
     /// The paid access key, or nil.
     var tenantKey: String? {
@@ -107,8 +128,10 @@ final class BrokerRelayStore {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let parsed = try JSONDecoder().decode(BridgesResponse.self, from: data)
             let tiers = (try? JSONDecoder().decode(TierResponse.self, from: data))?.relays ?? []
+            let verdict = (try? JSONDecoder().decode(KeyResponse.self, from: data))?.key
             var out: [Relay] = []
             var trusted: [String] = []
+            var mine: [String] = []
             for (i, w) in parsed.relays.enumerated() {
                 guard let r = ContactRelayStore.relayFromWire(w) else { continue }
                 let safe = String(r.server.map { $0.isLetter || $0.isNumber ? $0 : "-" })
@@ -119,11 +142,15 @@ final class BrokerRelayStore {
                     shortID: r.shortID, flow: r.flow, password: r.password, obfsPassword: r.obfsPassword,
                 ))
                 if i < tiers.count, tiers[i].tier == "trusted" { trusted.append(tag) }
+                if i < tiers.count, tiers[i].private == true { mine.append(tag) }
             }
             if let enc = try? JSONEncoder().encode(out) {
                 UserDefaults.standard.set(enc, forKey: key)
             }
             UserDefaults.standard.set(trusted, forKey: trustedKey)
+            UserDefaults.standard.set(mine, forKey: privateKey)
+            if let verdict { UserDefaults.standard.set(verdict, forKey: verdictKey) }
+            else { UserDefaults.standard.removeObject(forKey: verdictKey) }
         } catch {
             // best-effort — keep the cached set
         }
