@@ -64,6 +64,7 @@ final class CallService: ObservableObject {
     // and ends the call if it never recovers.
     private var disconnectGraceTask: Task<Void, Never>?
     private var calleeFailsafeTask: Task<Void, Never>?
+    private var connectTimeoutTask: Task<Void, Never>?
     private var iceRestarting = false
     private var iceRestartAttempts = 0
     // iOS marks .connected on the SDP answer (before ICE connects), so gate
@@ -73,6 +74,7 @@ final class CallService: ObservableObject {
     private static let iceDisconnectGraceNs: UInt64 = 4_000_000_000
     private static let iceRestartTimeoutNs: UInt64 = 12_000_000_000
     private static let calleeFailsafeNs: UInt64 = 32_000_000_000
+    private static let connectTimeoutNs: UInt64 = 35_000_000_000
     private static let maxIceRestarts = 2
 
     private var cancellables = Set<AnyCancellable>()
@@ -224,6 +226,7 @@ final class CallService: ObservableObject {
                 }
                 pendingRemoteIce.removeAll()
                 pendingRemoteOffer = nil
+                armConnectTimeout(call: call)
             } catch {
                 print("[CallService] handleOffer failed: \(error)")
                 answering = false
@@ -432,6 +435,8 @@ final class CallService: ObservableObject {
     /// Media reconnected (or first connected): clear any in-flight recovery and
     /// restore the per-incident restart budget (it's per-drop, not per-call).
     private func onIceConnected() {
+        // Cancels the connect timeout too: media is flowing, so the handshake
+        // that timeout was watching finished.
         cancelRecoveryTimers()
         iceRestarting = false
         iceRestartAttempts = 0
@@ -583,6 +588,30 @@ final class CallService: ObservableObject {
     private func cancelRecoveryTimers() {
         disconnectGraceTask?.cancel(); disconnectGraceTask = nil
         calleeFailsafeTask?.cancel(); calleeFailsafeTask = nil
+        connectTimeoutTask?.cancel(); connectTimeoutTask = nil
+    }
+
+    /// The SDP handshake is done but ICE may never complete (dead TURN path,
+    /// symmetric NAT on both ends). Without this the call sits on a silent
+    /// "Connecting…" forever, and on iOS it also sits in the system call UI,
+    /// because `.connected` here means "the answer landed", not "media flows".
+    /// Android has ended such calls at 35s since the same bug was found there;
+    /// iOS had no equivalent. No-op once ICE actually connects.
+    private func armConnectTimeout(call: Call) {
+        connectTimeoutTask?.cancel()
+        connectTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.connectTimeoutNs)
+            guard let self, !Task.isCancelled else { return }
+            self.connectTimeoutTask = nil
+            guard case .connected(let cur) = self.state,
+                  cur.id == call.id, !self.iceEverConnected else { return }
+            print("[CallService] connect timeout call=\(call.id.prefix(8)) — ICE never came up")
+            self.sendEnd(call: cur, reason: "setup_failed")
+            self.state = .ended(cur, reason: "setup_failed")
+            CallProvider.shared.reportEnded(callID: cur.id, reason: .failed)
+            self.teardownAfterEnd()
+            self.scheduleEndedClear()
+        }
     }
 
     private func resetRecoveryState() {
@@ -620,6 +649,8 @@ final class CallService: ObservableObject {
             }
         case "call_end":
             handle(.callEnd(fromUIN: fromUIN, callID: callID, reason: data["reason"] ?? "ended"))
+        case "call_unreachable":
+            handle(.callUnreachable(fromUIN: fromUIN, callID: callID))
         case "call_renegotiate":
             handle(.callRenegotiate(fromUIN: fromUIN, callID: callID, sdp: sdp))
         case "call_renegotiate_answer":
@@ -689,6 +720,7 @@ final class CallService: ObservableObject {
                             WebRTCManager.shared.addRemoteIce(candidateJSON: json)
                         }
                         pendingRemoteIce.removeAll()
+                        armConnectTimeout(call: c)
                     } catch {
                         print("[CallService] handleAnswer failed: \(error)")
                         sendEnd(call: c, reason: "setup_failed")
@@ -711,6 +743,14 @@ final class CallService: ObservableObject {
         case .callEnd(_, let callID, let reason):
             print("[CallService] WS callEnd callID=\(callID) reason=\(reason)")
             handleRemoteEnd(callID: callID, reason: reason)
+        case .callUnreachable(_, let callID):
+            // Nothing is going to ring on the other side: the island has neither
+            // a socket nor a push endpoint for them. End now rather than play a
+            // ringback for a minute and call it "no answer" — the caller was
+            // being told they are ignored when they were not being reached.
+            // Android has done this since 0.96; iOS ignored the signal entirely.
+            print("[CallService] WS callUnreachable callID=\(callID)")
+            handleRemoteEnd(callID: callID, reason: "unreachable")
         case .callRenegotiate(_, let callID, let sdp):
             handleIncomingRenegotiate(callID: callID, sdp: sdp)
         case .callRenegotiateAnswer(_, let callID, let sdp):
@@ -790,6 +830,9 @@ final class CallService: ObservableObject {
         case "declined":     return .declinedElsewhere
         case "busy":         return .unanswered
         case "expired":      return .unanswered
+        // Nobody was reached, so the system call log should not read as an
+        // unanswered call the peer chose to sit through.
+        case "unreachable":  return .failed
         case "setup_failed": return .failed
         default:             return .remoteEnded
         }
@@ -895,6 +938,8 @@ final class CallService: ObservableObject {
                 outcomeKey = call.direction == .outgoing
                     ? "chat.call.outcome.no_answer"
                     : "chat.call.outcome.missed"
+            case "unreachable":
+                outcomeKey = "chat.call.outcome.unreachable"
             case "setup_failed":
                 outcomeKey = "chat.call.outcome.failed"
             case "peer_disconnected":
