@@ -911,6 +911,7 @@
 "chat.call.outcome.missed" = "Пропущен";
 "chat.call.outcome.busy" = "Занято";
 "chat.call.outcome.no_answer" = "Без ответа";
+"chat.call.outcome.unreachable" = "Не удалось дозвониться";
 "chat.call.outcome.failed" = "Не удалось";
 "chat.call.outcome.disconnected" = "Связь прервана";
 "chat.call.outcome.ended" = "Завершён";

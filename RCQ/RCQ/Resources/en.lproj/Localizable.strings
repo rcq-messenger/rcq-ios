@@ -946,6 +946,7 @@
 "chat.call.outcome.missed" = "Missed";
 "chat.call.outcome.busy" = "Busy";
 "chat.call.outcome.no_answer" = "No answer";
+"chat.call.outcome.unreachable" = "Could not be reached";
 "chat.call.outcome.failed" = "Failed";
 "chat.call.outcome.disconnected" = "Disconnected";
 "chat.call.outcome.ended" = "Ended";

@@ -23,6 +23,10 @@ final class WebSocketService: ObservableObject {
         case callAnswer(fromUIN: Int, callID: String, sdp: String)
         case callIce(fromUIN: Int, callID: String, candidateJSON: String)
         case callEnd(fromUIN: Int, callID: String, reason: String)
+        /// The island has no socket and no push endpoint for the callee, so
+        /// nothing is going to ring on their side at all. Separate from
+        /// `callEnd` because it is the island talking, not the peer.
+        case callUnreachable(fromUIN: Int, callID: String)
         case callRenegotiate(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateAnswer(fromUIN: Int, callID: String, sdp: String)
         case callRenegotiateDecline(fromUIN: Int, callID: String)
@@ -597,6 +601,11 @@ final class WebSocketService: ObservableObject {
                   let callID = dict["call_id"] as? String else { return }
             let reason = (dict["reason"] as? String) ?? "ended"
             events.send(.callEnd(fromUIN: from, callID: callID, reason: reason))
+
+        case "call_unreachable":
+            guard let from = dict["from_uin"] as? Int,
+                  let callID = dict["call_id"] as? String else { return }
+            events.send(.callUnreachable(fromUIN: from, callID: callID))
 
         case "call_renegotiate":
             guard let from = dict["from_uin"] as? Int,

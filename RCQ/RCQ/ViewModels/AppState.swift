@@ -1608,7 +1608,7 @@ final class AppState: ObservableObject {
 
 		case
              .randomMatch, .randomEnd,
-             .callOffer, .callAnswer, .callIce, .callEnd,
+             .callOffer, .callAnswer, .callIce, .callEnd, .callUnreachable,
              .callRenegotiate, .callRenegotiateAnswer, .callRenegotiateDecline,
              .callIceRestart, .callIceRestartAnswer,
              .roomEnterRejected, .roomRoster, .roomMemberEntered, .roomMemberLeft,
