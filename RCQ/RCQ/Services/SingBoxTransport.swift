@@ -73,23 +73,48 @@ final class SingBoxTransport {
     /// (nearest + spread) happens in `selectEntryIfNeeded()` before the config
     /// is built — this reader just resolves the pinned tag into a Relay.
     private static func stickyEntry(_ pool: [Relay]) -> Relay {
+        // An account with its own nodes pins one of THOSE, even when a public
+        // relay was pinned first. The pin predates the purchase, and honouring it
+        // is precisely how a paid endpoint ends up carrying nothing.
+        let mineTags = Set(privateVlessEntries().map { $0.tag })
+        let mine = pool.filter { mineTags.contains($0.tag) }
+        let field = mine.isEmpty ? pool : mine
         if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
-           let hit = pool.first(where: { $0.tag == tag }) {
+           let hit = field.first(where: { $0.tag == tag }) {
             return hit
         }
-        let pick = pool[0]
+        let pick = field[0]
         UserDefaults.standard.set(pick.tag, forKey: Keys.onionEntry)
         return pick
     }
 
+    /// The account's own paid VLESS endpoints, which outrank every public
+    /// candidate for the onion guard.
+    ///
+    /// The ENTRY is the only relay address the client's network operator ever
+    /// sees, so it is the only one worth owning. Every public entry is listed in
+    /// the signed config, which is a plain unauthenticated fetch — a blocklist
+    /// covering the whole pool costs one download. A private endpoint appears in
+    /// no such list (the broker never serves it outside its tenant), so it
+    /// outlives that blocklist. The EXIT deliberately stays public: it is
+    /// invisible from the client's side, so owning it buys nothing, and it is
+    /// where a paying customer's traffic mixes with everybody else's.
+    static func privateVlessEntries() -> [Relay] {
+        BrokerRelayStore.shared.privateRelays().filter { $0.proto == .vless }
+    }
+
     /// VLESS relays eligible to be the onion ENTRY (hydra step 3). An entry sees
-    /// the client IP (but never the destination), so it must be VETTED: the
-    /// signed-config relays (Ed25519-curated = trusted by provenance) plus broker
-    /// relays the operator promoted to `tier=trusted`. Social-shared relays
-    /// (ContactRelayStore) are deliberately excluded — they only ever serve as
-    /// exits / fallback. Dedup by server:port.
+    /// the client IP (but never the destination), so it must be VETTED — which
+    /// reads as "curated by us OR owned by you": the account's own paid endpoints
+    /// first, then the signed-config relays (Ed25519-curated = trusted by
+    /// provenance), then broker relays the operator promoted to `tier=trusted`.
+    /// Social-shared relays (ContactRelayStore) are deliberately excluded — they
+    /// only ever serve as exits / fallback. Dedup by server:port keeps the first
+    /// occurrence, so the paid ordering survives it.
     static func trustedVlessEntries() -> [Relay] {
-        let combined = RelayConfigStore.shared.currentRelays() + BrokerRelayStore.shared.trustedRelays()
+        let combined = privateVlessEntries()
+            + RelayConfigStore.shared.currentRelays()
+            + BrokerRelayStore.shared.trustedRelays()
         var seen = Set<String>()
         var out: [Relay] = []
         for r in combined where r.proto == .vless && seen.insert("\(r.server):\(r.port)").inserted {
@@ -107,19 +132,44 @@ final class SingBoxTransport {
     /// is handled separately by `rotateEntry()`. With a single trusted entry this
     /// degrades to today's behaviour; it spreads only once >1 trusted entry
     /// exists (e.g. гидра promotes more domestic relays to trusted).
+    ///
+    /// An account with its own paid endpoints draws the guard from THOSE, and
+    /// only falls back to the public pool when none of them answer — the paid
+    /// entry is the product, but a formed chain outranks owning it.
     static func selectEntryIfNeeded() async {
         onionEntryReachable = false
         guard onionMode, !localProxyMode else { return }
-        let candidates = trustedVlessEntries()
-        guard !candidates.isEmpty else { return }   // no trusted entry -> onion can't form -> single-hop fallback
-        // Keep the pinned guard if it's still a trusted candidate, but confirm it's
-        // reachable (gates onion-vs-single-hop; a blocked guard => single-hop).
+        let all = trustedVlessEntries()
+        guard !all.isEmpty else { return }   // no trusted entry -> onion can't form -> single-hop fallback
+        let mine = privateVlessEntries()
+        let field = mine.isEmpty ? all : mine
+        // Keep the pinned guard if it's still an eligible candidate, but confirm
+        // it's reachable (gates onion-vs-single-hop; a blocked guard => single-hop).
+        // A pinned PAID node that went silent falls through to re-selection (its
+        // siblings, then the public pool) instead of collapsing the whole chain
+        // onto one dead address. Note a public pin under a paying account never
+        // matches `field` at all, so the purchase re-pins on its own.
         if let tag = UserDefaults.standard.string(forKey: Keys.onionEntry),
-           let pinned = candidates.first(where: { $0.tag == tag }) {
+           let pinned = field.first(where: { $0.tag == tag }) {
             onionEntryReachable = await Self.probeLatencyMS(host: pinned.server, port: pinned.port) != nil
-            return
+            if onionEntryReachable || mine.isEmpty { return }
         }
-        // (Re)select: probe reachability + latency in parallel.
+        var (pickTag, reachable) = await Self.probeAndPick(field)
+        if !reachable, !mine.isEmpty {
+            (pickTag, reachable) = await Self.probeAndPick(all)
+        }
+        UserDefaults.standard.set(pickTag, forKey: Keys.onionEntry)
+        // Reachable only if the chosen entry answered a probe; an all-probes-failed
+        // pick is NOT reachable -> single-hop fallback.
+        onionEntryReachable = reachable
+        print("[SingBoxTransport] onion entry selected -> \(pickTag) (trusted=\(all.count), paid=\(mine.count), reachable=\(reachable))")
+    }
+
+    /// Probe `candidates` in parallel and choose a guard among them. Returns the
+    /// chosen tag plus whether that candidate actually answered: an
+    /// all-probes-failed pick is a spread guess, not a live entry, and the caller
+    /// needs to tell the two apart.
+    private static func probeAndPick(_ candidates: [Relay]) async -> (String, Bool) {
         let measured: [(tag: String, ms: Double)] = await withTaskGroup(of: (String, Double?).self) { group in
             for c in candidates {
                 group.addTask { (c.tag, await Self.probeLatencyMS(host: c.server, port: c.port)) }
@@ -128,25 +178,15 @@ final class SingBoxTransport {
             for await (tag, ms) in group { if let ms { ok.append((tag: tag, ms: ms)) } }
             return ok
         }
-        let pickTag: String
-        if measured.isEmpty {
-            // Every probe failed (probing the relay port may itself be filtered):
-            // still SPREAD — a random trusted candidate beats always camping pool[0].
-            pickTag = candidates.randomElement()!.tag
-        } else {
-            // NEAREST with SPREAD: pick at random among entries within `tolerance`
-            // of the fastest, so near-equals share load while a clearly-closer
-            // (e.g. domestic) entry still wins.
-            let best = measured.map { $0.ms }.min()!
-            let tolerance = 50.0   // ms — mirrors the urltest tolerance
-            let near = measured.filter { $0.ms <= best + tolerance }
-            pickTag = near.randomElement()!.tag
-        }
-        UserDefaults.standard.set(pickTag, forKey: Keys.onionEntry)
-        // Reachable only if the chosen entry was among the successful probes; an
-        // all-probes-failed random pick is NOT reachable -> single-hop fallback.
-        onionEntryReachable = measured.contains { $0.tag == pickTag }
-        print("[SingBoxTransport] onion entry selected -> \(pickTag) (trusted=\(candidates.count), reachable=\(measured.count))")
+        // Every probe failed (probing the relay port may itself be filtered):
+        // still SPREAD — a random candidate beats always camping on [0].
+        if measured.isEmpty { return (candidates.randomElement()!.tag, false) }
+        // NEAREST with SPREAD: pick at random among entries within `tolerance`
+        // of the fastest, so near-equals share load while a clearly-closer
+        // (e.g. domestic) entry still wins.
+        let best = measured.map { $0.ms }.min()!
+        let tolerance = 50.0   // ms — mirrors the urltest tolerance
+        return (measured.filter { $0.ms <= best + tolerance }.randomElement()!.tag, true)
     }
 
     /// Rotate the onion ENTRY guard to the next VLESS relay (round-robin),
@@ -155,11 +195,16 @@ final class SingBoxTransport {
     /// different entry was chosen; the caller restarts the transport.
     static func rotateEntry() -> Bool {
         guard !localProxyMode else { return false }   // no onion entry under a user proxy
-        // Rotate only among TRUSTED entries — never onto a community/shared relay
-        // that would then see the client IP.
-        let candidates = trustedVlessEntries()
-        guard candidates.count >= 2 else { return false }
         let cur = UserDefaults.standard.string(forKey: Keys.onionEntry)
+        // Rotate only among TRUSTED entries — never onto a community/shared relay
+        // that would then see the client IP. A paying account rotates within its
+        // OWN nodes while it still has a spare: leaving the paid entry on its
+        // first failure would hand it back to the pool it was bought to escape.
+        // With one paid node and that node confirmed blocked, the public trusted
+        // entries are next in line — connectivity outranks ownership.
+        let mine = privateVlessEntries()
+        let candidates = (mine.count >= 2 && mine.contains { $0.tag == cur }) ? mine : trustedVlessEntries()
+        guard candidates.count >= 2 else { return false }
         let idx = candidates.firstIndex(where: { $0.tag == cur }) ?? -1
         let next = candidates[(idx + 1) % candidates.count]
         guard next.tag != cur else { return false }
@@ -487,7 +532,18 @@ final class SingBoxTransport {
             // prototype + Android emulator (RCQ/docs/onion-design.md).
             if Self.onionMode, vless.count >= 2, Self.onionEntryReachable {
                 let entry = stickyEntry(vless)          // O4: persisted guard, not just vless[0]
-                let exits = vless.filter { $0.tag != entry.tag }
+                // The EXITS stay public even for an account that owns nodes.
+                // Nothing on the client's side of the wire ever sees an exit
+                // address, so a private one buys no reachability; what it costs is
+                // the mixing — a private exit would carry one tenant's traffic and
+                // nobody else's, which is the opposite of what the second hop is
+                // for. It also keeps the chain buildable with no change to the
+                // public relays: the paid ENTRY is the only machine that has to be
+                // allowed to forward onward.
+                let ownTags = Set(Self.privateVlessEntries().map { $0.tag })
+                let others = vless.filter { $0.tag != entry.tag }
+                let publicExits = others.filter { !ownTags.contains($0.tag) }
+                let exits = publicExits.isEmpty ? others : publicExits
                 out.append([
                     "type": "urltest",
                     "tag": "out",
@@ -514,8 +570,16 @@ final class SingBoxTransport {
             // onion user through a relay they didn't vouch for would expose their IP +
             // destination island. The domestic bundled entry keeps this reachable for a
             // blocked user even when the foreign trusted relays are down.
+            //
+            // The account's OWN endpoints lead this race. Without them a paying
+            // customer whose chain failed to form would single-hop over exactly
+            // the signed-config addresses a censor downloads in one request — the
+            // pool they bought their way out of — while the nodes nobody can
+            // enumerate sat unused at the one moment they were needed.
             if Self.onionMode {
-                let trusted = RelayConfigStore.shared.currentRelays()
+                var seenTrusted = Set<String>()
+                let trusted = (BrokerRelayStore.shared.privateRelays() + RelayConfigStore.shared.currentRelays())
+                    .filter { seenTrusted.insert("\($0.proto):\($0.server):\($0.port)").inserted }
                 out.append([
                     "type": "urltest",
                     "tag": "out",
