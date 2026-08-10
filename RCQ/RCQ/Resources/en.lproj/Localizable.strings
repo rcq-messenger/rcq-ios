@@ -2229,3 +2229,9 @@
 "contact.name_hint" = "Stays on this device only. The other person is never told.";
 "contact.name_placeholder" = "Name";
 "my_uins.held_count" = "%1$d of %2$d";
+
+"relay.key.unknown" = "This key is not one of ours. Check that you copied all of it.";
+"relay.key.expired" = "This key belongs to a subscription that has run out. Renew it in the console and it starts working again.";
+"relay.key.ok.title" = "Key accepted";
+"relay.key.ok.body" = "%d node(s) of your own are now in use. The shared pool stays as a fallback.";
+"relay.key.bad.title" = "Key not accepted";
