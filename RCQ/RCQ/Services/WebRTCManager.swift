@@ -55,6 +55,39 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// TURN bundle + expiry; refreshed within 5 minutes of expiry.
     private var cachedTurn: (server: RTCIceServer, expiresAt: Date)?
 
+    /// Whether a throwaway allocation produced a relay candidate on this
+    /// network. nil until measured. Static so the answer survives per-call
+    /// managers — it is a property of the network, not of one call.
+    static var relayReachable: Bool?
+
+    /// Measure it. Cheap (no media, one data channel), bounded, and the result
+    /// is what decides relay-only below.
+    static func probeRelay(turn: RTCIceServer, factory: RTCPeerConnectionFactory) {
+        let config = RTCConfiguration()
+        config.iceServers = [turn]
+        config.iceTransportPolicy = .relay
+        config.sdpSemantics = .unifiedPlan
+        let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
+        guard let probe = factory.peerConnection(with: config, constraints: constraints, delegate: nil) else {
+            relayReachable = false
+            return
+        }
+        let collector = RelayProbeDelegate { ok in
+            relayReachable = ok
+            probe.close()
+        }
+        probeDelegate = collector
+        probe.delegate = collector
+        probe.dataChannel(forLabel: "relay-probe", configuration: RTCDataChannelConfiguration())
+        probe.offer(for: constraints) { sdp, _ in
+            guard let sdp else { collector.finish(false); return }
+            probe.setLocalDescription(sdp) { _ in }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { collector.finish(false) }
+    }
+
+    private static var probeDelegate: RelayProbeDelegate?
+
     /// `turn:host:port?transport=...` -> `stun:host:port`. Nil when the island
     /// handed out nothing parseable, in which case we simply keep Google's.
     static func stunFrom(turnUrls: [String]) -> RTCIceServer? {
@@ -349,7 +382,15 @@ final class WebRTCManager: NSObject, ObservableObject {
         //
         // Only when TURN creds actually arrived: under `.relay` with no TURN
         // there are no candidates at all and the call silently never connects.
-        if cachedTurn?.server != nil {
+        // ⚠⚠ Only when a relay candidate is actually obtainable on this network.
+        // Android shipped this keyed on "credentials exist" and three people
+        // reported calls ringing and then dying on the connect timeout, on
+        // networks that cannot reach TURN: under `.relay` with no reachable
+        // server there are no candidates at all. `relayReachable` is measured
+        // once per credential fetch on a throwaway connection; until it has an
+        // answer we do NOT force relay, because a call that cannot connect is a
+        // worse failure than one that leaks an address.
+        if cachedTurn?.server != nil, Self.relayReachable == true {
             config.iceTransportPolicy = .relay
         }
 
@@ -435,6 +476,9 @@ final class WebRTCManager: NSObject, ObservableObject {
                     credential: resp.credential
                 )
                 cachedTurn = (server, Date().addingTimeInterval(TimeInterval(resp.ttl)))
+                // Measure reachability alongside the refresh, so the first call
+                // after launch already knows whether relay-only is viable here.
+                Self.probeRelay(turn: server, factory: factory)
                 ownStun = Self.stunFrom(turnUrls: resp.urls)
                 return
             } catch {
@@ -539,4 +583,37 @@ extension WebRTCManager: RTCPeerConnectionDelegate {
             self?.remoteVideoTrack = track
         }
     }
+}
+
+/// Collects the one fact the relay probe needs: did a relay candidate appear
+/// before the deadline. Everything else in `RTCPeerConnectionDelegate` is
+/// required by the protocol and deliberately does nothing.
+final class RelayProbeDelegate: NSObject, RTCPeerConnectionDelegate {
+    private let done: (Bool) -> Void
+    private var settled = false
+
+    init(_ done: @escaping (Bool) -> Void) { self.done = done }
+
+    func finish(_ ok: Bool) {
+        guard !settled else { return }
+        settled = true
+        done(ok)
+    }
+
+    func peerConnection(_ pc: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+        if candidate.sdp.contains(" typ relay") { finish(true) }
+    }
+
+    func peerConnection(_ pc: RTCPeerConnection, didChange state: RTCIceGatheringState) {
+        // Gathering finished and nothing relayed: there is none to be had here.
+        if state == .complete { finish(false) }
+    }
+
+    func peerConnection(_ pc: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
+    func peerConnection(_ pc: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
+    func peerConnection(_ pc: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
+    func peerConnectionShouldNegotiate(_ pc: RTCPeerConnection) {}
+    func peerConnection(_ pc: RTCPeerConnection, didChange newState: RTCIceConnectionState) {}
+    func peerConnection(_ pc: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
+    func peerConnection(_ pc: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
 }
