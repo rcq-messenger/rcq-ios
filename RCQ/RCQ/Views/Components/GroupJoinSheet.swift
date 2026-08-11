@@ -26,7 +26,7 @@ struct GroupJoinSheet: View {
 
     /// Foreign = an island that isn't ours (§5c).
     private var foreignHost: String? {
-        guard let host, host != Multihome.ownHost() else { return nil }
+        guard let host, !Multihome.isOwnHost(host) else { return nil }
         return host
     }
 

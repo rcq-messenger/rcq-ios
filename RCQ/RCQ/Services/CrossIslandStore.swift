@@ -56,13 +56,31 @@ final class CrossIslandStore: ObservableObject {
     func bind(accountID: UUID?) {
         accountKey = Self.keyFor(accountID)
         cache = Self.load(defaults, accountKey)
+        pruneOwnIsland()
         contactsSnapshot = Array(cache.values)
+    }
+
+    /// Drop entries filed under one of OUR OWN island's names.
+    ///
+    /// They should never have been written, but were: while the app was
+    /// running over the Cloudflare front, `Multihome.ownHost()` returned the
+    /// front instead of the island, so same-island peers read as foreign and
+    /// accepting their "cross-island request" filed a duplicate here. The
+    /// duplicate then rendered under "other islands" next to the real roster
+    /// row. `isOwnHost` is fixed now, but the rows already on disk have to go,
+    /// and the user cannot delete them (that section has no swipe action).
+    private func pruneOwnIsland() {
+        let stale = cache.filter { Multihome.isOwnHost($0.value.host) }
+        guard !stale.isEmpty else { return }
+        for key in stale.keys { cache.removeValue(forKey: key) }
+        persist()
     }
 
     private func ciKey(_ uin: Int, _ host: String) -> String { "\(uin)@\(host.lowercased())" }
 
     func save(_ c: Contact) {
-        guard let host = c.host else { return }
+        // Never file a peer from our own island here — the roster owns those.
+        guard let host = c.host, !Multihome.isOwnHost(host) else { return }
         cache[ciKey(c.uin, host)] = c
         persist()
         contactsSnapshot = Array(cache.values)

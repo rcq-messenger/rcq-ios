@@ -810,7 +810,7 @@ struct ContactListView: View {
         let myUIN = AuthService.shared.ownUIN
         let favContacts = vm.contacts.filter {
             favorites.contains(peer: $0.uin)
-                && !($0.uin == myUIN && ($0.host == nil || $0.host == Multihome.ownHost()))
+                && !($0.uin == myUIN && Multihome.isOwnHost($0.host))
         }
             .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
         let total = favGroups.count + favContacts.count
@@ -1158,7 +1158,13 @@ struct ContactListView: View {
     @ViewBuilder
     private var crossIslandSection: some View {
         let unread = UnreadStore.shared.allPeerCounts
+        // Anything filed under one of our own island's names is not a foreign
+        // peer, it is a roster row that got misclassified while the app was
+        // running over the CF front (see Multihome.isOwnHost). CrossIslandStore
+        // prunes those on bind; this guard keeps the section honest for a
+        // session that is already running when the transport flips back.
         let rows = ciStore.contactsSnapshot
+            .filter { !Multihome.isOwnHost($0.host) }
             .map { c -> Contact in
                 var c = c
                 c.unread = unread[c.uin] ?? 0

@@ -843,7 +843,7 @@ struct ChatView: View {
                                 PinnedGroupChip(groupID: gid, host: ghost) { tappedGID in
                                     pinnedExpansion = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                        appState.pendingJoinGroupHost = (ghost != Multihome.ownHost()) ? ghost : nil
+                                        appState.pendingJoinGroupHost = Multihome.isOwnHost(ghost) ? nil : ghost
                                         appState.pendingJoinGroupID = tappedGID
                                     }
                                 }
@@ -877,7 +877,7 @@ struct ChatView: View {
                 if let hit = GroupLinkParser.parse(url.absoluteString) {
                     pinnedExpansion = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        appState.pendingJoinGroupHost = (hit.host != nil && hit.host != Multihome.ownHost()) ? hit.host : nil
+                        appState.pendingJoinGroupHost = Multihome.isOwnHost(hit.host) ? nil : hit.host
                         appState.pendingJoinGroupID = hit.groupID
                     }
                     return .handled
@@ -2053,7 +2053,7 @@ struct ChatView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             case .group(let gid, let ghost):
                                 PinnedGroupChip(groupID: gid, host: ghost) { tapped in
-                                    appState.pendingJoinGroupHost = (ghost != Multihome.ownHost()) ? ghost : nil
+                                    appState.pendingJoinGroupHost = Multihome.isOwnHost(ghost) ? nil : ghost
                                     appState.pendingJoinGroupID = tapped
                                 }
                             }

@@ -40,7 +40,7 @@ struct AddContactView: View {
     private var crossIsland: RcqFederation.Address? {
         guard trimmedQuery.contains("@"),
               let a = try? RcqFederation.parseAddress(trimmedQuery),
-              a.host != Multihome.ownHost() else { return nil }
+              !Multihome.isOwnHost(a.host) else { return nil }
         return a
     }
 
@@ -186,7 +186,7 @@ struct AddContactView: View {
             }
             .task {
                 if let uin = prefillUIN {
-                    if let host = prefillHost, host != Multihome.ownHost() {
+                    if let host = prefillHost, !Multihome.isOwnHost(host) {
                         query = "\(uin)@\(host)"   // surfaces the Cross-island row
                     } else {
                         query = String(uin)
