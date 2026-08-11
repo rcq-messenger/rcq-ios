@@ -89,6 +89,16 @@ final class ContactService: ObservableObject {
     /// island's open key card, store it locally, and merge it into the list so
     /// the normal chat-open + send flow works. Returns true on success.
     func addCrossIslandContact(uin: Int, host: String) async -> Bool {
+        // A neighbour on our OWN island goes through the ordinary contact
+        // request, not the federation path. This happens when the address was
+        // written out in full (`uin@api.rcq.app`) and when a peer's envelope
+        // was stamped with a host we serve under another name (the CF front) —
+        // routing those here filed a second, roster-shadowing copy of somebody
+        // who was never actually on another island.
+        if Multihome.isOwnHost(host) {
+            try? await sendAddRequest(to: uin)
+            return true
+        }
         guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else { return false }
         // Presence isn't tracked across islands, so don't fake `.online` — show
         // offline/unknown rather than a green dot we can't back up.

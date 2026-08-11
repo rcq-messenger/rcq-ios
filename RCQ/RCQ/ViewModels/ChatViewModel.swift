@@ -899,8 +899,20 @@ final class ChatViewModel: ObservableObject {
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
         // My own name for them wins wherever a person is named, including the
         // sender line above a group message and a reply quote.
-        if case .group(let g) = target, let m = g.members.first(where: { $0.uin == uin }) {
-            return ContactAliasStore.shared.displayName(for: uin, fallback: m.nickname)
+        //
+        // ⚠ Read the roster from GroupService, not from `target`. `target` is a
+        // SNAPSHOT taken when the chat was opened, and the chat list is fetched
+        // without rosters — so on first entry into a group `g.members` is empty
+        // and every sender line fell through to `String(uin)`. ChatView's
+        // `.task` then loaded the roster into GroupService, which fixed the
+        // avatars and the @mentions (they read the live copy) but not the
+        // names, because the snapshot never changed. Leaving and re-entering
+        // appeared to fix it: the second snapshot had the roster in it.
+        if case .group(let g) = target {
+            let members = (GroupService.shared.find(g.id)?.members ?? g.members)
+            if let m = members.first(where: { $0.uin == uin }) {
+                return ContactAliasStore.shared.displayName(for: uin, fallback: m.nickname)
+            }
         }
         if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
             return ContactAliasStore.shared.displayName(for: uin, fallback: c.nickname)

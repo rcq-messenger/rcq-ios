@@ -131,8 +131,42 @@ enum Multihome {
 
     struct Credentials: Decodable { let uin: Int; let token: String }
 
+    /// This account's ISLAND IDENTITY — the host that belongs in a share link
+    /// and that peers stamp into their envelopes.
+    ///
+    /// ⚠ This used to read `APIClient.shared.baseURL.host`, which is the
+    /// TRANSPORT, not the identity. When the direct probe fails the transport
+    /// silently becomes the Cloudflare front (`cdn.rcq.app`), and every
+    /// same-island peer then looked foreign: their messages were quarantined as
+    /// cross-island "message requests", accepting one filed them under a second
+    /// identity in `CrossIslandStore`, and they showed up twice — once in the
+    /// roster, once under "other islands". The share links and QR codes minted
+    /// while the front was active carried `…@cdn.rcq.app` for the same reason.
+    /// Android hit this first and fixed it on its side (`ownHosts` in
+    /// Session.kt); this is the iOS half.
+    ///
+    /// `activeDirectBase()` is the island the user actually targets (a custom
+    /// island if one is selected, else the flagship) and never the front.
     static func ownHost() -> String {
-        APIClient.shared.baseURL.host ?? RcqFederation.flagshipHost
+        normalizeHost(APIClient.activeDirectBase())
+            ?? APIClient.shared.baseURL.host
+            ?? RcqFederation.flagshipHost
+    }
+
+    /// Is `host` one of the names for OUR island? True for the identity above,
+    /// for whatever transport is in use right now, and for the Cloudflare
+    /// fronts — a peer on an older build stamps the host it was connected
+    /// through, and it is not their fault we have several names.
+    ///
+    /// Use this for every "same island or not" decision. Plain `== ownHost()`
+    /// is only right when minting a link.
+    static func isOwnHost(_ host: String?) -> Bool {
+        guard let host = normalizeHost(host ?? "") else { return true }  // nil host = local
+        var names: Set<String> = [ownHost().lowercased()]
+        if let transport = APIClient.shared.baseURL.host { names.insert(transport.lowercased()) }
+        if let front = RelayConfigStore.frontHost, let n = normalizeHost(front) { names.insert(n) }
+        if let builtIn = normalizeHost(APIClient.builtInProxyURL) { names.insert(builtIn) }
+        return names.contains(host)
     }
 
     /// `is2.rcq.app`, `https://is2.rcq.app/x` → `is2.rcq.app`.

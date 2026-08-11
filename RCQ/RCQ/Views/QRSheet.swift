@@ -204,7 +204,7 @@ struct QRSheet: View {
         // keys come from their island's open card). This is what lets a
         // self-hoster on is2 scan a flagship user's bare QR and reach them.
         let host = scanned.host ?? RcqFederation.flagshipHost
-        if host != Multihome.ownHost() {
+        if !Multihome.isOwnHost(host) {
             let ok = await ContactService.shared.addCrossIslandContact(uin: uin, host: host)
             await MainActor.run {
                 UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)

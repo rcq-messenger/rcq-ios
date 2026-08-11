@@ -1366,7 +1366,7 @@ final class MessageService {
             if case .callSignal(_, let sig, let cid, let ts, let data) = decrypted.envelope {
                 let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
                 guard ws.groupID == nil,
-                      let fromHost = decrypted.senderHost, fromHost != Multihome.ownHost(),
+                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost),
                       CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost })
                 else { return outcome }
                 if sig == "call_offer", Int(Date().timeIntervalSince1970) - ts > 60 {
@@ -1397,7 +1397,7 @@ final class MessageService {
             // list. Accepted → normal flow. Blocked → hold() no-ops but we still
             // ACK so the queue stops redelivering.
             if ws.groupID == nil, let fromHost = decrypted.senderHost,
-               fromHost != Multihome.ownHost(), decrypted.senderUIN != ownUIN,
+               !Multihome.isOwnHost(fromHost), decrypted.senderUIN != ownUIN,
                !CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost }) {
                 CrossIslandRequestsStore.shared.hold(
                     uin: decrypted.senderUIN, host: fromHost,

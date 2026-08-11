@@ -18,7 +18,7 @@ struct GroupLinkBubble: View {
 
     /// Foreign = the link names an island that isn't ours.
     private var foreignHost: String? {
-        guard let host, host != Multihome.ownHost() else { return nil }
+        guard let host, !Multihome.isOwnHost(host) else { return nil }
         return host
     }
 
@@ -269,7 +269,7 @@ struct PinnedGroupChip: View {
     @State private var preview: GroupService.GroupPreview?
 
     private var foreignHost: String? {
-        guard let host, host != Multihome.ownHost() else { return nil }
+        guard let host, !Multihome.isOwnHost(host) else { return nil }
         return host
     }
 
