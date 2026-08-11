@@ -335,6 +335,23 @@ final class WebRTCManager: NSObject, ObservableObject {
         config.sdpSemantics = .unifiedPlan
         config.bundlePolicy = .maxBundle
         config.rtcpMuxPolicy = .require
+        // ⚠ Calls used to run with the default ICE policy, which puts host and
+        // srflx candidates in the SDP — i.e. it hands the peer your LAN
+        // addresses and your real public IP before anyone says hello, and it
+        // does so even when the messenger itself is riding a relay, because
+        // WebRTC opens its own UDP sockets outside the transport. For an app
+        // that sells not knowing where you are, that was the biggest hole we
+        // had, and no privacy setting could close it.
+        //
+        // `.relay` forces everything through our TURN server: the peer sees the
+        // TURN address only. Media now transits our box, which costs bandwidth
+        // and a little latency, and that is the trade we are making.
+        //
+        // Only when TURN creds actually arrived: under `.relay` with no TURN
+        // there are no candidates at all and the call silently never connects.
+        if cachedTurn?.server != nil {
+            config.iceTransportPolicy = .relay
+        }
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         guard let pc = factory.peerConnection(with: config, constraints: constraints, delegate: self) else {

@@ -298,6 +298,14 @@ final class AudioRoomMeshManager: NSObject {
         config.sdpSemantics = .unifiedPlan
         config.bundlePolicy = .maxBundle
         config.rtcpMuxPolicy = .require
+        // Same reasoning as WebRTCManager: without `.relay` every participant
+        // learns every other participant's real IP, and in a room that is worse
+        // than in a 1:1 call because the people in it need not be each other's
+        // contacts. Guarded on TURN creds for the same reason: `.relay` with no
+        // TURN yields no candidates and the room silently never connects.
+        if cachedTurn?.server != nil {
+            config.iceTransportPolicy = .relay
+        }
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
         let delegate = MeshPeerDelegate(remoteUIN: remoteUIN, owner: self)
