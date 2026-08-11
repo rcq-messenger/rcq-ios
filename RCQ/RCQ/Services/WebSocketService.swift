@@ -107,6 +107,12 @@ final class WebSocketService: ObservableObject {
     /// liveness there (see `sendPing`).
     private var viaProxy = false
     private var reconnectAttempt = 0
+    /// When the current socket was dialled, or nil when none is up. Only a
+    /// session that outlived `stableSessionSeconds` forgives the backoff.
+    private var openedAt: Date?
+    /// Longer than the ping interval, so "connected, pinged once, died" is not
+    /// mistaken for a healthy session.
+    private static let stableSessionSeconds: TimeInterval = 60
     private var pingTimer: Timer?
     private var pendingReconnect: DispatchWorkItem?
     private var shouldStayConnected: Bool = false
@@ -208,7 +214,17 @@ final class WebSocketService: ObservableObject {
         task.resume()
         isConnected = true
         linkUp = false
-        reconnectAttempt = 0
+        // ⚠ NOT `reconnectAttempt = 0` here. This runs on every DIAL, before
+        // the socket has proved anything, so the counter never left 1 and the
+        // backoff below was permanently stuck at its first step: a dead route
+        // was redialled once a second, forever. Two things broke from that.
+        // The phone hammered the island (measured on prod 11.08 across the
+        // other clients, thousands of sockets an hour), and the stealth
+        // auto-engage keyed on `reconnectAttempt == 4` could never fire —
+        // the one path that turns the tunnel on by itself when a carrier
+        // starts killing our sockets. The reset moved into `scheduleReconnect`,
+        // where the session's real lifetime is known.
+        openedAt = Date()
         lastFrameAt = Date()
         events.send(.opened)
         startPingTimer()
@@ -293,6 +309,13 @@ final class WebSocketService: ObservableObject {
 
     private func scheduleReconnect() {
         pendingReconnect?.cancel()
+        // A session that HELD earns a clean slate; one that died on arrival
+        // does not, so repeated short-lived sockets climb the curve instead of
+        // redialling once a second.
+        if let openedAt, Date().timeIntervalSince(openedAt) >= Self.stableSessionSeconds {
+            reconnectAttempt = 0
+        }
+        openedAt = nil
         reconnectAttempt += 1
         // Auto-engage stealth after the WS has failed enough times in
         // a row that the network is clearly hostile to our WSS upgrade
