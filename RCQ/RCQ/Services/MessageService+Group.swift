@@ -10,8 +10,6 @@ extension MessageService {
     // MARK: - sending (group)
 
     func send(text: String, to group: RCQGroup, replyTo: ReplyContext? = nil) async throws {
-        SmokeTracker.shared.tick(.sendMessageGroup)
-        if replyTo != nil { SmokeTracker.shared.tick(.replyToMessage) }
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))
         let local = Message(
             thread: .group(id: group.id),

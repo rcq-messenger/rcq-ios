@@ -73,45 +73,10 @@
 "profile.reputation.give_short" = "Подарить";
 "profile.reputation.give_long" = "Подарить репутацию";
 
-"reputation.give.title" = "Подарить репутацию";
-"reputation.give.body" = "Потратьте жетоны, чтобы добавить %@ +N к репутации. Жетоны сгорают — получателю они не достаются.";
-"reputation.give.amount_suffix" = "жетонов → репутация";
-"reputation.give.balance" = "Баланс: %d жетонов";
-"reputation.give.anonymous" = "Анонимно";
-"reputation.give.send" = "Отправить";
-"reputation.give.cancel" = "Отмена";
-"reputation.give.error_min" = "Минимум %d жетонов за раз.";
-"reputation.give.error_insufficient" = "Недостаточно жетонов.";
-"reputation.give.error_target_missing" = "Пользователь не найден.";
-"reputation.give.error_rate_limited" = "Слишком часто — попробуйте через минуту.";
-"reputation.give.error_self" = "Себе репутацию подарить нельзя.";
-"reputation.give.error_generic" = "Не удалось отправить. Повторите попытку.";
 
-"reputation.toast.title" = "+%d репутации";
-"reputation.toast.body_anonymous" = "Анонимный подарок";
-"reputation.toast.body_from" = "От UIN %d";
 
-"reputation.leaderboard.title" = "Лидерборд";
-"reputation.leaderboard.empty" = "Пока никого. Будьте первым.";
-"reputation.leaderboard.stat_ranked" = "в рейтинге";
-"reputation.leaderboard.stat_total" = "всего репутации";
-"reputation.leaderboard.stat_you" = "ваше место";
-"reputation.info.title" = "О лидерборде";
-"reputation.info.intro" = "Репутация — публичный знак доверия, который тебе ставят другие игроки. Вот как устроен рейтинг.";
-"reputation.info.b1" = "В рейтинге — топ-100 игроков по суммарной полученной репутации.";
-"reputation.info.b2" = "Подарить репутацию может любой — потратив жетоны в твоём профиле, 1 жетон = 1 очко.";
-"reputation.info.b3" = "Если в приватности репутация стоит «Контакты» или «Никто» — тебя в рейтинге не видно.";
-"reputation.info.b4" = "Репутация переезжает с тобой при смене UIN.";
 
-"reputation.history.title" = "История репутации";
-"reputation.history.tab_received" = "Получено";
-"reputation.history.tab_sent" = "Отправлено";
-"reputation.history.empty_received" = "Подарков ещё не было.";
-"reputation.history.empty_sent" = "Вы пока никому не дарили репутацию.";
-"reputation.history.anonymous" = "Анонимно";
-"reputation.history.amount_suffix" = "репутации";
 
-"inventory.menu.leaderboard" = "Лидерборд";
 
 "settings.inventory.public" = "Открытый инвентарь";
 "settings.inventory.public.footer" = "Другие пользователи RCQ смогут просматривать ваши предметы из вашего профиля. Выкл — инвентарь приватный. Тот же тумблер, что и иконка-глаз в инвентаре.";
@@ -342,37 +307,6 @@
 "bounty_credits.source.bug_bounty" = "Bug bounty";
 "bounty_credits.source.daily_qa" = "Дневной чек-лист";
 
-"smoke.title" = "Дневной чек-лист";
-"smoke.progress" = "%d из %d сегодня";
-"smoke.loading" = "Загружаем сегодняшний чек-лист…";
-"smoke.error" = "Не удалось загрузить чек-лист.";
-"smoke.reward_hint" = "Выполни всё сегодня → +%d жетонов в бонусы.";
-"smoke.minted" = "+%d жетонов начислено — до завтра.";
-"smoke.item.send_message_1to1" = "Отправь сообщение в 1:1";
-"smoke.item.send_message_group" = "Напиши в группу";
-"smoke.item.open_lootbox" = "Открой лутбокс";
-"smoke.item.send_gif" = "Отправь GIF";
-"smoke.item.send_sticker" = "Отправь стикер";
-"smoke.item.send_photo" = "Отправь фото";
-"smoke.item.send_video" = "Отправь видео";
-"smoke.item.send_voice" = "Запиши голосовое";
-"smoke.item.send_location" = "Отправь геолокацию";
-"smoke.item.place_crash_bet" = "Сделай ставку в Crash";
-"smoke.item.play_hilo" = "Сыграй раунд HiLo";
-"smoke.item.play_limbo" = "Сыграй раунд Limbo";
-"smoke.item.visit_hood" = "Зайди в Hood";
-"smoke.item.create_audio_room" = "Создай аудио-комнату";
-"smoke.item.join_audio_room" = "Зайди в аудио-комнату";
-"smoke.item.pet_hunt" = "Отправь питомца на охоту";
-"smoke.item.buy_market" = "Купи что-нибудь на маркете";
-"smoke.item.list_market" = "Выставь лот на маркете";
-"smoke.item.watch_story" = "Посмотри сторис";
-"smoke.item.post_story" = "Опубликуй сторис";
-"smoke.item.update_profile" = "Обнови профиль";
-"smoke.item.switch_theme" = "Переключи тему приложения";
-"smoke.item.open_inventory" = "Открой инвентарь";
-"smoke.item.send_reaction" = "Поставь реакцию на сообщение";
-"smoke.item.reply_to_message" = "Ответь на сообщение";
 
 "chat.attach.poll" = "Опрос";
 "chat.attach.share_group" = "Пригласить";
@@ -576,9 +510,6 @@
 "presence.info.body" = "Вас показывают онлайн ещё столько времени после закрытия приложения. Изменить можно в Настройки, Приватность и сеть.";
 
 /* Inventory trailing-toolbar ellipsis menu */
-"inventory.menu.games" = "Игры";
-"inventory.menu.trades" = "Обмены";
-"inventory.menu.market" = "Маркет";
 
 // ── Маркет предметов ───────────────────────────────────────────────
 "market.title" = "Маркет";
@@ -676,9 +607,6 @@
 "uin.tier.common" = "Обычный";
 "uin.tier.mid" = "Премиум";
 "uin.tier.legendary" = "Легендарный";
-"inventory.menu.trades.with_count" = "Обмены (%d)";
-"inventory.menu.hide" = "Скрыть инвентарь";
-"inventory.menu.show" = "Показать инвентарь";
 "contact_list.menu.search" = "Поиск";
 "contact_list.menu.bypass_on" = "Включить обход";
 "contact_list.menu.bypass_off" = "Выключить обход";
@@ -740,17 +668,6 @@
 "chat.action.react" = "Реакция";
 "chat.action.jeton" = "Отправить жетоны";
 
-"jeton.react.body" = "Отправьте жетоны для %@. Они сразу попадут в кошелёк автора сообщения.";
-"jeton.react.amount_suffix" = "жетонов";
-"jeton.react.balance" = "Баланс: %d жетонов";
-"jeton.react.send" = "Отправить";
-"jeton.react.error_min" = "Минимум — %d жетон.";
-"jeton.react.error_insufficient" = "Недостаточно жетонов.";
-"jeton.react.error_target_missing" = "Такого пользователя не существует.";
-"jeton.react.error_rate_limited" = "Слишком много реакций — попробуйте через минуту.";
-"jeton.react.error_not_member" = "Вы не состоите в этой группе.";
-"jeton.react.error_self" = "Нельзя отправить жетоны на собственное сообщение.";
-"jeton.react.error_generic" = "Не удалось отправить жетоны. Попробуйте ещё раз.";
 "chat.action.report_content" = "Пожаловаться на контент";
 
 /* Жалоба с прикреплённым контентом — long-press на медиа */
@@ -832,7 +749,6 @@
 "chat.premium.error.generic" = "Что-то пошло не так. Попробуй ещё раз.";
 "chat.voice.permission.title" = "Нужен доступ к микрофону";
 "chat.voice.permission.body" = "Включи микрофон в Настройках → RCQ, чтобы записывать голосовые сообщения.";
-"lootbox.skip_spin" = "Без анимации";
 "settings.migrate.header" = "Аккаунт";
 "settings.migrate" = "Переехать на новый UIN";
 "settings.migrate.footer" = "Перенести контакты и группы на свежий UIN. Профиль скопируется, для контактов смена номера будет незаметна. Локальные чаты на этом устройстве будут стёрты.";
@@ -859,7 +775,6 @@
 "contact_list.empty.body" = "Добавьте друга по UIN или QR-коду, чтобы начать переписку. Чат с незнакомцем работает и без контактов.";
 "contact_list.empty.cta" = "Добавить контакт";
 
-"inventory.empty.cta" = "Открыть первую коробку";
 
 "chat.empty.title" = "Сообщений пока нет";
 "chat.empty.body" = "Скажи привет — первое сообщение запускает диалог.";
@@ -945,10 +860,6 @@
 
 /* ── Сводка обмена ────────────────────────────────────────── */
 
-"trade.summary.you_offer" = "Вы предлагаете";
-"trade.summary.they_offer" = "Они предлагают";
-"trade.summary.you_ask" = "Вы запрашиваете";
-"trade.summary.they_ask" = "Они запрашивают";
 
 /* ── Профиль группы ───────────────────────────────────────── */
 
@@ -1096,58 +1007,13 @@
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
-"item.purity.pristine" = "Чистый";
-"item.purity.flawless" = "Безупречный";
-"item.lucky.first" = "#1 / Первый";
 
 /* Названия питомцев */
-"item.name.pet_trump"     = "Трамп";
-"item.name.pet_putin"     = "Путин";
-"item.name.pet_jobs"      = "Стив";
-"item.name.pet_kim"       = "Ким";
-"item.name.pet_musk"      = "Илон";
-"item.name.pet_snoop"     = "Снуп";
-"item.name.pet_doge"      = "Доге";
-"item.name.pet_hamster"   = "Хомяк";
-"item.name.pet_black_cat" = "Чёрный Кот";
-"item.name.pet_devil"     = "Бес";
-"item.name.forum_classics" = "Классика форумов";
 
 /* Голосовые паки — звуки уведомлений */
-"item.name.voice_pack_1"  = "Звук №1";
-"item.name.voice_pack_2"  = "Звук №2";
-"item.name.voice_pack_3"  = "Звук №3";
-"item.name.voice_pack_4"  = "Звук №4";
-"item.name.voice_pack_5"  = "Звук №5";
-"item.name.voice_pack_6"  = "Звук №6";
-"item.name.voice_pack_7"  = "Звук №7";
-"item.name.voice_pack_8"  = "Звук №8";
-"item.name.voice_pack_9"  = "Звук №9";
-"item.name.voice_pack_10" = "Звук №10";
 
-"item.lore.voice_pack_1"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_2"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_3"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_4"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_5"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_6"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_7"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_8"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_9"  = "Назначь контакту в его профиле.";
-"item.lore.voice_pack_10" = "Назначь контакту в его профиле.";
 
 /* Описания питомцев */
-"item.lore.pet_trump"     = "Лучший пет. Поверьте мне. Огромный.";
-"item.lore.pet_putin"     = "Молча смотрит. Тигр на плече.";
-"item.lore.pet_jobs"      = "Ещё одна вещь.";
-"item.lore.pet_kim"       = "Маленький, но ракеты большие.";
-"item.lore.pet_musk"      = "Купил всё. Едет на Марс.";
-"item.lore.pet_snoop"     = "Снуп догггг, реально говорю.";
-"item.lore.pet_doge"      = "Очень пет. Такая легенда. Вау.";
-"item.lore.pet_hamster"   = "Тап-тап. Аирдроп скоро. Точно.";
-"item.lore.pet_black_cat" = "Перешёл дорогу, твои проблемы.";
-"item.lore.pet_devil"     = "Шепчет: «ещё одна ставка в крэше».";
-"item.lore.forum_classics" = "Пак классических форумных смайликов.";
 
 /* ── Add contact ──────────────────────────────────────────── */
 
@@ -1266,46 +1132,8 @@
 
 /* ── Inventory / Lootbox ──────────────────────────────────── */
 
-"inventory.title" = "Инвентарь";
-"inventory.syncing" = "Синхронизация…";
-"inventory.confirm.title_one" = "Разобрать %d предмет? Он исчезнет навсегда.";
-"inventory.confirm.title_many" = "Разобрать %d предметов? Они исчезнут навсегда.";
-"inventory.confirm.yield" = "Получишь: %d гемов + %d жетонов";
-"inventory.toast.gems" = "+%d";
-"inventory.empty.title" = "Инвентарь пуст";
-"inventory.empty.body" = "Откройте первую коробку — внутри пак смайликов, звук, питомец или горсть гемов.";
-"inventory.tokens" = "Жетоны";
-"inventory.gems" = "Гемы";
-"inventory.button.open" = "Открыть";
-"inventory.button.buy_more" = "Купить ещё";
-"inventory.button.select_all" = "Выбрать всё";
-"inventory.button.disassemble" = "Разобрать (%d)";
-"inventory.section.smileys" = "Смайлики";
-"inventory.section.voices" = "Звуки";
-"inventory.section.pets" = "Питомцы";
 
-"lootbox.title" = "Лутбокс";
-"lootbox.kicker" = "ОТКРЫТЬ КОРОБКУ";
-"lootbox.heading" = "Внутри";
-"lootbox.subhead" = "Пак смайликов, звук, питомец или горсть гемов.";
-"lootbox.view_pool" = "ПУЛ";
-"lootbox.remaining" = "ОСТАЛОСЬ";
-"lootbox.buy_more" = "КУПИТЬ ЕЩЁ";
-"lootbox.button.pull" = "Открыть";
-"lootbox.button.pulling" = "Открываем…";
-"lootbox.button.need_tokens" = "Не хватает — пополнить";
-"lootbox.cost.per_open" = "%d за открытие";
-"lootbox.boost.title" = "БУСТ ПИТОМЦЕВ";
-"lootbox.boost.chance" = "шанс на пета %d%%";
-"lootbox.boost.hint" = "Сдвинь вверх, чтобы повысить шанс получить питомца вместо смайликов и звуков. Меняется только тип предмета — не его редкость — и растёт цена за открытие.";
 "pool.boost_note" = "Шансы показаны с бустом питомцев %d%%.";
-"lootbox.recent" = "ПОСЛЕДНИЕ";
-"lootbox.recent.empty" = "Здесь будут ваши последние открытия.";
-"lootbox.reveal.you_pulled" = "ВЫПАЛО";
-"lootbox.reveal.essence" = "ЭССЕНЦИЯ";
-"lootbox.reveal.gems" = "Гемы";
-"lootbox.reveal.repeat" = "Открыть ещё";
-"lootbox.reveal.to_inventory" = "В инвентарь";
 
 "shop.kicker" = "ШОП";
 "shop.title" = "Купить жетоны";
@@ -1315,54 +1143,11 @@
 "shop.per_token" = "%d¢ за жетон";
 "shop.balance" = "Баланс хранится на сервере под твоим UIN. Реальная оплата через App Store придёт позже — сейчас пакеты пополняют кошелёк сразу для тестирования.";
 
-"item.action.enhance" = "Улучшить";
-"item.action.equip" = "Экипировать";
-"item.action.unequip" = "Снять";
-"item.action.disassemble" = "Разобрать";
-"item.action.sell" = "Продать на маркете";
-"item.action.preview_sound" = "Прослушать";
-"item.stat.essence" = "Эссенция";
-"item.stat.purity" = "Чистота";
-"item.stat.level" = "Уровень";
-"item.stat.mint" = "Тираж";
-"item.stat.acquired" = "Получено";
-"item.equipped" = "Экипировано";
-"item.history.title" = "ИСТОРИЯ";
-"item.history.loading" = "Загружаем…";
 
-"item.faq.title" = "Как устроены предметы";
-"item.faq.intro" = "У каждого выпавшего предмета есть скрытые характеристики, которые задают его редкость и ценность. Вот что значит каждая из них.";
-"item.faq.rarity.title" = "Редкость";
-"item.faq.rarity.body" = "Уровень качества предмета — от Обычного до Легендарного. Редкость задаёт цвет предмета и диапазон, из которого выпадает его Эссенция: легендарный изначально стоит куда больше обычного. После выпадения редкость не меняется.";
-"item.faq.essence.title" = "Эссенция";
-"item.faq.essence.body" = "Очки предмета. Итоговая Эссенция = базовая ценность × бонус минта × уровень улучшения × чистота — её поднимают более высокая редкость, удачная чистота и уровни улучшения.";
-"item.faq.purity.title" = "Чистота";
-"item.faq.purity.body" = "Скрытый множитель (0.6×–1.4×), который определяется в момент выпадения предмета. Два одинаковых предмета одной редкости могут заметно отличаться в цене только потому, что у одного выпала более высокая чистота. Фиксируется при дропе и не меняется.";
-"item.faq.enhance.title" = "Улучшение";
-"item.faq.enhance.body" = "Трать Гемы, чтобы повышать уровень предмета (+1, +2 … до +9). Каждый уровень умножает его Эссенцию. Но у каждой попытки есть шанс сгорания, который растёт с уровнем — первые уровни безопасны, последние почти русская рулетка. Неудачная попытка уничтожает предмет. Высокий риск — высокая награда.";
-"item.faq.disassemble.title" = "Разбор";
-"item.faq.disassemble.body" = "Разбери предмет навсегда в обмен на Гемы и немного Жетонов. Используй на дубликатах и мусоре, чтобы накопить на улучшение тех предметов, которые правда хочешь оставить. Разбор необратим.";
-"item.faq.equip.title" = "Экипировка";
-"item.faq.equip.body" = "Экипировка делает предмет активным: питомец появляется маленьким спутником поверх твоей иконки статуса по всему приложению — и экипированный питомец пассивно зарабатывает жетоны; косметические паки открывают своё содержимое. Экипированный предмет нельзя продать или разобрать, пока не снимешь.";
-"item.history.empty" = "История пуста.";
-"item.history.copied" = "Скопировано #%d";
-"item.history.action.drop" = "Выпал из коробки";
-"item.history.action.trade" = "Обмен";
-"item.history.action.gift" = "Подарок";
-"item.history.action.market_sold" = "Продажа на маркете";
-"item.history.action.temper_success" = "Улучшен";
-"item.history.action.temper_success_levels" = "Улучшен +%d → +%d";
-"item.history.action.temper_burn" = "Сгорел при улучшении";
-"item.history.action.disassemble" = "Разобран";
-"item.history.actor.you" = "вы";
-"item.history.actor.by" = "—";
-"item.pack_contents" = "СОДЕРЖИМОЕ ПАКА · %d";
-"item.mint.of" = "#%d из %d";
 "pool.title" = "Пул";
 "pool.section_share" = "%.0f%% выпадений";
 "pool.cap" = "лимит %d";
 "pool.cap_remaining" = "%d / %d осталось";
-"inventory.filter.level_all" = "Все уровни";
 "settings.privacy.persistent_presence" = "Видимость после выхода";
 "settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
 "settings.privacy.hof_opt_in" = "Зал славы";
@@ -1415,18 +1200,6 @@
 "public_inventory.private.title" = "Инвентарь скрыт";
 "public_inventory.private.body" = "%@ скрыл свой инвентарь.";
 
-"temper.title" = "Улучшение";
-"temper.cta.enhance" = "Улучшить";
-"temper.cta.enhancing" = "Улучшаем…";
-"temper.cta.max_level" = "Максимальный уровень";
-"temper.cta.no_gems" = "Не хватает гемов";
-"temper.stat.level_arrow" = "Уровень";
-"temper.stat.cost" = "Стоимость";
-"temper.stat.success" = "Шанс успеха";
-"temper.stat.burn" = "Шанс сгорания";
-"temper.stat.your_gems" = "Ваши гемы";
-"temper.odds_by_level" = "ШАНСЫ ПО УРОВНЯМ";
-"temper.success.flash" = "Улучшен до +%d.";
 
 "disassemble.title" = "Разбор";
 "disassemble.body" = "Разбор уничтожит этот предмет навсегда. Вы получите гемы в зависимости от качества и уровня улучшения.";
@@ -1437,65 +1210,6 @@
 
 /* ── Trades ───────────────────────────────────────────────── */
 
-"trades.title" = "Обмены";
-"trades.section.incoming" = "Входящие";
-"trades.section.outgoing" = "Исходящие";
-"trades.empty.title" = "Активных обменов нет";
-"trades.empty.body" = "Откройте профиль контакта и предложите обмен.";
-"trade.gift.received" = "Входящий подарок";
-"trade.gift.sent" = "Подарок отправлен";
-"trade.offer.received" = "Предложение обмена";
-"trade.offer.sent" = "Обмен отправлен";
-"trade.buy.received" = "Хочет получить от вас";
-"trade.buy.sent" = "Запрашиваю у партнёра";
-"trade.cta.accept" = "Принять";
-"trade.cta.accept_gift" = "Принять подарок";
-"trade.cta.decline" = "Отклонить";
-"trade.cta.cancel" = "Отменить обмен";
-"trade.cta.send" = "Отправить %@";
-"trade.cta.sending" = "Отправляем…";
-"trade.cta.empty_prompt" = "Выбери что отправить";
-"trade.gift_confirm.title" = "Отправить как подарок?";
-"trade.gift_confirm.body" = "%@ ничего не отдаёт взамен. Если хотели попросить что-то в ответ — отмените и заполните противоположную сторону.";
-"trade.gift_confirm.send" = "Отправить подарок";
-"trade.gift_confirm.cancel" = "Отмена";
-"trade.howto.button" = "Как устроен обмен";
-"trade.howto.title" = "Как устроен обмен";
-"trade.howto.your.title" = "Ваше предложение";
-"trade.howto.your.body" = "Выбираете предметы, UIN'ы, жетоны и свитки, которые отдаёте. Сразу можно увидеть остаток кошелька — больше, чем есть, отдать нельзя.";
-"trade.howto.theirs.title" = "Их сторона";
-"trade.howto.theirs.body" = "Помечаете, что хотите получить от партнёра. Если оставить эту сторону пустой — это подарок. Если оставить пустой свою — вы просите.";
-"trade.howto.kinds.title" = "Тип сделки определяется автоматически";
-"trade.howto.kinds.body" = "Подарок, покупка, продажа или обмен — ярлык вверху обновляется сам, исходя из того, что отмечено с двух сторон.";
-"trade.howto.safety.title" = "Ничего не списывается заранее";
-"trade.howto.safety.body" = "До принятия предложения предметы остаются у владельцев. Жетоны и свитки тоже не блокируются. Можно отменить или предложить заново в любой момент.";
-"trade.howto.accept.title" = "Подтверждение — у партнёра";
-"trade.howto.accept.body" = "После отправки партнёр видит предложение и сам решает — принять или отклонить. Если у кого-то к моменту согласия предмета уже нет, сделка отклоняется автоматически.";
-"trade.section.your" = "Ваше предложение";
-"trade.section.theirs" = "Их сторона";
-"trade.note" = "ЗАПИСКА (НЕОБЯЗАТЕЛЬНО)";
-"trade.kind.gift" = "Подарок";
-"trade.kind.buy" = "Запрос";
-"trade.kind.trade" = "Обмен";
-"trade.kind.swap" = "Обмен валюты";
-"trade.with" = "с %@";
-"trade.toast.sent" = "Отправлено";
-"trade.open_chat" = "Открыть чат с %@";
-"trade.resolved" = "Обмен закрыт";
-"trade.error.accept" = "Не удалось принять — партнёр мог передать предмет или потратить валюту.";
-"trade.error.decline" = "Не удалось отклонить — попробуйте ещё раз.";
-"trade.error.cancel" = "Не удалось отменить — попробуйте ещё раз.";
-"trade.send.note_placeholder" = "Короткая записка (необязательно)";
-"trade.preflight.no_offer_no_request" = "Добавьте хотя бы один предмет или валюту на любую сторону.";
-"trade.preflight.invalid_self" = "Нельзя обменяться с самим собой.";
-"trade.proposing.busy" = "Отправляем…";
-"trade.title" = "Предложить";
-"trade.kind.empty" = "Пусто";
-"trade.section.your.owner" = "Вы";
-"trade.section.your.empty" = "У вас пока нет предметов — но можно подарить или купить за валюту.";
-"trade.section.theirs.empty" = "У %@ пока нет предметов.";
-"trade.section.theirs.private" = "Инвентарь %@ скрыт.";
-"trade.send.error" = "Не удалось отправить — инвентарь или кошелёк мог измениться. Обновите и попробуйте ещё раз.";
 
 /* ── Nearby ───────────────────────────────────────────────── */
 
@@ -1640,12 +1354,6 @@
 
 /* ── Rarity ───────────────────────────────────────────────── */
 
-"rarity.common" = "Обычный";
-"rarity.uncommon" = "Необычный";
-"rarity.rare" = "Редкий";
-"rarity.epic" = "Эпический";
-"rarity.legendary" = "Легендарный";
-"rarity.all" = "Все";
 
 /* ── Games hub + Crash ───────────────────────────────────────── */
 "games.title" = "Игры";

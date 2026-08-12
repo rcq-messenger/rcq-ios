@@ -107,8 +107,6 @@ final class MessageService {
     // MARK: - sending (1:1)
 
     func send(text: String, to contact: Contact, replyTo: ReplyContext? = nil) async throws {
-        SmokeTracker.shared.tick(.sendMessage1to1)
-        if replyTo != nil { SmokeTracker.shared.tick(.replyToMessage) }
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -170,7 +168,6 @@ final class MessageService {
     }
 
     func sendPhoto(_ image: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
-        SmokeTracker.shared.tick(.sendPhoto)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -215,7 +212,6 @@ final class MessageService {
     /// `"GIF8"` magic on the decrypted blob and renders via
     /// `AnimatedGIFView`. Mirrors `sendPhoto` otherwise.
     func sendGIF(data: Data, preview: UIImage, to contact: Contact, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil) async throws {
-        SmokeTracker.shared.tick(.sendGif)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -256,7 +252,6 @@ final class MessageService {
 
     /// Consumes the `.m4a` at `fileURL` (deleted on success or failure).
     func sendVoice(fileURL: URL, durationSec: Double, to contact: Contact, replyTo: ReplyContext? = nil) async throws {
-        SmokeTracker.shared.tick(.sendVoice)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -373,7 +368,6 @@ final class MessageService {
         caption: String? = nil,
         replyTo: ReplyContext? = nil,
     ) async throws {
-        SmokeTracker.shared.tick(.sendLocation)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -417,7 +411,6 @@ final class MessageService {
         albumID: UUID? = nil,
         spoiler: Bool = false,
     ) async throws {
-        SmokeTracker.shared.tick(.sendVideo)
         let ttl = ChatSettingsStore.shared.ttl(for: .peer(uin: contact.uin))
         let local = Message(
             thread: .peer(uin: contact.uin),
@@ -678,7 +671,6 @@ final class MessageService {
         let current = message.reactions[me]
         let newAsset: String? = (current == asset) ? nil : asset
         // Auto-tick only when SETTING a reaction (not when toggling off).
-        if newAsset != nil { SmokeTracker.shared.tick(.sendReaction) }
         if case .randomPeer = target {
             RandomChatService.shared.applyReaction(targetID: message.id, uin: me, asset: newAsset)
         } else {
