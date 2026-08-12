@@ -58,7 +58,6 @@ final class ThemeManager: ObservableObject {
             UserDefaults.standard.set(theme.rawValue, forKey: "rcq.theme")
             // Only tick on a real switch (init's didSet doesn't fire).
             if oldValue != theme {
-                SmokeTracker.shared.tick(.switchTheme)
             }
         }
     }
