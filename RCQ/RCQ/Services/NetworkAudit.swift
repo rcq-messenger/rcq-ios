@@ -51,6 +51,9 @@ enum NetworkAudit {
 
     enum Verdict: String {
         case allFine = "ALL_FINE"
+        /// Messages get through, calls do not. Its own verdict because the two
+        /// used to be one, and the one they were was "everything is fine".
+        case callsBlocked = "CALLS_BLOCKED"
         case noInternet = "NO_INTERNET"
         case byName = "BY_NAME"
         case byAddress = "BY_ADDRESS"
@@ -233,9 +236,64 @@ enum NetworkAudit {
             lines.append(Line(title: "audit.cross.addr".localized, detail: "\(crossAddr!.0.rawValue) (\(crossAddr!.1))", ok: crossAddr!.0 != .blocked))
         }
 
+        // 5. The one host every call depends on, which nothing above tests.
+        //
+        // ⚠⚠ Everything so far measures whether MESSAGES get through. Calls do
+        // not use any of it: WebRTC opens its own sockets, straight to the media
+        // relay. So a phone that could not place a single call still came back
+        // ALL_FINE, and the report that arrived carried that line as proof that
+        // nothing was wrong (report #468). A verdict that cannot see the thing
+        // that is broken is worse than no verdict.
+        var turnOK: Bool?
+        // Which road was measured, so the one line a tester sends says so.
+        var turnViaTunnel = false
+        if let th = CallDiagnostics.turnHost {
+            // ⚠ Measure the road the call will actually take. With the tunnel up
+            // the media is forwarded through it (CallTunnel), so testing the
+            // direct path would condemn a set-up that works; with the tunnel
+            // down the media does go straight out, so the direct path is the
+            // truth. Same reason either way: report what calls will do, not what
+            // some other configuration would have done.
+            if await SingBoxTransport.shared.isActive {
+                turnViaTunnel = true
+                let viaTunnel = await CallTunnel.shared.probeThroughTunnel(host: th)
+                turnOK = viaTunnel
+                lines.append(Line(
+                    title: "audit.turn".localized,
+                    detail: (viaTunnel ? "audit.turn.tunnel.ok" : "audit.turn.tunnel.fail").localized,
+                    ok: viaTunnel
+                ))
+            } else {
+                // 443 first: it is the port most likely to survive a filter, and
+                // the one the island advertises for TURN-over-TLS.
+                let tls = await probe(host: th, port: 443, sni: th, timeout: 5)
+                let plain = await probe(host: th, port: 3478, sni: nil, timeout: 4)
+                let ok = tls.0 != .blocked || plain.0 != .blocked
+                turnOK = ok
+                lines.append(Line(
+                    title: "audit.turn".localized,
+                    detail: ok
+                        ? String(format: "audit.turn.direct.ok".localized, tls.0.short, plain.0.short)
+                        : "audit.turn.direct.fail".localized,
+                    ok: ok
+                ))
+                if !ok {
+                    lines.append(Line(
+                        title: "audit.turn.advice.title".localized,
+                        detail: "audit.turn.advice".localized,
+                        ok: nil
+                    ))
+                }
+            }
+        }
+
         let verdict: Verdict
         if !controlOK && direct.0 == .blocked {
             verdict = .noInternet
+        } else if direct.0 == .open && turnOK == false {
+            // The island answers and the relay does not: messages work, calls
+            // cannot. This is the case that used to round up to ALL_FINE.
+            verdict = .callsBlocked
         } else if direct.0 == .open {
             verdict = .allFine
         } else if let ca = crossAddr, ca.0 != .blocked {
@@ -251,7 +309,11 @@ enum NetworkAudit {
         }
 
         // Short enough to retype off a screen if it comes to that.
-        let compact = "RCQ-NET/1 "
+        // ⚠ /3 because the line now reports whether CALLS can work, which is
+        // what the number tracks across clients. iOS still lacks /2's carrier
+        // and udp fields and /3's last-call fields; a field it does not measure
+        // is simply absent, as `turn:` is until the first credential fetch.
+        let compact = "RCQ-NET/3 "
             + (controlOK ? "ctl:ok " : "ctl:dead ")
             + "dns:\(islandIP != nil ? "ok" : "fail") "
             + "dir:\(direct.0.short) "
@@ -259,6 +321,7 @@ enum NetworkAudit {
             + "relay:\(relaysOpen)/\(relays.count) "
             + "xname:\(crossName?.0.short ?? "-") "
             + "xaddr:\(crossAddr?.0.short ?? "-") "
+            + (turnOK.map { "turn:\($0 ? (turnViaTunnel ? "tunnel" : "ok") : "BLOCKED") " } ?? "")
             + "=> \(verdict.rawValue)"
 
         return Report(lines: lines, verdict: verdict, compact: compact)

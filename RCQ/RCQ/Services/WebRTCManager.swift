@@ -88,6 +88,21 @@ final class WebRTCManager: NSObject, ObservableObject {
 
     private static var probeDelegate: RelayProbeDelegate?
 
+    /// The bare host out of `turn:host:port?transport=...`, which is what
+    /// [CallTunnel] forwards to. Nil when the island handed out nothing
+    /// parseable, in which case there is nothing to tunnel to and the tunnel
+    /// stays down.
+    static func hostFrom(turnUrls: [String]) -> String? {
+        for url in turnUrls {
+            guard let range = url.range(of: "^turns?:", options: .regularExpression) else { continue }
+            let rest = String(url[range.upperBound...])
+            let hostPort = rest.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rest
+            let host = hostPort.split(separator: ":", maxSplits: 1).first.map(String.init) ?? hostPort
+            if !host.isEmpty { return host }
+        }
+        return nil
+    }
+
     /// `turn:host:port?transport=...` -> `stun:host:port`. Nil when the island
     /// handed out nothing parseable, in which case we simply keep Google's.
     static func stunFrom(turnUrls: [String]) -> RTCIceServer? {
@@ -111,6 +126,23 @@ final class WebRTCManager: NSObject, ObservableObject {
             encoderFactory: encoderFactory,
             decoderFactory: decoderFactory
         )
+        // ⚠ WebRTC ignores the loopback adapter when it enumerates networks,
+        // which means it cannot reach a TURN server on 127.0.0.1 — and that is
+        // exactly where [CallTunnel] puts one so that call media can ride the
+        // obfuscated connection. Left alone, the tunnel is built, listens, and
+        // is never dialled.
+        //
+        // The native default for network_ignore_mask is the loopback bit; the
+        // options object below starts from nothing and sets only what is asked
+        // for, so handing it over is what clears it. Every other ignore flag
+        // stays false, which is what it already was.
+        //
+        // Clearing it only makes loopback usable, it does not put loopback
+        // candidates anywhere they matter: the tunnelled path is relay-only, so
+        // the sole candidate gathered is the relay address the island allocated.
+        let options = RTCPeerConnectionFactoryOptions()
+        options.ignoreLoopbackNetworkAdapter = false
+        self.factory.setOptions(options)
         super.init()
     }
 
@@ -282,17 +314,38 @@ final class WebRTCManager: NSObject, ObservableObject {
         cameraOff = false
     }
 
+    /// Can this connection accept a remote candidate yet?
+    ///
+    /// ★★ The question is about the CONNECTION, not about the screen. WebRTC
+    /// discards candidates until a remote description exists, so anything that
+    /// arrives before it is gone. The caller's remote description only lands
+    /// when the answer does, and the callee's host candidates need no round trip
+    /// at all, so they routinely win that race. Android port: `WebRtcClient
+    /// .canTakeRemoteIce()`.
+    func canTakeRemoteIce() -> Bool {
+        peerConnection?.remoteDescription != nil
+    }
+
     func addRemoteIce(candidateJSON: String) {
         guard let pc = peerConnection,
               let data = candidateJSON.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let sdp = dict["sdp"] as? String
-        else { return }
+        else {
+            // ⚠ Say so. This used to return in silence, which is a large part of
+            // why candidates going missing stayed invisible for so long.
+            print("[WebRTCManager] remote ICE dropped: no peer connection or unparseable candidate")
+            return
+        }
         let mLineIndex = (dict["sdpMLineIndex"] as? Int32) ?? 0
         let mid = dict["sdpMid"] as? String
         let candidate = RTCIceCandidate(sdp: sdp, sdpMLineIndex: mLineIndex, sdpMid: mid)
         Task {
-            try? await pc.add(candidate)
+            do {
+                try await pc.add(candidate)
+            } catch {
+                print("[WebRTCManager] remote ICE rejected: \(error)")
+            }
         }
     }
 
@@ -449,6 +502,15 @@ final class WebRTCManager: NSObject, ObservableObject {
         capturer.startCapture(with: device, format: chosenFormat, fps: fps)
     }
 
+    /// Fetch the credentials, learn the relay host, raise the call tunnel and
+    /// measure whether a relay candidate is obtainable here — all off the call
+    /// path, so the first call does not pay for any of it and the diagnostics
+    /// have something to report before anybody has called. Android parity:
+    /// `CallController.prewarmRelayPath`.
+    func prewarmRelayPath() async {
+        await refreshTurnIfNeeded()
+    }
+
     private func refreshTurnIfNeeded() async {
         if let cached = cachedTurn, cached.expiresAt > Date().addingTimeInterval(300) {
             return
@@ -470,8 +532,24 @@ final class WebRTCManager: NSObject, ObservableObject {
                     cachedTurn = nil
                     return
                 }
+                // With the obfuscated connection up, reach the relay THROUGH it.
+                // The credentials are unchanged: TURN authenticates the
+                // username, not the address the connection arrived from, so the
+                // island still recognises this as the same user arriving by a
+                // different road.
+                let turnHost = Self.hostFrom(turnUrls: resp.urls)
+                CallDiagnostics.turnHost = turnHost
+                await CallTunnel.shared.ensureRunning(turnHost: turnHost)
+                // ⚠ ADDED to the island's URLs, never substituted for them. ICE
+                // tries every server it is given and uses whichever answers, so
+                // offering both roads can only help: on a censored network the
+                // direct one is dead and the tunnel carries the call, on an open
+                // network the direct one wins on latency and the tunnel costs
+                // nothing. Replacing them would mean that any fault in the
+                // tunnel took calls away from people whose direct path was fine.
+                let effective = [CallTunnel.shared.activeURL()].compactMap { $0 } + resp.urls
                 let server = RTCIceServer(
-                    urlStrings: resp.urls,
+                    urlStrings: effective,
                     username: resp.username,
                     credential: resp.credential
                 )
@@ -479,6 +557,9 @@ final class WebRTCManager: NSObject, ObservableObject {
                 // Measure reachability alongside the refresh, so the first call
                 // after launch already knows whether relay-only is viable here.
                 Self.probeRelay(turn: server, factory: factory)
+                // ⚠ STUN is derived from the ISLAND's url, never the tunnel's:
+                // the forwarder speaks TCP, STUN is UDP, and
+                // `stun:127.0.0.1:<tcp port>` is an address nothing answers on.
                 ownStun = Self.stunFrom(turnUrls: resp.urls)
                 return
             } catch {

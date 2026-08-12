@@ -1486,6 +1486,17 @@ final class AppState: ObservableObject {
             // watchdog tripped over a slow round-trip and tore down
             // a healthy socket.
             AudioRoomService.shared.restoreOnForeground()
+            // Learn where TURN lives, and bring the call tunnel up if the
+            // obfuscated connection is on, before anybody places a call.
+            //
+            // ⚠ Not only an optimisation. Until this ran, the credentials were
+            // fetched inside the first call, so `CallDiagnostics.turnHost` was
+            // nil for anyone who had not called yet — and the network audit
+            // silently skipped the one check that can say calls are blocked.
+            // The report that started all of this came from a phone that had
+            // never placed a successful call (#468). Android does the same on
+            // connect, as `prewarmRelayPath`.
+            Task { await WebRTCManager.shared.prewarmRelayPath() }
 
         case .closed:
             // No-op. WebSocketService has its own scheduleReconnect()
