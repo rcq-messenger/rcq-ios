@@ -1781,6 +1781,14 @@
 "audit.relays.detail" = "%d of %d accept TCP";
 "audit.cross.name" = "permitted address + our name";
 "audit.cross.addr" = "our address + permitted name";
+"audit.turn" = "call relay";
+"audit.turn.tunnel.ok" = "reachable through the bypass";
+"audit.turn.tunnel.fail" = "UNREACHABLE even through the bypass";
+"audit.turn.direct.ok" = "reachable directly (443 %@, 3478 %@)";
+"audit.turn.direct.fail" = "UNREACHABLE directly";
+"audit.turn.advice.title" = "what to do";
+"audit.turn.advice" = "turn the censorship bypass on: calls will then travel through it";
+"audit.verdict.CALLS_BLOCKED" = "Messages get through and calls do not: the island answers, but the call relay is unreachable from this network.";
 "audit.verdict.ALL_FINE" = "The island answers directly. Nothing is being filtered here.";
 "audit.verdict.NO_INTERNET" = "Even the control hosts are unreachable: this device has no working internet, so nothing below is about RCQ.";
 "audit.verdict.BY_NAME" = "Our address answers under another name. The filter goes by NAME, so a different name in front of the same server should get through.";

@@ -59,6 +59,15 @@ final class CallService: ObservableObject {
     // seen on the wire. Cleared on connect / decline / teardown / new call.
     private var answering = false
 
+    // ⚠ Durable, unlike `answering`: it survives the handshake so the history
+    // row can tell "nobody picked up" from "we picked up and it fell over".
+    // Without it a call the user answered, which then died before media flowed,
+    // was written into the chat as MISSED — the reason on the wire is the same
+    // "cancelled" in both cases, and the reason was all this had to go on
+    // (report #472, where the reporter's video showed the answer). Reset per
+    // call, never carried across one.
+    private var answered = false
+
     // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
     // — only the original caller restarts); the callee waits for that re-offer
     // and ends the call if it never recovers.
@@ -104,6 +113,7 @@ final class CallService: ObservableObject {
         )
         print("[CallService] start outgoing call=\(call.id) to uin=\(contact.uin) media=\(media)")
         answering = false
+        answered = false
         state = .outgoingRinging(call)
         armRingTimeout(callID: call.id)
         // outgoing bypasses CallKit: CXStartCallAction + libwebrtc on iOS 17/18 fires an
@@ -136,6 +146,7 @@ final class CallService: ObservableObject {
         // Set BEFORE routing through CallKit so a CallKit auto-end that races
         // the answer (iOS 26) is recognised as spurious in endFromCallKit.
         answering = true
+        answered = true
         #if targetEnvironment(simulator)
         // No CallKit on the simulator — answer the handshake straight away.
         print("[CallService] accept (simulator) -> direct handshake, no CallKit (callID=\(c.id))")
@@ -204,6 +215,9 @@ final class CallService: ObservableObject {
             return
         }
         answering = true
+        // Also here, not only in accept(): the lock screen and CallKit answer
+        // path comes straight here and never goes through accept().
+        answered = true
         let call = c
         print("[CallService] performAnswerHandshake running handleOffer (callID=\(call.id))")
         Task {
@@ -221,10 +235,7 @@ final class CallService: ObservableObject {
                     callID: call.id,
                     extras: ["sdp": answerSdp]
                 )
-                for json in pendingRemoteIce {
-                    WebRTCManager.shared.addRemoteIce(candidateJSON: json)
-                }
-                pendingRemoteIce.removeAll()
+                drainRemoteIce()
                 pendingRemoteOffer = nil
                 armConnectTimeout(call: call)
             } catch {
@@ -293,6 +304,7 @@ final class CallService: ObservableObject {
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         answering = false
+        answered = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
     }
@@ -441,6 +453,11 @@ final class CallService: ObservableObject {
         iceRestarting = false
         iceRestartAttempts = 0
         iceEverConnected = true
+        // ★ The call's clock starts HERE, when media actually flows, not when
+        // the answer landed. Stamped at the answer it counted the seconds a
+        // failing call spent trying to connect and wrote them into the chat as
+        // if they had been spent talking. Android port: `markConnected`.
+        if connectedAt == nil { connectedAt = Date() }
     }
 
     /// Transient DISCONNECTED on a live call: give ICE a grace window to
@@ -594,6 +611,18 @@ final class CallService: ObservableObject {
     /// The SDP handshake is done but ICE may never complete (dead TURN path,
     /// symmetric NAT on both ends). Without this the call sits on a silent
     /// "Connecting…" forever, and on iOS it also sits in the system call UI,
+    /// Hand the peer connection everything that arrived before it had a remote
+    /// description. Called at the two, and only two, places a fresh connection
+    /// gets one: after `handleOffer` on the callee's side and after
+    /// `handleAnswer` on the caller's. Android port: `drainRemoteIce()`.
+    private func drainRemoteIce() {
+        let queued = pendingRemoteIce
+        pendingRemoteIce.removeAll()
+        for json in queued {
+            WebRTCManager.shared.addRemoteIce(candidateJSON: json)
+        }
+    }
+
     /// because `.connected` here means "the answer landed", not "media flows".
     /// Android has ended such calls at 35s since the same bug was found there;
     /// iOS had no equivalent. No-op once ICE actually connects.
@@ -716,10 +745,10 @@ final class CallService: ObservableObject {
                         state = .connected(c)
                         RingbackPlayer.shared.stop()
                         CallProvider.shared.reportConnected(callID: c.id)
-                        for json in pendingRemoteIce {
-                            WebRTCManager.shared.addRemoteIce(candidateJSON: json)
-                        }
-                        pendingRemoteIce.removeAll()
+                        // The caller's turn. Until the buffering above was keyed
+                        // on the connection this loop was dead code: nothing on
+                        // the outgoing path ever filled the buffer.
+                        drainRemoteIce()
                         armConnectTimeout(call: c)
                     } catch {
                         print("[CallService] handleAnswer failed: \(error)")
@@ -732,13 +761,26 @@ final class CallService: ObservableObject {
                 }
             }
         case .callIce(_, let callID, let candidateJSON):
-            // stash ICE while still ringing (no peer connection yet)
+            // ★★ Buffer against the CONNECTION, not against the screen.
+            //
+            // This used to stash candidates only while `.incomingRinging`, i.e.
+            // only on the callee's side. The caller is `.outgoingRinging` from
+            // the moment the call starts, so its candidates went straight into a
+            // peer connection that had no remote description yet — and WebRTC
+            // discards those. The callee's host candidates need no round trip,
+            // so they habitually arrive before the answer does and were the ones
+            // being thrown away. Report #472, and the same defect Android fixed
+            // in 0.108.
+            //
+            // ⚠ No lock here, unlike Android. CallService is @MainActor and WS
+            // events are delivered on the main queue, so the check and the
+            // append happen in one non-suspending block; adding a lock would
+            // only suggest a race that cannot occur.
             guard let c = state.call, c.id == callID else { break }
-            switch state {
-            case .incomingRinging:
-                pendingRemoteIce.append(candidateJSON)
-            default:
+            if WebRTCManager.shared.canTakeRemoteIce() {
                 WebRTCManager.shared.addRemoteIce(candidateJSON: candidateJSON)
+            } else {
+                pendingRemoteIce.append(candidateJSON)
             }
         case .callEnd(_, let callID, let reason):
             print("[CallService] WS callEnd callID=\(callID) reason=\(reason)")
@@ -808,6 +850,7 @@ final class CallService: ObservableObject {
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         answering = false
+        answered = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
         #if targetEnvironment(simulator)
@@ -850,6 +893,9 @@ final class CallService: ObservableObject {
 
     private func teardownAfterEnd() {
         answering = false
+        // ⚠ Safe to clear here: assigning `state = .ended` runs logCallEnded
+        // synchronously, so the history row is already written by now.
+        answered = false
         WebRTCManager.shared.close()
         RingbackPlayer.shared.stop()
         pendingRemoteOffer = nil
@@ -886,6 +932,7 @@ final class CallService: ObservableObject {
         outgoingVideoUpgradePending = false
         resetRecoveryState()
         connectedAt = nil
+        answered = false
         lastCallDuration = nil
         isMinimized = false
         state = .idle
@@ -896,7 +943,10 @@ final class CallService: ObservableObject {
     private func reactToStateTransition(from old: State, to new: State) {
         switch new {
         case .connected:
-            if connectedAt == nil { connectedAt = Date() }
+            // ⚠ Deliberately NOT stamping connectedAt here. `.connected` means
+            // the answer arrived, which is not the same as media flowing; the
+            // stamp lives in onIceConnected().
+            break
         case .ended(let call, let reason):
             if old.isEnded { return }
             let duration = connectedAt.map { Date().timeIntervalSince($0) }
@@ -923,6 +973,11 @@ final class CallService: ObservableObject {
         let summary: String
         if let d = duration, d >= 1 {
             summary = "\(directionLabel) \(mediaLabel) · \(Self.formatDuration(d))"
+        } else if answered {
+            // ★★ We picked up. Whatever went wrong after that, this was not a
+            // call nobody answered, and calling it "missed" is what sent the
+            // reporter looking for a call they had just been on.
+            summary = "\(directionLabel) \(mediaLabel) · \("chat.call.outcome.failed".localized)"
         } else {
             let outcomeKey: String
             switch reason {
@@ -940,7 +995,10 @@ final class CallService: ObservableObject {
                     : "chat.call.outcome.missed"
             case "unreachable":
                 outcomeKey = "chat.call.outcome.unreachable"
-            case "setup_failed":
+            // ⚠ "failed" is the desktop client's connect-timeout reason. It had
+            // no case here, so it fell through to the default and a call that
+            // timed out was written down as simply "ended".
+            case "setup_failed", "failed":
                 outcomeKey = "chat.call.outcome.failed"
             case "peer_disconnected":
                 outcomeKey = "chat.call.outcome.disconnected"
