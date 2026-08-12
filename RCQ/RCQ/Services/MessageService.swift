@@ -851,12 +851,22 @@ final class MessageService {
     // MARK: - low level
 
     private func sendEnvelope(_ envelope: Envelope, to contact: Contact, localID: UUID?) async throws {
-        // Saved Messages: stay local — flip delivered state and skip the wire.
+        // Saved Messages. The note is already in this device's store, so there
+        // is nothing to deliver TO — but there are the account's OTHER devices,
+        // and until now they never learned about it: a note written on the
+        // iPhone stayed on the iPhone (founder, 12.08), which is the same gap
+        // the web had until #469 and which Android has never had.
+        //
+        // A carbon is exactly the right shape and already works: it seals the
+        // inner envelope to our own key, the receiving device files it into
+        // `.peer(uin: ownUIN)` — the Saved thread — and MessageStore dedups by
+        // id, so this device ignores its own copy coming back.
         if contact.uin == ownUIN {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .delivered)
             }
             playSentSound(for: envelope)
+            await sendMessageCarbon(envelope, toPeer: ownUIN, toGroup: nil)
             return
         }
         // Federation (F2): a cross-island peer (host set) lives on another island —
