@@ -73,14 +73,6 @@
 "profile.reputation.give_short" = "Подарить";
 "profile.reputation.give_long" = "Подарить репутацию";
 
-
-
-
-
-
-"settings.inventory.public" = "Открытый инвентарь";
-"settings.inventory.public.footer" = "Другие пользователи RCQ смогут просматривать ваши предметы из вашего профиля. Выкл — инвентарь приватный. Тот же тумблер, что и иконка-глаз в инвентаре.";
-
 "settings.network" = "Сеть";
 "settings.network.proxy" = "Подключение и обход";
 "settings.network.title" = "Сеть";
@@ -202,7 +194,6 @@
 "settings.traffic.used.value" = "%d МБ";
 "settings.traffic.spent" = "Потрачено";
 "settings.traffic.pay_large" = "Платить за файлы > 50 МБ";
-"settings.traffic.pay_large.footer" = "До 50 МБ — бесплатно. Сверху 1 жетон за каждые 10 МБ — без лимита, пока есть жетоны.";
 
 "settings.history" = "История";
 "settings.history.file" = "Копия переписки в файл";
@@ -261,6 +252,7 @@
 "uin_shop.confirm.cta_priced" = "Подтвердить %@";
 "uin_shop.error.taken" = "Кто-то перехватил. Попробуй другой UIN.";
 "uin_shop.error.cooldown" = "Слишком часто. Попробуй позже.";
+"hood.composer.placeholder" = "Написать в районе";
 "hood.author.anonymous" = "Аноним";
 "hood.expired" = "Истёк";
 "hood.left_minutes" = "%d мин";
@@ -294,19 +286,6 @@
 "bug_bounty.attach.hint" = "Прикрепи скриншоты или короткое видео, до 3 файлов.";
 "bug_bounty.attach.cta" = "Добавить";
 "bug_bounty.attach.paste" = "Из буфера";
-
-"bounty_credits.title" = "Бонусы за баги";
-"bounty_credits.pending_suffix" = "ждут запуска";
-"bounty_credits.loading" = "Загружаем бонусы…";
-"bounty_credits.error" = "Не удалось загрузить бонусы.";
-"bounty_credits.empty" = "Бонусов пока нет — найди баг или выполни дневной чек-лист.";
-"bounty_credits.unlock_hint" = "На запуске бонусы конвертируются в жетоны.";
-"bounty_credits.more" = "+ ещё %d…";
-"bounty_credits.see_all" = "Показать все (%d)";
-"bounty_credits.history_title" = "История бонусов";
-"bounty_credits.source.bug_bounty" = "Bug bounty";
-"bounty_credits.source.daily_qa" = "Дневной чек-лист";
-
 
 "chat.attach.poll" = "Опрос";
 "chat.attach.share_group" = "Пригласить";
@@ -349,7 +328,6 @@
 "group_join.owner" = "Владелец: %@";
 "group_join.owner_label" = "Владелец";
 "group_join.closed_hint" = "В эту группу можно вступить только по приглашению владельца.";
-"group_join.insufficient" = "Нужно %d жетонов, у тебя %d.";
 "group_join.error.generic" = "Не удалось загрузить группу.";
 "group_join.error.blocked" = "Владелец заблокировал тебя в этой группе.";
 
@@ -396,11 +374,8 @@
 "report.error.generic" = "Не удалось отправить: %@";
 "settings.account.footer" = "Удаляет ваш аккаунт на сервере, стирает все ключи и сообщения на этом устройстве и заводит новый UIN. Старые контакты больше не смогут с вами связаться.";
 "settings.account.burn.title" = "Удалить аккаунт навсегда?";
-"settings.account.burn.title_inventory" = "Удалить аккаунт И инвентарь навсегда?";
 "settings.account.burn.confirm" = "Удалить навсегда";
 "settings.account.burn.message" = "Аккаунт будет удалён на сервере и на этом устройстве. Вы получите новый UIN. Старые контакты и группы исчезнут — никакой связи с новой личностью. Это нельзя отменить.";
-"settings.account.burn.tally" = "%d предметов, %d жетонов, %d гемов";
-"settings.account.burn.message_inventory" = "Удаление уничтожит этот аккаунт И все коллекционные предметы на нём: %@. Восстановления не будет, перенос на новый UIN невозможен — питомцы, звуки, паки, валюта пропадут все. Если хотите сохранить — сначала подарите или обменяйте на другой аккаунт, потом возвращайтесь удалять.";
 
 "settings.link_web" = "Подключить Web";
 "settings.share.message" = "Добавь меня в RCQ — %@ (%d)";
@@ -435,7 +410,7 @@
 "common.send" = "Отправить";
 "common.search" = "Поиск";
 "common.error" = "Ошибка";
-"common.error.insufficient" = "Недостаточно жетонов";
+"common.error.insufficient" = "Остров не принял отправку. Попробуйте ещё раз.";
 "common.error.already_done" = "Уже выполнено";
 "common.error.session_ended" = "Сессия завершилась — попробуй в следующем раунде";
 "common.error.conflict" = "Конфликт — попробуй ещё раз";
@@ -509,78 +484,12 @@
 "presence.info.title" = "Видимость после выхода";
 "presence.info.body" = "Вас показывают онлайн ещё столько времени после закрытия приложения. Изменить можно в Настройки, Приватность и сеть.";
 
-/* Inventory trailing-toolbar ellipsis menu */
-
 // ── Маркет предметов ───────────────────────────────────────────────
-"market.title" = "Маркет";
-"market.tab.browse" = "Купить";
-"market.tab.mine" = "Мои лоты";
-"market.category.items" = "Предметы";
-"market.category.uins" = "UIN-ы";
-"market.filter.all" = "Все";
-"market.sort.newest" = "Свежие";
-"market.sort.price_asc" = "Цена ↑";
-"market.sort.price_desc" = "Цена ↓";
-"market.row.payout" = "продавец получит %d";
-"market.empty.browse" = "Пока ничего не выставлено. Загляни позже или выстави свой лот.";
-"market.empty.mine" = "У тебя нет активных лотов. Выстави любой предмет из инвентаря.";
-"market.status.active" = "Активен";
-"market.status.sold" = "Продан";
-"market.status.cancelled" = "Снят";
-"market.detail.price" = "Цена";
-"market.detail.essence_caption" = "ЭССЕНЦИЯ";
 "sound.default" = "Стандартный";
-"market.detail.seller" = "Продавец: %@";
-"market.detail.payout" = "Тебе придёт";
-"market.detail.fee" = "Комиссия 5%";
-"market.detail.buy" = "Купить";
-"market.detail.insufficient" = "Не хватает жетонов";
-"market.detail.cancel_listing" = "Снять с продажи";
-"market.detail.cancelling" = "Снимаем…";
-"market.detail.sold" = "Лот продан";
-"market.detail.cancelled" = "Лот снят";
-"market.detail.sold_to" = "Купил: %@";
-"market.alert.title" = "Маркет";
-"market.share.cta_open" = "Открыть на маркете →";
-"market.share.toast.title" = "Поделиться";
-"market.share.toast.sent" = "Отправлено в чат.";
-"market.share.toast.error" = "Не удалось отправить: %@";
 "uin_listing.share.cta_open" = "Открыть на маркете →";
 "uin_listing.share.toast.title" = "Поделиться";
 "uin_listing.share.toast.sent" = "Отправлено в чат.";
 "uin_listing.share.toast.error" = "Не удалось отправить: %@";
-"market.spec.owner" = "Владелец";
-"market.spec.tier" = "Редкость";
-"market.spec.level" = "Уровень";
-"market.spec.purity" = "Чистота";
-"market.spec.essence" = "Эссенция";
-"market.spec.value" = "Цена";
-"market.spec.payout" = "К получению";
-"market.section.smileys" = "Смайл";
-"market.section.pets" = "Питомец";
-"market.section.voices" = "Озвучка";
-"market.sell.title" = "На продажу";
-"market.sell.body" = "Укажи цену в жетонах. Комиссия маркета 5% — приходит тебе остальное. Лот висит до покупки или отмены.";
-"market.sell.price_placeholder" = "Цена в жетонах";
-"market.sell.payout_hint" = "Тебе придёт после комиссии";
-"market.sell.cta" = "Выставить";
-"market.sell.busy" = "Выставляем…";
-"market.success.listed" = "Лот выставлен";
-"market.success.bought" = "Готово";
-"market.success.cancelled" = "Снят с продажи";
-"market.error.browse" = "Не удалось загрузить маркет";
-"market.error.list" = "Не удалось выставить лот";
-"market.error.buy" = "Не удалось купить";
-"market.error.already_listed" = "Этот предмет уже выставлен";
-"market.error.equipped" = "Снимите предмет, прежде чем продавать";
-"market.error.too_many" = "Максимум %d активных лотов";
-"market.error.insufficient" = "Не хватает жетонов: нужно %d, есть %d";
-"market.error.not_active" = "Лот больше не активен";
-"market.error.self_buy" = "Нельзя купить свой лот";
-"market.error.ownership_drift" = "Продавец сменил владельца — лот неактивен";
-"market.error.item_gone" = "Предмет уже не существует";
-"market.error.uin_gone" = "UIN больше не существует";
-"market.error.uin_not_in_inventory" = "Этого UIN нет в твоём инвентаре";
 
 // ── Safety (Block / Report) — общее меню для всех UGC-поверхностей
 "settings.blocked_users" = "Заблокированные";
@@ -599,11 +508,6 @@
 "safety.block.confirm.body" = "%@ не сможет писать вам, видеть ваши истории и взаимодействовать с вами в приложении. Снять блокировку можно в настройках.";
 "safety.unblock.confirm.title" = "Разблокировать пользователя?";
 "safety.unblock.confirm.body" = "%@ снова сможет писать вам и взаимодействовать с вами.";
-"market.uin.empty.browse" = "UIN-ы пока не продаются. Загляни позже или выставь свой.";
-"market.uin.empty.mine" = "У тебя нет активных UIN-лотов. Выставь любой из своего инвентаря.";
-"market.detail.seller_gets" = "Продавец получит";
-"market.detail.cancel" = "Снять с продажи";
-"market.detail.seller_label" = "Продавец";
 "uin.tier.common" = "Обычный";
 "uin.tier.mid" = "Премиум";
 "uin.tier.legendary" = "Легендарный";
@@ -666,7 +570,6 @@
 "chat.action.delete_for_me" = "Удалить у себя";
 "chat.action.delete_for_everyone" = "Удалить у всех";
 "chat.action.react" = "Реакция";
-"chat.action.jeton" = "Отправить жетоны";
 
 "chat.action.report_content" = "Пожаловаться на контент";
 
@@ -732,19 +635,14 @@
 "chat.action.show_original" = "Показать оригинал";
 
 "chat.premium.compose.title" = "Платный контент";
-"chat.premium.compose.body" = "Выберите цену в жетонах. Получатель увидит размытый бабл и оплатит, чтобы открыть медиа. Вам уйдёт 95% (5% — комиссия).";
 "chat.premium.compose.price_placeholder" = "Цена";
-"chat.premium.compose.hint" = "От 1 до 999 999 жетонов.";
 "chat.premium.compose.pick_photo" = "Фото";
 "chat.premium.compose.pick_video" = "Видео";
 "chat.premium.unlock_for" = "Открыть за";
 "chat.premium.preview_photo" = "Платное фото";
 "chat.premium.preview_video" = "Платное видео";
-"chat.premium.confirm.title" = "Открыть за %d жетонов?";
-"chat.premium.confirm.body" = "С твоего баланса спишутся жетоны и придёт ключ к медиа.";
 "chat.premium.confirm.pay" = "Оплатить %d";
 "chat.premium.error.title" = "Не удалось открыть";
-"chat.premium.error.insufficient" = "Не хватает жетонов.";
 "chat.premium.error.gone" = "Контент больше недоступен.";
 "chat.premium.error.generic" = "Что-то пошло не так. Попробуй ещё раз.";
 "chat.voice.permission.title" = "Нужен доступ к микрофону";
@@ -774,7 +672,6 @@
 "contact_list.empty.title" = "Пока никого нет";
 "contact_list.empty.body" = "Добавьте друга по UIN или QR-коду, чтобы начать переписку. Чат с незнакомцем работает и без контактов.";
 "contact_list.empty.cta" = "Добавить контакт";
-
 
 "chat.empty.title" = "Сообщений пока нет";
 "chat.empty.body" = "Скажи привет — первое сообщение запускает диалог.";
@@ -860,7 +757,6 @@
 
 /* ── Сводка обмена ────────────────────────────────────────── */
 
-
 /* ── Профиль группы ───────────────────────────────────────── */
 
 "group.created" = "Создана %@";
@@ -896,7 +792,6 @@
 "group.settings.post_policy.all" = "Все";
 "group.settings.post_policy.owner_only" = "Только владелец";
 "group.settings.post_policy.hint" = "В режиме «Только владелец» участники видят сообщения, но не могут писать.";
-"group.settings.entry_price" = "Цена входа в жетонах";
 "group.settings.entry_price.hint" = "0 = бесплатно. С каждой покупки удерживается 5% комиссии маркета, остальное идёт владельцу.";
 "group.settings.name" = "Название группы";
 "group.settings.photo" = "Фото группы";
@@ -1007,11 +902,9 @@
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
-
 /* Названия питомцев */
 
 /* Голосовые паки — звуки уведомлений */
-
 
 /* Описания питомцев */
 
@@ -1027,20 +920,16 @@
 "join_group.your_balance" = "У тебя";
 "join_group.cta.free" = "Вступить";
 "join_group.cta.pay" = "Оплатить и вступить";
-"join_group.cta.insufficient" = "Не хватает жетонов";
 "join_group.alert.title" = "Группа";
-"join_group.error.insufficient" = "Не хватает жетонов: нужно %d, есть %d";
 "join_group.error.blocked" = "Владелец заблокировал тебя";
 "join_group.error.generic" = "Не удалось вступить. Попробуй позже.";
 
 "chat.menu.premium_content" = "Платный контент";
-"chat.premium.coming_soon" = "Скоро. Тут владелец сможет отправлять фото/видео под блюром с ценой в жетонах — участники откроют контент после оплаты, владелец получит 95% (5% — комиссия маркета).";
 "add.section.people" = "ЛЮДИ";
 "add.cta.add" = "Добавить в контакты";
 "add.cta.in_list" = "Уже в вашем списке контактов";
 "add.cta.sending" = "Отправляем…";
 "add.cta.sent" = "Запрос отправлен — ждёт подтверждения";
-"add.inventory" = "Инвентарь";
 "add.trade" = "Обмен";
 "add.contact_info" = "Профиль";
 "add.row.added" = "Добавлен";
@@ -1083,7 +972,6 @@
 "profile.cta.propose_trade" = "Предложить обмен";
 "profile.cta.add_contact" = "Добавить в контакты";
 "profile.cta.open_chat" = "Открыть чат";
-"profile.cta.view_inventory" = "Открыть инвентарь";
 "profile.cta.reset_session" = "Сбросить защищённую сессию";
 "profile.cta.share_my_rcq" = "Поделиться RCQ";
 "profile.cta.save" = "Сохранить";
@@ -1130,19 +1018,11 @@
 "contact_list.section.cross_island" = "Другие острова";
 "pending.cta.decline" = "Отклонить";
 
-/* ── Inventory / Lootbox ──────────────────────────────────── */
-
-
 "pool.boost_note" = "Шансы показаны с бустом питомцев %d%%.";
 
 "shop.kicker" = "ШОП";
-"shop.title" = "Купить жетоны";
-"shop.subtitle" = "Жетоны — внутренняя валюта RCQ. Тратятся в играх, маркете, на платный контент и аукционы.";
-"shop.tokens_n" = "%d жетонов";
 "shop.best_value" = "ВЫГОДНЕЕ";
-"shop.per_token" = "%d¢ за жетон";
 "shop.balance" = "Баланс хранится на сервере под твоим UIN. Реальная оплата через App Store придёт позже — сейчас пакеты пополняют кошелёк сразу для тестирования.";
-
 
 "pool.title" = "Пул";
 "pool.section_share" = "%.0f%% выпадений";
@@ -1191,25 +1071,17 @@
 "pool.detail.chance" = "ШАНС ВЫПАДЕНИЯ  %.2f%%";
 "pool.detail.cap" = "ТИРАЖ  %d";
 "pool.detail.cap_remaining" = "%d / %d ОСТАЛОСЬ";
-"pool.gems.section" = "Гемы";
 "pool.gems.title" = "Связка гемов";
 "pool.gems.range" = "%d–%d гемов за выпадение";
 "pool.pack.contents" = "СОДЕРЖИМОЕ ПАКА · %d";
-"public_inventory.title" = "Предметы %@";
-"public_inventory.empty" = "%@ ещё не открывал коробки.";
-"public_inventory.private.title" = "Инвентарь скрыт";
-"public_inventory.private.body" = "%@ скрыл свой инвентарь.";
-
 
 "disassemble.title" = "Разбор";
-"disassemble.body" = "Разбор уничтожит этот предмет навсегда. Вы получите гемы в зависимости от качества и уровня улучшения.";
 "disassemble.cta" = "Разобрать";
 "disassemble.cta.busy" = "Разбираем…";
 "disassemble.cta.cancel" = "Отмена";
 "disassemble.success.body" = "%@ исчезает.";
 
 /* ── Trades ───────────────────────────────────────────────── */
-
 
 /* ── Nearby ───────────────────────────────────────────────── */
 
@@ -1346,7 +1218,6 @@
 
 "onboard.trade.kicker" = "ОБМЕН";
 "onboard.trade.title" = "Обмен в реальном времени";
-"onboard.trade.body" = "Отправьте оффер прямо в чате — получатель видит мгновенно. Предметы, жетоны, гемы с любой стороны. Пустое \"запрос\" = подарок. Пустое \"предложение\" = запрос на покупку.";
 
 "onboard.privacy.kicker" = "ПРИВАТНОСТЬ";
 "onboard.privacy.title" = "Вы решаете кто что видит";
@@ -1354,10 +1225,8 @@
 
 /* ── Rarity ───────────────────────────────────────────────── */
 
-
 /* ── Games hub + Crash ───────────────────────────────────────── */
 "games.title" = "Игры";
-"games.subtitle" = "Быстрые ставки на жетоны.\nРаунды по 15-30 секунд.";
 "games.section.solo" = "Соло";
 "games.section.pvp" = "Между игроками";
 "games.section.pets" = "Питомцы";
@@ -1392,7 +1261,6 @@
 "hilo.cta.higher" = "ВЫШЕ";
 "hilo.cta.lower" = "НИЖЕ";
 "hilo.cta.cashout" = "ЗАБРАТЬ %.2fx";
-"hilo.banner.won" = "Победа %.2fx · +%d жетонов";
 "hilo.banner.lost" = "Карта %@ — мимо. Ставка сгорела.";
 
 "hilo.rules.title" = "Правила Hi-Lo";
@@ -1415,7 +1283,6 @@
 "pet_preview.owner" = "Носит %@";
 "pet_preview.mint" = "#%d";
 "pet_preview.level" = "+%d";
-"pet_preview.cta.see_more" = "Посмотреть инвентарь %@";
 "pet_preview.essence" = "ЭСС %d";
 "pet_preview.purity" = "ЧИСТ %.2fx";
 "limbo.target.label" = "Цель: %.2fx";
@@ -1423,7 +1290,6 @@
 "limbo.slider.chance" = "Шанс";
 "limbo.bet.label" = "Ставка";
 "limbo.cta.roll" = "БРОСИТЬ %d";
-"limbo.banner.won" = "Выпало %.2fx · +%d жетонов";
 "limbo.banner.lost" = "Выпало %.2fx (нужно ≥%.2fx) — мимо";
 
 "limbo.rules.title" = "Правила Limbo";
@@ -1441,26 +1307,21 @@
 "crash.you_cashed" = "Ты вышел вовремя ✓";
 "crash.spectating" = "Жди следующего раунда";
 "crash.result.lost" = "Краш на %.2fx — ставка сгорела";
-"crash.result.won" = "Победа! %.2fx · +%d жетонов";
 "crash.result.next_in" = "Следующий раунд через %d сек";
-"crash.banner.cashed" = "Забрал %.2fx · +%d жетонов";
 "crash.error.betting_closed" = "Ставки уже закрыты";
 "crash.error.cashout_too_late" = "Не успел — раунд крашнулся ровно когда ты нажал. Ставка сгорела.";
 "crash.error.already_cashed" = "Ты уже забрал в этом раунде";
 "crash.error.already_bet" = "Ты уже сделал ставку в этом раунде";
 "crash.error.no_bet" = "В этом раунде ставки нет";
-"crash.error.insufficient" = "Недостаточно жетонов";
 "crash.error.network" = "Сетевая ошибка — попробуй ещё раз";
 
 "crash.rules.title" = "Правила Crash";
 "crash.rules.how.title" = "Как играть";
 "crash.rules.how.body" = "Каждый раунд: 8 секунд на ставку, потом множитель растёт от 1.00x вверх. В любой момент жми «ЗАБРАТЬ» — фиксируешь ставку × текущий множитель. Если сидишь до краха — теряешь всё.";
 "crash.rules.payout.title" = "Выплата";
-"crash.rules.payout.body" = "Выигрыш = ставка × множитель в момент кэшаута. Пример: ставка 10 жетонов, забрал на 2.50x → +25 жетонов. Чем дольше держишь — тем больше потенциальный выигрыш и тем выше риск краха.";
 "crash.rules.fair.title" = "Честность (Provably Fair)";
 "crash.rules.fair.body" = "Точка краха определена ДО открытия ставок: SHA256(seed + round_id). Хеш публикуется в начале раунда, сам seed раскрывается после краха. Можешь проверить вручную — никто не может поменять результат после твоей ставки.";
 "crash.rules.risk.title" = "Риск";
-"crash.rules.risk.body" = "Около 3% раундов крашатся мгновенно на 1.00x — это математическое преимущество дома (жетоны сжигаются, никто не зарабатывает). 50% раундов крашатся до 2.00x. 10% доходят до 10x. Играй на то, что готов потерять.";
 
 "contact_list.bar.add" = "Добавить";  /* legacy key kept for transitional bundles */
 
@@ -1530,32 +1391,24 @@
 "games.uin_auction.title" = "Аукцион UIN";
 "games.uin_auction.body" = "Один UIN в час. Ставка-война до последней секунды.";
 "games.pets_hunt.title" = "Охота";
-"games.pets_hunt.body" = "Снаряжённый питомец пассивно фармит жетоны. Рискни им на охоте — заберёшь больше.";
 
 /* ── Экран Pet Hunt ─────────────────────────── */
-"pet_hunt.daily_yield" = "%d жетонов / день при полной загрузке";
 "pet_hunt.daily_gems" = "%d гемов / день при полной загрузке";
 "pet_hunt.cap_reached" = "Буфер заполнен — забери награду или она сгорит";
 "pet_hunt.claim" = "Забрать";
 "pet_hunt.send" = "ОТПРАВИТЬ НА ОХОТУ";
 "pet_hunt.hunts_left" = "%d / %d охот сегодня";
 "pet_hunt.cta.open_memorial" = "Мемориал";
-"pet_hunt.cta.open_inventory" = "Инвентарь";
 "pool.rarity.section" = "Редкость";
 "pool.rarity.hint" = "Редкость роллится независимо от выпавшего предмета — любой пет, пак смайлов или звук может оказаться любого тира с шансами ниже.";
 "pet_hunt.empty.no_pet.title" = "Питомец не снаряжён";
-"pet_hunt.empty.no_pet.body" = "Снаряди питомца из [инвентаря](rcq://inventory) чтобы начать пассивный фарм жетонов.";
 "pet_hunt.accumulator.title" = "В буфере";
-"pet_hunt.spec.daily_yield" = "Жетонов / день";
 "pet_hunt.spec.daily_gems" = "Гемов / день";
-"pet_hunt.spec.hourly_rate" = "Жетонов / час";
 
 /* Pet Hunt — info */
 "pet_hunt.info.title" = "Как работает";
 "pet_hunt.info.passive.title" = "Пассивный фарм";
-"pet_hunt.info.passive.body" = "Снаряжённый питомец зарабатывает жетоны 24/7. Чем выше редкость, уровень и чистота — тем больше доход. Буфер копится максимум 24 часа — забирай ежедневно или потеряешь излишек.";
 "pet_hunt.info.zones.title" = "Зоны охоты";
-"pet_hunt.info.zones.body" = "Три охоты в день дают шанс рискнуть питомцем ради больших жетонов. Лес безопасен, Гора рискованна, Пещера хардкор. Сильный питомец чаще успевает И чаще выживает.";
 "pet_hunt.info.death.title" = "Permadeath";
 "pet_hunt.info.death.body" = "Если питомец проваливает охоту и получает рану на 0 уровне — он умирает навсегда. В Горе и Пещере возможна катастрофа — смерть независимо от уровня. Темперьте питомцев перед сложными зонами.";
 
@@ -1563,13 +1416,10 @@
 "pet_hunt.zone_picker.title" = "Куда отправить";
 "pet_hunt.zone_picker.intro" = "Больше награда — больше риск. Качество питомца меняет реальные числа.";
 "pet_hunt.zone.forest" = "Лес";
-"pet_hunt.zone.forest.reward" = "Жетоны 3–8 × статы + гемы 0–2";
 "pet_hunt.zone.forest.risk" = "Безопасно — только мелкие раны, без смерти";
 "pet_hunt.zone.mountain" = "Гора";
-"pet_hunt.zone.mountain.reward" = "Жетоны 8–20 × статы + гемы 1–4";
 "pet_hunt.zone.mountain.risk" = "Рискованно — раны частые, смерть редко";
 "pet_hunt.zone.cave" = "Пещера";
-"pet_hunt.zone.cave.reward" = "Жетоны 20–50 × статы + гемы 2–7";
 "pet_hunt.zone.cave.risk" = "Хардкор — частые раны, реальный риск смерти";
 
 /* Pet Hunt — результат */
@@ -1606,35 +1456,26 @@
 "uin_auction.cta.bid" = "Ставка";
 "uin_auction.cta.topup" = "Пополнить";
 "uin_auction.insufficient_hint" = "Не хватает средств";
-"uin_auction.need_tokens" = "Не хватает жетонов — пополнить";
 "uin_auction.history.title" = "ИСТОРИЯ СТАВОК";
 "uin_auction.history.empty" = "Будь первым, кто сделает ставку";
 "uin_auction.waiting.title" = "Готовим следующий лот…";
 "uin_auction.waiting.body" = "Через несколько секунд стартует новый аукцион. Иногда легендарные UIN'ы выпадают — будь готов.";
-"uin_auction.error.bid_too_low" = "Минимум %d жетонов";
 "uin_auction.error.no_amount" = "Сначала укажите сумму ставки.";
-"uin_auction.error.insufficient" = "Не хватает жетонов: нужно %d, есть %d";
 "uin_auction.error.already_lead" = "Ты уже лидер";
 "uin_auction.error.ended" = "Аукцион закончился";
-"uin_auction.outbid_refund" = "Тебя перебили. Возврат %d жетонов.";
 "uin_auction.banner.outbid.title" = "Перебили ставку";
-"uin_auction.banner.outbid.body" = "Тебя перебили — возврат %d жетонов. Нажми, чтобы поднять ставку.";
-"uin_auction.celebrate.won" = "🏆 Ты выиграл UIN %d! Активируй его в инвентаре.";
 "uin_auction.recent.title" = "Прошлые лоты";
 "uin_auction.recent.empty" = "Завершённых аукционов пока нет";
 "uin_auction.recent.won_by" = "Победитель: %@";
 "uin_auction.owned.title" = "Мои UIN'ы";
-"uin_auction.owned.body" = "UIN'ы выигранные на аукционе. Активируй любой как свой текущий — это запустит миграцию (99 жетонов).";
 "uin_auction.owned.empty" = "Пока нет выигранных UIN'ов. Победи в аукционе!";
 "uin_auction.owned.activate" = "Активировать";
 "uin_auction.owned.sell" = "Продать на маркете";
-"uin_auction.owned.remove" = "Удалить из инвентаря";
 "uin_auction.owned.remove.confirm.title" = "Удалить UIN #%d?";
 "uin_auction.owned.remove.confirm.message" = "Это необратимо. UIN вернётся в общий пул и может достаться кому-то другому.";
 "uin_auction.owned.remove.confirm.button" = "Удалить";
 "uin_auction.owned.remove.error" = "Не удалось удалить UIN. Попробуй через минуту.";
 "uin_auction.owned.confirm.title" = "Сделать UIN %d своим?";
-"uin_auction.owned.confirm.message" = "Запустится миграция. Контакты, инвентарь и кошелёк перейдут на новый UIN. Текущий UIN сохранится в инвентаре — можно будет вернуться обратно за 99 жетонов. Чаты на этом устройстве будут стёрты. Стоит 99 жетонов.";
 "uin_auction.owned.confirm.button" = "Активировать (%d)";
 "uin_auction.owned.activated" = "Готово. Твой новый UIN: %d";
 
@@ -1643,11 +1484,9 @@
 "uin_auction.rules.what.title" = "Что разыгрывается";
 "uin_auction.rules.what.body" = "Премиум UIN'ы — короткие 4-5-значные, палиндромы (1234321), повторы (777777), последовательности (1234567). Один лот в час. Чем реже паттерн — тем выше rarity (Обычный → Редкий → Легендарный) и стартовая цена.";
 "uin_auction.rules.bidding.title" = "Как ставить";
-"uin_auction.rules.bidding.body" = "Ставка списывается с баланса сразу. Если тебя перебили — жетоны возвращаются автоматически. Минимум следующей ставки = текущая + 5% или текущая + 50, что больше. Себя самого перебить нельзя.";
 "uin_auction.rules.softclose.title" = "Soft close (без снайпинга)";
 "uin_auction.rules.softclose.body" = "Если ставка прилетает в последние 30 секунд — таймер продлевается на +60 секунд. Длится пока ставки идут в финальном окне. Это ломает паттерн «ткнул в последнюю секунду» — все участники видят и могут перебить.";
 "uin_auction.rules.win.title" = "После победы";
-"uin_auction.rules.win.body" = "Выигранный UIN падает в инвентарь (вкладка Мои UIN'ы). Это ещё не твой основной UIN — чтобы его активировать, нажми «Сделать своим». Это запустит миграцию аккаунта (стоит 99 жетонов): контакты, инвентарь и кошелёк перенесутся, старый UIN исчезнет.";
 
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "только что";

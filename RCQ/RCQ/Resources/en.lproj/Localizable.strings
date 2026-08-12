@@ -82,14 +82,6 @@
 "profile.reputation.give_short" = "Give";
 "profile.reputation.give_long" = "Give reputation";
 
-
-
-
-
-
-"settings.inventory.public" = "Public inventory";
-"settings.inventory.public.footer" = "Other RCQ users can browse your items from your profile. Off — your inventory is private. Same toggle as the eye icon on the Inventory screen.";
-
 "settings.network" = "Network";
 "settings.network.proxy" = "Connection & bypass";
 "settings.network.title" = "Network";
@@ -270,6 +262,7 @@
 "uin_shop.confirm.cta_priced" = "Confirm %@";
 "uin_shop.error.taken" = "Someone grabbed it first. Try a different UIN.";
 "uin_shop.error.cooldown" = "Too soon. Try again later.";
+"hood.composer.placeholder" = "Message this district";
 "hood.author.anonymous" = "Anonymous";
 "hood.expired" = "Expired";
 "hood.left_minutes" = "%d min left";
@@ -280,29 +273,6 @@
 "hood.duration.24h" = "24 hours";
 "hood.duration.7d" = "7 days";
 "settings.account.referral" = "Invite friends";
-"settings.account.referral.footer" = "Invite friends — you both earn jetons.";
-
-"referral.title" = "Invite friends";
-"referral.body" = "Share your link. Once a friend you invited has used RCQ on %d different days, you both get jetons: %d to you, %d to them. Credits unlock at launch, same as bug bounty.";
-"referral.body.generic" = "Invite friends to RCQ and you both earn jetons.";
-"referral.headline" = "+%d jetons for you, +%d for them";
-"referral.subhead" = "When your invitee uses RCQ for %d days, you both earn the reward.";
-"referral.subhead.generic" = "Invite friends — both sides earn jetons.";
-"referral.your_code" = "YOUR CODE";
-"referral.code.copy" = "Copy";
-"referral.code.copied" = "Copied";
-"referral.code_hint" = "This is your UIN. A friend who opens your link signs up with it automatically.";
-"referral.share" = "Share";
-"referral.copy_link" = "Copy link";
-"referral.share.message" = "Join me on RCQ — anonymous messenger, no phone number. My invite code is %d.";
-"referral.stat.invited" = "Invited";
-"referral.stat.activated" = "Activated";
-"referral.stat.credits" = "Jetons earned";
-"referral.load_failed" = "Couldn't load referral stats.";
-"referral.howto.title" = "How it works";
-"referral.howto.step1" = "Your friend opens the link and signs up. Then they need to use RCQ on %d different days.";
-"referral.howto.step2" = "Once activated, you get %d jetons and they get %d.";
-"referral.howto.step3" = "Credits unlock at launch — same pipeline as the bug bounty.";
 
 "bug_bounty.title" = "Bug Report";
 "bug_bounty.heading" = "Found a bug? Tell us";
@@ -327,19 +297,6 @@
 "bug_bounty.attach.hint" = "Attach screenshots or a short clip, up to 3 files.";
 "bug_bounty.attach.cta" = "Add";
 "bug_bounty.attach.paste" = "Paste";
-
-"bounty_credits.title" = "Bug bounty credits";
-"bounty_credits.pending_suffix" = "unlocked at launch";
-"bounty_credits.loading" = "Loading your credits…";
-"bounty_credits.error" = "Couldn't load credits.";
-"bounty_credits.empty" = "No credits yet — find a bug or complete a daily checklist.";
-"bounty_credits.unlock_hint" = "Credits convert to tokens on launch day.";
-"bounty_credits.more" = "+ %d more…";
-"bounty_credits.see_all" = "View all (%d)";
-"bounty_credits.history_title" = "Bounty history";
-"bounty_credits.source.bug_bounty" = "Bug bounty";
-"bounty_credits.source.daily_qa" = "Daily checklist";
-
 
 "chat.attach.poll" = "Poll";
 "chat.attach.share_group" = "Invite";
@@ -431,11 +388,9 @@
 "report.error.generic" = "Couldn't send: %@";
 "settings.account.footer" = "Deletes your account on the server, wipes every key and message on this device, and starts you over with a fresh UIN. Your old contacts can no longer reach you.";
 "settings.account.burn.title" = "Permanently delete this account?";
-"settings.account.burn.title_inventory" = "Permanently delete account AND inventory?";
 "settings.account.burn.confirm" = "Delete permanently";
 "settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone — they keep no link to your new identity. This cannot be undone.";
 "settings.account.burn.tally" = "%d items, %d tokens, %d gems";
-"settings.account.burn.message_inventory" = "Permanently deleting will destroy this account AND every collectible on it: %@. There's no recovery, no transfer to a new UIN — pets, voices, packs, currencies all gone. If you wanted to keep them, trade or gift them to another account first, then come back to delete.";
 
 "settings.link_web" = "Link Web";
 "settings.share.message" = "Add me on RCQ — %@ (%d)";
@@ -464,7 +419,7 @@
 "common.next" = "Next";
 "common.back" = "Back";
 "common.error" = "Error";
-"common.error.insufficient" = "Not enough tokens";
+"common.error.insufficient" = "The island refused the send. Try again.";
 "common.error.already_done" = "Already done";
 "common.error.session_ended" = "Session ended — try the next round";
 "common.error.conflict" = "Conflict — try again";
@@ -544,78 +499,12 @@
 "presence.info.title" = "Stay visible after you leave";
 "presence.info.body" = "You keep showing as online for this long after you close the app. Change it in Settings, Privacy & Network.";
 
-/* Inventory trailing-toolbar ellipsis menu */
-
-// ── Item marketplace ──────────────────────────────────────────────
-"market.title" = "Market";
-"market.tab.browse" = "Browse";
-"market.tab.mine" = "My listings";
-"market.category.items" = "Items";
-"market.category.uins" = "UINs";
-"market.filter.all" = "All";
-"market.sort.newest" = "Newest";
-"market.sort.price_asc" = "Price ↑";
-"market.sort.price_desc" = "Price ↓";
-"market.row.payout" = "seller gets %d";
-"market.empty.browse" = "Nothing for sale right now. Check back or list your own item.";
-"market.empty.mine" = "You have no active listings. List any item from your inventory.";
-"market.status.active" = "Active";
-"market.status.sold" = "Sold";
-"market.status.cancelled" = "Cancelled";
-"market.detail.price" = "Price";
-"market.detail.essence_caption" = "ESSENCE";
+// ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "Default";
-"market.detail.seller" = "Seller: %@";
-"market.detail.payout" = "You receive";
-"market.detail.fee" = "5% market fee";
-"market.detail.buy" = "Buy";
-"market.detail.insufficient" = "Not enough tokens";
-"market.detail.cancel_listing" = "Cancel listing";
-"market.detail.cancelling" = "Cancelling…";
-"market.detail.sold" = "Listing sold";
-"market.detail.cancelled" = "Listing cancelled";
-"market.detail.sold_to" = "Bought by %@";
-"market.alert.title" = "Market";
-"market.share.cta_open" = "Open in market →";
-"market.share.toast.title" = "Share";
-"market.share.toast.sent" = "Sent to the chat.";
-"market.share.toast.error" = "Couldn't send: %@";
 "uin_listing.share.cta_open" = "Open in market →";
 "uin_listing.share.toast.title" = "Share";
 "uin_listing.share.toast.sent" = "Sent to the chat.";
 "uin_listing.share.toast.error" = "Couldn't send: %@";
-"market.spec.owner" = "Owner";
-"market.spec.tier" = "Tier";
-"market.spec.level" = "Level";
-"market.spec.purity" = "Purity";
-"market.spec.essence" = "Essence";
-"market.spec.value" = "Value";
-"market.spec.payout" = "You receive";
-"market.section.smileys" = "Smiley";
-"market.section.pets" = "Pet";
-"market.section.voices" = "Voice pack";
-"market.sell.title" = "Sell";
-"market.sell.body" = "Set a price in tokens. The 5% market fee comes out of the buyer's payment — you keep the rest. The listing stays up until it sells or you cancel it.";
-"market.sell.price_placeholder" = "Price in tokens";
-"market.sell.payout_hint" = "You receive after fee";
-"market.sell.cta" = "List";
-"market.sell.busy" = "Listing…";
-"market.success.listed" = "Listed";
-"market.success.bought" = "Done";
-"market.success.cancelled" = "Cancelled";
-"market.error.browse" = "Couldn't load market";
-"market.error.list" = "Couldn't list item";
-"market.error.buy" = "Couldn't buy";
-"market.error.already_listed" = "This item is already listed";
-"market.error.equipped" = "Unequip the item first";
-"market.error.too_many" = "Max %d active listings";
-"market.error.insufficient" = "Need %d tokens, have %d";
-"market.error.not_active" = "Listing is no longer active";
-"market.error.self_buy" = "You can't buy your own listing";
-"market.error.ownership_drift" = "Seller transferred this item — listing voided";
-"market.error.item_gone" = "Item no longer exists";
-"market.error.uin_gone" = "UIN no longer exists";
-"market.error.uin_not_in_inventory" = "This UIN isn't in your inventory";
 
 // ── User safety (Block / Report) — shared menu across UGC surfaces
 "settings.blocked_users" = "Blocked users";
@@ -634,11 +523,6 @@
 "safety.block.confirm.body" = "%@ won't be able to message you, see your stories, or interact with you across the app. You can unblock them later from Settings.";
 "safety.unblock.confirm.title" = "Unblock this user?";
 "safety.unblock.confirm.body" = "%@ will be able to message you and interact with you again.";
-"market.uin.empty.browse" = "No UIN listings right now. Check back later or list one of your own.";
-"market.uin.empty.mine" = "You have no active UIN listings. Sell from your owned UIN inventory.";
-"market.detail.seller_gets" = "Seller receives";
-"market.detail.cancel" = "Cancel listing";
-"market.detail.seller_label" = "Seller";
 "uin.tier.common" = "Common";
 "uin.tier.mid" = "Premium";
 "uin.tier.legendary" = "Legendary";
@@ -701,7 +585,6 @@
 "chat.action.delete_for_me" = "Delete for me";
 "chat.action.delete_for_everyone" = "Delete for everyone";
 "chat.action.react" = "React";
-"chat.action.jeton" = "Send tokens";
 
 "chat.action.report_content" = "Report content";
 
@@ -810,7 +693,6 @@
 "contact_list.empty.body" = "Add a friend by their UIN or QR code to start a conversation. Stranger Mode works without contacts.";
 "contact_list.empty.cta" = "Add a contact";
 
-
 "chat.empty.title" = "No messages yet";
 "chat.empty.body" = "Say hi — your first message starts the thread.";
 
@@ -894,7 +776,6 @@
 "call.action.accept" = "Accept";
 
 /* ── Trade summary ────────────────────────────────────────── */
-
 
 /* ── Group info ───────────────────────────────────────────── */
 
@@ -1042,11 +923,9 @@
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
-
 /* Pet names — slug-keyed */
 
 /* Voice packs — notification sounds */
-
 
 /* Pet lore — slug-keyed */
 
@@ -1075,7 +954,6 @@
 "add.cta.in_list" = "Already in your contact list";
 "add.cta.sending" = "Sending…";
 "add.cta.sent" = "Request sent — pending approval";
-"add.inventory" = "Inventory";
 "add.trade" = "Trade";
 "add.contact_info" = "Contact Info";
 "add.row.added" = "Added";
@@ -1118,7 +996,6 @@
 "profile.cta.propose_trade" = "Propose trade";
 "profile.cta.add_contact" = "Add to contacts";
 "profile.cta.open_chat" = "Open chat";
-"profile.cta.view_inventory" = "View their inventory";
 "profile.cta.reset_session" = "Reset secure session";
 "profile.cta.share_my_rcq" = "Share my RCQ";
 "profile.cta.save" = "Save";
@@ -1165,9 +1042,6 @@
 "contact_list.section.cross_island" = "Other islands";
 "pending.cta.decline" = "Decline";
 
-/* ── Inventory / Lootbox ──────────────────────────────────── */
-
-
 "pool.boost_note" = "Odds shown with pet boost at %d%%.";
 
 "shop.kicker" = "SHOP";
@@ -1177,7 +1051,6 @@
 "shop.best_value" = "BEST VALUE";
 "shop.per_token" = "%d¢ per token";
 "shop.balance" = "Your balance lives server-side under your UIN. Real App Store purchase will come later — packs above credit your wallet instantly for testing.";
-
 
 "pool.title" = "Pool";
 "pool.section_share" = "%.0f%% of pulls";
@@ -1230,11 +1103,6 @@
 "pool.gems.title" = "Gem bundle";
 "pool.gems.range" = "%d–%d gems per drop";
 "pool.pack.contents" = "PACK CONTENTS · %d";
-"public_inventory.title" = "%@'s items";
-"public_inventory.empty" = "%@ hasn't opened any boxes yet.";
-"public_inventory.private.title" = "Inventory is private";
-"public_inventory.private.body" = "%@ has hidden their inventory.";
-
 
 "disassemble.title" = "Disassemble";
 "disassemble.body" = "Disassembling will destroy this item permanently. You'll receive gems based on its rarity and temper level.";
@@ -1244,7 +1112,6 @@
 "disassemble.success.body" = "%@ is gone.";
 
 /* ── Trades ───────────────────────────────────────────────── */
-
 
 /* ── Nearby + Hood ────────────────────────────────────────── */
 
@@ -1389,7 +1256,6 @@
 
 /* ── Rarity (used in chips, filters, history) ─────────────── */
 
-
 /* ── Games hub + Crash ───────────────────────────────────────── */
 "games.title" = "Games";
 "games.subtitle" = "Fast token bets.\nRounds last 15-30 seconds.";
@@ -1450,7 +1316,6 @@
 "pet_preview.owner" = "Worn by %@";
 "pet_preview.mint" = "#%d";
 "pet_preview.level" = "+%d";
-"pet_preview.cta.see_more" = "Open %@'s inventory";
 "pet_preview.essence" = "ESS %d";
 "pet_preview.purity" = "PUR %.2fx";
 "limbo.target.label" = "Target: %.2fx";
@@ -1575,11 +1440,9 @@
 "pet_hunt.send" = "SEND TO HUNT";
 "pet_hunt.hunts_left" = "%d / %d hunts left today";
 "pet_hunt.cta.open_memorial" = "Memorial";
-"pet_hunt.cta.open_inventory" = "Inventory";
 "pool.rarity.section" = "Rarity roll";
 "pool.rarity.hint" = "Rarity is rolled independently of the kind that drops — any pet, smiley pack, or voice can land at any rarity at the chances below.";
 "pet_hunt.empty.no_pet.title" = "No pet equipped";
-"pet_hunt.empty.no_pet.body" = "Equip a pet from your [inventory](rcq://inventory) to start earning passive tokens.";
 "pet_hunt.accumulator.title" = "In buffer";
 "pet_hunt.spec.daily_yield" = "Tokens / day";
 "pet_hunt.spec.daily_gems" = "Gems / day";
@@ -1654,7 +1517,6 @@
 "uin_auction.outbid_refund" = "You've been outbid. %d tokens refunded.";
 "uin_auction.banner.outbid.title" = "Outbid on UIN auction";
 "uin_auction.banner.outbid.body" = "You were outbid — %d tokens refunded. Tap to rebid.";
-"uin_auction.celebrate.won" = "🏆 You won UIN %d! Activate it from inventory.";
 "uin_auction.recent.title" = "Recent winners";
 "uin_auction.recent.empty" = "No completed auctions yet";
 "uin_auction.recent.won_by" = "Won by %@";
@@ -1663,13 +1525,11 @@
 "uin_auction.owned.empty" = "No won UINs yet. Win an auction!";
 "uin_auction.owned.activate" = "Activate";
 "uin_auction.owned.sell" = "Sell on marketplace";
-"uin_auction.owned.remove" = "Remove from inventory";
 "uin_auction.owned.remove.confirm.title" = "Remove UIN #%d?";
 "uin_auction.owned.remove.confirm.message" = "This is irreversible. The UIN goes back to the pool and could be reissued to someone else.";
 "uin_auction.owned.remove.confirm.button" = "Remove";
 "uin_auction.owned.remove.error" = "Couldn't remove the UIN. Try again in a moment.";
 "uin_auction.owned.confirm.title" = "Make UIN %d yours?";
-"uin_auction.owned.confirm.message" = "Runs the migration. Contacts, inventory and wallet move onto the new UIN. Your current UIN is preserved in inventory — you can swap back for 99 tokens. Local chats are wiped. Costs 99 tokens.";
 "uin_auction.owned.confirm.button" = "Activate (%d)";
 "uin_auction.owned.activated" = "Done. Your new UIN: %d";
 
