@@ -43,6 +43,18 @@ final class CallTunnel: @unchecked Sendable {
 
     private init() {}
 
+    /// Every critical section goes through here, and this function is
+    /// deliberately NOT async: an `await` between `lock()` and `unlock()` parks
+    /// a thread holding the lock, which is why calling `NSLock.lock()` straight
+    /// from an async function warns today and is an error in Swift 6. Keeping
+    /// the section inside a synchronous body makes that impossible to write by
+    /// accident.
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
     /// The SOCKS inbound sing-box is listening on, or nil when the transport is
     /// down. Read the same way `SingBoxTransport.proxyDictionary()` reads it, so
     /// this stays callable off the main actor: the key is written on start,
@@ -71,9 +83,7 @@ final class CallTunnel: @unchecked Sendable {
             stop()
             return
         }
-        lock.lock()
-        let unchanged = listener != nil && upstreamHost == turnHost && urlString != nil
-        lock.unlock()
+        let unchanged = withLock { listener != nil && upstreamHost == turnHost && urlString != nil }
         if unchanged { return }
 
         stop()
@@ -92,10 +102,10 @@ final class CallTunnel: @unchecked Sendable {
             return
         }
 
-        lock.lock()
-        listener = created
-        upstreamHost = turnHost
-        lock.unlock()
+        withLock {
+            listener = created
+            upstreamHost = turnHost
+        }
 
         created.newConnectionHandler = { [weak self] conn in
             self?.bridge(conn)

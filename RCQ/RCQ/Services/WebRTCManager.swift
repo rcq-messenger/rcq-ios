@@ -669,15 +669,30 @@ extension WebRTCManager: RTCPeerConnectionDelegate {
 /// Collects the one fact the relay probe needs: did a relay candidate appear
 /// before the deadline. Everything else in `RTCPeerConnectionDelegate` is
 /// required by the protocol and deliberately does nothing.
-final class RelayProbeDelegate: NSObject, RTCPeerConnectionDelegate {
+///
+/// `@unchecked Sendable` over a lock rather than an actor: `finish` is called
+/// from three threads that are not ours to pick — WebRTC's signalling thread
+/// (the delegate callbacks), the offer completion, and the main-queue deadline
+/// — and the entire contract is "first caller wins, exactly once". A lock around
+/// the two fields says that; an actor would make every one of those call sites
+/// async and buy nothing.
+final class RelayProbeDelegate: NSObject, RTCPeerConnectionDelegate, @unchecked Sendable {
+    private let lock = NSLock()
     private let done: (Bool) -> Void
     private var settled = false
 
     init(_ done: @escaping (Bool) -> Void) { self.done = done }
 
     func finish(_ ok: Bool) {
-        guard !settled else { return }
+        lock.lock()
+        if settled {
+            lock.unlock()
+            return
+        }
         settled = true
+        lock.unlock()
+        // Outside the lock on purpose: the callback closes the peer connection
+        // and can re-enter through a delegate callback.
         done(ok)
     }
 
