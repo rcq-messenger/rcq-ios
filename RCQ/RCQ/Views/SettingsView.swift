@@ -765,6 +765,14 @@ struct LinkedDevicesView: View {
     @State private var revoking: Set<String> = []
     @State private var showScanner = false
     @State private var pendingLink: AppState.WebLinkRequest? = nil
+    /// What the scanner found, held back until the scanner itself is off the
+    /// screen. Assigning `pendingLink` from inside the scanner's callback put a
+    /// dismiss and a present into ONE transaction on the same host, and UIKit
+    /// drops one of them — the scanner stayed up with `showScanner` already
+    /// false, so its Close button wrote `false` into a binding that was already
+    /// false and did nothing at all. Founder: "даже кнопка «закрыть» не
+    /// работает".
+    @State private var scanned: AppState.WebLinkRequest? = nil
 
     var body: some View {
         NavigationStack {
@@ -786,8 +794,17 @@ struct LinkedDevicesView: View {
                 }
             }
             .task { await reload() }
-            .sheet(isPresented: $showScanner) {
-                WebLinkScannerSheet { req in showScanner = false; pendingLink = req }
+            .sheet(isPresented: $showScanner, onDismiss: {
+                // The confirm sheet is raised only once the scanner has
+                // actually gone. Same serialization the attachment menu in
+                // ChatView uses, and the same ordering Android gets for free
+                // because its scanner is a separate activity that finishes
+                // before the result callback runs.
+                guard let req = scanned else { return }
+                scanned = nil
+                DispatchQueue.main.async { pendingLink = req }
+            }) {
+                WebLinkScannerSheet { req in scanned = req }
             }
             // onDismiss fires on ANY dismissal (Close button OR swipe-down), so
             // the just-linked device shows up without re-opening the drawer.
@@ -879,6 +896,13 @@ struct LinkedDevicesView: View {
 private struct WebLinkScannerSheet: View {
     let onLink: (AppState.WebLinkRequest) -> Void
     @Environment(\.dismiss) private var dismiss
+    /// AVFoundation hands the same code over several times before the session
+    /// finishes stopping, and each delivery used to raise another confirm
+    /// sheet. @State, not a plain var: QRScannerView never refreshes its
+    /// captured closure (`updateUIViewController` is empty), so only
+    /// reference-backed storage is read correctly from that first struct copy.
+    @State private var handled = false
+    @State private var invalid = false
 
     var body: some View {
         NavigationStack {
@@ -904,18 +928,34 @@ private struct WebLinkScannerSheet: View {
                     Button("common.cancel".localized) { dismiss() }
                 }
             }
+            .alert("qr.alert.invalid_code".localized, isPresented: $invalid) {
+                Button("common.ok".localized) { dismiss() }
+            }
         }
     }
 
     private func handle(_ raw: String) {
+        guard !handled else { return }
         guard let url = URL(string: raw), url.scheme == "rcq", url.host == "link",
               let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               let token = q.first(where: { $0.name == "t" })?.value, !token.isEmpty,
               let webPub = q.first(where: { $0.name == "k" })?.value, !webPub.isEmpty
-        else { return } // not a connect-to-web QR; keep scanning
+        else {
+            // NOT "keep scanning": the capture session was stopped the moment
+            // this code was read, so the preview behind us is a frozen frame.
+            // Say so and give the user the way out, the way Android's toast
+            // does.
+            handled = true
+            invalid = true
+            return
+        }
+        handled = true
         let c = q.first(where: { $0.name == "c" })?.value?.trimmingCharacters(in: .whitespaces)
         let label = (c?.isEmpty == false) ? String(c!.prefix(24)) : "Web"
         onLink(AppState.WebLinkRequest(token: token, webPub: webPub, clientLabel: label))
+        // Close ourselves. The parent raises the confirm sheet from onDismiss,
+        // once this one is really gone.
+        dismiss()
     }
 }
 

@@ -38,6 +38,12 @@ struct PersonAvatarView: View {
     /// picture on their system notification. Set it where a real roster row is
     /// drawn; nothing is fetched or decrypted for the cache's sake.
     var cacheForUIN: Int? = nil
+    /// Draw the person WITHOUT their presence. One screen asks for it: a call,
+    /// where the flower reports "online" to somebody who is listening to them
+    /// breathe. Off, the picture stands alone, and with no picture this view
+    /// draws nothing — the caller supplies its own fallback (the call screen
+    /// already has a lettered orb).
+    var showStatus: Bool = true
 
     @State private var image: UIImage?
     @State private var gifData: Data?
@@ -51,7 +57,8 @@ struct PersonAvatarView: View {
         crossIsland: Bool = false,
         linkDown: Bool = false,
         onStatusTap: (() -> Void)? = nil,
-        cacheForUIN: Int? = nil
+        cacheForUIN: Int? = nil,
+        showStatus: Bool = true
     ) {
         self.mediaID = mediaID
         self.keyBase64 = keyBase64
@@ -62,6 +69,7 @@ struct PersonAvatarView: View {
         self.linkDown = linkDown
         self.onStatusTap = onStatusTap
         self.cacheForUIN = cacheForUIN
+        self.showStatus = showStatus
         // Seed from the decrypted cache so a hot avatar is already there on the
         // first frame instead of flashing the flower — same trick as
         // GroupAvatarView, and it matters more here because contact rows
@@ -86,7 +94,10 @@ struct PersonAvatarView: View {
     var body: some View {
         Group {
             if image == nil && gifData == nil {
-                if let onStatusTap {
+                if !showStatus {
+                    // Nothing to draw: no picture, and presence suppressed.
+                    Color.clear.frame(width: 0, height: 0)
+                } else if let onStatusTap {
                     Button(action: onStatusTap) {
                         StatusIcon(status: status, size: size, crossIsland: crossIsland)
                     }
@@ -100,7 +111,7 @@ struct PersonAvatarView: View {
                     // Sits ON the picture's edge and sticks out past it: keeping
                     // it fully inside the square puts it in the corner the round
                     // image never reaches, where it reads as clipped.
-                    badgeView.offset(x: -badge / 4, y: badge / 4)
+                    if showStatus { badgeView.offset(x: -badge / 4, y: badge / 4) }
                 }
                 .frame(width: size, height: size)
             }
