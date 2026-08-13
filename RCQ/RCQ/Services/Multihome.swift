@@ -621,7 +621,21 @@ final class GroupSenderKeyStore {
 
     private static let appGroup = "group.app.rcq.shared"
     private static let outKey = "rcq.senderkeys.out.v1"   // [ "<ownUin>:<gid>" : OutChain ]
-    private static let inKey = "rcq.senderkeys.in.v1"     // [ kid : InChain ]
+    /// ⚠⚠ Keyed "<ownUin>:<kid>", NOT bare kid, and v2 because v1 was the bare
+    /// kid and its contents cannot be attributed to an account after the fact.
+    ///
+    /// A device with two accounts receives the SAME kid twice — once addressed
+    /// to each — and each copy has to be ratcheted separately. Sharing one
+    /// chain meant whichever account read the group first advanced it and ate
+    /// the skipped keys, and the other account then hit `index < c.index` and
+    /// could open NOTHING from that point on. Worse, `acceptSkdm` answered
+    /// "accepted" for the second account's distribution (the chain was already
+    /// at or past that index), so the client acked the key and then failed on
+    /// the very message the key was for.
+    ///
+    /// The founder's second account lost nine days of a group this way, and it
+    /// looked like the group simply stopped on a date (2026-08-13).
+    private static let inKey = "rcq.senderkeys.in.v2"     // [ "<ownUin>:<kid>" : InChain ]
     private static let ownedKey = "rcq.senderkeys.owned.v1" // [kid] rolling
     private static let ownedCap = 64
 
@@ -649,6 +663,7 @@ final class GroupSenderKeyStore {
     private func saveOwned(_ l: [String]) { defaults.set(l, forKey: Self.ownedKey) }
 
     private func outK(_ ownUin: Int, _ gid: Int) -> String { "\(ownUin):\(gid)" }
+    private func inK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
 
     struct OwnSendStep {
         let kid: String
@@ -709,14 +724,15 @@ final class GroupSenderKeyStore {
     /// authenticated sender. Returns false if a known kid is claimed by a
     /// DIFFERENT sender (rejected).
     @discardableResult
-    func acceptSkdm(kid: String, gid: Int, senderUIN: Int, spub: String, epoch: Int, index: Int, ck: String) -> Bool {
+    func acceptSkdm(ownUin: Int, kid: String, gid: Int, senderUIN: Int, spub: String, epoch: Int, index: Int, ck: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
+        let k = inK(ownUin, kid)
         var inn = loadIn()
-        if let ex = inn[kid], ex.senderUin != senderUIN { return false }
-        if var ex = inn[kid], ex.epoch == epoch, ex.index >= index {
-            ex.spub = spub; inn[kid] = ex; saveIn(inn); return true
+        if let ex = inn[k], ex.senderUin != senderUIN { return false }
+        if var ex = inn[k], ex.epoch == epoch, ex.index >= index {
+            ex.spub = spub; inn[k] = ex; saveIn(inn); return true
         }
-        inn[kid] = InChain(gid: gid, senderUin: senderUIN, spub: spub, epoch: epoch, index: index, ck: ck, skipped: [:])
+        inn[k] = InChain(gid: gid, senderUin: senderUIN, spub: spub, epoch: epoch, index: index, ck: ck, skipped: [:])
         saveIn(inn)
         return true
     }
@@ -727,12 +743,13 @@ final class GroupSenderKeyStore {
     /// caching skipped keys. nil when the kid is unknown (caller should NACK),
     /// the epoch mismatches, the index is in the past with no cached key
     /// (replay), or it's beyond MAX_SKIP.
-    func deriveInbound(kid: String, epoch: Int, index: Int) -> InboundKey? {
+    func deriveInbound(ownUin: Int, kid: String, epoch: Int, index: Int) -> InboundKey? {
         lock.lock(); defer { lock.unlock() }
+        let k = inK(ownUin, kid)
         var inn = loadIn()
-        guard var c = inn[kid], c.epoch == epoch else { return nil }
+        guard var c = inn[k], c.epoch == epoch else { return nil }
         if let cached = c.skipped[index], let mk = Data(base64Encoded: cached) {
-            c.skipped[index] = nil; inn[kid] = c; saveIn(inn)
+            c.skipped[index] = nil; inn[k] = c; saveIn(inn)
             return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
         }
         if index < c.index { return nil }
@@ -747,12 +764,12 @@ final class GroupSenderKeyStore {
         let mk = SenderKeys.deriveMessageKey(ck)
         c.ck = SenderKeys.nextChainKey(ck).base64EncodedString()
         c.index = index + 1
-        inn[kid] = c
+        inn[k] = c
         saveIn(inn)
         return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
     }
 
-    func knowsKid(_ kid: String) -> Bool { loadIn()[kid] != nil }
+    func knowsKid(ownUin: Int, _ kid: String) -> Bool { loadIn()[inK(ownUin, kid)] != nil }
     func ownsKid(_ kid: String) -> Bool { loadOwned().contains(kid) }
     func ownKidForGroup(ownUin: Int, gid: Int) -> String? { loadOut()[outK(ownUin, gid)]?.kid }
 

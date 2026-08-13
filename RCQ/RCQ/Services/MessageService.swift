@@ -1102,8 +1102,8 @@ final class MessageService {
     private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> DecryptedEnvelope? {
         guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return nil }
         if GroupSenderKeyStore.shared.ownsKid(hdr.kid) { return nil } // my own echoed broadcast
-        guard let key = GroupSenderKeyStore.shared.deriveInbound(kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
-            if !GroupSenderKeyStore.shared.knowsKid(hdr.kid) { sendSknack(gid: gid, kid: hdr.kid) }
+        guard let key = GroupSenderKeyStore.shared.deriveInbound(ownUin: ownUIN, kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
+            if !GroupSenderKeyStore.shared.knowsKid(ownUin: ownUIN, hdr.kid) { sendSknack(gid: gid, kid: hdr.kid) }
             return nil
         }
         guard let opened = SenderKeys.openGmsg(payloadB64, gid: gid, mk: key.mk, expectedSpubB64: key.spub) else { return nil }
@@ -1334,7 +1334,7 @@ final class MessageService {
             // re-distribute. Both ride the per-member sealed path.
             if case .skdm(let gid, let kid, let epoch, let index, let ck) = decrypted.envelope {
                 if let sk = decrypted.senderSigningKey {
-                    GroupSenderKeyStore.shared.acceptSkdm(kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck)
+                    GroupSenderKeyStore.shared.acceptSkdm(ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck)
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
