@@ -84,8 +84,24 @@ struct QRSheet: View {
                             .padding(14)
                             .background(Color.white)
                             .cornerRadius(10)
+                            // Your FACE in the middle, not your presence. This
+                            // code exists to be held up to a stranger, and the
+                            // one thing worth putting in the middle of it is
+                            // the person doing the holding — a flower says
+                            // "online", which the person standing in front of
+                            // you can already see.
+                            //
+                            // PersonAvatarView rather than an image: with no
+                            // picture set it draws exactly the flower that was
+                            // here before, so nobody's code changes until they
+                            // give it a face to show.
                             .overlay(
-                                StatusIcon(status: presence.status, size: 44)
+                                PersonAvatarView(
+                                    mediaID: presence.ownAvatarID,
+                                    keyBase64: presence.ownAvatarKey,
+                                    status: presence.status,
+                                    size: 44
+                                )
                             )
                     }
                     VStack(spacing: 2) {
@@ -292,6 +308,7 @@ struct QRScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: ScannerVC, context: Context) {}
 
     final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+        private var didScan = false
         var onScan: ((String) -> Void)?
         private let session = AVCaptureSession()
         private var preview: AVCaptureVideoPreviewLayer?
@@ -347,8 +364,15 @@ struct QRScannerView: UIViewControllerRepresentable {
             didOutput metadataObjects: [AVMetadataObject],
             from connection: AVCaptureConnection
         ) {
-            guard let metadata = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+            // One code, one callback. `stopRunning()` does not un-queue the
+            // frames already sitting on the main queue, so a single scan used
+            // to deliver two or three times — which sent TWO contact requests
+            // for one scan on the add path, and raised the web-link confirm
+            // sheet repeatedly (each with a fresh identity) on the other.
+            guard !didScan,
+                  let metadata = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
                   let value = metadata.stringValue else { return }
+            didScan = true
             session.stopRunning()
             onScan?(value)
         }

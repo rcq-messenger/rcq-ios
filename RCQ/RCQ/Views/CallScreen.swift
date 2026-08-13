@@ -293,17 +293,14 @@ struct CallScreen: View {
     @ViewBuilder
     private func avatarOrb(_ call: Call) -> some View {
         let contact = ContactService.shared.contacts.first { $0.uin == call.peerUIN }
-        if let id = contact?.avatarMediaID, !id.isEmpty {
-            PersonAvatarView(
-                mediaID: id,
-                keyBase64: contact?.avatarMediaKey,
-                status: contact?.status ?? .offline,
-                host: contact?.host,
-                size: 140,
-                crossIsland: contact?.host != nil
-            )
-        } else {
-            let initial = call.peerNickname.first.map(String.init) ?? "?"
+        let initial = call.peerNickname.first.map(String.init) ?? "?"
+        // The lettered orb is the BASE layer, always drawn; the picture covers
+        // it once fetched and decrypted. As an either/or, a peer whose blob was
+        // still loading got a 140pt hole where their face should be — and a
+        // cross-island peer got it permanently, because their picture lives on
+        // their island and PersonAvatarView draws nothing when it has neither
+        // an image nor a flower to fall back on.
+        ZStack {
             ZStack {
                 Circle()
                     .fill(LinearGradient(
@@ -314,6 +311,19 @@ struct CallScreen: View {
                 Text(initial.uppercased())
                     .font(.system(size: 56, weight: .bold))
                     .foregroundColor(.white)
+            }
+            if let id = contact?.avatarMediaID, !id.isEmpty {
+                PersonAvatarView(
+                    mediaID: id,
+                    keyBase64: contact?.avatarMediaKey,
+                    status: contact?.status ?? .offline,
+                    host: contact?.host,
+                    size: 140,
+                    crossIsland: contact?.host != nil,
+                    // No flower in a call: it reports "online" to the one person
+                    // who can already hear them.
+                    showStatus: false
+                )
             }
         }
     }
