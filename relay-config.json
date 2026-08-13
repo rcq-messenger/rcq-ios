@@ -1,6 +1,6 @@
 {
-  "version": 145,
-  "issued_at": "2026-08-13T09:56:35Z",
+  "version": 146,
+  "issued_at": "2026-08-13T10:36:11Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -95,6 +95,18 @@
     {
       "flow": "xtls-rprx-vision",
       "port": 443,
+      "priority": 8,
+      "proto": "vless",
+      "public_key": "yrARhKJ0ICe2wVf9J5uk5O2dHvWhE_I8Vx_904zwQGM",
+      "server": "139.180.194.73",
+      "short_id": "b264d5f88bc0589c",
+      "sni": "nrt1.vultrobjects.com",
+      "tag": "relay-vultr-nrt",
+      "uuid": "9bafd931-cbb8-4d67-b448-0495a8e325bd"
+    },
+    {
+      "flow": "xtls-rprx-vision",
+      "port": 443,
       "priority": 9,
       "proto": "vless",
       "public_key": "mYfGMTa0mgxLm06jf2_HTum9U5gUk6AIcMCSzIuRsXQ",
@@ -154,5 +166,5 @@
       "name": "cfg.northfieldlabs.fyi"
     }
   ],
-  "sig": "QDl7Y98VfkYCPSSkjVPcj2fU2x/RyX7BaAZ9uROWeQzWRbzUWQtkM/yCAuBpadsTbuyoNZ5TK/V20w517TolDA=="
+  "sig": "5By8lw28P5C1JIZQjXcqzQF/Muco6aCNdFCCP4HjpBoJqq0pKhLmmLDtiy6ERU9GYZHTmkPdzGbxocP2WiWABA=="
 }
