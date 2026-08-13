@@ -24,7 +24,7 @@
 "settings.appearance.theme.dark" = "Dark";
 "settings.chat_bg" = "Chat background";
 "settings.animate_avatars" = "Animated avatars";
-"settings.animate_avatars.footer" = "Play avatars that are animated pictures. Off shows their first frame instead, which is easier on the battery.";
+"settings.animate_avatars.footer" = "Off shows just the first frame, which is easier on the battery.";
 "settings.home_bg" = "Home background";
 "chat_bg.none" = "None";
 "chat_bg.custom" = "Custom";
@@ -251,7 +251,7 @@
 "uin_shop.info.what.title" = "What is a UIN";
 "uin_shop.info.what.body" = "Your UIN is your handle in RCQ — a number tied to no phone or email. Other users find you by it; shorter UINs are scarcer, so they cost more.";
 "uin_shop.info.migrate.title" = "Taking a number does not change who you are";
-"uin_shop.info.migrate.body" = "The number joins your collection and you keep answering as you do now. Moving onto it is a separate step on My numbers, and it is reversible: the number you leave stays yours too, so nobody else can take it. Contacts, groups, profile and chat history come with you either way.";
+"uin_shop.info.migrate.body" = "The number joins your collection and you keep answering as you do now. Moving onto it is a separate step on My UINs, and it is reversible: the number you leave stays yours too, so nobody else can take it. Contacts, groups, profile and chat history come with you either way.";
 "uin_shop.info.current" = "Your current UIN · %@";
 "uin_shop.buy.cta" = "Buy for %@";
 "uin_shop.buy.processing" = "Processing…";
@@ -1754,7 +1754,7 @@
 "myreports.status.duplicate" = "Duplicate";
 
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
-"my_uins.title" = "My numbers";
+"my_uins.title" = "My UINs";
 "my_uins.active" = "You answer as";
 "my_uins.active.sub" = "This is the number people reach you at.";
 "my_uins.held" = "Held";
@@ -1765,7 +1765,7 @@
 "my_uins.confirm.body" = "Contacts, groups, profile and history move onto it. Number %@ stays yours and stays on this screen, so you can move back whenever you like.";
 "my_uins.settings.footer" = "The numbers this account holds, and which one it answers as.";
 "uin_shop.held.title" = "Number %@ is yours";
-"uin_shop.held.body" = "It is in your collection and you still answer as %@. Move onto it now, or later from My numbers.";
+"uin_shop.held.body" = "It is in your collection and you still answer as %@. Move onto it now, or later from My UINs.";
 "uin_shop.held.now" = "Move onto it";
 "uin_shop.held.later" = "Later";
 
