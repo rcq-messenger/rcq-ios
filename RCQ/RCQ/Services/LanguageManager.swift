@@ -136,7 +136,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
     /// without switching into a half-translated UI.
     var isAvailable: Bool {
         switch self {
-        case .english, .russian, .chineseSimp: return true
+        case .english, .russian, .spanish, .portuguese, .turkish, .ukrainian, .chineseSimp:
+            return true
         default: return false
         }
     }
