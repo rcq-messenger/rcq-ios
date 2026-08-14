@@ -39,6 +39,7 @@ targets:
       # matching `AppLanguage` case in `LanguageManager`.
       - RCQ/Resources/en.lproj
       - RCQ/Resources/ru.lproj
+      - RCQ/Resources/zh-Hans.lproj
       # Apple-required privacy manifest. Declares data collected
       # by RCQ + which Apple "required-reason" APIs the binary
       # touches. Validated at App Store submission.

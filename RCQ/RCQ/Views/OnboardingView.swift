@@ -377,7 +377,7 @@ private struct LanguagePickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(AppLanguage.allCases) { language in
+                ForEach(AppLanguage.available) { language in
                     Button {
                         lang.set(language)
                         dismiss()

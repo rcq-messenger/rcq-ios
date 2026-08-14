@@ -127,7 +127,7 @@ struct SettingsView: View {
                     Section {
                         // Menu (not Picker) so per-row .disabled greys out unfinished languages.
                         Menu {
-                            ForEach(AppLanguage.allCases) { lang in
+                            ForEach(AppLanguage.available) { lang in
                                 Button {
                                     language.set(lang)
                                 } label: {
