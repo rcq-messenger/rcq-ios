@@ -1860,6 +1860,9 @@ private struct GroupRow: View {
 private struct AudioRoomRow: View {
     let room: AudioRoom
     @StateObject private var audio = AudioRoomService.shared
+    /// Flips the copy glyph to a tick for a moment, the way Settings does it
+    /// for the UIN. Without it the button gave a haptic and looked untouched.
+    @State private var keyCopied = false
 
     var body: some View {
         let inside = audio.isInside(room.id)
@@ -1910,10 +1913,14 @@ private struct AudioRoomRow: View {
             Button {
                 UIPasteboard.general.string = room.joinKey
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                withAnimation(.easeOut(duration: 0.12)) { keyCopied = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    withAnimation(.easeOut(duration: 0.2)) { keyCopied = false }
+                }
             } label: {
-                Image(systemName: "doc.on.doc")
+                Image(systemName: keyCopied ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 15))
-                    .foregroundColor(Theme.Color.textSecondary)
+                    .foregroundColor(keyCopied ? Theme.Color.accent : Theme.Color.textSecondary)
                     .frame(width: 34, height: 34)
                     .contentShape(Rectangle())
             }
