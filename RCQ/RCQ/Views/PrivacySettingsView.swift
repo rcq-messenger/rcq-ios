@@ -26,6 +26,7 @@ struct PrivacySettingsView: View {
     /// past the staleness window. Lets the user appear "around" with
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.presencePersistent")
+    @State private var relayCalls: Bool = CallPrivacy.alwaysRelay
     /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
     @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
     /// Local-proxy transport (route through the user's own Tor/i2p). Exclusive of
@@ -138,6 +139,25 @@ struct PrivacySettingsView: View {
                         )
                     } footer: {
                         Text("settings.privacy.last_seen.desc".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+                    // Device-local, not a server policy: it decides what THIS
+                    // phone puts in its own ICE candidates. Same switch and the
+                    // same words as Android, because it is the same choice.
+                    Section {
+                        Toggle(isOn: $relayCalls) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.privacy.relay_calls".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.privacy.relay_calls.desc".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .onChange(of: relayCalls) { newValue in
+                            CallPrivacy.alwaysRelay = newValue
+                        }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
                     Section {

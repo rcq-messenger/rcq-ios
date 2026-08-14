@@ -1029,6 +1029,8 @@
 "pool.cap" = "лимит %d";
 "pool.cap_remaining" = "%d / %d осталось";
 "settings.privacy.persistent_presence" = "Видимость после выхода";
+"settings.privacy.relay_calls" = "Всегда ретранслировать звонки";
+"settings.privacy.relay_calls.desc" = "Пропускать звук и видео через наш ретранслятор, чтобы собеседник не узнал ваш IP-адрес. Если выключить, качество может вырасти, но собеседник увидит ваш адрес.";
 "settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
 "settings.privacy.hof_opt_in" = "Зал славы";
 "settings.privacy.hof_opt_in.desc" = "Разрешить рассматривать вас для публичного зала славы на rcq.app. Только ник и UIN, и только если одобрят. Можно выключить в любой момент.";
