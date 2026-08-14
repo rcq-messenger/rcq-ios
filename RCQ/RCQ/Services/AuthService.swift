@@ -124,7 +124,16 @@ final class AuthService: ObservableObject {
             // one offline-queue cursor so the first to drain leaves the rest
             // with nothing to read.
             let device_id: String
+            // Proof that we hold the private half of `signing_key`. A public
+            // signing key is public, so without this anyone could register an
+            // account carrying somebody else's and capture where their recovery
+            // lands. Optional on the wire: an island that predates the
+            // challenge endpoint 404s and registration works as before.
+            let challenge: String?
+            let signature: String?
         }
+        struct ChalBody: Encodable { let signing_key: String }
+        struct ChalOut: Decodable { let challenge: String }
         struct Out: Decodable { let uin: Int; let token: String }
 
         let inviterUIN = UserDefaults.standard.object(forKey: AppState.pendingInviterKey) as? Int
@@ -132,6 +141,20 @@ final class AuthService: ObservableObject {
         // register (e.g. bad invite → 403) can't leave it to leak into the next.
         let serverInvite = UserDefaults.standard.string(forKey: AppState.pendingServerInviteKey)
         UserDefaults.standard.removeObject(forKey: AppState.pendingServerInviteKey)
+
+        // Best-effort key proof, before the register call below.
+        var regChallenge: String? = nil
+        var regSignature: String? = nil
+        if let chal: ChalOut = try? await APIClient.shared.request(
+            "POST", "/auth/register/challenge",
+            body: ChalBody(signing_key: bundle.signingKey),
+            authenticated: false
+        ), let signingPriv = KeychainStore.data(KeychainStore.Keys.signingPriv),
+           let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: signingPriv),
+           let sig = try? RecoveryPhrase.signChallenge(signingPrivate: key, challenge: chal.challenge) {
+            regChallenge = chal.challenge
+            regSignature = sig
+        }
 
         print("[boot] registering fresh @ \(APIClient.shared.baseURL.absoluteString)")
         let out: Out
@@ -145,7 +168,9 @@ final class AuthService: ObservableObject {
                     signing_key: bundle.signingKey,
                     inviter_uin: inviterUIN,
                     invite: serverInvite,
-                    device_id: KeychainStore.deviceID()
+                    device_id: KeychainStore.deviceID(),
+                    challenge: regChallenge,
+                    signature: regSignature
                 )
             )
         } catch {

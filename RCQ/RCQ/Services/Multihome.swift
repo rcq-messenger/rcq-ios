@@ -219,16 +219,30 @@ enum Multihome {
             if let recovered = try await recoverOn(host: host, signingPriv: signingPriv) {
                 creds = recovered
             } else {
+                let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
+                // ⚠ The number is only handed out under proof of the signing
+                // key now. Without the signature the island still registers us,
+                // but on a fresh number, and "one number everywhere" quietly
+                // stops being true. An island too old to know the endpoint
+                // 404s and we register the way we always did.
+                struct ChallengeOut: Decodable { let challenge: String }
+                var extra: [String: Any] = ["desired_uin": ownUin]
+                if let chal: ChallengeOut = try? await post(
+                    "https://\(host)/auth/register/challenge", json: ["signing_key": sk]
+                ), let sig = try? RecoveryPhrase.signChallenge(
+                    signingPrivate: signingPriv, challenge: chal.challenge
+                ) {
+                    extra["challenge"] = chal.challenge
+                    extra["signature"] = sig
+                }
                 creds = try await post(
                     "https://\(host)/auth/register",
                     json: [
                         "nickname": nickname,
                         "identity_key": identityPriv.publicKey.rawRepresentation.base64EncodedString(),
-                        "signing_key": signingPriv.publicKey.rawRepresentation.base64EncodedString(),
+                        "signing_key": sk,
                     ],
-                    // Ask to keep our primary number on this backup island
-                    // (best-effort; server mints a fresh uin if it's taken).
-                    extra: ["desired_uin": ownUin]
+                    extra: extra
                 )
             }
             let home = MultihomeStore.Home(
