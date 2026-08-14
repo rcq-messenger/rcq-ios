@@ -33,8 +33,8 @@ final class WebSocketService: ObservableObject {
         case callIceRestart(fromUIN: Int, callID: String, sdp: String)
         case callIceRestartAnswer(fromUIN: Int, callID: String, sdp: String)
         case roomEnterRejected(roomID: Int, reason: String)
-        case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, mutedByOwner: Bool)], ownerOnlySpeaking: Bool)
-        case roomMemberEntered(roomID: Int, uin: Int, nickname: String, mutedByOwner: Bool)
+        case roomRoster(roomID: Int, members: [(uin: Int, nickname: String, mutedByOwner: Bool, avatarID: String, avatarKey: String)], ownerOnlySpeaking: Bool)
+        case roomMemberEntered(roomID: Int, uin: Int, nickname: String, mutedByOwner: Bool, avatarID: String, avatarKey: String)
         case roomMemberLeft(roomID: Int, uin: Int)
         case roomOffer(roomID: Int, fromUIN: Int, sdp: String)
         case roomAnswer(roomID: Int, fromUIN: Int, sdp: String)
@@ -667,11 +667,13 @@ final class WebSocketService: ObservableObject {
         case "room_roster":
             guard let roomID = dict["room_id"] as? Int,
                   let raw = dict["members"] as? [[String: Any]] else { return }
-            let members: [(uin: Int, nickname: String, mutedByOwner: Bool)] = raw.compactMap { d in
+            let members: [(uin: Int, nickname: String, mutedByOwner: Bool, avatarID: String, avatarKey: String)] = raw.compactMap { d in
                 guard let u = d["uin"] as? Int else { return nil }
                 let nick = (d["nickname"] as? String) ?? String(u)
                 let muted = (d["muted_by_owner"] as? Bool) ?? false
-                return (uin: u, nickname: nick, mutedByOwner: muted)
+                let avatarID = (d["avatar_media_id"] as? String) ?? ""
+                let avatarKey = (d["avatar_media_key"] as? String) ?? ""
+                return (uin: u, nickname: nick, mutedByOwner: muted, avatarID: avatarID, avatarKey: avatarKey)
             }
             let ownerOnly = (dict["owner_only_speaking"] as? Bool) ?? false
             events.send(.roomRoster(roomID: roomID, members: members, ownerOnlySpeaking: ownerOnly))
@@ -682,7 +684,12 @@ final class WebSocketService: ObservableObject {
                   let uin = m["uin"] as? Int else { return }
             let nick = (m["nickname"] as? String) ?? String(uin)
             let muted = (m["muted_by_owner"] as? Bool) ?? false
-            events.send(.roomMemberEntered(roomID: roomID, uin: uin, nickname: nick, mutedByOwner: muted))
+            let avatarID = (m["avatar_media_id"] as? String) ?? ""
+            let avatarKey = (m["avatar_media_key"] as? String) ?? ""
+            events.send(.roomMemberEntered(
+                roomID: roomID, uin: uin, nickname: nick, mutedByOwner: muted,
+                avatarID: avatarID, avatarKey: avatarKey
+            ))
 
         case "room_member_left":
             guard let roomID = dict["room_id"] as? Int,

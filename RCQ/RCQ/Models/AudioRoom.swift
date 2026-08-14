@@ -35,6 +35,10 @@ struct AudioRoomMember: Identifiable, Hashable {
     /// Owner muted this user. Muted client honors via `setMicMuted(true)`;
     /// others render a "muted by owner" badge.
     var mutedByOwner: Bool = false
+    /// Their picture, handed out with the roster and gated by room membership
+    /// the same way a group roster hands out its members' pictures.
+    var avatarMediaID: String = ""
+    var avatarMediaKey: String = ""
 
     var id: Int { uin }
 }

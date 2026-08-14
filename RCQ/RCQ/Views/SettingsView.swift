@@ -636,14 +636,11 @@ struct SettingsView: View {
                         Text(verbatim: "#\(auth.ownUIN ?? 0)")
                             .font(.system(.subheadline, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
+                        // The tick and the haptic already say it. The word next
+                        // to them was the same message a third time.
                         Image(systemName: uinCopied ? "checkmark.circle.fill" : "doc.on.doc")
                             .font(.caption)
                             .foregroundColor(uinCopied ? Theme.Color.accent : Theme.Color.textSecondary)
-                        if uinCopied {
-                            Text("link_web.copied".localized)
-                                .font(.caption2)
-                                .foregroundColor(Theme.Color.accent)
-                        }
                     }
                 }
                 .buttonStyle(.plain)

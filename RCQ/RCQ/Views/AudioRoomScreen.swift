@@ -218,6 +218,19 @@ struct AudioRoomScreen: View {
                     Text(String(m.nickname.prefix(1)).uppercased())
                         .font(.system(size: 32, weight: .bold))
                         .foregroundColor(.white)
+                    // ⚠ Layered over the lettered orb, never instead of it —
+                    // the same scar the call screen carries: an either/or
+                    // branch leaves an 84pt hole while the blob loads, and a
+                    // permanent one for anyone whose picture never arrives.
+                    if !m.avatarMediaID.isEmpty, !m.avatarMediaKey.isEmpty {
+                        PersonAvatarView(
+                            mediaID: m.avatarMediaID,
+                            keyBase64: m.avatarMediaKey,
+                            status: .offline,
+                            size: 84,
+                            showStatus: false
+                        )
+                    }
                 }
                 if m.speaking {
                     Circle()
@@ -407,17 +420,29 @@ private struct AudioRoomQuickActionsSheet: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 12) {
-                        Circle()
-                            .fill(LinearGradient(
-                                colors: [Theme.Color.accent, Theme.Color.accent.opacity(0.6)],
-                                startPoint: .top, endPoint: .bottom
-                            ))
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Text(String(member.nickname.prefix(1)).uppercased())
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                            )
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(
+                                    colors: [Theme.Color.accent, Theme.Color.accent.opacity(0.6)],
+                                    startPoint: .top, endPoint: .bottom
+                                ))
+                                .frame(width: 44, height: 44)
+                            Text(String(member.nickname.prefix(1)).uppercased())
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                            // Same layering as the tile behind this sheet: the
+                            // picture goes over the lettered orb, never instead
+                            // of it.
+                            if !member.avatarMediaID.isEmpty, !member.avatarMediaKey.isEmpty {
+                                PersonAvatarView(
+                                    mediaID: member.avatarMediaID,
+                                    keyBase64: member.avatarMediaKey,
+                                    status: .offline,
+                                    size: 44,
+                                    showStatus: false
+                                )
+                            }
+                        }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(member.nickname)
                                 .font(.system(.headline, weight: .semibold))
