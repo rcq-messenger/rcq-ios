@@ -40,6 +40,10 @@ targets:
       - RCQ/Resources/en.lproj
       - RCQ/Resources/ru.lproj
       - RCQ/Resources/zh-Hans.lproj
+      - RCQ/Resources/es.lproj
+      - RCQ/Resources/pt.lproj
+      - RCQ/Resources/tr.lproj
+      - RCQ/Resources/uk.lproj
       # Apple-required privacy manifest. Declares data collected
       # by RCQ + which Apple "required-reason" APIs the binary
       # touches. Validated at App Store submission.
