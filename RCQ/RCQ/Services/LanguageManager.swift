@@ -108,6 +108,9 @@ enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
+    /// The cases with a full strings table behind them, in menu order.
+    static var available: [AppLanguage] { allCases.filter(\.isAvailable) }
+
     var nativeName: String {
         switch self {
         case .english:     return "English"
@@ -133,7 +136,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
     /// without switching into a half-translated UI.
     var isAvailable: Bool {
         switch self {
-        case .english, .russian: return true
+        case .english, .russian, .chineseSimp: return true
         default: return false
         }
     }
