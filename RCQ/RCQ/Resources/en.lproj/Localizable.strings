@@ -1057,6 +1057,8 @@
 "pool.cap" = "cap %d";
 "pool.cap_remaining" = "%d / %d left";
 "settings.privacy.persistent_presence" = "Visibility after exit";
+"settings.privacy.relay_calls" = "Always relay calls";
+"settings.privacy.relay_calls.desc" = "Send call audio and video through our relay so the other side never learns your IP address. Turning this off can improve call quality and shows them your address.";
 "settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
 "settings.privacy.hof_opt_in" = "Hall of Fame";
 "settings.privacy.hof_opt_in.desc" = "Allow being considered for the public Hall of Fame at rcq.app. Only your nickname and UIN, and only if approved. You can turn this off any time.";

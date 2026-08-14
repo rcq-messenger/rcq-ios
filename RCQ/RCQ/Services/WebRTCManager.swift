@@ -443,7 +443,9 @@ final class WebRTCManager: NSObject, ObservableObject {
         // once per credential fetch on a throwaway connection; until it has an
         // answer we do NOT force relay, because a call that cannot connect is a
         // worse failure than one that leaks an address.
-        if cachedTurn?.server != nil, Self.relayReachable == true {
+        // ⚠⚠ ...and only while the user still wants it. This used to be
+        // unconditional, which is the right default and was the wrong rule.
+        if cachedTurn?.server != nil, Self.relayReachable == true, CallPrivacy.alwaysRelay {
             config.iceTransportPolicy = .relay
         }
 
