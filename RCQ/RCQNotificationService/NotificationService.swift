@@ -178,6 +178,13 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // §5e cross-island profile refresh: a name/picture change, not a
+            // message, and it must never banner as one. Cached above so the main
+            // app's ingest applies it to the stored row on next launch.
+            if case .profile = decrypted.envelope {
+                contentHandler(UNNotificationContent())
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
             let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
@@ -398,7 +405,8 @@ class NotificationService: UNNotificationServiceExtension {
                 content.body = "Call update"
             }
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest:
+             .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest,
+             .profile:
             content.body = "Message"
         }
 
@@ -556,7 +564,7 @@ class NotificationService: UNNotificationServiceExtension {
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
-             .contactRequest:
+             .contactRequest, .profile:
             return false
         }
     }
@@ -600,6 +608,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .carbon:           return "carbon"
         case .callSignal:       return "call"
         case .contactRequest:   return "contactreq"
+        case .profile:          return "profile"
         case .homeRecord:       return "homerec"
         case .skdm:             return "skdm"
         case .sknack:           return "sknack"

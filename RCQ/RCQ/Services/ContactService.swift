@@ -60,8 +60,22 @@ final class ContactService: ObservableObject {
             self.outgoingRequests = outgoing
             // Push the latest uin → nickname map into the App Group
             // cache so the NSE can resolve sender names on push.
+            //
+            // CROSS-ISLAND rows go in too. Built from `/contacts` alone, this
+            // map had no entry for a peer on another island (they are not in the
+            // server roster by construction), so their message notification
+            // showed a bare number while the app itself showed their name. Local
+            // rows are written last so a uin that collides across islands
+            // resolves to the LOCAL contact — the same precedence the merged
+            // list uses. Aliases win over both, because that is what the user
+            // chose to call this person everywhere else in the UI.
             var nickMap: [Int: String] = [:]
-            for c in list { nickMap[c.uin] = c.nickname }
+            for c in cross {
+                nickMap[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname)
+            }
+            for c in list {
+                nickMap[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname)
+            }
             NicknameCache.setAll(nickMap)
             // (Removed: the blanket "un-remove every roster UIN" that used to live
             // here — it resurrected contacts the user had deliberately deleted
@@ -155,7 +169,36 @@ final class ContactService: ObservableObject {
             act: announce.rawValue, uin: uin, host: host,
             identityKey: card.identity_key, signingKey: card.signing_key, note: note
         )
+        // §5e first-contact push. On `accept` the relationship is mutual as of
+        // right now, so send our CURRENT name and picture — otherwise they hold
+        // whatever their key-card snapshot said and nothing would ever refresh
+        // it. A `request` carries our name inside the contactreq already and has
+        // no accepted relationship yet, which is the audience §5e is limited to.
+        if sent, announce == .accept {
+            await CrossIslandSender.sendProfile(to: c)
+        }
         return CrossIslandAddOutcome(added: true, announced: sent)
+    }
+
+    /// §5e receive: a cross-island row's display fields were just refreshed on
+    /// disk — mirror them into the published list so open screens redraw, and
+    /// into the App Group nickname cache so the NEXT push from this person is
+    /// titled with their new name (the push path has no live session and reads
+    /// only the stored snapshot).
+    ///
+    /// Never touches a same-island row: per-island uins collide, and the local
+    /// contact owns that number here.
+    func applyCrossIslandProfile(_ updated: Contact) {
+        if let idx = contacts.firstIndex(where: { $0.uin == updated.uin && $0.host != nil }) {
+            contacts[idx].nickname = updated.nickname
+            contacts[idx].avatarMediaID = updated.avatarMediaID
+            contacts[idx].avatarMediaKey = updated.avatarMediaKey
+        }
+        guard !contacts.contains(where: { $0.uin == updated.uin && $0.host == nil }) else { return }
+        NicknameCache.upsert(
+            uin: updated.uin,
+            nickname: ContactAliasStore.shared.displayName(for: updated.uin, fallback: updated.nickname)
+        )
     }
 
     func sendAddRequest(to uin: Int) async throws {
