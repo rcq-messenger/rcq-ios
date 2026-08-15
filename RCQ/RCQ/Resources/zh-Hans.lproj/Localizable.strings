@@ -926,6 +926,8 @@
 "qr.scan.aim" = "对准对方的 RCQ QR 码";
 "qr.alert.sent.title" = "请求已发送";
 "qr.alert.sent.body" = "已向 UIN %d 发送好友请求，对方会在待处理列表里看到。";
+"qr.alert.added.title" = "已添加联系人";
+"qr.alert.added.body" = "%2$@ 上的号码 %1$d 已在你的联系人里。在你给他发消息之前，他不会看到任何东西：跨岛请求目前还不存在。";
 "qr.alert.already.title" = "已在你的联系人中";
 "qr.alert.already.body" = "你和 UIN %d 已经建立了联系。";
 "qr.alert.failed.title" = "无法添加";

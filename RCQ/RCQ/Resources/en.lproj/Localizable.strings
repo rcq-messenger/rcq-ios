@@ -1013,6 +1013,8 @@
 "qr.scan.aim" = "Point at another RCQ QR code";
 "qr.alert.sent.title" = "Request sent";
 "qr.alert.sent.body" = "We sent a contact request to UIN %d. They'll see it in their pending list.";
+"qr.alert.added.title" = "Contact added";
+"qr.alert.added.body" = "UIN %1$d on %2$@ is in your contacts now. They will not see anything until you write to them: there is no cross-island request yet.";
 "qr.alert.already.title" = "Already in your contacts";
 "qr.alert.already.body" = "You're already connected with UIN %d.";
 "qr.alert.failed.title" = "Couldn't add";

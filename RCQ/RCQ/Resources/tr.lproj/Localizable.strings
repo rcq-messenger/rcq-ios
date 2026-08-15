@@ -935,6 +935,8 @@
 "qr.scan.aim" = "Başka bir RCQ QR koduna tut";
 "qr.alert.sent.title" = "İstek gitti";
 "qr.alert.sent.body" = "UIN %d için kişi isteği gönderdik. Bekleyen listesinde görecek.";
+"qr.alert.added.title" = "Kişi eklendi";
+"qr.alert.added.body" = "%2$@ üzerindeki %1$d numarası artık kişilerinde. Sen yazana kadar hiçbir şey görmeyecek: adalar arası istek henüz yok.";
 "qr.alert.already.title" = "Zaten kişilerinde";
 "qr.alert.already.body" = "UIN %d ile zaten bağlısın.";
 "qr.alert.failed.title" = "Eklenemedi";
