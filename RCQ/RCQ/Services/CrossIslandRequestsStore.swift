@@ -36,14 +36,28 @@ final class CrossIslandRequestsStore: ObservableObject {
         let host: String
         var firstAt: Date
         var msgs: [Held]
+        /// §5f: the sender's self-asserted display name from their `contactreq`
+        /// envelope. Non-nil ⇒ this row is a real CONTACT request (they asked to
+        /// be added), not just quarantined chatter. Optional so rows persisted
+        /// before §5f decode unchanged.
+        var reqNickname: String? = nil
+        /// §5f optional short greeting that rode with the request.
+        var reqNote: String? = nil
         var id: String { "\(uin)@\(host.lowercased())" }
         var preview: String { msgs.first?.preview ?? "" }
+        /// True once a §5f `act:"request"` landed for this sender. A row can be
+        /// both (they asked AND wrote); accepting handles both in one tap.
+        var isContactRequest: Bool { reqNickname != nil }
     }
 
     private static let appGroup = "group.app.rcq.shared"
     private static let prefix = "rcq.ci-requests.v1."
     private static let blockedPrefix = "rcq.ci-blocked.v1."
     private static let maxHeld = 20
+    /// §5f anti-abuse: the deposit is open, so a stranger's request costs one
+    /// HTTP call. Bound the list so a flood fills a fixed number of rows rather
+    /// than the disk; the oldest rows fall off first.
+    private static let maxRequests = 100
 
     private let defaults: UserDefaults
     private var key: String
@@ -87,6 +101,37 @@ final class CrossIslandRequestsStore: ObservableObject {
         persist()
         requestCount = cache.count
         return true
+    }
+
+    /// §5f: record an inbound `contactreq` with `act:"request"` as a PENDING
+    /// cross-island request — the same row a quarantined message uses, so it
+    /// shows up in exactly the place a same-island pending request does. The
+    /// envelope itself is never written to the message store.
+    ///
+    /// Repeat requests from the same sender refresh the one row instead of
+    /// stacking (the key is the sender), which is the client-side rate limit.
+    /// Returns false when the sender is blocked (caller drops it silently).
+    @discardableResult
+    func holdContactRequest(uin: Int, host: String, nickname: String, note: String?) -> Bool {
+        if isBlocked(uin: uin, host: host) { return false }
+        let k = reqKey(uin, host)
+        var r = cache[k] ?? Request(uin: uin, host: host, firstAt: Date(), msgs: [])
+        r.reqNickname = nickname
+        r.reqNote = (note?.isEmpty ?? true) ? nil : note
+        cache[k] = r
+        trim()
+        persist()
+        requestCount = cache.count
+        return true
+    }
+
+    /// Drop the oldest rows once the bounded list overflows.
+    private func trim() {
+        guard cache.count > Self.maxRequests else { return }
+        let doomed = cache.values
+            .sorted { $0.firstAt < $1.firstAt }
+            .prefix(cache.count - Self.maxRequests)
+        for r in doomed { cache.removeValue(forKey: reqKey(r.uin, r.host)) }
     }
 
     func list() -> [Request] { cache.values.sorted { $0.firstAt > $1.firstAt } }

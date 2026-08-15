@@ -935,8 +935,10 @@
 "qr.scan.aim" = "Başka bir RCQ QR koduna tut";
 "qr.alert.sent.title" = "İstek gitti";
 "qr.alert.sent.body" = "UIN %d için kişi isteği gönderdik. Bekleyen listesinde görecek.";
+"qr.alert.ci_sent.title" = "İstek gönderildi";
+"qr.alert.ci_sent.body" = "%2$@ üzerindeki %1$d numarasına kişi isteği gönderdik. İsteklerinde görecek.";
 "qr.alert.added.title" = "Kişi eklendi";
-"qr.alert.added.body" = "%2$@ üzerindeki %1$d numarası artık kişilerinde. Sen yazana kadar hiçbir şey görmeyecek: adalar arası istek henüz yok.";
+"qr.alert.added.body" = "%2$@ üzerindeki %1$d numarası artık kişilerinde, ama adası kişi isteğini almadı, yani karşı tarafta henüz bir şey yok.";
 "qr.alert.already.title" = "Zaten kişilerinde";
 "qr.alert.already.body" = "UIN %d ile zaten bağlısın.";
 "qr.alert.failed.title" = "Eklenemedi";
@@ -959,8 +961,10 @@
 "pending.empty.body" = "Yeni kişi davetleri burada görünür.";
 "pending.row.body" = "RCQ kullanıcısı %@ (%@) seni kişi listesine eklemek istiyor. İzin veriyor musun?";
 "pending.cta.accept" = "Kabul et";
-"ci.section" = "Mesaj istekleri (diğer adalar)";
+"ci.section" = "Diğer adalardan gelen istekler";
 "ci.block" = "Engelle";
+"ci.contactreq.subtitle" = "Seni kişilerine eklemek istiyor";
+"ci.request_not_sent" = "Eklendi, ama adası kişi isteğini almadı. Henüz görmeyecek.";
 "ci.add_row.subtitle" = "Adalar arası kişi (başka bir RCQ adası)";
 "ci.add_self" = "Bu sensin, bu adadaki hesabın";
 "contact_list.section.cross_island" = "Diğer adalar";

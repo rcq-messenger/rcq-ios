@@ -141,9 +141,19 @@ struct AddContactView: View {
                                                     return
                                                 }
                                             }
-                                            let ok = await ContactService.shared.addCrossIslandContact(uin: ci.uin, host: ci.host)
+                                            // §5f: this also deposits `act:"request"`
+                                            // to their island. If the local row landed
+                                            // but the request didn't, say so instead of
+                                            // silently implying they were told.
+                                            let r = await ContactService.shared.addCrossIslandContact(
+                                                uin: ci.uin, host: ci.host, announce: .request
+                                            )
                                             ciBusy = false
-                                            if ok { dismiss() }
+                                            if r.added && r.announced {
+                                                dismiss()
+                                            } else if r.added {
+                                                ciTokenErr = "ci.request_not_sent".localized
+                                            }
                                         }
                                     } label: {
                                         HStack(spacing: 12) {
@@ -586,11 +596,30 @@ struct PendingRequestsView: View {
 
     private func ciRow(_ r: CrossIslandRequestsStore.Request) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            // §5f: a real contact request leads with the sender's self-asserted
+            // name; the island tag stays on the line below so a lookalike can't
+            // pass as a local contact.
+            if let nick = r.reqNickname, !nick.isEmpty {
+                Text(nick)
+                    .font(.body)
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
             // verbatim: LocalizedStringKey interpolation would render the uin
             // with locale grouping separators ("618,917,107").
             Text(verbatim: "\(r.uin)@\(r.host)")
                 .font(.system(.body, design: .monospaced))
-                .foregroundColor(Theme.Color.textPrimary)
+                .foregroundColor(r.isContactRequest ? Theme.Color.textSecondary : Theme.Color.textPrimary)
+            if r.isContactRequest {
+                Text("ci.contactreq.subtitle".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+            }
+            if let note = r.reqNote, !note.isEmpty {
+                Text(note)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(2)
+            }
             if !r.preview.isEmpty {
                 Text(r.preview)
                     .font(.caption)
@@ -601,6 +630,14 @@ struct PendingRequestsView: View {
                 Button("pending.cta.accept".localized) { acceptCI(r) }
                     .buttonStyle(.borderedProminent).tint(Theme.Color.statusOnline)
                     .disabled(ciBusy == r.id)
+                // Decline only makes sense against a §5f request — it deposits
+                // `act:"decline"` back so the requester stops waiting. A plain
+                // quarantined message has no requester to answer.
+                if r.isContactRequest {
+                    Button("pending.cta.decline".localized) { declineCI(r) }
+                        .buttonStyle(.bordered).tint(Theme.Color.textSecondary)
+                        .disabled(ciBusy == r.id)
+                }
                 Button("ci.block".localized) { blockCI(r) }
                     .buttonStyle(.bordered).tint(Theme.Color.statusBusy)
                     .disabled(ciBusy == r.id)
@@ -614,7 +651,13 @@ struct PendingRequestsView: View {
             // Save the sender as a cross-island contact FIRST, so the held
             // payloads pass the ingest consent-gate (now an accepted contact)
             // and file with the correct sender + kind when replayed.
-            let ok = await ContactService.shared.addCrossIslandContact(uin: r.uin, host: r.host)
+            //
+            // §5f: the add now also deposits `act:"accept"` back to the
+            // requester's island, so BOTH sides end up holding the other as
+            // accepted — the mutual state §5d's call gate already checks.
+            let ok = await ContactService.shared.addCrossIslandContact(
+                uin: r.uin, host: r.host, announce: .accept
+            ).added
             await MainActor.run {
                 if ok, let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host) {
                     for h in held.msgs {
@@ -625,6 +668,20 @@ struct PendingRequestsView: View {
                         _ = MessageService.shared.ingest(envelope: packet)
                     }
                 }
+                ciBusy = nil
+                ciRequests = CrossIslandRequestsStore.shared.list()
+            }
+        }
+    }
+
+    /// §5f decline: tell the requester's island, then drop the row. No local
+    /// contact is written and no pinned key is touched.
+    private func declineCI(_ r: CrossIslandRequestsStore.Request) {
+        ciBusy = r.id
+        Task {
+            await CrossIslandSender.depositContactReq(act: "decline", uin: r.uin, host: r.host)
+            await MainActor.run {
+                CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host)
                 ciBusy = nil
                 ciRequests = CrossIslandRequestsStore.shared.list()
             }

@@ -935,8 +935,10 @@
 "qr.scan.aim" = "Aponte para outro código QR do RCQ";
 "qr.alert.sent.title" = "Solicitação enviada";
 "qr.alert.sent.body" = "Mandamos uma solicitação de contato para o UIN %d. Ela vai aparecer na lista de pendentes da pessoa.";
+"qr.alert.ci_sent.title" = "Pedido enviado";
+"qr.alert.ci_sent.body" = "Enviamos um pedido de contato ao UIN %1$d em %2$@. Ele vai ver nos pedidos dele.";
 "qr.alert.added.title" = "Contato adicionado";
-"qr.alert.added.body" = "O UIN %1$d em %2$@ já está nos seus contatos. Ele não verá nada até você escrever: ainda não há solicitações entre ilhas.";
+"qr.alert.added.body" = "O UIN %1$d em %2$@ já está nos seus contatos, mas a ilha dele não aceitou o pedido, então ainda não chegou nada para ele.";
 "qr.alert.already.title" = "Já está nos seus contatos";
 "qr.alert.already.body" = "Você já está conectado com o UIN %d.";
 "qr.alert.failed.title" = "Não foi possível adicionar";
@@ -959,8 +961,10 @@
 "pending.empty.body" = "Os convites de contato novos aparecem aqui.";
 "pending.row.body" = "O usuário do RCQ %@ (%@) quer te adicionar à lista de contatos dele. Permitir?";
 "pending.cta.accept" = "Aceitar";
-"ci.section" = "Pedidos de mensagem (outras ilhas)";
+"ci.section" = "Pedidos de outras ilhas";
 "ci.block" = "Bloquear";
+"ci.contactreq.subtitle" = "Quer adicionar você aos contatos";
+"ci.request_not_sent" = "Adicionado, mas a ilha dele não aceitou o pedido. Ele ainda não vai ver.";
 "ci.add_row.subtitle" = "Contato de outra ilha (outra ilha RCQ)";
 "ci.add_self" = "Este é você: sua conta nesta ilha";
 "contact_list.section.cross_island" = "Outras ilhas";

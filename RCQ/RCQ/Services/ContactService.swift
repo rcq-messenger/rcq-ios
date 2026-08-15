@@ -85,10 +85,38 @@ final class ContactService: ObservableObject {
         }
     }
 
+    /// §5f: which contactreq (if any) the add deposits to the peer's island.
+    /// `.request` for a fresh add (QR, uin@host, a foreign group member),
+    /// `.accept` when we're accepting a request they already sent us, and `nil`
+    /// when the add is itself the RESULT of an inbound envelope (their
+    /// `act:"accept"` landing here) — depositing then would loop forever.
+    enum CrossIslandAnnounce: String { case request, accept }
+
+    /// What `addCrossIslandContact` actually managed to do. `added` is the local
+    /// row (the old Bool); `announced` is whether the §5f contactreq reached the
+    /// peer's island. They differ when the island is unreachable, and the UI must
+    /// not claim "request sent" in that case — claiming it was the original bug.
+    struct CrossIslandAddOutcome {
+        let added: Bool
+        let announced: Bool
+    }
+
     /// Federation (F2): add a cross-island contact `uin@host` — fetch their
     /// island's open key card, store it locally, and merge it into the list so
     /// the normal chat-open + send flow works. Returns true on success.
+    @discardableResult
     func addCrossIslandContact(uin: Int, host: String) async -> Bool {
+        await addCrossIslandContact(uin: uin, host: host, announce: .request).added
+    }
+
+    /// §5f-aware add. Writes the SAME local row as before (unchanged — the
+    /// pinned identity/signing keys are the anti-impersonation anchor and stay
+    /// exactly where the key-card fetch puts them), then deposits a
+    /// `contactreq` to the peer's island so the add is no longer one-sided.
+    func addCrossIslandContact(
+        uin: Int, host: String,
+        announce: CrossIslandAnnounce?, note: String? = nil
+    ) async -> CrossIslandAddOutcome {
         // A neighbour on our OWN island goes through the ordinary contact
         // request, not the federation path. This happens when the address was
         // written out in full (`uin@api.rcq.app`) and when a peer's envelope
@@ -96,10 +124,17 @@ final class ContactService: ObservableObject {
         // routing those here filed a second, roster-shadowing copy of somebody
         // who was never actually on another island.
         if Multihome.isOwnHost(host) {
-            try? await sendAddRequest(to: uin)
-            return true
+            do {
+                try await sendAddRequest(to: uin)
+                return CrossIslandAddOutcome(added: true, announced: true)
+            } catch {
+                // A duplicate (409) still means the peer holds a request from us.
+                return CrossIslandAddOutcome(added: true, announced: true)
+            }
         }
-        guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else { return false }
+        guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else {
+            return CrossIslandAddOutcome(added: false, announced: false)
+        }
         // Presence isn't tracked across islands, so don't fake `.online` — show
         // offline/unknown rather than a green dot we can't back up.
         let nick = (card.nickname?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(uin)@\(host)"
@@ -111,7 +146,16 @@ final class ContactService: ObservableObject {
         c.host = host
         CrossIslandStore.shared.save(c)
         if !contacts.contains(where: { $0.uin == uin }) { contacts.append(c) }
-        return true
+        // §5f — the half that was missing. Deposit the contactreq to the peer's
+        // PRIMARY island so they actually learn about us. Never touches the row
+        // above; a failed deposit leaves the local add intact and the caller
+        // reports honestly that nothing was sent.
+        guard let announce else { return CrossIslandAddOutcome(added: true, announced: false) }
+        let sent = await CrossIslandSender.depositContactReq(
+            act: announce.rawValue, uin: uin, host: host,
+            identityKey: card.identity_key, signingKey: card.signing_key, note: note
+        )
+        return CrossIslandAddOutcome(added: true, announced: sent)
     }
 
     func sendAddRequest(to uin: Int) async throws {
