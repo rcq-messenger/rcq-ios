@@ -842,6 +842,7 @@
 "about.privacy.b3" = "Backend de conocimiento cero: los mensajes se guardan solo como bloques cifrados y se borran al entregarse.";
 "about.privacy.b4" = "Sin número de teléfono, sin correo: el UIN es la única identidad.";
 "about.privacy.b5" = "El historial vive solo en tu dispositivo, cifrado cuando está bloqueado.";
+"about.privacy.b6" = "Tu cuenta vive en una isla, un servidor que cualquiera puede levantar. Las islas nunca se comunican entre sí, quien las conecta es tu aplicación.";
 "about.contact.section" = "CONTACTO";
 "about.contact.support" = "Soporte";
 "about.contact.website" = "Web";

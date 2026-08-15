@@ -842,6 +842,7 @@
 "about.privacy.b3" = "Sıfır bilgili sunucu: mesajlar yalnızca şifreli yığın olarak durur, teslimde silinir.";
 "about.privacy.b4" = "Telefon numarası yok, e-posta yok; tek kimlik UIN.";
 "about.privacy.b5" = "Geçmiş yalnızca cihazında yaşar, kilitliyken şifreli durur.";
+"about.privacy.b6" = "Hesabın bir adada yaşar; bu adayı isteyen herkes kurabilir. Adalar birbiriyle hiç konuşmaz, onları birbirine bağlayan senin uygulaman.";
 "about.contact.section" = "İLETİŞİM";
 "about.contact.support" = "Destek";
 "about.contact.website" = "Web sitesi";

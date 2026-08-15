@@ -920,6 +920,31 @@ final class ChatViewModel: ObservableObject {
         return ContactAliasStore.shared.alias(for: uin) ?? String(uin)
     }
 
+    /// The picture that belongs with `senderNickname(_:)`, read from the same
+    /// places and in the same order: the live roster first, then the contact
+    /// list. Returns nils where there is no picture or no right to it, which
+    /// `PersonAvatarView` already renders as the plain status flower.
+    ///
+    /// Random sessions get nothing on purpose: the name is hidden there, and a
+    /// face would undo that.
+    func senderAvatar(_ uin: Int) -> (id: String?, key: String?, status: UserStatus, host: String?) {
+        if case .randomPeer = target { return (nil, nil, .offline, nil) }
+        if uin == AuthService.shared.ownUIN {
+            let p = PresenceService.shared
+            return (p.ownAvatarID, p.ownAvatarKey, .online, nil)
+        }
+        if case .group(let g) = target {
+            let members = (GroupService.shared.find(g.id)?.members ?? g.members)
+            if let m = members.first(where: { $0.uin == uin }) {
+                return (m.avatarMediaID, m.avatarMediaKey, m.status, g.host)
+            }
+        }
+        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
+            return (c.avatarMediaID, c.avatarMediaKey, c.status, c.host)
+        }
+        return (nil, nil, .offline, nil)
+    }
+
     /// Strip URLs, phone numbers, and @handles from stranger-mode text.
     /// Client-side only; a motivated sender can still obfuscate.
     static func scrubbedForStrangerMode(_ text: String) -> String {

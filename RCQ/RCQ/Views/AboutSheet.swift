@@ -41,6 +41,11 @@ struct AboutSheet: View {
                             bullet("about.privacy.b3".localized)
                             bullet("about.privacy.b4".localized)
                             bullet("about.privacy.b5".localized)
+                            // The islands are the thing nobody arrives
+                            // understanding, and this sheet is where people
+                            // land when they go looking. One line here, the
+                            // depth is a tap away at rcq.app/faq below.
+                            bullet("about.privacy.b6".localized)
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -51,7 +56,10 @@ struct AboutSheet: View {
                             Text("about.contact.section".localized).font(.system(size: 11, weight: .bold)).foregroundColor(Theme.Color.textSecondary)
                             contactLink(icon: "envelope.fill", label: "about.contact.support".localized, value: "support@rcq.app", url: URL(string: "mailto:support@rcq.app"))
                             contactLink(icon: "globe", label: "about.contact.website".localized, value: "rcq.app", url: URL(string: "https://rcq.app"))
-                            contactLink(icon: "questionmark.circle", label: "about.contact.faq".localized, value: "rcq.app/help", url: URL(string: "https://rcq.app/help"))
+                            // ⚠ Was rcq.app/help, which the site has never
+                            // served: the router knows /faq and nothing else,
+                            // so the one link an confused user taps was a 404.
+                            contactLink(icon: "questionmark.circle", label: "about.contact.faq".localized, value: "rcq.app/faq", url: URL(string: "https://rcq.app/faq"))
                             contactLink(icon: "chevron.left.forwardslash.chevron.right", label: "about.contact.github".localized, value: "github.com/rcq-messenger/rcq-ios", url: URL(string: "https://github.com/rcq-messenger/rcq-ios"))
                         }
                         .padding(12)
