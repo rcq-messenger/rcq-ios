@@ -833,6 +833,7 @@
 "about.privacy.b3" = "零知识后端：消息只以加密数据块的形式存放，送达后即删除。";
 "about.privacy.b4" = "不需要手机号和邮箱，UIN 是唯一的身份。";
 "about.privacy.b5" = "聊天记录只保存在你的设备上，锁定时静态加密。";
+"about.privacy.b6" = "你的账号住在一座岛上，任何人都可以自己运行一座。岛与岛之间从不通信，连接它们的是你的客户端。";
 "about.contact.section" = "联系";
 "about.contact.support" = "支持";
 "about.contact.website" = "网站";

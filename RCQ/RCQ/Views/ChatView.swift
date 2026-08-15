@@ -820,7 +820,11 @@ struct ChatView: View {
             AllMediaSheet(messages: vm.messages)
         }
         .sheet(item: $reactorsSheetMessage) { msg in
-            ReactionsWhoSheet(reactions: msg.reactions, nameFor: { vm.senderNickname($0) })
+            ReactionsWhoSheet(
+                reactions: msg.reactions,
+                nameFor: { vm.senderNickname($0) },
+                avatarFor: { vm.senderAvatar($0) },
+            )
         }
         .sheet(item: $pinnedExpansion) { exp in
             NavigationStack {

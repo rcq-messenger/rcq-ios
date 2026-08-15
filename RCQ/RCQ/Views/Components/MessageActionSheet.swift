@@ -176,6 +176,10 @@ struct ReactionsBar: View {
 struct ReactionsWhoSheet: View {
     let reactions: [Int: String]          // reactor UIN → asset
     let nameFor: (Int) -> String
+    /// Their picture, from the same roster the name comes from. Optional so the
+    /// other call sites of this sheet keep compiling; without it the rows draw
+    /// the plain status flower, which is what they did before.
+    var avatarFor: ((Int) -> (id: String?, key: String?, status: UserStatus, host: String?))? = nil
     @Environment(\.dismiss) private var dismiss
 
     private var grouped: [(asset: String, uins: [Int])] {
@@ -191,6 +195,15 @@ struct ReactionsWhoSheet: View {
                     Section {
                         ForEach(g.uins, id: \.self) { uin in
                             HStack(spacing: 10) {
+                                if let a = avatarFor?(uin) {
+                                    PersonAvatarView(
+                                        mediaID: a.id,
+                                        keyBase64: a.key,
+                                        status: a.status,
+                                        host: a.host,
+                                        size: 26,
+                                    )
+                                }
                                 Text(nameFor(uin))
                                     .foregroundColor(Theme.Color.textPrimary)
                                 Spacer()

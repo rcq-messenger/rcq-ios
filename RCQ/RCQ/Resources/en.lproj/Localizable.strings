@@ -906,9 +906,10 @@
 "about.privacy.section" = "PRIVACY";
 "about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
 "about.privacy.b2" = "Sealed sender — server can't link who messages whom.";
-"about.privacy.b3" = "Zero-knowledge backend: messages stored only as encrypted blobs, deleted on delivery.";
+"about.privacy.b3" = "The backend never sees message contents: messages are stored only as encrypted blobs and deleted once delivered.";
 "about.privacy.b4" = "No phone number, no email — UIN is the only identity.";
 "about.privacy.b5" = "History lives on your device only, encrypted at rest when locked.";
+"about.privacy.b6" = "Your account lives on an island, a server anyone can run. Islands never talk to each other, your app is what connects them.";
 "about.contact.section" = "CONTACT";
 "about.contact.support" = "Support";
 "about.contact.website" = "Website";
