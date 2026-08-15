@@ -42,6 +42,20 @@ class NotificationService: UNNotificationServiceExtension {
                request.content.title, request.content.body)
 
         let userInfo = request.content.userInfo
+
+        // ⚠ BEFORE anything is rendered, and before the routing below installs
+        // a per-account Keychain override. A non-sealed push (contact request,
+        // accepted request, trade) carries the SENDER'S NICKNAME in the
+        // server-set title, so the no-envelope branch leaks a real name just as
+        // readily as a decrypted message does. There is nothing to decrypt on
+        // that path and nothing to lose by answering early.
+        if userInfo["env"] == nil, AppGroup.pushQuiet() {
+            os_log("push-quiet (locked or duress), non-sealed push — generic banner",
+                   log: Self.log, type: .default)
+            contentHandler(Self.quietContent(from: content))
+            return
+        }
+
         guard
             let envB64 = userInfo["env"] as? String,
             let envType = userInfo["envType"] as? String
@@ -152,6 +166,25 @@ class NotificationService: UNNotificationServiceExtension {
                 senderUIN: decrypted.senderUIN,
                 envelope: decrypted.envelope
             )
+            // ⚠ THE DURESS / LOCKED CASE. This process cannot see
+            // `PanicPINService` — it is a separate binary in a separate
+            // process — so until now it rendered the real sender's name, their
+            // avatar thumbnail and a preview of what they wrote regardless of
+            // whether the app was PIN-locked or sitting in a decoy session with
+            // a coercer holding the phone. The App Group flag is the only thing
+            // that crosses the process boundary.
+            //
+            // The decrypt above still happened and the plaintext is cached, so
+            // NOTHING IS LOST: the message threads normally the next time the
+            // real session opens. Only the rendering is suppressed, and the
+            // fallback is the generic server-side alert — which is exactly what
+            // an ordinary account with previews turned off looks like.
+            if AppGroup.pushQuiet() {
+                os_log("push-quiet (locked or duress) — generic banner",
+                       log: Self.log, type: .default)
+                contentHandler(Self.quietContent(from: content))
+                return
+            }
             // Your OWN message coming back to you: a group fan-out from a
             // client that didn't drop the sender, or the same account on a
             // second device. The recipient (`to_uin`) is us, and the
@@ -437,6 +470,27 @@ class NotificationService: UNNotificationServiceExtension {
     /// don't recognise — the original body the backend sent stays
     /// in place as the ultimate fallback if even the en bundle
     /// lookup misses, so the user always sees readable text.
+    /// Strip a push down to "something arrived" — no name, no text, no picture,
+    /// no per-thread grouping. Used while the app is PIN-locked or in a duress
+    /// (decoy) session; see `AppGroup.pushQuiet`.
+    ///
+    /// The title is scrubbed as hard as the body: the backend puts the SENDER'S
+    /// NICKNAME in `content.title` for every non-sealed kind (contact request,
+    /// accepted request, trade), so handing the original content back would
+    /// have kept the name on the lock screen even with the body replaced.
+    /// `threadIdentifier` goes too — "peer-<uin>" is an identifier by itself,
+    /// and iOS groups banners visibly by it.
+    static func quietContent(from content: UNMutableNotificationContent) -> UNNotificationContent {
+        let out = UNMutableNotificationContent()
+        let title = pushLocalized("push.quiet.title")
+        let body = pushLocalized("push.quiet.body")
+        out.title = (title.isEmpty || title == "push.quiet.title") ? "RCQ" : title
+        out.body = (body.isEmpty || body == "push.quiet.body") ? "" : body
+        out.sound = content.sound
+        out.badge = content.badge
+        return out
+    }
+
     private func applyLocalizedPushBody(kind: String, to content: UNMutableNotificationContent) {
         let key: String
         // Outbid pushes localize both title + body — every other kind
@@ -623,7 +677,9 @@ class NotificationService: UNNotificationServiceExtension {
         os_log("serviceExtensionTimeWillExpire — handing back best-attempt",
                log: Self.log, type: .error)
         if let handler = contentHandler, let content = bestAttempt {
-            handler(content)
+            // The best attempt may already carry a real name, a preview or a
+            // `#uin` subtitle. A timeout is not permission to show them.
+            handler(AppGroup.pushQuiet() ? Self.quietContent(from: content) : content)
         }
     }
 }

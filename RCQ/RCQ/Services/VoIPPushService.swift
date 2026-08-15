@@ -121,6 +121,25 @@ extension VoIPPushService: PKPushRegistryDelegate {
             completion()
             return
         }
+        // ⚠ A REAL PERSON'S NAME, FULL SCREEN, WITHOUT ANYONE TOUCHING THE
+        // PHONE. The payload carries the caller's nickname and PushKit hands it
+        // straight to CallKit, so an incoming call during a duress session
+        // announced a real contact over the decoy view — and answering it would
+        // have opened the real account's media path. Report-then-end on a blank
+        // handle is the documented escape hatch for the PushKit contract (iOS
+        // kills the app for not reporting), and it reads as a call that was
+        // cancelled before it rang.
+        // `DuressGate` and not `PanicPINService.shared.isDecoy`: this delegate
+        // method is `nonisolated` and must report to CallKit SYNCHRONOUSLY, so
+        // it cannot hop to the main actor to ask.
+        if DuressGate.isActive {
+            let throwaway = UUID()
+            let update = CXCallUpdate()
+            update.remoteHandle = CXHandle(type: .generic, value: "")
+            CallProvider.shared.reportIncomingMalformed(uuid: throwaway, update: update)
+            completion()
+            return
+        }
         let nickname = (dict["nickname"] as? String) ?? "Stranger"
         let media = CallMedia(rawValue: mediaStr) ?? .video
 

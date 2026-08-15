@@ -1650,6 +1650,8 @@
 "panic_pin.decoy.seed.footer" = "Pick the chats to copy into the decoy. Only the text is copied (no photos, files or voice messages), under invented numbers and with shifted dates, so nothing ties a copy back to the real chat. Picking again replaces whatever is in the decoy now.";
 "panic_pin.decoy.seed.count" = "%d messages";
 "panic_pin.decoy.seed.empty" = "There are no text conversations to copy yet.";
+"panic_pin.decoy.seed.none_picked" = "Pick at least one conversation. Saving with none selected would leave the decoy empty.";
+"panic_pin.decoy.seed.failed" = "The decoy could not be filled. Nothing was changed — try picking the conversations again.";
 "panic_pin.wipe.server.toggle" = "Also delete the account on the server";
 "panic_pin.wipe.server.footer" = "Off by default. When on, the wipe PIN also asks the server to delete the account itself, so the number stops existing and nobody can write to it. When off, only this device is cleared: the account stays alive and you can sign back into it from another device.";
 "panic_pin.wipe.footer.server_where" = "Whether the wipe PIN also deletes the account on the server is chosen when you set the PIN. It is off unless you turn it on, and it cannot be shown here: the setting is sealed with the wipe PIN itself, so nothing short of entering that PIN can read it.";

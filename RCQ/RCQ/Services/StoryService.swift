@@ -27,7 +27,16 @@ final class StoryService: ObservableObject {
 
     // MARK: - Feed
 
+    /// Drop the feed on entering a decoy session. Every group in it is a real
+    /// contact's name and picture, and it is fetched by the REAL session, so
+    /// nothing rebuilds it under duress — `refresh()` bails out below.
+    func clearForDecoy() {
+        feed = []
+        lastError = nil
+    }
+
     func refresh() async {
+        if PanicPINService.shared.isDecoy { return }
         do {
             let resp: StoryFeedResponse = try await APIClient.shared.request(
                 "GET", "/stories/feed"

@@ -19,6 +19,14 @@ struct BlockedUsersView: View {
 
     private var blocked: [Contact] {
         _ = refreshTick  // recompute after a local blocked-set change (stranger unblock)
+        // `BlockedContactsStore` is device-global, not per-account, so a decoy
+        // session read the REAL blocked set straight out of it — a list of real
+        // uins, and an Unblock button that would really unblock them on the
+        // real account. The store is left exactly as it is (it is safety state
+        // the real session must keep); the duress view simply has no blocked
+        // users, which is what an account with a handful of seeded chats looks
+        // like anyway.
+        if PanicPINService.shared.isDecoy { return [] }
         let byUin = Dictionary(contacts.contacts.map { ($0.uin, $0) }, uniquingKeysWith: { a, _ in a })
         // Union of server-blocked contacts + the LOCAL blocked set (covers
         // blocked strangers with no contact row, shown as #uin stubs).

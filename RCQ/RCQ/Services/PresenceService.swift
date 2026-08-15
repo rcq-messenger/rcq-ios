@@ -23,12 +23,35 @@ final class PresenceService: ObservableObject {
     @Published var ownAvatarKey: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
 
     func setOwnAvatar(id: String?, key: String?) {
+        // A decoy session must never overwrite the real account's saved picture
+        // — it would survive the duress session and the real user would come
+        // back to a blank header.
+        guard !PanicPINService.shared.isDecoy else { return }
         let id = (id?.isEmpty ?? true) ? nil : id
         let key = (key?.isEmpty ?? true) ? nil : key
         ownAvatarID = id
         ownAvatarKey = key
         UserDefaults.standard.set(id, forKey: "rcq.ownAvatarID")
         UserDefaults.standard.set(key, forKey: "rcq.ownAvatarKey")
+    }
+
+    /// Drop the account's own picture for the duration of a decoy session.
+    ///
+    /// IN MEMORY ONLY — the UserDefaults mirror is left alone and read back by
+    /// `reloadOwnAvatarFromDisk()` on the way out. This is not cosmetic: the
+    /// picture is the user's own face, it is held in a singleton that `lock()`
+    /// never cleared, and it was being drawn on the home header AND at the top
+    /// of Settings above a synthetic nickname and a synthetic UIN. A decoy
+    /// identity with the real person's photograph is both a leak and the
+    /// loudest possible tell that the account on screen is not the real one.
+    func clearForDecoy() {
+        ownAvatarID = nil
+        ownAvatarKey = nil
+    }
+
+    func reloadOwnAvatarFromDisk() {
+        ownAvatarID = UserDefaults.standard.string(forKey: "rcq.ownAvatarID")
+        ownAvatarKey = UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
     }
 
     private init() {}

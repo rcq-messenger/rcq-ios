@@ -177,6 +177,15 @@ final class AppState: ObservableObject {
     }
 
     func handle(deepLink url: URL) {
+        // ⚠ Every branch below acts FOR THE REAL ACCOUNT: `rcq://link` seals a
+        // web session onto it (handing a browser the whole history), `rcq://add`
+        // and `/u/<uin>` send a real contact request under the real uin,
+        // `rcq://server` joins an island, `rcq://r` stamps a referrer. A duress
+        // session must not be able to do any of it — and a coercer who can open
+        // a link (a QR code, a message in another app) can reach all of them
+        // without ever touching RCQ's own UI. Dropped silently: a link that
+        // does nothing is what a link looks like on a phone with no network.
+        guard !PanicPINService.shared.isDecoy else { return }
         // Invite-only server join — rcq://server/<host>?invite=<code> (the
         // QR/link an island operator shares) or https://rcq.app/s/<host>?invite=.
         // `invite` is omitted for an open-server link.
@@ -469,6 +478,24 @@ final class AppState: ObservableObject {
     }
 
     private func doBoot(suggestedNickname: String? = nil) async {
+        // ⚠ FIRST, AND WITH NO CONDITIONS. The decoy arm used to ride on the
+        // offline branch further down, which additionally required a non-nil
+        // `KeychainStore.string(.token)` — the LEGACY unprefixed slot. An
+        // account whose token lives only in its per-account slot (any
+        // self-host account, or any account past the first) answers nil there,
+        // so a decoy session fell straight through to the full network boot
+        // and connected the socket with the REAL account's credentials.
+        //
+        // `isOffline = false` because the duress view presents as connected:
+        // it has no server account, and a messenger that permanently advertises
+        // "offline" is the tell the decoy exists to remove.
+        if PanicPINService.shared.isDecoy {
+            isOffline = false
+            MessageService.shared.configure(ownUIN: AuthService.shared.ownUIN ?? 0)
+            booted = true
+            return
+        }
+
         // (relay-list + broker refresh moved BELOW the transport-engage block so a
         // blocked user pulls them THROUGH the tunnel — see after the reachability
         // gate. Android orders it the same way.)
@@ -505,9 +532,8 @@ final class AppState: ObservableObject {
             return
         }
 
-        if !pathSatisfied || PanicPINService.shared.isDecoy,
-           let uin = cachedUIN, cachedToken != nil {
-            isOffline = !PanicPINService.shared.isDecoy
+        if !pathSatisfied, let uin = cachedUIN, cachedToken != nil {
+            isOffline = true
             MessageService.shared.configure(ownUIN: uin)
             booted = true
             return
@@ -978,6 +1004,22 @@ final class AppState: ObservableObject {
     /// explicitly device-local unless the user turned the server erase on. The
     /// user-facing "Burn account" button keeps the old always-delete behaviour.
     func burnAccount(deleteServerAccount: Bool = true) async {
+        // ⚠ IN A DECOY SESSION THIS BURNS THE DECOY, NEVER THE REAL ACCOUNT.
+        //
+        // "Burn account" is a plain destructive row in Settings and a coercer
+        // is exactly the person who taps it. Run unchanged it would have called
+        // `wipeLocalIdentity()` — deleting the REAL recovery seed and identity
+        // keys out of the Keychain, unrecoverably, from inside the duress view
+        // — plus the global favourites/archive/sound stores that belong to the
+        // real user. The duress session is supposed to be the sacrificial one;
+        // it must be able to destroy itself and nothing else.
+        //
+        // What the coercer sees is what they asked for: the account empties and
+        // the app starts over.
+        if PanicPINService.shared.isDecoy {
+            await burnDecoySession()
+            return
+        }
         if deleteServerAccount {
             await AuthService.shared.deleteServerAccount()
         }
@@ -1021,6 +1063,29 @@ final class AppState: ObservableObject {
         booted = false
         bootError = nil
         await boot()
+    }
+
+    /// The decoy-session half of `burnAccount`. Empties the seeded history and
+    /// roster and leaves the duress view sitting on a blank account.
+    ///
+    /// Deliberately does NOT remove the decoy PIN from the vault: rewriting a
+    /// slot needs the real slot key, which a decoy session does not hold (by
+    /// design — see `PanicPINService.changeDecoyPIN`). The PIN keeps working
+    /// and keeps opening an empty account, which is exactly what a burnt
+    /// account looks like.
+    private func burnDecoySession() async {
+        MessageDB.destroyDecoyStore()
+        DecoySeedStore.destroy()
+        MessageStore.shared.clearInMemory()
+        ContactService.shared.clearForDecoy()
+        GroupService.shared.clearForDecoy()
+        StoryService.shared.clearForDecoy()
+        VisitStore.shared.clearForDecoy()
+        // `reload()` and not `configure(decoy:)`: the latter only rebuilds the
+        // container when the mode CHANGES, and we are already in decoy mode —
+        // it would leave the session holding a handle to a deleted file.
+        MessageDB.shared.reload()
+        MessageStore.shared.reloadFromDB()
     }
 
     /// Soft switch to a different existing account. Wipes only the

@@ -21,6 +21,11 @@ struct ContactListView: View {
     // Cross-island contacts render from the store directly: the merged
     // ContactService list drops them when a same-uin LOCAL contact exists.
     @ObservedObject private var ciStore = CrossIslandStore.shared
+    // Duress view: the sections below that read a STORE rather than
+    // `ContactService` have to be gated here as well. The stores are rebound to
+    // an empty decoy namespace on entry, so this is the second line — but it is
+    // the one that keeps a section honest if a rebind is ever missed.
+    @ObservedObject private var panicPIN = PanicPINService.shared
     @State private var collapsedCrossIsland = false
 
     @State private var showAddContact = false
@@ -493,7 +498,12 @@ struct ContactListView: View {
     /// area is the user's first-launch focus, no infrastructure noise.
     @ViewBuilder
     private var accountSwitcherPill: some View {
-        if accountManager.active != nil {
+        // The menu lists every local account by server AND uin, and switching
+        // to one raises that REAL account. A decoy identity is not in the
+        // roster and must not be able to reach it, so the pill is not drawn at
+        // all under duress — an account switcher with one nameless entry would
+        // itself say "something is hidden here".
+        if accountManager.active != nil && !panicPIN.isDecoy {
             Menu {
                 ForEach(accountManager.accounts.sorted(by: { $0.createdAt < $1.createdAt })) { account in
                     Button {
@@ -614,6 +624,13 @@ struct ContactListView: View {
                 // pulled but Wi-Fi up the path stays "satisfied" while the
                 // server is unreachable — `linkUp` (server evidence) is
                 // what makes the dot honest there.
+                // A decoy session is deliberately offline: it has no server
+                // account, so `linkUp` is false forever. Reporting that would
+                // make the duress view permanently advertise "not connected",
+                // which is precisely the tell the decoy exists to remove — a
+                // messenger nobody could have been using. It reads as connected
+                // instead (Android sets `connected = true` for the same reason).
+                let linkDown = !panicPIN.isDecoy && (appState.isOffline || !socket.linkUp)
                 ZStack(alignment: .bottomTrailing) {
                     // The picture, with the status kept as the badge on its
                     // edge — the same shape Android draws. Without a picture
@@ -630,14 +647,14 @@ struct ContactListView: View {
                         keyBase64: presence.ownAvatarKey,
                         status: presence.status,
                         size: 26,
-                        linkDown: appState.isOffline || !socket.linkUp
+                        linkDown: linkDown
                     )
                     // The connection dot is dropped when a picture is up: the
                     // status badge already sits in that corner, and two dots on
                     // top of each other read as neither.
                     if presence.ownAvatarID == nil {
                         Circle()
-                            .fill(appState.isOffline || !socket.linkUp ? Color.orange : Color.green)
+                            .fill(linkDown ? Color.orange : Color.green)
                             .frame(width: 9, height: 9)
                             .overlay(Circle().stroke(Theme.Color.bgPrimary, lineWidth: 1.5))
                     }
@@ -649,7 +666,7 @@ struct ContactListView: View {
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                    if appState.isOffline {
+                    if appState.isOffline && !panicPIN.isDecoy {
                         Text("contact_list.offline_badge".localized)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color.orange)
@@ -763,11 +780,11 @@ struct ContactListView: View {
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: []) {
-                if vm.pendingCount + ciRequests.requestCount > 0 {
+                if vm.pendingCount + visibleCIRequests > 0 {
                     pendingBanner
                 }
                 // Gate empty-state on a completed first refresh — otherwise the CTA flashes during cold launch.
-                if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount + ciRequests.requestCount == 0 {
+                if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount + visibleCIRequests == 0 {
                     emptyState
                 }
                 favoritesSection
@@ -1036,7 +1053,12 @@ struct ContactListView: View {
     /// the bottom of the list. Hidden entirely when nothing's archived
     /// so the chrome doesn't take up space.
     private var archiveLocked: Bool {
-        PanicPINService.shared.isConfigured && !archiveUnlocked
+        // The archive gate verifies the REAL PIN, so under duress it would
+        // reject the coercer's PIN as "wrong" — announcing a second PIN. There
+        // is nothing behind it to protect here anyway: the archive section is
+        // built from the seeded roster, whose uins are synthetic.
+        if PanicPINService.shared.isDecoy { return false }
+        return PanicPINService.shared.isConfigured && !archiveUnlocked
     }
 
     @ViewBuilder
@@ -1157,6 +1179,19 @@ struct ContactListView: View {
     /// routes cross-island even when a same-uin local contact exists.
     @ViewBuilder
     private var crossIslandSection: some View {
+        // Every row here is a real person on a real island, read STRAIGHT out
+        // of CrossIslandStore — `ContactService.clearForDecoy()` never saw it.
+        // A duress session shows only what was seeded, so this section does not
+        // exist there at all.
+        if panicPIN.isDecoy {
+            EmptyView()
+        } else {
+            crossIslandRows
+        }
+    }
+
+    @ViewBuilder
+    private var crossIslandRows: some View {
         let unread = UnreadStore.shared.allPeerCounts
         // Anything filed under one of our own island's names is not a foreign
         // peer, it is a roster row that got misclassified while the app was
@@ -1183,8 +1218,15 @@ struct ContactListView: View {
         }
     }
 
+    /// Held cross-island requests count towards the pending banner — but never
+    /// in a decoy session: each one carries a real `uin@host`, a self-asserted
+    /// name and a plaintext preview of what they wrote.
+    private var visibleCIRequests: Int {
+        panicPIN.isDecoy ? 0 : ciRequests.requestCount
+    }
+
     private var pendingBanner: some View {
-        let total = vm.pendingCount + ciRequests.requestCount
+        let total = vm.pendingCount + visibleCIRequests
         return Button { showPending = true } label: {
             HStack {
                 Image(systemName: "person.crop.circle.badge.plus")

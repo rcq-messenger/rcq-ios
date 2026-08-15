@@ -102,6 +102,13 @@ final class RadioService: NSObject, ObservableObject {
     // MARK: - Discovery lifecycle
 
     func startDiscovery() {
+        // Refused under duress. `localPeer` is a `lazy` MCPeerID built once per
+        // process from `NearbyService.displayName` — the same persistent
+        // pseudonym the real user checks into Hood Chat under — so a coerced
+        // phone that goes on the air re-broadcasts the real user's callsign to
+        // everyone in Bluetooth range, and `stop()` cannot reset it. The screen
+        // shows an empty peer list, which is what it shows most of the time.
+        guard !PanicPINService.shared.isDecoy else { return }
         startSessionIfNeeded()
         startBrowser()
         startAdvertiser(.oneToOne)
@@ -229,6 +236,21 @@ final class RadioService: NSObject, ObservableObject {
         let data = (try? JSONEncoder().encode(ctx)) ?? Data()
         browser?.invitePeer(peer.peerID, to: session, withContext: data, timeout: 30)
         markPeer(peer.peerID, state: .connecting)
+    }
+
+    /// Duress entry. Radio Chat is not a list on a screen — it is a LIVE
+    /// Bluetooth/Wi-Fi mesh advertising this device under the user's own
+    /// callsign, holding the display names of everyone in range and the
+    /// plaintext transcript of whatever was said. Nothing tore it down on lock,
+    /// so a decoy session inherited a running radio: real names in `discovered`
+    /// and `roster`, real messages in `messages`, and the real callsign still
+    /// going out over the air to anyone nearby.
+    func wipeForDecoy() {
+        // `stop()` and not `leaveActiveSession()`: the latter re-arms the
+        // advertiser on its way out, which would keep broadcasting the real
+        // callsign through the whole duress session.
+        stop()
+        lastError = nil
     }
 
     func leaveActiveSession() {

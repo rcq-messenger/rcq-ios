@@ -109,11 +109,26 @@ struct DecoySeedPickerView: View {
     }
 
     private func save() {
-        busy = true
         let chosen = candidates.filter { picked.contains($0.peerUIN) }
+        // Nothing ticked. Seeding an empty list REPLACES whatever the decoy
+        // held with nothing, so this must not be the accidental outcome of
+        // tapping Save — say so and stay on the screen.
+        guard !chosen.isEmpty else {
+            errorMsg = "panic_pin.decoy.seed.none_picked".localized
+            return
+        }
+        busy = true
         do {
-            try PanicPINService.shared.seedDecoy(with: chosen)
+            // ⚠ COUNT THE ROWS, do not assume them. Every failure the seeder
+            // can see now throws; dismissing on anything less than a real row
+            // count would report success for a decoy full of names with no
+            // conversations under them.
+            let written = try PanicPINService.shared.seedDecoy(with: chosen)
             busy = false
+            guard written > 0 else {
+                errorMsg = "panic_pin.decoy.seed.failed".localized
+                return
+            }
             dismiss()
         } catch {
             busy = false

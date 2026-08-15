@@ -109,6 +109,49 @@ enum AppGroup {
             }
     }
 
+    /// Cross-process "do not render message content in a push" flag.
+    ///
+    /// The `RCQNotificationService` extension runs in its OWN process. It has no
+    /// access to `PanicPINService`, so it has always titled a push with the real
+    /// sender and printed the decrypted body — including while the app sat
+    /// locked, and including while a DECOY session was up. A real person's name
+    /// and a line of what they wrote appearing on the lock screen is exactly the
+    /// leak the duress PIN exists to prevent, and it arrives without the coercer
+    /// touching anything.
+    ///
+    /// ⚠ Deliberately covers BOTH "PIN-locked" and "decoy session". If it were
+    /// set only under duress, its presence on disk — and the fact that previews
+    /// went generic at the exact moment a particular PIN was entered — would
+    /// itself be the tell. Locked and duress look identical from here.
+    ///
+    /// Flat file rather than `UserDefaults(suiteName:)` for the same
+    /// cfprefsd-unreliability reason as `languageFileURL`.
+    static var pushQuietFileURL: URL {
+        containerURL.appendingPathComponent("push-quiet.txt")
+    }
+
+    /// True while the app is locked or in a decoy session. Absent file → false,
+    /// which is the pre-existing behaviour for anyone with no PIN configured.
+    static func pushQuiet() -> Bool {
+        guard let data = try? Data(contentsOf: pushQuietFileURL),
+              let raw = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        return raw == "1"
+    }
+
+    /// Fails SAFE: if the write does not land the flag stays at whatever it was,
+    /// and the only state we ever leave behind on a crash is `1` (quiet), which
+    /// costs a few generic banners rather than leaking one.
+    static func setPushQuiet(_ quiet: Bool) {
+        let url = pushQuietFileURL
+        if quiet {
+            try? Data("1".utf8).write(to: url, options: .atomic)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     /// Atomically writes the account ID list to the App Group file.
     /// AccountManager calls this from save() so the on-disk file
     /// always matches the in-memory roster.

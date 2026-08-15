@@ -8,7 +8,13 @@ final class ContactListViewModel: ObservableObject {
     // long list of offline contacts pushed groups + audio rooms
     // off-screen on first open. Online stays expanded so the
     // "who's around right now" surface reads as live.
-    @Published var collapsedOffline: Bool = true
+    //
+    // ⚠ NEVER in a decoy session. The whole seeded roster is a handful of
+    // contacts and this is the only section they can land in, so the default
+    // collapse folded the entire duress view away behind one header — the
+    // decoy opened on a chat list with nothing in it, which is the exact
+    // outcome the seeding exists to prevent.
+    @Published var collapsedOffline: Bool = !PanicPINService.shared.isDecoy
     /// Set once the first `refresh()` resolves. Gates the empty-state
     /// CTA so a cold launch with non-empty contacts doesn't flash the
     /// "Add contact" placeholder for one frame before the contacts

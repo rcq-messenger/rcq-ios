@@ -43,6 +43,7 @@ struct SettingsView: View {
     @State private var showBackupFile = false
     @State private var uinCopied: Bool = false
     @StateObject private var language = LanguageManager.shared
+    @ObservedObject private var panicPIN = PanicPINService.shared
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -242,7 +243,11 @@ struct SettingsView: View {
                     // second one by hand (POST /admin/uin/grant). Islands too
                     // old to answer /uin/mine leave heldCount at zero and the
                     // row stays hidden.
-                    if appState.serverCapabilities.uinShop || heldUINCount > 0 {
+                    // `serverCapabilities` is whatever the REAL session's boot
+                    // fetched — a decoy never calls /server/info — so the shop
+                    // row would advertise a storefront for an account that has
+                    // no island. `heldUINCount` is forced to 0 above.
+                    if (appState.serverCapabilities.uinShop && !panicPIN.isDecoy) || heldUINCount > 0 {
                         Section {
                             if appState.serverCapabilities.uinShop {
                                 Button {
@@ -382,7 +387,11 @@ struct SettingsView: View {
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .fullScreenCover(isPresented: $showUINShop) { UINShopView() }
             .sheet(isPresented: $showMyUINs) { MyUINsView() }
-            .task { heldUINCount = (await AppState.shared.myUINs())?.owned.count ?? 0 }
+            .task {
+                // Reads the REAL account's number collection off the island.
+                guard !panicPIN.isDecoy else { heldUINCount = 0; return }
+                heldUINCount = (await AppState.shared.myUINs())?.owned.count ?? 0
+            }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
             .sheet(isPresented: $showLinkWeb) {
@@ -540,6 +549,10 @@ struct SettingsView: View {
     /// Read my own picture back from the island. `/users/me` answers with the
     /// owner-self view, which always carries it.
     private func loadOwnAvatar() async {
+        // A decoy session has no server account, and `auth.ownUIN` here is the
+        // synthetic one. The DuressGate refuses the request anyway; returning
+        // first keeps the header from flickering through a failed fetch.
+        guard !PanicPINService.shared.isDecoy else { return }
         guard let uin = auth.ownUIN else { return }
         guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
         PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
@@ -553,6 +566,10 @@ struct SettingsView: View {
     /// GIFs go up as raw bytes so the frames survive; anything else takes the
     /// still-image path, which JPEG-encodes.
     private func setOwnAvatar(from item: PhotosPickerItem) async {
+        // Under duress this PUT /users/me would rename the REAL account's
+        // picture and then broadcast it to every real cross-island contact.
+        // The gate blocks the request; this stops the spinner ever appearing.
+        guard !PanicPINService.shared.isDecoy else { return }
         avatarBusy = true
         defer { avatarBusy = false }
         struct Body: Encodable {
@@ -875,6 +892,11 @@ struct LinkedDevicesView: View {
 
     private func reload() async {
         failed = false
+        // A decoy session must not list the REAL account's web sessions, and
+        // must not read as broken either: "no devices linked" is the honest
+        // answer for an identity that exists on no server, and it is the state
+        // an ordinary account starts in.
+        guard !PanicPINService.shared.isDecoy else { devices = []; return }
         do {
             let list: [Device] = try await APIClient.shared.request("GET", "/devices")
             devices = list
