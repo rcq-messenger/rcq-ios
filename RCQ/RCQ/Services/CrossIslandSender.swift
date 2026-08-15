@@ -100,6 +100,130 @@ enum CrossIslandSender {
         )
     }
 
+    /// §5e cross-island profile refresh: seal the sender's CURRENT display name
+    /// and picture reference to one accepted cross-island contact and deposit it
+    /// to their PRIMARY island — the §5f transport, the §5f gates, one sibling
+    /// envelope. Display fields only; the pinned keys are read from the local
+    /// row (to seal) and never travel.
+    ///
+    /// `avatarMediaID`/`avatarMediaKey` are passed in already deposited: the
+    /// caller PUTs the encrypted blob to the recipient's island FIRST (§5b), so
+    /// the reference resolves against the island the recipient actually reads.
+    @MainActor
+    @discardableResult
+    static func depositProfile(
+        to contact: Contact,
+        nickname: String,
+        avatarMediaID: String?,
+        avatarMediaKey: String?
+    ) async -> Bool {
+        guard let host = contact.host, !Multihome.isOwnHost(host) else { return false }
+        guard let crypto = MessageService.shared.crypto else { return false }
+        let env = Envelope.profile(
+            id: UUID(), ts: Int(Date().timeIntervalSince1970),
+            nickname: nickname,
+            avatarMediaID: avatarMediaID, avatarMediaKey: avatarMediaKey
+        )
+        let bundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
+        guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else {
+            print("[CrossIslandSender] profile seal failed (→ \(contact.uin)@\(host))")
+            return false
+        }
+        // Same F3 posture as the contactreq: cosmetic, not latency-critical.
+        let ok = await deposit(host: host, uin: contact.uin, payload: blob, mintToken: true)
+        if !ok { print("[CrossIslandSender] profile deposit failed (→ \(contact.uin)@\(host))") }
+        return ok
+    }
+
+    /// §5e: push the current profile to EVERY accepted cross-island contact.
+    /// Called after a successful nickname or picture save, so a contact added as
+    /// "nick1" stops reading "nick1" forever.
+    ///
+    /// The picture is DEPOSITED, not pulled: the encrypted blob is fetched once
+    /// from our own island and PUT to each recipient island under the same
+    /// client-chosen id before any envelope goes out.
+    ///
+    /// ⚠ When we HAVE a picture and its blob does not land on a recipient's
+    /// island, that recipient is SKIPPED entirely rather than being sent the
+    /// name alone. The envelope is a SNAPSHOT of our whole display state, so a
+    /// missing picture reads on the far side as "I removed mine" and deletes our
+    /// face (web, Android and now iOS all clear on absence). Deleting a face
+    /// because of a transient media hiccup is far worse than a name that
+    /// refreshes on our next change.
+    @MainActor
+    static func broadcastProfile() async {
+        // The decoy identity must never speak for the real one.
+        if PanicPINService.shared.isDecoy { return }
+        // Someone we blocked does not get handed our current name and face.
+        // Same filter web applies to this broadcast.
+        let peers = CrossIslandStore.shared.all().filter { c in
+            guard let h = c.host else { return false }
+            return !CrossIslandRequestsStore.shared.isBlocked(uin: c.uin, host: h)
+        }
+        guard !peers.isEmpty else { return }
+        let nickname = AuthService.shared.nickname
+        let avatarID = PresenceService.shared.ownAvatarID
+        let avatarKey = PresenceService.shared.ownAvatarKey
+        let havePicture = (avatarID?.isEmpty == false) && (avatarKey?.isEmpty == false)
+
+        // One host string per island (rows carry the host as it was typed).
+        var hosts: [String: String] = [:]   // lowercased → as-stored
+        for p in peers { if let h = p.host { hosts[h.lowercased()] = h } }
+
+        var hostsWithAvatar: Set<String> = []
+        if havePicture, let avatarID, let avatarKey, !avatarKey.isEmpty,
+           let blob = try? await MediaService.fetchBlob(mediaID: avatarID) {
+            for (lower, host) in hosts {
+                if await MediaService.putBlob(host: host, mediaID: avatarID, data: blob) {
+                    hostsWithAvatar.insert(lower)
+                }
+            }
+        }
+        for p in peers {
+            guard let host = p.host else { continue }
+            let carriesAvatar = hostsWithAvatar.contains(host.lowercased())
+            // Have a picture, could not hand it over → say nothing at all.
+            if havePicture && !carriesAvatar {
+                print("[CrossIslandSender] profile SKIPPED (avatar not deposited on \(host))")
+                continue
+            }
+            await depositProfile(
+                to: p, nickname: nickname,
+                avatarMediaID: carriesAvatar ? avatarID : nil,
+                avatarMediaKey: carriesAvatar ? avatarKey : nil
+            )
+        }
+    }
+
+    /// §5e first-contact push: one accepted contact, same work as the broadcast
+    /// but for a single island, so a brand-new cross-island contact starts with a
+    /// current name and picture instead of the card snapshot.
+    @MainActor
+    static func sendProfile(to contact: Contact) async {
+        if PanicPINService.shared.isDecoy { return }
+        guard let host = contact.host else { return }
+        if CrossIslandRequestsStore.shared.isBlocked(uin: contact.uin, host: host) { return }
+        let avatarID = PresenceService.shared.ownAvatarID
+        let avatarKey = PresenceService.shared.ownAvatarKey
+        let havePicture = (avatarID?.isEmpty == false) && (avatarKey?.isEmpty == false)
+        var carriesAvatar = false
+        if havePicture, let avatarID, let blob = try? await MediaService.fetchBlob(mediaID: avatarID) {
+            carriesAvatar = await MediaService.putBlob(host: host, mediaID: avatarID, data: blob)
+        }
+        // Snapshot semantics: an envelope with no picture means "I have none".
+        // Rather than tell a brand-new contact we are faceless because their
+        // island refused the blob, send nothing and let the next change carry it.
+        if havePicture && !carriesAvatar {
+            print("[CrossIslandSender] first-contact profile SKIPPED (avatar not deposited on \(host))")
+            return
+        }
+        await depositProfile(
+            to: contact, nickname: AuthService.shared.nickname,
+            avatarMediaID: carriesAvatar ? avatarID : nil,
+            avatarMediaKey: carriesAvatar ? avatarKey : nil
+        )
+    }
+
     /// Fetch a peer's open public-key card from their island (no auth).
     static func fetchCard(host: String, uin: Int) async -> Card? {
         guard let url = URL(string: "https://\(host)/federation/keys/\(uin)") else { return nil }

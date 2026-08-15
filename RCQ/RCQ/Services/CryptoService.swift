@@ -102,6 +102,23 @@ enum Envelope: Codable, Hashable {
     /// identity key and deposited to their PRIMARY island, exactly like a call
     /// signal. Routes to the pending-request store, NEVER the message store.
     case contactRequest(id: UUID, act: String, ts: Int, nickname: String, note: String? = nil)
+    /// §5e cross-island profile refresh (wire kind "profile"). A cross-island
+    /// contact's name and picture were read exactly ONCE, off the open key card,
+    /// when the contact was added — the same-island `contact_renamed` broadcast
+    /// cannot reach a holder on another island because the island's `contacts`
+    /// table has no host column, so that audience does not exist. This envelope
+    /// is the push that replaces it: the person who changed their profile seals
+    /// it to each accepted cross-island contact and deposits it to their island.
+    ///
+    /// `ts` = sender epoch SECONDS (receivers ignore an older one than the last
+    /// applied). `avatarMediaID`/`avatarMediaKey` describe the picture; the
+    /// encrypted blob itself is DEPOSITED to the recipient's island under the
+    /// same id (§5b `PUT /media/{id}`), never pulled from ours at render time.
+    /// The key travels only inside this sealed envelope — never on the open key
+    /// card or the signed record, both of which are unauthenticated while
+    /// `GET /media/{id}` has no auth at all, so the key IS the access decision.
+    /// Display fields only: a `profile` never carries or writes identity keys.
+    case profile(id: UUID, ts: Int, nickname: String, avatarMediaID: String? = nil, avatarMediaKey: String? = nil)
     /// Home-island record self-push (federation gossip B1, wire kind "homerec").
     /// Carries the SENDER's own signed home-island record so a contact caches
     /// where to reach them even after the sender's island dies. Verified against
@@ -162,6 +179,8 @@ enum Envelope: Codable, Hashable {
         case rec
         case relay, note
         case act, nickname
+        case avatarMediaID = "avatar_media_id"
+        case avatarMediaKey = "avatar_media_key"
         case kid, e, i, ck
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
@@ -304,6 +323,27 @@ enum Envelope: Codable, Hashable {
             // below is `decodeIfPresent`, so an explicit JSON `null` from
             // another client reads back as nil either way.
             try c.encodeIfPresent(note, forKey: .note)
+        case .profile(let id, let ts, let nickname, let avatarID, let avatarKey):
+            try c.encode("profile", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(ts, forKey: .ts)
+            try c.encode(nickname, forKey: .nickname)
+            // Optionals are OMITTED, not emitted as null — the convention the
+            // §5f contactreq encoder settled on right above. The decoder is
+            // `decodeIfPresent`, so another client's explicit null reads back as
+            // nil either way.
+            //
+            // ⚠ The avatar pair is ALL-OR-NOTHING, enforced here rather than
+            // trusted to callers. An id without its key names a blob nobody can
+            // open (`GET /media/{id}` has no auth, so the key IS the access
+            // decision), and web and Android both collapse a half pair to "no
+            // picture" — which, under the snapshot rule, CLEARS the picture the
+            // peer holds. Emitting half a pair would therefore delete our face
+            // on the other two clients. Both or neither.
+            if let aid = avatarID, let akey = avatarKey, !aid.isEmpty, !akey.isEmpty {
+                try c.encode(aid, forKey: .avatarMediaID)
+                try c.encode(akey, forKey: .avatarMediaKey)
+            }
         case .homeRecord(let rec):
             try c.encode("homerec", forKey: .kind)
             try c.encode(rec, forKey: .rec)
@@ -454,6 +494,14 @@ enum Envelope: Codable, Hashable {
                 ts: try c.decode(Int.self, forKey: .ts),
                 nickname: try c.decodeIfPresent(String.self, forKey: .nickname) ?? "",
                 note: try c.decodeIfPresent(String.self, forKey: .note)
+            )
+        case "profile":
+            self = .profile(
+                id: try c.decode(UUID.self, forKey: .id),
+                ts: try c.decode(Int.self, forKey: .ts),
+                nickname: try c.decodeIfPresent(String.self, forKey: .nickname) ?? "",
+                avatarMediaID: try c.decodeIfPresent(String.self, forKey: .avatarMediaID),
+                avatarMediaKey: try c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
             )
         case "homerec":
             self = .homeRecord(rec: try c.decode(IslandRecordWire.self, forKey: .rec))

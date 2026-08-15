@@ -120,7 +120,11 @@ final class MediaService {
     /// (`PUT /media/{id}`, idempotent, no auth — same trust model as the
     /// envelope deposit). Plain URLSession to the peer's island, the same
     /// accepted simplification as `CrossIslandSender`.
-    private nonisolated static func putBlob(host: String, mediaID: String, data: Data) async -> Bool {
+    ///
+    /// Not private: §5e deposits the OWNER'S AVATAR blob to a cross-island
+    /// contact's island through this, so the picture renders from the island
+    /// they already read from and keeps rendering while ours is down.
+    nonisolated static func putBlob(host: String, mediaID: String, data: Data) async -> Bool {
         guard let url = URL(string: "https://\(host)/media/\(mediaID)") else { return false }
         let boundary = "----RCQBoundary\(UUID().uuidString)"
         var body = Data()

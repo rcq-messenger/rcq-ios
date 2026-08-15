@@ -26,22 +26,36 @@ final class CrossIslandStore: ObservableObject {
     // showed up on the 911 account, where it read as "I added myself"). The
     // old single global key `rcq.crossisland.contacts.v1` is left orphaned.
     private static let keyPrefix = "rcq.crossisland.contacts.v1."
+    /// §5e stale guard: the `ts` of the last profile refresh we APPLIED, per
+    /// `uin@host`. Kept beside the rows (same App Group container, same
+    /// per-account slot) so it survives a relaunch — an offline-queue drain
+    /// hands us envelopes in whatever order the mailbox held them.
+    private static let profileTSPrefix = "rcq.crossisland.profilets.v1."
 
     private let defaults: UserDefaults
     private var accountKey: String
+    private var profileTSKey: String
     private var cache: [String: Contact]   // keyed "uin@host"
+    private var profileTS: [String: Int]
 
     private init() {
         defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
         // Non-isolated file read (same source MessageDB/KeychainStore resolve
         // the per-account slot from) so init stays off the main actor.
-        accountKey = Self.keyFor(AppGroup.readActiveAccountID())
+        let account = AppGroup.readActiveAccountID()
+        accountKey = Self.keyFor(account)
+        profileTSKey = Self.profileTSKeyFor(account)
         cache = Self.load(defaults, accountKey)
+        profileTS = (defaults.dictionary(forKey: profileTSKey) as? [String: Int]) ?? [:]
         contactsSnapshot = Array(cache.values)
     }
 
     private static func keyFor(_ id: UUID?) -> String {
         keyPrefix + (id?.uuidString ?? "none")
+    }
+
+    private static func profileTSKeyFor(_ id: UUID?) -> String {
+        profileTSPrefix + (id?.uuidString ?? "none")
     }
 
     private static func load(_ defaults: UserDefaults, _ key: String) -> [String: Contact] {
@@ -55,6 +69,8 @@ final class CrossIslandStore: ObservableObject {
     /// list is per-account and never bleeds across local accounts.
     func bind(accountID: UUID?) {
         accountKey = Self.keyFor(accountID)
+        profileTSKey = Self.profileTSKeyFor(accountID)
+        profileTS = (defaults.dictionary(forKey: profileTSKey) as? [String: Int]) ?? [:]
         cache = Self.load(defaults, accountKey)
         pruneOwnIsland()
         contactsSnapshot = Array(cache.values)
@@ -94,9 +110,97 @@ final class CrossIslandStore: ObservableObject {
     func find(uin: Int) -> Contact? { cache.values.first { $0.uin == uin } }
 
     func remove(uin: Int, host: String) {
-        cache.removeValue(forKey: ciKey(uin, host))
+        let key = ciKey(uin, host)
+        cache.removeValue(forKey: key)
+        profileTS.removeValue(forKey: key)
+        defaults.set(profileTS, forKey: profileTSKey)
         persist()
         contactsSnapshot = Array(cache.values)
+    }
+
+    /// §5e receive: refresh the DISPLAY fields of an EXISTING cross-island row.
+    ///
+    /// Deliberately narrow, and the narrowness is the point:
+    ///  - a sender we do not already hold as an accepted cross-island contact
+    ///    gets nothing — no row, no pending entry. It is cosmetic data from a
+    ///    stranger, so it is dropped;
+    ///  - the pinned `identityKey` / `signingKey` / `signalIdentityKey` are
+    ///    never touched. They are the anti-impersonation anchor, and an inbound
+    ///    envelope that could write them would BE the impersonation path. This
+    ///    mutates a copy of the stored row, so they carry over untouched;
+    ///  - an envelope older than the last one we applied for this peer is
+    ///    ignored (queue drains replay out of order);
+    ///  - the write goes to disk, not just to `contactsSnapshot`: the push path
+    ///    reads the stored snapshot with no live session, so a memory-only
+    ///    update would leave notifications showing the old name.
+    ///
+    /// A device-local alias still outranks whatever lands here — every display
+    /// path resolves through `ContactAliasStore.displayName(for:fallback:)`, and
+    /// this only ever writes the fallback.
+    ///
+    /// Returns the updated row when something actually changed, else nil.
+    @discardableResult
+    func applyProfile(
+        uin: Int, host: String, ts: Int,
+        nickname: String?, avatarMediaID: String?, avatarMediaKey: String?
+    ) -> Contact? {
+        let key = ciKey(uin, host)
+        guard var row = cache[key] else { return nil }
+        if let last = profileTS[key], ts < last { return nil }
+        var changed = false
+        // Bounded like web's 64: a peer must not be able to write an unbounded
+        // string into our roster and onto our disk.
+        if let raw = nickname?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            let nick = String(raw.prefix(64))
+            if nick != row.nickname {
+                row.nickname = nick
+                changed = true
+            }
+        }
+        // ⚠ A SNAPSHOT, not a patch. The envelope always states the sender's
+        // WHOLE current display state, so an absent picture means "I have none
+        // now" and the one we hold goes. Web and Android read it the same way;
+        // treating absence as "unchanged" here would mean a peer who removes
+        // their picture keeps their old face on iOS forever while it vanishes
+        // on the other two clients.
+        //
+        // Safe only because the SEND side never emits a spuriously-absent
+        // picture: a sender that HAS a picture whose blob did not land on this
+        // island skips the envelope entirely rather than sending the name alone
+        // (CrossIslandSender.broadcastProfile / sendProfile). So absence on the
+        // wire is a deliberate clear, not a transient media failure.
+        //
+        // Both halves or neither: the id is useless without its key, and
+        // `GET /media/{id}` is unauthenticated so the key IS the access.
+        //
+        // The id is charset- and length-gated because it is interpolated
+        // straight into `/media/{id}`: a peer-supplied `../…` must not steer
+        // that fetch anywhere but at a blob. Same gate web and Android apply,
+        // so the three clients accept exactly the same set of ids.
+        var mid: String? = nil
+        if let raw = avatarMediaID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           raw.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil {
+            mid = raw
+        }
+        var mkey: String? = nil
+        if let raw = avatarMediaKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty, raw.count <= 128 {
+            mkey = raw
+        }
+        let nextID: String? = (mid != nil && mkey != nil) ? mid : nil
+        let nextKey: String? = nextID == nil ? nil : mkey
+        if nextID != row.avatarMediaID || nextKey != row.avatarMediaKey {
+            row.avatarMediaID = nextID
+            row.avatarMediaKey = nextKey
+            changed = true
+        }
+        profileTS[key] = ts
+        defaults.set(profileTS, forKey: profileTSKey)
+        guard changed else { return nil }
+        cache[key] = row
+        persist()
+        contactsSnapshot = Array(cache.values)
+        return row
     }
 
     private func persist() {

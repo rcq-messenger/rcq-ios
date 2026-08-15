@@ -490,6 +490,12 @@ struct UserInfoView: View {
             self.profile = updated
             self.draft = updated
             AuthService.shared.updateNicknameLocal(updated.nickname)
+            // §5e: the island broadcasts a rename only to holders ON this island
+            // (its contacts table has no host column, so a cross-island holder
+            // cannot be in that audience). Push the new name to every accepted
+            // cross-island contact ourselves, or they read the name they were
+            // added under forever.
+            if isOwn { Task { await CrossIslandSender.broadcastProfile() } }
         } catch { }
         saving = false
     }

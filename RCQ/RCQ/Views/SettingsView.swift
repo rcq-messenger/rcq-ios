@@ -577,6 +577,11 @@ struct SettingsView: View {
             PresenceService.shared.setOwnAvatar(id: res.mediaID, key: res.keyBase64)
             ownAvatarID = res.mediaID
             ownAvatarKey = res.keyBase64
+            // §5e: the island only tells people ON this island. Every accepted
+            // cross-island contact gets the new picture pushed to them — the
+            // encrypted blob deposited to THEIR island, the key sealed to them.
+            // Detached so the picker stops spinning as soon as the save landed.
+            Task { await CrossIslandSender.broadcastProfile() }
         } catch {
             // Silent: the header simply keeps the flower, and the user can try
             // again. A modal here would be louder than the failure deserves.

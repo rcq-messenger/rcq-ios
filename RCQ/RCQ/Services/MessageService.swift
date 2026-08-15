@@ -1421,6 +1421,14 @@ final class MessageService {
                     // write; just retire any pending row.
                     if alreadyAccepted {
                         CrossIslandRequestsStore.shared.clear(uin: uin, host: fromHost)
+                        // §5e first-contact push: the relationship just became
+                        // mutual, so hand them our CURRENT name and picture
+                        // instead of leaving them with the card snapshot their
+                        // add took.
+                        if let row = CrossIslandStore.shared.all()
+                            .first(where: { $0.uin == uin && $0.host == fromHost }) {
+                            Task { await CrossIslandSender.sendProfile(to: row) }
+                        }
                         return outcome
                     }
                     // An `accept` from someone we never asked is NOT a licence
@@ -1441,6 +1449,44 @@ final class MessageService {
                 default:
                     break
                 }
+                return outcome
+            }
+
+            // §5e cross-island PROFILE REFRESH (kind "profile"). A cross-island
+            // contact's name and picture were read exactly once, off their open
+            // key card, when they were added — and never again, because the
+            // same-island `contact_renamed` broadcast has no way to include a
+            // holder on another island. This branch applies the push that
+            // replaces it, and applies NOTHING else: display fields on a row we
+            // already hold, never the pinned keys, never a new row, never the
+            // message store or the quarantine below. ACK every branch so the
+            // queue stops redelivering.
+            if case .profile(_, let ts, let nickname, let avatarID, let avatarKey) = decrypted.envelope {
+                let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                // The host is the whole identity of a cross-island row, and it
+                // is NOT always known here: PushDecryptCache drops `from_host`,
+                // so anything that arrived via a push reaches ingest with
+                // `senderHost == nil`. Guessing (bare uin, "the only row with
+                // this uin") is exactly how a lookalike on another island gets
+                // to rename someone. Unknown host → do nothing.
+                guard ws.groupID == nil,
+                      decrypted.senderUIN != ownUIN,
+                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost)
+                else { return outcome }
+                let uin = decrypted.senderUIN
+                if BlockedContactsStore.shared.contains(uin)
+                    || RemovedContactsStore.shared.contains(uin) {
+                    return outcome
+                }
+                // Drops (returns nil) for a sender we do not hold as an accepted
+                // cross-island contact, and for a `ts` older than the last one we
+                // applied. Persists to the App Group container, which is what the
+                // push path reads without a live session.
+                guard let updated = CrossIslandStore.shared.applyProfile(
+                    uin: uin, host: fromHost, ts: ts,
+                    nickname: nickname, avatarMediaID: avatarID, avatarMediaKey: avatarKey
+                ) else { return outcome }
+                ContactService.shared.applyCrossIslandProfile(updated)
                 return outcome
             }
 
@@ -1922,6 +1968,11 @@ final class MessageService {
                 // §5f: intercepted before this switch (filed as a pending
                 // cross-island request, never into the message store).
                 // Unreachable here; present only for exhaustiveness.
+                break
+            case .profile:
+                // §5e: intercepted before this switch (display fields of an
+                // existing cross-island row). Unreachable here; present only
+                // for exhaustiveness.
                 break
             case .skdm, .sknack:
                 // Sender-keys distribution/recovery: intercepted before this
