@@ -935,6 +935,8 @@
 "qr.scan.aim" = "Apunta a otro código QR de RCQ";
 "qr.alert.sent.title" = "Solicitud enviada";
 "qr.alert.sent.body" = "Enviamos una solicitud de contacto al UIN %d. La verá en su lista de pendientes.";
+"qr.alert.added.title" = "Contacto añadido";
+"qr.alert.added.body" = "El UIN %1$d en %2$@ ya está en tus contactos. No verá nada hasta que le escribas: todavía no hay solicitudes entre islas.";
 "qr.alert.already.title" = "Ya está en tus contactos";
 "qr.alert.already.body" = "Ya estás conectado con el UIN %d.";
 "qr.alert.failed.title" = "No se pudo añadir";

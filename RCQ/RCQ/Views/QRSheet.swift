@@ -16,6 +16,13 @@ struct QRSheet: View {
 
     enum ScanResult: Equatable {
         case sent(uin: Int)
+        /// ⚠ Adding someone on ANOTHER island is a purely local act: we read
+        /// their open key card and write a row here. No request crosses the
+        /// wire, because a cross-island contact request does not exist in the
+        /// protocol yet. Saying "request sent" for it was a promise about a
+        /// screen on the other person's phone that nothing was going to put
+        /// there, and it is what the founder reported as a lost request.
+        case addedLocally(uin: Int, host: String)
         case alreadyContact(uin: Int)
         case failed(message: String)
     }
@@ -57,6 +64,7 @@ struct QRSheet: View {
             ) { result in
                 Button("common.ok".localized) {
                     if case .sent = result { dismiss() }
+                    if case .addedLocally = result { dismiss() }
                     if case .alreadyContact = result { dismiss() }
                 }
             } message: { result in
@@ -224,7 +232,9 @@ struct QRSheet: View {
             let ok = await ContactService.shared.addCrossIslandContact(uin: uin, host: host)
             await MainActor.run {
                 UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
-                scanResult = ok ? .sent(uin: uin) : .failed(message: "qr.alert.failed.title".localized)
+                scanResult = ok
+                    ? .addedLocally(uin: uin, host: host)
+                    : .failed(message: "qr.alert.failed.title".localized)
             }
             return
         }
@@ -274,6 +284,7 @@ struct QRSheet: View {
     private var alertTitle: String {
         switch scanResult {
         case .sent:           return "qr.alert.sent.title".localized
+        case .addedLocally:   return "qr.alert.added.title".localized
         case .alreadyContact: return "qr.alert.already.title".localized
         case .failed:         return "qr.alert.failed.title".localized
         case .none:           return ""
@@ -284,6 +295,8 @@ struct QRSheet: View {
         switch result {
         case .sent(let uin):
             return String(format: "qr.alert.sent.body".localized, uin)
+        case .addedLocally(let uin, let host):
+            return String(format: "qr.alert.added.body".localized, uin, host)
         case .alreadyContact(let uin):
             return String(format: "qr.alert.already.body".localized, uin)
         case .failed(let msg):
