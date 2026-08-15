@@ -283,6 +283,16 @@ final class AuthService: ObservableObject {
     /// account whose keys predate seed-derivation (nothing to back up). The
     /// caller gates the Settings UI on nil to show a "not available" notice.
     func recoveryPhrase() -> [String]? {
+        // ⚠ THE WHOLE ACCOUNT, FOREVER. The Keychain is not gated by the PIN,
+        // so a decoy session can read the real seed as easily as a real one;
+        // only the UI stood between a coercer and it, and that UI is a PIN gate
+        // that rejects the decoy PIN as "wrong" — which announces a second PIN.
+        //
+        // The decoy identity genuinely has no seed, so answering nil is both
+        // true and plausible: every reader (the recovery screen, the backup
+        // export, the backup restore) already has a "this account has no
+        // phrase" path written for legacy accounts, and takes it silently.
+        guard !PanicPINService.shared.isDecoy else { return nil }
         guard let seed = KeychainStore.data(KeychainStore.Keys.recoverySeed) else { return nil }
         return RecoveryPhrase.encode(seed)
     }
@@ -291,6 +301,9 @@ final class AuthService: ObservableObject {
     /// 48-word phrase (idPriv||signPriv = 64 bytes). nil for a seed-derived
     /// account (use recoveryPhrase()) or if keys are missing/malformed.
     func legacyExportPhrase() -> [String]? {
+        // Same reasoning as `recoveryPhrase()` — this is the raw identity
+        // keypair, which is if anything worse.
+        guard !PanicPINService.shared.isDecoy else { return nil }
         guard KeychainStore.data(KeychainStore.Keys.recoverySeed) == nil else { return nil }
         guard let id = KeychainStore.data(KeychainStore.Keys.identityPriv),
               let sign = KeychainStore.data(KeychainStore.Keys.signingPriv),

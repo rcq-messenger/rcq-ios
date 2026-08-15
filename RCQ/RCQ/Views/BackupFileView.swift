@@ -34,6 +34,22 @@ struct BackupFileView: View {
 
     /// Run [action] now, or ask for the PIN first when one is configured.
     private func gated(_ action: PendingBackupAction) {
+        // ⚠ NOT GATED IN A DECOY SESSION — and there is nothing to gate.
+        //
+        // The gate verifies the REAL PIN, so under duress it rejected the only
+        // PIN the coercer has as "wrong": a screen refusing a PIN that just
+        // unlocked the whole app announces that a second PIN exists, which is
+        // the one thing the duress feature must never do.
+        //
+        // Letting the action through leaks nothing. Both directions are keyed
+        // by the account's recovery phrase, and `AuthService.recoveryPhrase()`
+        // answers nil in a decoy session (the decoy identity genuinely has no
+        // seed), so `BackupService` refuses with its ordinary "this account has
+        // no recovery phrase" error before touching a byte.
+        guard !PanicPINService.shared.isDecoy else {
+            perform(action)
+            return
+        }
         guard PanicPINService.shared.isConfigured else {
             perform(action)
             return

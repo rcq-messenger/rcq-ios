@@ -1,6 +1,54 @@
 import CryptoKit
 import Foundation
 import SwiftUI
+import UserNotifications
+
+/// One process-wide latch: "a duress session is up, no request may leave this
+/// device carrying the real identity".
+///
+/// It exists because clearing screens is not enough. A decoy session inherits a
+/// fully warmed-up app: `APIClient` still holds the REAL account's bearer token
+/// from the boot that happened before the lock, `KeychainStore` still answers
+/// with the real per-account credentials, and the cross-island paths sign with
+/// the real Ed25519 key. Every screen that fetches — the profile header, linked
+/// devices, my numbers, my reports, the UIN shop, a story, a hood, an avatar
+/// upload — would therefore answer with the REAL account's data inside the
+/// duress view, no matter how carefully the local stores were rebound.
+///
+/// So the gate sits at the two chokepoints every outbound call goes through
+/// (`APIClient.rawRequest` and `IslandHTTP.data`) and refuses. A refusal reads
+/// as "no connection", which is what an offline account looks like and what the
+/// duress view already claims to be.
+///
+/// `nonisolated` + a lock because the readers are an actor (`APIClient`) and
+/// arbitrary background queues, while the writer is `PanicPINService` on the
+/// main actor.
+enum DuressGate {
+    private static let lock = NSLock()
+    private static var _active = false
+
+    /// True while a decoy session is up.
+    static var isActive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _active
+    }
+
+    static func set(_ active: Bool) {
+        lock.lock(); _active = active; lock.unlock()
+    }
+
+    /// Thrown instead of performing a request. Surfaces through the same
+    /// `catch` every network path already has, so callers degrade to their
+    /// existing offline behaviour rather than needing new handling.
+    struct Blocked: Error, LocalizedError {
+        var errorDescription: String? { "offline" }
+    }
+
+    /// `try DuressGate.check()` at the top of a request path.
+    static func check() throws {
+        if isActive { throw Blocked() }
+    }
+}
 
 @MainActor
 final class PanicPINService: ObservableObject {
@@ -96,6 +144,10 @@ final class PanicPINService: ObservableObject {
         lockoutUntil = (until ?? .distantPast) > Date() ? until : nil
         // Default 30s = the old hardcoded grace; absent key → 30.
         lockTimeout = UserDefaults.standard.object(forKey: Self.lockTimeoutKey) as? Int ?? 30
+        // A cold launch onto the PIN screen never calls `lock()`, so the flag
+        // has to be established here or the extension keeps rendering names and
+        // bodies on the lock screen of a locked app.
+        AppGroup.setPushQuiet(lockState == .locked)
     }
 
     // MARK: - unlock / lock
@@ -127,9 +179,14 @@ final class PanicPINService: ObservableObject {
             guard let keyData = unlock.payload.dataKey else { return .wrong }
             dataKey = SymmetricKey(data: keyData)
             mode = .real
+            // Idempotent, and belt-and-braces: a decoy session that was killed
+            // rather than locked must never leave the real session reading the
+            // decoy namespace.
+            Self.leaveDecoySession()
             MessageDB.shared.configure(decoy: false, dataKey: dataKey)
             MessageStore.shared.reloadFromDB()
             lockState = .unlocked
+            syncPushPrivacy()
             return .unlockedReal
 
         case .decoy:
@@ -145,6 +202,10 @@ final class PanicPINService: ObservableObject {
             AuthService.shared.applyDecoyIdentity(uin: decoyUIN, nickname: decoyNick)
             PresenceService.shared.status = .online
             PresenceService.shared.statusMessage = nil
+            // ⚠ BEFORE a single frame of the duress view is drawn. Everything
+            // that outlives the lock and names a real person has to go first —
+            // see `enterDecoySession`.
+            Self.enterDecoySession()
             MessageDB.shared.configure(decoy: true, dataKey: dataKey)
             MessageStore.shared.reloadFromDB()
             // Roster first, then the seeded rows it names. An unseeded decoy
@@ -157,6 +218,7 @@ final class PanicPINService: ObservableObject {
             }
             GroupService.shared.clearForDecoy()
             lockState = .unlocked
+            syncPushPrivacy()
             return .unlockedDecoy
 
         case .wipe:
@@ -187,6 +249,155 @@ final class PanicPINService: ObservableObject {
 
     /// True while unlocked into the decoy (duress) view.
     var inDecoySession: Bool { mode == .decoy }
+
+    // MARK: - decoy session isolation
+
+    /// The account id every per-account store is re-pointed at for the duration
+    /// of a decoy session. Fixed, and deliberately the SAME uuid Android uses
+    /// for `DecoyStore.STORE_ID`: nothing outside the vault may record that a
+    /// decoy exists, so it cannot be a per-install value that has to be
+    /// persisted somewhere to be found again.
+    ///
+    /// Re-pointing rather than wiping is the whole trick. These stores hold
+    /// real state that must survive the duress session intact, so a decoy
+    /// session reads and writes an EMPTY namespace and the real slots are
+    /// untouched on disk. `leaveDecoySession` puts them back.
+    private static let decoyNamespace = UUID(uuidString: "8F3C1A64-2D5B-4E07-9A18-C6B0D7E42F95")!
+
+    /// Everything a decoy session must not be able to show, done before the
+    /// duress view is drawn.
+    ///
+    /// `MessageDB` and `ContactService` are handled by the caller — those are
+    /// the two the decoy REPLACES with seeded content. This is the long tail
+    /// that nothing replaced: App-Group-persisted, account-bound stores that
+    /// the chat list reads STRAIGHT out of (bypassing `ContactService`), plus
+    /// the in-memory services whose contents outlive `lock()`.
+    ///
+    /// Report: the duress view opened on the real "Other islands" section —
+    /// name, uin@host and all — because `ContactService.clearForDecoy()` only
+    /// clears the published roster, and `ContactListView` renders cross-island
+    /// peers from `CrossIslandStore` directly.
+    private static func enterDecoySession() {
+        // ⚠ FIRST. Everything below clears what is already on screen; this is
+        // what stops the app FETCHING the real account's data back over the
+        // wire the moment any duress-view screen appears. `APIClient` still
+        // holds the real bearer token from the pre-lock boot, so without this a
+        // decoy session could read the real profile, the real linked devices,
+        // the real numbers and the real reports, and could WRITE too (an avatar
+        // upload, a rename, a web-link approval) as the real account.
+        DuressGate.set(true)
+        // Belt-and-braces behind the gate: with no token in the client, a
+        // request built somewhere the gate does not cover still cannot
+        // authenticate as the real user. Stashed rather than re-derived,
+        // because working out WHICH token to put back (legacy unprefixed slot
+        // vs per-account slot) is exactly the kind of guess that hands a decoy
+        // session the wrong account's credentials — see `AuthService.bootstrap`.
+        Task {
+            stashedAPIToken = await APIClient.shared.currentToken()
+            await APIClient.shared.setToken(nil)
+        }
+        // The notification EXTENSION is a separate process that cannot see any
+        // of this. Tell it, through the App Group, to stop rendering sender
+        // names and message bodies — a push landing while the coercer holds the
+        // phone is otherwise a real person's name and a line of their text.
+        AppGroup.setPushQuiet(true)
+        // ⚠ AND THE ONES ALREADY DELIVERED. Suppressing new pushes does nothing
+        // about the banners sitting in Notification Center from BEFORE the
+        // phone changed hands — real names, real message previews, one pull of
+        // the shade away, and the app never has to be touched at all. The app
+        // only cleared the tray on foregrounding a REAL unlocked session
+        // (`RCQApp.handleScenePhase`), which is precisely the path a coerced
+        // phone does not take.
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+
+        // Persisted + account-bound: re-point at the empty decoy namespace.
+        // Nothing is deleted; the real account's rows stay on disk.
+        CrossIslandStore.shared.bind(accountID: decoyNamespace)
+        CrossIslandRequestsStore.shared.bind(accountID: decoyNamespace)
+        VisitedIslandsStore.shared.bind(accountID: decoyNamespace)
+
+        // The App-Group uin → nickname map is what the NOTIFICATION EXTENSION
+        // titles a push with. It has no idea a decoy session is up, so leaving
+        // the real map in place means a push arriving while the coercer holds
+        // the phone is titled with a real person's name. It is a cache:
+        // `ContactService.refresh()` rebuilds it on the next real session.
+        NicknameCache.wipe()
+        GroupNameCache.wipe()
+        AvatarThumbCache.wipe()
+
+        // The account's OWN profile picture. It is held here (not in a screen's
+        // @State) and mirrored into plain UserDefaults, so it survived the lock
+        // and the duress view drew the REAL person's face — on the home header
+        // and again at the top of Settings — over a synthetic nickname and a
+        // synthetic UIN. In memory only: `leaveDecoySession` reads it back.
+        PresenceService.shared.clearForDecoy()
+
+        // In-memory services. `lock()` does not clear these, so a real session
+        // that was locked and then opened with the duress PIN handed over its
+        // stories, its call history, its nearby people and its random chat.
+        VisitStore.shared.clearForDecoy()
+        StoryService.shared.clearForDecoy()
+        NearbyService.shared.wipe()
+        RandomChatService.shared.wipe()
+        CallService.shared.wipe()
+        AudioRoomService.shared.wipe()
+        NotificationService.shared.wipe()
+        ReactionInboxStore.shared.wipe()
+        MentionInboxStore.shared.wipe()
+        // Bucket-local public chat: the messages are real people writing under
+        // the user's real check-in nickname, and `leave()` also unsubscribes so
+        // the duress session stops being present in that bucket.
+        HoodChatService.shared.wipe()
+        // Bluetooth/Wi-Fi mesh. Not just a list on screen — an ACTIVE radio
+        // advertising this device's callsign to everyone in range, with the
+        // discovered peers' names and the session transcript in memory.
+        RadioService.shared.wipeForDecoy()
+        // The floating in-app banner lives in its own UIWindow above every
+        // sheet and cover, and nothing cleared it on lock: one already up when
+        // the phone was taken is a real contact's name plus a line of their
+        // message, drawn on top of the duress view.
+        MessageBannerService.shared.clearForDecoy()
+        // Per-account notification prefs: muted peers and muted groups, both
+        // keyed by the real uin/group id. The account-switch path wipes them
+        // for the same reason.
+        NotificationPrefsService.shared.wipe()
+    }
+
+    /// Put the per-account stores back on the real account. Called from
+    /// `lock()` and from both real-unlock paths, so a decoy session can never
+    /// leave the app pointed at the decoy namespace.
+    private static func leaveDecoySession() {
+        let id = AccountManager.shared.activeAccountID
+        CrossIslandStore.shared.bind(accountID: id)
+        CrossIslandRequestsStore.shared.bind(accountID: id)
+        VisitedIslandsStore.shared.bind(accountID: id)
+        VisitStore.shared.reloadFromDisk()
+        PresenceService.shared.reloadOwnAvatarFromDisk()
+        DuressGate.set(false)
+        // Put back exactly what was there. `resumeAfterUnlock` re-dials the
+        // socket from the Keychain but never touches APIClient, so without this
+        // every REST call after a duress session would go out unauthenticated
+        // until the next full boot.
+        if let token = stashedAPIToken {
+            stashedAPIToken = nil
+            Task { await APIClient.shared.setToken(token) }
+        }
+    }
+
+    /// The real session's bearer token while a decoy session holds the app.
+    /// Static because `enterDecoySession`/`leaveDecoySession` are; nil at every
+    /// other moment.
+    private static var stashedAPIToken: String?
+
+    /// Mirror "the app is locked or under duress" into the App Group so the
+    /// notification extension — a separate process with no view of any of this
+    /// — stops rendering sender names and message bodies.
+    ///
+    /// Called on every state transition rather than only on lock, because a
+    /// cold launch onto the PIN screen never calls `lock()`.
+    private func syncPushPrivacy() {
+        AppGroup.setPushQuiet(lockState == .locked || mode == .decoy)
+    }
 
     /// Change the PIN from within a decoy session: re-seal the DECOY slot under
     /// `pin`. The real slot is untouched, so the hidden real identity stays
@@ -226,15 +437,20 @@ final class PanicPINService: ObservableObject {
         mode = .real
         PINVault.clearAttemptState()
         lockoutUntil = nil
+        Self.leaveDecoySession()
         MessageDB.shared.configure(decoy: false, dataKey: dataKey)
         MessageStore.shared.reloadFromDB()
         lockState = .unlocked
+        syncPushPrivacy()
         return true
     }
 
     func lock() {
         guard isConfigured, lockState == .unlocked else { return }
         WebSocketService.shared.disconnect()
+        // Leaving a decoy session: the per-account stores go back to the real
+        // account. Harmless in a real session (it rebinds to the same id).
+        Self.leaveDecoySession()
         dataKey = nil
         realPayload = nil
         realSlotKey = nil
@@ -245,6 +461,7 @@ final class PanicPINService: ObservableObject {
         MessageDB.shared.configure(decoy: false, dataKey: nil)
         MessageStore.shared.clearInMemory()
         lockState = .locked
+        syncPushPrivacy()
     }
 
     func finishWipe() {
@@ -257,6 +474,7 @@ final class PanicPINService: ObservableObject {
         decoySlotKey = nil
         mode = .none
         lockState = .unlocked
+        syncPushPrivacy()
     }
 
     // MARK: - configuration (real session only)
@@ -274,6 +492,7 @@ final class PanicPINService: ObservableObject {
             dataKey = SymmetricKey(data: keyData)
             mode = .real
             lockState = .unlocked
+            syncPushPrivacy()
             MessageDB.shared.configure(decoy: false, dataKey: dataKey)
             await MessageDB.shared.reencryptAllRows()
             return
@@ -361,7 +580,10 @@ final class PanicPINService: ObservableObject {
             throw PINError.vaultMissing
         }
         let decoyUIN = layout.decoyUIN ?? Self.randomDecoyUIN()
-        return DecoySeeder.seed(
+        // Rethrows `DecoySeeder.SeedError`. A seed that did not land must reach
+        // the user: a decoy they believe is populated and is not is worse than
+        // one they know is empty.
+        return try DecoySeeder.seed(
             selections,
             decoyUIN: decoyUIN,
             decoyKey: SymmetricKey(data: decoyKeyData),
@@ -450,6 +672,7 @@ final class PanicPINService: ObservableObject {
         dataKey = nil
         mode = .none
         lockState = .unlocked
+        syncPushPrivacy()
         MessageDB.shared.configure(decoy: false, dataKey: nil)
     }
 

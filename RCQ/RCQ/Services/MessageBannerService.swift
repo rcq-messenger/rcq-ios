@@ -37,6 +37,17 @@ final class MessageBannerService: ObservableObject {
 
     private init() {}
 
+    /// Duress entry. The banner lives in its own UIWindow above every sheet and
+    /// cover (see `BannerWindowController`), and `lock()` never cleared it — so
+    /// one already up when the phone changed hands is a real contact's name
+    /// plus a line of their message, painted over the duress view.
+    func clearForDecoy() {
+        dismissTask?.cancel()
+        dismissTask = nil
+        current = nil
+        activeThread = nil
+    }
+
     func setActive(_ thread: ThreadID?) {
         activeThread = thread
         // If the user just navigated into the thread the banner is

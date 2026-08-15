@@ -381,7 +381,15 @@ final class ContactService: ObservableObject {
             Contact(
                 uin: row.uin,
                 nickname: row.nickname,
-                status: .offline,
+                // Presence is a SERVER fact and the decoy has no server, so any
+                // value here is invented — which means "all offline" is invented
+                // too, and it is the one invention that reads wrong. It buried
+                // the whole roster in the collapsed Offline section AND painted
+                // an account where nobody has been online, ever. A stable
+                // split (derived from the synthetic uin, so it does not
+                // reshuffle on every unlock) puts some of the seeded people in
+                // the Online section and looks like an account in use.
+                status: row.uin % 3 == 0 ? .online : .offline,
                 statusMessage: nil,
                 blocked: false,
                 identityKey: "",

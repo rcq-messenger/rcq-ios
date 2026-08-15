@@ -218,6 +218,18 @@ final class MessageDB {
             for name in [base, base + "-shm", base + "-wal"] {
                 try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
             }
+            // ⚠⚠ THE DECOY ROSTER GOES WITH IT. The decoy's contact list lives
+            // in a SEPARATE file that this reset never touched, so clearing the
+            // history alone left a decoy session showing the seeded names with
+            // every conversation empty — and it stayed that way, because
+            // nothing reseeds on its own. A decoy that lies about having been
+            // used is worse than one that is plainly empty: no real account
+            // looks like a roster of people you have never exchanged a word
+            // with. Losing the seed asks the user to pick again; keeping half
+            // of it hands the coercer the tell.
+            if decoy {
+                DecoySeedStore.destroy()
+            }
             container.loadPersistentStores { _, err in
                 if let err { print("[MessageDB] reset still failed: \(err)") }
             }

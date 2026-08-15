@@ -82,6 +82,24 @@ enum DecoySeeder {
         var id: Int { peerUIN }
     }
 
+    /// Why a seed refused to complete. Every case leaves the caller with a
+    /// decision to make instead of a decoy that LOOKS seeded and is not.
+    enum SeedError: LocalizedError {
+        /// The decoy store would not open, even after being cleared and retried.
+        case storeUnavailable(String)
+        /// Rows were built but the save was rejected.
+        case saveFailed(String)
+        /// The user picked conversations and not one copyable row came out.
+        case nothingCopied
+
+        var errorDescription: String? {
+            switch self {
+            case .storeUnavailable, .saveFailed, .nothingCopied:
+                return "panic_pin.decoy.seed.failed".localized
+            }
+        }
+    }
+
     /// How many messages are copied per conversation. A tail, not the whole
     /// history: enough to read as lived-in, small enough to stay quick.
     static let messagesPerThread = 120
@@ -97,22 +115,39 @@ enum DecoySeeder {
     ///     passed here and the real store is never opened for writing.
     ///   - realOwnUIN: the real account's uin, needed ONLY to recognise the
     ///     user's own reaction keys so they can be rewritten. Never stored.
-    @discardableResult
+    ///
+    /// ⚠⚠ THROWS RATHER THAN RETURNING A SHORT COUNT. The roster and the
+    /// messages are written to two different files, so the failure mode this
+    /// guards against is a decoy that has NAMES in its chat list and every
+    /// conversation empty — louder than having no decoy at all, because a real
+    /// account never looks like that. The roster is therefore written only
+    /// after the rows are safely saved, and a seed that copied nothing is a
+    /// hard error, not a zero the caller may ignore. (Android's `DecoyStore.seed`
+    /// refuses the same way; it names this exact shape as the one iOS shipped.)
     static func seed(
         _ selections: [Selection],
         decoyUIN: Int,
         decoyKey: SymmetricKey,
         realOwnUIN: Int?
-    ) -> Int {
-        let container = makeDecoyContainer()
+    ) throws -> Int {
+        // Clearing the whole decoy is a legitimate request ("show nothing"),
+        // and it is the only case where an empty roster is correct.
+        if selections.isEmpty {
+            let container = try makeDecoyContainer()
+            try purge(container.viewContext)
+            if container.viewContext.hasChanges {
+                try? container.viewContext.save()
+            }
+            DecoySeedStore.save([], key: decoyKey)
+            return 0
+        }
+
+        let container = try makeDecoyContainer()
         let ctx = container.viewContext
 
         // Replace, don't append: the picker is "these conversations are the
         // decoy", not "add these too".
-        let purge = NSBatchDeleteRequest(
-            fetchRequest: NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
-        )
-        _ = try? ctx.execute(purge)
+        try purge(ctx)
 
         var roster: [DecoyContactRecord] = []
         var usedUINs: Set<Int> = [decoyUIN]
@@ -180,11 +215,37 @@ enum DecoySeeder {
             roster.append(DecoyContactRecord(uin: fakeUIN, nickname: selection.displayName))
         }
 
-        if ctx.hasChanges {
-            do { try ctx.save() } catch { print("[DecoySeeder] save failed: \(error)") }
+        // The row count decides, not the selection count: a conversation whose
+        // every message was filtered out contributes no roster entry either,
+        // and if that leaves nothing at all the decoy must not be committed.
+        guard written > 0, !roster.isEmpty else { throw SeedError.nothingCopied }
+
+        do {
+            try ctx.save()
+        } catch {
+            // The messages did not land, so the roster must not either — that
+            // pairing is the whole point. Whatever the previous seed was stays
+            // exactly as it is and the caller reports a failure.
+            throw SeedError.saveFailed(String(describing: error))
         }
+        // ⚠ ONLY NOW. Written before the save, this file is what turns a failed
+        // seed into a decoy full of names with nothing under them.
         DecoySeedStore.save(roster, key: decoyKey)
         return written
+    }
+
+    /// Empty the decoy store. Surfaces the error instead of `try?`-ing it away:
+    /// a purge that silently failed would append this seed onto the previous
+    /// one, mixing two sets of conversations the user never chose together.
+    private static func purge(_ ctx: NSManagedObjectContext) throws {
+        let request = NSBatchDeleteRequest(
+            fetchRequest: NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
+        )
+        do {
+            _ = try ctx.execute(request)
+        } catch {
+            throw SeedError.saveFailed(String(describing: error))
+        }
     }
 
     /// Conversations the picker can offer: peer threads that actually hold
@@ -216,21 +277,53 @@ enum DecoySeeder {
         msg.kind == .text && !msg.deletedForEveryone && !msg.text.isEmpty
     }
 
-    private static func makeDecoyContainer() -> NSPersistentContainer {
-        let container = NSPersistentContainer(
-            name: "RCQHistoryV2", managedObjectModel: MessageDB.sharedModel
-        )
-        let desc = NSPersistentStoreDescription(url: MessageDB.decoyStoreURL())
-        desc.setOption(FileProtectionType.complete as NSObject,
-                       forKey: NSPersistentStoreFileProtectionKey)
-        desc.shouldAddStoreAsynchronously = false
-        desc.shouldMigrateStoreAutomatically = true
-        desc.shouldInferMappingModelAutomatically = true
-        container.persistentStoreDescriptions = [desc]
-        container.loadPersistentStores { _, err in
-            if let err { print("[DecoySeeder] load failed: \(err)") }
+    /// The seeder's own container on the decoy file.
+    ///
+    /// ⚠ It has to recover the way `MessageDB.makeContainer` does. A decoy
+    /// store left wedged by an earlier build loads with an error there and gets
+    /// cleared and retried, so the DECOY SESSION always ends up with a working
+    /// (empty) store — while the seeder used to print the same error, carry on
+    /// with a coordinator that has no store behind it, fail its save, and still
+    /// write the roster. Contacts in the chat list, no messages anywhere: the
+    /// two halves recovering differently is what produced that.
+    private static func makeDecoyContainer() throws -> NSPersistentContainer {
+        let url = MessageDB.decoyStoreURL()
+
+        func open() -> (NSPersistentContainer, Error?) {
+            let container = NSPersistentContainer(
+                name: "RCQHistoryV2", managedObjectModel: MessageDB.sharedModel
+            )
+            let desc = NSPersistentStoreDescription(url: url)
+            desc.setOption(FileProtectionType.complete as NSObject,
+                           forKey: NSPersistentStoreFileProtectionKey)
+            desc.shouldAddStoreAsynchronously = false
+            desc.shouldMigrateStoreAutomatically = true
+            desc.shouldInferMappingModelAutomatically = true
+            container.persistentStoreDescriptions = [desc]
+            var failure: Error?
+            container.loadPersistentStores { _, err in failure = err }
+            return (container, failure)
         }
-        return container
+
+        let (container, failure) = open()
+        guard let failure else { return container }
+
+        // Nothing is lost by clearing it: the only reader of a decoy store that
+        // will not open is a duress session that would find it unopenable too.
+        // SQLite writes -shm and -wal alongside; drop all three so the retry
+        // doesn't re-attach a half-broken journal.
+        let dir = url.deletingLastPathComponent()
+        let base = url.lastPathComponent
+        for name in [base, base + "-shm", base + "-wal"] {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+        let (retried, stillFailing) = open()
+        if let stillFailing {
+            throw SeedError.storeUnavailable(
+                "\(String(describing: failure)) / \(String(describing: stillFailing))"
+            )
+        }
+        return retried
     }
 
     private static func mintUIN(avoiding used: inout Set<Int>) -> Int {

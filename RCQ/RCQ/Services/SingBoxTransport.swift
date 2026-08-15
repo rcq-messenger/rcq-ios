@@ -835,6 +835,12 @@ enum IslandHTTP {
         transfer: Bool,
         _ call: (URLSession) async throws -> (Data, URLResponse),
     ) async throws -> (Data, URLResponse) {
+        // The second chokepoint (see `APIClient.rawRequest`). Everything
+        // cross-island goes through here: guest registrations and mailbox
+        // drains on visited islands, backup-island polls, §5e profile
+        // broadcasts, media transfers, deposit tokens. All of it signs with or
+        // addresses the REAL identity, so a duress session must not reach it.
+        try DuressGate.check()
         let key = host ?? ""
         if allowTunnelFallback, isKnownBlocked(key),
            await SingBoxTransport.engageForBlockedDestination(key) {

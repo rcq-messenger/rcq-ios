@@ -413,6 +413,28 @@ struct UserInfoView: View {
     private var saveEnabled: Bool { isOwn && hasChanges && !saving }
 
     private func load() async {
+        // A decoy session has no island to ask, and asking with the real
+        // account's warm token is exactly what must not happen. Render from
+        // what the duress session already holds — the synthetic identity for
+        // the own card, the seeded roster row for anyone else — so the profile
+        // screen opens on a filled-in card instead of spinning forever, which
+        // is its own kind of tell.
+        if PanicPINService.shared.isDecoy {
+            let nick = isOwn
+                ? AuthService.shared.nickname
+                : (ContactService.shared.contacts.first { $0.uin == uin }?.nickname ?? "#\(uin)")
+            let dict: [String: Any] = [
+                "uin": uin, "nickname": nick, "status": "online", "interests": [],
+                "identity_key": "", "signing_key": "",
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let p = try? JSONDecoder().decode(UserProfile.self, from: data) {
+                self.profile = p
+                self.draft = p
+            }
+            self.loading = false
+            return
+        }
         // §5c: a cross-island contact's profile lives on ITS island — our own
         // /users/{uin}/info 404s. Render from the locally-merged card and skip
         // the fetch + visit ping (the ping would mis-route to our island).

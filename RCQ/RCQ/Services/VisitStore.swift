@@ -63,6 +63,19 @@ final class VisitStore: ObservableObject {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
+    /// Hide the tally for the duration of a decoy session. IN MEMORY ONLY — the
+    /// viewers are real uins the real session must get back, so the file is left
+    /// exactly where it is and `reloadFromDisk` restores the list on unlock.
+    func clearForDecoy() {
+        visits.removeAll()
+    }
+
+    /// Re-read the file after a decoy session emptied the in-memory copy.
+    func reloadFromDisk() {
+        visits.removeAll()
+        load()
+    }
+
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),
               let decoded = try? JSONDecoder().decode([Visit].self, from: data) else {

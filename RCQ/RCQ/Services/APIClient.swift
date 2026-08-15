@@ -337,6 +337,8 @@ actor APIClient {
     /// its exact bytes carry the Ed25519 signature. Best-effort: returns false
     /// instead of throwing so a failed publish never disrupts login.
     func publishIslandRecord(_ jsonBody: Data) async -> Bool {
+        // Signed with the REAL account's key and announcing the REAL uin.
+        if DuressGate.isActive { return false }
         var req = URLRequest(url: baseURL.appendingPathComponent("/federation/island-record"))
         req.httpMethod = "PUT"
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -387,6 +389,13 @@ actor APIClient {
         authenticated: Bool = true,
         retries: Int = 0
     ) async throws -> Data {
+        // ⚠ The single chokepoint for every REST call this app makes. A decoy
+        // session inherits the real account's warm bearer token, so without
+        // this a duress-view screen that fetches — the profile header, linked
+        // devices, my numbers, my reports, an avatar upload, a rename — would
+        // answer with, or WRITE to, the real account. Refusal presents as the
+        // offline state every one of these paths already handles.
+        try DuressGate.check()
         var comp = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             comp.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
