@@ -14,6 +14,10 @@ struct PINSettingsView: View {
     @StateObject private var panicPIN = PanicPINService.shared
 
     @State private var entry: PINEntryPurpose?
+    @State private var showSeedPicker = false
+    /// Set when the decoy entry sheet is opened on a vault that has NO decoy
+    /// yet, so its dismissal can offer the seed picker exactly once.
+    @State private var pendingSeedPrompt = false
     @State private var confirmRemoveAll = false
     @State private var confirmRemoveWipe = false
     @State private var confirmRemoveDecoy = false
@@ -51,8 +55,25 @@ struct PINSettingsView: View {
                     Button("common.done".localized) { dismiss() }
                 }
             }
-            .sheet(item: $entry) { purpose in
+            .sheet(item: $entry, onDismiss: {
+                // A decoy that was just created is empty, and an empty decoy is
+                // the one thing this feature exists to avoid — so go straight
+                // to picking what fills it. Only on FIRST creation; changing an
+                // existing decoy PIN leaves its seed alone.
+                let shouldPrompt = pendingSeedPrompt && panicPIN.hasDecoyPIN
+                pendingSeedPrompt = false
+                guard shouldPrompt else { return }
+                // One runloop hop: presenting a sheet from inside another
+                // sheet's onDismiss can be swallowed while the first is still
+                // animating out.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    showSeedPicker = true
+                }
+            }) { purpose in
                 PINEntrySheet(purpose: purpose)
+            }
+            .sheet(isPresented: $showSeedPicker) {
+                DecoySeedPickerView()
             }
             .alert("panic_pin.remove_all.confirm.title".localized, isPresented: $confirmRemoveAll) {
                 Button("common.cancel".localized, role: .cancel) {}
@@ -189,6 +210,12 @@ struct PINSettingsView: View {
                     Label("panic_pin.decoy.change".localized, systemImage: "rectangle.on.rectangle")
                         .foregroundColor(Theme.Color.textPrimary)
                 }
+                Button {
+                    showSeedPicker = true
+                } label: {
+                    Label("panic_pin.decoy.seed.action".localized, systemImage: "text.badge.plus")
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
                 Button(role: .destructive) {
                     confirmRemoveDecoy = true
                 } label: {
@@ -196,6 +223,7 @@ struct PINSettingsView: View {
                 }
             } else {
                 Button {
+                    pendingSeedPrompt = true
                     entry = .setDecoy
                 } label: {
                     Label("panic_pin.decoy.action".localized, systemImage: "rectangle.on.rectangle")
@@ -294,11 +322,19 @@ struct PINSettingsView: View {
         } header: {
             Text("panic_pin.wipe.section".localized)
         } footer: {
-            Text(panicPIN.biometricEnabled
-                 ? "panic_pin.wipe.footer.biometric".localized
-                 : "panic_pin.wipe.footer".localized)
+            Text(wipeFooter)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// The server-erase choice cannot be read back (it lives in the wipe slot,
+    /// which only the wipe PIN opens — see PanicPINService), so the footer says
+    /// where the choice is made rather than pretending to report its value.
+    private var wipeFooter: String {
+        if panicPIN.biometricEnabled { return "panic_pin.wipe.footer.biometric".localized }
+        let base = "panic_pin.wipe.footer".localized
+        guard panicPIN.hasWipePIN else { return base }
+        return base + "\n\n" + "panic_pin.wipe.footer.server_where".localized
     }
 
     private var removeAllSection: some View {
@@ -342,6 +378,13 @@ struct PINEntrySheet: View {
     @State private var pin: String = ""
     @State private var busy: Bool = false
     @State private var error: String?
+    /// Wipe PIN only, and DEFAULT OFF every time this sheet opens. Off is what
+    /// every locale's wipe copy has always promised ("on this device"), and the
+    /// previous value cannot be read back — it is sealed in the wipe slot,
+    /// which only the wipe PIN opens. Failing to off is the right failure: a
+    /// user who wanted the server erase re-checks a box, a user who did not
+    /// never loses an account they meant to keep.
+    @State private var wipeDeleteServer = false
 
     init(purpose: PINEntryPurpose) {
         self.purpose = purpose
@@ -360,21 +403,29 @@ struct PINEntrySheet: View {
 
     // MARK: - warning (wipe only)
 
+    /// Scrolls, and the buttons are pinned outside it. The warning text plus the
+    /// server-erase toggle and its explanation is more than fits between two
+    /// Spacers on a 4.7" screen, and the one control that must never be pushed
+    /// off the bottom is Continue.
     private var warningView: some View {
         VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 44))
-                .foregroundColor(.red)
-            Text("panic_pin.wipe.warning.title".localized)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(Theme.Color.textPrimary)
-            Text("panic_pin.wipe.warning.body".localized)
-                .font(.callout)
-                .foregroundColor(Theme.Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-            Spacer()
+            ScrollView {
+                VStack(spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 44))
+                        .foregroundColor(.red)
+                    Text("panic_pin.wipe.warning.title".localized)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("panic_pin.wipe.warning.body".localized)
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                    serverEraseToggle
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+            }
             Button {
                 phase = .enter
             } label: {
@@ -390,6 +441,25 @@ struct PINEntrySheet: View {
             Spacer().frame(height: 12)
         }
         .padding(.horizontal, 28)
+    }
+
+    /// Opt-in server erase. The value is written into the WIPE SLOT payload by
+    /// `setWipePIN`, so flipping it needs the real PIN and reading it back at
+    /// wipe time needs the wipe PIN — unlike a pref, which anyone holding an
+    /// unlocked phone could switch off.
+    private var serverEraseToggle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $wipeDeleteServer) {
+                Text("panic_pin.wipe.server.toggle".localized)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            .tint(.red)
+            Text("panic_pin.wipe.server.footer".localized)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        .padding(.bottom, 8)
     }
 
     // MARK: - PIN entry
@@ -472,7 +542,9 @@ struct PINEntrySheet: View {
             case .setDecoy:
                 try await PanicPINService.shared.setDecoyPIN(pin)
             case .setWipe:
-                try await PanicPINService.shared.setWipePIN(pin)
+                try await PanicPINService.shared.setWipePIN(
+                    pin, deleteServerAccount: wipeDeleteServer
+                )
             }
             busy = false
             dismiss()

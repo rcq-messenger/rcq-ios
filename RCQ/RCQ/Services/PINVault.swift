@@ -33,6 +33,16 @@ enum PINVault {
         var decoyUIN: Int?
         var decoyNickname: String?
         var wipeSlot: Int?
+        // ⚠ NOTHING MAY BE ADDED TO THIS STRUCT. The real slot is the tightest
+        // of the three and `maximumPayloadJSONSize()` measures it at 315 of the
+        // 320-byte box: five bytes of headroom. The margin is eaten by
+        // `dataKey` + `decoyDataKey`, whose base64 can be up to 43 '/'
+        // characters each and JSONEncoder escapes every one of them as "\/".
+        // Even a one-letter key with a boolean (`,"w":true`, 9 bytes)
+        // overflows that case, and an overflow means sealSlot throws and the
+        // user simply cannot set a decoy or wipe PIN. Put new state in the
+        // slot it belongs to instead — the decoy and wipe payloads are at 160
+        // and 36 bytes and have room to spare.
     }
 
     struct SlotPayload: Codable {
@@ -41,6 +51,12 @@ enum PINVault {
         var layout: Layout?
         var decoyUIN: Int?
         var decoyNickname: String?
+        /// Wipe slot only: also erase the account on the server, not just this
+        /// device. Absent (old slot written before the option existed) decodes
+        /// as nil and is read as FALSE — which is what the UI always promised.
+        /// Deliberately NOT in UserDefaults: those are readable and writable
+        /// without any PIN, so anyone holding an unlocked phone could flip it.
+        var wipeDeleteServer: Bool?
     }
 
     struct Unlock {
@@ -204,10 +220,18 @@ enum PINVault {
         return (0..<slotCount).first { !used.contains($0) }
     }
 
+    /// Erase every copy of what the vault held. The biometric fast-path stores a
+    /// FULL COPY of the real slot payload — `dataKey` included — in its own
+    /// Keychain item (`rcq.pin.biometric`), and nothing here used to touch it.
+    /// After a vault reset Face ID handed that dead key straight back and the
+    /// app configured MessageDB with it, so unlocking biometrically decrypted
+    /// nothing and re-encrypted new rows under a key no PIN could ever derive.
+    /// Deleting the file without deleting that item is not a reset.
     static func destroy() {
         try? FileManager.default.removeItem(at: fileURL)
         KeychainStore.delete(KeychainStore.Keys.pinPepper)
         KeychainStore.delete(KeychainStore.Keys.pinAttempts)
+        BiometricUnlock.disable()
     }
 
     // MARK: - brute-force throttle
@@ -248,6 +272,52 @@ enum PINVault {
         let p = randomBytes(32)
         KeychainStore.set(KeychainStore.Keys.pinPepper, p)
         return p
+    }
+
+    // MARK: - payload budget self-check
+
+    /// R2 guard: every slot is a FIXED `payloadLen` box, and `sealSlot` throws
+    /// `payloadTooLarge` the moment the JSON stops fitting. A slot that cannot
+    /// be written is a PIN that cannot be set; a FORMAT change to make room
+    /// makes `readVault` return nil, which the app reads as "no PIN set" and
+    /// every existing history becomes unreadable ciphertext. So the budget is
+    /// checked here, at every field's worst case, rather than discovered by a
+    /// user with a long decoy nickname.
+    ///
+    /// Returns the largest sealed payload size in bytes (JSON + the 2-byte
+    /// length prefix `sealSlot` writes), or nil if it no longer fits. Any new
+    /// field must be added to the worst case below.
+    ///
+    /// The dominant term is NOT the field list, it is `dataKey` /
+    /// `decoyDataKey`: 32 random bytes base64 to 44 characters, and every '/'
+    /// among them is escaped by JSONEncoder as "\\/". An all-0xFF key is 43
+    /// slashes, so the two keys alone can swing the payload by 84 bytes. That
+    /// is the case measured here, because it is reachable — the keys are random
+    /// and nothing stops one from coming out that way.
+    static func maximumPayloadJSONSize() -> Int? {
+        let maxKey = Data(repeating: 0xFF, count: 32)
+        // Nicknames here are GENERATED, never user-typed: randomDecoyNickname()
+        // yields "user-" + 4 digits, always 9 characters. There is no slack to
+        // budget on top of that — at 9 the real slot already lands on 315 of
+        // 320 — so anything that makes decoy nicknames longer or user-supplied
+        // has to be measured against this before it ships.
+        let maxNick = String(repeating: "W", count: 9)
+        let layout = Layout(
+            realSlot: 2, decoySlot: 1, decoyDataKey: maxKey,
+            decoyUIN: 999_999_999, decoyNickname: maxNick, wipeSlot: 0
+        )
+        let candidates: [SlotPayload] = [
+            SlotPayload(mode: .real, dataKey: maxKey, layout: layout),
+            SlotPayload(mode: .decoy, dataKey: maxKey, layout: nil,
+                        decoyUIN: 999_999_999, decoyNickname: maxNick),
+            SlotPayload(mode: .wipe, dataKey: nil, layout: nil, wipeDeleteServer: true),
+        ]
+        var worst = 0
+        for p in candidates {
+            guard let json = try? JSONEncoder().encode(p) else { return nil }
+            worst = max(worst, json.count + 2)
+        }
+        return worst <= payloadLen ? worst : nil
     }
 
     // MARK: - randomness

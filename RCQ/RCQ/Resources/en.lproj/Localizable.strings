@@ -1599,14 +1599,14 @@
 "panic_pin.error.in_use" = "That PIN is already in use. Choose a different one.";
 "panic_pin.error.too_short" = "The PIN is too short.";
 "panic_pin.wipe.section" = "Wipe PIN";
-"panic_pin.wipe.footer" = "An optional second PIN. Entering it at the lock screen permanently destroys all local data on this device and starts a fresh empty account — with no confirmation. Use only if you understand the risk of entering it by accident.";
+"panic_pin.wipe.footer" = "An optional second PIN. Entering it at the lock screen permanently destroys all local data on this device and starts a fresh empty account, with no confirmation. Your account on the server is left alone unless you turn that on when you set the PIN. Use only if you understand the risk of entering it by accident.";
 "panic_pin.wipe.action" = "Add a wipe PIN";
 "panic_pin.wipe.change" = "Change wipe PIN";
 "panic_pin.wipe.remove" = "Remove wipe PIN";
 "panic_pin.wipe.remove.confirm.title" = "Remove wipe PIN?";
 "panic_pin.wipe.remove.confirm.action" = "Remove";
 "panic_pin.wipe.warning.title" = "This PIN destroys data";
-"panic_pin.wipe.warning.body" = "Entering the wipe PIN at the lock screen permanently erases all messages, contacts and keys on this device and starts a brand-new empty account. There is no confirmation step and no undo. Set it only if you accept the risk of entering it by mistake.";
+"panic_pin.wipe.warning.body" = "Entering the wipe PIN at the lock screen permanently erases all messages, contacts and keys on this device and starts a brand-new empty account. There is no confirmation step and no undo. Nothing is deleted on the server unless you switch that on below. Set it only if you accept the risk of entering it by mistake.";
 "panic_pin.wipe.warning.continue" = "I understand — continue";
 "panic_pin.remove_all.action" = "Turn off Security PIN";
 "panic_pin.remove_all.confirm.title" = "Turn off the PIN?";
@@ -1636,7 +1636,7 @@
 
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "Decoy PIN";
-"panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens a separate decoy account that works offline — your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app. Tip: unlock into the decoy now and then and use it a little (a few everyday contacts and messages) — a blank account looks staged.";
+"panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens a separate decoy account that works offline, and your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app. Fill it with a few real but harmless conversations copied from your own chats: the numbers and dates are rewritten as they are copied, and a blank account looks staged.";
 "panic_pin.decoy.footer.biometric" = "Turn off Face ID to set a decoy PIN. The two can't be used together — a face-unlock can't open the decoy.";
 "panic_pin.decoy.action" = "Add a decoy PIN";
 "panic_pin.decoy.change" = "Change decoy PIN";
@@ -1644,6 +1644,15 @@
 "panic_pin.decoy.remove.confirm.title" = "Remove decoy PIN?";
 "panic_pin.decoy.remove.confirm.action" = "Remove";
 "panic_pin.entry.title.decoy" = "Choose a decoy PIN";
+"panic_pin.decoy.seed.action" = "Choose conversations for the decoy";
+"panic_pin.decoy.seed.title" = "Fill the decoy";
+"panic_pin.decoy.seed.section" = "Conversations";
+"panic_pin.decoy.seed.footer" = "Pick the chats to copy into the decoy. Only the text is copied (no photos, files or voice messages), under invented numbers and with shifted dates, so nothing ties a copy back to the real chat. Picking again replaces whatever is in the decoy now.";
+"panic_pin.decoy.seed.count" = "%d messages";
+"panic_pin.decoy.seed.empty" = "There are no text conversations to copy yet.";
+"panic_pin.wipe.server.toggle" = "Also delete the account on the server";
+"panic_pin.wipe.server.footer" = "Off by default. When on, the wipe PIN also asks the server to delete the account itself, so the number stops existing and nobody can write to it. When off, only this device is cleared: the account stays alive and you can sign back into it from another device.";
+"panic_pin.wipe.footer.server_where" = "Whether the wipe PIN also deletes the account on the server is chosen when you set the PIN. It is off unless you turn it on, and it cannot be shown here: the setting is sealed with the wipe PIN itself, so nothing short of entering that PIN can read it.";
 
 /* Voice recording — lock + preview */
 "chat.voice.locked" = "Locked";

@@ -173,6 +173,17 @@ final class MessageDB {
 
     private static let model: NSManagedObjectModel = buildModel()
 
+    /// The ONE model instance. A second `NSManagedObjectModel` built from the
+    /// same description would make CoreData complain that two entities claim
+    /// `MessageRecord`, so any other container (the decoy seeder) reuses this.
+    static var sharedModel: NSManagedObjectModel { model }
+
+    /// File the decoy history lives in. Exposed so the seeder can open its OWN
+    /// container on it: `MessageDB.shared` is a singleton whose
+    /// `configure(decoy:)` flips the container globally, and any inbound
+    /// WebSocket write during that window would land in the decoy store.
+    static func decoyStoreURL() -> URL { storeURL(decoy: true) }
+
     private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
         let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
 
@@ -218,23 +229,27 @@ final class MessageDB {
     // MARK: - field encryption
 
     private func encField(_ s: String?) -> String? {
+        Self.sealField(s, key: dataKey)
+    }
+
+    /// Field sealing with an EXPLICIT key, so a writer that is not the
+    /// singleton (the decoy seeder) encrypts rows exactly the way the singleton
+    /// would, under the key it was handed. Nil key = plaintext passthrough,
+    /// matching the no-PIN case.
+    static func sealField(_ s: String?, key: SymmetricKey?) -> String? {
         guard let s else { return nil }
-        guard dataKey != nil else { return s }
-        if s.hasPrefix(Self.sentinel) { return s }
-        return seal(s) ?? s
+        guard let key else { return s }
+        if s.hasPrefix(sentinel) { return s }
+        guard let pt = s.data(using: .utf8),
+              let box = try? AES.GCM.seal(pt, using: key),
+              let combined = box.combined else { return s }
+        return sentinel + combined.base64EncodedString()
     }
 
     private func decField(_ s: String?) -> String? {
         guard let s else { return nil }
         guard s.hasPrefix(Self.sentinel) else { return s }
         return unseal(s)
-    }
-
-    private func seal(_ plain: String) -> String? {
-        guard let dataKey, let pt = plain.data(using: .utf8),
-              let box = try? AES.GCM.seal(pt, using: dataKey),
-              let combined = box.combined else { return nil }
-        return Self.sentinel + combined.base64EncodedString()
     }
 
     private func unseal(_ stored: String) -> String {
@@ -554,29 +569,36 @@ final class MessageDB {
     }
 
     private func apply(_ msg: Message, to row: MessageRecord) {
+        Self.apply(msg, to: row, key: dataKey)
+    }
+
+    /// Row population with an EXPLICIT key. Same reason as `sealField`: the
+    /// decoy seeder must write rows byte-identical in shape to the ones the
+    /// singleton writes, without the singleton's key or its container.
+    static func apply(_ msg: Message, to row: MessageRecord, key: SymmetricKey?) {
         row.id = msg.id
         row.threadKind = msg.thread.kindString
         row.threadKey = Int64(msg.thread.rawKey)
         row.senderUIN = Int64(msg.senderUIN)
         row.isFromMe = msg.isFromMe
         row.kind = msg.kind.rawValue
-        row.text = encField(msg.text) ?? ""
-        row.mediaID = encField(msg.mediaID)
+        row.text = sealField(msg.text, key: key) ?? ""
+        row.mediaID = sealField(msg.mediaID, key: key)
         row.sentAt = msg.sentAt
         row.deliveryState = msg.deliveryState.rawValue
         row.receivedWhileAway = msg.receivedWhileAway
         row.deletedForEveryone = msg.deletedForEveryone
-        row.reactionsJSON = encField(Self.encodeReactions(msg.reactions)) ?? "{}"
-        row.thumbnailB64 = encField(msg.thumbnailB64)
+        row.reactionsJSON = sealField(encodeReactions(msg.reactions), key: key) ?? "{}"
+        row.thumbnailB64 = sealField(msg.thumbnailB64, key: key)
         row.durationSec = msg.durationSec
         row.ttlSeconds = Int64(msg.ttlSeconds ?? 0)
-        row.forwardedFromName = encField(msg.forwardedFromName)
+        row.forwardedFromName = sealField(msg.forwardedFromName, key: key)
         row.replyToID = msg.replyToID
-        row.replyToSnippet = encField(msg.replyToSnippet)
-        row.replyToAuthorName = encField(msg.replyToAuthorName)
+        row.replyToSnippet = sealField(msg.replyToSnippet, key: key)
+        row.replyToAuthorName = sealField(msg.replyToAuthorName, key: key)
         row.editedAt = msg.editedAt
         row.albumID = msg.albumID
-        row.fileName = encField(msg.fileName)
+        row.fileName = sealField(msg.fileName, key: key)
         row.fileMime = msg.fileMime
         row.fileSizeBytes = Int64(msg.fileSizeBytes ?? 0)
         row.latitude = msg.latitude.map { NSNumber(value: $0) }

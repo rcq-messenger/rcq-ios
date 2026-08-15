@@ -1470,14 +1470,14 @@
 "panic_pin.error.in_use" = "Esse PIN já está em uso. Escolha outro.";
 "panic_pin.error.too_short" = "O PIN é curto demais.";
 "panic_pin.wipe.section" = "PIN de apagamento";
-"panic_pin.wipe.footer" = "Um segundo PIN opcional. Digitá-lo na tela de bloqueio destrói para sempre todos os dados locais deste dispositivo e começa uma conta nova e vazia, sem nenhuma confirmação. Use só se você entende o risco de digitar ele sem querer.";
+"panic_pin.wipe.footer" = "Um segundo PIN opcional. Digitá-lo na tela de bloqueio destrói para sempre todos os dados locais deste dispositivo e começa uma conta nova e vazia, sem nenhuma confirmação. Sua conta no servidor não é tocada, a menos que você ligue isso ao configurar o PIN. Use só se você entende o risco de digitar ele sem querer.";
 "panic_pin.wipe.action" = "Adicionar um PIN de apagamento";
 "panic_pin.wipe.change" = "Trocar o PIN de apagamento";
 "panic_pin.wipe.remove" = "Remover o PIN de apagamento";
 "panic_pin.wipe.remove.confirm.title" = "Remover o PIN de apagamento?";
 "panic_pin.wipe.remove.confirm.action" = "Remover";
 "panic_pin.wipe.warning.title" = "Este PIN destrói dados";
-"panic_pin.wipe.warning.body" = "Digitar o PIN de apagamento na tela de bloqueio apaga para sempre todas as mensagens, contatos e chaves deste dispositivo e começa uma conta nova e vazia. Não há passo de confirmação nem como desfazer. Só configure se você aceita o risco de digitar ele por engano.";
+"panic_pin.wipe.warning.body" = "Digitar o PIN de apagamento na tela de bloqueio apaga para sempre todas as mensagens, contatos e chaves deste dispositivo e começa uma conta nova e vazia. Não há passo de confirmação nem como desfazer. No servidor nada é apagado, a menos que você ligue isso abaixo. Só configure se você aceita o risco de digitar ele por engano.";
 "panic_pin.wipe.warning.continue" = "Entendi, continuar";
 "panic_pin.remove_all.action" = "Desligar o PIN de segurança";
 "panic_pin.remove_all.confirm.title" = "Desligar o PIN?";
@@ -1504,7 +1504,7 @@
 "panic_pin.lock.locked_out" = "Tentativas demais";
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "PIN de fachada";
-"panic_pin.decoy.footer" = "Um segundo PIN opcional. Digitá-lo na tela de bloqueio abre uma conta de fachada separada, que funciona offline: seus contatos e conversas de verdade ficam criptografados e fora de alcance. Use se você pode ser obrigado a desbloquear e mostrar o app. Dica: entre na fachada de vez em quando e use ela um pouco (alguns contatos e mensagens do dia a dia), porque uma conta vazia parece montada.";
+"panic_pin.decoy.footer" = "Um segundo PIN opcional. Digitá-lo na tela de bloqueio abre uma conta de fachada separada, que funciona offline: seus contatos e conversas de verdade ficam criptografados e fora de alcance. Use se você pode ser obrigado a desbloquear e mostrar o app. Encha ela com algumas conversas reais mas inofensivas copiadas dos seus chats: os números e as datas são reescritos na cópia, e uma conta vazia parece montada.";
 "panic_pin.decoy.footer.biometric" = "Desligue o Face ID para definir um PIN de fachada. Os dois não funcionam juntos: um desbloqueio facial não consegue abrir a fachada.";
 "panic_pin.decoy.action" = "Adicionar um PIN de fachada";
 "panic_pin.decoy.change" = "Trocar o PIN de fachada";
@@ -1512,6 +1512,15 @@
 "panic_pin.decoy.remove.confirm.title" = "Remover o PIN de fachada?";
 "panic_pin.decoy.remove.confirm.action" = "Remover";
 "panic_pin.entry.title.decoy" = "Escolha um PIN de fachada";
+"panic_pin.decoy.seed.action" = "Escolher conversas para a fachada";
+"panic_pin.decoy.seed.title" = "Encher a fachada";
+"panic_pin.decoy.seed.section" = "Conversas";
+"panic_pin.decoy.seed.footer" = "Escolha as conversas que serão copiadas para a fachada. Só o texto é copiado (sem fotos, arquivos ou áudios), com números inventados e datas deslocadas, então nada liga uma cópia à conversa real. Escolher de novo substitui o que está na fachada agora.";
+"panic_pin.decoy.seed.count" = "%d mensagens";
+"panic_pin.decoy.seed.empty" = "Ainda não há conversas de texto para copiar.";
+"panic_pin.wipe.server.toggle" = "Apagar também a conta no servidor";
+"panic_pin.wipe.server.footer" = "Desligado por padrão. Ligado, o PIN de apagamento também pede ao servidor para excluir a própria conta: o número deixa de existir e ninguém consegue escrever para ele. Desligado, só este dispositivo é limpo: a conta continua viva e você pode entrar nela de outro aparelho.";
+"panic_pin.wipe.footer.server_where" = "Se o PIN de apagamento também exclui a conta no servidor é escolhido na hora de configurar o PIN. Fica desligado a menos que você ligue, e não dá para mostrar aqui: a opção é selada com o próprio PIN de apagamento, então só digitando ele dá para ler.";
 /* Voice recording — lock + preview */
 "chat.voice.locked" = "Travado";
 "chat.voice.cancel_armed" = "Solte para cancelar";

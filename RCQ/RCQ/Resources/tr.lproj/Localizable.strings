@@ -1470,14 +1470,14 @@
 "panic_pin.error.in_use" = "O PIN zaten kullanılıyor. Başka birini seç.";
 "panic_pin.error.too_short" = "PIN çok kısa.";
 "panic_pin.wipe.section" = "Silme PIN'i";
-"panic_pin.wipe.footer" = "İsteğe bağlı ikinci bir PIN. Kilit ekranında girildiğinde bu cihazdaki bütün yerel veriyi kalıcı olarak yok eder ve yepyeni boş bir hesap başlatır, hiçbir onay sormadan. Yalnızca yanlışlıkla girme riskini anlıyorsan kullan.";
+"panic_pin.wipe.footer" = "İsteğe bağlı ikinci bir PIN. Kilit ekranında girildiğinde bu cihazdaki bütün yerel veriyi kalıcı olarak yok eder ve yepyeni boş bir hesap başlatır, hiçbir onay sormadan. PIN'i kurarken açıkça seçmediysen sunucudaki hesabına dokunulmaz. Yalnızca yanlışlıkla girme riskini anlıyorsan kullan.";
 "panic_pin.wipe.action" = "Silme PIN'i ekle";
 "panic_pin.wipe.change" = "Silme PIN'ini değiştir";
 "panic_pin.wipe.remove" = "Silme PIN'ini kaldır";
 "panic_pin.wipe.remove.confirm.title" = "Silme PIN'i kaldırılsın mı?";
 "panic_pin.wipe.remove.confirm.action" = "Kaldır";
 "panic_pin.wipe.warning.title" = "Bu PIN veriyi yok eder";
-"panic_pin.wipe.warning.body" = "Kilit ekranında silme PIN'ini girmek bu cihazdaki bütün mesajları, kişileri ve anahtarları kalıcı olarak siler ve yepyeni boş bir hesap başlatır. Onay adımı yok, geri dönüş yok. Yalnızca yanlışlıkla girme riskini kabul ediyorsan kur.";
+"panic_pin.wipe.warning.body" = "Kilit ekranında silme PIN'ini girmek bu cihazdaki bütün mesajları, kişileri ve anahtarları kalıcı olarak siler ve yepyeni boş bir hesap başlatır. Onay adımı yok, geri dönüş yok. Aşağıdaki anahtarı açmadıkça sunucuda hiçbir şey silinmez. Yalnızca yanlışlıkla girme riskini kabul ediyorsan kur.";
 "panic_pin.wipe.warning.continue" = "Anladım, devam";
 "panic_pin.remove_all.action" = "Güvenlik PIN'ini kapat";
 "panic_pin.remove_all.confirm.title" = "PIN kapatılsın mı?";
@@ -1504,7 +1504,7 @@
 "panic_pin.lock.locked_out" = "Çok fazla deneme";
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "Sahte PIN";
-"panic_pin.decoy.footer" = "İsteğe bağlı ikinci bir PIN. Kilit ekranında girildiğinde çevrimdışı çalışan ayrı bir sahte hesap açar; gerçek kişilerin ve sohbetlerin şifreli ve erişilemez kalır. Zorla telefonu açtırılıp uygulamayı göstermen ihtimali varsa kullan. İpucu: arada bir sahte hesaba gir ve biraz kullan (birkaç sıradan kişi ve mesaj), çünkü bomboş bir hesap kurgu gibi durur.";
+"panic_pin.decoy.footer" = "İsteğe bağlı ikinci bir PIN. Kilit ekranında girildiğinde çevrimdışı çalışan ayrı bir sahte hesap açar; gerçek kişilerin ve sohbetlerin şifreli ve erişilemez kalır. Zorla telefonu açtırılıp uygulamayı göstermen ihtimali varsa kullan. Kendi sohbetlerinden kopyalanan birkaç gerçek ama zararsız yazışmayla doldur: numaralar ve tarihler kopyalanırken yeniden yazılır, bomboş bir hesap ise kurgu gibi durur.";
 "panic_pin.decoy.footer.biometric" = "Sahte PIN kurmak için Face ID'yi kapat. İkisi birlikte kullanılamaz: yüz taraması sahte hesabı açamaz.";
 "panic_pin.decoy.action" = "Sahte PIN ekle";
 "panic_pin.decoy.change" = "Sahte PIN'i değiştir";
@@ -1512,6 +1512,15 @@
 "panic_pin.decoy.remove.confirm.title" = "Sahte PIN kaldırılsın mı?";
 "panic_pin.decoy.remove.confirm.action" = "Kaldır";
 "panic_pin.entry.title.decoy" = "Bir sahte PIN seç";
+"panic_pin.decoy.seed.action" = "Sahte hesap için sohbet seç";
+"panic_pin.decoy.seed.title" = "Sahte hesabı doldur";
+"panic_pin.decoy.seed.section" = "Sohbetler";
+"panic_pin.decoy.seed.footer" = "Sahte hesaba kopyalanacak sohbetleri seç. Yalnızca metin kopyalanır (fotoğraf, dosya ve sesli mesaj kopyalanmaz), uydurma numaralarla ve kaydırılmış tarihlerle, böylece kopyayı gerçek sohbete bağlayan hiçbir şey kalmaz. Yeniden seçmek, sahte hesapta şu an ne varsa onun yerine geçer.";
+"panic_pin.decoy.seed.count" = "%d mesaj";
+"panic_pin.decoy.seed.empty" = "Henüz kopyalanacak metin sohbeti yok.";
+"panic_pin.wipe.server.toggle" = "Sunucudaki hesabı da sil";
+"panic_pin.wipe.server.footer" = "Varsayılan olarak kapalı. Açıkken silme PIN'i sunucudan hesabın kendisini de silmesini ister: numara var olmaktan çıkar ve kimse ona yazamaz. Kapalıyken yalnızca bu cihaz temizlenir: hesap yaşamaya devam eder ve başka bir cihazdan tekrar girebilirsin.";
+"panic_pin.wipe.footer.server_where" = "Silme PIN'inin sunucudaki hesabı da silip silmeyeceği, PIN'i kurarken seçilir. Sen açmadıkça kapalıdır ve burada gösterilemez: ayar silme PIN'inin kendisiyle mühürlenir, yani onu girmeden okunamaz.";
 /* Voice recording — lock + preview */
 "chat.voice.locked" = "Kilitli";
 "chat.voice.cancel_armed" = "İptal için bırak";

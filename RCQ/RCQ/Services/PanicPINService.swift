@@ -9,7 +9,16 @@ final class PanicPINService: ObservableObject {
     enum LockState { case unlocked, locked }
     enum SessionMode { case none, real, decoy }
 
-    enum SubmitResult { case unlockedReal, unlockedDecoy, wipe, wrong, lockedOut(until: Date) }
+    /// `.wipe` carries the wipe slot's own server-erase flag. It is read out of
+    /// the slot the entered PIN just opened — never from prefs — so the choice
+    /// cannot be flipped by anyone who has the phone but not the real PIN.
+    enum SubmitResult {
+        case unlockedReal
+        case unlockedDecoy
+        case wipe(deleteServerAccount: Bool)
+        case wrong
+        case lockedOut(until: Date)
+    }
 
     static func lockoutDuration(forFailedCount n: Int) -> TimeInterval {
         switch n {
@@ -138,13 +147,22 @@ final class PanicPINService: ObservableObject {
             PresenceService.shared.statusMessage = nil
             MessageDB.shared.configure(decoy: true, dataKey: dataKey)
             MessageStore.shared.reloadFromDB()
-            ContactService.shared.clearForDecoy()
+            // Roster first, then the seeded rows it names. An unseeded decoy
+            // loads an empty list, exactly as before.
+            let seeded = dataKey.map { DecoySeedStore.load(key: $0) } ?? []
+            if seeded.isEmpty {
+                ContactService.shared.clearForDecoy()
+            } else {
+                ContactService.shared.applyDecoySeed(seeded)
+            }
             GroupService.shared.clearForDecoy()
             lockState = .unlocked
             return .unlockedDecoy
 
         case .wipe:
-            return .wipe
+            // Absent flag (slot written before the option existed) → false,
+            // which is what every locale's wipe copy has always promised.
+            return .wipe(deleteServerAccount: unlock.payload.wipeDeleteServer ?? false)
         }
     }
 
@@ -189,6 +207,14 @@ final class PanicPINService: ObservableObject {
 
     func unlockWithBiometrics() async -> Bool {
         guard biometricEnabled else { return false }
+        // Second line of defence behind PINVault.destroy() deleting the
+        // biometric item: never configure the store from a payload whose vault
+        // no longer exists. Its dataKey would be a dead key.
+        guard PINVault.isConfigured else {
+            BiometricUnlock.disable()
+            biometricEnabled = false
+            return false
+        }
         guard let blob = await BiometricUnlock.read(
                   reason: "panic_pin.biometric.reason".localized),
               let payload = try? JSONDecoder().decode(PINVault.SlotPayload.self, from: blob),
@@ -310,9 +336,51 @@ final class PanicPINService: ObservableObject {
         try PINVault.writeSlot(index: realSlot, payload: payload, key: realSlotKey)
         realPayload = payload
         MessageDB.destroyDecoyStore()
+        DecoySeedStore.destroy()
     }
 
-    func setWipePIN(_ pin: String) async throws {
+    // MARK: - decoy seeding (real session only)
+
+    /// Conversations the user can pick from to fill the decoy. Real session
+    /// only — this reads the real history, which is the whole point of gating
+    /// the picker behind the real PIN.
+    func decoySeedCandidates() -> [DecoySeeder.Selection] {
+        guard mode == .real else { return [] }
+        return DecoySeeder.availableThreads()
+    }
+
+    /// Rebuild the decoy store from the picked conversations. Replaces any
+    /// previous seed. The decoy's OWN dataKey is used — the real one never
+    /// leaves this object and the real store is only ever READ.
+    @discardableResult
+    func seedDecoy(with selections: [DecoySeeder.Selection]) throws -> Int {
+        guard mode == .real, let layout = realPayload?.layout else {
+            throw PINError.notRealSession
+        }
+        guard layout.decoySlot != nil, let decoyKeyData = layout.decoyDataKey else {
+            throw PINError.vaultMissing
+        }
+        let decoyUIN = layout.decoyUIN ?? Self.randomDecoyUIN()
+        return DecoySeeder.seed(
+            selections,
+            decoyUIN: decoyUIN,
+            decoyKey: SymmetricKey(data: decoyKeyData),
+            realOwnUIN: AuthService.shared.ownUIN
+        )
+    }
+
+    /// The flag lives ONLY in the wipe slot, which a real session cannot open
+    /// (it is sealed under the wipe PIN's key, and holding the real PIN does
+    /// not give you the wipe PIN). So the setting genuinely cannot be read back
+    /// — it is chosen each time the wipe PIN is set, and the UI says so.
+    ///
+    /// The obvious fix, mirroring it in the real slot's Layout, does not fit:
+    /// see the size note on `PINVault.Layout`. Mirroring it anywhere a real
+    /// session CAN read without a PIN (prefs, a plain file) is exactly what
+    /// this feature must not do.
+    ///
+    /// `deleteServerAccount` DEFAULTS OFF at every call site.
+    func setWipePIN(_ pin: String, deleteServerAccount: Bool = false) async throws {
         guard pin.count >= Self.minPINLength else { throw PINError.pinTooShort }
         guard mode == .real, var payload = realPayload,
               var layout = payload.layout,
@@ -327,7 +395,10 @@ final class PanicPINService: ObservableObject {
         guard let slotIndex else { throw PINError.noFreeSlot }
 
         let wipeKey = await deriveOffMain(pin: pin, salt: salt)
-        let wipePayload = PINVault.SlotPayload(mode: .wipe, dataKey: nil, layout: nil)
+        let wipePayload = PINVault.SlotPayload(
+            mode: .wipe, dataKey: nil, layout: nil,
+            wipeDeleteServer: deleteServerAccount
+        )
         try PINVault.writeSlot(index: slotIndex, payload: wipePayload, key: wipeKey)
 
         layout.wipeSlot = slotIndex
@@ -368,6 +439,7 @@ final class PanicPINService: ObservableObject {
         guard mode == .real else { throw PINError.notRealSession }
         await MessageDB.shared.reencryptAllRows(toPlaintext: true)
         MessageDB.destroyDecoyStore()
+        DecoySeedStore.destroy()
         PINVault.destroy()
         BiometricUnlock.disable()
         biometricEnabled = false

@@ -1461,14 +1461,14 @@
 "panic_pin.error.in_use" = "这个 PIN 已经在用了，请换一个。";
 "panic_pin.error.too_short" = "PIN 太短。";
 "panic_pin.wipe.section" = "擦除 PIN";
-"panic_pin.wipe.footer" = "可选的第二个 PIN。在锁屏界面输入它，会永久销毁本设备上的所有本地数据，并开一个全新的空账号，没有任何确认。只有当你清楚误输入的风险时才使用。";
+"panic_pin.wipe.footer" = "可选的第二个 PIN。在锁屏界面输入它，会永久销毁本设备上的所有本地数据，并开一个全新的空账号，没有任何确认。除非你在设置这个 PIN 时专门打开，服务器上的账号不会被动。只有当你清楚误输入的风险时才使用。";
 "panic_pin.wipe.action" = "添加擦除 PIN";
 "panic_pin.wipe.change" = "修改擦除 PIN";
 "panic_pin.wipe.remove" = "移除擦除 PIN";
 "panic_pin.wipe.remove.confirm.title" = "移除擦除 PIN？";
 "panic_pin.wipe.remove.confirm.action" = "移除";
 "panic_pin.wipe.warning.title" = "这个 PIN 会销毁数据";
-"panic_pin.wipe.warning.body" = "在锁屏界面输入擦除 PIN，会永久删除本设备上的所有消息、联系人和密钥，并开一个全新的空账号。没有确认步骤，也无法撤销。只有当你接受误输入的风险时才设置它。";
+"panic_pin.wipe.warning.body" = "在锁屏界面输入擦除 PIN，会永久删除本设备上的所有消息、联系人和密钥，并开一个全新的空账号。没有确认步骤，也无法撤销。除非你打开下面的开关，服务器上不会删除任何东西。只有当你接受误输入的风险时才设置它。";
 "panic_pin.wipe.warning.continue" = "我明白，继续";
 "panic_pin.remove_all.action" = "关闭安全 PIN";
 "panic_pin.remove_all.confirm.title" = "关闭 PIN？";
@@ -1495,7 +1495,7 @@
 "panic_pin.lock.locked_out" = "尝试次数过多";
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "伪装 PIN";
-"panic_pin.decoy.footer" = "可选的第二个 PIN。在锁屏上输入它会打开一个独立的伪装账号，这个账号离线工作，你真正的联系人和聊天记录仍然是加密的，无法被看到。如果你可能被迫解锁并展示应用，就用它。提示：时不时进入伪装账号用一用（几个日常联系人和一些消息），空空如也的账号一看就是临时做出来的。";
+"panic_pin.decoy.footer" = "可选的第二个 PIN。在锁屏上输入它会打开一个独立的伪装账号，这个账号离线工作，你真正的联系人和聊天记录仍然是加密的，无法被看到。如果你可能被迫解锁并展示应用，就用它。用几段真实但无害的聊天把它填满，内容从你自己的聊天里复制，号码和日期在复制时会被改写；空空如也的账号一看就是临时做出来的。";
 "panic_pin.decoy.footer.biometric" = "关闭 Face ID 才能设置伪装 PIN。两者不能同时使用：人脸解锁打不开伪装账号。";
 "panic_pin.decoy.action" = "添加伪装 PIN";
 "panic_pin.decoy.change" = "修改伪装 PIN";
@@ -1503,6 +1503,15 @@
 "panic_pin.decoy.remove.confirm.title" = "移除伪装 PIN？";
 "panic_pin.decoy.remove.confirm.action" = "移除";
 "panic_pin.entry.title.decoy" = "设置伪装 PIN";
+"panic_pin.decoy.seed.action" = "为伪装账号挑选聊天";
+"panic_pin.decoy.seed.title" = "填充伪装账号";
+"panic_pin.decoy.seed.section" = "聊天";
+"panic_pin.decoy.seed.footer" = "挑选要复制到伪装账号里的聊天。只复制文字（不含照片、文件和语音），并使用虚构的号码和平移过的日期，因此没有任何东西能把副本和真实聊天对上。重新挑选会替换伪装账号里现有的内容。";
+"panic_pin.decoy.seed.count" = "%d 条消息";
+"panic_pin.decoy.seed.empty" = "目前还没有可以复制的文字聊天。";
+"panic_pin.wipe.server.toggle" = "同时删除服务器上的账号";
+"panic_pin.wipe.server.footer" = "默认关闭。打开后，擦除 PIN 还会请求服务器删除账号本身：号码不再存在，谁也写不进来。关闭时只清空本设备：账号仍然存在，你可以在另一台设备上重新登录。";
+"panic_pin.wipe.footer.server_where" = "擦除 PIN 是否同时删除服务器上的账号，是在设置这个 PIN 时选的。默认不删除，而且这里无法显示当前的值：这项设置是用擦除 PIN 本身封起来的，只有输入那个 PIN 才能读出来。";
 /* Voice recording — lock + preview */
 "chat.voice.locked" = "已锁定";
 "chat.voice.cancel_armed" = "松开取消";

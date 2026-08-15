@@ -171,8 +171,8 @@ struct PINLockView: View {
         switch result {
         case .unlockedReal, .unlockedDecoy:
             return
-        case .wipe:
-            await AppState.shared.performPanicWipe()
+        case .wipe(let deleteServerAccount):
+            await AppState.shared.performPanicWipe(deleteServerAccount: deleteServerAccount)
             return
         case .wrong, .lockedOut:
             verifying = false

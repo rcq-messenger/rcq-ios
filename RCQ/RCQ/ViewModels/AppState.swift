@@ -974,8 +974,13 @@ final class AppState: ObservableObject {
 
     /// User-initiated nuclear reset. Wipes server account + every local
     /// store, then re-runs `boot()` which mints a fresh identity.
-    func burnAccount() async {
-        await AuthService.shared.deleteServerAccount()
+    /// `deleteServerAccount` is opt-out ONLY for the wipe-PIN path, which is
+    /// explicitly device-local unless the user turned the server erase on. The
+    /// user-facing "Burn account" button keeps the old always-delete behaviour.
+    func burnAccount(deleteServerAccount: Bool = true) async {
+        if deleteServerAccount {
+            await AuthService.shared.deleteServerAccount()
+        }
         WebSocketService.shared.disconnect()
 
         ContactService.shared.wipe()
@@ -1417,10 +1422,13 @@ final class AppState: ObservableObject {
         await boot()
     }
 
-    func performPanicWipe() async {
+    /// `deleteServerAccount` comes out of the WIPE SLOT payload the entered PIN
+    /// just opened (default false), never from prefs — see PINVault.SlotPayload.
+    func performPanicWipe(deleteServerAccount: Bool) async {
         PINVault.destroy()
         MessageDB.destroyDecoyStore()
-        await burnAccount()
+        DecoySeedStore.destroy()
+        await burnAccount(deleteServerAccount: deleteServerAccount)
         PanicPINService.shared.finishWipe()
     }
 

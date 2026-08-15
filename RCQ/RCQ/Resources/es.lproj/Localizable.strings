@@ -1470,14 +1470,14 @@
 "panic_pin.error.in_use" = "Ese PIN ya está en uso. Elige otro.";
 "panic_pin.error.too_short" = "El PIN es demasiado corto.";
 "panic_pin.wipe.section" = "PIN de borrado";
-"panic_pin.wipe.footer" = "Un segundo PIN opcional. Escribirlo en la pantalla de bloqueo destruye para siempre todos los datos locales de este dispositivo y arranca una cuenta nueva y vacía, sin ninguna confirmación. Úsalo solo si entiendes el riesgo de escribirlo sin querer.";
+"panic_pin.wipe.footer" = "Un segundo PIN opcional. Escribirlo en la pantalla de bloqueo destruye para siempre todos los datos locales de este dispositivo y arranca una cuenta nueva y vacía, sin ninguna confirmación. Tu cuenta en el servidor no se toca, salvo que actives eso al poner el PIN. Úsalo solo si entiendes el riesgo de escribirlo sin querer.";
 "panic_pin.wipe.action" = "Añadir un PIN de borrado";
 "panic_pin.wipe.change" = "Cambiar el PIN de borrado";
 "panic_pin.wipe.remove" = "Quitar el PIN de borrado";
 "panic_pin.wipe.remove.confirm.title" = "¿Quitar el PIN de borrado?";
 "panic_pin.wipe.remove.confirm.action" = "Quitar";
 "panic_pin.wipe.warning.title" = "Este PIN destruye datos";
-"panic_pin.wipe.warning.body" = "Escribir el PIN de borrado en la pantalla de bloqueo elimina para siempre todos los mensajes, contactos y claves de este dispositivo y arranca una cuenta nueva y vacía. No hay paso de confirmación ni vuelta atrás. Ponlo solo si aceptas el riesgo de escribirlo por error.";
+"panic_pin.wipe.warning.body" = "Escribir el PIN de borrado en la pantalla de bloqueo elimina para siempre todos los mensajes, contactos y claves de este dispositivo y arranca una cuenta nueva y vacía. No hay paso de confirmación ni vuelta atrás. En el servidor no se borra nada salvo que lo actives abajo. Ponlo solo si aceptas el riesgo de escribirlo por error.";
 "panic_pin.wipe.warning.continue" = "Lo entiendo, continuar";
 "panic_pin.remove_all.action" = "Desactivar el PIN de seguridad";
 "panic_pin.remove_all.confirm.title" = "¿Desactivar el PIN?";
@@ -1504,7 +1504,7 @@
 "panic_pin.lock.locked_out" = "Demasiados intentos";
 /* Panic-PIN — decoy mode */
 "panic_pin.decoy.section" = "PIN señuelo";
-"panic_pin.decoy.footer" = "Un segundo PIN opcional. Escribirlo en la pantalla de bloqueo abre una cuenta señuelo aparte que funciona sin conexión: tus contactos y chats de verdad siguen cifrados y fuera de alcance. Úsalo si puede que te obliguen a desbloquear y a enseñar la app. Consejo: entra en el señuelo de vez en cuando y úsalo un poco (unos cuantos contactos y mensajes del día a día), porque una cuenta vacía canta.";
+"panic_pin.decoy.footer" = "Un segundo PIN opcional. Escribirlo en la pantalla de bloqueo abre una cuenta señuelo aparte que funciona sin conexión: tus contactos y chats de verdad siguen cifrados y fuera de alcance. Úsalo si puede que te obliguen a desbloquear y a enseñar la app. Llénala con unas cuantas conversaciones reales pero inofensivas copiadas de tus chats: los números y las fechas se reescriben al copiarlas, y una cuenta vacía canta.";
 "panic_pin.decoy.footer.biometric" = "Desactiva Face ID para poner un PIN señuelo. Los dos no se pueden usar a la vez: un desbloqueo facial no puede abrir el señuelo.";
 "panic_pin.decoy.action" = "Añadir un PIN señuelo";
 "panic_pin.decoy.change" = "Cambiar el PIN señuelo";
@@ -1512,6 +1512,15 @@
 "panic_pin.decoy.remove.confirm.title" = "¿Quitar el PIN señuelo?";
 "panic_pin.decoy.remove.confirm.action" = "Quitar";
 "panic_pin.entry.title.decoy" = "Elige un PIN señuelo";
+"panic_pin.decoy.seed.action" = "Elegir conversaciones para el señuelo";
+"panic_pin.decoy.seed.title" = "Llenar el señuelo";
+"panic_pin.decoy.seed.section" = "Conversaciones";
+"panic_pin.decoy.seed.footer" = "Elige los chats que se copiarán al señuelo. Solo se copia el texto (ni fotos, ni archivos, ni notas de voz), con números inventados y fechas desplazadas, así que nada ata una copia al chat real. Volver a elegir reemplaza lo que haya ahora en el señuelo.";
+"panic_pin.decoy.seed.count" = "%d mensajes";
+"panic_pin.decoy.seed.empty" = "Todavía no hay conversaciones de texto que copiar.";
+"panic_pin.wipe.server.toggle" = "Borrar también la cuenta en el servidor";
+"panic_pin.wipe.server.footer" = "Desactivado por defecto. Si lo activas, el PIN de borrado también le pide al servidor que elimine la cuenta: el número deja de existir y nadie puede escribirle. Si está desactivado, solo se limpia este dispositivo: la cuenta sigue viva y puedes volver a entrar desde otro.";
+"panic_pin.wipe.footer.server_where" = "Si el PIN de borrado elimina además la cuenta en el servidor se elige al poner el PIN. Está desactivado salvo que lo actives, y aquí no se puede mostrar: el ajuste va sellado con el propio PIN de borrado, así que solo escribiéndolo se puede leer.";
 /* Voice recording — lock + preview */
 "chat.voice.locked" = "Bloqueado";
 "chat.voice.cancel_armed" = "Suelta para cancelar";
