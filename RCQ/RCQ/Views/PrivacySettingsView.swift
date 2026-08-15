@@ -385,32 +385,46 @@ struct PrivacySettingsView: View {
 
     @ViewBuilder
     private var securitySection: some View {
-        if !PanicPINService.shared.isDecoy {
-            Section {
-                Button {
-                    showPINSettings = true
-                } label: {
-                    HStack {
-                        Image(systemName: "lock.shield.fill")
-                            .foregroundColor(Theme.Color.accent)
-                        Text("settings.panic_pin".localized)
-                            .foregroundColor(Theme.Color.textPrimary)
-                        Spacer()
-                        Text(PanicPINService.shared.isConfigured
-                             ? "settings.panic_pin.on".localized
-                             : "settings.panic_pin.off".localized)
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary)
-                    }
+        // ⚠⚠ Shown in a decoy session TOO, and that is the whole point.
+        //
+        // Hiding it was the reasonable-looking move and it was backwards. The
+        // person searching a phone is not a stranger to this app: they know it
+        // has a panic PIN, they open Settings, and an account with no PIN row
+        // at all is not an innocent account — it is an account that is not
+        // running the software they are looking at. The absence WAS the tell
+        // (founder's report).
+        //
+        // Nothing is given away by showing it. `isConfigured` reads the vault,
+        // so it says "on" — true, and true of the PIN they just watched being
+        // typed. The screen behind it was already written for exactly this: in
+        // a decoy session `PINSettingsView` offers only a plausible change-PIN
+        // (which re-seals the DECOY slot, never the real one) and auto-lock,
+        // and hides every duress, biometric and remove row. Report #237 built
+        // that; only the door was missing.
+        Section {
+            Button {
+                showPINSettings = true
+            } label: {
+                HStack {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(Theme.Color.accent)
+                    Text("settings.panic_pin".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(PanicPINService.shared.isConfigured
+                         ? "settings.panic_pin.on".localized
+                         : "settings.panic_pin.off".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
                 }
-            } footer: {
-                Text("settings.panic_pin.footer".localized)
             }
-            .listRowBackground(Theme.Color.bgSecondary)
+        } footer: {
+            Text("settings.panic_pin.footer".localized)
         }
+        .listRowBackground(Theme.Color.bgSecondary)
         // No screen-protection row here. It was a pointer saying the setting had
         // moved into each chat (⋯ → Secure mode), which stopped being news a
         // long time ago and just took up a section.

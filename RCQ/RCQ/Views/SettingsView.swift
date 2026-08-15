@@ -16,8 +16,24 @@ struct SettingsView: View {
     // the status flower on every appearance and swapped in the picture a moment
     // later, which reads as "it loads every time" even though the image itself
     // was cached all along.
-    @State private var ownAvatarID: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarID")
-    @State private var ownAvatarKey: String? = UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
+    // ⚠ NOT from UserDefaults in a decoy session. UserDefaults is outside the
+    // encrypted store, so the cached picture there belongs to the REAL account
+    // — and the decoy header rendered it, which means the screen a coerced user
+    // shows to someone was wearing their own face. Founder's report. In a decoy
+    // session the header starts blank and only ever holds what was picked
+    // inside that session.
+    @State private var ownAvatarID: String? =
+        PanicPINService.shared.isDecoy ? nil : UserDefaults.standard.string(forKey: "rcq.ownAvatarID")
+    @State private var ownAvatarKey: String? =
+        PanicPINService.shared.isDecoy ? nil : UserDefaults.standard.string(forKey: "rcq.ownAvatarKey")
+    /// A picture chosen inside a decoy session. Held in memory for the life of
+    /// the session only: it never reaches the island, `UserDefaults` or any
+    /// store on disk, because anything written down is a record that a decoy
+    /// was used.
+    @State private var decoyAvatarData: Data?
+    /// Bumped on every decoy pick. `PersonAvatarView` seeds its image in
+    /// `init`, so the header only redraws when its identity changes.
+    @State private var decoyAvatarGeneration = 0
     @State private var avatarPick: PhotosPickerItem?
     @State private var avatarBusy = false
     @State private var confirmClearHistory = false
@@ -569,7 +585,17 @@ struct SettingsView: View {
         // Under duress this PUT /users/me would rename the REAL account's
         // picture and then broadcast it to every real cross-island contact.
         // The gate blocks the request; this stops the spinner ever appearing.
-        guard !PanicPINService.shared.isDecoy else { return }
+        //
+        // But it used to return here and do NOTHING VISIBLE, which is its own
+        // tell: a person under duress taps their picture, picks a photo, and
+        // the app shrugs. So the decoy session keeps the picture in memory for
+        // as long as it lasts. Nothing is uploaded, nothing is written down —
+        // a file on disk would be evidence that a decoy exists.
+        if PanicPINService.shared.isDecoy {
+            decoyAvatarData = try? await item.loadTransferable(type: Data.self)
+            decoyAvatarGeneration += 1
+            return
+        }
         avatarBusy = true
         defer { avatarBusy = false }
         struct Body: Encodable {
@@ -619,8 +645,10 @@ struct SettingsView: View {
                 mediaID: ownAvatarID,
                 keyBase64: ownAvatarKey,
                 status: status,
-                size: 48
+                size: 48,
+                localImageData: decoyAvatarData
             )
+            .id(decoyAvatarGeneration)
         }
         .buttonStyle(.plain)
         // Hung on this small view rather than on `body`: the settings form is
