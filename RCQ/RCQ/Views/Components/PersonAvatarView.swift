@@ -58,7 +58,11 @@ struct PersonAvatarView: View {
         linkDown: Bool = false,
         onStatusTap: (() -> Void)? = nil,
         cacheForUIN: Int? = nil,
-        showStatus: Bool = true
+        showStatus: Bool = true,
+        /// Bytes to draw directly, with no island and no cache behind them.
+        /// One caller: a picture chosen inside a decoy session, which must
+        /// look like it was saved while never being written anywhere.
+        localImageData: Data? = nil
     ) {
         self.mediaID = mediaID
         self.keyBase64 = keyBase64
@@ -76,7 +80,9 @@ struct PersonAvatarView: View {
         // recycle constantly while scrolling.
         var seedImage: UIImage?
         var seedGIF: Data?
-        if !crossIsland, let id = mediaID, !id.isEmpty, let key = keyBase64, !key.isEmpty {
+        if let local = localImageData {
+            if AnimatedGIFView.isGIF(local) { seedGIF = local } else { seedImage = UIImage(data: local) }
+        } else if !crossIsland, let id = mediaID, !id.isEmpty, let key = keyBase64, !key.isEmpty {
             seedImage = MediaService.shared.cachedImage(mediaID: id, keyBase64: key)
             if let data = MediaService.shared.cachedData(mediaID: id, keyBase64: key),
                AnimatedGIFView.isGIF(data) {
