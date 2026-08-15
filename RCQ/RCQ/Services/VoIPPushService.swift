@@ -107,6 +107,34 @@ extension VoIPPushService: PKPushRegistryDelegate {
             return
         }
 
+        // §5d cross-island wake (spec v1.8). The island that pushed this holds
+        // only a sealed blob: it knows a call is arriving for this user and
+        // nothing more, so unlike the same-island payload there is no
+        // `call_id`, `from_uin`, `media`, `sdp` or nickname to report with.
+        // Ring on a neutral handle NOW (PushKit terminates the app if this
+        // method returns without reporting) and let the decrypt fill in who it
+        // is — `CallProvider.reportIncoming` adopts this same CallKit entry.
+        if let kind = dict["kind"] as? String, kind == "sealed" {
+            // Duress: same rule as below — report-then-end on a blank handle,
+            // and never decrypt for the real account while a coercer holds the
+            // phone. The envelope stays queued for the real session.
+            if DuressGate.isActive {
+                let throwaway = UUID()
+                let update = CXCallUpdate()
+                update.remoteHandle = CXHandle(type: .generic, value: "")
+                CallProvider.shared.reportIncomingMalformed(uuid: throwaway, update: update)
+                completion()
+                return
+            }
+            let placeholder = CallProvider.shared.reportIncomingPlaceholder()
+            let env = dict["env"] as? String
+            Task { @MainActor in
+                await CallService.shared.handleSealedWake(placeholder: placeholder, envelopeB64: env)
+                completion()
+            }
+            return
+        }
+
         guard
             let callID = dict["call_id"] as? String,
             let fromUIN = dict["from_uin"] as? Int,

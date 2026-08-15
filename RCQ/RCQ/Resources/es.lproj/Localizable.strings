@@ -718,6 +718,7 @@
 "call.outgoing.calling" = "Llamando…";
 "call.incoming.video" = "Videollamada entrante…";
 "call.incoming.voice" = "Llamada entrante…";
+"call.incoming.unknown_caller" = "Llamada entrante";
 "call.action.decline" = "Rechazar";
 "call.action.accept" = "Responder";
 /* ── Trade summary ────────────────────────────────────────── */

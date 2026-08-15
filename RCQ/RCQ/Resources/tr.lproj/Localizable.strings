@@ -718,6 +718,7 @@
 "call.outgoing.calling" = "Aranıyor…";
 "call.incoming.video" = "Gelen görüntülü arama…";
 "call.incoming.voice" = "Gelen arama…";
+"call.incoming.unknown_caller" = "Gelen arama";
 "call.action.decline" = "Reddet";
 "call.action.accept" = "Cevapla";
 /* ── Trade summary ────────────────────────────────────────── */

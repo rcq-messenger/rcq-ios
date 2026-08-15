@@ -1307,6 +1307,33 @@ final class MessageService {
         }
     }
 
+    /// §5d/§5e/§5f arrive with no host: KEEP THE ROW, don't ACK it.
+    ///
+    /// The sender's island is the whole identity of a cross-island peer, and a
+    /// control envelope that reaches a gate without one can only be dropped —
+    /// guessing by bare uin is how a lookalike on another island gets to rename
+    /// or ring someone. The bug was what happened NEXT: these branches returned
+    /// a non-nil outcome, `fetchOfflineQueue` read that as "persisted", ACKed
+    /// the row, and the island deleted the only copy. A missed call, a rejected
+    /// contact request and a stale name, all unrecoverable, from one nil.
+    ///
+    /// Returning nil leaves the row queued so a later drain (with the host
+    /// present) can act on it, and re-stashing the plaintext means the retry
+    /// isn't blocked by a v=2 ratchet this decrypt already stepped. The row
+    /// expires with the queue TTL if the sender really never sends `from_host`.
+    private func requeueHostlessControl(
+        _ ws: WebSocketService.EnvelopePacket,
+        _ decrypted: DecryptedEnvelope,
+        kind: String
+    ) -> IngestOutcome? {
+        os_log(
+            "ingest: %{public}@ envelope from #%d has no from_host — NOT acking, leaving it queued",
+            log: Self.log, type: .error, kind, decrypted.senderUIN
+        )
+        PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted)
+        return nil
+    }
+
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket) -> IngestOutcome? {
@@ -1367,13 +1394,19 @@ final class MessageService {
             // queue stops redelivering.
             if case .callSignal(_, let sig, let cid, let ts, let data) = decrypted.envelope {
                 let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
-                guard ws.groupID == nil,
-                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost),
+                guard ws.groupID == nil else { return outcome }
+                // No host = we cannot tell whose call this is. Re-deliverable,
+                // never acked — see `requeueHostlessControl`.
+                guard let fromHost = decrypted.senderHost else {
+                    return requeueHostlessControl(ws, decrypted, kind: "call")
+                }
+                guard !Multihome.isOwnHost(fromHost),
                       CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost })
                 else { return outcome }
                 if sig == "call_offer", Int(Date().timeIntervalSince1970) - ts > 60 {
                     CallService.shared.fileMissedCall(
                         fromUIN: decrypted.senderUIN,
+                        fromHost: fromHost,
                         media: CallMedia(rawValue: data["media"] ?? "video") ?? .video
                     )
                     return outcome
@@ -1392,10 +1425,11 @@ final class MessageService {
             // quarantine below. ACK every branch so the queue stops redelivering.
             if case .contactRequest(_, let act, _, let nickname, let note) = decrypted.envelope {
                 let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
-                guard ws.groupID == nil,
-                      decrypted.senderUIN != ownUIN,
-                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost)
-                else { return outcome }
+                guard ws.groupID == nil, decrypted.senderUIN != ownUIN else { return outcome }
+                guard let fromHost = decrypted.senderHost else {
+                    return requeueHostlessControl(ws, decrypted, kind: "contactreq")
+                }
+                guard !Multihome.isOwnHost(fromHost) else { return outcome }
                 let uin = decrypted.senderUIN
                 // Same-island rule, unchanged: a blocked or removed sender's
                 // request is dropped silently.
@@ -1463,16 +1497,17 @@ final class MessageService {
             // queue stops redelivering.
             if case .profile(_, let ts, let nickname, let avatarID, let avatarKey) = decrypted.envelope {
                 let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
-                // The host is the whole identity of a cross-island row, and it
-                // is NOT always known here: PushDecryptCache drops `from_host`,
-                // so anything that arrived via a push reaches ingest with
-                // `senderHost == nil`. Guessing (bare uin, "the only row with
-                // this uin") is exactly how a lookalike on another island gets
-                // to rename someone. Unknown host → do nothing.
-                guard ws.groupID == nil,
-                      decrypted.senderUIN != ownUIN,
-                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost)
-                else { return outcome }
+                // The host is the whole identity of a cross-island row.
+                // Guessing (bare uin, "the only row with this uin") is exactly
+                // how a lookalike on another island gets to rename someone, so
+                // an unknown host still applies NOTHING — it just no longer
+                // ACKs the row away. (`PushDecryptCache` carries `from_host`
+                // since 2026-08-15, so the push path reaches here with a host.)
+                guard ws.groupID == nil, decrypted.senderUIN != ownUIN else { return outcome }
+                guard let fromHost = decrypted.senderHost else {
+                    return requeueHostlessControl(ws, decrypted, kind: "profile")
+                }
+                guard !Multihome.isOwnHost(fromHost) else { return outcome }
                 let uin = decrypted.senderUIN
                 if BlockedContactsStore.shared.contains(uin)
                     || RemovedContactsStore.shared.contains(uin) {

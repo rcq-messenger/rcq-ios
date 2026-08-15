@@ -806,8 +806,16 @@ final class WebSocketService: ObservableObject {
         // (MessageService), so the gap was self-inflicted. Same for a carbon of
         // your own message from another device, a screenshot notice, a shared
         // relay and a gossiped island record.
+        // ⚠ "call" is the §5d cross-island call deposit (`envelope_type:
+        // "call"`, 2026-08-15). Our own islands relabel that frame "message"
+        // precisely because this list did not contain it and the frame was
+        // dropped in silence by a running app — the one moment the wake does
+        // NOT fire, so the call rang nothing. Listed here as well so a
+        // self-hosted island that passes the deposit type straight through
+        // still reaches the call state machine. Routing is by the INNER kind
+        // either way; this only decides whether the frame is opened at all.
         case "message", "delete", "system", "read", "reaction", "bounce", "visit", "edit", "gmsg",
-             "skdm", "sknack", "carbon", "secscreen", "relay_share", "homerec":
+             "skdm", "sknack", "carbon", "secscreen", "relay_share", "homerec", "call":
             guard let payload = dict["payload"] as? String else { return }
             let serverTime = (dict["server_time"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
             let offline = dict["offline"] as? Bool ?? false

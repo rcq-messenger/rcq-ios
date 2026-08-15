@@ -752,6 +752,7 @@
 "call.outgoing.calling" = "Вызов…";
 "call.incoming.video" = "Входящий видеозвонок…";
 "call.incoming.voice" = "Входящий звонок…";
+"call.incoming.unknown_caller" = "Входящий звонок";
 "call.action.decline" = "Отклонить";
 "call.action.accept" = "Принять";
 

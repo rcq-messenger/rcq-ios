@@ -772,6 +772,8 @@
 "call.outgoing.calling" = "Calling…";
 "call.incoming.video" = "Incoming video call…";
 "call.incoming.voice" = "Incoming call…";
+/* §5d cross-island wake: the island cannot know the caller — shown until the envelope decrypts */
+"call.incoming.unknown_caller" = "Incoming call";
 "call.action.decline" = "Decline";
 "call.action.accept" = "Accept";
 
