@@ -138,10 +138,11 @@ struct ChatView: View {
             onReact: { asset in vm.toggleReaction(asset, on: target) },
             onReply: {
                 let copy = target
+                // Deferred so the action overlay is off screen first — asking
+                // for the keyboard while it is still up gets the focus taken
+                // straight back off the composer.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        vm.replyTarget = copy
-                    }
+                    beginReply(to: copy)
                 }
             },
             onEdit: {
@@ -402,6 +403,17 @@ struct ChatView: View {
     /// end of input — previously every smiley landed at the end no
     /// matter where the user had placed the cursor.
     @State private var composerCaret: Int = 0
+    /// Bumped whenever something should hand the keyboard to the composer
+    /// without the user tapping it — today that is only "reply". Swiping a
+    /// message (or picking Reply in its menu) used to set `vm.replyTarget`
+    /// and nothing else, so the reply chip appeared over an unfocused
+    /// composer and the answer could not be typed until you tapped the field.
+    ///
+    /// A token rather than @FocusState: the composer is `EmoticonTextField`,
+    /// a UIViewRepresentable around UITextView, and SwiftUI's focus binding
+    /// does not reach inside a representable. The token changing is what the
+    /// representable watches to call `becomeFirstResponder()`.
+    @State private var composerFocusToken: Int = 0
 
     /// Wraps a recorded but-not-yet-sent voice clip so the input bar
     /// can offer a play / send / discard preview. `id` doubles as the
@@ -1439,10 +1451,7 @@ struct ChatView: View {
                                     }
                                 },
                                 onSwipeReply: {
-                                    let copy = msg
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                                        vm.replyTarget = copy
-                                    }
+                                    beginReply(to: msg)
                                 },
                                 currentGroupMembers: currentGroupMembers,
                                 viewCount: viewCountForBubble(msg)
@@ -2342,7 +2351,8 @@ struct ChatView: View {
                         // same path as a gallery pick.
                         vm.queuePendingPhotos([image])
                     },
-                    caretPlainLocation: $composerCaret
+                    caretPlainLocation: $composerCaret,
+                    focusRequest: composerFocusToken
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)
                 .animation(.easeOut(duration: 0.18), value: composerHeight)
@@ -2500,9 +2510,7 @@ struct ChatView: View {
                 }
             },
             onSwipeReply: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                    vm.replyTarget = items.first!
-                }
+                beginReply(to: items.first!)
             },
             onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) },
             onShowReactors: { reactorsSheetMessage = items.first! }
@@ -3060,6 +3068,17 @@ struct ChatView: View {
     /// the CTA branch above runs instead, so this is only built when non-empty.
     private func panelEntries() -> [(asset: String, name: String, primaryCode: String)] {
         emojiPrefs.panel.map { (asset: $0, name: $0, primaryCode: ":\($0):") }
+    }
+
+    /// The single entry point for "reply to this message": sets the target
+    /// (animating the chip in) and hands the keyboard to the composer. Every
+    /// reply affordance — swipe, and Reply in the message menu — goes through
+    /// here so none of them can drift back to setting `replyTarget` alone.
+    private func beginReply(to message: Message) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+            vm.replyTarget = message
+        }
+        composerFocusToken &+= 1
     }
 
     /// Splice an emoticon shortcode at the current caret position in

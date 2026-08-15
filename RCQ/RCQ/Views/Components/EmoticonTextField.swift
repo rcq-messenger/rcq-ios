@@ -23,6 +23,15 @@ struct EmoticonTextField: UIViewRepresentable {
     /// wires this so the emoji panel can splice a shortcode at the
     /// cursor instead of appending to the end of input.
     var caretPlainLocation: Binding<Int>?
+    /// Focus-on-demand. Any change of this value (the parent bumps a counter)
+    /// makes the field first responder, which is what raises the keyboard.
+    /// A counter and not a Bool: two consecutive requests must both land, and
+    /// the second would not change a flag that is already `true`.
+    ///
+    /// SwiftUI's `@FocusState` / `.focused()` only drives SwiftUI's own
+    /// controls; it never reaches the UITextView inside this representable,
+    /// so the request has to cross the boundary as plain state.
+    var focusRequest: Int = 0
 
     func makeUIView(context: Context) -> EmoticonUITextView {
         // Force TextKit 1 — TextKit 2's NSTextAttachmentViewProvider
@@ -74,6 +83,9 @@ struct EmoticonTextField: UIViewRepresentable {
         tv.allowedSendCallback = nil
         tv.onImagePaste = onImagePaste
         context.coordinator.textView = tv
+        // Seed the baseline so a field created while a request is already
+        // outstanding doesn't steal focus the moment the chat opens.
+        context.coordinator.lastFocusRequest = focusRequest
         let initial = context.coordinator.attributed(from: text)
         tv.attributedText = initial
         tv.refreshPlaceholderVisibility()
@@ -111,6 +123,16 @@ struct EmoticonTextField: UIViewRepresentable {
             }
         }
         uiView.refreshPlaceholderVisibility()
+        if focusRequest != context.coordinator.lastFocusRequest {
+            context.coordinator.lastFocusRequest = focusRequest
+            // Out of this update pass: becomeFirstResponder() during
+            // updateUIView reenters SwiftUI's layout ("modifying state during
+            // view update") and the keyboard animation fights the frame change.
+            DispatchQueue.main.async { [weak uiView] in
+                guard let uiView, !uiView.isFirstResponder else { return }
+                uiView.becomeFirstResponder()
+            }
+        }
         // Re-measure here covers the empty-on-send path where textViewDidChange won't fire.
         DispatchQueue.main.async {
             context.coordinator.measureHeight()
@@ -122,6 +144,8 @@ struct EmoticonTextField: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: EmoticonTextField
         weak var textView: EmoticonUITextView?
+        /// Last `focusRequest` value acted on — see the property's note.
+        var lastFocusRequest: Int = 0
 
         init(parent: EmoticonTextField) {
             self.parent = parent
