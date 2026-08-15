@@ -1382,6 +1382,68 @@ final class MessageService {
                 return outcome
             }
 
+            // §5f cross-island CONTACT REQUEST (kind "contactreq"). Adding a peer
+            // on another island used to be purely local — nothing was deposited
+            // and the peer was never told, which is why a QR scan claimed a
+            // request nobody would ever see and why §5d's mutual-accept gate was
+            // unreachable through the ordinary flow. This branch is the receive
+            // half: it files a PENDING request where a same-island pending
+            // request appears, and NEVER writes to the message store or the
+            // quarantine below. ACK every branch so the queue stops redelivering.
+            if case .contactRequest(_, let act, _, let nickname, let note) = decrypted.envelope {
+                let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                guard ws.groupID == nil,
+                      decrypted.senderUIN != ownUIN,
+                      let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost)
+                else { return outcome }
+                let uin = decrypted.senderUIN
+                // Same-island rule, unchanged: a blocked or removed sender's
+                // request is dropped silently.
+                if BlockedContactsStore.shared.contains(uin)
+                    || RemovedContactsStore.shared.contains(uin)
+                    || CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: fromHost) {
+                    return outcome
+                }
+                let alreadyAccepted = CrossIslandStore.shared.all()
+                    .contains { $0.uin == uin && $0.host == fromHost }
+                switch act {
+                case "request":
+                    // Already accepted → no-op, not a second row.
+                    if alreadyAccepted { return outcome }
+                    CrossIslandRequestsStore.shared.holdContactRequest(
+                        uin: uin, host: fromHost, nickname: nickname, note: note
+                    )
+                case "accept":
+                    // They accepted the request we sent: we already hold their
+                    // row (the add wrote it, which is what "we asked them" means
+                    // on every client), so both sides now hold each other — the
+                    // mutual state §5d checks and §5e addresses. Nothing to
+                    // write; just retire any pending row.
+                    if alreadyAccepted {
+                        CrossIslandRequestsStore.shared.clear(uin: uin, host: fromHost)
+                        return outcome
+                    }
+                    // An `accept` from someone we never asked is NOT a licence
+                    // to add them: auto-adding here let any stranger self-add
+                    // with one envelope, skipping the whole consent step §5f
+                    // exists to create (and, once in the roster, their messages
+                    // skip the Variant A quarantine and §5d lets them call).
+                    // Degrade it to a pending row the user decides on — which is
+                    // also what web does, so the same envelope now means the
+                    // same thing on all three clients.
+                    CrossIslandRequestsStore.shared.holdContactRequest(
+                        uin: uin, host: fromHost, nickname: nickname, note: note
+                    )
+                case "decline":
+                    // Drop our local pending row for them, silently. The pinned
+                    // keys and the local contact row are left alone.
+                    CrossIslandRequestsStore.shared.clear(uin: uin, host: fromHost)
+                default:
+                    break
+                }
+                return outcome
+            }
+
             // Federation gossip B1 self-push: a contact handed us their fresh
             // signed home-island record. Verify it's signed by the SAME key that
             // signed this envelope (binds it to the real sender), reject a ts
@@ -1855,6 +1917,11 @@ final class MessageService {
             case .homeRecord:
                 // Gossip B1: intercepted before this switch (cached via
                 // applyPushedRecord). Unreachable here; for exhaustiveness.
+                break
+            case .contactRequest:
+                // §5f: intercepted before this switch (filed as a pending
+                // cross-island request, never into the message store).
+                // Unreachable here; present only for exhaustiveness.
                 break
             case .skdm, .sknack:
                 // Sender-keys distribution/recovery: intercepted before this

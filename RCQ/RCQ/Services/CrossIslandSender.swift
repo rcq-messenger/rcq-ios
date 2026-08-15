@@ -50,6 +50,56 @@ enum CrossIslandSender {
         }
     }
 
+    /// §5f cross-island contact request: wrap `act` (request/accept/decline) as
+    /// an `Envelope.contactRequest`, v=1-seal it to the peer's identity key from
+    /// their open card and deposit it to their PRIMARY island only — the same
+    /// path §5d uses for call signalling, zero server changes.
+    ///
+    /// Without this, "add" across islands was a local row and nothing else: the
+    /// peer was never told, so §5d's "both sides accepted" precondition could
+    /// never be reached through the ordinary flow.
+    ///
+    /// The keys come from the caller (the add path already holds the card), so
+    /// this never re-fetches and never touches the pinned identity/signing keys.
+    /// Returns true when the peer's island took the deposit.
+    @MainActor
+    @discardableResult
+    static func depositContactReq(
+        act: String, uin: Int, host: String,
+        identityKey: String, signingKey: String, note: String? = nil
+    ) async -> Bool {
+        guard let crypto = MessageService.shared.crypto else { return false }
+        let nick = AuthService.shared.nickname
+        let env = Envelope.contactRequest(
+            id: UUID(), act: act,
+            ts: Int(Date().timeIntervalSince1970),
+            nickname: nick, note: note
+        )
+        let bundle = PeerBundle(uin: uin, identityKey: identityKey, signingKey: signingKey)
+        guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else {
+            print("[CrossIslandSender] contactreq seal failed (\(act) → \(uin)@\(host))")
+            return false
+        }
+        // F3 token: a contact request is exactly the permissionless-spam shape
+        // the anonymous deposit token exists for, and it isn't latency-critical.
+        let ok = await deposit(host: host, uin: uin, payload: blob, mintToken: true)
+        if !ok { print("[CrossIslandSender] contactreq deposit failed (\(act) → \(uin)@\(host))") }
+        return ok
+    }
+
+    /// Same as above for callers that don't already hold the peer's card
+    /// (declining a received request — no local contact row is written, so
+    /// there are no pinned keys to read).
+    @MainActor
+    @discardableResult
+    static func depositContactReq(act: String, uin: Int, host: String, note: String? = nil) async -> Bool {
+        guard let card = await fetchCard(host: host, uin: uin) else { return false }
+        return await depositContactReq(
+            act: act, uin: uin, host: host,
+            identityKey: card.identity_key, signingKey: card.signing_key, note: note
+        )
+    }
+
     /// Fetch a peer's open public-key card from their island (no auth).
     static func fetchCard(host: String, uin: Int) async -> Card? {
         guard let url = URL(string: "https://\(host)/federation/keys/\(uin)") else { return nil }

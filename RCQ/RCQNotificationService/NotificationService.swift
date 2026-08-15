@@ -171,6 +171,13 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // §5f cross-island contact request: not a message, and it must never
+            // banner as one. Cached above, so the main app's ingest files it as a
+            // pending request (and the pending badge surfaces it) on next launch.
+            if case .contactRequest = decrypted.envelope {
+                contentHandler(UNNotificationContent())
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
             let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
@@ -391,7 +398,7 @@ class NotificationService: UNNotificationServiceExtension {
                 content.body = "Call update"
             }
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon, .homeRecord, .skdm, .sknack:
+             .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest:
             content.body = "Message"
         }
 
@@ -548,7 +555,8 @@ class NotificationService: UNNotificationServiceExtension {
              .systemNotice, .poll, .screenshotTaken, .relayShare:
             return true
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
-             .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack:
+             .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
+             .contactRequest:
             return false
         }
     }
@@ -591,6 +599,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .screenshotTaken:  return "shot"
         case .carbon:           return "carbon"
         case .callSignal:       return "call"
+        case .contactRequest:   return "contactreq"
         case .homeRecord:       return "homerec"
         case .skdm:             return "skdm"
         case .sknack:           return "sknack"

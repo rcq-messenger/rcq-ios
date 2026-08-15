@@ -16,12 +16,14 @@ struct QRSheet: View {
 
     enum ScanResult: Equatable {
         case sent(uin: Int)
-        /// ⚠ Adding someone on ANOTHER island is a purely local act: we read
-        /// their open key card and write a row here. No request crosses the
-        /// wire, because a cross-island contact request does not exist in the
-        /// protocol yet. Saying "request sent" for it was a promise about a
-        /// screen on the other person's phone that nothing was going to put
-        /// there, and it is what the founder reported as a lost request.
+        /// §5f: a cross-island add now DOES cross the wire — we read the peer's
+        /// open key card, write the local row, and deposit a `contactreq` with
+        /// `act:"request"` to their island. "Request sent" is a true statement
+        /// again, and only in this case.
+        case crossIslandSent(uin: Int, host: String)
+        /// The local row landed but their island did not take the request, so
+        /// nothing is waiting on their phone. Kept as a separate case precisely
+        /// because claiming "request sent" here is the bug §5f exists to fix.
         case addedLocally(uin: Int, host: String)
         case alreadyContact(uin: Int)
         case failed(message: String)
@@ -64,6 +66,7 @@ struct QRSheet: View {
             ) { result in
                 Button("common.ok".localized) {
                     if case .sent = result { dismiss() }
+                    if case .crossIslandSent = result { dismiss() }
                     if case .addedLocally = result { dismiss() }
                     if case .alreadyContact = result { dismiss() }
                 }
@@ -229,12 +232,22 @@ struct QRSheet: View {
         // self-hoster on is2 scan a flagship user's bare QR and reach them.
         let host = scanned.host ?? RcqFederation.flagshipHost
         if !Multihome.isOwnHost(host) {
-            let ok = await ContactService.shared.addCrossIslandContact(uin: uin, host: host)
+            // §5f: this deposits `act:"request"` to their island as well as
+            // writing the local row, so the scan finally puts something on the
+            // other person's screen. Report the two outcomes separately —
+            // "request sent" is only true when the deposit was taken.
+            let r = await ContactService.shared.addCrossIslandContact(
+                uin: uin, host: host, announce: .request
+            )
             await MainActor.run {
-                UINotificationFeedbackGenerator().notificationOccurred(ok ? .success : .error)
-                scanResult = ok
-                    ? .addedLocally(uin: uin, host: host)
-                    : .failed(message: "qr.alert.failed.title".localized)
+                UINotificationFeedbackGenerator().notificationOccurred(r.added ? .success : .error)
+                if r.added && r.announced {
+                    scanResult = .crossIslandSent(uin: uin, host: host)
+                } else if r.added {
+                    scanResult = .addedLocally(uin: uin, host: host)
+                } else {
+                    scanResult = .failed(message: "qr.alert.failed.title".localized)
+                }
             }
             return
         }
@@ -284,6 +297,7 @@ struct QRSheet: View {
     private var alertTitle: String {
         switch scanResult {
         case .sent:           return "qr.alert.sent.title".localized
+        case .crossIslandSent: return "qr.alert.ci_sent.title".localized
         case .addedLocally:   return "qr.alert.added.title".localized
         case .alreadyContact: return "qr.alert.already.title".localized
         case .failed:         return "qr.alert.failed.title".localized
@@ -295,6 +309,8 @@ struct QRSheet: View {
         switch result {
         case .sent(let uin):
             return String(format: "qr.alert.sent.body".localized, uin)
+        case .crossIslandSent(let uin, let host):
+            return String(format: "qr.alert.ci_sent.body".localized, uin, host)
         case .addedLocally(let uin, let host):
             return String(format: "qr.alert.added.body".localized, uin, host)
         case .alreadyContact(let uin):

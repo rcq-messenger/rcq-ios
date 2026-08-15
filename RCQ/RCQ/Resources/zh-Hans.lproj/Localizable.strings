@@ -926,8 +926,10 @@
 "qr.scan.aim" = "对准对方的 RCQ QR 码";
 "qr.alert.sent.title" = "请求已发送";
 "qr.alert.sent.body" = "已向 UIN %d 发送好友请求，对方会在待处理列表里看到。";
+"qr.alert.ci_sent.title" = "请求已发送";
+"qr.alert.ci_sent.body" = "我们已向 %2$@ 上的号码 %1$d 发送联系人请求。他会在自己的请求列表里看到。";
 "qr.alert.added.title" = "已添加联系人";
-"qr.alert.added.body" = "%2$@ 上的号码 %1$d 已在你的联系人里。在你给他发消息之前，他不会看到任何东西：跨岛请求目前还不存在。";
+"qr.alert.added.body" = "%2$@ 上的号码 %1$d 已在你的联系人里，但他所在的岛没有接收这条联系人请求，所以他那边暂时还没有收到。";
 "qr.alert.already.title" = "已在你的联系人中";
 "qr.alert.already.body" = "你和 UIN %d 已经建立了联系。";
 "qr.alert.failed.title" = "无法添加";
@@ -950,8 +952,10 @@
 "pending.empty.body" = "新的好友请求会出现在这里。";
 "pending.row.body" = "RCQ 用户 %@（%@）想把你加入他的联系人列表。允许吗？";
 "pending.cta.accept" = "接受";
-"ci.section" = "消息请求（其他岛）";
+"ci.section" = "来自其他岛的请求";
 "ci.block" = "拉黑";
+"ci.contactreq.subtitle" = "想把你加为联系人";
+"ci.request_not_sent" = "已添加，但他所在的岛没有接收这条联系人请求。他暂时看不到。";
 "ci.add_row.subtitle" = "跨岛联系人（另一个 RCQ 岛）";
 "ci.add_self" = "这是你，你在本岛的账号";
 "contact_list.section.cross_island" = "其他岛";

@@ -92,6 +92,16 @@ enum Envelope: Codable, Hashable {
     /// the call id, `ts` = sender epoch SECONDS (receivers drop stale offers),
     /// `data` = the signal extras (sdp/candidate/media/reason — all strings).
     case callSignal(id: UUID, sig: String, cid: String, ts: Int, data: [String: String])
+    /// §5f cross-island contact request (wire kind "contactreq"). Adding a peer
+    /// on another island used to be a purely local act — a key-card fetch and a
+    /// row on this device, with nothing deposited and the peer never told. This
+    /// envelope IS the missing half: `act` is the direction
+    /// (request/accept/decline), `ts` = sender epoch SECONDS, `nickname` = the
+    /// sender's current display name (so the request renders before any card
+    /// fetch), `note` = an optional short greeting. Sealed v=1 to the peer's
+    /// identity key and deposited to their PRIMARY island, exactly like a call
+    /// signal. Routes to the pending-request store, NEVER the message store.
+    case contactRequest(id: UUID, act: String, ts: Int, nickname: String, note: String? = nil)
     /// Home-island record self-push (federation gossip B1, wire kind "homerec").
     /// Carries the SENDER's own signed home-island record so a contact caches
     /// where to reach them even after the sender's island dies. Verified against
@@ -151,6 +161,7 @@ enum Envelope: Codable, Hashable {
         case sig, cid, ts, data
         case rec
         case relay, note
+        case act, nickname
         case kid, e, i, ck
         case forwardedFromName = "fwdName"
         case replyTo = "reply"
@@ -282,6 +293,17 @@ enum Envelope: Codable, Hashable {
             try c.encode(cid, forKey: .cid)
             try c.encode(ts, forKey: .ts)
             try c.encode(data, forKey: .data)
+        case .contactRequest(let id, let act, let ts, let nickname, let note):
+            try c.encode("contactreq", forKey: .kind)
+            try c.encode(id, forKey: .id)
+            try c.encode(ts, forKey: .ts)
+            try c.encode(act, forKey: .act)
+            try c.encode(nickname, forKey: .nickname)
+            // Omitted when absent, like every other optional on this wire
+            // (`relay_share.note` uses the same key the same way). The decoder
+            // below is `decodeIfPresent`, so an explicit JSON `null` from
+            // another client reads back as nil either way.
+            try c.encodeIfPresent(note, forKey: .note)
         case .homeRecord(let rec):
             try c.encode("homerec", forKey: .kind)
             try c.encode(rec, forKey: .rec)
@@ -424,6 +446,14 @@ enum Envelope: Codable, Hashable {
                 cid: try c.decode(String.self, forKey: .cid),
                 ts: try c.decode(Int.self, forKey: .ts),
                 data: try c.decodeIfPresent([String: String].self, forKey: .data) ?? [:]
+            )
+        case "contactreq":
+            self = .contactRequest(
+                id: try c.decode(UUID.self, forKey: .id),
+                act: try c.decode(String.self, forKey: .act),
+                ts: try c.decode(Int.self, forKey: .ts),
+                nickname: try c.decodeIfPresent(String.self, forKey: .nickname) ?? "",
+                note: try c.decodeIfPresent(String.self, forKey: .note)
             )
         case "homerec":
             self = .homeRecord(rec: try c.decode(IslandRecordWire.self, forKey: .rec))

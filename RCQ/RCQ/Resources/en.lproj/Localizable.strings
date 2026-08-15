@@ -1013,8 +1013,10 @@
 "qr.scan.aim" = "Point at another RCQ QR code";
 "qr.alert.sent.title" = "Request sent";
 "qr.alert.sent.body" = "We sent a contact request to UIN %d. They'll see it in their pending list.";
+"qr.alert.ci_sent.title" = "Request sent";
+"qr.alert.ci_sent.body" = "We sent a contact request to UIN %1$d on %2$@. They will see it in their pending list.";
 "qr.alert.added.title" = "Contact added";
-"qr.alert.added.body" = "UIN %1$d on %2$@ is in your contacts now. They will not see anything until you write to them: there is no cross-island request yet.";
+"qr.alert.added.body" = "UIN %1$d on %2$@ is in your contacts now, but their island did not take the contact request, so nothing is waiting on their side yet.";
 "qr.alert.already.title" = "Already in your contacts";
 "qr.alert.already.body" = "You're already connected with UIN %d.";
 "qr.alert.failed.title" = "Couldn't add";
@@ -1038,8 +1040,10 @@
 "pending.empty.body" = "New contact invites will show up here.";
 "pending.row.body" = "RCQ user %@ (%@) wants to add you to their contact list. Allow?";
 "pending.cta.accept" = "Accept";
-"ci.section" = "Message requests (other islands)";
+"ci.section" = "Requests from other islands";
 "ci.block" = "Block";
+"ci.contactreq.subtitle" = "Wants to add you as a contact";
+"ci.request_not_sent" = "Added, but their island did not take the contact request. They will not see it yet.";
 "ci.add_row.subtitle" = "Cross-island contact (another RCQ island)";
 "ci.add_self" = "This is you — your account on this island";
 "contact_list.section.cross_island" = "Other islands";
