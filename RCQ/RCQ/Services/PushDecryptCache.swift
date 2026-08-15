@@ -30,6 +30,18 @@ enum PushDecryptCache {
         let senderUIN: Int
         let envelope: Envelope
         let writtenAt: Date
+        /// ⚠ The sender's ISLAND (v=1 `from_host`). Until 2026-08-15 this entry
+        /// held only the uin, so `consume` handed back a `DecryptedEnvelope`
+        /// with `senderHost == nil` — and `MessageService.ingest` PREFERS the
+        /// cache over a fresh decrypt. Every §5d call signal, §5e profile
+        /// refresh and §5f contact request that arrived via a push therefore
+        /// reached a branch that requires a known host, and was dropped.
+        /// Optional so entries written by an older build still decode (a
+        /// synthesised `init(from:)` uses `decodeIfPresent` for Optionals).
+        var senderHost: String? = nil
+        /// Base64 `spub` that signed the envelope — what binds a `homerec`
+        /// self-push to its real sender. Dropped for the same reason.
+        var senderSigningKey: String? = nil
     }
 
     private static var cacheDir: URL {
@@ -48,9 +60,20 @@ enum PushDecryptCache {
     }
 
     /// Idempotent — overwrites any existing entry for the same ciphertext.
-    static func store(ciphertextB64: String, senderUIN: Int, envelope: Envelope) {
+    ///
+    /// Store the WHOLE `DecryptedEnvelope`, not just uin + plaintext: the
+    /// sender's island and signing key are as much a part of "who sent this"
+    /// as the uin, and every cross-island control branch in `ingest` is gated
+    /// on them.
+    static func store(ciphertextB64: String, decrypted: DecryptedEnvelope) {
         sweepIfNeeded()
-        let entry = CacheEntry(senderUIN: senderUIN, envelope: envelope, writtenAt: Date())
+        let entry = CacheEntry(
+            senderUIN: decrypted.senderUIN,
+            envelope: decrypted.envelope,
+            writtenAt: Date(),
+            senderHost: decrypted.senderHost,
+            senderSigningKey: decrypted.senderSigningKey
+        )
         guard let data = try? JSONEncoder().encode(entry) else { return }
         try? data.write(to: fileURL(for: ciphertextB64), options: .atomic)
     }
@@ -64,7 +87,12 @@ enum PushDecryptCache {
         guard let entry = try? JSONDecoder().decode(CacheEntry.self, from: data) else {
             return nil
         }
-        return DecryptedEnvelope(senderUIN: entry.senderUIN, envelope: entry.envelope)
+        return DecryptedEnvelope(
+            senderUIN: entry.senderUIN,
+            senderHost: entry.senderHost,
+            senderSigningKey: entry.senderSigningKey,
+            envelope: entry.envelope
+        )
     }
 
     /// Burn-account hook — fresh identity must not inherit prior decrypts.

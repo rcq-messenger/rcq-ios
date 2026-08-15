@@ -25,6 +25,15 @@ enum CrossIslandSender {
         let uin: Int
     }
 
+    /// §5d signals that must reach an app that is not running. `call_offer`
+    /// because a call that does not ring is not a call; `call_end` because a
+    /// caller who hangs up during the ring must be able to take the CallKit
+    /// entry back down — otherwise the callee's phone rings at a caller who
+    /// left. Everything else (`call_answer`, ICE, renegotiate) only means
+    /// anything to an app that is already awake and holding a socket, so it
+    /// stays `"message"` and buys no disclosure.
+    private static let wakingSignals: Set<String> = ["call_offer", "call_end"]
+
     /// §5d cross-island call signaling: wrap a call_* WS signal as an
     /// `Envelope.callSignal`, v=1-seal it to the contact's identity key and
     /// deposit it to their PRIMARY island only. No backup-home copies — backup
@@ -44,8 +53,14 @@ enum CrossIslandSender {
             return
         }
         let uin = contact.uin
+        // v1.8: the OUTER type is the only thing that changes. `"call"` routes
+        // and queues byte-identically to `"message"`, and additionally wakes a
+        // recipient with no live socket (PushKit here, UnifiedPush on Android).
+        // The inner envelope is untouched, so a pre-v1.8 peer sees exactly what
+        // it saw before.
+        let envType = wakingSignals.contains(type) ? "call" : "message"
         Task.detached {
-            let ok = await deposit(host: host, uin: uin, payload: blob)
+            let ok = await deposit(host: host, uin: uin, payload: blob, envelopeType: envType)
             if !ok { print("[CrossIslandSender] call-signal deposit failed (\(type) → \(uin)@\(host))") }
         }
     }
@@ -260,8 +275,16 @@ enum CrossIslandSender {
     /// isn't throttled by the blunt per-IP cap (and survives a future
     /// require-token flip). Best-effort — no token = the legacy path. Off for
     /// real-time call signaling (latency-sensitive).
+    ///
+    /// `envelopeType` is `"message"` for everything except the §5d signals that
+    /// have to ring a closed app (see `wakingSignals`). The island routes and
+    /// queues both identically; `"call"` additionally fires the VoIP/UnifiedPush
+    /// wake when the recipient has no live socket.
     @discardableResult
-    static func deposit(host: String, uin: Int, payload: String, mintToken: Bool = false) async -> Bool {
+    static func deposit(
+        host: String, uin: Int, payload: String,
+        mintToken: Bool = false, envelopeType: String = "message"
+    ) async -> Bool {
         guard let url = URL(string: "https://\(host)/messages/sealed") else { return false }
         struct Body: Encodable {
             let to_uin: Int
@@ -274,7 +297,7 @@ enum CrossIslandSender {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(
-            Body(to_uin: uin, envelope_type: "message", payload: payload, deposit_token: token),
+            Body(to_uin: uin, envelope_type: envelopeType, payload: payload, deposit_token: token),
         )
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
         guard let (_, resp) = try? await IslandHTTP.data(for: req),

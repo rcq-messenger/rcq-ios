@@ -695,11 +695,64 @@ final class CallService: ObservableObject {
         }
     }
 
+    /// §5d wake (spec v1.8): open the sealed envelope a VoIP push woke us for.
+    ///
+    /// The push carries `{kind:"sealed", to_uin, envType:"call", env}` and
+    /// NOTHING else — no caller, no call id, no media, no sdp — because the
+    /// recipient's island genuinely does not know them. `CallProvider` has
+    /// already reported a neutral placeholder (PushKit demands a synchronous
+    /// report), so the job here is to feed the envelope through the ORDINARY
+    /// §5d ingest path: every gate — blocked sender, not-an-accepted-contact,
+    /// stale offer — applies unchanged, and a real offer renames the ringing
+    /// entry by adopting the placeholder inside `reportIncoming`.
+    ///
+    /// `env` is absent when the island dropped it for size (>3500 chars, so the
+    /// push isn't rejected outright); the envelope is still in our queue, so we
+    /// drain. Same fallback if the inline copy fails to open.
+    func handleSealedWake(placeholder: UUID, envelopeB64: String?) async {
+        // A locked or duress session must not ring for the real account. The
+        // envelope stays in the island's queue for the real session to drain.
+        if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy {
+            CallProvider.shared.discardPlaceholderIfUnadopted(placeholder)
+            return
+        }
+        if let envelopeB64, !envelopeB64.isEmpty {
+            let packet = WebSocketService.EnvelopePacket(
+                type: "call", payload: envelopeB64,
+                serverTime: Date(), offline: false, groupID: nil
+            )
+            MessageService.shared.ingest(envelope: packet)
+        }
+        if CallProvider.shared.placeholderIsPending(placeholder) {
+            await MessageService.shared.fetchOfflineQueue()
+        }
+        // Nothing claimed it: not an offer, not from an accepted contact, or it
+        // never opened. Take the ring back down rather than leave the user
+        // staring at a call that answers into nothing.
+        CallProvider.shared.discardPlaceholderIfUnadopted(placeholder)
+    }
+
     /// §5d: a STALE cross-island offer (offline-queue drains deliver
     /// hours-old rows) never rings — file the missed-call row directly.
-    func fileMissedCall(fromUIN: Int, media: CallMedia) {
-        let nickname = ContactService.shared.contacts
-            .first(where: { $0.uin == fromUIN })?.nickname ?? String(fromUIN)
+    ///
+    /// ⚠ `fromHost` is not optional decoration. Without it this read the LOCAL
+    /// roster for the caller's number, and per-island uins collide: a missed
+    /// call from `1234@is2.rcq.app` was filed under the name of OUR OWN #1234,
+    /// a stranger the user may actually know. Same wrong-person mix-up §5d
+    /// exists to close, printed into the call log instead of onto the wire.
+    /// The nameless fallback carries the island for the same reason — a bare
+    /// `1234` is how a local number is written everywhere else in the app.
+    func fileMissedCall(fromUIN: Int, fromHost: String?, media: CallMedia) {
+        let nickname: String
+        if let fromHost {
+            let row = CrossIslandStore.shared.all()
+                .first { $0.uin == fromUIN && $0.host?.lowercased() == fromHost.lowercased() }
+            nickname = row.map { $0.nickname.isEmpty ? "\(fromUIN)@\(fromHost)" : $0.nickname }
+                ?? "\(fromUIN)@\(fromHost)"
+        } else {
+            nickname = ContactService.shared.contacts
+                .first(where: { $0.uin == fromUIN })?.nickname ?? String(fromUIN)
+        }
         let call = Call(peerUIN: fromUIN, peerNickname: nickname, media: media, direction: .incoming)
         logCallEnded(call: call, reason: "expired", duration: nil)
     }

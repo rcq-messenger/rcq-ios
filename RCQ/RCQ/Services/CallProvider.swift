@@ -15,6 +15,18 @@ final class CallProvider: NSObject, @unchecked Sendable {
     private var _callIDByUUID: [UUID: String] = [:]
     private var _uuidByCallID: [String: UUID] = [:]
 
+    // §5d wake: a CallKit entry reported before anyone knows who is calling.
+    // The recipient's island cannot know the caller (that is the whole point of
+    // the sealed deposit), and PushKit demands `reportNewIncomingCall` before
+    // the delivery handler returns — so the ring starts on a neutral handle and
+    // the real offer, once the envelope opens, ADOPTS this uuid instead of
+    // reporting a second call.
+    private var _placeholderUUID: UUID?
+    private var _placeholderAt: Date = .distantPast
+    /// Past this the slot is dead — a same-island offer minutes later must not
+    /// adopt a uuid CallKit has already torn down, which would ring nothing.
+    private static let placeholderMaxAge: TimeInterval = 20
+
     private override init() {
         let config = CXProviderConfiguration()
         config.supportsVideo = true
@@ -101,9 +113,13 @@ final class CallProvider: NSObject, @unchecked Sendable {
     // Synchronous: PushKit requires `reportNewIncomingCall` before delivery handler returns.
     @discardableResult
     func reportIncoming(callID: String, peerName: String, hasVideo: Bool) -> UUID {
-        let uuid = UUID()
+        // Adopt a §5d placeholder if one is still waiting. Reporting a second
+        // incoming call would leave TWO entries on the lock screen for one
+        // call, and only one of them wired to anything.
+        let adopted = claimPlaceholder()
+        let uuid = adopted ?? UUID()
         register(uuid: uuid, callID: callID)
-        print("[CallProvider] reportIncoming callID=\(callID) uuid=\(uuid) peer=\(peerName) video=\(hasVideo)")
+        print("[CallProvider] reportIncoming callID=\(callID) uuid=\(uuid) peer=\(peerName) video=\(hasVideo) adopted=\(adopted != nil)")
 
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: peerName)
@@ -114,6 +130,12 @@ final class CallProvider: NSObject, @unchecked Sendable {
         update.supportsUngrouping = false
         update.supportsDTMF = false
 
+        if adopted != nil {
+            // Already ringing on the neutral handle — rename it in place and
+            // switch it to video if that is what the offer turned out to be.
+            provider.reportCall(with: uuid, updated: update)
+            return uuid
+        }
         provider.reportNewIncomingCall(with: uuid, update: update) { error in
             if let error {
                 print("[CallProvider] reportNewIncomingCall failed: \(error)")
@@ -122,6 +144,69 @@ final class CallProvider: NSObject, @unchecked Sendable {
             }
         }
         return uuid
+    }
+
+    // MARK: - §5d wake placeholder
+
+    /// Ring on a neutral handle for a cross-island wake whose caller is still
+    /// sealed. MUST be called synchronously from the PushKit delivery handler
+    /// (iOS terminates the app for not reporting); the name arrives later, via
+    /// `reportIncoming` adopting this uuid.
+    @discardableResult
+    func reportIncomingPlaceholder(hasVideo: Bool = false) -> UUID {
+        let uuid = UUID()
+        mappingLock.lock()
+        _placeholderUUID = uuid
+        _placeholderAt = Date()
+        mappingLock.unlock()
+
+        let name = "call.incoming.unknown_caller".localized
+        print("[CallProvider] reportIncomingPlaceholder uuid=\(uuid)")
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: name)
+        update.localizedCallerName = name
+        update.hasVideo = hasVideo
+        update.supportsHolding = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsDTMF = false
+        provider.reportNewIncomingCall(with: uuid, update: update) { error in
+            if let error {
+                print("[CallProvider] placeholder reportNewIncomingCall failed: \(error)")
+            }
+        }
+        return uuid
+    }
+
+    /// True while `uuid` is still the pending placeholder (nothing adopted it).
+    func placeholderIsPending(_ uuid: UUID) -> Bool {
+        mappingLock.lock()
+        defer { mappingLock.unlock() }
+        return _placeholderUUID == uuid
+    }
+
+    /// End a placeholder no offer ever claimed — the envelope failed to open,
+    /// the sender is not an accepted contact, or the signal was not an offer.
+    /// Without this the phone rings until the user answers a call that is not
+    /// there.
+    func discardPlaceholderIfUnadopted(_ uuid: UUID, reason: CXCallEndedReason = .failed) {
+        mappingLock.lock()
+        guard _placeholderUUID == uuid else { mappingLock.unlock(); return }
+        _placeholderUUID = nil
+        mappingLock.unlock()
+        print("[CallProvider] discarding unadopted placeholder uuid=\(uuid)")
+        provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
+    }
+
+    /// Takes the pending placeholder if it is fresh, clearing the slot either
+    /// way so a stale uuid can never be adopted twice.
+    private func claimPlaceholder() -> UUID? {
+        mappingLock.lock()
+        defer { mappingLock.unlock() }
+        guard let pending = _placeholderUUID else { return nil }
+        _placeholderUUID = nil
+        guard Date().timeIntervalSince(_placeholderAt) < Self.placeholderMaxAge else { return nil }
+        return pending
     }
 
     func reportEnded(callID: String, reason: CXCallEndedReason) {

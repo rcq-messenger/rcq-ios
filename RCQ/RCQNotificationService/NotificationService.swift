@@ -161,11 +161,7 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
-            PushDecryptCache.store(
-                ciphertextB64: envB64,
-                senderUIN: decrypted.senderUIN,
-                envelope: decrypted.envelope
-            )
+            PushDecryptCache.store(ciphertextB64: envB64, decrypted: decrypted)
             // ⚠ THE DURESS / LOCKED CASE. This process cannot see
             // `PanicPINService` — it is a separate binary in a separate
             // process — so until now it rendered the real sender's name, their

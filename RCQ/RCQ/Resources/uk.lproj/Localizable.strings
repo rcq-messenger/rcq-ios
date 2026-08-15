@@ -718,6 +718,7 @@
 "call.outgoing.calling" = "Дзвонимо…";
 "call.incoming.video" = "Вхідний відеодзвінок…";
 "call.incoming.voice" = "Вхідний дзвінок…";
+"call.incoming.unknown_caller" = "Вхідний дзвінок";
 "call.action.decline" = "Відхилити";
 "call.action.accept" = "Відповісти";
 /* ── Trade summary ────────────────────────────────────────── */

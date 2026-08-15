@@ -709,6 +709,7 @@
 "call.outgoing.calling" = "正在呼叫…";
 "call.incoming.video" = "视频通话来电…";
 "call.incoming.voice" = "来电…";
+"call.incoming.unknown_caller" = "来电";
 "call.action.decline" = "拒接";
 "call.action.accept" = "接听";
 /* ── Trade summary ────────────────────────────────────────── */
