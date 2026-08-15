@@ -370,4 +370,25 @@ final class ContactService: ObservableObject {
         pendingRequests = []
         outgoingRequests = []
     }
+
+    /// Populate the roster of a decoy session from the seeded conversations.
+    /// These uins are synthetic (see `DecoyContactRecord`) and exist on no
+    /// server, so `refresh()` deliberately returns early in a decoy session and
+    /// never overwrites them. Empty keys / offline status: nothing here can be
+    /// messaged, and an empty decoy is the tell the seeding exists to remove.
+    func applyDecoySeed(_ rows: [DecoyContactRecord]) {
+        contacts = rows.map { row in
+            Contact(
+                uin: row.uin,
+                nickname: row.nickname,
+                status: .offline,
+                statusMessage: nil,
+                blocked: false,
+                identityKey: "",
+                signingKey: ""
+            )
+        }
+        pendingRequests = []
+        outgoingRequests = []
+    }
 }

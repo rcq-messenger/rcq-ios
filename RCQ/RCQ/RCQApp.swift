@@ -254,6 +254,14 @@ struct RCQApp: App {
         // `.rcqDeviceShook` notifications when the device crosses the
         // shake threshold; consumed by RootView for Bug Bounty.
         ShakeMotionDetector.shared.start()
+        #if DEBUG
+        // R2: the PIN vault's slot payload is a fixed-size box. Fail loudly in
+        // development the moment a newly added field pushes the worst-case JSON
+        // past it, instead of shipping a build where setting a decoy PIN throws
+        // payloadTooLarge on someone's phone.
+        assert(PINVault.maximumPayloadJSONSize() != nil,
+               "PIN vault slot payload no longer fits at maximum field lengths")
+        #endif
     }
 
     var body: some Scene {
