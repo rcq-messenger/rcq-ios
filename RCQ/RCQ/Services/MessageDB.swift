@@ -500,6 +500,30 @@ final class MessageDB {
         save()
     }
 
+    /// Apply one person's reaction straight to the stored row, for a message
+    /// that is not in memory.
+    ///
+    /// Only the most recent `MessageStore.initialWindowSize` messages of a
+    /// thread are held in memory, so a reaction to anything older than that
+    /// found nothing to apply itself to and was dropped on the floor — not
+    /// shown, and not written down either, so scrolling up never revealed it.
+    /// The row is still in the database, which is where this puts it.
+    /// Returns false when there is no such row or the value is unchanged.
+    @discardableResult
+    func mergeReaction(id: UUID, uin: Int, asset: String?) -> Bool {
+        guard let row = find(id: id) else { return false }
+        var reactions = Self.decodeReactions(decField(row.reactionsJSON) ?? "{}")
+        guard reactions[uin] != asset else { return false }
+        if let asset {
+            reactions[uin] = asset
+        } else {
+            reactions.removeValue(forKey: uin)
+        }
+        row.reactionsJSON = encField(Self.encodeReactions(reactions)) ?? "{}"
+        save()
+        return true
+    }
+
     func markDeletedForEveryone(id: UUID) {
         guard let row = find(id: id) else { return }
         row.deletedForEveryone = true
