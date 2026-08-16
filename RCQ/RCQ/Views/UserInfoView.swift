@@ -150,12 +150,12 @@ struct UserInfoView: View {
                 set: { aliasDraft = $0 }
             ))
             Button("common.save".localized) {
-                if let uin = profile?.uin ?? draft?.uin { aliasStore.setAlias(aliasDraft, for: uin) }
+                if let uin = profile?.uin ?? draft?.uin { aliasStore.setAlias(aliasDraft, for: uin, host: crossIslandHost) }
                 aliasDraft = nil
             }
-            if let uin = profile?.uin, aliasStore.alias(for: uin) != nil {
+            if let uin = profile?.uin, aliasStore.alias(for: uin, host: crossIslandHost) != nil {
                 Button("contact.clear_name".localized, role: .destructive) {
-                    aliasStore.setAlias(nil, for: uin)
+                    aliasStore.setAlias(nil, for: uin, host: crossIslandHost)
                     aliasDraft = nil
                 }
             }
@@ -244,12 +244,12 @@ struct UserInfoView: View {
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(aliasStore.displayName(for: p.uin, fallback: p.nickname))
+                        Text(aliasStore.displayName(for: p.uin, fallback: p.nickname, host: crossIslandHost))
                             .font(.title3.bold())
                             .foregroundColor(Theme.Color.textPrimary)
                         // What THEY call themselves stays visible whenever it
                         // differs, so a rename never hides who you are talking to.
-                        if let mine = aliasStore.alias(for: p.uin), mine != p.nickname {
+                        if let mine = aliasStore.alias(for: p.uin, host: crossIslandHost), mine != p.nickname {
                             Text(String(format: "contact.their_name".localized, p.nickname))
                                 .font(.caption)
                                 .foregroundColor(Theme.Color.textSecondary)
@@ -261,10 +261,10 @@ struct UserInfoView: View {
                         Text(verbatim: h).font(Theme.Font.mono).foregroundColor(Theme.Color.textSecondary)
                     }
                     if !isOwn {
-                        Button(aliasStore.alias(for: p.uin) == nil
+                        Button(aliasStore.alias(for: p.uin, host: crossIslandHost) == nil
                                ? "contact.set_name".localized
                                : "contact.change_name".localized) {
-                            aliasDraft = aliasStore.alias(for: p.uin) ?? ""
+                            aliasDraft = aliasStore.alias(for: p.uin, host: crossIslandHost) ?? ""
                         }
                         .font(.caption)
                         .foregroundColor(Theme.Color.accent)

@@ -14,7 +14,13 @@ import Foundation
 final class ContactAliasStore: ObservableObject {
     static let shared = ContactAliasStore()
 
-    @Published private(set) var aliases: [Int: String] = [:]
+    /// My own names for people, keyed by ``aliasKey(_:host:)`` — the bare uin
+    /// for someone on this island, `uin@host` for someone on another one.
+    ///
+    /// ⚠ A uin is issued per island, so keying by the number alone gave `1234`
+    /// here and `1234@is2.rcq.app` ONE name between them: renaming the stranger
+    /// renamed your friend, and vice versa.
+    @Published private(set) var aliases: [String: String] = [:]
 
     /// Pre-per-account global slot, kept only so an install that predates
     /// accounts does not lose its names on upgrade.
@@ -27,24 +33,35 @@ final class ContactAliasStore: ObservableObject {
 
     private init() { load() }
 
-    /// The name I gave this person, or nil when I never gave one.
-    func alias(for uin: Int) -> String? { aliases[uin] }
+    /// The map key for a person: the bare uin on this island, `uin@host` on
+    /// another. A bare key written before this existed is still the correct
+    /// same-island key, so nothing already saved is lost.
+    static func aliasKey(_ uin: Int, host: String? = nil) -> String {
+        guard let host, !host.isEmpty else { return String(uin) }
+        return "\(uin)@\(host.lowercased())"
+    }
 
-    /// Set, or with nil/blank clear, my own name for `uin`.
-    func setAlias(_ name: String?, for uin: Int) {
+    /// The name I gave this person, or nil when I never gave one.
+    func alias(for uin: Int, host: String? = nil) -> String? {
+        aliases[Self.aliasKey(uin, host: host)]
+    }
+
+    /// Set, or with nil/blank clear, my own name for them.
+    func setAlias(_ name: String?, for uin: Int, host: String? = nil) {
+        let key = Self.aliasKey(uin, host: host)
         let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48)
         if let trimmed, !trimmed.isEmpty {
-            aliases[uin] = String(trimmed)
+            aliases[key] = String(trimmed)
         } else {
-            aliases.removeValue(forKey: uin)
+            aliases.removeValue(forKey: key)
         }
         save()
     }
 
     /// What to CALL this person on screen: my name for them when I set one,
     /// otherwise whatever they call themselves.
-    func displayName(for uin: Int, fallback: String) -> String {
-        aliases[uin] ?? fallback
+    func displayName(for uin: Int, fallback: String, host: String? = nil) -> String {
+        aliases[Self.aliasKey(uin, host: host)] ?? fallback
     }
 
     func reload() { load() }
@@ -54,15 +71,12 @@ final class ContactAliasStore: ObservableObject {
         let raw = d.dictionary(forKey: storageKey) as? [String: String]
             ?? d.dictionary(forKey: Self.legacyKey) as? [String: String]
             ?? [:]
-        aliases = raw.reduce(into: [:]) { acc, kv in
-            if let uin = Int(kv.key) { acc[uin] = kv.value }
-        }
+        // Keys are taken as written: "1234" is the same-island key, "1234@host"
+        // the cross-island one. The old format is a subset of the new one.
+        aliases = raw
     }
 
     private func save() {
-        let raw = aliases.reduce(into: [String: String]()) { acc, kv in
-            acc[String(kv.key)] = kv.value
-        }
-        UserDefaults.standard.set(raw, forKey: storageKey)
+        UserDefaults.standard.set(aliases, forKey: storageKey)
     }
 }

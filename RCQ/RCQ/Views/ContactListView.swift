@@ -1676,7 +1676,7 @@ private struct ContactRow: View {
                 HStack(spacing: 6) {
                     // My own name for them wins over the nickname they chose
                     // (device-only, see ContactAliasStore).
-                    Text(aliasStore.displayName(for: contact.uin, fallback: contact.nickname))
+                    Text(aliasStore.displayName(for: contact.uin, fallback: contact.nickname, host: contact.host))
                         .font(Theme.Font.nickname)
                         .foregroundColor(contact.status == .offline ? Theme.Color.textSecondary : Theme.Color.textPrimary)
                     GenderIcon(gender: contact.gender)
