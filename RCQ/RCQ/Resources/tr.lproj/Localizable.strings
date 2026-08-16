@@ -1685,3 +1685,13 @@
 "relay.key.ok.title" = "Anahtar kabul edildi";
 "relay.key.ok.body" = "Artık kendi düğümlerinden %d tanesi kullanımda. Ortak havuz yedek olarak kalır.";
 "relay.key.bad.title" = "Anahtar kabul edilmedi";
+
+"how.title" = "Bu nasıl çalışıyor";
+"how.footer.short" = "Mesajlarınızı kim görür, ada nedir, çalışmayınca ne yapmalı";
+"how.q1" = "Gönderdiğimi kim okuyabilir?";
+"how.a1" = "Yalnızca gönderdiğiniz kişi. Metin sizin cihazınızda şifrelenir, onunkinde çözülür; aradaki ada mühürlü bir zarf taşır ve onu açamaz.\n\nAdanın gördüğü: çevrimiçi olduğunuz ve zarflarınızın kime gittiği. Görmediği: içinde ne olduğu.";
+"how.q2" = "Ada nedir ve neden birden fazla var?";
+"how.a2" = "Ada, postanızı tutan bir sunucudur. RCQ tek bir sunucu değil, birbirinden bağımsız birçok sunucudur: bizimki, başkalarınınki ve kurarsanız sizinki.\n\nNumaranızı bir ada verir, dolayısıyla iki adadaki aynı numara iki farklı kişidir: adres, numara VE adadır. Yine de farklı adalardaki insanlar yazışır, konuşur ve aynı gruplarda bulunur.";
+"how.q3" = "Çalışmayı bırakınca ne yapmalıyım?";
+"how.a3" = "Önce engellenip engellenmediğinizi öğrenin: Ayarlar → Ağ → Bağlantı tanılama, ve tam denetimi VPN KAPALIYKEN çalıştırın.\n\nSize tek bir satır verir. Onu Hata bildir üzerinden gönderin: o satır ağınızda tam olarak neyin kapalı olduğunu söyler, onsuz tahmin yürütürüz.";
+"how.more" = "Daha fazla soru: rcq.app/faq →";

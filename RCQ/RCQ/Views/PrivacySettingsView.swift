@@ -256,6 +256,8 @@ struct PrivacySettingsView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
+                    howItWorksSection
+
                     securitySection
                     migrationSection
                     // Hall of Fame is a flagship-only surface — hidden on
@@ -382,6 +384,28 @@ struct PrivacySettingsView: View {
     }
 
     // MARK: - moved sections (PIN / inventory / network / traffic / migration)
+
+    /// Permanent, not an onboarding step. The three questions this answers
+    /// arrive on the third day of using the app, by which time a first-run
+    /// screen is long gone.
+    @ViewBuilder
+    private var howItWorksSection: some View {
+        Section {
+            NavigationLink {
+                HowItWorksView()
+            } label: {
+                HStack {
+                    Image(systemName: "questionmark.circle")
+                        .foregroundColor(Theme.Color.accent)
+                    Text("how.title".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
+            }
+        } footer: {
+            Text("how.footer.short".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
 
     @ViewBuilder
     private var securitySection: some View {
