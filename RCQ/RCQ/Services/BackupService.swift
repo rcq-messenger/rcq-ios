@@ -123,9 +123,10 @@ enum BackupService {
         // (`NotificationPrefsService` PUTs it and reads it back), so it is not
         // a device-only setting and would come home on sign-in anyway.
         let local: [String: Any] = [
-            "aliases": Dictionary(
-                uniqueKeysWithValues: ContactAliasStore.shared.aliases.map { (String($0.key), $0.value) },
-            ),
+            // Keys are already strings, and now carry a host for cross-island
+            // people ("1234@is2.rcq.app"). A backup written before that is a
+            // subset: bare keys still mean this island.
+            "aliases": ContactAliasStore.shared.aliases,
             "favorites": FavoritesStore.shared.entries.map(\.key).sorted(),
             "archived": ArchiveStore.shared.entries.map(\.key).sorted(),
         ]
@@ -228,8 +229,12 @@ enum BackupService {
                 // Never overwrite something chosen on THIS device: the restore
                 // adds, it does not correct.
                 for (key, value) in (obj["aliases"] as? [String: String] ?? [:]) {
-                    guard let uin = Int(key), ContactAliasStore.shared.alias(for: uin) == nil else { continue }
-                    ContactAliasStore.shared.setAlias(value, for: uin)
+                    // Split "uin@host" back apart; a bare key is same-island.
+                    let parts = key.split(separator: "@", maxSplits: 1)
+                    guard let uin = Int(parts.first ?? "") else { continue }
+                    let host = parts.count > 1 ? String(parts[1]) : nil
+                    guard ContactAliasStore.shared.alias(for: uin, host: host) == nil else { continue }
+                    ContactAliasStore.shared.setAlias(value, for: uin, host: host)
                 }
                 for key in (obj["favorites"] as? [String] ?? []) {
                     guard let t = thread(fromKey: key) else { continue }

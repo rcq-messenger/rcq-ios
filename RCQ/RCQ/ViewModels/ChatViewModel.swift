@@ -915,7 +915,7 @@ final class ChatViewModel: ObservableObject {
             }
         }
         if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
-            return ContactAliasStore.shared.displayName(for: uin, fallback: c.nickname)
+            return ContactAliasStore.shared.displayName(for: uin, fallback: c.nickname, host: c.host)
         }
         return ContactAliasStore.shared.alias(for: uin) ?? String(uin)
     }
