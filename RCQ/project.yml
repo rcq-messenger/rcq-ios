@@ -63,7 +63,7 @@ targets:
         # App Store validation rejects an app and an embedded extension whose
         # versions differ. Bump BOTH when cutting a TestFlight build.
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "111"
+        CFBundleVersion: "112"
         UILaunchScreen:
           UIColorName: BootBackground
         NSCameraUsageDescription: "RCQ needs the camera for video calls and to take photos and videos to share in chats."
@@ -108,23 +108,20 @@ targets:
         # offer "Open in Google Maps" when the user has the app.
         LSApplicationQueriesSchemes:
           - comgooglemaps
-        # Encryption export compliance. RCQ ships standard E2E
-        # messaging crypto (libsignal: AES-GCM, X25519, Ed25519, HKDF)
-        # — non-exempt under US BIS rules but qualifies for the
-        # mass-market self-classification path (5D992.c) alongside
-        # Signal / WhatsApp / Telegram.
+        # Encryption export compliance. Deliberately ABSENT rather than
+        # declared here, and the absence is the decision.
         #
-        # `false` claims the BIS 5D992.c mass-market exemption:
-        # libsignal uses only STANDARD cryptographic primitives
-        # (AES-GCM, X25519, Curve25519, Ed25519, HKDF) — same
-        # exempt category Signal, WhatsApp, iMessage all sit in.
-        # No BIS Self-Classification email needed, no compliance
-        # code needed in Info.plist, no per-submission prompt in
-        # App Store Connect. Setting this to `true` (the previous
-        # value) required `ITSEncryptionExportComplianceCode` to
-        # match the App Store Connect documentation — without it
-        # archive validation fails ("Invalid Export Compliance Code").
-        ITSAppUsesNonExemptEncryption: false
+        # `false` says "this app uses no non-exempt encryption", and that is
+        # not true of this binary: libsignal (AES-GCM, X25519, Ed25519) is
+        # arguably mass-market, but sing-box with Reality is censorship
+        # circumvention and sits nowhere near an exemption. `true` needs a
+        # paired ITSEncryptionExportComplianceCode or archive validation
+        # fails outright ("Invalid Export Compliance Code").
+        #
+        # With the key gone, App Store Connect asks the export questions on
+        # every upload instead, which is where they can be answered truthfully:
+        # the sources are public and the BIS notification under EAR 740.13(e)
+        # went out on 2026-08-07 (docs/appstore-export-compliance.md).
     entitlements:
       path: RCQ/RCQ.entitlements
       properties:
@@ -338,7 +335,7 @@ targets:
         # Match the main app's marketing/build versions so the
         # validator doesn't complain about extension/host mismatch.
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "111"
+        CFBundleVersion: "112"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
