@@ -1615,6 +1615,12 @@
 "myreports.title" = "我的反馈";
 "myreports.empty" = "你还没有发送过反馈。发送之后，回复会显示在这里。";
 "myreports.answer" = "回复";
+"myreports.you" = "你";
+"myreports.reply" = "补充";
+"myreports.reply.placeholder" = "给这条反馈补充点什么";
+"myreports.reply.send" = "发送";
+"myreports.closed" = "这条反馈已关闭。如果又出现了，请新提一条。";
+"myreports.send_error" = "没能发送，请再试一次。";
 "myreports.status.open" = "等待回复";
 "myreports.status.answered" = "已回复";
 "myreports.status.resolved" = "已解决";

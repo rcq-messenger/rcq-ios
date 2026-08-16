@@ -1723,6 +1723,12 @@
 "myreports.title" = "Мои обращения";
 "myreports.empty" = "Вы пока не отправляли обращений. Если отправите, ответ появится здесь.";
 "myreports.answer" = "Ответ";
+"myreports.you" = "Вы";
+"myreports.reply" = "Дописать";
+"myreports.reply.placeholder" = "Добавить к этому обращению";
+"myreports.reply.send" = "Отправить";
+"myreports.closed" = "Обращение закрыто. Если повторилось, напишите новое.";
+"myreports.send_error" = "Не отправилось. Попробуйте ещё раз.";
 "myreports.status.open" = "Ждёт ответа";
 "myreports.status.answered" = "Есть ответ";
 "myreports.status.resolved" = "Решено";

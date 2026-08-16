@@ -1769,6 +1769,12 @@
 "myreports.title" = "My reports";
 "myreports.empty" = "You have not sent any reports. If you do, the answer appears here.";
 "myreports.answer" = "Answer";
+"myreports.you" = "You";
+"myreports.reply" = "Write back";
+"myreports.reply.placeholder" = "Add something to this report";
+"myreports.reply.send" = "Send";
+"myreports.closed" = "This report is closed. File a new one if it happened again.";
+"myreports.send_error" = "Could not send. Try again.";
 "myreports.status.open" = "Waiting";
 "myreports.status.answered" = "Answered";
 "myreports.status.resolved" = "Resolved";
