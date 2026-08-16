@@ -1624,6 +1624,12 @@
 "myreports.title" = "Meus relatos";
 "myreports.empty" = "Você não enviou nenhum relato. Se enviar, a resposta aparece aqui.";
 "myreports.answer" = "Resposta";
+"myreports.you" = "Você";
+"myreports.reply" = "Acrescentar";
+"myreports.reply.placeholder" = "Acrescente algo a este relato";
+"myreports.reply.send" = "Enviar";
+"myreports.closed" = "Este relato está fechado. Se acontecer de novo, abra outro.";
+"myreports.send_error" = "Não deu para enviar. Tente de novo.";
 "myreports.status.open" = "Aguardando";
 "myreports.status.answered" = "Respondido";
 "myreports.status.resolved" = "Resolvido";

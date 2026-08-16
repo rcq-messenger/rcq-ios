@@ -1624,6 +1624,12 @@
 "myreports.title" = "Мої звернення";
 "myreports.empty" = "Ти ще не надсилав звернень. Якщо надішлеш, відповідь з'явиться тут.";
 "myreports.answer" = "Відповідь";
+"myreports.you" = "Ви";
+"myreports.reply" = "Дописати";
+"myreports.reply.placeholder" = "Додати до цього звернення";
+"myreports.reply.send" = "Надіслати";
+"myreports.closed" = "Звернення закрито. Якщо повторилося, напишіть нове.";
+"myreports.send_error" = "Не надіслалося. Спробуйте ще раз.";
 "myreports.status.open" = "Очікує";
 "myreports.status.answered" = "Є відповідь";
 "myreports.status.resolved" = "Вирішено";

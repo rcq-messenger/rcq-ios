@@ -1624,6 +1624,12 @@
 "myreports.title" = "Bildirimlerim";
 "myreports.empty" = "Hiç bildirim göndermedin. Gönderirsen cevabı burada görünür.";
 "myreports.answer" = "Cevap";
+"myreports.you" = "Siz";
+"myreports.reply" = "Ekle";
+"myreports.reply.placeholder" = "Bu bildirime bir şey ekleyin";
+"myreports.reply.send" = "Gönder";
+"myreports.closed" = "Bu bildirim kapandı. Yine olduysa yenisini açın.";
+"myreports.send_error" = "Gönderilemedi. Tekrar deneyin.";
 "myreports.status.open" = "Bekliyor";
 "myreports.status.answered" = "Cevaplandı";
 "myreports.status.resolved" = "Çözüldü";

@@ -1624,6 +1624,12 @@
 "myreports.title" = "Mis informes";
 "myreports.empty" = "No has enviado ningún informe. Cuando lo hagas, la respuesta aparecerá aquí.";
 "myreports.answer" = "Respuesta";
+"myreports.you" = "Tú";
+"myreports.reply" = "Añadir";
+"myreports.reply.placeholder" = "Añade algo a este informe";
+"myreports.reply.send" = "Enviar";
+"myreports.closed" = "Este informe está cerrado. Si vuelve a pasar, abre uno nuevo.";
+"myreports.send_error" = "No se pudo enviar. Inténtalo otra vez.";
 "myreports.status.open" = "En espera";
 "myreports.status.answered" = "Respondido";
 "myreports.status.resolved" = "Resuelto";
