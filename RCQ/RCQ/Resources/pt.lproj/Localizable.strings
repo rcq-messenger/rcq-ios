@@ -1685,3 +1685,13 @@
 "relay.key.ok.title" = "Chave aceita";
 "relay.key.ok.body" = "%d nó(s) seus estão em uso agora. O pool compartilhado continua como reserva.";
 "relay.key.bad.title" = "Chave não aceita";
+
+"how.title" = "Como funciona";
+"how.footer.short" = "Quem vê suas mensagens, o que é uma ilha, o que fazer quando para";
+"how.q1" = "Quem pode ler o que eu envio?";
+"how.a1" = "Só a pessoa para quem você enviou. O texto é cifrado no seu aparelho e decifrado no dela, e a ilha no meio carrega um envelope lacrado que não consegue abrir.\n\nO que a ilha vê: que você esteve on-line e para quem seus envelopes foram endereçados. O que ela não vê: o que há dentro.";
+"how.q2" = "O que é uma ilha e por que existe mais de uma?";
+"how.a2" = "Uma ilha é um servidor que guarda sua correspondência. RCQ não é um servidor, são vários independentes: o nosso, os de outras pessoas e o seu, se você mantiver um.\n\nSeu número é emitido por uma ilha, então o mesmo número em duas ilhas são duas pessoas diferentes: o endereço é o número E a ilha. Mesmo assim, gente de ilhas diferentes conversa, se liga e divide grupos.";
+"how.q3" = "O que faço quando para de funcionar?";
+"how.a3" = "Primeiro descubra se você está sendo bloqueado: Configurações → Rede → Diagnóstico de conexão, e rode a verificação completa COM A VPN DESLIGADA.\n\nEla devolve uma linha. Mande para nós em Relatar um erro: essa linha diz exatamente o que está fechado na sua rede, e sem ela ficamos no chute.";
+"how.more" = "Mais perguntas em rcq.app/faq →";

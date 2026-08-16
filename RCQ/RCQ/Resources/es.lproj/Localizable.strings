@@ -1685,3 +1685,13 @@
 "relay.key.ok.title" = "Clave aceptada";
 "relay.key.ok.body" = "Ahora hay %d nodo(s) tuyo(s) en uso. El pool compartido se queda como reserva.";
 "relay.key.bad.title" = "Clave no aceptada";
+
+"how.title" = "Cómo funciona";
+"how.footer.short" = "Quién ve tus mensajes, qué es una isla, qué hacer cuando falla";
+"how.q1" = "¿Quién puede leer lo que envío?";
+"how.a1" = "Solo la persona a la que se lo enviaste. El texto se cifra en tu dispositivo y se descifra en el suyo, y la isla que hay en medio lleva un sobre sellado que no puede abrir.\n\nLo que la isla sí ve: que estuviste en línea y a quién iban dirigidos tus sobres. Lo que no ve: qué hay dentro.";
+"how.q2" = "¿Qué es una isla y por qué hay más de una?";
+"how.a2" = "Una isla es un servidor que guarda tu correo. RCQ no es un servidor, sino muchos independientes: el nuestro, los de otros y el tuyo si lo levantas.\n\nTu número lo emite una isla, así que el mismo número en dos islas son dos personas distintas: la dirección es el número Y la isla. Aun así, gente de islas distintas se escribe, se llama y comparte grupos.";
+"how.q3" = "¿Qué hago cuando deja de funcionar?";
+"how.a3" = "Primero averigua si te están bloqueando: Ajustes → Red → Diagnóstico de conexión, y ejecuta la comprobación completa CON LA VPN APAGADA.\n\nTe da una línea. Envíanosla desde Reportar un error: esa línea nos dice exactamente qué está cerrado en tu red, y sin ella adivinamos.";
+"how.more" = "Más preguntas en rcq.app/faq →";
