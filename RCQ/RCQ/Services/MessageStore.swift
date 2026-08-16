@@ -243,10 +243,22 @@ final class MessageStore: ObservableObject {
     }
 
     /// Idempotent. Toggle decisions live in `MessageService.toggleReaction`.
-    func applyReaction(targetID: UUID, thread: ThreadID, uin: Int, asset: String?) {
-        guard var t = threads[thread] else { return }
-        guard let idx = t.firstIndex(where: { $0.id == targetID }) else { return }
+    ///
+    /// Returns whether this actually CHANGED anything, and the caller is
+    /// expected to care. The same envelope reaches us twice by design — once
+    /// live over the socket and once from the offline queue, which the backend
+    /// keeps a copy in until it is acked — and a message is protected from the
+    /// second copy by its UUID dedup. A reaction had no such guard: re-applying
+    /// it painted the same heart, which is invisible, but it also re-rang the
+    /// unseen-reaction indicator, which is not. Founder saw exactly that: the
+    /// heart he had just cleared by opening the chat was back after leaving and
+    /// coming in again, for a reaction he had already looked at.
+    @discardableResult
+    func applyReaction(targetID: UUID, thread: ThreadID, uin: Int, asset: String?) -> Bool {
+        guard var t = threads[thread] else { return false }
+        guard let idx = t.firstIndex(where: { $0.id == targetID }) else { return false }
         var reactions = t[idx].reactions
+        guard reactions[uin] != asset else { return false }
         if let asset {
             reactions[uin] = asset
         } else {
@@ -257,6 +269,7 @@ final class MessageStore: ObservableObject {
             threads[thread] = t
         }
         MessageDB.shared.updateReactions(id: targetID, reactions: reactions)
+        return true
     }
 
     /// Apply a reaction located by its target message id across ALL threads
@@ -264,14 +277,25 @@ final class MessageStore: ObservableObject {
     /// device, sealed to your own identity, arrives with only the target id and
     /// no reliable thread (the sender is yourself, so the thread would resolve
     /// to your own peer thread, not where the message lives). The id is a
-    /// globally-unique UUID, so it matches exactly one message. Returns the
-    /// thread it landed in (for the reaction-inbox ping), or nil if not found.
+    /// globally-unique UUID, so it matches exactly one message.
+    ///
+    /// Returns the thread only when the reaction was NEW — that return value
+    /// feeds the unseen-reaction indicator, and a redelivered copy of something
+    /// already on the bubble is not news.
     @discardableResult
     func applyReactionAnywhere(targetID: UUID, uin: Int, asset: String?) -> ThreadID? {
         for (thread, msgs) in threads where msgs.contains(where: { $0.id == targetID }) {
-            applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset)
-            return thread
+            return applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset)
+                ? thread
+                : nil
         }
+        // Not in memory: only the tail of each thread is held there, so a
+        // reaction to an older message used to vanish here — not drawn, and not
+        // stored either, so it never appeared when the chat was scrolled up.
+        // The row is in the database; put it there and let the next load of
+        // that window pick it up. No thread is returned: the indicator points
+        // at a message the user cannot be scrolled to yet.
+        MessageDB.shared.mergeReaction(id: targetID, uin: uin, asset: asset)
         return nil
     }
 
