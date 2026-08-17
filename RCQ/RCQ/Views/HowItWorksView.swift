@@ -28,6 +28,17 @@ struct HowItWorksView: View {
                 answer("how.q3", "how.a3")
             }
             .listRowBackground(Theme.Color.bgSecondary)
+            // Circumvention and the onion split, asked for in report #572 and
+            // written in plain words: the person reading has no reason to know
+            // what a circuit is.
+            Section {
+                answer("how.q4", "how.a4")
+            }
+            .listRowBackground(Theme.Color.bgSecondary)
+            Section {
+                answer("how.q5", "how.a5")
+            }
+            .listRowBackground(Theme.Color.bgSecondary)
             Section {
                 Button("how.more".localized) {
                     if let url = URL(string: "https://rcq.app/faq") { openURL(url) }
