@@ -52,6 +52,7 @@ struct SettingsView: View {
     @State private var showNetwork = false
     @State private var showNotifications = false
     @State private var showMyReports = false
+    @State private var showIslandRules = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
@@ -306,6 +307,48 @@ struct SettingsView: View {
                         .listRowBackground(Theme.Color.bgSecondary)
                     }
 
+                    // The island this account lives on, in its own words. Both
+                    // fields come from `/server/info`, both are typed by the
+                    // operator in the admin panel, and until now the only place
+                    // either of them appeared was the confirm before joining
+                    // SOMEBODY ELSE'S island — so an operator could name their
+                    // island and write its rules and never see them on their own.
+                    Section {
+                        HStack {
+                            Image(systemName: "server.rack").foregroundColor(Theme.Color.accent)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(appState.serverName.isEmpty ? islandHost : appState.serverName)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                // The host repeats under a name and nowhere
+                                // else: two lines saying the same host is one
+                                // line of noise.
+                                if !appState.serverName.isEmpty {
+                                    Text(islandHost)
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                            }
+                        }
+                        if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                showIslandRules = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "text.book.closed.fill").foregroundColor(Theme.Color.accent)
+                                    Text("settings.island.rules".localized)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("settings.island".localized)
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+
                     Section {
                         Button {
                             showRecovery = true
@@ -419,6 +462,12 @@ struct SettingsView: View {
             .sheet(isPresented: $showNetwork) { PrivacySettingsView(pane: .network) }
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
             .sheet(isPresented: $showMyReports) { MyReportsView() }
+            .sheet(isPresented: $showIslandRules) {
+                IslandRulesSheet(
+                    title: appState.serverName.isEmpty ? islandHost : appState.serverName,
+                    rules: appState.serverWelcome
+                )
+            }
             .sheet(isPresented: $showBlockedUsers) { BlockedUsersView() }
             .sheet(isPresented: $showRecovery) { RecoveryPhraseView() }
             .sheet(isPresented: $showLinkedDevices) { LinkedDevicesView() }
@@ -529,33 +578,39 @@ struct SettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
-            Button {
-                showBugBounty = true
-            } label: {
-                HStack {
-                    Image(systemName: "ladybug.fill").foregroundColor(Theme.Color.accent)
-                    Text("settings.account.bug_bounty".localized).foregroundColor(Theme.Color.textPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
+            // An island that runs no report desk gets neither entry: a form the
+            // island answers 403 and a screen that stays empty are worse than an
+            // absent menu row. Flag comes from /server/info and defaults
+            // permissive, so an island older than it keeps both.
+            if appState.serverCapabilities.reports {
+                Button {
+                    showBugBounty = true
+                } label: {
+                    HStack {
+                        Image(systemName: "ladybug.fill").foregroundColor(Theme.Color.accent)
+                        Text("settings.account.bug_bounty".localized).foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
-            }
-            // Directly under the form that files a report: this is where the
-            // person who just filed one looks for the answer. It used to sit
-            // up next to Notifications, which is where the answer NOTIFICATION
-            // is configured, not where the answer is read (founder, and the
-            // same move the Android client made in v0.79).
-            Button {
-                showMyReports = true
-            } label: {
-                HStack {
-                    Image(systemName: "flag.fill").foregroundColor(Theme.Color.accent)
-                    Text("settings.my_reports".localized).foregroundColor(Theme.Color.textPrimary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
+                // Directly under the form that files a report: this is where the
+                // person who just filed one looks for the answer. It used to sit
+                // up next to Notifications, which is where the answer NOTIFICATION
+                // is configured, not where the answer is read (founder, and the
+                // same move the Android client made in v0.79).
+                Button {
+                    showMyReports = true
+                } label: {
+                    HStack {
+                        Image(systemName: "flag.fill").foregroundColor(Theme.Color.accent)
+                        Text("settings.my_reports".localized).foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
             }
         }
@@ -712,6 +767,53 @@ struct SettingsView: View {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(v) (\(b))"
+    }
+
+    /// The island this account lives on.
+    ///
+    /// ⚠ Deliberately NOT `APIClient.shared.baseURL`. That resolves to the
+    /// bypass proxy whenever one is active, and naming the proxy as your island
+    /// would be a lie on the one row that exists to answer "where does my
+    /// account actually live". The island is the picked backend, proxy or no
+    /// proxy — the same value `CustomServerSheet` writes.
+    private var islandHost: String {
+        let picked = UserDefaults.standard.string(forKey: "rcq.baseURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = (picked?.isEmpty == false) ? picked! : APIClient.prodBaseURL
+        return URL(string: base)?.host ?? base
+    }
+}
+
+// MARK: - Island house rules
+
+/// The operator's welcome text, read-only and scrollable. It is free text of
+/// any length typed in the admin panel, so it gets a screen rather than a row.
+private struct IslandRulesSheet: View {
+    let title: String
+    let rules: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                ScrollView {
+                    Text(rules)
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(16)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close".localized) { dismiss() }
+                }
+            }
+        }
     }
 }
 
