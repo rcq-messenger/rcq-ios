@@ -96,6 +96,7 @@ struct PrivacySettingsView: View {
     @State private var showCustomServer = false
     @State private var showManageAccounts = false
     @StateObject private var accountManager = AccountManager.shared
+    @ObservedObject private var panicPIN = PanicPINService.shared
 
     private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
 
@@ -456,22 +457,32 @@ struct PrivacySettingsView: View {
 
     private var networkSection: some View {
         Section {
-            Button {
-                showManageAccounts = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "person.2.crop.square.stack")
-                        .foregroundColor(Theme.Color.accent)
-                        .frame(width: 24)
-                    Text("settings.network.accounts".localized)
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Spacer()
-                    Text(String(accountManager.accounts.count))
-                        .font(.caption2.monospaced())
-                        .foregroundColor(Theme.Color.textSecondary)
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
+            // ⚠⚠ Not under duress. The contact list already refuses to draw the
+            // account switcher in a decoy session, for the reason written there:
+            // a decoy identity is not in the roster and must not be able to
+            // reach it. This row was the same door left open — worse, actually,
+            // because the count alone answers the only question a decoy exists
+            // to leave unanswered. It read "Accounts 3" beside a session that
+            // is supposed to be someone's whole phone, and opened a list of the
+            // real numbers, switchable.
+            if !panicPIN.isDecoy {
+                Button {
+                    showManageAccounts = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.2.crop.square.stack")
+                            .foregroundColor(Theme.Color.accent)
+                            .frame(width: 24)
+                        Text("settings.network.accounts".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Text(String(accountManager.accounts.count))
+                            .font(.caption2.monospaced())
+                            .foregroundColor(Theme.Color.textSecondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
             }
             Button {

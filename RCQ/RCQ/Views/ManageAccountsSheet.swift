@@ -21,8 +21,15 @@ struct ManageAccountsSheet: View {
     @State private var pendingDelete: Account?
     @State private var showRestore = false
 
+    /// ⚠⚠ Empty under duress, and this is the second lock, not the first: the
+    /// row that opens this sheet is already hidden in a decoy session. A screen
+    /// that hands out the real accounts — their numbers read straight from the
+    /// Keychain, and a tap away from being switched to — is exactly what the
+    /// decoy exists to make unreachable, so it refuses on its own account
+    /// rather than trusting that nothing will ever present it again.
     private var sortedAccounts: [Account] {
-        accountManager.accounts.sorted { $0.createdAt < $1.createdAt }
+        if PanicPINService.shared.isDecoy { return [] }
+        return accountManager.accounts.sorted { $0.createdAt < $1.createdAt }
     }
 
     var body: some View {
