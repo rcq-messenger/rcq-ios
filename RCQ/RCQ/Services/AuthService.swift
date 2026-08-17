@@ -255,7 +255,11 @@ final class AuthService: ObservableObject {
     /// Mirrors the web + Android wiring. Internal so the Settings backup-island
     /// surface can republish after an add/remove.
     func publishHomeIslandRecord(ownUIN: Int) async {
-        guard let doc = buildOwnRecordDoc(ownUIN: ownUIN),
+        // ⚠⚠ Read the published record BEFORE overwriting it — see
+        // `Multihome.ownPublishedHomes`. A backup island switched on elsewhere
+        // is not in this install's store, and republishing without it silently
+        // takes that mailbox off the map for every sender.
+        guard let doc = await buildOwnRecordDoc(ownUIN: ownUIN, carryingPublishedHomes: true),
               let body = try? JSONSerialization.data(withJSONObject: doc) else { return }
         _ = await APIClient.shared.publishIslandRecord(body)
         let homeCount = (doc["homes"] as? [[String: Any]])?.count ?? 1
@@ -266,15 +270,25 @@ final class AuthService: ObservableObject {
     /// homes). Shared by the F1 publish above and the gossip B1 self-push so
     /// both sign the exact same bytes. Returns nil before the libsignal device
     /// or signing key exists.
-    func buildOwnRecordDoc(ownUIN: Int) -> [String: Any]? {
+    func buildOwnRecordDoc(ownUIN: Int, carryingPublishedHomes: Bool = false) async -> [String: Any]? {
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
               let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return nil }
         let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
         let ik = local.identityKeyPair.publicKey.serialize().base64EncodedString()
         let host = APIClient.shared.baseURL.host ?? RcqFederation.flagshipHost
-        let homes = [RcqFederation.Home(host: host, uin: ownUIN)] +
+        let mine = [RcqFederation.Home(host: host, uin: ownUIN)] +
             MultihomeStore.shared.list(ownUin: ownUIN).map { RcqFederation.Home(host: $0.host, uin: $0.uin) }
+        // Homes another device of this account published and this one has never
+        // heard of are carried over untouched. We hold no credentials for them
+        // and do not pretend to: the record is an address list, not an
+        // authorisation. Only the F1 publish asks for this — the gossip push
+        // signs whatever the publish last built.
+        var homes = mine
+        if carryingPublishedHomes {
+            let published = await Multihome.ownPublishedHomes(ownUin: ownUIN, ownSigningKey: sk)
+            homes += published.filter { p in !mine.contains { $0.host.caseInsensitiveCompare(p.host) == .orderedSame } }
+        }
         let ts = Int(Date().timeIntervalSince1970)
         return try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts)
     }

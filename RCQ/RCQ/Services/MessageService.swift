@@ -953,7 +953,7 @@ final class MessageService {
     func pushHomeRecordToContacts() async {
         let uin = ownUIN
         guard uin != 0,
-              let doc = AuthService.shared.buildOwnRecordDoc(ownUIN: uin),
+              let doc = await AuthService.shared.buildOwnRecordDoc(ownUIN: uin),
               let data = try? JSONSerialization.data(withJSONObject: doc),
               let wire = try? JSONDecoder().decode(Envelope.IslandRecordWire.self, from: data) else { return }
         let env = Envelope.homeRecord(rec: wire)
