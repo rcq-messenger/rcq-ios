@@ -626,21 +626,35 @@ struct PendingRequestsView: View {
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
             }
-            HStack(spacing: 12) {
-                Button("pending.cta.accept".localized) { acceptCI(r) }
-                    .buttonStyle(.borderedProminent).tint(Theme.Color.statusOnline)
-                    .disabled(ciBusy == r.id)
+            // Glyphs, not words. Three worded buttons under an address as long
+            // as `618917107@is2.rcq.app` wrapped and truncated on anything
+            // narrower than a Pro Max, and "Заблокировать" never fit at all.
+            // The words stay as the accessibility labels.
+            HStack(spacing: 10) {
+                RequestActionButton(
+                    system: "checkmark",
+                    label: "pending.cta.accept".localized,
+                    tint: Theme.Color.statusOnline,
+                    prominent: true,
+                    disabled: ciBusy == r.id
+                ) { acceptCI(r) }
                 // Decline only makes sense against a §5f request — it deposits
                 // `act:"decline"` back so the requester stops waiting. A plain
                 // quarantined message has no requester to answer.
                 if r.isContactRequest {
-                    Button("pending.cta.decline".localized) { declineCI(r) }
-                        .buttonStyle(.bordered).tint(Theme.Color.textSecondary)
-                        .disabled(ciBusy == r.id)
+                    RequestActionButton(
+                        system: "xmark",
+                        label: "pending.cta.decline".localized,
+                        tint: Theme.Color.textSecondary,
+                        disabled: ciBusy == r.id
+                    ) { declineCI(r) }
                 }
-                Button("ci.block".localized) { blockCI(r) }
-                    .buttonStyle(.bordered).tint(Theme.Color.statusBusy)
-                    .disabled(ciBusy == r.id)
+                RequestActionButton(
+                    system: "nosign",
+                    label: "ci.block".localized,
+                    tint: Theme.Color.statusBusy,
+                    disabled: ciBusy == r.id
+                ) { blockCI(r) }
             }
         }
     }
@@ -704,15 +718,22 @@ struct PendingRequestsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
             }
-            HStack(spacing: 12) {
-                Button("pending.cta.accept".localized) {
+            HStack(spacing: 10) {
+                RequestActionButton(
+                    system: "checkmark",
+                    label: "pending.cta.accept".localized,
+                    tint: Theme.Color.statusOnline,
+                    prominent: true
+                ) {
                     Task { try? await contacts.respond(requestID: req.id, accept: true) }
                 }
-                .buttonStyle(.borderedProminent).tint(Theme.Color.statusOnline)
-                Button("pending.cta.decline".localized) {
+                RequestActionButton(
+                    system: "xmark",
+                    label: "pending.cta.decline".localized,
+                    tint: Theme.Color.textSecondary
+                ) {
                     Task { try? await contacts.respond(requestID: req.id, accept: false) }
                 }
-                .buttonStyle(.bordered).tint(Theme.Color.statusBusy)
             }
         }
     }
@@ -749,5 +770,34 @@ struct ProfileView: View {
             }
         }
         
+    }
+}
+
+/// One glyph-sized action on a request row.
+///
+/// A 44pt square is the smallest thing Apple will call a tap target, and these
+/// three sit next to each other under an address, so the icon is drawn small
+/// and the frame is padded out to that floor. The word the button used to show
+/// becomes its accessibility label, so VoiceOver still says "Принять".
+struct RequestActionButton: View {
+    let system: String
+    let label: String
+    let tint: Color
+    var prominent: Bool = false
+    var disabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: system)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 44, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.bordered)
+        .tint(tint)
+        .foregroundColor(prominent ? tint : tint)
+        .disabled(disabled)
+        .accessibilityLabel(label)
     }
 }
