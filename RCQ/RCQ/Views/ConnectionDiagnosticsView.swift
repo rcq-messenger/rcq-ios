@@ -69,6 +69,13 @@ struct ConnectionDiagnosticsView: View {
     /// third-party control hosts, which must never happen without the user
     /// asking for it.
     @ViewBuilder private var auditSection: some View {
+        // ⚠⚠ Never under duress. This one does not go through `APIClient`, so
+        // `DuressGate` cannot stop it: it opens raw connections to this island,
+        // the front, the relays and two third-party control hosts. One tap from
+        // a coerced phone would put the real island's name on the wire from a
+        // session whose whole claim is that it is somebody else's. Hidden
+        // rather than disabled — a dead button invites a second tap.
+        if !PanicPINService.shared.isDecoy {
         Divider().padding(.vertical, 6)
         Text("audit.hint".localized)
             .font(.caption)
@@ -109,6 +116,7 @@ struct ConnectionDiagnosticsView: View {
                 ShareLink(item: a.compact) { Text("common.share".localized) }
             }
             .font(.callout)
+        }
         }
     }
 
@@ -182,6 +190,29 @@ struct ConnectionDiagnosticsView: View {
                 detail: "diag.transport.failed".localized(err),
                 status: .fail
             ))
+        }
+
+        // ⚠⚠ A duress session answers this screen from what it already claims
+        // and asks the network nothing. The two probes below go through
+        // `APIClient`, so `DuressGate` refuses them — no traffic leaves, which
+        // is the important half — but they would then paint two red FAILED
+        // lines directly under a header whose dot is green. "Connected" over
+        // "server unreachable" on one screen is a contradiction a coercer reads
+        // for free, and the decoy's whole job is to hold one story.
+        if PanicPINService.shared.isDecoy {
+            push(DiagLine(
+                title: "diag.server.title".localized,
+                detail: "diag.server.ok".localized(42),
+                status: .ok
+            ))
+            push(DiagLine(
+                title: "diag.ws.title".localized,
+                detail: "diag.ws.connected".localized,
+                status: .ok
+            ))
+            overallOK = true
+            running = false
+            return
         }
 
         // Server reachable: unauthenticated /health.
