@@ -236,6 +236,33 @@ enum KeychainStore {
         /// same physical device and REPLACE its old push token instead of
         /// piling up duplicates. Not in `perAccountKeys` → uses the global slot.
         static let deviceID = "rcq.device.id"
+        /// 32-byte AES key sealing the NSE→app push hand-off files. Global: the
+        /// cache is keyed by ciphertext hash and shared by both processes.
+        static let pushCacheKey = "rcq.pushcache.key"
+    }
+
+    // MARK: - Push hand-off key
+
+    /// The key that seals `PushDecryptCache` on disk. Minted on first use and
+    /// shared by the app and the extension through the access group, with the
+    /// same `AfterFirstUnlockThisDeviceOnly` accessibility as everything else
+    /// here — the NSE has to open these files while the screen is locked.
+    ///
+    /// ⚠⚠ Why it exists: those files held the DECRYPTED text of every pushed
+    /// message, as plain JSON, for thirty days, in a container any file dump
+    /// can read. The conversations themselves live in an encrypted database
+    /// behind the PIN; this was the one place the same words sat beside it in
+    /// the clear, and the PIN never touched it.
+    static func pushCacheKey() -> Data {
+        if let existing = data(Keys.pushCacheKey), existing.count == 32 {
+            return existing
+        }
+        var fresh = Data(count: 32)
+        _ = fresh.withUnsafeMutableBytes { buf in
+            SecRandomCopyBytes(kSecRandomDefault, 32, buf.baseAddress!)
+        }
+        set(Keys.pushCacheKey, fresh)
+        return fresh
     }
 
     // MARK: - Stable install id
@@ -251,5 +278,20 @@ enum KeychainStore {
         let fresh = UUID().uuidString
         setString(Keys.deviceID, fresh)
         return fresh
+    }
+
+    /// Forget the install id, so the next `deviceID()` mints a new one.
+    ///
+    /// ⚠⚠ This is what a burn was missing. The id is deliberately device-global
+    /// and survives a reinstall — that is its job for push dedup — so it also
+    /// survived a burn, and the island stores it on `device_tokens` alongside
+    /// the uin. Wipe the account, register a fresh number on the same phone,
+    /// and one SELECT on that column joins the old uin to the new one. For a
+    /// PANIC wipe that is the whole feature undone: the point is not to leave a
+    /// thread from the account that was erased to the person still holding the
+    /// phone. Rotating costs nothing — the island purges the old uin's token
+    /// rows as part of the delete.
+    static func rotateDeviceID() {
+        delete(Keys.deviceID)
     }
 }

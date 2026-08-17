@@ -1011,7 +1011,19 @@ final class AppState: ObservableObject {
     /// `deleteServerAccount` is opt-out ONLY for the wipe-PIN path, which is
     /// explicitly device-local unless the user turned the server erase on. The
     /// user-facing "Burn account" button keeps the old always-delete behaviour.
-    func burnAccount(deleteServerAccount: Bool = true) async {
+    /// [requireServerErase] refuses to touch local storage when the island did
+    /// not confirm the delete, so the app cannot tell somebody their account is
+    /// gone while the row is still on the island. Android has behaved this way
+    /// since its burn was fixed; iOS swallowed the failure with `try?`.
+    ///
+    /// It is OFF for the two callers that must wipe regardless: a duress wipe
+    /// (instant, and has to work offline — the island is best-effort there) and
+    /// the `accountBurned` event, where the account is already gone and a second
+    /// DELETE can only fail.
+    ///
+    /// Returns false only in the refused case.
+    @discardableResult
+    func burnAccount(deleteServerAccount: Bool = true, requireServerErase: Bool = false) async -> Bool {
         // ⚠ IN A DECOY SESSION THIS BURNS THE DECOY, NEVER THE REAL ACCOUNT.
         //
         // "Burn account" is a plain destructive row in Settings and a coercer
@@ -1026,10 +1038,17 @@ final class AppState: ObservableObject {
         // the app starts over.
         if PanicPINService.shared.isDecoy {
             await burnDecoySession()
-            return
+            return true
         }
         if deleteServerAccount {
-            await AuthService.shared.deleteServerAccount()
+            let erased = await AuthService.shared.deleteServerAccount()
+            if !erased && requireServerErase {
+                // Nothing has been touched yet, so leaving now leaves the
+                // account whole and the user able to try again — which is the
+                // truth, and better than a screen that closes on a comforting
+                // lie.
+                return false
+            }
         }
         WebSocketService.shared.disconnect()
 
@@ -1071,6 +1090,7 @@ final class AppState: ObservableObject {
         booted = false
         bootError = nil
         await boot()
+        return true
     }
 
     /// The decoy-session half of `burnAccount`. Empties the seeded history and
