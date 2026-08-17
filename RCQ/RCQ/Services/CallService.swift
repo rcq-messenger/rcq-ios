@@ -863,6 +863,22 @@ final class CallService: ObservableObject {
 
     /// Reachable from WS `callEnd` and the VoIP-push `kind=end` fallback.
     func handleRemoteEnd(callID: String, reason: String) {
+        // "answered_elsewhere" is the server taking THIS device's ring down
+        // because the account picked up on another device. Nothing ended for
+        // this user — the call carries on over there — so no history row and
+        // no ended card: skip `.ended` entirely and drop to `.idle`, same as
+        // web. CallKit still gets the report so its incoming UI comes down.
+        if reason == "answered_elsewhere" {
+            if let c = state.call, c.id == callID {
+                state = .idle
+                teardownAfterEnd()
+            }
+            CallProvider.shared.reportEnded(
+                callID: callID,
+                reason: callKitReason(forWireReason: reason)
+            )
+            return
+        }
         if let c = state.call, c.id == callID {
             state = .ended(c, reason: reason)
             CallProvider.shared.reportEnded(
@@ -930,6 +946,9 @@ final class CallService: ObservableObject {
         // unanswered call the peer chose to sit through.
         case "unreachable":  return .failed
         case "setup_failed": return .failed
+        // The account answered on its other device; this is CallKit's exact
+        // term for it, and it dismisses the ring without marking a miss.
+        case "answered_elsewhere": return .answeredElsewhere
         default:             return .remoteEnded
         }
     }
