@@ -482,6 +482,27 @@ enum Multihome {
 
     private static func tsOf(_ rec: [String: Any]) -> Int { rec["ts"] as? Int ?? 0 }
 
+    /// The homes OUR OWN published record already lists, verified against our
+    /// own signing key. Empty when there is no record yet, when it does not
+    /// verify, or when the island cannot be reached.
+    ///
+    /// ⚠⚠ The homes list is an ACCOUNT-wide fact, and this install only ever
+    /// knew its own local half of it: a backup island switched on in the web,
+    /// or on another phone, is not in `MultihomeStore` here. Republishing that
+    /// half alone PUT a record without it under a fresh `ts`, and the island
+    /// rejects only an OLDER ts — so this device quietly unpublished the other
+    /// one's backup and senders stopped being told the mailbox exists. Reading
+    /// before publishing is what keeps one device from undoing another's work.
+    static func ownPublishedHomes(ownUin: Int, ownSigningKey: String) async -> [RcqFederation.Home] {
+        guard let url = URL(string: "https://\(ownHost())/federation/island-record/\(ownUin)"),
+              let (data, resp) = try? await IslandHTTP.data(from: url),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: ownSigningKey))
+        else { return [] }
+        return homesOf(rec)
+    }
+
     /// Apply a contact's SELF-PUSHED home-island record (gossip B1): verify it
     /// is signed by `senderSigningKey` (the same Ed25519 key that signed the
     /// envelope it arrived in — binds the record to its real sender), reject a
