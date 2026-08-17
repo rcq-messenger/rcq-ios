@@ -37,6 +37,12 @@ final class AppState: ObservableObject {
     /// `.defaultLegacy` on every account switch and re-populated by
     /// the next boot.
     @Published var serverCapabilities: ServerCapabilities = .defaultLegacy
+    /// What this island calls itself and the house rules its operator typed,
+    /// from the same `/server/info` reply. Empty until the boot fetch lands and
+    /// on any island that leaves them blank; Settings then falls back to the
+    /// host, which is all we honestly know.
+    @Published var serverName: String = ""
+    @Published var serverWelcome: String = ""
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     /// Island host from a contact link's `?h=` (spec §5) — set BEFORE
@@ -708,9 +714,11 @@ final class AppState: ObservableObject {
             // {uin_shop: false} here and SettingsView drops the row
             // entirely; api.rcq.app returns {uin_shop: true} and the
             // surface stays.
-            if let caps = await ServerInfoService.fetch() {
-                serverCapabilities = caps
-                AccountManager.serverMaxAccounts = caps.maxAccountsPerDevice
+            if let info = await ServerInfoService.fetch() {
+                serverCapabilities = info.capabilities
+                AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
+                serverName = info.name
+                serverWelcome = info.welcome ?? ""
             }
 
             let baseURL = APIClient.shared.baseURL
@@ -1424,6 +1432,10 @@ final class AppState: ObservableObject {
         // briefly show the UIN-shop row in Settings until the new
         // /server/info reply lands.
         serverCapabilities = .defaultLegacy
+        // Same reason: the outgoing island's name and rules must not sit in
+        // Settings while the incoming one's reply is still in the air.
+        serverName = ""
+        serverWelcome = ""
         AccountManager.serverMaxAccounts = AccountManager.hardCap
 
         ContactService.shared.wipe()
@@ -1732,6 +1744,12 @@ struct ServerCapabilities: Decodable, Equatable {
     var randomChat: Bool
     var hood: Bool
     var stories: Bool
+    // An island may run no report desk at all (admin console → Features). When
+    // it doesn't, the two report entries go with it: a form the island answers
+    // 403 and a screen that stays empty are worse than an absent menu row.
+    // Permissive default like the rest, so an island older than the flag keeps
+    // accepting reports.
+    var reports: Bool
     // How many accounts one device may hold (operator-set). Caps the account
     // switcher; defaults to the historical 5.
     var maxAccountsPerDevice: Int
@@ -1743,6 +1761,7 @@ struct ServerCapabilities: Decodable, Equatable {
         randomChat: Bool = true,
         hood: Bool = true,
         stories: Bool = true,
+        reports: Bool = true,
         maxAccountsPerDevice: Int = 5
     ) {
         self.uinShop = uinShop
@@ -1751,6 +1770,7 @@ struct ServerCapabilities: Decodable, Equatable {
         self.randomChat = randomChat
         self.hood = hood
         self.stories = stories
+        self.reports = reports
         self.maxAccountsPerDevice = maxAccountsPerDevice
     }
 
@@ -1763,6 +1783,7 @@ struct ServerCapabilities: Decodable, Equatable {
         case randomChat = "random_chat"
         case hood
         case stories
+        case reports
         case maxAccountsPerDevice = "max_accounts_per_device"
     }
 
@@ -1779,6 +1800,7 @@ struct ServerCapabilities: Decodable, Equatable {
         randomChat = try c.decodeIfPresent(Bool.self, forKey: .randomChat) ?? true
         hood = try c.decodeIfPresent(Bool.self, forKey: .hood) ?? true
         stories = try c.decodeIfPresent(Bool.self, forKey: .stories) ?? true
+        reports = try c.decodeIfPresent(Bool.self, forKey: .reports) ?? true
         maxAccountsPerDevice = try c.decodeIfPresent(Int.self, forKey: .maxAccountsPerDevice) ?? 5
     }
 }
@@ -1816,14 +1838,17 @@ enum ServerInfoService {
         }
     }
 
-    static func fetch() async -> ServerCapabilities? {
+    /// The whole answer for the island we ARE on, not just the flags: the name
+    /// and the house rules are two fields of the same reply, and dropping them
+    /// here is why an operator could fill both in and see neither anywhere in
+    /// the app except a join confirm for somebody else's island.
+    static func fetch() async -> ServerInfoResponse? {
         do {
-            let info: ServerInfoResponse = try await APIClient.shared.request(
+            return try await APIClient.shared.request(
                 "GET",
                 "/server/info",
                 authenticated: false
             )
-            return info.capabilities
         } catch {
             return nil
         }
