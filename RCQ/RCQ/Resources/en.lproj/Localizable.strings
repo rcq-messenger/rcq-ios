@@ -1767,6 +1767,7 @@
 /* My reports: the answers channel for filed reports (Android v0.77 parity) */
 "settings.my_reports" = "My reports";
 "settings.island" = "This island";
+"settings.account.burn_failed" = "Could not reach the island, so nothing was deleted. Your account is untouched. Try again when you have a connection.";
 "settings.island.rules" = "House rules";
 "myreports.title" = "My reports";
 "myreports.empty" = "You have not sent any reports. If you do, the answer appears here.";

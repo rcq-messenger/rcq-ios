@@ -75,7 +75,45 @@ enum PushDecryptCache {
             senderSigningKey: decrypted.senderSigningKey
         )
         guard let data = try? JSONEncoder().encode(entry) else { return }
-        try? data.write(to: fileURL(for: ciphertextB64), options: .atomic)
+        // Sealed before it touches the disk. See `seal` below for why.
+        guard let box = seal(data) else { return }
+        try? box.write(to: fileURL(for: ciphertextB64), options: .atomic)
+    }
+
+    // MARK: - At-rest sealing
+    //
+    // ⚠⚠ These files carry the DECRYPTED text of a pushed message — that is
+    // their whole purpose, since the NSE must not let the main app decrypt the
+    // same v=2 envelope twice. They were written as plain JSON and kept for
+    // thirty days in the App Group container.
+    //
+    // Everything else the app remembers about a conversation lives in a
+    // database encrypted under the PIN. This did not: a file dump, a backup, or
+    // simply somebody with the phone in their hands read the last month of
+    // pushed messages, sender and text, without the PIN entering into it.
+    //
+    // AES-GCM under a key in the shared Keychain fixes it. The Keychain is
+    // exactly where the material this cache is derived from already lives, and
+    // both processes reach it through the access group they already share.
+    private static func seal(_ plaintext: Data) -> Data? {
+        guard let sealed = try? AES.GCM.seal(
+            plaintext, using: SymmetricKey(data: KeychainStore.pushCacheKey())
+        ) else { return nil }
+        return sealed.combined
+    }
+
+    /// Nil when the box is not ours to open. Callers fall back to reading the
+    /// file as plain JSON, which is what entries written before this change are
+    /// — dropping them instead would lose every push already decrypted by the
+    /// NSE, and those are exactly the envelopes whose ratchet has moved on and
+    /// which nothing else can decode.
+    private static func open(_ box: Data) -> Data? {
+        guard let sealedBox = try? AES.GCM.SealedBox(combined: box),
+              let plain = try? AES.GCM.open(
+                  sealedBox, using: SymmetricKey(data: KeychainStore.pushCacheKey())
+              )
+        else { return nil }
+        return plain
     }
 
     /// Returns cached plaintext + sender if the NSE got here first.
@@ -84,7 +122,10 @@ enum PushDecryptCache {
         let url = fileURL(for: ciphertextB64)
         guard let data = try? Data(contentsOf: url) else { return nil }
         defer { try? FileManager.default.removeItem(at: url) }
-        guard let entry = try? JSONDecoder().decode(CacheEntry.self, from: data) else {
+        // Sealed first, plain second: an entry written by a build older than
+        // this one is the only decoder its envelope has left.
+        let json = open(data) ?? data
+        guard let entry = try? JSONDecoder().decode(CacheEntry.self, from: json) else {
             return nil
         }
         return DecryptedEnvelope(

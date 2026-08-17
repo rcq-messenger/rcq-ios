@@ -1721,6 +1721,7 @@
 /* My reports: the answers channel for filed reports (Android v0.77 parity) */
 "settings.my_reports" = "Мои обращения";
 "settings.island" = "Этот остров";
+"settings.account.burn_failed" = "До острова не достучались, поэтому ничего не удалено. Аккаунт цел. Попробуйте снова, когда будет связь.";
 "settings.island.rules" = "Правила острова";
 "myreports.title" = "Мои обращения";
 "myreports.empty" = "Вы пока не отправляли обращений. Если отправите, ответ появится здесь.";

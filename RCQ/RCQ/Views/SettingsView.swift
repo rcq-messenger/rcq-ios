@@ -53,6 +53,7 @@ struct SettingsView: View {
     @State private var showNotifications = false
     @State private var showMyReports = false
     @State private var showIslandRules = false
+    @State private var burnFailed = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
@@ -462,6 +463,9 @@ struct SettingsView: View {
             .sheet(isPresented: $showNetwork) { PrivacySettingsView(pane: .network) }
             .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
             .sheet(isPresented: $showMyReports) { MyReportsView() }
+            .alert("settings.account.burn_failed".localized, isPresented: $burnFailed) {
+                Button("common.ok".localized, role: .cancel) {}
+            }
             .sheet(isPresented: $showIslandRules) {
                 IslandRulesSheet(
                     title: appState.serverName.isEmpty ? islandHost : appState.serverName,
@@ -493,9 +497,13 @@ struct SettingsView: View {
                 Button("settings.account.burn.confirm".localized, role: .destructive) {
                     Task {
                         burning = true
-                        await AppState.shared.burnAccount()
+                        // The island decides whether anything was erased. If it
+                        // did not answer, nothing local is touched and the
+                        // screen stays open saying so, rather than closing on
+                        // "deleted" over an account that is still there.
+                        let done = await AppState.shared.burnAccount(requireServerErase: true)
                         burning = false
-                        dismiss()
+                        if done { dismiss() } else { burnFailed = true }
                     }
                 }
                 Button("common.cancel".localized, role: .cancel) {}

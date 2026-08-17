@@ -116,6 +116,21 @@ final class CallService: ObservableObject {
         answered = false
         state = .outgoingRinging(call)
         armRingTimeout(callID: call.id)
+        // ⚠⚠ A duress session may not put a packet on the wire, and this is the
+        // one path that could. The incoming side has always checked; the
+        // outgoing side never did, and `createOffer` below is not an API call —
+        // it gathers ICE, which means UDP straight to our STUN/TURN hosts from
+        // the device, around `APIClient` and therefore around the DuressGate
+        // entirely. Someone watching the network would see the phone reach our
+        // infrastructure at the exact moment the screen claims to be a quiet
+        // little account with nothing in it.
+        //
+        // We stop BELOW the state change on purpose: the call rings and then
+        // times out as unanswered, through the timeout that was already armed.
+        // That is what calling someone from a phone with no working connection
+        // looks like, and it is the same story the rest of the duress view
+        // tells. A button that visibly does nothing is its own kind of tell.
+        if PanicPINService.shared.isDecoy { return }
         // outgoing bypasses CallKit: CXStartCallAction + libwebrtc on iOS 17/18 fires an
         // immediate CXEndCallAction once the audio session is touched. Inbound only.
         Task {

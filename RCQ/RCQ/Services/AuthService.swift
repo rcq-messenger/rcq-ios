@@ -402,6 +402,10 @@ final class AuthService: ObservableObject {
         ] {
             KeychainStore.delete(key)
         }
+        // The install id goes with them. It is device-global and outlives a
+        // reinstall by design, which meant the number we register next was
+        // handed to the island already wearing the erased account's name tag.
+        KeychainStore.rotateDeviceID()
         // Stage 3 stores live in App Group SQLite, not Keychain. Burn
         // them too — re-registered identity must not inherit stale
         // sessions/ratchet state.
@@ -412,10 +416,40 @@ final class AuthService: ObservableObject {
         isReady = false
     }
 
-    /// Best-effort — local burn proceeds even if this fails.
-    func deleteServerAccount() async {
-        let _: EmptyResponse? = try? await APIClient.shared.request(
-            "DELETE", "/auth/account"
-        )
+    /// Ask the island to erase the account. Best-effort — the local burn
+    /// proceeds either way — but it reports whether the island actually did it,
+    /// because one caller cannot afford to guess.
+    ///
+    /// ⚠⚠ THE TOKEN IS LOADED HERE, not assumed. `APIClient` gets its token
+    /// inside `bootstrapIfNeeded`, and there is one path that reaches this
+    /// function before boot has ever run: a WIPING PIN typed on the lock screen
+    /// of a COLD START. The request then went out with no Authorization header
+    /// at all, the island answered 401, `try?` swallowed it, and the local wipe
+    /// carried on — so the one person who most needed the account gone was told
+    /// it was gone while it was still there, still receiving, still listed.
+    /// That is the exact situation this feature exists for.
+    ///
+    /// Same slot selection as boot: the legacy/first account may fall back to
+    /// the unprefixed slot, every other account reads strictly its own, or we
+    /// would delete a different account than the one being wiped.
+    @discardableResult
+    func deleteServerAccount() async -> Bool {
+        if await APIClient.shared.currentToken() == nil {
+            let am = AccountManager.shared
+            let legacyOwner = am.accounts.count <= 1 || am.activeAccountID == am.accounts.first?.id
+            let stored: String? = legacyOwner
+                ? KeychainStore.string(KeychainStore.Keys.token)
+                : am.activeAccountID.flatMap { KeychainStore.string(KeychainStore.Keys.token, forAccount: $0) }
+            if let stored { await APIClient.shared.setToken(stored) }
+        }
+        do {
+            let _: EmptyResponse? = try await APIClient.shared.request(
+                "DELETE", "/auth/account"
+            )
+            return true
+        } catch {
+            print("[AuthService] server erase failed: \(error.localizedDescription)")
+            return false
+        }
     }
 }
