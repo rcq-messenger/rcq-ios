@@ -851,6 +851,30 @@ final class MessageService {
     // MARK: - low level
 
     private func sendEnvelope(_ envelope: Envelope, to contact: Contact, localID: UUID?) async throws {
+        // ⚠⚠ A duress session puts nothing on the wire, and must not look like
+        // it tried.
+        //
+        // It already sent nothing: the encrypt below throws for a decoy contact
+        // (no usable key) and the throw happens inside a detached `Task` whose
+        // `try?` drops it, so the bubble sat in "sending" forever. A spinner
+        // that never resolves is the loudest tell this screen had — "send
+        // something" is the cheapest test a coercer can run, and the decoy
+        // failed it on the first message. (Our own article says the send is
+        // imitated locally. It was not, which is how a reader found it.)
+        //
+        // Marked `.sent`, which is exactly what a message to someone who is
+        // offline looks like: one tick, no error, and no second tick promised.
+        // The row is already in the decoy's own encrypted store, so it survives
+        // leaving the chat and coming back.
+        if PanicPINService.shared.isDecoy {
+            if let localID {
+                MessageStore.shared.updateState(
+                    messageID: localID, thread: .peer(uin: contact.uin), state: .sent
+                )
+            }
+            playSentSound(for: envelope)
+            return
+        }
         // Saved Messages. The note is already in this device's store, so there
         // is nothing to deliver TO — but there are the account's OTHER devices,
         // and until now they never learned about it: a note written on the
@@ -992,6 +1016,19 @@ final class MessageService {
     }
 
     func sendGroupEnvelope(_ envelope: Envelope, to snapshot: RCQGroup, localID: UUID?) async throws {
+        // Same rule as the 1:1 path above: a duress session sends nothing and
+        // shows no failure for it. A seeded decoy has no groups today, so this
+        // is unreachable — and it is here anyway, because "the decoy has no
+        // groups" is a property of the seed, not of this function.
+        if PanicPINService.shared.isDecoy {
+            if let localID {
+                MessageStore.shared.updateState(
+                    messageID: localID, thread: .group(id: snapshot.id), state: .sent
+                )
+            }
+            playSentSound(for: envelope)
+            return
+        }
         // Cross-island group (§5c): seal AS the guest identity (the sender uin
         // must be our per-island uin so the roster resolves it; keys identical)
         // and deposit to the group's island. Handled on its own path.
