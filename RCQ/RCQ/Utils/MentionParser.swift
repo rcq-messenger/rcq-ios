@@ -12,6 +12,36 @@ enum MentionParser {
         let uin: Int
     }
 
+    /// Roster preprocessed for scanning: longest nickname first (so the first
+    /// prefix hit is the longest match), nicknames pre-lowercased, UTF-16
+    /// lengths precomputed.
+    private struct PreparedEntry {
+        let uin: Int
+        let nick: String
+        let nickLower: String
+        let nickLen16: Int
+    }
+
+    /// Single-entry cache — successive calls come from the row bodies of one
+    /// open group, so the roster rarely changes between calls. Main-thread
+    /// only (called from view body).
+    private static var cached: (members: [RCQGroupMember], entries: [PreparedEntry])?
+
+    private static func prepared(_ members: [RCQGroupMember]) -> [PreparedEntry] {
+        if let cached, cached.members == members { return cached.entries }
+        let entries = members
+            .filter { !$0.nickname.isEmpty }
+            .sorted { $0.nickname.count > $1.nickname.count }
+            .map {
+                PreparedEntry(uin: $0.uin,
+                              nick: $0.nickname,
+                              nickLower: $0.nickname.lowercased(),
+                              nickLen16: ($0.nickname as NSString).length)
+            }
+        cached = (members, entries)
+        return entries
+    }
+
     /// Scan `text` for `@<member nick>` mentions by ROSTER longest-match, not a
     /// fixed char-class regex: at each `@`, take the LONGEST member nickname that
     /// is a case-insensitive prefix of the following text. This makes nicks with
@@ -19,11 +49,8 @@ enum MentionParser {
     /// `@([\p{L}\p{N}_.-]+)` regex stopped at the first space/colon, so those
     /// mentions never linkified. Unmatched `@foo` stays plain text.
     static func mentions(in text: String, members: [RCQGroupMember]) -> [Match] {
-        guard !text.isEmpty, !members.isEmpty else { return [] }
-        // Longest nickname first, so the first prefix hit is the longest match.
-        let sorted = members
-            .filter { !$0.nickname.isEmpty }
-            .sorted { $0.nickname.count > $1.nickname.count }
+        guard !text.isEmpty, !members.isEmpty, text.contains("@") else { return [] }
+        let sorted = prepared(members)
         let ns = text as NSString
         let len = ns.length
         var out: [Match] = []
@@ -36,10 +63,9 @@ enum MentionParser {
             let afterLower = (afterStart < len ? ns.substring(from: afterStart) : "").lowercased()
             var hit: (uin: Int, nickLen16: Int, nick: String)?
             for mem in sorted {
-                if afterLower.hasPrefix(mem.nickname.lowercased()) {
-                    let nickLen16 = (mem.nickname as NSString).length
+                if afterLower.hasPrefix(mem.nickLower) {
                     // Boundary so "@bob" doesn't match inside "@bobsled".
-                    let tailIdx = afterStart + nickLen16
+                    let tailIdx = afterStart + mem.nickLen16
                     let boundaryOk: Bool
                     if tailIdx >= len {
                         boundaryOk = true
@@ -48,7 +74,7 @@ enum MentionParser {
                         boundaryOk = !(c?.isLetter ?? false) && !(c?.isNumber ?? false)
                     }
                     if boundaryOk {
-                        hit = (mem.uin, nickLen16, mem.nickname)
+                        hit = (mem.uin, mem.nickLen16, mem.nick)
                         break
                     }
                 }

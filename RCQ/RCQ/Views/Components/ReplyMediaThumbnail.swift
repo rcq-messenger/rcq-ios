@@ -7,6 +7,7 @@ struct ReplyMediaThumbnail: View {
     var size: CGFloat = 36
 
     @State private var loadedImage: UIImage?
+    @State private var thumb: UIImage?
 
     var body: some View {
         ZStack {
@@ -28,6 +29,7 @@ struct ReplyMediaThumbnail: View {
             }
         }
         .task(id: message.mediaID ?? "") { await loadIfPhoto() }
+        .task(id: message.thumbnailB64 ?? "") { decodeThumb() }
     }
 
     @ViewBuilder
@@ -37,7 +39,7 @@ struct ReplyMediaThumbnail: View {
                 .resizable()
                 .scaledToFill()
                 .blur(radius: isLockedPremium ? 10 : 0)
-        } else if let thumb = decodedThumbnail {
+        } else if let thumb {
             Image(uiImage: thumb)
                 .resizable()
                 .scaledToFill()
@@ -61,13 +63,6 @@ struct ReplyMediaThumbnail: View {
         }
     }
 
-    private var decodedThumbnail: UIImage? {
-        guard let b64 = message.thumbnailB64,
-              let data = Data(base64Encoded: b64),
-              let img = UIImage(data: data) else { return nil }
-        return img
-    }
-
     private var isVideo: Bool {
         message.kind == .video
     }
@@ -83,6 +78,16 @@ struct ReplyMediaThumbnail: View {
         case .voice: return "waveform"
         default:     return "doc"
         }
+    }
+
+    private func decodeThumb() {
+        guard let b64 = message.thumbnailB64,
+              let data = Data(base64Encoded: b64),
+              let image = UIImage(data: data) else {
+            thumb = nil
+            return
+        }
+        thumb = image
     }
 
     private func loadIfPhoto() async {

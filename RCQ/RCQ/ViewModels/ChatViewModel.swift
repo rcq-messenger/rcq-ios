@@ -15,6 +15,15 @@ final class ChatViewModel: ObservableObject {
     /// typing no longer re-runs the O(n log n) grouping over the whole
     /// history every time `input` mutates (the edit-composer lag root).
     @Published private(set) var groupedUnits: [(label: String, units: [RenderUnit])] = []
+    /// Ordered ids of loaded messages in an OPEN group thread that @mention me
+    /// and were sent by someone else, newer than the per-group seen cut-off
+    /// (see MentionSeenStore). Drives ChatView's @-mention jump FAB. Derived
+    /// via Combine like `groupedUnits` — recomputed when messages or the seen
+    /// cut-off change, never on a composer keystroke: it used to be a computed
+    /// property in ChatView's body, re-running bodyMentionsMe over the whole
+    /// loaded window on every invalidation. Stays [] for 1:1 threads
+    /// (mentions are group-only).
+    @Published private(set) var mentionIDs: [UUID] = []
     @Published var input: String = ""
     @Published var isPeerTyping: Bool = false
     @Published var fadingOutIDs: Set<UUID> = []
@@ -130,6 +139,23 @@ final class ChatViewModel: ObservableObject {
                 self?.groupedUnits = ChatViewModel.computeGroupedUnits(msgs)
             }
             .store(in: &cancellables)
+
+        if target.thread.isGroup {
+            let groupID = target.thread.rawKey
+            // Subscribed to $seenAt (not a one-shot snapshot): a nav push
+            // fires ChatView's onDisappear, which advances the cut-off, and
+            // popping back must not resurface the FAB for those mentions.
+            $messages
+                .combineLatest(MentionSeenStore.shared.$seenAt)
+                .map { msgs, seenAt -> [UUID] in
+                    let me = AuthService.shared.ownUIN ?? -1
+                    let seen = Date(timeIntervalSince1970: seenAt[groupID] ?? 0)
+                    return msgs
+                        .filter { $0.senderUIN != me && $0.sentAt > seen && MessageService.shared.bodyMentionsMe($0.text) }
+                        .map { $0.id }
+                }
+                .assign(to: &$mentionIDs)
+        }
 
         captureUnreadIfNeeded()
     }
