@@ -125,11 +125,34 @@ enum Emoticons {
         return (entries + extras).sorted { $0.code.count > $1.code.count }
     }()
 
+    /// Table pre-compiled for matching: codes as `[Character]`, bucketed by
+    /// first character. Bucket order must preserve table order — longest code
+    /// first — so the first hit is still the longest match.
+    private struct MatchTable {
+        let buckets: [Character: [(chars: [Character], code: String, asset: String)]]
+
+        init(_ table: [Entry]) {
+            var buckets: [Character: [(chars: [Character], code: String, asset: String)]] = [:]
+            for entry in table {
+                let cc = Array(entry.code)
+                guard let first = cc.first else { continue }
+                buckets[first, default: []].append((cc, entry.code, entry.asset))
+            }
+            self.buckets = buckets
+        }
+    }
+
+    private static let allMatchTable = MatchTable(allEntries)
+
     static func tokenize(_ text: String) -> [Token] {
-        return tokenize(text, table: allEntries)
+        return tokenize(text, table: allMatchTable)
     }
 
     static func tokenize(_ text: String, table: [Entry]) -> [Token] {
+        return tokenize(text, table: MatchTable(table))
+    }
+
+    private static func tokenize(_ text: String, table: MatchTable) -> [Token] {
         var tokens: [Token] = []
         var buffer = ""
         let chars = Array(text)
@@ -145,10 +168,12 @@ enum Emoticons {
             // The leading `:` plus the closing `:` are enough boundary
             // — URL content like `https://...` never closes with the
             // exact asset name + `:`.
-            for entry in table {
-                if matchesAt(chars: chars, idx: idx, code: entry.code) {
-                    matched = (entry.code, entry.asset)
-                    break
+            if let candidates = table.buckets[chars[idx]] {
+                for entry in candidates {
+                    if matchesAt(chars: chars, idx: idx, code: entry.chars) {
+                        matched = (entry.code, entry.asset)
+                        break
+                    }
                 }
             }
             if let m = matched {
@@ -167,10 +192,9 @@ enum Emoticons {
         return tokens
     }
 
-    private static func matchesAt(chars: [Character], idx: Int, code: String) -> Bool {
-        let cc = Array(code)
-        guard idx + cc.count <= chars.count else { return false }
-        for k in 0..<cc.count where chars[idx + k] != cc[k] { return false }
+    private static func matchesAt(chars: [Character], idx: Int, code: [Character]) -> Bool {
+        guard idx + code.count <= chars.count else { return false }
+        for k in 0..<code.count where chars[idx + k] != code[k] { return false }
         return true
     }
 }

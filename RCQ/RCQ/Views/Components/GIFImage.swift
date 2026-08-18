@@ -75,13 +75,26 @@ struct GIFImage: View {
 
     private static let cache = NSCache<NSString, FrameBundle>()
 
+    /// NSCache can't hold nil, so misses are cached as this shared
+    /// sentinel — otherwise every non-gif asset (the plain-PNG
+    /// fallback path) re-runs the four bundle searches per render.
+    private static let noGIF = FrameBundle(frames: [], duration: 0)
+
     static func cachedFrames(for name: String) -> FrameBundle? {
         let key = name as NSString
-        if let hit = cache.object(forKey: key) { return hit }
-        guard let url = locateGIF(named: name) else { return nil }
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        if let hit = cache.object(forKey: key) {
+            return hit === noGIF ? nil : hit
+        }
+        guard let url = locateGIF(named: name),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            cache.setObject(noGIF, forKey: key)
+            return nil
+        }
         let count = CGImageSourceGetCount(source)
-        guard count > 0 else { return nil }
+        guard count > 0 else {
+            cache.setObject(noGIF, forKey: key)
+            return nil
+        }
 
         var frames: [UIImage] = []
         var total: TimeInterval = 0
