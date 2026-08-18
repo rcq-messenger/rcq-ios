@@ -433,7 +433,7 @@ class NotificationService: UNNotificationServiceExtension {
             } else {
                 content.body = "Call update"
             }
-        case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
+        case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest,
              .profile,
              // A kind this build cannot read. The generic body is exactly right
@@ -615,7 +615,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .text, .photo, .video, .voice, .file, .location,
              .systemNotice, .poll, .screenshotTaken, .relayShare:
             return true
-        case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
+        case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
              .contactRequest, .profile:
             return false
@@ -671,6 +671,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .skdm:             return "skdm"
         case .sknack:           return "sknack"
         case .relayShare:       return "relay_share"
+        case .deliveredReceipt: return "delivered"
         case .unknown(let kind): return kind
         }
     }

@@ -242,6 +242,23 @@ final class MessageStore: ObservableObject {
         if changed { threads[thread] = t }
     }
 
+    /// Sender side of the delivery receipt: `.sent` → `.delivered`.
+    ///
+    /// ⚠ Never downgrades. A read receipt can arrive first — they had the chat
+    /// open when the message landed — and a delivery receipt for the same id
+    /// must not walk the bubble back a state.
+    func markDelivered(messageIDs: [UUID], thread: ThreadID) {
+        guard var t = threads[thread] else { return }
+        let idSet = Set(messageIDs)
+        var changed = false
+        for i in t.indices where idSet.contains(t[i].id) && t[i].deliveryState == .sent {
+            t[i].deliveryState = .delivered
+            MessageDB.shared.updateState(id: t[i].id, state: .delivered)
+            changed = true
+        }
+        if changed { threads[thread] = t }
+    }
+
     /// Idempotent. Toggle decisions live in `MessageService.toggleReaction`.
     ///
     /// Returns whether this actually CHANGED anything, and the caller is
