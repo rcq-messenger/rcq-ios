@@ -5,18 +5,22 @@ import UIKit
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm: ChatViewModel
-    @StateObject private var appState = AppState.shared
+    /// Write-only from this view (pendingJoinGroup* on link taps) — a plain
+    /// accessor, NOT @StateObject: observing AppState re-ran this whole body
+    /// (all visible rows) on every typingByUIN ping and every other AppState
+    /// mutation anywhere in the app. The one read this view needs
+    /// (typingByUIN for the open peer) arrives via vm.isPeerTyping.
+    private var appState: AppState { AppState.shared }
     @StateObject private var contacts = ContactService.shared
     @StateObject private var aliasStore = ContactAliasStore.shared
     @StateObject private var groupSvc = GroupService.shared
     @StateObject private var groupViews = GroupViewsService.shared
 
     /// Member roster for the active group target, or `[]` for 1:1 chats.
-    /// Drives @mention rendering + the composer's mention picker.
-    private var currentGroupMembers: [RCQGroupMember] {
-        guard case .group(let snapshot) = vm.target else { return [] }
-        return (groupSvc.find(snapshot.id) ?? snapshot).members
-    }
+    /// Drives @mention rendering + the composer's mention picker. Cached in
+    /// the model (fed by GroupService) — the computed version here re-ran
+    /// GroupService.find's linear scan on every call in every body pass.
+    private var currentGroupMembers: [RCQGroupMember] { vm.groupMembers }
 
     private var activeGroupID: Int? {
         if case .group(let g) = vm.target { return g.id }
@@ -82,16 +86,14 @@ struct ChatView: View {
     /// `post_policy == owner_only`. Whether the group is also closed
     /// is independent (closed just controls join).
     private var activeGroupIsBroadcast: Bool {
-        guard case .group(let snapshot) = vm.target else { return false }
-        return (groupSvc.find(snapshot.id) ?? snapshot).postPolicy == "owner_only"
+        vm.liveGroup?.postPolicy == "owner_only"
     }
 
     /// True iff the active group is broadcast-mode AND this bubble was
     /// sent by the group's owner. Owner-only broadcasts are the only
     /// place we render and ping view counts.
     private func bubbleEligibleForViews(_ msg: Message) -> Bool {
-        guard case .group(let snapshot) = vm.target else { return false }
-        let live = groupSvc.find(snapshot.id) ?? snapshot
+        guard let live = vm.liveGroup else { return false }
         return live.postPolicy == "owner_only" && msg.senderUIN == live.ownerUIN
     }
 
@@ -357,8 +359,13 @@ struct ChatView: View {
     /// a wrapping line). Only shrink triggers a re-anchor — growing
     /// the composer mid-typing already plays nicely with the system.
     @State private var lastComposerHeight: CGFloat = 36
-    @StateObject private var voiceRecorder = VoiceRecorder.shared
-    @StateObject private var voicePlayer = VoicePlayer.shared
+    /// Mirror of VoiceRecorder.isRecording, fed by onReceive with
+    /// removeDuplicates — the input bar only branches on the flag.
+    /// Observing the recorder (or the player) as @StateObject here made
+    /// their 10-20Hz elapsed/level ticks re-run this whole body; the live
+    /// numbers now render inside VoiceRecordingPill / VoicePreviewPill,
+    /// which observe those singletons themselves.
+    @State private var isVoiceRecording = false
     /// Kinds whose caption/text can be edited. Must stay in sync with
     /// the editable set in `MessageStore.applyEdit`.
     private static let editableKinds: [MessageKind] =
@@ -822,6 +829,7 @@ struct ChatView: View {
             }
         }
         .onChange(of: chatSettings.secureByThread) { _ in reconcileScreenSecure() }
+        .onReceive(VoiceRecorder.shared.$isRecording.removeDuplicates()) { isVoiceRecording = $0 }
         .modifier(InPlaceTranslator(vm: vm))
         .sheet(isPresented: $showAllMedia) {
             AllMediaSheet(messages: vm.messages)
@@ -2269,11 +2277,11 @@ struct ChatView: View {
         // 1. previewPill   — finished clip awaiting send / discard.
         // 2. recordingPill — recording in progress; tap stop → preview.
         let voiceFlowActive = pendingVoicePreview != nil
-            || voiceRecorder.isRecording
+            || isVoiceRecording
         return HStack(alignment: .bottom, spacing: 8) {
             if let preview = pendingVoicePreview {
                 previewPill(preview)
-            } else if voiceRecorder.isRecording {
+            } else if isVoiceRecording {
                 recordingPill
             } else {
                 // Stranger mode is text-only — no attach, no voice.
@@ -2885,7 +2893,7 @@ struct ChatView: View {
         // do the work explicitly. No swipes. Everyone understands.
         Button {
             Task {
-                let ok = await voiceRecorder.start()
+                let ok = await VoiceRecorder.shared.start()
                 if !ok { voicePermissionDenied = true }
             }
         } label: {
@@ -2900,101 +2908,26 @@ struct ChatView: View {
         .buttonStyle(.plain)
     }
 
-    /// Shown while recording is in progress. Big trash + big stop
-    /// buttons — both 44pt tap targets per HIG, both labelled — so the
-    /// user always sees how to abort or finish. No swipe gestures
-    /// anywhere. Stop → preview pill; trash → discard the take.
+    /// Shown while recording is in progress. The pill owns the
+    /// VoiceRecorder observation (see VoiceRecordingPill).
     private var recordingPill: some View {
-        HStack(spacing: 10) {
-            Button {
-                Task { await voiceRecorder.cancel() }
-            } label: {
-                VStack(spacing: 1) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("chat.voice.cancel_hint".localized)
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .foregroundColor(.red)
-                .frame(width: 56, height: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Circle()
-                .fill(Color.red)
-                .frame(width: 10, height: 10)
-                .opacity(voiceRecorder.elapsed.truncatingRemainder(dividingBy: 1.0) < 0.5 ? 1.0 : 0.4)
-                .animation(.easeInOut(duration: 0.5), value: voiceRecorder.elapsed)
-            Text(formatRecordingDuration(voiceRecorder.elapsed))
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(Theme.Color.textPrimary)
-            Spacer()
-            Button {
-                Task {
-                    if let result = await voiceRecorder.finish() {
-                        await MainActor.run {
-                            pendingVoicePreview = PendingVoicePreview(
-                                url: result.url, duration: result.duration
-                            )
-                        }
-                    }
-                }
-            } label: {
-                VStack(spacing: 1) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 24))
-                    Text("chat.voice.stop_hint".localized)
-                        .font(.system(size: 9, weight: .semibold))
-                }
-                .foregroundColor(Theme.Color.accent)
-                .frame(width: 64, height: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+        VoiceRecordingPill { url, duration in
+            pendingVoicePreview = PendingVoicePreview(url: url, duration: duration)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
-        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
     }
 
     /// Shown when the user has a finished but-not-yet-sent voice clip.
-    /// Play/pause via the shared VoicePlayer, trash to discard, arrow
-    /// to send. The clip stays in a tmp file until either action; we
-    /// clean up the file on discard.
+    /// The pill owns the VoicePlayer observation (see VoicePreviewPill).
+    /// The clip stays in a tmp file until either action; we clean up
+    /// the file on discard.
     private func previewPill(_ preview: PendingVoicePreview) -> some View {
-        let isThisPlaying = voicePlayer.playingMessageID == preview.id && voicePlayer.isPlaying
-        return HStack(spacing: 10) {
-            Button {
-                voicePlayer.stop()
+        VoicePreviewPill(
+            preview: preview,
+            onDiscard: {
                 try? FileManager.default.removeItem(at: preview.url)
                 pendingVoicePreview = nil
-            } label: {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.red)
-                    .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-            Button {
-                voicePlayer.playLocal(id: preview.id, url: preview.url)
-            } label: {
-                Image(systemName: isThisPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18))
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(Theme.Color.bgSecondary.opacity(0.8)))
-            }
-            .buttonStyle(.plain)
-            Text(formatRecordingDuration(
-                isThisPlaying ? voicePlayer.elapsed : preview.duration
-            ))
-            .font(.system(size: 14, design: .monospaced))
-            .foregroundColor(Theme.Color.textPrimary)
-            Spacer()
-            Button {
-                voicePlayer.stop()
+            },
+            onSend: {
                 pendingVoicePreview = nil
                 Task {
                     if let err = await vm.sendVoice(
@@ -3003,26 +2936,8 @@ struct ChatView: View {
                         videoError = err
                     }
                 }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(Theme.Color.accent)
             }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
-        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
-    }
-
-    private func formatRecordingDuration(_ secs: TimeInterval) -> String {
-        let total = Int(secs)
-        let m = total / 60
-        let s = total % 60
-        let tenths = Int((secs - Double(total)) * 10)
-        return String(format: "%d:%02d.%d", m, s, tenths)
+        )
     }
 
     private var emojiPanel: some View {
@@ -3323,3 +3238,136 @@ private struct RelaySharePickerSheet: View {
     }
 }
 
+
+/// Shared m:ss.t formatter for the voice pills.
+private func formatRecordingDuration(_ secs: TimeInterval) -> String {
+    let total = Int(secs)
+    let m = total / 60
+    let s = total % 60
+    let tenths = Int((secs - Double(total)) * 10)
+    return String(format: "%d:%02d.%d", m, s, tenths)
+}
+
+/// Recording-in-progress pill. Big trash + big stop buttons — both 44pt
+/// tap targets per HIG, both labelled — so the user always sees how to
+/// abort or finish. No swipe gestures anywhere. Stop → onFinished with
+/// the take; trash → discard.
+///
+/// Owns the VoiceRecorder observation: its elapsed/level ticks while
+/// recording invalidate this pill only, not every visible row of the
+/// chat behind it.
+private struct VoiceRecordingPill: View {
+    let onFinished: (URL, TimeInterval) -> Void
+    @StateObject private var voiceRecorder = VoiceRecorder.shared
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await voiceRecorder.cancel() }
+            } label: {
+                VStack(spacing: 1) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("chat.voice.cancel_hint".localized)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundColor(.red)
+                .frame(width: 56, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+                .opacity(voiceRecorder.elapsed.truncatingRemainder(dividingBy: 1.0) < 0.5 ? 1.0 : 0.4)
+                .animation(.easeInOut(duration: 0.5), value: voiceRecorder.elapsed)
+            Text(formatRecordingDuration(voiceRecorder.elapsed))
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundColor(Theme.Color.textPrimary)
+            Spacer()
+            Button {
+                Task {
+                    if let result = await voiceRecorder.finish() {
+                        await MainActor.run {
+                            onFinished(result.url, result.duration)
+                        }
+                    }
+                }
+            } label: {
+                VStack(spacing: 1) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.system(size: 24))
+                    Text("chat.voice.stop_hint".localized)
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundColor(Theme.Color.accent)
+                .frame(width: 64, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
+        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
+    }
+}
+
+/// Finished-clip pill: play/pause via the shared VoicePlayer, trash to
+/// discard, arrow to send.
+///
+/// Owns the VoicePlayer observation: its elapsed ticks during playback
+/// invalidate this pill only, not every visible row of the chat.
+private struct VoicePreviewPill: View {
+    let preview: ChatView.PendingVoicePreview
+    let onDiscard: () -> Void
+    let onSend: () -> Void
+    @StateObject private var voicePlayer = VoicePlayer.shared
+
+    var body: some View {
+        let isThisPlaying = voicePlayer.playingMessageID == preview.id && voicePlayer.isPlaying
+        return HStack(spacing: 10) {
+            Button {
+                voicePlayer.stop()
+                onDiscard()
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.red)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            Button {
+                voicePlayer.playLocal(id: preview.id, url: preview.url)
+            } label: {
+                Image(systemName: isThisPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Theme.Color.bgSecondary.opacity(0.8)))
+            }
+            .buttonStyle(.plain)
+            Text(formatRecordingDuration(
+                isThisPlaying ? voicePlayer.elapsed : preview.duration
+            ))
+            .font(.system(size: 14, design: .monospaced))
+            .foregroundColor(Theme.Color.textPrimary)
+            Spacer()
+            Button {
+                voicePlayer.stop()
+                onSend()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(Theme.Color.accent)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
+        .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
+    }
+}
