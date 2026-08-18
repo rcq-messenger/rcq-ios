@@ -2050,6 +2050,13 @@ final class MessageService {
                 // Sender-keys distribution/recovery: intercepted before this
                 // switch. Unreachable here; present only for exhaustiveness.
                 break
+            case .unknown(let kind):
+                // An envelope kind this build has never heard of, from a newer
+                // client. Read off the wire safely and dropped here, which is
+                // the whole point of decoding it instead of throwing: the ratchet
+                // has already advanced, the row is acked, and the next message
+                // is not stuck behind one we cannot read.
+                os_log("ingest: unknown envelope kind %{public}@, ignored", log: .default, type: .info, kind)
             }
             os_log(
                 "ingest ok: senderUIN=%d thread=%{public}@ envType=%{public}@ offline=%{public}d new=%{public}d",

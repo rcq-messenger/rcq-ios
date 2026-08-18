@@ -142,6 +142,9 @@ enum Envelope: Codable, Hashable {
     /// message + rendered as an Add card; never auto-applied. Cross-client
     /// identical with Android. See RCQ/docs/bridge-sharing-design.md.
     case relayShare(id: UUID, relay: RelayShareWire, note: String? = nil)
+    /// An envelope kind this build does not know. Produced by the decoder
+    /// instead of throwing, so a newer client's addition costs nothing here.
+    case unknown(kind: String)
 
     /// Wire form of a shared relay (the `relay` object inside a relay_share).
     /// Terse keys shared byte-for-byte with Android (ContactRelayStore.relayToJson).
@@ -201,6 +204,12 @@ enum Envelope: Codable, Hashable {
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: K.self)
         switch self {
+        case .unknown(let kind):
+            // Re-encoding one should never happen — nothing constructs it and
+            // nothing forwards it — but the kind is preserved rather than
+            // invented, so a round trip through this type cannot quietly turn
+            // somebody else's envelope into ours.
+            try c.encode(kind, forKey: .kind)
         case .text(let id, let s, let ttl, let fwd, let reply):
             try c.encode("text", forKey: .kind)
             try c.encode(id, forKey: .id)
@@ -525,7 +534,19 @@ enum Envelope: Codable, Hashable {
                 note: try c.decodeIfPresent(String.self, forKey: .note)
             )
         default:
-            throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown kind \(kind)")
+            // ⚠⚠ NEVER throw here. This is the one place a wire addition from a
+            // newer client lands, and a throw makes every such addition a
+            // landmine: the row fails to decode, and whether that costs one
+            // message or a whole queue drain depends on which caller happens to
+            // be holding it. Android has always answered `Unknown(kind)` and the
+            // web returns null; iOS was the odd one out, and it is the client
+            // that most needs to survive an envelope it has never heard of,
+            // because it is the one that ships slowest.
+            //
+            // Decoded and then ignored: nothing downstream matches `.unknown`,
+            // so it is dropped exactly where an unrecognised envelope should be
+            // dropped — after it has been safely read off the wire.
+            self = .unknown(kind: kind)
         }
     }
 }

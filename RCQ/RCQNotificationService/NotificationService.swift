@@ -435,7 +435,10 @@ class NotificationService: UNNotificationServiceExtension {
             }
         case .deleteForEveryone, .readReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest,
-             .profile:
+             .profile,
+             // A kind this build cannot read. The generic body is exactly right
+             // for it: we know an envelope arrived and nothing more.
+             .unknown:
             content.body = "Message"
         }
 
@@ -616,6 +619,11 @@ class NotificationService: UNNotificationServiceExtension {
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
              .contactRequest, .profile:
             return false
+        // A kind this build does not know. Not user-visible on purpose: raising
+        // a banner for an envelope we cannot read would announce a message that
+        // the app itself will then ignore, and inflate the unread count for it.
+        case .unknown:
+            return false
         }
     }
 
@@ -663,6 +671,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .skdm:             return "skdm"
         case .sknack:           return "sknack"
         case .relayShare:       return "relay_share"
+        case .unknown(let kind): return kind
         }
     }
 
