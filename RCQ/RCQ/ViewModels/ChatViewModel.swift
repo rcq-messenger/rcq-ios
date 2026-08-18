@@ -24,6 +24,27 @@ final class ChatViewModel: ObservableObject {
     /// loaded window on every invalidation. Stays [] for 1:1 threads
     /// (mentions are group-only).
     @Published private(set) var mentionIDs: [UUID] = []
+    /// Live copy of the open group (GroupService's copy wins, the opening
+    /// snapshot is the fallback), nil for 1:1 / random threads. Cached here
+    /// so ChatView's per-row helpers (owner checks, view-count gating) stop
+    /// running GroupService.find's linear scan on every call in every body
+    /// pass.
+    @Published private(set) var liveGroup: RCQGroup?
+    /// Roster of the open group, derived from `liveGroup`.
+    ///
+    /// ⚠ Derived from GroupService, not from `target`: `target` is a SNAPSHOT
+    /// taken when the chat was opened, and the chat list is fetched without
+    /// rosters — so on first entry into a group the snapshot's `members` is
+    /// empty until ChatView's `.task` loads the roster into GroupService.
+    @Published private(set) var groupMembers: [RCQGroupMember] = []
+    /// uin → display name (alias-aware) for everyone this thread can name:
+    /// the group roster overlaid on the contact list. Rebuilt when a source
+    /// changes; `senderNickname` is then a dictionary hit instead of three
+    /// linear scans per row per body pass.
+    @Published private(set) var nickByUIN: [Int: String] = [:]
+    /// message id → isFromMe, for O(1) `replyIsMine` — it used to scan the
+    /// whole loaded window per reply row.
+    private var isMineByID: [UUID: Bool] = [:]
     @Published var input: String = ""
     @Published var isPeerTyping: Bool = false
     @Published var fadingOutIDs: Set<UUID> = []
@@ -137,8 +158,41 @@ final class ChatViewModel: ObservableObject {
         $messages
             .sink { [weak self] msgs in
                 self?.groupedUnits = ChatViewModel.computeGroupedUnits(msgs)
+                self?.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
             }
             .store(in: &cancellables)
+
+        if case .group(let g) = target {
+            self.liveGroup = GroupService.shared.find(g.id) ?? g
+            GroupService.shared.$groups
+                .map { groups -> RCQGroup? in groups.first(where: { $0.id == g.id }) ?? g }
+                .removeDuplicates()
+                .assign(to: &$liveGroup)
+            $liveGroup
+                .map { $0?.members ?? [] }
+                .removeDuplicates()
+                .assign(to: &$groupMembers)
+        }
+
+        if case .randomPeer = target {
+            // Random sessions never expose real names on either side.
+        } else {
+            $groupMembers
+                .combineLatest(ContactService.shared.$contacts, ContactAliasStore.shared.$aliases)
+                .map { members, contacts, _ -> [Int: String] in
+                    var out: [Int: String] = [:]
+                    for c in contacts {
+                        out[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname, host: c.host)
+                    }
+                    // Roster last: a group member's entry wins over the
+                    // contact-list one, matching the old scan order.
+                    for m in members {
+                        out[m.uin] = ContactAliasStore.shared.displayName(for: m.uin, fallback: m.nickname)
+                    }
+                    return out
+                }
+                .assign(to: &$nickByUIN)
+        }
 
         if target.thread.isGroup {
             let groupID = target.thread.rawKey
@@ -913,7 +967,7 @@ final class ChatViewModel: ObservableObject {
     /// the nick — fixes "others see You" on a reply to your own message.
     func replyIsMine(_ message: Message) -> Bool {
         guard let rid = message.replyToID else { return false }
-        return messages.first(where: { $0.id == rid })?.isFromMe ?? false
+        return isMineByID[rid] ?? false
     }
 
     func senderNickname(_ uin: Int) -> String {
@@ -923,27 +977,10 @@ final class ChatViewModel: ObservableObject {
             return "chat.random.stranger".localized
         }
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
-        // My own name for them wins wherever a person is named, including the
-        // sender line above a group message and a reply quote.
-        //
-        // ⚠ Read the roster from GroupService, not from `target`. `target` is a
-        // SNAPSHOT taken when the chat was opened, and the chat list is fetched
-        // without rosters — so on first entry into a group `g.members` is empty
-        // and every sender line fell through to `String(uin)`. ChatView's
-        // `.task` then loaded the roster into GroupService, which fixed the
-        // avatars and the @mentions (they read the live copy) but not the
-        // names, because the snapshot never changed. Leaving and re-entering
-        // appeared to fix it: the second snapshot had the roster in it.
-        if case .group(let g) = target {
-            let members = (GroupService.shared.find(g.id)?.members ?? g.members)
-            if let m = members.first(where: { $0.uin == uin }) {
-                return ContactAliasStore.shared.displayName(for: uin, fallback: m.nickname)
-            }
-        }
-        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
-            return ContactAliasStore.shared.displayName(for: uin, fallback: c.nickname, host: c.host)
-        }
-        return ContactAliasStore.shared.alias(for: uin) ?? String(uin)
+        // nickByUIN carries roster-over-contacts precedence with aliases
+        // applied (see its subscription in init); the alias-only lookup is
+        // for people who are in neither — e.g. someone who left the group.
+        return nickByUIN[uin] ?? ContactAliasStore.shared.alias(for: uin) ?? String(uin)
     }
 
     /// The picture that belongs with `senderNickname(_:)`, read from the same
