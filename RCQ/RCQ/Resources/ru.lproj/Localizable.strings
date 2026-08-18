@@ -514,7 +514,7 @@
 "contact_list.menu.search" = "Поиск";
 "contact_list.menu.bypass_on" = "Включить обход";
 "contact_list.menu.bypass_off" = "Выключить обход";
-"contact_list.menu.saved" = "Сохранённые сообщения";
+"contact_list.menu.saved" = "Заметки";
 "bypass.menu.enable" = "Включить обход блокировок";
 "bypass.menu.disable" = "Выключить обход блокировок";
 "contact_list.menu.post_story" = "Опубликовать историю";
@@ -523,7 +523,7 @@
 "news.title" = "Новости";
 "news.empty" = "Новостей пока нет.\nЗдесь будут появляться посты.";
 "news.gallery.failed" = "Не удалось загрузить изображение.";
-"contact_list.saved_messages" = "Сохранённые";
+"contact_list.saved_messages" = "Заметки";
 "contact_list.status_picker" = "Статус";
 "contact_list.create_first_group" = "Создать первую группу";
 "contact_list.pending_one" = "%d входящая заявка";
