@@ -431,28 +431,13 @@ struct ChatView: View {
         return false
     }
 
-    /// Ordered ids of loaded messages in the OPEN group thread that @mention me
-    /// and were sent by someone else. Drives the @-mention jump FAB (Telegram-
-    /// style step-through). Empty for 1:1 threads (mentions are group-only).
-    private var mentionIDs: [UUID] {
-        guard vm.target.thread.isGroup else { return [] }
-        let me = AuthService.shared.ownUIN ?? -1
-        // Only mentions NEWER than the per-group seen cut-off. Reopening a
-        // thread you've already read must not resurface the @-jump FAB for
-        // mentions you saw last time (the "@ FAB always shows" report); a
-        // genuinely new mention (newer sentAt) still brings it back.
-        let seen = MentionSeenStore.shared.lastSeen(group: vm.target.thread.rawKey)
-        return vm.messages
-            .filter { $0.senderUIN != me && $0.sentAt > seen && MessageService.shared.bodyMentionsMe($0.text) }
-            .map { $0.id }
-    }
-
-    /// Mentions the user hasn't stepped to yet. The @-FAB steps WITHOUT
+    /// Mentions the user hasn't stepped to yet (ids live in vm.mentionIDs,
+    /// derived off the view's render path). The @-FAB steps WITHOUT
     /// wrapping and HIDES at 0 — tapping the last mention dismisses it instead
     /// of leaving the FAB up forever with the full count (the "собачка always
     /// shows" bug). A new inbound mention grows the list past the cursor and
     /// brings the FAB back for it.
-    private var mentionsLeft: Int { max(0, mentionIDs.count - mentionCursor) }
+    private var mentionsLeft: Int { max(0, vm.mentionIDs.count - mentionCursor) }
 
     /// Scroll to `id` (centered) and pulse the transient bubble highlight,
     /// clearing it after the same 1.4s window the reply-jump uses. Shared by
@@ -478,11 +463,21 @@ struct ChatView: View {
     /// open scrolled to an unread message the `.task` insurance turns it on.
     @State private var showScrollToBottom: Bool = false
     /// Hides the scroll surface during the initial settle window so
-    /// users don't see LazyVStack realizing rows on chat-open. We
-    /// flip it to true after the multi-pass scrollTo loop has had a
-    /// chance to land on the actual bottom; from then on the chat
-    /// stays visible across the lifetime of the screen.
+    /// users don't see LazyVStack realizing rows on chat-open. Lifted
+    /// by whichever proves the open position first: the bottom
+    /// sentinel realizing (geometry — the common open-at-bottom case)
+    /// or the `.task` insurance after the settle re-check (open-at-
+    /// unread, where the sentinel may never materialize). From then on
+    /// the chat stays visible across the lifetime of the screen.
     @State private var chatVisible: Bool = false
+
+    /// Lift the initial-settle mask exactly once, first caller wins.
+    @MainActor private func revealChat() {
+        guard !chatVisible else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            chatVisible = true
+        }
+    }
     @State private var forwardTarget: Message?
     /// Drives the ForwardPickerSheet for multi-select forwarding. The
     /// sheet only needs a non-nil "anchor" message to render its
@@ -1497,6 +1492,11 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
                         .onAppear {
+                            // The sentinel materializing IS the geometry proof
+                            // that the open-at-bottom scroll landed — lift the
+                            // initial-settle mask right here instead of waiting
+                            // out a wall-clock window.
+                            revealChat()
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
                             // Reached the bottom on your own → drop any stale reply-return target.
                             replyReturnID = nil
@@ -1514,12 +1514,11 @@ struct ChatView: View {
                 // every prepend.
                 .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
             }
-            // Initial-settle mask. While the 350ms scrollTo loop in
-            // `.task` chases the moving bottom (LazyVStack realizes
-            // rows as the viewport scrolls past them), we hide the
-            // surface to spare the user the row-shuffle. Pinned to
-            // the message scroll only — composer, header and
-            // overlays stay live.
+            // Initial-settle mask. While the open-position scrollTo in
+            // `.task` lands (LazyVStack realizes rows as the viewport
+            // scrolls past them), we hide the surface to spare the
+            // user the row-shuffle. Pinned to the message scroll only
+            // — composer, header and overlays stay live.
             .opacity(chatVisible ? 1 : 0)
             // No defaultScrollAnchor(.bottom) — it yanks mid-scroll when LazyVStack realizes rows,
             // and pins the empty-state to the input bar. Initial scroll is owned by the .task loop below.
@@ -1656,14 +1655,15 @@ struct ChatView: View {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            // Initial settle: scrollTo loop while LazyVStack realizes
-            // rows + chat is masked behind opacity until the position
-            // stabilises. Users used to see rows pop into view as the
-            // viewport scrolled past them ("на глазах загружается").
-            // The 350ms window covers row materialization for chats
-            // up to a few hundred messages; longer chats finish off-
-            // screen and the opacity transition hides the residual
-            // motion.
+            // Initial settle: jump to the open position while the chat
+            // is masked behind opacity. Users used to see rows pop
+            // into view as the viewport scrolled past them ("на глазах
+            // загружается"). One scrollTo + one re-assert after
+            // LazyVStack's realization pass replaces the old 350ms
+            // 60Hz loop — the first jump exposes unrealized rows,
+            // their real sizes shift the content, the second call pins
+            // the final position; the mask lifts on geometry (bottom
+            // sentinel), not on a clock.
             .task {
                 // Snapshot any unseen-reaction targets BEFORE the settle loop —
                 // row acks (markThreadSeen) consume the inbox once bubbles
@@ -1692,15 +1692,17 @@ struct ChatView: View {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
                 }
-                let endDate = Date().addingTimeInterval(0.35)
-                while Date() < endDate {
-                    settle()
-                    try? await Task.sleep(nanoseconds: 16_000_000)
-                }
                 settle()
-                withAnimation(.easeOut(duration: 0.15)) {
-                    chatVisible = true
-                }
+                try? await Task.sleep(nanoseconds: 32_000_000)
+                settle()
+                // Insurance for the open-at-unread anchor (top of the unread
+                // block — the bottom sentinel may never realize there) and
+                // any layout where the geometry callback doesn't come: after
+                // the re-assert has had a frame to land, lift the mask
+                // ourselves. revealChat() is idempotent, so on the common
+                // open-at-bottom path the sentinel has usually beaten us here.
+                try? await Task.sleep(nanoseconds: 48_000_000)
+                revealChat()
                 // Reaction-jump-on-open: someone reacted to my message while I
                 // was away — scroll to + flash it once the layout has settled,
                 // then consume the thread's reacted set so reopening is quiet.
@@ -1739,7 +1741,7 @@ struct ChatView: View {
             // thread has any such message, independent of scroll position.
             if mentionsLeft > 0 {
                 Button {
-                    let ids = mentionIDs
+                    let ids = vm.mentionIDs
                     guard !ids.isEmpty else { return }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     let idx = min(mentionCursor, ids.count - 1)
