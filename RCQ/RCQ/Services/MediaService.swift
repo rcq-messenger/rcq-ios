@@ -125,6 +125,11 @@ final class MediaService {
     /// contact's island through this, so the picture renders from the island
     /// they already read from and keeps rendering while ours is down.
     nonisolated static func putBlob(host: String, mediaID: String, data: Data) async -> Bool {
+        // Belt and braces next to the chokepoint above: this one is a plain
+        // URLSession PUT to an ARBITRARY island, so it is exactly the shape
+        // that walks around the gate. Reached from the §5e avatar deposit as
+        // well as from a send.
+        if await PanicPINService.shared.isDecoy { return false }
         guard let url = URL(string: "https://\(host)/media/\(mediaID)") else { return false }
         let boundary = "----RCQBoundary\(UUID().uuidString)"
         var body = Data()
@@ -157,6 +162,22 @@ final class MediaService {
         peerHost: String?,
         onProgress: ((Double) -> Void)?
     ) async throws -> UploadOut {
+        // ⚠⚠ A duress session uploads nothing, to any island. This is the
+        // single chokepoint every media send funnels through (photo, GIF,
+        // file, voice), which is why the check is here and not in four places.
+        //
+        // Without it a photo picked in the decoy took the same path as a real
+        // one: the own-island branch is `APIClient`, so `DuressGate` threw and
+        // the caller painted a FAILED bubble — the same tell as the red cross
+        // we just took out of the text path — and the cross-island branch is
+        // `putBlob`, a plain URLSession PUT that the gate never saw at all.
+        //
+        // A client-minted id and no network: the callers seed their caches off
+        // the id we return, so the picture renders in the decoy exactly as a
+        // sent one, and the send path marks the row sent.
+        if PanicPINService.shared.isDecoy {
+            return UploadOut(media_id: Self.newMediaID(), size: combined.count)
+        }
         guard let peerHost else {
             return try await APIClient.shared.uploadBlob(
                 "/media/upload",
