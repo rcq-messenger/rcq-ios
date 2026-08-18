@@ -1242,6 +1242,14 @@ final class MessageService {
         case .deleteForEveryone: return "delete"
         case .systemNotice: return "system"
         case .readReceipt: return "read"
+        // ⚠ Labelled "read" on the OUTER envelope on purpose, not a new type.
+        // The outer label decides whether the island pushes (it does not for
+        // "read") and whether a client routes the packet live at all. A brand
+        // new label would be routed by nobody until every client in the field
+        // updated — which for a receipt means the tick stays broken exactly for
+        // the people running the oldest builds. The INNER kind carries the
+        // meaning.
+        case .deliveredReceipt: return "read"
         case .reaction: return "reaction"
         case .bounce: return "bounce"
         case .visit: return "visit"
@@ -1921,6 +1929,8 @@ final class MessageService {
                 }
             case .readReceipt(let ids):
                 MessageStore.shared.markRead(messageIDs: ids, thread: thread)
+            case .deliveredReceipt(let ids):
+                MessageStore.shared.markDelivered(messageIDs: ids, thread: thread)
             case .reaction(let targetID, let asset):
                 // Locate the target by id across ALL threads (not the sender-
                 // derived `thread`), so a SELF-echo (a reaction made on your
@@ -2057,6 +2067,29 @@ final class MessageService {
                 // has already advanced, the row is acked, and the next message
                 // is not stuck behind one we cannot read.
                 os_log("ingest: unknown envelope kind %{public}@, ignored", log: .default, type: .info, kind)
+            }
+            // Tell the sender it ARRIVED, whether or not anybody opened it.
+            //
+            // ⚠ This is the only way the second tick can ever catch up. The
+            // island decides "delivered" once, at send time, from whether a
+            // socket of ours was live at that instant — so everything written
+            // while we were offline kept one tick forever, even after we came
+            // back and read it. Sealed sender means the island cannot correct
+            // itself later: it does not know who sent the row it just handed us.
+            // Only this device knows, so only this device can say.
+            //
+            // 1:1 only, real content only, and never for our own carbon coming
+            // back. A group message has as many recipients as members and one
+            // tick cannot stand for all of them.
+            if inserted, case .peer(let peerUIN) = thread, peerUIN != ownUIN,
+               decrypted.senderUIN != ownUIN,
+               let contact = ContactService.shared.contacts.first(where: { $0.uin == peerUIN }),
+               let insertedID = MessageStore.shared.messages(for: thread).last?.id {
+                Task { [weak self] in
+                    try? await self?.sendEnvelope(
+                        .deliveredReceipt(targetIDs: [insertedID]), to: contact, localID: nil
+                    )
+                }
             }
             os_log(
                 "ingest ok: senderUIN=%d thread=%{public}@ envType=%{public}@ offline=%{public}d new=%{public}d",

@@ -50,6 +50,16 @@ enum Envelope: Codable, Hashable {
     case deleteForEveryone(targetID: UUID)
     case systemNotice(id: UUID, text: String)
     case readReceipt(targetIDs: [UUID])
+    /// Receiver → sender: "these arrived on my device". Flips the sender's
+    /// bubbles from `.sent` to `.delivered`.
+    ///
+    /// ⚠ The second tick used to be decided ONCE, by the island's answer to the
+    /// send ("was a socket of theirs live at this instant"), and never caught
+    /// up: everything written while the peer was offline kept one tick forever.
+    /// The island cannot correct itself later — a deposit is unauthenticated and
+    /// sealed, so it never learns who sent the row it is handing over. Only the
+    /// recipient's own client knows, so only it can say.
+    case deliveredReceipt(targetIDs: [UUID])
     case reaction(targetID: UUID, asset: String?)
     /// Recipient → blocked-sender; flips the sender's bubble to `.failed` without revealing the block.
     case bounce(targetID: UUID)
@@ -281,6 +291,9 @@ enum Envelope: Codable, Hashable {
         case .readReceipt(let ids):
             try c.encode("read", forKey: .kind)
             try c.encode(ids, forKey: .targetIDs)
+        case .deliveredReceipt(let ids):
+            try c.encode("delivered", forKey: .kind)
+            try c.encode(ids, forKey: .targetIDs)
         case .reaction(let target, let asset):
             try c.encode("reaction", forKey: .kind)
             try c.encode(target, forKey: .targetID)
@@ -453,6 +466,8 @@ enum Envelope: Codable, Hashable {
                 id: try c.decode(UUID.self, forKey: .id),
                 text: try c.decode(String.self, forKey: .text)
             )
+        case "delivered":
+            self = .deliveredReceipt(targetIDs: try c.decode([UUID].self, forKey: .targetIDs))
         case "read":
             self = .readReceipt(targetIDs: try c.decode([UUID].self, forKey: .targetIDs))
         case "reaction":
