@@ -45,7 +45,33 @@ final class ChatViewModel: ObservableObject {
     /// message id → isFromMe, for O(1) `replyIsMine` — it used to scan the
     /// whole loaded window per reply row.
     private var isMineByID: [UUID: Bool] = [:]
-    @Published var input: String = ""
+    /// Composer text. NOT @Published on purpose: a keystroke used to fire
+    /// objectWillChange and re-run ChatView's whole body (every visible row)
+    /// per character. The UITextView owns the live text; SwiftUI learns about
+    /// it only through the gated derivatives below. Programmatic writes must
+    /// go through `setInput` so the field picks them up.
+    var input: String = "" {
+        didSet { inputDidChange() }
+    }
+    /// Fires only when the trimmed-emptiness of `input` flips — all the
+    /// composer chrome (send↔mic morph) needs per keystroke.
+    @Published private(set) var composerNonEmpty = false
+    /// `@partial` token at the tail of the composer input — drives the
+    /// mention picker. Walks back from input end; bails at whitespace, so
+    /// `Hey @bob hi @al` resolves to `al`, not `bob`. Published per keystroke
+    /// ONLY while such a token exists (nil → nil changes don't fire).
+    @Published private(set) var activeMentionQuery: MentionQuery?
+    /// Bumped by `setInput` (mention insert, emoji splice, clear-on-send,
+    /// edit prefill) so EmoticonTextField's updateUIView runs and pushes the
+    /// new text into the UITextView. Keystrokes never bump it — the text
+    /// view already has the text.
+    @Published private(set) var composerRevision = 0
+    private let inputEdits = PassthroughSubject<String, Never>()
+
+    struct MentionQuery: Equatable {
+        let range: NSRange
+        let partial: String
+    }
     @Published var isPeerTyping: Bool = false
     @Published var fadingOutIDs: Set<UUID> = []
     /// True while older messages exist in CoreData beyond the
@@ -101,8 +127,11 @@ final class ChatViewModel: ObservableObject {
         } else if let draft = UserDefaults.standard.string(forKey: Self.draftKey(for: target)),
                   !draft.isEmpty {
             self.input = draft
+            // didSet doesn't fire from init — seed the derivatives by hand so
+            // a restored draft shows the send button and mention picker.
+            inputDidChange()
         }
-        $input
+        inputEdits
             .removeDuplicates()
             .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
             .sink { [weak self] text in
@@ -212,6 +241,50 @@ final class ChatViewModel: ObservableObject {
         }
 
         captureUnreadIfNeeded()
+    }
+
+    /// Programmatic composer write — anything NOT typed by the user
+    /// (mention insert, emoji splice, clear-on-send, edit prefill). The
+    /// revision bump is what re-renders EmoticonTextField with the new text.
+    func setInput(_ text: String) {
+        input = text
+        composerRevision += 1
+    }
+
+    /// Recompute the gated composer derivatives. Runs on every `input`
+    /// mutation via didSet; each derivative only publishes when its value
+    /// actually changed, so plain typing fires nothing until the emptiness
+    /// flips or a live @-token mutates.
+    private func inputDidChange() {
+        let nonEmpty = !input.trimmingCharacters(in: .whitespaces).isEmpty
+        if composerNonEmpty != nonEmpty { composerNonEmpty = nonEmpty }
+        let query = target.thread.isGroup ? Self.mentionQuery(in: input) : nil
+        if activeMentionQuery != query { activeMentionQuery = query }
+        inputEdits.send(input)
+    }
+
+    private static func mentionQuery(in input: String) -> MentionQuery? {
+        let ns = input as NSString
+        var i = ns.length
+        while i > 0 {
+            let scalar = Unicode.Scalar(ns.character(at: i - 1))
+            if let s = scalar, s == "@" {
+                let after = ns.substring(from: i)
+                // The walk-back already stops at whitespace, so the partial
+                // never spans words. Accept any non-empty run (not just
+                // [A-Za-z0-9_-]) so nicks with a dot or other punctuation
+                // (e.g. ".Dev") are searchable — the picker matches against
+                // the real roster anyway.
+                guard !after.isEmpty else { return nil }
+                return MentionQuery(
+                    range: NSRange(location: i - 1, length: ns.length - i + 1),
+                    partial: after
+                )
+            }
+            if let s = scalar, s.properties.isWhitespace { return nil }
+            i -= 1
+        }
+        return nil
     }
 
     private static func draftKey(for target: ChatTarget) -> String {
@@ -400,7 +473,7 @@ final class ChatViewModel: ObservableObject {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                 editingTarget = nil
             }
-            input = ""
+            setInput("")
             if newText != editing.text {
                 EmoticonUsageStore.shared.bump(forText: newText)
                 Task {
@@ -415,7 +488,7 @@ final class ChatViewModel: ObservableObject {
             }
             return
         }
-        input = ""
+        setInput("")
         EmoticonUsageStore.shared.bump(forText: text)
         let reply = consumeReplyContext()
         do {
@@ -432,14 +505,14 @@ final class ChatViewModel: ObservableObject {
             replyTarget = nil
             editingTarget = message
         }
-        input = message.text
+        setInput(message.text)
     }
 
     func cancelEdit() {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
             editingTarget = nil
         }
-        input = ""
+        setInput("")
     }
 
     /// Hard cap so the composer doesn't grow unboundedly (and to mirror
@@ -505,7 +578,7 @@ final class ChatViewModel: ObservableObject {
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let queue = pendingMedia
         pendingMedia = []
-        input = ""
+        setInput("")
         // One album-id for the whole batch — only assigned when there
         // are 2+ items, so a single-pick send keeps the standalone
         // bubble layout. Receivers group by this id at render time.
