@@ -132,6 +132,29 @@ class NotificationService: UNNotificationServiceExtension {
                    log: Self.log, type: .default, toUIN, targetID.uuidString)
         }
 
+        // A v=2 fan-out copy is sealed to ONE libsignal device, and the push
+        // that carries it wakes every install of the account. `toDev` names the
+        // one it belongs to; on any other install the decrypt below cannot
+        // succeed, and its failure would raise the generic "New message"
+        // banner — which is reserved for a ratchet that is actually broken.
+        // Read AFTER the account routing above: the device id is per account,
+        // and that is where the right account's store gets installed.
+        //
+        // Only an ADDRESSED copy is suppressed. A decrypt that fails with no
+        // `toDev` still surfaces: nothing has said the message is not ours.
+        let toDev: Int? = {
+            if let v = userInfo["toDev"] as? Int { return v }
+            if let n = userInfo["toDev"] as? NSNumber { return n.intValue }
+            return nil
+        }()
+        let myDeviceID = SignalProtocolStores.shared.localDeviceId
+        if let toDev, toDev != myDeviceID {
+            os_log("fan-out copy for device %d, we are %d — suppressing",
+                   log: Self.log, type: .default, toDev, myDeviceID)
+            contentHandler(UNNotificationContent())
+            return
+        }
+
         guard let crypto = SignalCryptoService.loadFromKeychain(ownUIN: 0) else {
             os_log("no identity in keychain (shared group missing?) — passing through",
                    log: Self.log, type: .error)

@@ -1,4 +1,3 @@
-import LibSignalClient
 import SwiftUI
 
 struct UserInfoView: View {
@@ -532,8 +531,8 @@ struct UserInfoView: View {
     /// /messages/sealed hits `processPreKeyBundle` again and the
     /// chain is healthy.
     private func resetSecureSession(uin: Int) {
-        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
-        SignalProtocolStores.shared.deleteSession(for: addr)
+        SignalProtocolStores.shared.deleteSessions(forPeerUIN: uin)
+        Task { await SignalCryptoService.invalidatePeerDevices(forPeerUIN: uin) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 

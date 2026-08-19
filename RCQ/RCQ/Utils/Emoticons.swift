@@ -23,6 +23,68 @@ enum Emoticons {
         "viannen_09", "viannen_35", "viannen_48", "viannen_76", "viannen_88",
     ]
 
+    /// The "standart" Kolobok set (258 glyphs), bundled on every client.
+    ///
+    /// Kept as a plain list rather than 258 hand-written rows because the display
+    /// name is mechanical (`to_pick_ones_nose` → "To pick ones nose") and because
+    /// the three clients MUST agree on it exactly: a `:code:` this list is missing
+    /// renders as raw text on that platform and nowhere else.
+    ///
+    /// ⚠ Additive on purpose. The older set stays bundled even where this one
+    /// carries no replacement: those codes are already sitting in people's
+    /// history, and dropping an asset turns a smiley they sent last week into
+    /// `:smile:`.
+    static let standardPack: [String] = [
+        "acute", "aggressive", "agree", "aikido", "air_kiss", "alcoholic", "angel",
+        "assassin", "bad", "banned", "beach", "beee", "beta", "big_boss", "black_eye",
+        "blind", "blum2", "blum3", "blush2", "boast", "boredom", "brunette", "buba",
+        "buba_phone", "butcher", "censored", "clapping", "comando", "cray", "cray2",
+        "crazy", "crazy_pilot", "curtsey", "dance", "dance2", "dance3", "dance4",
+        "dash1", "dash2", "dash3", "declare", "ded_moroz", "ded_snegurochka",
+        "ded_snegurochka2", "dinamo", "dirol", "dntknw", "don-t_mention", "download",
+        "drinks", "dwarf", "elf", "facepalm", "fan_1", "fans", "feminist",
+        "feminist_en", "first_move", "flirt", "focus", "fool", "friends", "gamer1",
+        "gamer2", "gamer3", "gamer4", "girl_blum", "girl_blum2", "girl_cray",
+        "girl_cray2", "girl_cray3", "girl_crazy", "girl_dance", "girl_drink1",
+        "girl_drink2", "girl_drink3", "girl_drink4", "girl_haha", "girl_hide",
+        "girl_hospital", "girl_impossible", "girl_in_love", "girl_mad",
+        "girl_prepare_fish", "girl_sad", "girl_sigh", "girl_smile",
+        "girl_to_take_umbrage", "girl_to_take_umbrage2", "girl_wacko", "girl_werewolf",
+        "girl_wink", "girl_witch", "give_heart", "give_rose", "good", "good2", "good3",
+        "heat", "help", "hi", "hunter", "hysteric", "i-m_so_happy", "ireful1",
+        "ireful2", "ireful3", "jester", "king", "king2", "kiss", "kiss2", "kiss3",
+        "laugh1", "laugh2", "laugh3", "lazy", "lazy2", "lazy3", "locomotive", "mail1",
+        "mamba", "man_in_love", "mda", "meeting", "moil", "morpheus", "mosking",
+        "music", "music2", "nea", "negative", "neo", "new_russian", "nhl", "nhl2",
+        "nhl3", "nhl_checking", "nhl_crach", "nhl_fight", "no2", "offtopic", "ok",
+        "on_the_quiet", "on_the_quiet2", "orc", "padonak", "paint", "paint2", "paint3",
+        "paladin", "pardon", "parting", "parting2", "party", "patsak", "phi", "pilot",
+        "pioneer", "pioneer_smoke", "pleasantry", "pogranichnik", "polling", "popcorm1",
+        "popcorm2", "prankster", "prankster2", "preved", "protest", "punish", "punish2",
+        "queen", "rabbi", "rap", "read", "resent", "rofl", "russian", "sad", "santa",
+        "santa2", "santa3", "sarcasm", "sarcastic", "sarcastic_blum", "sarcastic_hand",
+        "scare", "scare2", "scenic", "sclerosis", "scout", "scout_en",
+        "scratch_one-s_head", "search", "secret", "shablon_01", "shablon_02", "shablon_03",
+        "shablon_04", "shout", "slow", "slow_en", "smile3", "smoke", "snegurochka",
+        "snooks", "sorry", "sorry2", "spartak", "spruce_up", "stinker", "stop",
+        "sun_bespectacled", "superman", "superman2", "superstition", "swoon", "swoon2",
+        "take_example", "taunt", "tease", "telephone", "tender", "thank_you",
+        "thank_you2", "this", "to_babruysk", "to_become_senile", "to_clue",
+        "to_keep_order", "to_pick_ones_nose", "to_pick_ones_nose2",
+        "to_pick_ones_nose3", "to_pick_ones_nose_eat", "to_take_umbrage", "tommy",
+        "training1", "triniti", "umnik", "umnik2", "vampire", "victory", "vinsent",
+        "wacko", "wacko2", "warning", "warning2", "whistle", "whistle2", "whistle3",
+        "wild", "wink3", "wizard", "yahoo", "yes2", "yes3", "yes4", "yu"
+    ]
+
+    /// "to_pick_ones_nose" → "To pick ones nose". Only for the standard pack;
+    /// the curated set below keeps its hand-written names.
+    private static func displayName(for asset: String) -> String {
+        let words = asset.replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        return words.prefix(1).uppercased() + words.dropFirst()
+    }
+
     static let entries: [Entry] = {
         var raw: [Entry] = []
         func add(_ asset: String, _ name: String) {
@@ -76,6 +138,10 @@ enum Emoticons {
         // peer's `:viannen_03:` tokenizes + renders here too, not just shows as
         // text. They also become pickable in the customise sheet via `fullSet`.
         for extra in Emoticons.extraKoloboks { add(extra, extra) }
+        // Appended last so a name the curated set already spells out wins.
+        for asset in Emoticons.standardPack where !raw.contains(where: { $0.asset == asset }) {
+            add(asset, displayName(for: asset))
+        }
 
         return raw.sorted { $0.code.count > $1.code.count }
     }()
