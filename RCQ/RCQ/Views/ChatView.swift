@@ -466,6 +466,9 @@ struct ChatView: View {
     /// unread, where the sentinel may never materialize). From then on
     /// the chat stays visible across the lifetime of the screen.
     @State private var chatVisible: Bool = false
+    /// True once the `.task` has re-asserted the open position. Until then a
+    /// realizing bottom sentinel is not proof of anything — see its onAppear.
+    @State private var settleDone: Bool = false
 
     /// Lift the initial-settle mask exactly once, first caller wins.
     @MainActor private func revealChat() {
@@ -819,6 +822,14 @@ struct ChatView: View {
         }
         .onChange(of: chatSettings.secureByThread) { _ in reconcileScreenSecure() }
         .onReceive(VoiceRecorder.shared.$isRecording.removeDuplicates()) { isVoiceRecording = $0 }
+        // The seen cut-off advancing (nav push fires onDisappear → markSeen)
+        // empties mentionIDs while the cursor keeps its old position, and a
+        // NEW mention then hid behind max(0, count - cursor) forever. Any
+        // shrink below the cursor means the cut-off moved, so everything
+        // remaining is unseen — start stepping from the first again.
+        .onChange(of: vm.mentionIDs) { ids in
+            if ids.count < mentionCursor { mentionCursor = 0 }
+        }
         .modifier(InPlaceTranslator(vm: vm))
         .sheet(isPresented: $showAllMedia) {
             AllMediaSheet(messages: vm.messages)
@@ -1489,11 +1500,14 @@ struct ChatView: View {
                         .frame(height: 1)
                         .id(Self.bottomAnchorID)
                         .onAppear {
-                            // The sentinel materializing IS the geometry proof
-                            // that the open-at-bottom scroll landed — lift the
-                            // initial-settle mask right here instead of waiting
-                            // out a wall-clock window.
-                            revealChat()
+                            // Once the open position has been re-asserted, the
+                            // sentinel materializing IS the geometry proof that
+                            // the scroll landed at the bottom — lift the
+                            // initial-settle mask here instead of waiting out
+                            // the rest of the insurance window. Before that it
+                            // only means LazyVStack realized the row, which
+                            // happens mid-scroll and proves nothing.
+                            if settleDone { revealChat() }
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
                             // Reached the bottom on your own → drop any stale reply-return target.
                             replyReturnID = nil
@@ -1692,13 +1706,21 @@ struct ChatView: View {
                 settle()
                 try? await Task.sleep(nanoseconds: 32_000_000)
                 settle()
+                // Only from here may geometry lift the mask: the sentinel
+                // realizes during the FIRST scrollTo whenever the open anchor
+                // sits within a screenful of the bottom, which is most of the
+                // open-at-unread cases — revealing there would show exactly
+                // the row-shuffle the mask exists to hide.
+                settleDone = true
                 // Insurance for the open-at-unread anchor (top of the unread
                 // block — the bottom sentinel may never realize there) and
                 // any layout where the geometry callback doesn't come: after
-                // the re-assert has had a frame to land, lift the mask
-                // ourselves. revealChat() is idempotent, so on the common
-                // open-at-bottom path the sentinel has usually beaten us here.
+                // the re-assert has had a frame to land, pin the position one
+                // last time and lift the mask ourselves. revealChat() is
+                // idempotent, so a sentinel that realized after the settle has
+                // usually beaten us here.
                 try? await Task.sleep(nanoseconds: 48_000_000)
+                settle()
                 revealChat()
                 // Reaction-jump-on-open: someone reacted to my message while I
                 // was away — scroll to + flash it once the layout has settled,
