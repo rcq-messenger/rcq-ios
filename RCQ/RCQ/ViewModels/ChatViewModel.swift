@@ -208,15 +208,19 @@ final class ChatViewModel: ObservableObject {
         } else {
             $groupMembers
                 .combineLatest(ContactService.shared.$contacts, ContactAliasStore.shared.$aliases)
-                .map { members, contacts, _ -> [Int: String] in
+                .map { members, contacts, aliases -> [Int: String] in
+                    // Resolve against the EMITTED alias dictionary, never the
+                    // store's property: @Published emits during willSet, so a
+                    // read-back here still sees the PRE-change table and a
+                    // rename would rebuild this map with the old name.
                     var out: [Int: String] = [:]
                     for c in contacts {
-                        out[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname, host: c.host)
+                        out[c.uin] = aliases[ContactAliasStore.aliasKey(c.uin, host: c.host)] ?? c.nickname
                     }
                     // Roster last: a group member's entry wins over the
                     // contact-list one, matching the old scan order.
                     for m in members {
-                        out[m.uin] = ContactAliasStore.shared.displayName(for: m.uin, fallback: m.nickname)
+                        out[m.uin] = aliases[ContactAliasStore.aliasKey(m.uin)] ?? m.nickname
                     }
                     return out
                 }
