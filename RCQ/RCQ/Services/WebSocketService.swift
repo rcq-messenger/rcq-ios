@@ -62,6 +62,25 @@ final class WebSocketService: ObservableObject {
         let serverTime: Date
         let offline: Bool
         let groupID: Int?
+        /// Which of OUR devices this copy was sealed for (v=2 fan-out).
+        /// nil = a sender that addresses the account, not a device.
+        let toDeviceID: Int?
+
+        init(
+            type: String,
+            payload: String,
+            serverTime: Date,
+            offline: Bool,
+            groupID: Int?,
+            toDeviceID: Int? = nil
+        ) {
+            self.type = type
+            self.payload = payload
+            self.serverTime = serverTime
+            self.offline = offline
+            self.groupID = groupID
+            self.toDeviceID = toDeviceID
+        }
     }
 
     @Published private(set) var isConnected: Bool = false
@@ -820,8 +839,13 @@ final class WebSocketService: ObservableObject {
             let serverTime = (dict["server_time"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
             let offline = dict["offline"] as? Bool ?? false
             let groupID = dict["group_id"] as? Int
+            // Live delivery is not filtered server-side: every socket of the
+            // account sees every fan-out copy, so the frame has to say which
+            // device it was sealed for.
+            let toDeviceID = dict["to_device_id"] as? Int
             events.send(.envelope(envelope: EnvelopePacket(
-                type: type, payload: payload, serverTime: serverTime, offline: offline, groupID: groupID
+                type: type, payload: payload, serverTime: serverTime, offline: offline,
+                groupID: groupID, toDeviceID: toDeviceID
             )))
 
         default:

@@ -1,4 +1,5 @@
 import Foundation
+import LibSignalClient
 import os.log
 import UIKit
 
@@ -920,21 +921,68 @@ final class MessageService {
             return
         }
         let bundle = PeerBundle(uin: contact.uin, identityKey: contact.identityKey, signingKey: contact.signingKey)
-        let blob = try await encryptForPeer(envelope: envelope, peer: bundle, peerSignalIdentityKey: contact.signalIdentityKey)
+        let fanout = try await sealForPeerDevices(
+            envelope: envelope, peer: bundle, peerSignalIdentityKey: contact.signalIdentityKey
+        )
 
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
 
         let envType = envelopeType(for: envelope)
         do {
-            let out: Out = try await APIClient.shared.request(
-                "POST", "/messages/sealed",
-                body: Body(to_uin: contact.uin, envelope_type: envType, payload: blob),
-                authenticated: false,
-                retries: 2
-            )
+            var delivered = false
+            var queued = false
+            var accepted = 0
+            var lastError: Error = URLError(.unknown)
+            for copy in fanout.copies {
+                do {
+                    let out: Out = try await APIClient.shared.request(
+                        "POST", "/messages/sealed",
+                        body: SealedSendBody(
+                            to_uin: contact.uin, envelope_type: envType,
+                            payload: copy.payload, to_device_id: copy.deviceID
+                        ),
+                        authenticated: false,
+                        retries: 2
+                    )
+                    accepted += 1
+                    delivered = delivered || out.delivered
+                    queued = queued || out.queued
+                } catch {
+                    // 404 on an addressed copy = that install is gone; the
+                    // list we fanned out over is stale. The peer's other
+                    // devices still took their copy, so this is not a failed
+                    // send unless every copy failed.
+                    if copy.deviceID != nil, let api = error as? APIError, case .http(404, _) = api {
+                        await SignalCryptoService.invalidatePeerDevices(forPeerUIN: contact.uin)
+                    }
+                    lastError = error
+                }
+            }
+            // Throws only when EVERY copy failed: a peer with a phone online
+            // and a desktop that is gone has still been written to.
+            guard accepted > 0 else { throw lastError }
+            // `delivered` needs the fan-out to be WHOLE — every install sealed
+            // to AND every copy accepted. A partial fan-out reports the weaker
+            // state on purpose: the message did reach somebody, so failing the
+            // send outright would be a lie too, but a device that got no copy
+            // is one this send never delivered to and the tick above the
+            // bubble must not say otherwise.
+            let whole = fanout.complete && accepted == fanout.copies.count
+            if !whole {
+                print("[MessageService] partial fan-out to \(contact.uin): \(accepted) of \(fanout.copies.count) copies posted")
+            }
             if let localID {
-                let next: DeliveryState = out.delivered ? .delivered : (out.queued ? .sent : .failed)
+                let next: DeliveryState
+                if delivered && whole {
+                    next = .delivered
+                } else if delivered || queued {
+                    // One tick — the same thing a message to somebody offline
+                    // shows, and the same thing it means: it is on the island,
+                    // it has not reached every install of them yet.
+                    next = .sent
+                } else {
+                    next = .failed
+                }
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: next)
             }
             playSentSound(for: envelope)
@@ -1008,11 +1056,90 @@ final class MessageService {
         }
         do {
             try await SignalCryptoService.ensureStage3Session(forPeerUIN: peer.uin)
-            return try crypto.encryptStage3(envelope: envelope, for: peer)
+            return try crypto.encryptStage3(envelope: envelope, for: peer, deviceId: 1)
         } catch {
             print("[MessageService] Stage 3 encrypt for \(peer.uin) failed (\(error)) — falling back to v=1")
             return try crypto.encrypt(envelope: envelope, for: peer)
         }
+    }
+
+    /// One sealed copy of a 1:1 message. `deviceID` rides the wire as
+    /// `to_device_id`; nil means "whichever device gets there first", the
+    /// only thing an island or a peer from before per-device sessions knows.
+    struct SealedCopy {
+        let deviceID: Int?
+        let payload: String
+    }
+
+    /// The sealed copies of one envelope plus whether they cover EVERY install
+    /// the recipient runs. A device we could not seal to is a device that will
+    /// never see this message, and a send that reports "delivered" over it is
+    /// the same silent loss as not sending at all — only harder to notice.
+    struct SealedFanout {
+        let copies: [SealedCopy]
+        let complete: Bool
+    }
+
+    /// `to_device_id` is OMITTED rather than sent as null when there is no
+    /// device to name — synthesised Encodable does that for an optional, and
+    /// an island that predates per-device addressing has never seen the key.
+    private struct SealedSendBody: Encodable {
+        let to_uin: Int
+        let envelope_type: String
+        let payload: String
+        let to_device_id: Int?
+    }
+
+    /// Seal a 1:1 envelope once per libsignal device the peer runs.
+    ///
+    /// A v=2 session belongs to a PAIR of devices, so one ciphertext reaches
+    /// exactly one install of the recipient — a peer holding a phone and a
+    /// desktop needs two. Every way of not learning the device list (a
+    /// v=1-only peer, an island without the endpoint, an empty answer, a
+    /// bundle we cannot fetch) lands on exactly the pre-fan-out wire: one
+    /// copy, no `to_device_id`.
+    private func sealForPeerDevices(
+        envelope: Envelope, peer: PeerBundle, peerSignalIdentityKey: String?
+    ) async throws -> SealedFanout {
+        guard let psk = peerSignalIdentityKey, !psk.isEmpty else {
+            return SealedFanout(
+                copies: [SealedCopy(deviceID: nil, payload: try crypto.encrypt(envelope: envelope, for: peer))],
+                complete: true
+            )
+        }
+        if let devices = await SignalCryptoService.peerDeviceIDs(forPeerUIN: peer.uin) {
+            var copies: [SealedCopy] = []
+            for d in devices where (1...127).contains(d) {
+                do {
+                    try await SignalCryptoService.ensureStage3Session(forPeerUIN: peer.uin, deviceId: UInt32(d))
+                    copies.append(SealedCopy(
+                        deviceID: d,
+                        payload: try crypto.encryptStage3(envelope: envelope, for: peer, deviceId: UInt32(d))
+                    ))
+                } catch {
+                    print("[MessageService] Stage 3 encrypt for \(peer.uin)/\(d) failed (\(error))")
+                }
+            }
+            if !copies.isEmpty {
+                // A device id the list carried but libsignal cannot address
+                // (outside 1...127) is a device we skipped just as surely as
+                // one whose session we could not build, so the count of
+                // copies is measured against the WHOLE list.
+                if copies.count != devices.count {
+                    print("[MessageService] fan-out to \(peer.uin) covers \(copies.count) of \(devices.count) devices")
+                }
+                return SealedFanout(copies: copies, complete: copies.count == devices.count)
+            }
+        }
+        return SealedFanout(
+            copies: [SealedCopy(
+                deviceID: nil,
+                payload: try await encryptForPeer(
+                    envelope: envelope, peer: peer, peerSignalIdentityKey: peerSignalIdentityKey
+                )
+            )],
+            complete: true
+        )
     }
 
     func sendGroupEnvelope(_ envelope: Envelope, to snapshot: RCQGroup, localID: UUID?) async throws {
@@ -1275,18 +1402,30 @@ final class MessageService {
 
         let bundle = PeerBundle(uin: targetUIN, identityKey: identityKey, signingKey: signingKey)
         do {
-            let blob = try await encryptForPeer(
+            // Completeness is not tracked here: a visit ping has no tick to be
+            // wrong about, and one install of the peer hearing it is the whole
+            // point of the envelope.
+            let fanout = try await sealForPeerDevices(
                 envelope: .visit(at: Date()),
                 peer: bundle,
                 peerSignalIdentityKey: signalIdentityKey
             )
-            struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
             struct Out: Decodable { let delivered: Bool; let queued: Bool }
-            let _: Out = try await APIClient.shared.request(
-                "POST", "/messages/sealed",
-                body: Body(to_uin: targetUIN, envelope_type: "visit", payload: blob),
-                authenticated: false
-            )
+            var accepted = false
+            for copy in fanout.copies {
+                let out: Out? = try? await APIClient.shared.request(
+                    "POST", "/messages/sealed",
+                    body: SealedSendBody(
+                        to_uin: targetUIN, envelope_type: "visit",
+                        payload: copy.payload, to_device_id: copy.deviceID
+                    ),
+                    authenticated: false
+                )
+                if out != nil { accepted = true }
+            }
+            // Re-arm the throttle only when nothing landed — a retry that
+            // re-fires the copies that DID land would double-count the visit.
+            if !accepted { lastVisitFiredAt[targetUIN] = nil }
         } catch {
             lastVisitFiredAt[targetUIN] = nil
         }
@@ -1382,6 +1521,22 @@ final class MessageService {
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket) -> IngestOutcome? {
+        var decryptError: Error?
+        return ingest(envelope: ws, decryptError: &decryptError)
+    }
+
+    /// `decryptError` separates "we could not open it" from "we opened it
+    /// and chose not to keep it", and says WHY when it is the former. The
+    /// offline queue needs both: a deliberate drop can still be worth
+    /// redelivering (a cross-island control envelope waiting for its
+    /// `from_host`), and among the failures only some are final — see
+    /// `isUnreadableHere`.
+    @discardableResult
+    func ingest(envelope ws: WebSocketService.EnvelopePacket, decryptError: inout Error?) -> IngestOutcome? {
+        // A fan-out copy sealed for another install of this account. Live
+        // delivery is not filtered server-side, so every socket of the
+        // account sees every copy; only one of them can open this.
+        if let to = ws.toDeviceID, to != SignalProtocolStores.shared.localDeviceId { return nil }
         do {
             // Hand off NSE-decrypted plaintext if present — decrypting v=2
             // twice would advance the Double Ratchet twice and fail.
@@ -2118,6 +2273,7 @@ final class MessageService {
                 let dupThread = ws.groupID.map { ThreadID.group(id: $0) } ?? ThreadID.peer(uin: 0)
                 return IngestOutcome(thread: dupThread, isNewContent: false, wasInNSECache: false)
             }
+            decryptError = error
             // Common: stale identity_key after peer reinstall/re-register.
             os_log(
                 "ingest decrypt failed: %{public}@ — payload=%{public}@... type=%{public}@ offline=%{public}d groupID=%{public}@",
@@ -2129,6 +2285,30 @@ final class MessageService {
                 ws.groupID.map(String.init) ?? "-"
             )
             return nil
+        }
+    }
+
+    /// Whether [error] is libsignal's verdict that THIS install can never open
+    /// the ciphertext, however many times it is redelivered — no session under
+    /// the sender's address, an identity that is not the one the session was
+    /// built on, key material the message names that we never minted. Those
+    /// are the shapes a pre-fan-out sender's copy for the account's PRIMARY
+    /// install produces when it lands on a secondary.
+    ///
+    /// Deliberately narrow. A failure that merely did not complete — the store
+    /// unreadable for a moment, a key not loaded yet — leaves the row worth
+    /// another drain, and our own stores report exactly that as a missing row
+    /// (`SignalProtocolStoreError`), indistinguishable from a genuinely absent
+    /// one. So only libsignal's own verdict about the message counts here:
+    /// re-draining a row we could have opened costs bandwidth, ACKing one
+    /// loses the message for good.
+    private static func isUnreadableHere(_ error: Error) -> Bool {
+        guard let signalError = error as? SignalError else { return false }
+        switch signalError {
+        case .sessionNotFound, .untrustedIdentity, .invalidKeyIdentifier:
+            return true
+        default:
+            return false
         }
     }
 
@@ -2144,7 +2324,11 @@ final class MessageService {
             let payload: String
             let received_at: Date
             let group_id: Int?
+            /// Which install of ours the sender sealed this for; nil from a
+            /// sender that addresses the account rather than a device.
+            let to_device_id: Int?
         }
+        let myDeviceId = SignalProtocolStores.shared.localDeviceId
         do {
             // `ack=1` opts into the server-side ACK protocol: rows are
             // returned without being deleted, and the client is expected
@@ -2154,8 +2338,10 @@ final class MessageService {
             // fails for an envelope (decryption error, malformed payload,
             // crash mid-loop), the server keeps the row and redelivers on
             // the next fetch, up to OFFLINE_QUEUE_TTL_DAYS (default 30).
+            // `dev` is OUR libsignal device id: the island hands back rows
+            // addressed to it plus rows addressed to nobody in particular.
             let rows: [Row] = try await APIClient.shared.request(
-                "GET", "/messages/queue", query: ["ack": "1"]
+                "GET", "/messages/queue", query: ["ack": "1", "dev": String(myDeviceId)]
             )
             var sawUnknownPeer = false
             // Track which rows landed locally so we can ACK them. Two
@@ -2165,19 +2351,42 @@ final class MessageService {
             var ackedDirectIDs: [Int] = []
             var ackedGroupIDs: [Int] = []
             for r in rows {
+                // Sealed for a sibling install of ours — an island that
+                // predates per-device queues hands the account's whole
+                // backlog to whoever asks. Nothing here can open it, and
+                // leaving it queued means asking for it forever.
+                if let to = r.to_device_id, to != myDeviceId {
+                    if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
+                    continue
+                }
                 let env = WebSocketService.EnvelopePacket(
                     type: r.envelope_type,
                     payload: r.payload,
                     serverTime: r.received_at,
                     offline: true,
-                    groupID: r.group_id
+                    groupID: r.group_id,
+                    toDeviceID: r.to_device_id
                 )
-                guard let outcome = ingest(envelope: env) else {
+                var decryptError: Error?
+                guard let outcome = ingest(envelope: env, decryptError: &decryptError) else {
                     // ingest returned nil — decryption / validation /
                     // persistence failure. Do NOT ACK; server keeps the
                     // row and redelivers on the next /messages/queue
                     // fetch. Better to over-deliver a message we'll
                     // dedupe by inner-envelope UUID than lose it.
+                    //
+                    // Except on a SECONDARY device, for the one failure that
+                    // cannot come out differently later: an unaddressed 1:1
+                    // row libsignal says we have no session or no matching
+                    // identity for is a copy a pre-fan-out sender sealed to
+                    // the account's primary install, and no amount of
+                    // redelivery makes it readable here. A row that failed
+                    // for any other reason — including one we cannot classify
+                    // — stays queued, because the next drain may well open it.
+                    if let decryptError, Self.isUnreadableHere(decryptError),
+                       r.to_device_id == nil, r.group_id == nil, myDeviceId != 1 {
+                        ackedDirectIDs.append(r.id)
+                    }
                     continue
                 }
                 // Non-nil outcome means the envelope is now in MessageDB
@@ -2226,8 +2435,16 @@ final class MessageService {
                 struct AckOut: Decodable { let deleted: Int }
                 let payload = AckPayload(direct_ids: ackedDirectIDs, group_ids: ackedGroupIDs)
                 do {
+                    // Same `dev` as the drain above, and it has to be: the
+                    // cursor moves over the contiguous prefix of the rows THIS
+                    // device was served, and the server rebuilds that set from
+                    // `dev`. Ack under a different one and a sibling's copy —
+                    // never handed to us, never ackable — is the first hole the
+                    // prefix stops at, so the cursor never moves again and this
+                    // device redrains the same rows forever.
                     let _: AckOut = try await APIClient.shared.request(
-                        "POST", "/messages/queue/ack", body: payload
+                        "POST", "/messages/queue/ack", body: payload,
+                        query: ["dev": String(myDeviceId)]
                     )
                 } catch {
                     // Non-fatal. See comment above.

@@ -228,6 +228,45 @@ final class SignalProtocolDB: @unchecked Sendable {
                 address TEXT PRIMARY KEY
             );
             """,
+            // This install's libsignal device id for the account, as
+            // ASSIGNED BY THE SERVER (1 = the primary bundle slot, >= 2 =
+            // a secondary registered through /keys/devices). A libsignal
+            // session belongs to one PAIR of devices, so every install of
+            // an account needs its own id or two installs share one
+            // session slot on every peer and the loser's messages are
+            // undecryptable. Absent row = 1, which is what every build
+            // before multi-device was.
+            """
+            CREATE TABLE IF NOT EXISTS local_device (
+                id INTEGER PRIMARY KEY,
+                device_id INTEGER NOT NULL
+            );
+            """,
+            // How many device lists in a row came back WITHOUT this
+            // install's id. Persisted rather than kept in memory because
+            // the rule it feeds ("believe it only on the second reading")
+            // is never reached by a counter that restarts at every launch,
+            // and a secondary whose server row vanished would then stay
+            // unreachable to fan-out senders forever. Absent row = 0.
+            """
+            CREATE TABLE IF NOT EXISTS missing_device_strikes (
+                id INTEGER PRIMARY KEY,
+                strikes INTEGER NOT NULL
+            );
+            """,
+            // X25519 key the OUTER (sealed-sender) layer of a v=2 envelope
+            // goes to, per PEER DEVICE — `<uin>:<deviceId>` → raw pubkey.
+            // The account identity key covers the primary device only; a
+            // secondary install publishes one of its own, and a copy sealed
+            // to the account key is one that install cannot open. Read from
+            // the device's pre-key bundle, which is also the only place it
+            // is served.
+            """
+            CREATE TABLE IF NOT EXISTS device_outer_keys (
+                address TEXT PRIMARY KEY,
+                outer_key BLOB NOT NULL
+            );
+            """,
         ]
         for sql in stmts {
             _ = sqlite3_exec(db, sql, nil, nil, nil)
@@ -249,6 +288,23 @@ final class SignalProtocolDB: @unchecked Sendable {
         guard let bytes = sqlite3_column_blob(stmt, 0) else { return nil }
         let length = Int(sqlite3_column_bytes(stmt, 0))
         return Data(bytes: bytes, count: length)
+    }
+
+    /// Every `(text, blob)` row of a query, materialised. Only the session
+    /// table needs it and that holds one row per peer device, so a cursor
+    /// API nobody else would use is not worth the surface.
+    func selectTextBlobRows(sql: String) -> [(String, Data)] {
+        var stmt: OpaquePointer?
+        defer { if stmt != nil { sqlite3_finalize(stmt) } }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt = stmt else { return [] }
+        var rows: [(String, Data)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let text = sqlite3_column_text(stmt, 0),
+                  let bytes = sqlite3_column_blob(stmt, 1) else { continue }
+            let length = Int(sqlite3_column_bytes(stmt, 1))
+            rows.append((String(cString: text), Data(bytes: bytes, count: length)))
+        }
+        return rows
     }
 
     func selectInt(sql: String, bind: (OpaquePointer) -> Void) -> Int64? {
@@ -291,7 +347,8 @@ final class SignalProtocolDB: @unchecked Sendable {
         sync {
             for table in ["local_identity", "prekeys", "signed_prekeys",
                           "kyber_prekeys", "sessions", "identities",
-                          "sender_keys", "identity_changes"] {
+                          "sender_keys", "identity_changes", "local_device",
+                          "device_outer_keys", "missing_device_strikes"] {
                 _ = sqlite3_exec(db, "DELETE FROM \(table);", nil, nil, nil)
             }
         }

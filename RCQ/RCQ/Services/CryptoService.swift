@@ -11,8 +11,11 @@ protocol CryptoService {
     /// Cross-island group seal (§5c): override the inner `from` / `from_host`
     /// with the guest identity on the group's island.
     func encrypt(envelope: Envelope, for recipient: PeerBundle, fromUIN: Int, fromHost: String) throws -> String
-    /// Caller must establish the libsignal session via `ensureStage3Session(forPeerUIN:)` first.
-    func encryptStage3(envelope: Envelope, for recipient: PeerBundle) throws -> String
+    /// Seals to ONE device of `recipient`. A libsignal session belongs to a
+    /// pair of devices, so a peer running two installs needs one call per
+    /// install. Caller must establish that device's session via
+    /// `ensureStage3Session(forPeerUIN:deviceId:)` first.
+    func encryptStage3(envelope: Envelope, for recipient: PeerBundle, deviceId: UInt32) throws -> String
     func decrypt(envelopeB64: String) throws -> DecryptedEnvelope
 
     /// ECIES-wraps a symmetric key for `recipient` so the server can hold
@@ -795,15 +798,31 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
 
     // MARK: - encrypt (Stage 3, v=2)
 
-    /// Caller must have established the libsignal session via `ensureStage3Session(forPeerUIN:)` first; sync method.
-    func encryptStage3(envelope: Envelope, for recipient: PeerBundle) throws -> String {
-        guard let recipientPubBytes = Data(base64Encoded: recipient.identityKey),
-              let recipientPub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPubBytes)
-        else { throw CryptoError.malformedWire }
-
+    /// Caller must have established the libsignal session via `ensureStage3Session(forPeerUIN:deviceId:)` first; sync method.
+    func encryptStage3(envelope: Envelope, for recipient: PeerBundle, deviceId: UInt32) throws -> String {
         let stores = SignalProtocolStores.shared
         let ctx = RCQStoreContext.shared
-        let recipientAddr = try ProtocolAddress(name: String(recipient.uin), deviceId: 1)
+
+        // The OUTER layer goes to the key of the DEVICE, which is the account
+        // identity key for the primary and the install's own for a secondary.
+        // Sealing to the account key regardless would hand a secondary a copy
+        // it cannot open — indistinguishable, from the outside, from the loss
+        // this fan-out exists to stop. So an unknown key is a device we skip,
+        // never one we guess at.
+        let recipientPubBytes: Data
+        if deviceId == 1 {
+            guard let accountKey = Data(base64Encoded: recipient.identityKey)
+            else { throw CryptoError.malformedWire }
+            recipientPubBytes = accountKey
+        } else {
+            guard let deviceKey = stores.peerDeviceOuterKey(forPeerUIN: recipient.uin, deviceId: deviceId)
+            else { throw CryptoError.malformedWire }
+            recipientPubBytes = deviceKey
+        }
+        guard let recipientPub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: recipientPubBytes)
+        else { throw CryptoError.malformedWire }
+
+        let recipientAddr = try ProtocolAddress(name: String(recipient.uin), deviceId: deviceId)
         let localAddr = try stores.localAddress()
 
         let envelopeJSON = try JSONEncoder().encode(envelope)
@@ -833,11 +852,17 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             sharedInfo: Self.HKDF_INFO_V2,
             outputByteCount: 32
         )
-        let inner = try JSONSerialization.data(withJSONObject: [
+        var innerFields: [String: Any] = [
             "from": ownUIN,
             "kind": kindStr,
             "msg":  libsignalBytes.base64EncodedString(),
-        ])
+        ]
+        // Which of OUR devices sealed this, so the receiver addresses the
+        // session as (from, dev). Omitted at 1: every build in the field
+        // predates the key and reads a missing one as 1.
+        let myDeviceId = stores.localDeviceId
+        if myDeviceId != 1 { innerFields["dev"] = myDeviceId }
+        let inner = try JSONSerialization.data(withJSONObject: innerFields)
         let sealed = try ChaChaPoly.seal(
             inner,
             using: aeadKey,
@@ -996,7 +1021,13 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
 
         let stores = SignalProtocolStores.shared
         let ctx = RCQStoreContext.shared
-        let senderAddr = try ProtocolAddress(name: String(from), deviceId: 1)
+        // Absent `dev` = a sender from before per-device sessions, which
+        // could only ever have been device 1. The range check is not
+        // decoration: this value is attacker-chosen, and a negative one
+        // would trap on the UInt32 conversion below.
+        let senderDeviceId = (inner["dev"] as? Int) ?? 1
+        guard (1...127).contains(senderDeviceId) else { throw CryptoError.malformedWire }
+        let senderAddr = try ProtocolAddress(name: String(from), deviceId: UInt32(senderDeviceId))
         let localAddr = try stores.localAddress()
 
         let plainEnvelope: Data

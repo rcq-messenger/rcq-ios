@@ -20,6 +20,55 @@ final class SignalProtocolStores: @unchecked Sendable {
         }
     }
 
+    /// This install's libsignal device id, as assigned by the server
+    /// (`/keys/bundle` = 1, `/keys/devices` = 2+). 1 until we learn
+    /// otherwise, which is what every pre-multi-device build was.
+    var localDeviceId: Int {
+        return db.sync {
+            guard let raw = db.selectInt(sql: "SELECT device_id FROM local_device WHERE id = 1;", bind: { _ in })
+            else { return 1 }
+            return Int(raw)
+        }
+    }
+
+    func storeLocalDeviceId(_ deviceId: Int) {
+        db.sync {
+            _ = db.execute(
+                sql: """
+                INSERT INTO local_device (id, device_id) VALUES (1, ?)
+                ON CONFLICT(id) DO UPDATE SET device_id = excluded.device_id;
+                """,
+                bind: { stmt in sqlite3_bind_int64(stmt, 1, Int64(deviceId)) }
+            )
+        }
+    }
+
+    /// Consecutive device lists that came back without `localDeviceId`.
+    /// On disk because the rule it feeds ("act on the SECOND reading")
+    /// is unreachable for a counter that starts over at every launch.
+    var missingDeviceStrikes: Int {
+        return db.sync {
+            guard let raw = db.selectInt(sql: "SELECT strikes FROM missing_device_strikes WHERE id = 1;", bind: { _ in })
+            else { return 0 }
+            return Int(raw)
+        }
+    }
+
+    func storeMissingDeviceStrikes(_ strikes: Int) {
+        db.sync {
+            _ = db.execute(
+                sql: """
+                INSERT INTO missing_device_strikes (id, strikes) VALUES (1, ?)
+                ON CONFLICT(id) DO UPDATE SET strikes = excluded.strikes;
+                """,
+                bind: { stmt in sqlite3_bind_int64(stmt, 1, Int64(strikes)) }
+            )
+        }
+    }
+
+    /// Our end of a session. Stays on device 1 regardless of
+    /// `localDeviceId`: libsignal only uses it to name the local side, the
+    /// peer never sees it, and every build in the field passes 1.
     func localAddress() throws -> ProtocolAddress {
         guard let uin = localUIN else {
             throw SignalProtocolStoreError.noLocalIdentity
@@ -174,13 +223,16 @@ extension SignalProtocolStores {
     /// re-verified yet. Set in `saveIdentity` when an inbound prekey message
     /// carries a new identity for a known peer; cleared by
     /// `acknowledgePeerIdentity`.
+    /// Any device of [uin] — the peer runs one libsignal identity per
+    /// install, so a swap on their second device is as much a reason to
+    /// re-verify as one on their first. The uin is digits, so the prefix
+    /// carries no LIKE wildcards.
     func peerIdentityChanged(_ uin: Int) -> Bool {
-        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return false }
-        let key = addressKey(addr)
+        let prefix = "\(uin):%"
         return db.sync {
             db.selectInt(
-                sql: "SELECT 1 FROM identity_changes WHERE address = ? LIMIT 1;",
-                bind: { stmt in self.db.bindText(stmt, 1, key) }
+                sql: "SELECT 1 FROM identity_changes WHERE address LIKE ? LIMIT 1;",
+                bind: { stmt in self.db.bindText(stmt, 1, prefix) }
             ) != nil
         }
     }
@@ -188,12 +240,45 @@ extension SignalProtocolStores {
     /// Clear the change flag for [uin]. Opening the safety number to re-check
     /// counts as acknowledging the change.
     func acknowledgePeerIdentity(_ uin: Int) {
-        guard let addr = try? ProtocolAddress(name: String(uin), deviceId: 1) else { return }
-        let key = addressKey(addr)
+        let prefix = "\(uin):%"
         db.sync {
             _ = db.execute(
-                sql: "DELETE FROM identity_changes WHERE address = ?;",
+                sql: "DELETE FROM identity_changes WHERE address LIKE ?;",
+                bind: { stmt in self.db.bindText(stmt, 1, prefix) }
+            )
+        }
+    }
+}
+
+// MARK: - Peer device outer (sealed-sender) keys
+
+extension SignalProtocolStores {
+    /// The X25519 key the OUTER layer of a v=2 envelope to [uin]'s device
+    /// [deviceId] must be sealed to. Only a SECONDARY install has one of its
+    /// own; the primary's is the account identity key every contact card
+    /// already carries, so nothing is stored for device 1.
+    func peerDeviceOuterKey(forPeerUIN uin: Int, deviceId: UInt32) -> Data? {
+        let key = "\(uin):\(deviceId)"
+        return db.sync {
+            db.selectBlob(
+                sql: "SELECT outer_key FROM device_outer_keys WHERE address = ?;",
                 bind: { stmt in self.db.bindText(stmt, 1, key) }
+            )
+        }
+    }
+
+    func storePeerDeviceOuterKey(_ outerKey: Data, forPeerUIN uin: Int, deviceId: UInt32) {
+        let key = "\(uin):\(deviceId)"
+        db.sync {
+            _ = db.execute(
+                sql: """
+                INSERT INTO device_outer_keys (address, outer_key) VALUES (?, ?)
+                ON CONFLICT(address) DO UPDATE SET outer_key = excluded.outer_key;
+                """,
+                bind: { stmt in
+                    self.db.bindText(stmt, 1, key)
+                    self.db.bindBlob(stmt, 2, outerKey)
+                }
             )
         }
     }
@@ -235,6 +320,18 @@ extension SignalProtocolStores: PreKeyStore {
                 sql: "DELETE FROM prekeys WHERE prekey_id = ?;",
                 bind: { stmt in sqlite3_bind_int64(stmt, 1, Int64(id)) }
             )
+        }
+    }
+
+    /// One-time pre-keys still unspent locally. A row lives from minting until
+    /// a peer's first message spends it, which is the same moment the island
+    /// drops its copy — close enough to size a top-up for a device whose pool
+    /// the island counts for nobody. An install that has changed libsignal
+    /// device id also still holds the pool of the slot it left, so the number
+    /// can only err HIGH: a late top-up, never a needless one.
+    func preKeyCount() -> Int {
+        return db.sync {
+            Int(db.selectInt(sql: "SELECT COUNT(*) FROM prekeys;", bind: { _ in }) ?? 0)
         }
     }
 }
@@ -349,6 +446,46 @@ extension SignalProtocolStores: SessionStore {
             _ = db.execute(
                 sql: "DELETE FROM sessions WHERE address = ?;",
                 bind: { stmt in self.db.bindText(stmt, 1, key) }
+            )
+        }
+    }
+
+    /// Retire the sending half of every session, keeping the receiving half.
+    /// Used when THIS install's libsignal device id changes: peers key their
+    /// half by the id we declare, so nothing our old sessions produce can be
+    /// read any more and the next send has to re-establish (an archived state
+    /// reports no current state, which is what forces that).
+    ///
+    /// Deleting instead would take the receiving half with it, and messages
+    /// sent to our OLD address are still in flight — in the offline queue, in
+    /// a socket frame — with only these ratchets able to open them. libsignal
+    /// keeps an archived state readable for exactly that.
+    func archiveAllSessions() {
+        db.sync {
+            for (key, blob) in db.selectTextBlobRows(sql: "SELECT address, record FROM sessions;") {
+                guard let record = try? SessionRecord(bytes: blob) else { continue }
+                record.archiveCurrentState()
+                let serialized = record.serialize()
+                _ = db.execute(
+                    sql: "UPDATE sessions SET record = ? WHERE address = ?;",
+                    bind: { stmt in
+                        self.db.bindBlob(stmt, 1, serialized)
+                        self.db.bindText(stmt, 2, key)
+                    }
+                )
+            }
+        }
+    }
+
+    /// Same hook across every device of [uin]: the peer's stale session can
+    /// sit on any of them, and the user asking to reset means the whole
+    /// conversation, not one install of it.
+    func deleteSessions(forPeerUIN uin: Int) {
+        let prefix = "\(uin):%"
+        db.sync {
+            _ = db.execute(
+                sql: "DELETE FROM sessions WHERE address LIKE ?;",
+                bind: { stmt in self.db.bindText(stmt, 1, prefix) }
             )
         }
     }
