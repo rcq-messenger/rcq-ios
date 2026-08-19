@@ -188,36 +188,11 @@ struct ChatView: View {
         )
     }
 
-    /// `@partial` token at the tail of the composer input — drives the
-    /// mention picker. Walks back from input end; bails as soon as it
-    /// hits whitespace, so `Hey @bob hi @al` resolves to `al`, not `bob`.
-    private var activeMentionQuery: (range: NSRange, partial: String)? {
-        guard !currentGroupMembers.isEmpty else { return nil }
-        let ns = vm.input as NSString
-        var i = ns.length
-        while i > 0 {
-            let scalar = Unicode.Scalar(ns.character(at: i - 1))
-            if let s = scalar, s == "@" {
-                let after = ns.substring(from: i)
-                // The walk-back already stops at whitespace, so the partial
-                // never spans words. Accept any non-empty run (not just
-                // [A-Za-z0-9_-]) so nicks with a dot or other punctuation
-                // (e.g. ".Dev") are searchable — the picker matches against the
-                // real roster anyway.
-                let valid = !after.isEmpty
-                if valid {
-                    return (range: NSRange(location: i - 1, length: ns.length - i + 1), partial: after)
-                }
-                return nil
-            }
-            if let s = scalar, s.properties.isWhitespace { return nil }
-            i -= 1
-        }
-        return nil
-    }
-
     private var mentionCandidates: [RCQGroupMember] {
-        guard let q = activeMentionQuery else { return [] }
+        // The `@partial` tail token is parsed in the model (it depends on
+        // the composer text, which this body no longer observes per
+        // keystroke); the picker just filters the roster against it.
+        guard let q = vm.activeMentionQuery else { return [] }
         // Require at least one character after `@` before showing
         // the picker — a bare `@` typed mid-sentence shouldn't pop
         // the whole member list over the keyboard. Was: empty
@@ -277,9 +252,9 @@ struct ChatView: View {
     }
 
     private func selectMention(_ m: RCQGroupMember) {
-        guard let q = activeMentionQuery else { return }
+        guard let q = vm.activeMentionQuery else { return }
         let ns = vm.input as NSString
-        vm.input = ns.replacingCharacters(in: q.range, with: "@\(m.nickname) ")
+        vm.setInput(ns.replacingCharacters(in: q.range, with: "@\(m.nickname) "))
     }
     @StateObject private var randomChat = RandomChatService.shared
     @StateObject private var calls = CallService.shared
@@ -409,7 +384,21 @@ struct ChatView: View {
     /// splices a shortcode at this index instead of appending to the
     /// end of input — previously every smiley landed at the end no
     /// matter where the user had placed the cursor.
-    @State private var composerCaret: Int = 0
+    ///
+    /// A reference box behind a hand-rolled Binding, NOT `@State Int`:
+    /// the caret moves on every keystroke, and a caret write into @State
+    /// re-ran this whole body per character even after the composer text
+    /// itself stopped being observed. Nothing in any body READS the
+    /// caret — it's only consulted inside the splice actions — so its
+    /// movement doesn't need to invalidate anything.
+    private final class CaretBox { var value: Int = 0 }
+    @State private var composerCaret = CaretBox()
+    private var composerCaretBinding: Binding<Int> {
+        Binding(
+            get: { composerCaret.value },
+            set: { composerCaret.value = $0 }
+        )
+    }
     /// Bumped whenever something should hand the keyboard to the composer
     /// without the user tapping it — today that is only "reply". Swiping a
     /// message (or picking Reply in its menu) used to set `vm.replyTarget`
@@ -2269,10 +2258,10 @@ struct ChatView: View {
     }
 
     private var inputBar: some View {
-        let trimmed = vm.input.trimmingCharacters(in: .whitespaces)
         // Pending media on its own is a sendable message — show the
-        // send button even when the caption is empty.
-        let showSend = !trimmed.isEmpty || !vm.pendingMedia.isEmpty
+        // send button even when the caption is empty. composerNonEmpty is
+        // the model's gated mirror of the input's trimmed-emptiness.
+        let showSend = vm.composerNonEmpty || !vm.pendingMedia.isEmpty
         // Two voice-flow modes preempt the regular composer:
         // 1. previewPill   — finished clip awaiting send / discard.
         // 2. recordingPill — recording in progress; tap stop → preview.
@@ -2361,7 +2350,7 @@ struct ChatView: View {
                         // same path as a gallery pick.
                         vm.queuePendingPhotos([image])
                     },
-                    caretPlainLocation: $composerCaret,
+                    caretPlainLocation: composerCaretBinding,
                     focusRequest: composerFocusToken
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)
@@ -3004,11 +2993,11 @@ struct ChatView: View {
     /// fresh composer that's never been touched, etc.).
     private func insertEmoticonAtCaret(_ code: String) {
         let current = vm.input
-        let clamped = max(0, min(composerCaret, current.count))
+        let clamped = max(0, min(composerCaret.value, current.count))
         let head = current.prefix(clamped)
         let tail = current.suffix(current.count - clamped)
-        vm.input = String(head) + code + String(tail)
-        composerCaret = clamped + code.count
+        composerCaret.value = clamped + code.count
+        vm.setInput(String(head) + code + String(tail))
     }
 
     private func grid(entries: [(asset: String, name: String, primaryCode: String)]) -> some View {
