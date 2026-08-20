@@ -8,8 +8,6 @@ Two groups, both already present:
 
 * the default palette, mirroring the Android palette in `Emoticon.kt` so that a
   `:code:` sent from one platform renders on the other;
-* `Emoticons.extraKoloboks`, twenty hand-picked extras a user can add to the
-  composer panel from the customise sheet.
 
 Only `:asset:` codes are parsed. Text shortcuts like `:)` and `8-)`
 deliberately are not, because they collide with ordinary text (`8-)` in
