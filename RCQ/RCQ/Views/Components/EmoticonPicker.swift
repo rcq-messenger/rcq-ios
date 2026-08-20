@@ -16,7 +16,7 @@ final class EmoticonPrefsStore: ObservableObject {
 
     /// Default reactions until the user customises their set. Asset names match
     /// Android `Emoticons.defaultReactions` so a reaction renders identically.
-    static let defaultReactions = ["good", "give_heart", "biggrin", "shok", "cray", "mad"]
+    static let defaultReactions = ["good", "give_heart", "laugh1", "scare", "cray", "ireful1"]
     static let panelCap = 40
     static let reactionCap = 6
 

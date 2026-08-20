@@ -146,16 +146,16 @@ enum Emoticons {
         return raw.sorted { $0.code.count > $1.code.count }
     }()
 
-    /// Distinct default emoticons for the picker grid (one per asset).
+    /// Distinct emoticons offered in the picker grid — the CURRENT pack, and
+    /// only it.
+    ///
+    /// The older set stays bundled and stays tokenizable (see `allEntries`), but
+    /// it is not offered any more: those assets exist so a `:smile:` somebody
+    /// sent last week still renders as a smiley instead of turning into raw
+    /// text. Deleting them would rewrite history; showing them would mean two
+    /// drawing styles in one grid.
     static var paletteAssets: [(asset: String, name: String, primaryCode: String)] {
-        var seen = Set<String>()
-        var out: [(String, String, String)] = []
-        for e in entries {
-            if seen.insert(e.asset).inserted {
-                out.append((e.asset, e.name, e.code))
-            }
-        }
-        return out
+        standardPack.map { ($0, displayName(for: $0), ":\($0):") }
     }
 
     /// Every bundled emoticon asset (palette + extra koloboks), in asset order —
