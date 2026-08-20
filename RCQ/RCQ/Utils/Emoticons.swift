@@ -128,6 +128,12 @@ enum Emoticons {
         return (entries + extras).sorted { $0.code.count > $1.code.count }
     }()
 
+    /// Every asset a CURRENT pack can draw. The picker prefs filter against
+    /// this on load: a panel curated before a pack was retired kept its asset
+    /// names, and a name with no glyph behind it rendered as bare text in the
+    /// composer panel (reported 2026-08-20, the day the old pack left).
+    static let validAssets: Set<String> = Set(allEntries.map { $0.asset })
+
     /// Table pre-compiled for matching: codes as `[Character]`, bucketed by
     /// first character. Bucket order must preserve table order — longest code
     /// first — so the first hit is still the longest match.
