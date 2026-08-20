@@ -27,10 +27,21 @@ final class EmoticonPrefsStore: ObservableObject {
     @Published private(set) var reactions: [String]
 
     private init() {
-        self.panel = (UserDefaults.standard.array(forKey: Self.panelKey) as? [String]) ?? []
+        // Filtered against the current packs: a set curated before a pack was
+        // retired keeps its asset names, and a name with no glyph behind it
+        // rendered as bare text in the composer panel (2026-08-20). Written
+        // back at once so the dead names never resurface.
+        let valid = Emoticons.validAssets
+        let storedPanel = (UserDefaults.standard.array(forKey: Self.panelKey) as? [String]) ?? []
+        self.panel = storedPanel.filter { valid.contains($0) }
         // Absent key → the default six. An empty stored array → the user
-        // deliberately cleared them (respected).
-        self.reactions = (UserDefaults.standard.array(forKey: Self.reactionKey) as? [String]) ?? Self.defaultReactions
+        // deliberately cleared them (respected). A set the RETIREMENT emptied
+        // is not that choice: fall back to the defaults.
+        let storedReactions = (UserDefaults.standard.array(forKey: Self.reactionKey) as? [String]) ?? Self.defaultReactions
+        let liveReactions = storedReactions.filter { valid.contains($0) }
+        self.reactions = (liveReactions.isEmpty && !storedReactions.isEmpty) ? Self.defaultReactions : liveReactions
+        if panel != storedPanel { UserDefaults.standard.set(panel, forKey: Self.panelKey) }
+        if reactions != storedReactions { UserDefaults.standard.set(reactions, forKey: Self.reactionKey) }
     }
 
     /// Toggle [asset] in the panel set, respecting the cap (an add past the cap
