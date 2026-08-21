@@ -377,6 +377,15 @@ final class AppState: ObservableObject {
     /// route, which from the outside is "RCQ broke" while the bypass sits unused.
     func socketStateChanged(up: Bool) {
         if up {
+            // The silence probe measures how long a PEER has been quiet, and
+            // a stretch when THIS side had no link measures nothing: their
+            // replies may be sitting in the queue this reconnect is about to
+            // drain. Clocks shift forward by the measured gap — never reset;
+            // SilenceProbe.shiftClocks explains why a flapping link makes the
+            // difference matter.
+            if let down = socketDownSince {
+                SilenceProbe.shared.shiftClocks(by: Date().timeIntervalSince(down))
+            }
             socketDownSince = nil
             return
         }
@@ -1055,6 +1064,7 @@ final class AppState: ObservableObject {
         ContactService.shared.wipe()
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
+        SilenceProbe.shared.reset()
         NotificationPrefsService.shared.wipe()
         MessageStore.shared.clearAll()
         VisitStore.shared.wipe()
@@ -1468,6 +1478,9 @@ final class AppState: ObservableObject {
         CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
+        // Probe timers key on bare peer uins, which mean nothing on the
+        // account we are switching to.
+        SilenceProbe.shared.reset()
         NotificationPrefsService.shared.wipe()
         // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows
         // — history lives in a per-account SQLite file and must survive so a

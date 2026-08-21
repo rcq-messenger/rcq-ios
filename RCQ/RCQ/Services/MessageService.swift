@@ -1108,14 +1108,46 @@ final class MessageService {
             )
         }
         if let devices = await SignalCryptoService.peerDeviceIDs(forPeerUIN: peer.uin) {
+            // Who may arm the silence probe at all.
+            //
+            // ⚠ PEERS only, never ourselves: sendEnvelope short-circuits
+            // Saved Messages before this point, but the guard stays — probing
+            // one of our OWN installs would re-read a bundle for a device we
+            // are not waiting on. And only for an envelope that EARNS an
+            // answer; see SilenceProbe.earnsAnswer on why arming on receipts
+            // made "armed and never cleared" the steady state on the web.
+            let probePeer = peer.uin != ownUIN && SilenceProbe.earnsAnswer(envelope)
             var copies: [SealedCopy] = []
             for d in devices where (1...127).contains(d) {
+                // The silence probe: a device that has answered NOTHING for
+                // two minutes of active sending gets its published identity
+                // re-checked, and its session rebuilt only if the identity
+                // behind it CHANGED (probeSession explains why a blind
+                // rebuild loses messages). Throttled per device, so a quiet
+                // peer costs one free comparison every half hour and nothing
+                // else.
+                if probePeer, SilenceProbe.shared.probeDue(uin: peer.uin, deviceId: d) {
+                    let result = await SignalCryptoService.probeSession(forPeerUIN: peer.uin, deviceId: d)
+                    // The throttle is spent on a probe that actually READ
+                    // something. An unreachable island must not buy the peer
+                    // half an hour of not being checked.
+                    if result != .unreachable {
+                        SilenceProbe.shared.noteProbeRan(uin: peer.uin, deviceId: d)
+                    }
+                    if result == .rebuilt {
+                        SilenceProbe.shared.noteRebuilt(uin: peer.uin, deviceId: d)
+                    }
+                }
                 do {
                     try await SignalCryptoService.ensureStage3Session(forPeerUIN: peer.uin, deviceId: UInt32(d))
                     copies.append(SealedCopy(
                         deviceID: d,
                         payload: try crypto.encryptStage3(envelope: envelope, for: peer, deviceId: UInt32(d))
                     ))
+                    // Armed AFTER a successful seal: from here this device
+                    // owes us a receipt, and hearing nothing for long enough
+                    // is what makes the probe worth running.
+                    if probePeer { SilenceProbe.shared.arm(uin: peer.uin, deviceId: d) }
                 } catch {
                     print("[MessageService] Stage 3 encrypt for \(peer.uin)/\(d) failed (\(error))")
                 }
@@ -1555,6 +1587,15 @@ final class MessageService {
                 fromNSE = false
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
+
+            // Any decrypted envelope naming its device — a message, a receipt,
+            // anything — proves that install can talk to us: its silence probe
+            // stands down. Both delivery paths (live socket, queue drain) and
+            // the NSE hand-off all come through here, so this is the one place
+            // to listen. v=1 carries no device id and clears nothing.
+            if let dev = decrypted.senderDeviceID, decrypted.senderUIN != ownUIN {
+                SilenceProbe.shared.noteInbound(uin: decrypted.senderUIN, deviceId: dev)
+            }
 
             // Sender-keys distribution / recovery (never rendered). SKDM binds
             // the chain to its authenticated sender; SKNACK asks the kid owner to
