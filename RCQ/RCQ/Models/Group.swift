@@ -106,6 +106,16 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         if uin == ownerUIN { return true }
         return postPolicy != "owner_only"
     }
+
+    /// May [uin] retract OTHER people's messages here (founder batch 21.08,
+    /// item 3; web precedent: incoming-store.ts groupModerator)? The owner
+    /// may — checked off the group row itself, because the chat list is
+    /// fetched `?members=0` and `members` can legitimately be empty (see the
+    /// warning on that property). An admin / delete-cap member needs the
+    /// cached roster.
+    func moderator(_ uin: Int) -> Bool {
+        uin == ownerUIN || members.first { $0.uin == uin }?.canDelete(ownerUIN: ownerUIN) == true
+    }
 }
 
 struct RCQGroupMember: Identifiable, Hashable, Codable {
@@ -134,8 +144,15 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
 
     var id: Int { uin }
 
-    /// True if this member may delete anyone's message (owner OR `delete` cap).
-    func canDelete(ownerUIN: Int) -> Bool { uin == ownerUIN || permissions.contains("delete") }
+    /// True if this member may delete anyone's message: the owner, an ADMIN,
+    /// or a member the owner granted the `delete` cap. Role "admin" joined
+    /// the rule in founder batch 21.08, item 3 ("админ не может удалить
+    /// чужое сообщение") — the web shipped it first (incoming-store.ts
+    /// groupModerator), Android in the same batch; the granted cap stays so
+    /// existing delete-moderators keep the power they were given.
+    func canDelete(ownerUIN: Int) -> Bool {
+        uin == ownerUIN || role == "admin" || permissions.contains("delete")
+    }
     /// True if this member may manage group info — pin, rename, etc. (owner OR
     /// `info` cap). Gates pinning a message from the chat.
     func canManageInfo(ownerUIN: Int) -> Bool { uin == ownerUIN || permissions.contains("info") }

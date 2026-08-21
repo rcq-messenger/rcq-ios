@@ -2090,29 +2090,34 @@ final class MessageService {
             case .deleteForEveryone(let targetID):
                 // Honor a delete-for-everyone only from someone allowed to make
                 // it: the message's own author, OR (in a group) a moderator —
-                // the owner or a member the owner granted the `delete` cap.
-                // Sealed sender still reveals the decrypted deleter, and we have
-                // the cached roster. (Previously honored from ANYONE.)
+                // the owner, an ADMIN, or a member the owner granted the
+                // `delete` cap (founder batch 21.08, item 3; web precedent:
+                // incoming-store.ts groupModerator). The wire is unchanged —
+                // this is the same envelope the author's own retract fans out —
+                // so the RECEIVER decides whether this sender may; sealed
+                // sender still reveals the decrypted deleter. An OLDER client
+                // ignores a foreign delete and keeps the message — nothing
+                // breaks, it just stays there. 1:1 deletes remain author-only.
                 let deleter = decrypted.senderUIN
                 let target = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
                 var authorized = target?.senderUIN == deleter
                 if !authorized, case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
-                    if deleter == g.ownerUIN {
+                    if g.moderator(deleter) {
                         // The owner is named on the group row itself and needs
-                        // no roster to be recognised.
+                        // no roster to be recognised; an admin / delete-cap
+                        // member is found in the roster when one is cached.
                         authorized = true
                     } else if g.members.isEmpty {
-                        // Everyone else's cap lives in the roster, which the
-                        // list no longer carries. Fetch it and decide again
-                        // rather than silently ignoring a moderator's delete.
+                        // Everyone else's role lives in the roster, which the
+                        // list fetch no longer carries. The web ignores an
+                        // admin's delete here (same as an old client would);
+                        // iOS fetches the roster and decides again rather than
+                        // silently dropping a moderator's delete.
                         Task {
                             guard let full = await GroupService.shared.ensureRoster(gid),
-                                  full.members.first(where: { $0.uin == deleter })?
-                                      .canDelete(ownerUIN: full.ownerUIN) == true else { return }
+                                  full.moderator(deleter) else { return }
                             MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
                         }
-                    } else {
-                        authorized = g.members.first { $0.uin == deleter }?.canDelete(ownerUIN: g.ownerUIN) == true
                     }
                 }
                 if authorized {
