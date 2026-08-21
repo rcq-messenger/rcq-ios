@@ -151,6 +151,17 @@
 "linkeddevices.connect" = "Conectar um navegador";
 "linkeddevices.scan_hint" = "Aponte para o código QR em chat.rcq.app";
 "linkeddevices.connected" = "Conectado %@";
+"linkeddevices.slots.title" = "Chaves de dispositivos";
+"linkeddevices.slots.hint" = "Cada instalação desta conta com suas próprias chaves de criptografia. Um login pela frase de recuperação aparece aqui.";
+"linkeddevices.slots.primary" = "Dispositivo principal";
+"linkeddevices.slots.unnamed" = "Sem nome";
+"linkeddevices.slots.this" = "este dispositivo";
+"linkeddevices.slots.revoke" = "Revogar";
+"linkeddevices.slots.revoke.title" = "Revogar este slot de chaves?";
+"linkeddevices.slots.revoke.confirm" = "Revogar %@";
+"linkeddevices.slots.revoke.message" = "Os remetentes deixarão de criptografar para as chaves dele, e a instalação que o tinha não receberá mensagens novas. O que já foi recebido fica com ela.";
+"linkeddevices.slots.revoke.cooldown" = "Uma sessão nova precisa esperar antes de revogar as mais antigas. Tente em %d h.";
+"linkeddevices.slots.revoke.failed" = "Não foi possível revogar o slot.";
 "settings.network.proxy.unset" = "Automático";
 "settings.network.proxy.intro" = "O RCQ se conecta ao servidor direto. Se esse servidor estiver bloqueado na sua rede, o app passa sozinho para uma rota reserva embutida: você não precisa fazer nada.";
 "settings.network.stealth.auto_on" = "Ligar sozinho";
@@ -962,7 +973,7 @@
 "pending.empty.body" = "Os convites de contato novos aparecem aqui.";
 "pending.row.body" = "O usuário do RCQ %@ (%@) quer te adicionar à lista de contatos dele. Permitir?";
 "pending.cta.accept" = "Aceitar";
-"ci.section" = "Pedidos de outras ilhas";
+"ci.section" = "Solicitações de mensagem";
 "ci.block" = "Bloquear";
 "ci.contactreq.subtitle" = "Quer adicionar você aos contatos";
 "ci.request_not_sent" = "Adicionado, mas a ilha dele não aceitou o pedido. Ele ainda não vai ver.";
@@ -985,6 +996,8 @@
 "settings.privacy.persistent_presence" = "Visibilidade depois de sair";
 "settings.privacy.relay_calls" = "Sempre passar chamadas por relay";
 "settings.privacy.relay_calls.desc" = "Manda o áudio e o vídeo da chamada pelo nosso relay, assim o outro lado nunca fica sabendo seu endereço IP. Desligar isto pode melhorar a qualidade da chamada e mostra seu endereço a ele.";
+"settings.privacy.strangers" = "Desconhecidos vão para solicitações";
+"settings.privacy.strangers.desc" = "Mensagens de pessoas fora dos seus contatos esperam em Solicitações até você aceitá-las. Se você escreveu primeiro, a resposta chega normalmente.";
 "settings.privacy.persistent_presence.desc" = "Os contatos veem seu status (Online / Ausente / Não perturbe) mesmo com o app fechado.";
 "settings.privacy.hof_opt_in" = "Hall da Fama";
 "settings.privacy.hof_opt_in.desc" = "Permite ser considerado para o Hall da Fama público em rcq.app. Só seu apelido e UIN, e só se for aprovado. Você pode desligar isto quando quiser.";

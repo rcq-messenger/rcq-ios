@@ -314,6 +314,7 @@ final class PanicPINService: ObservableObject {
         // Nothing is deleted; the real account's rows stay on disk.
         CrossIslandStore.shared.bind(accountID: decoyNamespace)
         CrossIslandRequestsStore.shared.bind(accountID: decoyNamespace)
+        StrangerQuarantine.shared.bind(accountID: decoyNamespace)
         VisitedIslandsStore.shared.bind(accountID: decoyNamespace)
 
         // The App-Group uin → nickname map is what the NOTIFICATION EXTENSION
@@ -370,6 +371,7 @@ final class PanicPINService: ObservableObject {
         let id = AccountManager.shared.activeAccountID
         CrossIslandStore.shared.bind(accountID: id)
         CrossIslandRequestsStore.shared.bind(accountID: id)
+        StrangerQuarantine.shared.bind(accountID: id)
         VisitedIslandsStore.shared.bind(accountID: id)
         VisitStore.shared.reloadFromDisk()
         PresenceService.shared.reloadOwnAvatarFromDisk()

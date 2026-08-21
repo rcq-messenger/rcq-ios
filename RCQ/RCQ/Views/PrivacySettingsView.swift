@@ -27,6 +27,10 @@ struct PrivacySettingsView: View {
     /// Online / Away / DND even when the app is not running.
     @State private var presencePersistent: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.presencePersistent")
     @State private var relayCalls: Bool = CallPrivacy.alwaysRelay
+    /// Same-island stranger quarantine - device-local like the relay switch:
+    /// the mailbox itself stays open (sealed sender), this decides where THIS
+    /// install puts a stranger's first message.
+    @State private var strangersToRequests: Bool = StrangerQuarantine.shared.enabled
     /// Onion routing opt-in (M3, O5 experimental). Mirrors the per-device pref.
     @State private var onionOptIn: Bool = SingBoxTransport.onionOptIn
     /// Local-proxy transport (route through the user's own Tor/i2p). Exclusive of
@@ -158,6 +162,24 @@ struct PrivacySettingsView: View {
                         .tint(Theme.Color.accent)
                         .onChange(of: relayCalls) { newValue in
                             CallPrivacy.alwaysRelay = newValue
+                        }
+                    }
+                    .listRowBackground(Theme.Color.bgSecondary)
+                    // Opt-in stranger quarantine (web parity, founder-approved
+                    // wording). Per-account on this device; default OFF.
+                    Section {
+                        Toggle(isOn: $strangersToRequests) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("settings.privacy.strangers".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                                Text("settings.privacy.strangers.desc".localized)
+                                    .font(.caption2)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Color.accent)
+                        .onChange(of: strangersToRequests) { newValue in
+                            StrangerQuarantine.shared.enabled = newValue
                         }
                     }
                     .listRowBackground(Theme.Color.bgSecondary)

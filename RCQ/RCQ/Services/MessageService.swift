@@ -761,24 +761,28 @@ final class MessageService {
         } catch { }
     }
 
-    /// File a carbon's inner message as a fromMe row in its destination thread.
-    /// Mirrors the incoming construction but marks it ours and .delivered.
+    /// Files one CONTENT envelope (text/photo/video/voice/file/location) into
+    /// `thread` outside the normal ingest switch. Two callers: a multi-device
+    /// carbon (senderUIN = me, isFromMe true) and the stranger-quarantine
+    /// release (senderUIN = the accepted stranger, isFromMe false).
     /// MessageStore dedups by id, so the origin device's own carbon and any
     /// queue redelivery are no-ops.
     @discardableResult
-    private func appendCarbonMessage(inner: Envelope, thread: ThreadID, serverTime: Date) -> Bool {
-        let me = ownUIN
+    private func appendContentMessage(
+        inner: Envelope, thread: ThreadID, senderUIN: Int, isFromMe: Bool, serverTime: Date
+    ) -> Bool {
+        let me = senderUIN
         switch inner {
         case .text(let id, let text, let ttl, let fwd, let reply):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .text, text: text, sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
             ))
         case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .photo, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
@@ -787,7 +791,7 @@ final class MessageService {
             ))
         case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .video, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, thumbnailB64: thumb, durationSec: dur,
@@ -797,7 +801,7 @@ final class MessageService {
             ))
         case .voice(let id, let mediaID, let mediaKey, let dur, let ttl, let fwd, let reply):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .voice, text: "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, durationSec: dur, ttlSeconds: ttl, forwardedFromName: fwd,
@@ -805,7 +809,7 @@ final class MessageService {
             ))
         case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let ttl, let fwd, let reply):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .file, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
@@ -814,7 +818,7 @@ final class MessageService {
             ))
         case .location(let id, let lat, let lng, let caption, let ttl, let fwd, let reply):
             return MessageStore.shared.append(Message(
-                id: id, thread: thread, senderUIN: me, isFromMe: true,
+                id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .location, text: caption ?? "", sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
@@ -823,6 +827,27 @@ final class MessageService {
         default:
             return false
         }
+    }
+
+    /// Release a same-island stranger's held messages into their thread after
+    /// the user accepted the request (Privacy quarantine, host "" rows). The
+    /// held payload is the DECRYPTED envelope JSON - the v=2 ratchet consumed
+    /// the ciphertext at quarantine time, so unlike a cross-island row it can
+    /// never be re-fed through ingest. Only content kinds are ever held, so
+    /// appendContentMessage covers every possible row; dedup by id makes a
+    /// double release harmless. Quiet on purpose: no sound, no badge - the
+    /// user is looking at these messages as they land.
+    @discardableResult
+    func releaseHeldStranger(_ request: CrossIslandRequestsStore.Request) -> Int {
+        var released = 0
+        for h in request.msgs {
+            guard let env = try? JSONDecoder().decode(Envelope.self, from: Data(h.payload.utf8)) else { continue }
+            if appendContentMessage(
+                inner: env, thread: .peer(uin: request.uin), senderUIN: request.uin,
+                isFromMe: false, serverTime: h.sentAt ?? request.firstAt
+            ) { released += 1 }
+        }
+        return released
     }
 
     // MARK: - screen-secure (per-conversation)
@@ -1622,7 +1647,9 @@ final class MessageService {
                 guard decrypted.senderUIN == ownUIN else { return nil }
                 let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }
                 guard let dest else { return nil }
-                appendCarbonMessage(inner: inner, thread: dest, serverTime: ws.serverTime)
+                appendContentMessage(
+                    inner: inner, thread: dest, senderUIN: ownUIN, isFromMe: true, serverTime: ws.serverTime
+                )
                 return IngestOutcome(thread: dest, isNewContent: false, wasInNSECache: fromNSE)
             }
 
@@ -1944,6 +1971,35 @@ final class MessageService {
             // ingest so no banner, no sound, no chat-list reappearance.
             if RemovedContactsStore.shared.contains(decrypted.senderUIN) {
                 return nil
+            }
+            // Same-island opt-in stranger quarantine (Privacy -> strangers to
+            // requests; default OFF). Mirrors web-chat's stranger-requests.ts:
+            // only CONTENT kinds are held (control traffic from an unknown
+            // sender flows on and no-ops below - there is no message for it
+            // to belong to); never for self, an allowed stranger, a contact,
+            // or a peer we ever WROTE to; fail OPEN with no roster. host ""
+            // marks a same-island row in the shared request store. Blocked
+            // strangers never get this far (the BlockedContactsStore drop
+            // above already ate them silently).
+            //
+            // Placement is load-bearing twice over: ABOVE the auto-surface so
+            // a quarantined sender is not upserted into the visible contact
+            // list, and returning here also skips the delivered receipt at the
+            // bottom ON PURPOSE - a held message must not confirm to a
+            // stranger that it landed in front of a human.
+            if ws.groupID == nil, Multihome.isOwnHost(decrypted.senderHost),
+               StrangerQuarantine.shared.shouldQuarantine(
+                   myUIN: ownUIN, senderUIN: decrypted.senderUIN, envelope: decrypted.envelope
+               ),
+               let plain = try? JSONEncoder().encode(decrypted.envelope) {
+                CrossIslandRequestsStore.shared.hold(
+                    uin: decrypted.senderUIN, host: "",
+                    payload: String(decoding: plain, as: UTF8.self),
+                    preview: Self.requestPreview(for: decrypted.envelope),
+                    sentAt: ws.serverTime
+                )
+                // Held and persisted - ACK the queue row; no badge, no banner.
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             // Sealed sender lets anyone-message-anyone. If the sender
             // isn't in our contacts, ingest still stores the message

@@ -606,7 +606,9 @@ struct PendingRequestsView: View {
             }
             // verbatim: LocalizedStringKey interpolation would render the uin
             // with locale grouping separators ("618,917,107").
-            Text(verbatim: "\(r.uin)@\(r.host)")
+            // host "" = a same-island stranger from the Privacy quarantine:
+            // render a plain #uin, not a dangling "@".
+            Text(verbatim: r.host.isEmpty ? "#\(r.uin)" : "\(r.uin)@\(r.host)")
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(r.isContactRequest ? Theme.Color.textSecondary : Theme.Color.textPrimary)
             if r.isContactRequest {
@@ -660,6 +662,30 @@ struct PendingRequestsView: View {
     }
 
     private func acceptCI(_ r: CrossIslandRequestsStore.Request) {
+        // A SAME-ISLAND stranger (host "" - the opt-in Privacy quarantine):
+        // no key card to pin, no §5f dance. Accepting means "let this person
+        // talk": remember the allowance, release what they already wrote,
+        // surface them in the contact-driven chat list, open the chat.
+        if r.host.isEmpty {
+            ciBusy = r.id
+            StrangerQuarantine.shared.allow(r.uin)
+            if let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: "") {
+                MessageService.shared.releaseHeldStranger(held)
+            }
+            ciRequests = CrossIslandRequestsStore.shared.list()
+            Task {
+                // The quarantine gate deliberately skipped the auto-surface;
+                // do it now so the thread renders, then navigate into it via
+                // the same pending-open path a push tap uses.
+                await ContactService.shared.upsertStranger(uin: r.uin)
+                await MainActor.run {
+                    ciBusy = nil
+                    AppState.shared.pendingOpenChatUIN = r.uin
+                    dismiss()
+                }
+            }
+            return
+        }
         ciBusy = r.id
         Task {
             // Save the sender as a cross-island contact FIRST, so the held
@@ -704,6 +730,13 @@ struct PendingRequestsView: View {
 
     private func blockCI(_ r: CrossIslandRequestsStore.Request) {
         CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
+        // A same-island stranger (host "") also joins the native block list:
+        // that is the set the ingest drop and the Blocked screen (with its
+        // unblock affordance) read, and a blocked stranger with no contact
+        // row is dropped silently there - the sender is told nothing.
+        if r.host.isEmpty {
+            BlockedContactsStore.shared.set(r.uin, blocked: true)
+        }
         ciRequests = CrossIslandRequestsStore.shared.list()
     }
 

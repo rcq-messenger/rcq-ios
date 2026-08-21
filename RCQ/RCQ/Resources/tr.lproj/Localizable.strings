@@ -151,6 +151,17 @@
 "linkeddevices.connect" = "Tarayıcı bağla";
 "linkeddevices.scan_hint" = "chat.rcq.app üzerindeki QR koduna tut";
 "linkeddevices.connected" = "Bağlandı %@";
+"linkeddevices.slots.title" = "Cihaz anahtarları";
+"linkeddevices.slots.hint" = "Bu hesabın kendi şifreleme anahtarlarına sahip her kurulumu. Kurtarma ifadesiyle yapılan giriş burada görünür.";
+"linkeddevices.slots.primary" = "Birincil cihaz";
+"linkeddevices.slots.unnamed" = "Adsız";
+"linkeddevices.slots.this" = "bu cihaz";
+"linkeddevices.slots.revoke" = "İptal et";
+"linkeddevices.slots.revoke.title" = "Bu anahtar yuvası iptal edilsin mi?";
+"linkeddevices.slots.revoke.confirm" = "İptal et: %@";
+"linkeddevices.slots.revoke.message" = "Gönderenler artık bu yuvanın anahtarları için şifrelemez ve yuvayı tutan kurulum yeni mesaj almaz. Zaten aldıkları onda kalır.";
+"linkeddevices.slots.revoke.cooldown" = "Yeni bir oturum daha eskilerini hemen iptal edemez. %d sa. sonra deneyin.";
+"linkeddevices.slots.revoke.failed" = "Yuva iptal edilemedi.";
 "settings.network.proxy.unset" = "Otomatik";
 "settings.network.proxy.intro" = "RCQ sunucuya doğrudan bağlanır. Ağında o sunucu engelliyse uygulama kendiliğinden gömülü bir yedek rotaya geçer; senin bir şey yapman gerekmez.";
 "settings.network.stealth.auto_on" = "Otomatik açık";
@@ -962,7 +973,7 @@
 "pending.empty.body" = "Yeni kişi davetleri burada görünür.";
 "pending.row.body" = "RCQ kullanıcısı %@ (%@) seni kişi listesine eklemek istiyor. İzin veriyor musun?";
 "pending.cta.accept" = "Kabul et";
-"ci.section" = "Diğer adalardan gelen istekler";
+"ci.section" = "Mesaj istekleri";
 "ci.block" = "Engelle";
 "ci.contactreq.subtitle" = "Seni kişilerine eklemek istiyor";
 "ci.request_not_sent" = "Eklendi, ama adası kişi isteğini almadı. Henüz görmeyecek.";
@@ -985,6 +996,8 @@
 "settings.privacy.persistent_presence" = "Çıktıktan sonra görünürlük";
 "settings.privacy.relay_calls" = "Aramaları hep röleden geçir";
 "settings.privacy.relay_calls.desc" = "Arama sesini ve görüntüsünü rölemizden geçirir, böylece karşı taraf IP adresini hiç öğrenmez. Bunu kapatmak arama kalitesini artırabilir ama adresini gösterir.";
+"settings.privacy.strangers" = "Yabancılar isteklere düşsün";
+"settings.privacy.strangers.desc" = "Kişilerinizde olmayanların mesajları siz kabul edene kadar İstekler bölümünde bekler. Önce siz yazdıysanız yanıtı doğrudan gelir.";
 "settings.privacy.persistent_presence.desc" = "Kişilerin, uygulama kapalıyken bile durumunu (Çevrimiçi / Uzakta / Rahatsız etmeyin) görür.";
 "settings.privacy.hof_opt_in" = "Şöhret Salonu";
 "settings.privacy.hof_opt_in.desc" = "rcq.app adresindeki herkese açık Şöhret Salonu için değerlendirilmeye izin ver. Yalnızca takma adın ve UIN'in, o da onaylanırsa. Bunu istediğin zaman kapatabilirsin.";

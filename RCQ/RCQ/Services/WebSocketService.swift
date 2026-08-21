@@ -1,6 +1,12 @@
 import Combine
 import Foundation
 
+extension Notification.Name {
+    /// Posted when the island announces `device_slot_revoked` for this
+    /// account (пункт 13). The device-slots screen refreshes its list on it.
+    static let rcqDeviceSlotRevoked = Notification.Name("rcq.device.slot.revoked")
+}
+
 /// Real-time channel emitting typed events. Reconnect handled by AppState.
 @MainActor
 final class WebSocketService: ObservableObject {
@@ -813,6 +819,12 @@ final class WebSocketService: ObservableObject {
 
         case "pong":
             break
+
+        // Пункт 13: a key slot of this account was revoked (possibly by
+        // another session). Registry-style announce, same channel as slot
+        // claims; the slots screen refreshes its list on it, nothing heavier.
+        case "device_slot_revoked":
+            NotificationCenter.default.post(name: .rcqDeviceSlotRevoked, object: nil)
 
         // Every event name here carries a sealed envelope in `payload`. The
         // server echoes back whatever `envelope_type` the sender declared, so

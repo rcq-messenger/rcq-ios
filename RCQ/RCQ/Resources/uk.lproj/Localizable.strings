@@ -151,6 +151,17 @@
 "linkeddevices.connect" = "Підключити браузер";
 "linkeddevices.scan_hint" = "Наведи на QR-код на chat.rcq.app";
 "linkeddevices.connected" = "Підключено %@";
+"linkeddevices.slots.title" = "Ключі пристроїв";
+"linkeddevices.slots.hint" = "Кожна інсталяція цього акаунта зі своїми ключами шифрування. Вхід за фразою відновлення з'являється тут.";
+"linkeddevices.slots.primary" = "Основний пристрій";
+"linkeddevices.slots.unnamed" = "Без назви";
+"linkeddevices.slots.this" = "цей пристрій";
+"linkeddevices.slots.revoke" = "Відкликати";
+"linkeddevices.slots.revoke.title" = "Відкликати цей слот ключів?";
+"linkeddevices.slots.revoke.confirm" = "Відкликати %@";
+"linkeddevices.slots.revoke.message" = "Відправники перестануть шифрувати для його ключів, і інсталяція, що ним володіла, більше не отримає нових повідомлень. Уже отримане залишиться в неї.";
+"linkeddevices.slots.revoke.cooldown" = "Нова сесія не може одразу відкликати старіші. Спробуйте через %d год.";
+"linkeddevices.slots.revoke.failed" = "Не вдалося відкликати слот.";
 "settings.network.proxy.unset" = "Автоматично";
 "settings.network.proxy.intro" = "RCQ з'єднується з сервером напряму. Якщо цей сервер заблоковано у твоїй мережі, застосунок автоматично перемикається на вбудований запасний маршрут — робити нічого не треба.";
 "settings.network.stealth.auto_on" = "Авто увімк.";
@@ -962,7 +973,7 @@
 "pending.empty.body" = "Нові запрошення в контакти з'являться тут.";
 "pending.row.body" = "Користувач RCQ %@ (%@) хоче додати тебе у свої контакти. Дозволити?";
 "pending.cta.accept" = "Прийняти";
-"ci.section" = "Заявки з інших островів";
+"ci.section" = "Заявки на листування";
 "ci.block" = "Заблокувати";
 "ci.contactreq.subtitle" = "Хоче додати вас у контакти";
 "ci.request_not_sent" = "Додано, але його острів не прийняв заявку. Він її поки не побачить.";
@@ -985,6 +996,8 @@
 "settings.privacy.persistent_presence" = "Видимість після виходу";
 "settings.privacy.relay_calls" = "Дзвінки завжди через релей";
 "settings.privacy.relay_calls.desc" = "Вести звук і відео дзвінка через наш релей, щоб інша сторона ніколи не дізналася твою IP-адресу. Якщо вимкнути, якість дзвінка може стати кращою, а твою адресу буде видно.";
+"settings.privacy.strangers" = "Незнайомці в запити";
+"settings.privacy.strangers.desc" = "Повідомлення не з контактів чекають у запитах, доки ви їх не приймете. Якщо ви написали людині першою, її відповідь надійде як зазвичай.";
 "settings.privacy.persistent_presence.desc" = "Контакти бачать твій статус (У мережі / Відійшов / Не турбувати), навіть коли застосунок закрито.";
 "settings.privacy.hof_opt_in" = "Зала слави";
 "settings.privacy.hof_opt_in.desc" = "Дозволити розглянути тебе для публічної Зали слави на rcq.app. Лише нік і UIN, і лише якщо схвалять. Вимкнути можна будь-коли.";
