@@ -140,6 +140,12 @@
 "multihome.promote.confirm" = "Сделать основным";
 "multihome.err.unreachable" = "Остров недоступен. Ничего не изменено.";
 "linkeddevices.hint" = "Браузеры, подключённые к вашему аккаунту. Чтобы подключить, откройте chat.rcq.app, выберите «Connect phone» и отсканируйте код камерой.";
+"linkeddevices.slots.title" = "Ключи устройств";
+"linkeddevices.slots.hint" = "Каждая установка этого аккаунта со своими ключами шифрования. Вход по фразе восстановления появляется здесь.";
+"linkeddevices.slots.primary" = "Основное устройство";
+"linkeddevices.slots.unnamed" = "Без имени";
+"linkeddevices.slots.this" = "это устройство";
+"linkeddevices.web.title" = "Веб-сессии";
 "linkeddevices.empty" = "Нет подключённых браузеров.";
 "linkeddevices.error" = "Не удалось загрузить список устройств.";
 "linkeddevices.disconnect" = "Отключить";
