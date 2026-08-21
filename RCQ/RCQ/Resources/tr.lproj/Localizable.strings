@@ -551,6 +551,10 @@
 "chat.action.select" = "Seç";
 "chat.action.pin" = "Sabitle";
 "chat.pin.attachment" = "📎 Ek";
+"chat.pin.error.title" = "Sabitlenemedi";
+"chat.pin.error.forbidden" = "Grup bilgisi yetkisi gerekiyor. Sahibinden istemen gerek.";
+"chat.pin.error.rejected" = "Bu metin sabitleme için kabul edilmedi.";
+"chat.pin.error.generic" = "Sabitleme tamamlanmadı. Bağlantını kontrol edip tekrar dene.";
 "chat.selection.delete" = "Sil (%d)";
 "chat.selection.forward" = "İlet (%d)";
 "chat.selection.cancel" = "İptal";

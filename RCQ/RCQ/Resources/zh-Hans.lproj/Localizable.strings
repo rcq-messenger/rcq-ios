@@ -542,6 +542,10 @@
 "chat.action.select" = "选择";
 "chat.action.pin" = "置顶";
 "chat.pin.attachment" = "📎 附件";
+"chat.pin.error.title" = "无法置顶";
+"chat.pin.error.forbidden" = "需要群组信息权限，请让群主授予。";
+"chat.pin.error.rejected" = "该文本无法用作置顶内容。";
+"chat.pin.error.generic" = "置顶未完成，请检查网络后重试。";
 "chat.selection.delete" = "删除（%d）";
 "chat.selection.forward" = "转发（%d）";
 "chat.selection.cancel" = "取消";

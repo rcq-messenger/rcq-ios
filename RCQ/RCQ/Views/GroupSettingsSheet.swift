@@ -156,11 +156,26 @@ struct GroupSettingsSheet: View {
             )
             .lineLimit(2...6)
             .foregroundColor(Theme.Color.textPrimary)
+            // The slot is 500 characters and the server refuses a longer body
+            // outright, so the field stops growing there instead of letting a
+            // save fail for a reason nobody could see.
+            .onChange(of: pinnedDraft) { newValue in
+                let capped = GroupService.cappedPinnedInput(newValue)
+                if capped != newValue { pinnedDraft = capped }
+            }
             HStack {
                 Text("group.pin.hint".localized)
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                 Spacer()
+                // Counter appears only near the ceiling: a running "12/500"
+                // over an empty field is noise.
+                if pinnedDraft.unicodeScalars.count > GroupService.pinnedTextLimit - 60 {
+                    Text(String(pinnedDraft.unicodeScalars.count) + "/" + String(GroupService.pinnedTextLimit))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .padding(.trailing, 6)
+                }
                 Group {
                     if savingPin {
                         ProgressView().controlSize(.small)
@@ -319,7 +334,7 @@ struct GroupSettingsSheet: View {
         defer { savingPin = false }
         let trimmed = pinnedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         do { try await groups.setPinnedText(groupID: groupID, pinnedText: trimmed) }
-        catch { self.error = error.localizedDescription }
+        catch { self.error = GroupService.pinFailureMessage(error) }
     }
 
     private func uploadAvatar(image: UIImage) async {

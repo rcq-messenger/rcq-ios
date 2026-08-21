@@ -551,6 +551,10 @@
 "chat.action.select" = "Seleccionar";
 "chat.action.pin" = "Fijar";
 "chat.pin.attachment" = "📎 Adjunto";
+"chat.pin.error.title" = "No se pudo fijar";
+"chat.pin.error.forbidden" = "Necesitas el permiso de información del grupo. Pídeselo al propietario.";
+"chat.pin.error.rejected" = "Ese texto no se aceptó para fijar.";
+"chat.pin.error.generic" = "No se pudo fijar. Revisa tu conexión e inténtalo de nuevo.";
 "chat.selection.delete" = "Eliminar (%d)";
 "chat.selection.forward" = "Reenviar (%d)";
 "chat.selection.cancel" = "Cancelar";

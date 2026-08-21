@@ -551,6 +551,10 @@
 "chat.action.select" = "Selecionar";
 "chat.action.pin" = "Fixar";
 "chat.pin.attachment" = "📎 Anexo";
+"chat.pin.error.title" = "Não foi possível fixar";
+"chat.pin.error.forbidden" = "Você precisa da permissão de informações do grupo. Peça ao dono.";
+"chat.pin.error.rejected" = "Esse texto não foi aceito para fixar.";
+"chat.pin.error.generic" = "A fixação não foi concluída. Verifique a conexão e tente de novo.";
 "chat.selection.delete" = "Apagar (%d)";
 "chat.selection.forward" = "Encaminhar (%d)";
 "chat.selection.cancel" = "Cancelar";
