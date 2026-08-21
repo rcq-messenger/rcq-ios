@@ -209,12 +209,72 @@ final class GroupService: ObservableObject {
         upsert(g)
     }
 
+    /// The pin slot the server actually has: `GroupPatchIn.pinned_text` is a
+    /// 500-character field over a VARCHAR(500) column, and anything longer is
+    /// rejected with 422 BEFORE the row is written. Nothing on the wire tells
+    /// the user that, so a long message pinned from the chat used to leave the
+    /// PREVIOUS pin standing while the optimistic swap made it look replaced,
+    /// until the next poll put the old text back ("не заменяет ранее
+    /// закреплённое"). Clients do the cutting.
+    static let pinnedTextLimit = 500
+
+    /// Longest prefix of `text` that fits `budget` unicode scalars. Scalars
+    /// because that is the unit the server counts; whole characters because
+    /// cutting inside a grapheme cluster splits a glyph in half.
+    private static func pinnedPrefix(_ text: String, budget: Int) -> String {
+        var out = ""
+        var used = 0
+        for ch in text {
+            let next = used + ch.unicodeScalars.count
+            if next > budget { break }
+            out.append(ch)
+            used = next
+        }
+        return out
+    }
+
+    /// A pin on its way to the server: trimmed and cut to the slot, with an
+    /// ellipsis marking the cut so a reader sees that the text continues.
+    static func clampPinnedText(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.unicodeScalars.count > pinnedTextLimit else { return trimmed }
+        let cut = pinnedPrefix(trimmed, budget: pinnedTextLimit - 1)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cut + "…"
+    }
+
+    /// A pin someone is TYPING: truncate only. Trimming here would eat the
+    /// space they just pressed.
+    static func cappedPinnedInput(_ text: String) -> String {
+        guard text.unicodeScalars.count > pinnedTextLimit else { return text }
+        return pinnedPrefix(text, budget: pinnedTextLimit)
+    }
+
+    /// A pin that did not land, in words. 403 is the one the user can act on
+    /// (the group took the info right away, or never granted it); everything
+    /// else is the usual connection story.
+    static func pinFailureMessage(_ error: Error) -> String {
+        if let apiErr = error as? APIError, case .http(let status, _) = apiErr {
+            // The group took the info right away, or never granted it.
+            if status == 403 { return "chat.pin.error.forbidden".localized }
+            // The slot refused the body itself (length, shape). Clamping should
+            // keep us out of here, but a server that tightens the field must
+            // still say something the reader can act on.
+            if status == 400 || status == 422 { return "chat.pin.error.rejected".localized }
+        }
+        let friendly = APIErrorPresenter.friendly(error)
+        return friendly.isEmpty ? "chat.pin.error.generic".localized : friendly
+    }
+
     /// Owner/admin — set the sticky pinned announcement. Pass an empty
-    /// string to clear (server flips the column back to NULL).
+    /// string to clear (server flips the column back to NULL). Clamped here
+    /// rather than at each call site: this is the only door to the slot, and
+    /// an over-long body is a 422 that never touches the row.
     func setPinnedText(groupID: Int, pinnedText: String) async throws {
         struct Body: Encodable { let pinned_text: String }
         let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(pinned_text: pinnedText)
+            "PATCH", "/groups/\(groupID)",
+            body: Body(pinned_text: Self.clampPinnedText(pinnedText))
         )
         upsert(g)
     }

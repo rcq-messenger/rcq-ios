@@ -586,6 +586,10 @@
 "chat.action.select" = "Select";
 "chat.action.pin" = "Pin";
 "chat.pin.attachment" = "📎 Attachment";
+"chat.pin.error.title" = "Couldn't pin";
+"chat.pin.error.forbidden" = "You need the group info right. Ask the owner to grant it.";
+"chat.pin.error.rejected" = "That text was not accepted for the pin.";
+"chat.pin.error.generic" = "The pin did not go through. Check your connection and try again.";
 "chat.selection.delete" = "Delete (%d)";
 "chat.selection.forward" = "Forward (%d)";
 "chat.selection.cancel" = "Cancel";

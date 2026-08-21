@@ -551,6 +551,10 @@
 "chat.action.select" = "Вибрати";
 "chat.action.pin" = "Закріпити";
 "chat.pin.attachment" = "📎 Вкладення";
+"chat.pin.error.title" = "Не вдалося закріпити";
+"chat.pin.error.forbidden" = "Потрібне право змінювати інформацію групи. Попросіть власника надати його.";
+"chat.pin.error.rejected" = "Цей текст не підійшов для закріплення.";
+"chat.pin.error.generic" = "Закріпити не вдалося. Перевірте зв'язок і спробуйте ще раз.";
 "chat.selection.delete" = "Видалити (%d)";
 "chat.selection.forward" = "Переслати (%d)";
 "chat.selection.cancel" = "Скасувати";

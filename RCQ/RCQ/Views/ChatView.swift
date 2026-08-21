@@ -63,9 +63,10 @@ struct ChatView: View {
 
     /// The plaintext that goes into the pin slot for a message: its text/caption,
     /// or a short attachment label for media without text (the slot is plaintext
-    /// by design so new joiners see it before key exchange).
+    /// by design so new joiners see it before key exchange). Cut to the slot the
+    /// server has: a longer body is a 422, and a 422 leaves the OLD pin up.
     private func pinTextFor(_ message: Message) -> String {
-        let t = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = GroupService.clampPinnedText(message.text)
         if !t.isEmpty { return t }
         return "chat.pin.attachment".localized
     }
@@ -73,12 +74,24 @@ struct ChatView: View {
     private func pinMessage(_ message: Message) {
         guard case .group(let snapshot) = vm.target else { return }
         let text = pinTextFor(message)
+        let previous = groupSvc.find(snapshot.id)?.pinnedText
         // Optimistic + instant: swap the displayed pin right away, expand the
         // banner so the change is obvious, then PATCH (which reconciles via
         // upsert). Makes the new pin replace the old one immediately.
         groupSvc.applyPinnedTextLocally(groupID: snapshot.id, pinnedText: text)
-        collapsedPinGroups.remove(snapshot.id)
-        Task { try? await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text) }
+        expandPin(groupID: snapshot.id)
+        Task {
+            do {
+                try await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text)
+            } catch {
+                // A rejected pin used to be invisible: the optimistic swap stayed
+                // on screen until the next poll quietly put the old text back, so
+                // pinning read as "it just does not replace anything". Undo the
+                // swap and say so.
+                groupSvc.applyPinnedTextLocally(groupID: snapshot.id, pinnedText: previous ?? "")
+                pinError = GroupService.pinFailureMessage(error)
+            }
+        }
     }
 
     /// View counts are a broadcast-mode affordance: only meaningful
@@ -330,6 +343,10 @@ struct ChatView: View {
     /// the next mentioning message and wraps around.
     @State private var mentionCursor: Int = 0
     @State private var videoError: String?
+    /// Non-nil = the last pin-from-chat was refused and the banner has been put
+    /// back to what it showed before. Shown as an alert; silence here is what
+    /// made a rejected pin look like a pin that simply did not replace.
+    @State private var pinError: String?
     @State private var composerHeight: CGFloat = 36
     /// Tracks the last seen `composerHeight` so the scroll handler can
     /// detect SHRINK (send cleared a long draft) vs GROW (typing into
@@ -758,6 +775,14 @@ struct ChatView: View {
             Button("common.ok".localized, role: .cancel) {}
         } message: {
             Text(videoError ?? "")
+        }
+        .alert("chat.pin.error.title".localized, isPresented: Binding(
+            get: { pinError != nil },
+            set: { if !$0 { pinError = nil } }
+        )) {
+            Button("common.ok".localized, role: .cancel) {}
+        } message: {
+            Text(pinError ?? "")
         }
         // Lives at body root — nested alert modifiers cause layout-pass jitter at the composer seam.
         .alert("chat.voice.permission.title".localized, isPresented: $voicePermissionDenied) {
