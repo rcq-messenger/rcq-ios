@@ -202,7 +202,11 @@ enum Multihome {
     /// persist it, and return it. The caller republishes the home-island record.
     static func addBackupIsland(ownUin: Int, hostInput: String, nickname: String, auto: Bool = false) async throws -> MultihomeStore.Home {
         guard let host = normalizeHost(hostInput) else { throw AddError.invalidHost }
-        guard host != ownHost() else { throw AddError.primaryIsland }
+        // isOwnHost, not == ownHost(): the Cloudflare front is the flagship by
+        // another road, and "adding" it registers a second mailbox on the
+        // island this account already lives on. Same refusal as the primary,
+        // because that is what it is.
+        guard !isOwnHost(host) else { throw AddError.primaryIsland }
         guard !MultihomeStore.shared.list(ownUin: ownUin).contains(where: { $0.host == host }) else {
             throw AddError.alreadyAdded
         }
@@ -282,10 +286,11 @@ enum Multihome {
     /// auto-register on an unverified island).
     static func autoPickHost(ownUin: Int) async -> String? {
         guard let islands = await fetchSignedAutoIslands() else { return nil }
-        let own = ownHost()
         let existing = Set(MultihomeStore.shared.list(ownUin: ownUin).map(\.host))
         for url in islands {
-            guard let host = normalizeHost(url), host != own, !existing.contains(host) else { continue }
+            // isOwnHost also skips the Cloudflare fronts: a front in the
+            // catalogue would auto-register a "backup" on our own island.
+            guard let host = normalizeHost(url), !isOwnHost(host), !existing.contains(host) else { continue }
             if await healthy(host) { return host }
         }
         return nil
@@ -337,6 +342,23 @@ enum Multihome {
         }
     }
 
+    /// Drop every stored backup home that is a front alias or the primary
+    /// island itself — phantoms adopted before `isOwnHost` guarded the paths
+    /// above. Returns true when anything was removed, so the caller knows the
+    /// record it publishes just changed. ⚠ Run BEFORE the publish reads the
+    /// stored homes: the island rejects a record naming its own front (server
+    /// 2026.08.21.2), so one phantom row would cost the whole publish — and
+    /// the phantom's queue drain must end in THIS session, not the next one.
+    @discardableResult
+    static func scrubFrontAliasHomes(ownUin: Int) -> Bool {
+        var removed = false
+        for h in MultihomeStore.shared.list(ownUin: ownUin) where isOwnHost(h.host) {
+            MultihomeStore.shared.remove(ownUin: ownUin, host: h.host)
+            removed = true
+        }
+        return removed
+    }
+
     /// PUT the signed record to every backup home (the primary PUT rides the
     /// authed APIClient). Best-effort per island; a 401 refreshes the token via
     /// recover once; 409 (stale ts) means an equal-or-newer record is there.
@@ -344,6 +366,7 @@ enum Multihome {
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else { return }
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
+            if isOwnHost(home.host) { continue }  // a phantom row PUTs to our own island
             do {
                 try await putRecord(host: home.host, jwt: home.jwt, body: recordBody)
             } catch HttpError.status(401, _) {
@@ -392,6 +415,12 @@ enum Multihome {
             let group_id: Int?
         }
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
+            // ⚠ A phantom front home is OUR OWN island: draining it hits the
+            // account's real queue through the front with an unnamed recover
+            // token — the "primary" device cursor — and this legacy fetch
+            // advances that cursor with no ack. Rows it takes never reach the
+            // ack-protected main drain. Never drain through a front.
+            if isOwnHost(home.host) { continue }
             var rows: [Row]? = try? await getQueue(host: home.host, jwt: home.jwt)
             if rows == nil {
                 // Token may have expired — refresh via recover and retry once.
@@ -435,9 +464,11 @@ enum Multihome {
     /// flagship send path stays byte-identical). Never throws.
     static func depositToExtraHomes(peerUin: Int, peerSigningKey: String, sealedV1: String) async -> Int {
         guard !peerSigningKey.isEmpty else { return 0 }
-        let own = ownHost()
+        // isOwnHost, not != ownHost(): a front in a PEER's record is our own
+        // island by another road — an "extra" copy deposited there just
+        // doubles the rows in the queue the primary send already reached.
         let extra = await resolvePeerHomesCached(peerUin: peerUin, peerSigningKey: peerSigningKey)
-            .filter { $0.host != own }
+            .filter { !isOwnHost($0.host) }
         guard !extra.isEmpty else { return 0 }
         var delivered = 0
         for h in extra {
