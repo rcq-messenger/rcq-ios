@@ -930,6 +930,18 @@ struct LinkedDevicesView: View {
     /// false and did nothing at all. Founder: "даже кнопка «закрыть» не
     /// работает".
     @State private var scanned: AppState.WebLinkRequest? = nil
+    /// #643: the account's KEY SLOTS — every install holding encryption keys
+    /// of its own, which is the one list a recovery-phrase login cannot stay
+    /// out of. Distinct from the QR-link registry above it. Read-only in v1:
+    /// revoking a slot is a key operation with consequences of its own.
+    struct KeySlot: Identifiable, Decodable {
+        let device_id: Int
+        let label: String?
+        var id: Int { device_id }
+    }
+    struct KeySlotsResp: Decodable { let uin: Int; let devices: [KeySlot] }
+    @State private var slots: [KeySlot] = []
+    @State private var ownSlot: Int? = nil
 
     var body: some View {
         NavigationStack {
@@ -974,7 +986,7 @@ struct LinkedDevicesView: View {
     @ViewBuilder private var content: some View {
         if devices == nil {
             ProgressView().tint(Theme.Color.accent)
-        } else if (devices ?? []).isEmpty {
+        } else if (devices ?? []).isEmpty && slots.isEmpty {
             VStack(spacing: 14) {
                 Image(systemName: "laptopcomputer")
                     .font(.system(size: 40)).foregroundColor(Theme.Color.textSecondary)
@@ -997,7 +1009,33 @@ struct LinkedDevicesView: View {
             }
         } else {
             List {
+                if !slots.isEmpty {
+                    Section {
+                        ForEach(slots) { s in
+                            HStack(spacing: 12) {
+                                Image(systemName: s.device_id == 1 ? "iphone" : "laptopcomputer")
+                                    .foregroundColor(Theme.Color.accent)
+                                Text(slotName(s)).foregroundColor(Theme.Color.textPrimary)
+                                Spacer()
+                                if ownSlot == s.device_id {
+                                    Text("linkeddevices.slots.this".localized)
+                                        .font(.caption).foregroundColor(Theme.Color.accent)
+                                }
+                            }
+                            .listRowBackground(Theme.Color.bgSecondary)
+                        }
+                    } header: {
+                        Text("linkeddevices.slots.title".localized)
+                    } footer: {
+                        Text("linkeddevices.slots.hint".localized)
+                    }
+                }
                 Section {
+                    if (devices ?? []).isEmpty {
+                        Text("linkeddevices.empty".localized)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .listRowBackground(Theme.Color.bgSecondary)
+                    }
                     ForEach(devices ?? []) { d in
                         HStack(spacing: 12) {
                             Image(systemName: "laptopcomputer").foregroundColor(Theme.Color.accent)
@@ -1020,12 +1058,20 @@ struct LinkedDevicesView: View {
                         }
                         .listRowBackground(Theme.Color.bgSecondary)
                     }
+                } header: {
+                    Text("linkeddevices.web.title".localized)
                 } footer: {
                     Text("linkeddevices.hint".localized)
                 }
             }
             .scrollContentBackground(.hidden)
         }
+    }
+
+    private func slotName(_ s: KeySlot) -> String {
+        if s.device_id == 1 { return "linkeddevices.slots.primary".localized }
+        if let l = s.label, !l.isEmpty { return l }
+        return "linkeddevices.slots.unnamed".localized
     }
 
     private func reload() async {
@@ -1042,6 +1088,18 @@ struct LinkedDevicesView: View {
             failed = true
             devices = []
         }
+        await reloadSlots()
+    }
+
+    /// Best-effort beside the registry: an island too old for per-device keys
+    /// 404s here, which simply leaves the section out.
+    private func reloadSlots() async {
+        guard !PanicPINService.shared.isDecoy else { slots = []; ownSlot = nil; return }
+        guard let uin = SignalProtocolStores.shared.localUIN else { return }
+        ownSlot = SignalProtocolStores.shared.localDeviceId
+        guard let resp: KeySlotsResp = try? await APIClient.shared.request("GET", "/keys/\(uin)/devices")
+        else { return }
+        slots = resp.devices.sorted { $0.device_id < $1.device_id }
     }
 
     private func revoke(_ d: Device) async {

@@ -149,6 +149,12 @@
 "multihome.promote.confirm" = "Make primary";
 "multihome.err.unreachable" = "Island unreachable. Nothing was changed.";
 "linkeddevices.hint" = "Browsers connected to your account. To connect one, open chat.rcq.app, choose Connect phone, and scan the code with your camera.";
+"linkeddevices.slots.title" = "Device keys";
+"linkeddevices.slots.hint" = "Every install of this account holding its own encryption keys. A recovery-phrase login shows up here.";
+"linkeddevices.slots.primary" = "Primary device";
+"linkeddevices.slots.unnamed" = "Unnamed";
+"linkeddevices.slots.this" = "this device";
+"linkeddevices.web.title" = "Web sessions";
 "linkeddevices.empty" = "No browsers are connected.";
 "linkeddevices.error" = "Couldn't load linked devices.";
 "linkeddevices.disconnect" = "Disconnect";
