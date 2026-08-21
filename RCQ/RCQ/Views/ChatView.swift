@@ -34,8 +34,11 @@ struct ChatView: View {
     }
 
     /// "Delete for everyone" is offered for your own message, OR (in a group)
-    /// when you're a moderator: the owner, or a member the owner granted the
-    /// `delete` cap. Recipients re-check the same rule on receipt.
+    /// when you're a moderator: the owner, an admin, or a member the owner
+    /// granted the `delete` cap (founder batch 21.08, item 3; web precedent:
+    /// Chat.tsx canModerate). Recipients re-check the same rule on receipt
+    /// against their own roster, so this button grants nothing the group did
+    /// not already grant.
     private func canDeleteForEveryone(_ message: Message) -> Bool {
         // Saved messages: there is no "everyone" to delete for. Every message
         // there is your own, so the plain isFromMe rule below offered "Delete
@@ -46,8 +49,7 @@ struct ChatView: View {
         guard case .group(let snapshot) = vm.target,
               let me = AuthService.shared.ownUIN else { return false }
         let live = groupSvc.find(snapshot.id) ?? snapshot
-        return me == live.ownerUIN
-            || live.members.first { $0.uin == me }?.canDelete(ownerUIN: live.ownerUIN) == true
+        return live.moderator(me)
     }
 
     /// Owner / info-moderator may pin a chat message into the group's single
