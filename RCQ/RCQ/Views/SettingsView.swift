@@ -1032,7 +1032,16 @@ struct LinkedDevicesView: View {
                 }
                 Section {
                     if (devices ?? []).isEmpty {
-                        Text("linkeddevices.empty".localized)
+                        // ⚠ "No browsers are connected" is a CLAIM, and it must
+                        // not be made on a failed read. The key-slots section
+                        // above is populated for every bootstrapped account, so
+                        // this list is no longer the only thing on screen and
+                        // the whole view stopped falling through to its error
+                        // state: a timed-out /devices would have told the user,
+                        // definitively, that nobody is linked — on the screen
+                        // whose whole purpose is to reveal a browser they did
+                        // not link themselves.
+                        Text((failed ? "linkeddevices.error" : "linkeddevices.empty").localized)
                             .foregroundColor(Theme.Color.textSecondary)
                             .listRowBackground(Theme.Color.bgSecondary)
                     }
