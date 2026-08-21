@@ -26,9 +26,16 @@ final class CrossIslandRequestsStore: ObservableObject {
     /// Accept, so it files with the correct sender + kind) plus a plaintext
     /// preview captured at quarantine time (the payload can't be previewed
     /// without decrypting).
+    ///
+    /// For a SAME-ISLAND row (`host: ""` - the opt-in Privacy quarantine)
+    /// `payload` is instead the DECRYPTED envelope JSON: the v=2 ratchet
+    /// consumed the ciphertext the moment the sender became known, so a
+    /// re-feed could never open it again. `sentAt` carries the server time of
+    /// those rows (nil on cross-island rows and rows persisted before it).
     struct Held: Codable {
         let payload: String
         let preview: String
+        var sentAt: Date? = nil
     }
 
     struct Request: Codable, Identifiable {
@@ -88,14 +95,16 @@ final class CrossIslandRequestsStore: ObservableObject {
 
     func isBlocked(uin: Int, host: String) -> Bool { blocked.contains(reqKey(uin, host)) }
 
-    /// Quarantine one sealed payload from an un-accepted cross-island sender.
+    /// Quarantine one sealed payload from an un-accepted cross-island sender
+    /// (or, with `host: ""` + `sentAt`, one decrypted same-island envelope
+    /// from the opt-in stranger quarantine).
     /// Returns false (caller drops it) when the sender is blocked.
     @discardableResult
-    func hold(uin: Int, host: String, payload: String, preview: String) -> Bool {
+    func hold(uin: Int, host: String, payload: String, preview: String, sentAt: Date? = nil) -> Bool {
         if isBlocked(uin: uin, host: host) { return false }
         let k = reqKey(uin, host)
         var r = cache[k] ?? Request(uin: uin, host: host, firstAt: Date(), msgs: [])
-        r.msgs.append(Held(payload: payload, preview: preview))
+        r.msgs.append(Held(payload: payload, preview: preview, sentAt: sentAt))
         if r.msgs.count > Self.maxHeld { r.msgs = Array(r.msgs.suffix(Self.maxHeld)) }
         cache[k] = r
         persist()

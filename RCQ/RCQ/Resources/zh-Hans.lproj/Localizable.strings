@@ -142,6 +142,17 @@
 "linkeddevices.connect" = "连接浏览器";
 "linkeddevices.scan_hint" = "对准 chat.rcq.app 上的 QR 码";
 "linkeddevices.connected" = "已连接 %@";
+"linkeddevices.slots.title" = "设备密钥";
+"linkeddevices.slots.hint" = "此账号每个持有自己加密密钥的安装。用恢复短语登录的会话也会出现在这里。";
+"linkeddevices.slots.primary" = "主设备";
+"linkeddevices.slots.unnamed" = "未命名";
+"linkeddevices.slots.this" = "本设备";
+"linkeddevices.slots.revoke" = "撤销";
+"linkeddevices.slots.revoke.title" = "撤销此密钥槽位？";
+"linkeddevices.slots.revoke.confirm" = "撤销 %@";
+"linkeddevices.slots.revoke.message" = "发送方将不再为该槽位的密钥加密，持有该槽位的安装也收不到新消息。已收到的内容仍保留在那台设备上。";
+"linkeddevices.slots.revoke.cooldown" = "新会话暂时不能撤销更早的会话，请在 %d 小时后重试。";
+"linkeddevices.slots.revoke.failed" = "无法撤销该槽位。";
 "settings.network.proxy.unset" = "自动";
 "settings.network.proxy.intro" = "RCQ 直接连接服务器。如果这个服务器在你的网络里被封锁，应用会自动切换到内置的备用线路——你什么都不用做。";
 "settings.network.stealth.auto_on" = "自动开启";
@@ -953,7 +964,7 @@
 "pending.empty.body" = "新的好友请求会出现在这里。";
 "pending.row.body" = "RCQ 用户 %@（%@）想把你加入他的联系人列表。允许吗？";
 "pending.cta.accept" = "接受";
-"ci.section" = "来自其他岛的请求";
+"ci.section" = "消息请求";
 "ci.block" = "拉黑";
 "ci.contactreq.subtitle" = "想把你加为联系人";
 "ci.request_not_sent" = "已添加，但他所在的岛没有接收这条联系人请求。他暂时看不到。";
@@ -976,6 +987,8 @@
 "settings.privacy.persistent_presence" = "退出后仍可见";
 "settings.privacy.relay_calls" = "通话始终走中继";
 "settings.privacy.relay_calls.desc" = "通话的音频和视频经我们的中继转发，对方不会知道你的 IP 地址。关掉之后通话质量可能更好，但对方会看到你的地址。";
+"settings.privacy.strangers" = "陌生人进入请求";
+"settings.privacy.strangers.desc" = "联系人以外的消息会先进入请求列表，等待你接受。若是你先给对方写信，对方的回复会照常送达。";
 "settings.privacy.persistent_presence.desc" = "即使应用已关闭，联系人也能看到你的状态（在线 / 离开 / 请勿打扰）。";
 "settings.privacy.hof_opt_in" = "名人堂";
 "settings.privacy.hof_opt_in.desc" = "允许把你列入 rcq.app 上的公开名人堂候选。只展示昵称和 UIN，而且要通过审核。你可以随时关掉。";

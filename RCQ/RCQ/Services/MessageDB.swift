@@ -415,6 +415,21 @@ final class MessageDB {
         return rows.reversed().map(toModel)
     }
 
+    /// Whether this account ever SENT anything in the thread (own carbons
+    /// count - they are fromMe rows too). Drives the stranger-quarantine
+    /// "I wrote first - their reply is invited" exemption; asked of the
+    /// database, not the in-memory window, so an old conversation is still
+    /// an invitation.
+    func hasOutgoing(thread: ThreadID) -> Bool {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+            threadPredicate(thread),
+            NSPredicate(format: "isFromMe == YES"),
+        ])
+        req.fetchLimit = 1
+        return ((try? ctx.count(for: req)) ?? 0) > 0
+    }
+
     /// Whether at least one row exists for the thread older than `before`.
     /// Drives the "show load-more hint at the top" affordance.
     func hasOlder(thread: ThreadID, before: Date) -> Bool {

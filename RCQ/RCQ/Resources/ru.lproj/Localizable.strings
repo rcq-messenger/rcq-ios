@@ -145,6 +145,12 @@
 "linkeddevices.slots.primary" = "Основное устройство";
 "linkeddevices.slots.unnamed" = "Без имени";
 "linkeddevices.slots.this" = "это устройство";
+"linkeddevices.slots.revoke" = "Отозвать";
+"linkeddevices.slots.revoke.title" = "Отозвать этот слот ключей?";
+"linkeddevices.slots.revoke.confirm" = "Отозвать %@";
+"linkeddevices.slots.revoke.message" = "Отправители перестанут шифровать для его ключей, и установка, которая им владела, больше не получит новых сообщений. Уже полученное останется у неё.";
+"linkeddevices.slots.revoke.cooldown" = "Новая сессия не может сразу отзывать более старые. Попробуйте через %d ч.";
+"linkeddevices.slots.revoke.failed" = "Не получилось отозвать слот.";
 "linkeddevices.web.title" = "Веб-сессии";
 "linkeddevices.empty" = "Нет подключённых браузеров.";
 "linkeddevices.error" = "Не удалось загрузить список устройств.";
@@ -1023,7 +1029,7 @@
 "pending.empty.body" = "Новые приглашения появятся здесь.";
 "pending.row.body" = "Пользователь %@ (%@) хочет добавить вас в контакты. Разрешить?";
 "pending.cta.accept" = "Принять";
-"ci.section" = "Заявки с других островов";
+"ci.section" = "Заявки на переписку";
 "ci.block" = "Заблокировать";
 "ci.contactreq.subtitle" = "Хочет добавить вас в контакты";
 "ci.request_not_sent" = "Добавлено, но его остров не принял заявку. Он её пока не увидит.";
@@ -1045,6 +1051,8 @@
 "settings.privacy.persistent_presence" = "Видимость после выхода";
 "settings.privacy.relay_calls" = "Всегда ретранслировать звонки";
 "settings.privacy.relay_calls.desc" = "Пропускать звук и видео через наш ретранслятор, чтобы собеседник не узнал ваш IP-адрес. Если выключить, качество может вырасти, но собеседник увидит ваш адрес.";
+"settings.privacy.strangers" = "Незнакомцы в запросы";
+"settings.privacy.strangers.desc" = "Сообщения не из контактов ждут в запросах, пока вы их не примете. Если вы написали человеку первым, его ответ придёт как обычно.";
 "settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
 "settings.privacy.hof_opt_in" = "Зал славы";
 "settings.privacy.hof_opt_in.desc" = "Разрешить рассматривать вас для публичного зала славы на rcq.app. Только ник и UIN, и только если одобрят. Можно выключить в любой момент.";

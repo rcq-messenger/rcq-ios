@@ -154,6 +154,12 @@
 "linkeddevices.slots.primary" = "Primary device";
 "linkeddevices.slots.unnamed" = "Unnamed";
 "linkeddevices.slots.this" = "this device";
+"linkeddevices.slots.revoke" = "Revoke";
+"linkeddevices.slots.revoke.title" = "Revoke this key slot?";
+"linkeddevices.slots.revoke.confirm" = "Revoke %@";
+"linkeddevices.slots.revoke.message" = "Senders stop encrypting to its keys, and the install that held it stops receiving new messages. What it already received stays with it.";
+"linkeddevices.slots.revoke.cooldown" = "A fresh session must wait before revoking older ones. Try again in %d h.";
+"linkeddevices.slots.revoke.failed" = "Could not revoke this slot.";
 "linkeddevices.web.title" = "Web sessions";
 "linkeddevices.empty" = "No browsers are connected.";
 "linkeddevices.error" = "Couldn't load linked devices.";
@@ -1048,7 +1054,7 @@
 "pending.empty.body" = "New contact invites will show up here.";
 "pending.row.body" = "RCQ user %@ (%@) wants to add you to their contact list. Allow?";
 "pending.cta.accept" = "Accept";
-"ci.section" = "Requests from other islands";
+"ci.section" = "Message requests";
 "ci.block" = "Block";
 "ci.contactreq.subtitle" = "Wants to add you as a contact";
 "ci.request_not_sent" = "Added, but their island did not take the contact request. They will not see it yet.";
@@ -1074,6 +1080,8 @@
 "settings.privacy.persistent_presence" = "Visibility after exit";
 "settings.privacy.relay_calls" = "Always relay calls";
 "settings.privacy.relay_calls.desc" = "Send call audio and video through our relay so the other side never learns your IP address. Turning this off can improve call quality and shows them your address.";
+"settings.privacy.strangers" = "Strangers go to requests";
+"settings.privacy.strangers.desc" = "Messages from people outside your contacts wait in Requests until you accept them. If you wrote to someone first, their reply comes through as usual.";
 "settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
 "settings.privacy.hof_opt_in" = "Hall of Fame";
 "settings.privacy.hof_opt_in.desc" = "Allow being considered for the public Hall of Fame at rcq.app. Only your nickname and UIN, and only if approved. You can turn this off any time.";

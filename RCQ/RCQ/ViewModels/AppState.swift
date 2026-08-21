@@ -1476,6 +1476,7 @@ final class AppState: ObservableObject {
         // others (founder report).
         CrossIslandStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        StrangerQuarantine.shared.bind(accountID: AccountManager.shared.activeAccountID)
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
         // Probe timers key on bare peer uins, which mean nothing on the

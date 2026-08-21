@@ -942,6 +942,11 @@ struct LinkedDevicesView: View {
     struct KeySlotsResp: Decodable { let uin: Int; let devices: [KeySlot] }
     @State private var slots: [KeySlot] = []
     @State private var ownSlot: Int? = nil
+    /// Пункт 13: the slot the two-step revoke confirm is armed for, the one
+    /// whose POST is in flight, and the error line for the failure alert.
+    @State private var revokeTarget: KeySlot? = nil
+    @State private var revokingSlot: Int? = nil
+    @State private var revokeError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -979,6 +984,46 @@ struct LinkedDevicesView: View {
             // the just-linked device shows up without re-opening the drawer.
             .sheet(item: $pendingLink, onDismiss: { Task { await reload() } }) { req in
                 WebLinkSheet(request: req, onClose: { pendingLink = nil })
+            }
+            // Пункт 13, step two of the revoke confirm.
+            .confirmationDialog(
+                "linkeddevices.slots.revoke.title".localized,
+                isPresented: Binding(
+                    get: { revokeTarget != nil },
+                    set: { if !$0 { revokeTarget = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: revokeTarget
+            ) { s in
+                Button(
+                    String(format: "linkeddevices.slots.revoke.confirm".localized, slotName(s)),
+                    role: .destructive
+                ) {
+                    Task { await revokeSlot(s) }
+                }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: { _ in
+                Text("linkeddevices.slots.revoke.message".localized)
+            }
+            .alert(
+                "common.error".localized,
+                isPresented: Binding(
+                    get: { revokeError != nil },
+                    set: { if !$0 { revokeError = nil } }
+                )
+            ) {
+                Button("common.ok".localized) { revokeError = nil }
+            } message: {
+                Text(revokeError ?? "")
+            }
+            // The island announces a slot revocation to every session of the
+            // account (same channel as slot claims). Refresh the list so a
+            // revoke made elsewhere disappears here; nothing heavier.
+            .onReceive(
+                NotificationCenter.default.publisher(for: .rcqDeviceSlotRevoked)
+                    .receive(on: DispatchQueue.main)
+            ) { _ in
+                Task { await reloadSlots() }
             }
         }
     }
@@ -1020,6 +1065,21 @@ struct LinkedDevicesView: View {
                                 if ownSlot == s.device_id {
                                     Text("linkeddevices.slots.this".localized)
                                         .font(.caption).foregroundColor(Theme.Color.accent)
+                                } else if s.device_id != 1, ownSlot != nil {
+                                    // Пункт 13: a slot that is neither the
+                                    // primary (the server refuses that one -
+                                    // rotating it is /auth/reissue's job) nor
+                                    // OUR OWN can be retired. Step one of the
+                                    // two-step confirm; the dialog is step two.
+                                    if revokingSlot == s.device_id {
+                                        ProgressView().scaleEffect(0.7)
+                                    } else {
+                                        Button("linkeddevices.slots.revoke".localized, role: .destructive) {
+                                            revokeTarget = s
+                                        }
+                                        .font(.callout)
+                                        .disabled(revokingSlot != nil)
+                                    }
                                 }
                             }
                             .listRowBackground(Theme.Color.bgSecondary)
@@ -1150,6 +1210,39 @@ struct LinkedDevicesView: View {
         let _: EmptyResponse? = try? await APIClient.shared.request("DELETE", "/devices/\(d.device_id)")
         revoking.remove(d.device_id)
         await reload()
+    }
+
+    /// Пункт 13: retire a key slot (server 2026.08.21.8). Senders stop
+    /// fanning out to it and its one-time prekeys are gone; the install that
+    /// held it keeps only what it already received. Slot 1 is refused
+    /// server-side and never offers the button here. A young linked session
+    /// touching something older than itself gets the cooldown 403, turned
+    /// into the human sentence it means (hours, rounded up).
+    private func revokeSlot(_ s: KeySlot) async {
+        revokingSlot = s.device_id
+        do {
+            let _: EmptyResponse = try await APIClient.shared.request(
+                "POST", "/keys/devices/\(s.device_id)/revoke"
+            )
+            slots.removeAll { $0.device_id == s.device_id }
+        } catch {
+            revokeError = Self.revokeErrorMessage(error)
+        }
+        revokingSlot = nil
+    }
+
+    /// 403 {"detail":{"code":"revoke_cooldown","wait_seconds":N}} becomes
+    /// "try again in {ceil(N/3600)} h"; anything else is the generic failure.
+    static func revokeErrorMessage(_ error: Error) -> String {
+        if case APIError.http(403, let body) = error,
+           let body,
+           body.contains("revoke_cooldown"),
+           let range = body.range(of: #""wait_seconds"\s*:\s*(\d+)"#, options: .regularExpression),
+           let secs = Int(body[range].drop(while: { !$0.isNumber })) {
+            let hours = max(1, Int((Double(secs) / 3600).rounded(.up)))
+            return String(format: "linkeddevices.slots.revoke.cooldown".localized, hours)
+        }
+        return "linkeddevices.slots.revoke.failed".localized
     }
 }
 

@@ -9,6 +9,11 @@ final class ContactService: ObservableObject {
     private static let log = OSLog(subsystem: "app.rcq.client", category: "ContactService")
 
     @Published private(set) var contacts: [Contact] = []
+    /// True once ONE `/contacts` fetch succeeded this session. The stranger
+    /// quarantine (StrangerQuarantine.shouldQuarantine) keys on it: with no
+    /// roster ever loaded, "not a contact" is a guess, and the gate fails
+    /// OPEN rather than eat messages blind.
+    private(set) var rosterLoaded = false
     @Published private(set) var pendingRequests: [PendingRequest] = []
     /// Requests WE sent that are still pending or were declined by the
     /// recipient (declined surface here because no push tells the sender).
@@ -54,6 +59,7 @@ final class ContactService: ObservableObject {
             // islands — not in the server roster) so they show + open a chat.
             let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
             self.contacts = list + cross
+            self.rosterLoaded = true
             let pending: [PendingRequest] = try await APIClient.shared.request("GET", "/contacts/pending")
             self.pendingRequests = pending
             let outgoing: [OutgoingRequest] = try await APIClient.shared.request("GET", "/contacts/outgoing")
@@ -358,6 +364,7 @@ final class ContactService: ObservableObject {
     /// Local cache reset used by the burn flow.
     func wipe() {
         contacts = []
+        rosterLoaded = false
         pendingRequests = []
         outgoingRequests = []
         UnreadStore.shared.wipeAll()
@@ -367,6 +374,7 @@ final class ContactService: ObservableObject {
 
     func clearForDecoy() {
         contacts = []
+        rosterLoaded = false
         pendingRequests = []
         outgoingRequests = []
     }
