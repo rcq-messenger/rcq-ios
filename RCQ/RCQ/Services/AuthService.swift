@@ -255,6 +255,12 @@ final class AuthService: ObservableObject {
     /// Mirrors the web + Android wiring. Internal so the Settings backup-island
     /// surface can republish after an add/remove.
     func publishHomeIslandRecord(ownUIN: Int) async {
+        // Scrub phantom front-alias homes FIRST (runs on every boot via the
+        // bootstrap calls into here): the record below is assembled from the
+        // store, and the 30s backup drain re-reads the store each pass — so
+        // the scrub both cleans this publish and ends the phantom's drain in
+        // this very session.
+        Multihome.scrubFrontAliasHomes(ownUin: ownUIN)
         // ⚠⚠ Read the published record BEFORE overwriting it — see
         // `Multihome.ownPublishedHomes`. A backup island switched on elsewhere
         // is not in this install's store, and republishing without it silently
@@ -276,9 +282,18 @@ final class AuthService: ObservableObject {
               let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return nil }
         let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
         let ik = local.identityKeyPair.publicKey.serialize().base64EncodedString()
-        let host = APIClient.shared.baseURL.host ?? RcqFederation.flagshipHost
+        // ⚠ ownHost(), not baseURL.host: baseURL is the TRANSPORT, and when the
+        // direct probe fails it silently becomes the Cloudflare front — this
+        // line is how old builds stamped the road (cdn.rcq.app) into signed
+        // records as a "home", which other clients then adopted as a phantom
+        // backup island. The island now rejects any record naming its front,
+        // so one such row would cost the whole publish; the stored backups are
+        // filtered on the same rule as defense in depth behind the scrub.
+        let host = Multihome.ownHost()
         let mine = [RcqFederation.Home(host: host, uin: ownUIN)] +
-            MultihomeStore.shared.list(ownUin: ownUIN).map { RcqFederation.Home(host: $0.host, uin: $0.uin) }
+            MultihomeStore.shared.list(ownUin: ownUIN)
+                .filter { !Multihome.isOwnHost($0.host) }
+                .map { RcqFederation.Home(host: $0.host, uin: $0.uin) }
         // Homes another device of this account published and this one has never
         // heard of are carried over untouched. We hold no credentials for them
         // and do not pretend to: the record is an address list, not an
@@ -286,8 +301,15 @@ final class AuthService: ObservableObject {
         // signs whatever the publish last built.
         var homes = mine
         if carryingPublishedHomes {
+            // A front in our own published record is the phantom itself — an
+            // old build stamped it, and carrying it over is what turned one
+            // client's mistake into every client's "backup". Drop it here so a
+            // clean record replaces the polluted one instead of inheriting it.
             let published = await Multihome.ownPublishedHomes(ownUin: ownUIN, ownSigningKey: sk)
-            homes += published.filter { p in !mine.contains { $0.host.caseInsensitiveCompare(p.host) == .orderedSame } }
+            homes += published.filter { p in
+                !Multihome.isOwnHost(p.host)
+                    && !mine.contains { $0.host.caseInsensitiveCompare(p.host) == .orderedSame }
+            }
         }
         let ts = Int(Date().timeIntervalSince1970)
         return try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts)
