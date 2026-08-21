@@ -42,6 +42,12 @@ enum PushDecryptCache {
         /// Base64 `spub` that signed the envelope — what binds a `homerec`
         /// self-push to its real sender. Dropped for the same reason.
         var senderSigningKey: String? = nil
+        /// The sender's v=2 device id. Same trap as `senderHost` above:
+        /// `ingest` prefers this cache over a fresh decrypt, so an entry that
+        /// forgets the device would keep the silence probe armed for exactly
+        /// the envelopes that arrive by push — the ones proving the device is
+        /// alive. Optional so older entries still decode.
+        var senderDeviceID: Int? = nil
     }
 
     private static var cacheDir: URL {
@@ -72,7 +78,8 @@ enum PushDecryptCache {
             envelope: decrypted.envelope,
             writtenAt: Date(),
             senderHost: decrypted.senderHost,
-            senderSigningKey: decrypted.senderSigningKey
+            senderSigningKey: decrypted.senderSigningKey,
+            senderDeviceID: decrypted.senderDeviceID
         )
         guard let data = try? JSONEncoder().encode(entry) else { return }
         // Sealed before it touches the disk. See `seal` below for why.
@@ -132,6 +139,7 @@ enum PushDecryptCache {
             senderUIN: entry.senderUIN,
             senderHost: entry.senderHost,
             senderSigningKey: entry.senderSigningKey,
+            senderDeviceID: entry.senderDeviceID,
             envelope: entry.envelope
         )
     }

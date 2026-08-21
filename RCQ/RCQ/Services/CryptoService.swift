@@ -586,6 +586,12 @@ struct DecryptedEnvelope {
     /// signature check. Lets a `homerec` self-push bind the carried record to
     /// its real sender (rec.sk must equal this). nil for v=2.
     var senderSigningKey: String? = nil
+    /// Which install of the sender sealed this (the v=2 ratchet address names
+    /// it). nil for v=1 and group chains, which name no device — and the
+    /// silence probe treats that nil as "clears nothing": crediting the
+    /// primary for a copy that may have come from a sibling is exactly the
+    /// confusion that kept a dead device unhealed on the web.
+    var senderDeviceID: Int? = nil
     let envelope: Envelope
 }
 
@@ -1067,7 +1073,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             throw error
         }
         let env = try JSONDecoder().decode(Envelope.self, from: plainEnvelope)
-        return DecryptedEnvelope(senderUIN: from, envelope: env)
+        return DecryptedEnvelope(senderUIN: from, senderDeviceID: senderDeviceId, envelope: env)
     }
 }
 
