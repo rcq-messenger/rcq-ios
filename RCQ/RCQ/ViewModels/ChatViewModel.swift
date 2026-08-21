@@ -148,9 +148,9 @@ final class ChatViewModel: ObservableObject {
 
         // Reading-position writer (founder batch 21.08, item 13a) - the same
         // debounced UserDefaults shape as the draft writer above. Rows nudge
-        // the subject as they (de)realize; once the scroll settles for 300ms
-        // the sink persists "where reading left off" so reopening this chat
-        // can land there instead of the bottom.
+        // the subject as they (de)realize; once the list has been still for
+        // 300ms the sink persists "where reading left off" so reopening this
+        // chat can land there instead of the bottom.
         readPosEdits
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.persistReadPos() }
@@ -196,8 +196,14 @@ final class ChatViewModel: ObservableObject {
         // current value, so the initial render is populated.
         $messages
             .sink { [weak self] msgs in
-                self?.groupedUnits = ChatViewModel.computeGroupedUnits(msgs)
-                self?.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
+                guard let self else { return }
+                let grouped = ChatViewModel.computeGroupedUnits(msgs)
+                self.groupedUnits = grouped
+                // Reading-position bookkeeping works in ROW space and needs
+                // index lookups per realization event (13a): keep the flat
+                // view of the same data in step with it.
+                self.rebuildUnitIndex(grouped)
+                self.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
             }
             .store(in: &cancellables)
 
@@ -310,16 +316,24 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Where reading left off, persisted like drafts (founder batch 21.08,
-    /// item 13a). The stored value is a RenderUnit id (a message id, or the
-    /// albumID of a collapsed run) - the ScrollViewReader can only land on
-    /// row identities, so a row id anchored to the viewport's bottom edge
-    /// plays the role the pixel distance-from-bottom plays on web: it stays
-    /// valid when new messages arrive below or older history prepends above.
-    /// Random sessions are ephemeral (no draft either), hence nil.
+    /// item 13a). The stored value is `<row id>|<row's epoch seconds>`: the
+    /// id is the row to land on (a message id, or the albumID of a collapsed
+    /// run; the ScrollViewReader can only land on row identities), and the
+    /// timestamp is the fallback for when that row is gone, which happens
+    /// routinely here (delete-for-everyone, the disappearing-message sweeper,
+    /// or a relaunch whose window starts newer than the spot). Without it a
+    /// vanished anchor dumped the reader at the newest message.
+    ///
+    /// ⚠ Scoped by account: two accounts can each hold a thread with the same
+    /// peer uin, and an unscoped timestamp would resolve against the WRONG
+    /// history: a landing spot with no relation to anything, which is
+    /// exactly what "opens in a random place" looks like. Random sessions are
+    /// ephemeral (no draft either), hence nil.
     private static func readPosKey(for target: ChatTarget) -> String? {
+        let scope = AccountManager.shared.activeAccountID?.uuidString ?? "none"
         switch target {
-        case .peer(let c):  return "rcq.readpos.peer.\(c.uin)"
-        case .group(let g): return "rcq.readpos.group.\(g.id)"
+        case .peer(let c):  return "rcq.readpos.\(scope).peer.\(c.uin)"
+        case .group(let g): return "rcq.readpos.\(scope).group.\(g.id)"
         case .randomPeer:   return nil
         }
     }
@@ -374,11 +388,49 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: reading position (founder batch 21.08, item 13a)
 
-    /// Ids of currently-realized rows (single rows report their message id,
-    /// album rows their last item - the same id sawRow gets). LazyVStack
-    /// realization runs a bit ahead of visibility, so the bottommost entry
-    /// errs a few rows below the viewport - toward "newer", never random.
-    private var realizedRowIDs: Set<UUID> = []
+    /// `groupedUnits` flattened into one chronological row list, plus its
+    /// id → index map. Rebuilt from the same sink that builds `groupedUnits`.
+    /// The reading-position code works in ROW space (a collapsed album is one
+    /// row, not five messages) and does an index lookup per realization
+    /// event, which a scan across the day groups would make quadratic on a
+    /// fast scroll.
+    private var flatUnits: [RenderUnit] = []
+    private var unitIndexByID: [UUID: Int] = [:]
+
+    private func rebuildUnitIndex(_ grouped: [(label: String, units: [RenderUnit])]) {
+        var flat: [RenderUnit] = []
+        flat.reserveCapacity(messages.count)
+        var map: [UUID: Int] = [:]
+        for group in grouped {
+            for unit in group.units {
+                map[unit.id] = flat.count
+                flat.append(unit)
+            }
+        }
+        flatUnits = flat
+        unitIndexByID = map
+    }
+
+    /// Ids of the rows LazyVStack currently holds realized (ChatView reports
+    /// them per render unit).
+    ///
+    /// ⚠ Realization is NOT visibility. The stack builds a little ahead of
+    /// the viewport and discards behind it lazily, so this set is a superset
+    /// of what the reader sees, and it is much wider at the trailing edge
+    /// than at the leading one. 512ce9b took the BOTTOMMOST entry as "where
+    /// reading stopped" and restored it against the viewport's bottom edge,
+    /// which put rows the reader had never reached at the bottom of the
+    /// screen: every reopen landed some unpredictable distance BELOW the real
+    /// spot, skipping messages, which is the "random place" report. We take
+    /// leading edge instead (the topmost row) and restore it to the top, the
+    /// same shape Android ships (firstVisibleItemIndex + scrollToItem, which
+    /// pins an item's top) and the same call the unread anchor already makes.
+    /// Erring on this edge is small and always toward already-read history,
+    /// never past it.
+    private var realizedUnitIDs: Set<UUID> = []
+    /// The row that realized most recently: the pivot for the contiguous-run
+    /// walk below, because it is certainly inside the live window.
+    private var lastRealizedUnitID: UUID?
     private let readPosEdits = PassthroughSubject<Void, Never>()
     /// True while the bottom sentinel is realized - the file's one at-bottom
     /// signal (ChatView reports it). At the bottom there is nothing to
@@ -388,21 +440,63 @@ final class ChatViewModel: ObservableObject {
     /// position - rows realize during the programmatic jumps too, and
     /// persisting one of THOSE would turn the next open into a lottery.
     private var readPosArmed = false
+    /// Set while the screen is going away. See `endReadPosTracking()`.
+    private var readPosSuspended = false
+    /// The row the open RESTORED to, and the top row once that landing has
+    /// settled. Together they stop the anchor from walking: re-saving the
+    /// settled landing would store it shifted by the realization overshoot,
+    /// so a chat nobody scrolled would creep a row or two further into
+    /// history on every single open.
+    private var restoredUnitID: UUID?
+    private var readPosBaseline: UUID?
+    private var didTakeReadPosBaseline = false
 
-    func rowRealized(_ id: UUID) {
-        realizedRowIDs.insert(id)
+    func rowRealized(_ unitID: UUID) {
+        // A row building again means the list is live: a nav push suspended
+        // tracking, popping back to the chat resumes it.
+        readPosSuspended = false
+        realizedUnitIDs.insert(unitID)
+        lastRealizedUnitID = unitID
         readPosEdits.send(())
     }
 
-    func rowDerealized(_ id: UUID) {
-        realizedRowIDs.remove(id)
+    func rowDerealized(_ unitID: UUID) {
+        // ⚠ While suspended the screen is being torn down and EVERY row
+        // reports out in one burst. Letting that through would leave the set
+        // holding whichever rows happened to survive the burst, and the saver
+        // would write one of those as "where reading stopped".
+        guard !readPosSuspended else { return }
+        realizedUnitIDs.remove(unitID)
         readPosEdits.send(())
+    }
+
+    /// The topmost row of the realized window: the row nearest the top of the
+    /// reader's screen. Taken as the head of the CONTIGUOUS run containing
+    /// the pivot. A lazy stack realizes one uninterrupted range of rows, so
+    /// anything disjoint from that run is a leftover whose `onDisappear`
+    /// never arrived (the open jumps from content offset 0 to the landing
+    /// spot leave such islands behind), and following one would anchor
+    /// reading in an unrelated stretch of history.
+    private var topRealizedUnitID: UUID? {
+        guard !flatUnits.isEmpty, !realizedUnitIDs.isEmpty else { return nil }
+        let pivot: Int? = {
+            if let last = lastRealizedUnitID, realizedUnitIDs.contains(last),
+               let i = unitIndexByID[last] { return i }
+            return realizedUnitIDs.compactMap { unitIndexByID[$0] }.max()
+        }()
+        guard var i = pivot else { return nil }
+        while i > 0, realizedUnitIDs.contains(flatUnits[i - 1].id) { i -= 1 }
+        return flatUnits[i].id
     }
 
     /// Sentinel realized/derealized. Reaching the bottom clears the saved
     /// spot immediately rather than on the debounce: a kill right after
     /// "jump to newest" must not resurrect an old position on next open.
     func noteAtBottom(_ atBottom: Bool) {
+        // Only the sentinel COMING BACK proves the list is live again; its
+        // teardown report must not lift the suspension (see rowDerealized).
+        if atBottom { readPosSuspended = false }
+        guard !readPosSuspended else { return }
         isAtBottom = atBottom
         // ⚠ Armed only. During the open the list's first layout can realize
         // the bottom sentinel BEFORE ChatView's .task snapshots the restore
@@ -410,11 +504,27 @@ final class ChatViewModel: ObservableObject {
         // this feature exists to land on.
         if atBottom, readPosArmed, let key = Self.readPosKey(for: target) {
             UserDefaults.standard.removeObject(forKey: key)
+            // Read to the end: nothing to protect any more, so a later
+            // scroll back up writes straight away.
+            readPosBaseline = nil
+            didTakeReadPosBaseline = true
         }
     }
 
-    func armReadPosSaves() {
+    /// ChatView's settle loop has landed the open position; saves may start.
+    /// `restored` is the row the open resumed at, or nil when it opened at
+    /// the bottom or on the unread anchor.
+    func armReadPosSaves(restored: UUID?) {
         readPosArmed = true
+        restoredUnitID = restored
+        // Only a RESTORED landing needs the no-walk baseline. An open at the
+        // bottom or on the unread anchor has nothing to preserve, so the
+        // first settled reading is already a real answer and must be written
+        // written, or a single scroll up then leaving would save nothing.
+        if restored == nil {
+            didTakeReadPosBaseline = true
+            readPosBaseline = nil
+        }
         // The open landed at the bottom (no unread, no spot, or the spot WAS
         // the bottom): the sentinel's pre-arm realization couldn't clear the
         // key, so settle the account now.
@@ -423,51 +533,77 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Persist right now - ChatView's onDisappear, so a scroll that came to
-    /// rest under 300ms before leaving still lands in UserDefaults. The
-    /// pending debounce may still fire after; it rewrites the same value.
-    func flushReadPos() { persistReadPos() }
+    /// The screen is going away: a pop, or a push to a profile/media viewer.
+    /// One last synchronous save for a scroll that came to rest inside the
+    /// 300ms debounce window, then tracking stops, because everything that
+    /// follows is teardown, not reading.
+    ///
+    /// ⚠ Whether SwiftUI runs the parent's `onDisappear` before or after the
+    /// rows' own is not contractual, so this is written to be right in both
+    /// orders. Parent first: the realized set is still whole and the save is
+    /// exact. Rows first: the set is empty, `persistReadPos` finds no anchor
+    /// and returns, leaving the debounced value standing. Neither order can
+    /// write a row the reader never stopped on.
+    func endReadPosTracking() {
+        persistReadPos()
+        readPosSuspended = true
+    }
 
     private func persistReadPos() {
-        guard readPosArmed, !isAtBottom,
-              let key = Self.readPosKey(for: target) else { return }
-        // Bottommost realized message, mapped to its render unit - albums
-        // collapse into one row, and only the unit id has a row to scroll
-        // back to. No realized rows (thread cleared mid-open) - keep the
-        // old value rather than writing garbage.
-        guard let anchor = messages.last(where: { realizedRowIDs.contains($0.id) }) else { return }
-        // The newest message standing in as the anchor means the viewport is
-        // at (or a hair above) the bottom - the web's dist<80 case: clear the
-        // spot, "resume at the newest" is just the normal open. Also covers a
-        // pop while at the bottom, where the sentinel's own teardown
-        // onDisappear flips isAtBottom off just before the flush runs.
-        if anchor.id == messages.last?.id {
+        guard readPosArmed, !readPosSuspended, !isAtBottom,
+              let key = Self.readPosKey(for: target),
+              let topID = topRealizedUnitID,
+              let idx = unitIndexByID[topID] else { return }
+        if !didTakeReadPosBaseline {
+            didTakeReadPosBaseline = true
+            // The first settled reading of a RESTORED open is where the open
+            // put us, not a decision the reader made: remember it and write
+            // nothing. Unless the restored row is already off the list, in
+            // which case the reader has scrolled away in the meantime and
+            // this is a genuine spot.
+            if let restored = restoredUnitID, realizedUnitIDs.contains(restored) {
+                readPosBaseline = topID
+                return
+            }
+        }
+        if topID == readPosBaseline { return }
+        // Moved off the landing for real; the baseline has done its job.
+        readPosBaseline = nil
+        // The last row is the bottom by another name; opening there is the
+        // plain open, so drop the entry instead of storing it.
+        guard idx < flatUnits.count - 1 else {
             UserDefaults.standard.removeObject(forKey: key)
             return
         }
-        let unit = groupedUnits.lazy.flatMap({ $0.units }).first(where: { unit in
-            switch unit {
-            case .single(let m): return m.id == anchor.id
-            case .album(_, let items): return items.contains { $0.id == anchor.id }
-            }
-        })
-        guard let unit else { return }
-        UserDefaults.standard.set(unit.id.uuidString, forKey: key)
+        let stamp = flatUnits[idx].anchorDate.timeIntervalSince1970
+        UserDefaults.standard.set("\(topID.uuidString)|\(stamp)", forKey: key)
     }
 
-    /// The render unit to land on when reopening a QUIET thread, or nil to
-    /// open at the bottom as always. The unread divider always wins over
-    /// this - ChatView consults openFirstUnreadID first. The last unit is
-    /// excluded (a spot at the newest row IS the bottom), and an id that no
-    /// longer resolves (history cleared, message deleted, or older than the
-    /// loaded window) falls back to the bottom rather than guessing.
+    /// The row to land on when reopening a QUIET thread, or nil to open at
+    /// the bottom as always. The unread anchor always wins over this -
+    /// ChatView consults openFirstUnreadID first.
+    ///
+    /// Resolution order: the saved row itself; then, when it is gone (deleted
+    /// for everyone, swept by a disappearing-message TTL, or simply older
+    /// than the window this launch loaded), the nearest SURVIVING row older
+    /// than it, so the reader lands just above what they had read instead of
+    /// somewhere arbitrary; then the bottom. The last row is excluded either
+    /// way: a spot at the newest row IS the bottom.
     var openRestoreUnitID: UUID? {
         guard let key = Self.readPosKey(for: target),
               let raw = UserDefaults.standard.string(forKey: key),
-              let id = UUID(uuidString: raw) else { return nil }
-        let units = groupedUnits.flatMap { $0.units }
-        guard let idx = units.firstIndex(where: { $0.id == id }), idx < units.count - 1 else { return nil }
-        return units[idx].id
+              !flatUnits.isEmpty else { return nil }
+        let parts = raw.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+        if let id = UUID(uuidString: String(parts[0])), let idx = unitIndexByID[id] {
+            return idx < flatUnits.count - 1 ? flatUnits[idx].id : nil
+        }
+        guard parts.count == 2, let seconds = Double(parts[1]) else { return nil }
+        let savedAt = Date(timeIntervalSince1970: seconds)
+        // flatUnits runs oldest → newest, so the LAST row at or before the
+        // saved moment is the nearest surviving neighbour on the older side.
+        guard let idx = flatUnits.lastIndex(where: { $0.anchorDate <= savedAt }),
+              idx < flatUnits.count - 1 else { return nil }
+        return flatUnits[idx].id
     }
 
     func onAppear() {
@@ -1126,6 +1262,17 @@ final class ChatViewModel: ObservableObject {
             switch self {
             case .single(let m): return m.id
             case .album(let id, _): return id
+            }
+        }
+
+        /// When the row's FIRST message was sent: the row's own place in the
+        /// timeline. Stored alongside the reading-position anchor (13a) so a
+        /// spot whose row has since been deleted or swept by a disappearing
+        /// -message TTL can still resume at its nearest surviving neighbour.
+        var anchorDate: Date {
+            switch self {
+            case .single(let m): return m.sentAt
+            case .album(_, let items): return items.first?.sentAt ?? .distantPast
             }
         }
     }
