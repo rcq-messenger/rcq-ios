@@ -1013,7 +1013,7 @@ struct LinkedDevicesView: View {
                     Section {
                         ForEach(slots) { s in
                             HStack(spacing: 12) {
-                                Image(systemName: s.device_id == 1 ? "iphone" : "laptopcomputer")
+                                Image(systemName: slotIcon(s))
                                     .foregroundColor(Theme.Color.accent)
                                 Text(slotName(s)).foregroundColor(Theme.Color.textPrimary)
                                 Spacer()
@@ -1081,6 +1081,40 @@ struct LinkedDevicesView: View {
         if s.device_id == 1 { return "linkeddevices.slots.primary".localized }
         if let l = s.label, !l.isEmpty { return l }
         return "linkeddevices.slots.unnamed".localized
+    }
+
+    /// The row's glyph comes from the slot's LABEL, not its index. The first
+    /// cut drew slot 1 as a phone and everything else as a laptop, and the
+    /// founder's own account is the counter-example: his desktop rides the
+    /// legacy primary keys in slot 1, the iPhone sits in slot 2 — drawn as a
+    /// laptop.
+    ///
+    /// What the registry actually carries: iOS registers UIDevice model
+    /// ("iPhone"/"iPad"), Android the literal "Android", web/desktop the
+    /// clientLabel shape ("RCQ Desktop · macOS", "Chrome · macOS", legacy
+    /// "Desktop"/"Web"). Order is the whole trick: "desktop" first (the app,
+    /// whatever OS trails it), then browser names before OS names so
+    /// "Safari · iOS" and "Chrome · Android" read as the web sessions they
+    /// are, not as phones.
+    private func slotIcon(_ s: KeySlot) -> String {
+        let l = (s.label ?? "").lowercased()
+        if !l.isEmpty {
+            if l.contains("desktop") { return "laptopcomputer" }
+            for b in ["chrome", "firefox", "safari", "edge", "opera",
+                      "brave", "vivaldi", "yandex", "browser", "web"]
+            where l.contains(b) { return "globe" }
+            if l.contains("ipad") || l.contains("tablet") { return "ipad" }
+            for p in ["iphone", "ipod", "android", "phone"]
+            where l.contains(p) { return "iphone" }
+            for d in ["mac", "windows", "linux"]
+            where l.contains(d) { return "laptopcomputer" }
+        }
+        // No platform in the label. The server names slot 1 literally
+        // "primary", so the primary slot always lands here; the account's
+        // first device is most often the phone that created it, and that
+        // guess is a LAST RESORT only — index must never again be the rule
+        // (the founder's slot 1 is a desktop, and nothing can tell us).
+        return s.device_id == 1 ? "iphone" : "laptopcomputer.and.iphone"
     }
 
     private func reload() async {
