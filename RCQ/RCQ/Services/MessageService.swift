@@ -568,8 +568,10 @@ final class MessageService {
         let now = Date()
         let thread = ThreadID.peer(uin: contact.uin)
         MessageStore.shared.applyEdit(messageID: message.id, thread: thread, newText: newText, editedAt: now)
-        // Saved Messages — no peer to notify.
-        if contact.uin == ownUIN { return }
+        // Saved Messages has no peer to notify, but the account's OTHER
+        // devices hold the note too (it arrived there as a carbon), so the
+        // edit must not stop here: sendEnvelope short-circuits a send to self
+        // into exactly the carbon-only mirror this needs.
         try await sendEnvelope(.edit(targetID: message.id, text: newText), to: contact, localID: nil)
     }
 
@@ -732,6 +734,12 @@ final class MessageService {
         // the third symptom in #415 — and the user's other device never saw the
         // edit at all.
         case .edit: return true
+        // A delete-for-everyone rides along for the same reason an edit does:
+        // the group fan-out skips self and a 1:1 delete only goes to the peer,
+        // so a retraction made on one of the user's devices never reached the
+        // user's other devices in either direction. The receive side APPLIES
+        // this control carbon (tombstones the row) instead of filing it.
+        case .deleteForEveryone: return true
         default: return false
         }
     }
@@ -1322,7 +1330,7 @@ final class MessageService {
     /// it), a replay, unverifiable, or pending an SKDM (a NACK is fired then).
     private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> DecryptedEnvelope? {
         guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return nil }
-        if GroupSenderKeyStore.shared.ownsKid(hdr.kid) { return nil } // my own echoed broadcast
+        if GroupSenderKeyStore.shared.ownsKid(ownUin: ownUIN, hdr.kid) { return nil } // my own echoed broadcast
         guard let key = GroupSenderKeyStore.shared.deriveInbound(ownUin: ownUIN, kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
             if !GroupSenderKeyStore.shared.knowsKid(ownUin: ownUIN, hdr.kid) { sendSknack(gid: gid, kid: hdr.kid) }
             return nil
@@ -1647,9 +1655,26 @@ final class MessageService {
                 guard decrypted.senderUIN == ownUIN else { return nil }
                 let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }
                 guard let dest else { return nil }
-                appendContentMessage(
-                    inner: inner, thread: dest, senderUIN: ownUIN, isFromMe: true, serverTime: ws.serverTime
-                )
+                switch inner {
+                // Control carbons APPLY to the referenced row instead of being
+                // filed as one. An edit made on another of my devices mutates
+                // the row here, including an OUTGOING row that device authored;
+                // a delete-for-everyone tombstones it. Both are quiet no-ops
+                // when the row is unknown, and deleteLocal still records the
+                // hidden tombstone so a late redelivery of the deleted message
+                // stays dead.
+                case .edit(let targetID, let newText):
+                    MessageStore.shared.applyEdit(
+                        messageID: targetID, thread: dest,
+                        newText: newText, editedAt: ws.serverTime
+                    )
+                case .deleteForEveryone(let targetID):
+                    MessageStore.shared.deleteLocal(messageID: targetID, thread: dest)
+                default:
+                    appendContentMessage(
+                        inner: inner, thread: dest, senderUIN: ownUIN, isFromMe: true, serverTime: ws.serverTime
+                    )
+                }
                 return IngestOutcome(thread: dest, isNewContent: false, wasInNSECache: fromNSE)
             }
 

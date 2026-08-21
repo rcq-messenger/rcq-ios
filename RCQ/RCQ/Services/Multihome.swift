@@ -702,12 +702,38 @@ final class GroupSenderKeyStore {
     /// The founder's second account lost nine days of a group this way, and it
     /// looked like the group simply stopped on a date (2026-08-13).
     private static let inKey = "rcq.senderkeys.in.v2"     // [ "<ownUin>:<kid>" : InChain ]
-    private static let ownedKey = "rcq.senderkeys.owned.v1" // [kid] rolling
+    /// ⚠⚠ Same lesson as `inKey`, learned a third time (web senderkeys v3,
+    /// 2026-08-21): v1 held the bare kid, shared across accounts. With two
+    /// accounts on one device, account B matched account A's broadcast against
+    /// this list, took it for its own echo and silently dropped it, so B never
+    /// saw a single group message A posted. Entries are account-scoped now.
+    private static let ownedKey = "rcq.senderkeys.owned.v2" // [ "<ownUin>:<kid>" ] rolling
+    private static let legacyOwnedKey = "rcq.senderkeys.owned.v1"
     private static let ownedCap = 64
 
     private let defaults: UserDefaults
     private let lock = NSLock()
-    private init() { defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard }
+    private init() {
+        defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
+        migrateOwnSideIfNeeded()
+    }
+
+    /// One-time reset of the OWN side when the unscoped v1 owned-kid list is
+    /// found. Its bare kids cannot be attributed to an account after the fact,
+    /// so they are dropped rather than migrated, and the outbound chains go
+    /// with them: a chain whose kid sits in no owned list would make us NACK
+    /// the group over our own next echoed broadcast. The next post per group
+    /// simply rotates to a fresh kid and redistributes an SKDM, which
+    /// recipients take in stride. Inbound chains are preserved on purpose:
+    /// wiping them would blind us to every known sender until a NACK
+    /// round-trip per chain (a NACK storm).
+    private func migrateOwnSideIfNeeded() {
+        guard defaults.object(forKey: Self.ownedKey) == nil,
+              defaults.object(forKey: Self.legacyOwnedKey) != nil else { return }
+        defaults.removeObject(forKey: Self.outKey)
+        defaults.removeObject(forKey: Self.legacyOwnedKey)
+        defaults.set([String](), forKey: Self.ownedKey)
+    }
 
     private func loadOut() -> [String: OutChain] {
         guard let d = defaults.data(forKey: Self.outKey),
@@ -730,6 +756,7 @@ final class GroupSenderKeyStore {
 
     private func outK(_ ownUin: Int, _ gid: Int) -> String { "\(ownUin):\(gid)" }
     private func inK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
+    private func ownedK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
 
     struct OwnSendStep {
         let kid: String
@@ -754,8 +781,9 @@ final class GroupSenderKeyStore {
             let kid = SenderKeys.newKid()
             c = OutChain(kid: kid, epoch: (c?.epoch ?? -1) + 1, index: 0,
                          ck: SenderKeys.randomChainKey().base64EncodedString(), distributed: [])
-            var owned = loadOwned().filter { $0 != kid }
-            owned.insert(kid, at: 0)
+            let entry = ownedK(ownUin, kid)
+            var owned = loadOwned().filter { $0 != entry }
+            owned.insert(entry, at: 0)
             saveOwned(Array(owned.prefix(Self.ownedCap)))
         }
         out[k] = c!
@@ -836,7 +864,9 @@ final class GroupSenderKeyStore {
     }
 
     func knowsKid(ownUin: Int, _ kid: String) -> Bool { loadIn()[inK(ownUin, kid)] != nil }
-    func ownsKid(_ kid: String) -> Bool { loadOwned().contains(kid) }
+    /// Only THIS account's kids count as own: another local account's
+    /// broadcast must be decoded like anybody else's, not eaten as an echo.
+    func ownsKid(ownUin: Int, _ kid: String) -> Bool { loadOwned().contains(ownedK(ownUin, kid)) }
     func ownKidForGroup(ownUin: Int, gid: Int) -> String? { loadOut()[outK(ownUin, gid)]?.kid }
 
     struct OwnSnapshot { let kid: String; let epoch: Int; let index: Int; let ck: String }
