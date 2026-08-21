@@ -811,6 +811,10 @@ struct ChatView: View {
         .onDisappear {
             teardownScreenSecure()
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
+            // Persist the reading spot NOW (13a) - a scroll that came to rest
+            // inside the 300ms debounce window would otherwise be lost when
+            // the VM goes away with the popped screen.
+            vm.flushReadPos()
             // Mark every currently-loaded @mention as seen so the @-jump FAB
             // doesn't resurface for them when this read thread is reopened.
             if vm.target.thread.isGroup {
@@ -1396,8 +1400,17 @@ struct ChatView: View {
                                     // Same badge decrement as the single-message
                                     // rows below — albums used to skip it, so a
                                     // photo-heavy backlog never shrank the count.
+                                    // The last item also stands in for the whole
+                                    // album in reading-position tracking (13a);
+                                    // the VM maps it back to the album's row id.
                                     .onAppear {
-                                        if let last = items.last { vm.sawRow(last.id) }
+                                        if let last = items.last {
+                                            vm.sawRow(last.id)
+                                            vm.rowRealized(last.id)
+                                        }
+                                    }
+                                    .onDisappear {
+                                        if let last = items.last { vm.rowDerealized(last.id) }
                                     }
                             case .single(let msg):
                                 MessageRow(
@@ -1470,7 +1483,13 @@ struct ChatView: View {
                                 // Monotonic: as deeper rows appear, fewer unread
                                 // remain below — badge shrinks to 0 at the newest.
                                 vm.sawRow(msg.id)
+                                // Reading-position tracking (13a): the set of
+                                // realized rows is how the VM knows where the
+                                // viewport is - there is no scroll offset to
+                                // read with the geometry probes reverted.
+                                vm.rowRealized(msg.id)
                             }
+                            .onDisappear { vm.rowDerealized(msg.id) }
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
                                      ? 0
@@ -1513,9 +1532,14 @@ struct ChatView: View {
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
                             // Reached the bottom on your own → drop any stale reply-return target.
                             replyReturnID = nil
+                            // At the bottom there is nothing to resume - the
+                            // saved reading spot is cleared (13a), so the next
+                            // open is the plain bottom open as today.
+                            vm.noteAtBottom(true)
                         }
                         .onDisappear {
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = true }
+                            vm.noteAtBottom(false)
                         }
                 }
                 .padding(.horizontal, 8)
@@ -1692,10 +1716,21 @@ struct ChatView: View {
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
                 let unreadID = vm.openFirstUnreadID
+                // The quiet re-entry (founder batch 21.08, item 13a): no unread,
+                // but a saved reading spot - resume there instead of the bottom,
+                // the way every messenger does. The unread divider always wins:
+                // new messages move the landing to where reading actually
+                // stopped, which the divider marks better than the saved spot.
+                let restoreID: UUID? = unreadID == nil ? vm.openRestoreUnitID : nil
                 // Arrow on immediately when opening scrolled up (#15) — the
                 // geometry observers correct it within the first layout if
                 // the unread block actually fits on one screen.
                 if unreadID != nil, vm.openUnreadCount > 2 {
+                    showScrollToBottom = true
+                }
+                // Same insurance for a resumed spot: the bottom sentinel starts
+                // unrealized up there, so nothing else would flip the arrow on.
+                if restoreID != nil {
                     showScrollToBottom = true
                 }
                 // @MainActor so the nested function shares the .task's main-actor
@@ -1703,6 +1738,10 @@ struct ChatView: View {
                 // and the main-actor static anchor from a nonisolated context.
                 @MainActor func settle() {
                     if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
+                    // anchor .bottom: the spot was saved off the bottommost
+                    // visible row, so pinning it to the viewport's bottom edge
+                    // re-shows the same screenful the reader left.
+                    else if let rid = restoreID { proxy.scrollTo(rid, anchor: .bottom) }
                     else { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
                 }
                 settle()
@@ -1724,6 +1763,10 @@ struct ChatView: View {
                 try? await Task.sleep(nanoseconds: 48_000_000)
                 settle()
                 revealChat()
+                // Only from here may reading-position saves persist (13a) -
+                // the rows that realized during the settle jumps above are
+                // landing artifacts, not where reading is.
+                vm.armReadPosSaves()
                 // Reaction-jump-on-open: someone reacted to my message while I
                 // was away — scroll to + flash it once the layout has settled,
                 // then consume the thread's reacted set so reopening is quiet.
