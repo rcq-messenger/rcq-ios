@@ -9,7 +9,6 @@ struct NearbyView: View {
     @State private var sentRequests: Set<Int> = []
     @State private var showRadio: Bool = false
     @State private var profileTarget: NearbyPerson?
-    @State private var showHood: Bool = false
 
     private var visibleAsLabel: String {
         if service.anonymous { return service.displayName }
@@ -203,14 +202,6 @@ struct NearbyView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(Theme.Color.bgSecondary)
 
-            // Operator can hide Hood Chat via the admin console (Features).
-            if let bucket = bucketTag, AppState.shared.serverCapabilities.hood {
-                hoodChatButton(bucket: bucket)
-                    .sheet(isPresented: $showHood) {
-                        HoodChatView(bucket: bucket)
-                    }
-            }
-
             if service.people.isEmpty {
                 VStack(spacing: 8) {
                     Spacer()
@@ -244,43 +235,16 @@ struct NearbyView: View {
 
             // A paid banner board used to sit here. In three months it took
             // eight posts from seven people, all of them tests, and none were
-            // alive when it was removed — while the district chat above it is
-            // genuinely used. It also showed dollar prices against a purchase
-            // check that accepted any string, so the price was a fiction the
-            // screen told with a straight face. Carrying that to Android and
-            // the web was work with no demand behind it.
+            // alive when it was removed. It also showed dollar prices against a
+            // purchase check that accepted any string, so the price was a
+            // fiction the screen told with a straight face. Carrying that to
+            // Android and the web was work with no demand behind it.
+            //
+            // The district chat that sat under it is gone too, and for a
+            // heavier reason: a plaintext room keyed to a real-world tile is a
+            // deanonymising surface, so the island stopped serving `/hood/*`
+            // entirely.
         }
-    }
-
-    private func hoodChatButton(bucket: String) -> some View {
-        Button {
-            showHood = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.Color.accent)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("nearby.hood.title".localized)
-                        .font(.system(.callout, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text("nearby.hood.body".localized)
-                        .font(.caption2)
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Theme.Color.textSecondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Theme.Color.bgSecondary)
-            .cornerRadius(10)
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-        }
-        .buttonStyle(.plain)
     }
 
     private func personRow(_ person: NearbyPerson) -> some View {

@@ -275,16 +275,6 @@
 "uin_shop.confirm.cta_priced" = "Confirm %@";
 "uin_shop.error.taken" = "Someone grabbed it first. Try a different UIN.";
 "uin_shop.error.cooldown" = "Too soon. Try again later.";
-"hood.composer.placeholder" = "Message this district";
-"hood.author.anonymous" = "Anonymous";
-"hood.expired" = "Expired";
-"hood.left_minutes" = "%d min left";
-"hood.left_hours" = "%d h left";
-"hood.left_days" = "%d d left";
-"hood.duration.1h" = "1 hour";
-"hood.duration.6h" = "6 hours";
-"hood.duration.24h" = "24 hours";
-"hood.duration.7d" = "7 days";
 "settings.account.referral" = "Invite friends";
 
 "bug_bounty.title" = "Bug Report";
@@ -441,31 +431,6 @@
 "common.error.server" = "Server hiccup — try again in a moment";
 "common.error.network" = "Connection hiccup — try again";
 
-/* ── Stories ──────────────────────────────────────────────── */
-
-"story.composer.title" = "New story";
-"story.composer.post" = "Post";
-"story.composer.empty" = "Pick a photo or shoot one to share for 24h.";
-"story.composer.choose" = "Choose source";
-"story.composer.source_title" = "Source";
-"story.composer.camera" = "Camera";
-"story.composer.photo_library" = "Photo library";
-"story.composer.video_library" = "Video library";
-"story.composer.caption" = "Caption (optional)";
-"story.composer.anonymous" = "Post anonymously";
-"story.error.post_failed" = "Couldn't post the story — try again";
-"story.error.delete_failed" = "Couldn't delete the story";
-"story.viewer.anonymous_byline" = "Anonymous";
-"story.viewer.unknown" = "Story";
-"story.viewer.show_viewers" = "Show viewers";
-"story.viewer.delete" = "Delete";
-"story.viewer.delete_confirm" = "Delete this story?";
-"story.viewer.viewers_title" = "Viewers";
-"story.viewer.no_views" = "Nobody has watched this yet.";
-"story.viewer.view_count" = "%d views";
-"story.time.now" = "just now";
-"story.time.minutes_ago" = "%dm ago";
-"story.time.hours_ago" = "%dh ago";
 "common.delete" = "Delete";
 "common.copy" = "Copy";
 "common.confirm" = "Confirm";
@@ -485,12 +450,8 @@
 
 "contact_list.offline_badge" = "Offline";
 
-"hood.error.slow_down" = "Slow down — give the room a beat.";
-"hood.error.send_failed" = "Couldn't send. Check your connection.";
-"hood.error.send_failed_code" = "Couldn't send (%d).";
 "contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "Stranger Mode";
 "contact_list.bar.nearby" = "Nearby";
 "contact_list.bar.settings" = "Settings";
 "contact_list.section.online" = "Online";
@@ -545,7 +506,7 @@
 "contact_list.menu.saved" = "Saved Messages";
 "bypass.menu.enable" = "Turn RCQ relays on";
 "bypass.menu.disable" = "Turn RCQ relays off";
-"contact_list.menu.post_story" = "Post a story";
+"contact_list.menu.random" = "Stranger Mode";
 "contact_list.menu.news" = "News";
 
 "news.title" = "News";
@@ -1143,7 +1104,7 @@
 
 /* ── Trades ───────────────────────────────────────────────── */
 
-/* ── Nearby + Hood ────────────────────────────────────────── */
+/* ── Nearby ───────────────────────────────────────────────── */
 
 "nearby.title" = "Nearby";
 "nearby.ttl.30m" = "30 minutes";
@@ -1163,8 +1124,6 @@
 "nearby.active.until" = "Until %@";
 "nearby.active.area" = "· area %@";
 "nearby.active.stop" = "Stop";
-"nearby.hood.title" = "Hood Chat";
-"nearby.hood.body" = "Public room for everyone in this area · unencrypted";
 "nearby.empty.title" = "Nobody else here yet.";
 "nearby.empty.body" = "Check back in a bit — the list refreshes every 30 seconds.";
 "nearby.row.tag" = "Nearby";
@@ -1180,22 +1139,6 @@
 "nearby.denied.body" = "Without location access we can't show you to other nearby users. Re-enable it in Settings → Privacy → Location Services → RCQ.";
 "nearby.denied.cta" = "Open Settings";
 "nearby.error.cta" = "Try again";
-
-"hood.title" = "Hood";
-"hood.you" = "You";
-"hood.warn.title" = "Hood Chat is unencrypted";
-"hood.warn.body" = "Anyone in this area can read what you post. Don't share private info — phone numbers, addresses, anything you wouldn't put on a poster.";
-"hood.empty.title" = "Quiet around here.";
-"hood.empty.body" = "Be the one who breaks the silence.";
-"hood.deleted" = "Message deleted";
-"hood.replying_to" = "Replying to %@";
-"hood.profile.anon" = "Anonymous · Hood Chat";
-"hood.profile.body.anon" = "People in Hood Chat are anonymous. You can offer to add them as a contact — once they accept, you'll see their real profile.";
-"hood.profile.body.real" = "This user opted out of anonymous mode — their real account is visible.";
-"hood.profile.already" = "Already in your contacts.";
-"hood.profile.add_contact" = "Add as contact";
-"hood.action.reply" = "Reply";
-"hood.action.delete" = "Delete";
 
 /* ── Radio Chat ───────────────────────────────────────────── */
 

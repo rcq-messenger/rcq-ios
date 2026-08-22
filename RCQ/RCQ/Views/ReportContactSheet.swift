@@ -15,7 +15,7 @@ struct ReportContactSheet: View {
     /// — admin uses it to triage by where the report originated.
     /// Defaults to "contact" for legacy call sites that don't pass
     /// a value; UGC surfaces wire their own ("profile", "chat",
-    /// "group", "audio_room", "story", "hood", "stranger_mode").
+    /// "group", "audio_room", "stranger_mode").
     var context: String = "contact"
 
     @Environment(\.dismiss) private var dismiss

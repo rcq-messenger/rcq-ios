@@ -258,16 +258,6 @@
 "uin_shop.confirm.cta_priced" = "确认 %@";
 "uin_shop.error.taken" = "有人抢先一步。换一个 UIN 试试。";
 "uin_shop.error.cooldown" = "太频繁了。稍后再试。";
-"hood.composer.placeholder" = "在本区发消息";
-"hood.author.anonymous" = "匿名";
-"hood.expired" = "已过期";
-"hood.left_minutes" = "剩余 %d 分钟";
-"hood.left_hours" = "剩余 %d 小时";
-"hood.left_days" = "剩余 %d 天";
-"hood.duration.1h" = "1 小时";
-"hood.duration.6h" = "6 小时";
-"hood.duration.24h" = "24 小时";
-"hood.duration.7d" = "7 天";
 "settings.account.referral" = "邀请好友";
 "bug_bounty.title" = "反馈";
 "bug_bounty.heading" = "发现问题？告诉我们";
@@ -409,30 +399,6 @@
 "common.error.rate_limited" = "请求太频繁，慢一点";
 "common.error.server" = "服务器出了点问题，稍后再试";
 "common.error.network" = "连接出了点问题，请重试";
-/* ── Stories ──────────────────────────────────────────────── */
-"story.composer.title" = "新动态";
-"story.composer.post" = "发布";
-"story.composer.empty" = "选一张照片，或者现拍一张，分享 24 小时。";
-"story.composer.choose" = "选择来源";
-"story.composer.source_title" = "来源";
-"story.composer.camera" = "摄像头";
-"story.composer.photo_library" = "照片图库";
-"story.composer.video_library" = "视频图库";
-"story.composer.caption" = "说明（可选）";
-"story.composer.anonymous" = "匿名发布";
-"story.error.post_failed" = "动态发布失败，请重试";
-"story.error.delete_failed" = "无法删除这条动态";
-"story.viewer.anonymous_byline" = "匿名";
-"story.viewer.unknown" = "动态";
-"story.viewer.show_viewers" = "查看观看者";
-"story.viewer.delete" = "删除";
-"story.viewer.delete_confirm" = "删除这条动态？";
-"story.viewer.viewers_title" = "观看者";
-"story.viewer.no_views" = "还没有人看过。";
-"story.viewer.view_count" = "%d 次观看";
-"story.time.now" = "刚刚";
-"story.time.minutes_ago" = "%d 分钟前";
-"story.time.hours_ago" = "%d 小时前";
 "common.delete" = "删除";
 "common.copy" = "复制";
 "common.confirm" = "确认";
@@ -447,12 +413,8 @@
 "status.offline" = "离线";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "离线";
-"hood.error.slow_down" = "慢一点，让房间缓一缓。";
-"hood.error.send_failed" = "发送失败。请检查网络连接。";
-"hood.error.send_failed_code" = "发送失败（%d）。";
 "contact_list.bar.games" = "游戏";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "随机聊天";
 "contact_list.bar.nearby" = "附近";
 "contact_list.bar.settings" = "设置";
 "contact_list.section.online" = "在线";
@@ -504,7 +466,7 @@
 "contact_list.menu.saved" = "收藏";
 "bypass.menu.enable" = "开启 RCQ 中继";
 "bypass.menu.disable" = "关闭 RCQ 中继";
-"contact_list.menu.post_story" = "发布动态";
+"contact_list.menu.random" = "随机聊天";
 "contact_list.menu.news" = "新闻";
 "news.title" = "新闻";
 "news.empty" = "暂时没有新闻。\n新的帖子会显示在这里。";
@@ -1039,7 +1001,7 @@
 "disassemble.cta.cancel" = "取消";
 "disassemble.success.body" = "%@ 已消失。";
 /* ── Trades ───────────────────────────────────────────────── */
-/* ── Nearby + Hood ────────────────────────────────────────── */
+/* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "附近";
 "nearby.ttl.30m" = "30 分钟";
 "nearby.ttl.1h" = "1 小时";
@@ -1058,8 +1020,6 @@
 "nearby.active.until" = "直到 %@";
 "nearby.active.area" = "· 区域 %@";
 "nearby.active.stop" = "停止";
-"nearby.hood.title" = "街区聊天";
-"nearby.hood.body" = "本区域所有人的公开房间 · 未加密";
 "nearby.empty.title" = "这里还没有别人。";
 "nearby.empty.body" = "过一会儿再看看，列表每 30 秒刷新一次。";
 "nearby.row.tag" = "附近";
@@ -1075,21 +1035,6 @@
 "nearby.denied.body" = "没有定位权限，我们无法把你显示给附近的其他用户。请在 设置 → 隐私 → 定位服务 → RCQ 中重新开启。";
 "nearby.denied.cta" = "打开设置";
 "nearby.error.cta" = "重试";
-"hood.title" = "街区";
-"hood.you" = "你";
-"hood.warn.title" = "街区聊天未加密";
-"hood.warn.body" = "这一带的任何人都能看到你发的内容。不要分享私人信息：电话号码、住址，以及任何你不会贴在海报上的东西。";
-"hood.empty.title" = "这里很安静。";
-"hood.empty.body" = "做第一个打破沉默的人。";
-"hood.deleted" = "消息已删除";
-"hood.replying_to" = "回复 %@";
-"hood.profile.anon" = "匿名 · 街区聊天";
-"hood.profile.body.anon" = "街区聊天里的人都是匿名的。你可以邀请对方成为联系人，对方接受后就能看到真实的个人资料。";
-"hood.profile.body.real" = "该用户关闭了匿名模式，其真实账号可见。";
-"hood.profile.already" = "已在你的联系人中。";
-"hood.profile.add_contact" = "添加为联系人";
-"hood.action.reply" = "回复";
-"hood.action.delete" = "删除";
 /* ── Radio Chat ───────────────────────────────────────────── */
 "radio.title" = "电台聊天";
 "radio.kicker" = "离线优先";

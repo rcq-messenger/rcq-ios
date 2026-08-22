@@ -265,16 +265,6 @@
 "uin_shop.confirm.cta_priced" = "Подтвердить %@";
 "uin_shop.error.taken" = "Кто-то перехватил. Попробуй другой UIN.";
 "uin_shop.error.cooldown" = "Слишком часто. Попробуй позже.";
-"hood.composer.placeholder" = "Написать в районе";
-"hood.author.anonymous" = "Аноним";
-"hood.expired" = "Истёк";
-"hood.left_minutes" = "%d мин";
-"hood.left_hours" = "%d ч";
-"hood.left_days" = "%d д";
-"hood.duration.1h" = "1 час";
-"hood.duration.6h" = "6 часов";
-"hood.duration.24h" = "24 часа";
-"hood.duration.7d" = "7 дней";
 
 "bug_bounty.title" = "Сообщить о баге";
 "bug_bounty.heading" = "Нашёл баг? Расскажи";
@@ -432,32 +422,6 @@
 "common.error.server" = "Серверная заминка — попробуй через секунду";
 "common.error.network" = "Сетевая ошибка — попробуй ещё раз";
 
-/* ── Stories ──────────────────────────────────────────────── */
-
-"story.composer.title" = "Новая история";
-"story.composer.post" = "Опубликовать";
-"story.composer.empty" = "Выбери фото или сними его, чтобы поделиться на 24 часа.";
-"story.composer.choose" = "Выбрать источник";
-"story.composer.source_title" = "Источник";
-"story.composer.camera" = "Камера";
-"story.composer.photo_library" = "Библиотека фото";
-"story.composer.video_library" = "Библиотека видео";
-"story.composer.caption" = "Подпись (необязательно)";
-"story.composer.anonymous" = "Опубликовать анонимно";
-"story.error.post_failed" = "Не удалось опубликовать историю — попробуй ещё раз";
-"story.error.delete_failed" = "Не удалось удалить историю";
-"story.viewer.anonymous_byline" = "Аноним";
-"story.viewer.unknown" = "История";
-"story.viewer.show_viewers" = "Кто посмотрел";
-"story.viewer.delete" = "Удалить";
-"story.viewer.delete_confirm" = "Удалить эту историю?";
-"story.viewer.viewers_title" = "Зрители";
-"story.viewer.no_views" = "Пока никто не посмотрел.";
-"story.viewer.view_count" = "%d просмотров";
-"story.time.now" = "только что";
-"story.time.minutes_ago" = "%d мин назад";
-"story.time.hours_ago" = "%d ч назад";
-
 /* ── Status ───────────────────────────────────────────────── */
 
 "status.online" = "В сети";
@@ -470,12 +434,8 @@
 
 "contact_list.offline_badge" = "Без сети";
 
-"hood.error.slow_down" = "Не так быстро, дай чату вдохнуть.";
-"hood.error.send_failed" = "Не получилось отправить. Проверь связь.";
-"hood.error.send_failed_code" = "Не отправилось (%d).";
 "contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "Незнакомец";
 "contact_list.bar.nearby" = "Рядом";
 "contact_list.bar.settings" = "Настройки";
 "contact_list.section.online" = "В сети";
@@ -530,7 +490,7 @@
 "contact_list.menu.saved" = "Заметки";
 "bypass.menu.enable" = "Включить релеи RCQ";
 "bypass.menu.disable" = "Выключить релеи RCQ";
-"contact_list.menu.post_story" = "Опубликовать историю";
+"contact_list.menu.random" = "Незнакомец";
 "contact_list.menu.news" = "Новости";
 
 "news.title" = "Новости";
@@ -1132,8 +1092,6 @@
 "nearby.active.until" = "До %@";
 "nearby.active.area" = "· зона %@";
 "nearby.active.stop" = "Стоп";
-"nearby.hood.title" = "Чат района";
-"nearby.hood.body" = "Публичная комната для всех в этой зоне · без шифрования";
 "nearby.empty.title" = "Здесь пока никого.";
 "nearby.empty.body" = "Загляните позже — список обновляется каждые 30 секунд.";
 "nearby.row.tag" = "Рядом";
@@ -1149,22 +1107,6 @@
 "nearby.denied.body" = "Без доступа к локации мы не можем показывать вас другим. Включите в Настройках → Приватность → Геолокация → RCQ.";
 "nearby.denied.cta" = "Открыть Настройки";
 "nearby.error.cta" = "Повторить";
-
-"hood.title" = "Район";
-"hood.you" = "Вы";
-"hood.warn.title" = "Чат района без шифрования";
-"hood.warn.body" = "Любой в этой зоне может прочитать ваши сообщения. Не делитесь телефоном, адресом, ничем что не повесили бы на афишу.";
-"hood.empty.title" = "Тишина.";
-"hood.empty.body" = "Будьте тем, кто нарушит молчание.";
-"hood.deleted" = "Сообщение удалено";
-"hood.replying_to" = "Отвечаем %@";
-"hood.profile.anon" = "Анонимно · Hood Chat";
-"hood.profile.body.anon" = "Люди в Hood Chat анонимны. Можете предложить добавить в контакты — после принятия увидите настоящий профиль.";
-"hood.profile.body.real" = "Пользователь отключил анонимный режим — его настоящий аккаунт виден.";
-"hood.profile.already" = "Уже в ваших контактах.";
-"hood.profile.add_contact" = "Добавить в контакты";
-"hood.action.reply" = "Ответить";
-"hood.action.delete" = "Удалить";
 
 /* ── Radio Chat ───────────────────────────────────────────── */
 

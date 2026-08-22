@@ -104,7 +104,7 @@ final class RadioService: NSObject, ObservableObject {
     func startDiscovery() {
         // Refused under duress. `localPeer` is a `lazy` MCPeerID built once per
         // process from `NearbyService.displayName` — the same persistent
-        // pseudonym the real user checks into Hood Chat under — so a coerced
+        // pseudonym the real user checks into People Nearby under, so a coerced
         // phone that goes on the air re-broadcasts the real user's callsign to
         // everyone in Bluetooth range, and `stop()` cannot reset it. The screen
         // shows an empty peer list, which is what it shows most of the time.

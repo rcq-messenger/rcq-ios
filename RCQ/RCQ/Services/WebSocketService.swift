@@ -53,12 +53,6 @@ final class WebSocketService: ObservableObject {
         case roomMembershipRevoked(roomID: Int)
         case roomKeyRotated(roomID: Int, newKey: String)
         case roomRenamed(roomID: Int, name: String)
-        case storyPosted(storyID: String, ownerUIN: Int?)
-        case storyDeleted(storyID: String, ownerUIN: Int?)
-        case hoodMessage(message: HoodMessage)
-        case hoodCount(bucketID: String, count: Int)
-        case hoodDelete(bucketID: String, messageID: Int)
-        case hoodReaction(bucketID: String, messageID: Int, reactions: [String: String])
         case accountBurned
     }
 
@@ -396,14 +390,6 @@ final class WebSocketService: ObservableObject {
 
     func sendTyping(to uin: Int, active: Bool) {
         send(["type": "typing", "to_uin": uin, "active": active])
-    }
-
-    func subscribeHood(bucket: String) {
-        send(["type": "hood_subscribe", "bucket": bucket])
-    }
-
-    func unsubscribeHood() {
-        send(["type": "hood_unsubscribe"])
     }
 
     func sendCallSignal(type: String, toUIN: Int, callID: String, extras: [String: Any] = [:]) {
@@ -777,46 +763,6 @@ final class WebSocketService: ObservableObject {
                   let name = dict["name"] as? String else { return }
             events.send(.roomRenamed(roomID: roomID, name: name))
 
-        case "story_posted":
-            guard let id = dict["story_id"] as? String else { return }
-            let owner = dict["owner_uin"] as? Int
-            events.send(.storyPosted(storyID: id, ownerUIN: owner))
-
-        case "story_deleted":
-            guard let id = dict["story_id"] as? String else { return }
-            let owner = dict["owner_uin"] as? Int
-            events.send(.storyDeleted(storyID: id, ownerUIN: owner))
-
-        case "hood_message":
-            // Payload nests the full HoodMessageOut under `message`; the
-            // bucket_count piggyback is decoded as a synthetic hoodCount
-            // event so HoodChatService can update the badge without a
-            // separate fanout.
-            guard let msgDict = dict["message"] as? [String: Any],
-                  let msgData = try? JSONSerialization.data(withJSONObject: msgDict),
-                  let parsed = try? Self.dateLenientDecoder.decode(HoodMessage.self, from: msgData)
-            else { return }
-            events.send(.hoodMessage(message: parsed))
-            if let count = dict["bucket_count"] as? Int {
-                events.send(.hoodCount(bucketID: parsed.bucketID, count: count))
-            }
-
-        case "hood_count":
-            guard let bucket = dict["bucket_id"] as? String,
-                  let count = dict["count"] as? Int else { return }
-            events.send(.hoodCount(bucketID: bucket, count: count))
-
-        case "hood_delete":
-            guard let bucket = dict["bucket_id"] as? String,
-                  let msgID = dict["message_id"] as? Int else { return }
-            events.send(.hoodDelete(bucketID: bucket, messageID: msgID))
-
-        case "hood_reaction":
-            guard let bucket = dict["bucket_id"] as? String,
-                  let msgID = dict["message_id"] as? Int,
-                  let reactions = dict["reactions"] as? [String: String] else { return }
-            events.send(.hoodReaction(bucketID: bucket, messageID: msgID, reactions: reactions))
-
         case "pong":
             break
 
@@ -864,25 +810,6 @@ final class WebSocketService: ObservableObject {
             break
         }
     }
-
-    /// Accepts both fractional-second and plain Internet-time ISO-8601.
-    private static let dateLenientDecoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .custom { decoder in
-            let c = try decoder.singleValueContainer()
-            let s = try c.decode(String.self)
-            let withFrac = ISO8601DateFormatter()
-            withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = withFrac.date(from: s) { return date }
-            let plain = ISO8601DateFormatter()
-            plain.formatOptions = [.withInternetDateTime]
-            if let date = plain.date(from: s) { return date }
-            throw DecodingError.dataCorruptedError(
-                in: c, debugDescription: "bad ISO-8601 date: \(s)"
-            )
-        }
-        return d
-    }()
 
     private func parseISO(_ s: String) -> Date? {
         let withFrac = ISO8601DateFormatter()
