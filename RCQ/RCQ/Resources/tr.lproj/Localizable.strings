@@ -163,7 +163,7 @@
 "linkeddevices.slots.revoke.cooldown" = "Yeni bir oturum daha eskilerini hemen iptal edemez. %d sa. sonra deneyin.";
 "linkeddevices.slots.revoke.failed" = "Yuva iptal edilemedi.";
 "settings.network.proxy.unset" = "Otomatik";
-"settings.network.proxy.intro" = "Trafik adaya doğrudan gitmez, rölelerimizden geçer: ada adresini görmez, seninle ada arasındaki ağ da RCQ kullandığını görmez. RCQ'nun engellendiği yerlerde ayrıca tek yol budur.";
+"settings.network.proxy.intro" = "Uygulamayı RCQ röleleri üzerinden geçirirsen trafik doğrudan adaya gitmeyi bırakır: ada adresini görmez, seninle ada arasındaki ağ da RCQ kullandığını görmez. Doğrudan bağlantı daha hızlı olduğu için varsayılan olarak kapalıdır. RCQ'nun engellendiği yerlerde röleler tek yoldur.";
 "settings.network.stealth.auto_on" = "Rölelerden";
 "settings.network.stealth.off" = "Doğrudan";
 "settings.network.stealth.direct" = "Doğrudan";

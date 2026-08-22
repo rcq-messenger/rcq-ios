@@ -168,7 +168,7 @@
 "linkeddevices.scan_hint" = "Point at the QR code on chat.rcq.app";
 "linkeddevices.connected" = "Connected %@";
 "settings.network.proxy.unset" = "Automatic";
-"settings.network.proxy.intro" = "Traffic goes through our relays instead of straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. Where RCQ is blocked, this is also the only way through.";
+"settings.network.proxy.intro" = "Route the app through RCQ relays and traffic stops going straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. Going direct is faster, so this is off by default. Where RCQ is blocked, relays are the only way through.";
 "settings.network.stealth.auto_on" = "Through relays";
 "settings.network.stealth.off" = "Direct";
 "settings.network.stealth.direct" = "Direct";

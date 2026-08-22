@@ -163,7 +163,7 @@
 "linkeddevices.slots.revoke.cooldown" = "Uma sessão nova precisa esperar antes de revogar as mais antigas. Tente em %d h.";
 "linkeddevices.slots.revoke.failed" = "Não foi possível revogar o slot.";
 "settings.network.proxy.unset" = "Automático";
-"settings.network.proxy.intro" = "O tráfego não vai direto para a ilha, e sim pelos nossos relays: a ilha não vê o seu endereço, e a rede entre você e a ilha não vê que você usa o RCQ. Onde o RCQ está bloqueado, isto é também o único caminho.";
+"settings.network.proxy.intro" = "Se você levar o app pelos relays do RCQ, o tráfego deixa de ir direto para a ilha: a ilha não vê seu endereço e a rede entre você e a ilha não vê que você usa RCQ. Direto é mais rápido, então vem desligado. Onde o RCQ está bloqueado, os relays são o único caminho.";
 "settings.network.stealth.auto_on" = "Pelos relays";
 "settings.network.stealth.off" = "Direto";
 "settings.network.stealth.direct" = "Direta";
