@@ -454,16 +454,16 @@
 "settings.blocked_users" = "Usuarios bloqueados";
 "blocked_users.unblock" = "Desbloquear";
 "blocked_users.unblock.confirm.title" = "¿Desbloquear a este usuario?";
-"blocked_users.unblock.confirm.body" = "%@ volverá a poder escribirte, ver tus historias e interactuar contigo en toda la app.";
+"blocked_users.unblock.confirm.body" = "%@ volverá a poder escribirte e interactuar contigo en toda la app.";
 "blocked_users.unblock.confirm.cta" = "Desbloquear";
 "blocked_users.empty.title" = "No hay usuarios bloqueados";
 "blocked_users.empty.body" = "Cuando bloquees a alguien desde un chat, un perfil o una sala de audio, aparecerá aquí para que gestiones la lista.";
-"blocked_users.footer" = "Los usuarios bloqueados no pueden escribirte, ver tus historias ni interactuar contigo en la app. No se les avisa de que los has bloqueado.";
+"blocked_users.footer" = "Los usuarios bloqueados no pueden escribirte ni interactuar contigo en la app. No se les avisa de que los has bloqueado.";
 "safety.block" = "Bloquear al usuario";
 "safety.unblock" = "Desbloquear al usuario";
 "safety.report" = "Informar";
 "safety.block.confirm.title" = "¿Bloquear a este usuario?";
-"safety.block.confirm.body" = "%@ no podrá escribirte, ver tus historias ni interactuar contigo en la app. Puedes desbloquearlo más tarde desde Ajustes.";
+"safety.block.confirm.body" = "%@ no podrá escribirte ni interactuar contigo en la app. Puedes desbloquearlo más tarde desde Ajustes.";
 "safety.unblock.confirm.title" = "¿Desbloquear a este usuario?";
 "safety.unblock.confirm.body" = "%@ volverá a poder escribirte e interactuar contigo.";
 "uin.tier.common" = "Común";
@@ -799,7 +799,7 @@
 "stranger.gate.age_required.title" = "Pon tu edad primero";
 "stranger.gate.age_required.body" = "El chat aleatorio es solo para adultos. Pon tu edad en tu perfil para poder usarlo.";
 "stranger.gate.under_18.title" = "El chat aleatorio es para mayores de 18";
-"stranger.gate.under_18.body" = "El chat aleatorio está limitado a usuarios de 18 años o más. Prueba las salas de audio o el Barrio: están abiertos para todos.";
+"stranger.gate.under_18.body" = "El chat aleatorio está limitado a usuarios de 18 años o más. Las salas de audio están abiertas para todos.";
 "stranger.gate.cta.set_age" = "Abrir el perfil";
 "random.body" = "Habla con un desconocido de forma anónima durante 5 minutos.\nNinguno de los dos ve el UIN del otro.";
 "random.queueing.title" = "Buscando a un desconocido…";
@@ -1106,7 +1106,7 @@
 "onboard.chat.body" = "Cifrado de extremo a extremo en cada mensaje. El servidor no ve quién escribe a quién: la identidad de quien envía va sellada dentro del sobre, no en la cabecera.";
 "onboard.nearby.kicker" = "CERCA";
 "onboard.nearby.title" = "Encuentra gente de tu zona";
-"onboard.nearby.body" = "Métete en el chat del barrio con quien esté por ahí ahora mismo, de forma anónima y sin exponer tu UIN salvo que quieras. Activa Cerca y ponte a hablar con los de al lado.";
+"onboard.nearby.body" = "Mira quién está cerca ahora mismo, de forma anónima y sin exponer tu UIN salvo que quieras. Activa Cerca y empieza por ahí.";
 "onboard.calls.kicker" = "VOZ Y VÍDEO";
 "onboard.calls.title" = "Llamadas y grupos";
 "onboard.calls.body" = "Llamadas de voz y vídeo por WebRTC, y grupos con toda la gente que añadas. Las notificaciones push te despiertan para las llamadas entrantes; el remitente sellado nos esconde el enrutado.";

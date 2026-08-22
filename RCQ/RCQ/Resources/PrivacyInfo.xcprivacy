@@ -77,9 +77,11 @@
             </array>
         </dict>
 
-        <!-- Approximate location — only when the user opts into
-             Hood / Nearby. Sent as a 5–6 character geohash bucket
-             (≈5–20 km accuracy), never raw coordinates. -->
+        <!-- Approximate location, only when the user opts into People
+             Nearby. Sent as a 5-6 character geohash bucket (≈5-20 km
+             accuracy), never raw coordinates. Hood Chat used to share
+             this declaration; it was deleted along with the island
+             router behind it. -->
         <dict>
             <key>NSPrivacyCollectedDataType</key>
             <string>NSPrivacyCollectedDataTypeCoarseLocation</string>
