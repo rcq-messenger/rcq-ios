@@ -1764,7 +1764,9 @@ final class AppState: ObservableObject {
 /// the lookup and we fall through to the defaults, which match the
 /// pre-flag behaviour. Future capabilities should follow the same
 /// rule: pick the default that preserves the old behaviour. The single
-/// exception is `envelopeClass` (default FALSE), explained on the field.
+/// exceptions are `hallOfFame` and `envelopeClass` (default FALSE), and
+/// `uinShop`, which is a hard decode: an answer without it fails the whole
+/// decode and the caller keeps the capability set it already had.
 struct ServerCapabilities: Decodable, Equatable {
     var uinShop: Bool
     var hallOfFame: Bool
@@ -1786,8 +1788,10 @@ struct ServerCapabilities: Decodable, Equatable {
     // Stage 2 of the metadata plan: the island classifies a sealed row from the
     // sender's `cls` and honours `ring` on a `"message"` deposit, so a waking
     // call signal no longer has to be typed `"call"` to reach a closed app.
-    // THE ONE FLAG WHOSE SAFE DEFAULT IS FALSE. The permissive rule above
-    // preserves old behaviour for surfaces an old island already had; this
+    // Defaults FALSE, like `hallOfFame` above, though for a different reason:
+    // that one is a surface the flagship has and other islands do not, while
+    // this is a wire ability. The permissive rule preserves old behaviour for
+    // surfaces an old island already had; this
     // flag was born together with `ring`, so an island that omits it is an
     // island that does not know `ring`, and treating it as capable would turn
     // every cross-island call to it into silence. False here makes the call
