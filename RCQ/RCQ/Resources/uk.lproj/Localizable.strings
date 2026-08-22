@@ -267,16 +267,6 @@
 "uin_shop.confirm.cta_priced" = "Підтвердити %@";
 "uin_shop.error.taken" = "Хтось устиг раніше. Спробуй інший UIN.";
 "uin_shop.error.cooldown" = "Занадто рано. Спробуй пізніше.";
-"hood.composer.placeholder" = "Написати в районі";
-"hood.author.anonymous" = "Анонім";
-"hood.expired" = "Час вийшов";
-"hood.left_minutes" = "ще %d хв";
-"hood.left_hours" = "ще %d год";
-"hood.left_days" = "ще %d дн";
-"hood.duration.1h" = "1 година";
-"hood.duration.6h" = "6 годин";
-"hood.duration.24h" = "24 години";
-"hood.duration.7d" = "7 днів";
 "settings.account.referral" = "Запросити друзів";
 "bug_bounty.title" = "Звіт про помилку";
 "bug_bounty.heading" = "Знайшов помилку? Розкажи";
@@ -418,30 +408,6 @@
 "common.error.rate_limited" = "Забагато запитів — не так швидко";
 "common.error.server" = "Сервер спіткнувся — спробуй за мить";
 "common.error.network" = "Зв'язок спіткнувся — спробуй ще раз";
-/* ── Stories ──────────────────────────────────────────────── */
-"story.composer.title" = "Нова історія";
-"story.composer.post" = "Опублікувати";
-"story.composer.empty" = "Обери фото або зроби знімок, щоб поділитися на 24 години.";
-"story.composer.choose" = "Обрати джерело";
-"story.composer.source_title" = "Джерело";
-"story.composer.camera" = "Камера";
-"story.composer.photo_library" = "Бібліотека фото";
-"story.composer.video_library" = "Бібліотека відео";
-"story.composer.caption" = "Підпис (необов'язково)";
-"story.composer.anonymous" = "Опублікувати анонімно";
-"story.error.post_failed" = "Не вдалося опублікувати історію — спробуй ще раз";
-"story.error.delete_failed" = "Не вдалося видалити історію";
-"story.viewer.anonymous_byline" = "Анонім";
-"story.viewer.unknown" = "Історія";
-"story.viewer.show_viewers" = "Хто переглянув";
-"story.viewer.delete" = "Видалити";
-"story.viewer.delete_confirm" = "Видалити цю історію?";
-"story.viewer.viewers_title" = "Глядачі";
-"story.viewer.no_views" = "Поки ніхто не переглянув.";
-"story.viewer.view_count" = "%d переглядів";
-"story.time.now" = "щойно";
-"story.time.minutes_ago" = "%d хв тому";
-"story.time.hours_ago" = "%d год тому";
 "common.delete" = "Видалити";
 "common.copy" = "Копіювати";
 "common.confirm" = "Підтвердити";
@@ -456,12 +422,8 @@
 "status.offline" = "Не в мережі";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Не в мережі";
-"hood.error.slow_down" = "Не так швидко, дай чату вдихнути.";
-"hood.error.send_failed" = "Не вдалося надіслати. Перевір зв'язок.";
-"hood.error.send_failed_code" = "Не вдалося надіслати (%d).";
 "contact_list.bar.games" = "Ігри";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "Випадковий чат";
 "contact_list.bar.nearby" = "Поруч";
 "contact_list.bar.settings" = "Налаштування";
 "contact_list.section.online" = "У мережі";
@@ -513,7 +475,7 @@
 "contact_list.menu.saved" = "Збережені повідомлення";
 "bypass.menu.enable" = "Увімкнути релеї RCQ";
 "bypass.menu.disable" = "Вимкнути релеї RCQ";
-"contact_list.menu.post_story" = "Опублікувати історію";
+"contact_list.menu.random" = "Випадковий чат";
 "contact_list.menu.news" = "Новини";
 "news.title" = "Новини";
 "news.empty" = "Новин поки немає.\nНові дописи з'являться тут.";
@@ -1048,7 +1010,7 @@
 "disassemble.cta.cancel" = "Скасувати";
 "disassemble.success.body" = "%@ зникає.";
 /* ── Trades ───────────────────────────────────────────────── */
-/* ── Nearby + Hood ────────────────────────────────────────── */
+/* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Поруч";
 "nearby.ttl.30m" = "30 хвилин";
 "nearby.ttl.1h" = "1 година";
@@ -1067,8 +1029,6 @@
 "nearby.active.until" = "До %@";
 "nearby.active.area" = "· зона %@";
 "nearby.active.stop" = "Стоп";
-"nearby.hood.title" = "Чат району";
-"nearby.hood.body" = "Публічна кімната для всіх у цій зоні · без шифрування";
 "nearby.empty.title" = "Тут поки нікого немає.";
 "nearby.empty.body" = "Зазирни трохи згодом — список оновлюється кожні 30 секунд.";
 "nearby.row.tag" = "Поруч";
@@ -1084,21 +1044,6 @@
 "nearby.denied.body" = "Без доступу до геопозиції ми не покажемо тебе іншим користувачам поруч. Увімкни його в Налаштуваннях → Приватність → Служби геолокації → RCQ.";
 "nearby.denied.cta" = "Відкрити налаштування";
 "nearby.error.cta" = "Спробувати ще раз";
-"hood.title" = "Район";
-"hood.you" = "Ти";
-"hood.warn.title" = "Чат району без шифрування";
-"hood.warn.body" = "Будь-хто в цій зоні прочитає те, що ти пишеш. Не пиши приватного — номерів телефонів, адрес, нічого, чого не повісив би на афішу.";
-"hood.empty.title" = "Тут тихо.";
-"hood.empty.body" = "Будь тим, хто порушить тишу.";
-"hood.deleted" = "Повідомлення видалено";
-"hood.replying_to" = "Відповідь для %@";
-"hood.profile.anon" = "Анонім · Чат району";
-"hood.profile.body.anon" = "Люди в чаті району анонімні. Ти можеш запропонувати їм додатися в контакти — коли погодяться, побачиш справжній профіль.";
-"hood.profile.body.real" = "Цей користувач вимкнув анонімний режим — його справжній акаунт видно.";
-"hood.profile.already" = "Уже у твоїх контактах.";
-"hood.profile.add_contact" = "Додати в контакти";
-"hood.action.reply" = "Відповісти";
-"hood.action.delete" = "Видалити";
 /* ── Radio Chat ───────────────────────────────────────────── */
 "radio.title" = "Радіочат";
 "radio.kicker" = "СПОЧАТКУ ОФЛАЙН";

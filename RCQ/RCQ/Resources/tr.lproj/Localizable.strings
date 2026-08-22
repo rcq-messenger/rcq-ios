@@ -267,16 +267,6 @@
 "uin_shop.confirm.cta_priced" = "%@ onayla";
 "uin_shop.error.taken" = "Önce başkası kaptı. Başka bir UIN dene.";
 "uin_shop.error.cooldown" = "Çok erken. Sonra tekrar dene.";
-"hood.composer.placeholder" = "Bu bölgeye mesaj";
-"hood.author.anonymous" = "Anonim";
-"hood.expired" = "Süresi doldu";
-"hood.left_minutes" = "%d dk kaldı";
-"hood.left_hours" = "%d sa kaldı";
-"hood.left_days" = "%d gün kaldı";
-"hood.duration.1h" = "1 saat";
-"hood.duration.6h" = "6 saat";
-"hood.duration.24h" = "24 saat";
-"hood.duration.7d" = "7 gün";
 "settings.account.referral" = "Arkadaşlarını davet et";
 "bug_bounty.title" = "Hata bildirimi";
 "bug_bounty.heading" = "Hata mı buldun? Bize yaz";
@@ -418,30 +408,6 @@
 "common.error.rate_limited" = "Çok fazla istek, biraz yavaşla";
 "common.error.server" = "Sunucuda takıldı, birazdan tekrar dene";
 "common.error.network" = "Bağlantı takıldı, tekrar dene";
-/* ── Stories ──────────────────────────────────────────────── */
-"story.composer.title" = "Yeni hikaye";
-"story.composer.post" = "Paylaş";
-"story.composer.empty" = "24 saatliğine paylaşmak için bir fotoğraf seç ya da çek.";
-"story.composer.choose" = "Kaynak seç";
-"story.composer.source_title" = "Kaynak";
-"story.composer.camera" = "Kamera";
-"story.composer.photo_library" = "Fotoğraf galerisi";
-"story.composer.video_library" = "Video galerisi";
-"story.composer.caption" = "Açıklama (isteğe bağlı)";
-"story.composer.anonymous" = "Anonim paylaş";
-"story.error.post_failed" = "Hikaye paylaşılamadı, tekrar dene";
-"story.error.delete_failed" = "Hikaye silinemedi";
-"story.viewer.anonymous_byline" = "Anonim";
-"story.viewer.unknown" = "Hikaye";
-"story.viewer.show_viewers" = "Görenleri göster";
-"story.viewer.delete" = "Sil";
-"story.viewer.delete_confirm" = "Bu hikaye silinsin mi?";
-"story.viewer.viewers_title" = "Görenler";
-"story.viewer.no_views" = "Bunu henüz kimse izlemedi.";
-"story.viewer.view_count" = "%d görüntülenme";
-"story.time.now" = "az önce";
-"story.time.minutes_ago" = "%d dk önce";
-"story.time.hours_ago" = "%d sa önce";
 "common.delete" = "Sil";
 "common.copy" = "Kopyala";
 "common.confirm" = "Onayla";
@@ -456,12 +422,8 @@
 "status.offline" = "Çevrimdışı";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Çevrimdışı";
-"hood.error.slow_down" = "Biraz yavaşla, odaya nefes aldır.";
-"hood.error.send_failed" = "Gönderilemedi. Bağlantını kontrol et.";
-"hood.error.send_failed_code" = "Gönderilemedi (%d).";
 "contact_list.bar.games" = "Oyunlar";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "Rastgele Sohbet";
 "contact_list.bar.nearby" = "Yakındakiler";
 "contact_list.bar.settings" = "Ayarlar";
 "contact_list.section.online" = "Çevrimiçi";
@@ -513,7 +475,7 @@
 "contact_list.menu.saved" = "Kayıtlı mesajlar";
 "bypass.menu.enable" = "RCQ rölelerini aç";
 "bypass.menu.disable" = "RCQ rölelerini kapat";
-"contact_list.menu.post_story" = "Hikaye paylaş";
+"contact_list.menu.random" = "Rastgele Sohbet";
 "contact_list.menu.news" = "Haberler";
 "news.title" = "Haberler";
 "news.empty" = "Henüz haber yok.\nYeni gönderiler burada görünür.";
@@ -1048,7 +1010,7 @@
 "disassemble.cta.cancel" = "İptal";
 "disassemble.success.body" = "%@ gitti.";
 /* ── Trades ───────────────────────────────────────────────── */
-/* ── Nearby + Hood ────────────────────────────────────────── */
+/* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Yakındakiler";
 "nearby.ttl.30m" = "30 dakika";
 "nearby.ttl.1h" = "1 saat";
@@ -1067,8 +1029,6 @@
 "nearby.active.until" = "%@ kadar";
 "nearby.active.area" = "· bölge %@";
 "nearby.active.stop" = "Durdur";
-"nearby.hood.title" = "Mahalle Sohbeti";
-"nearby.hood.body" = "Bu bölgedeki herkese açık oda · şifresiz";
 "nearby.empty.title" = "Burada henüz kimse yok.";
 "nearby.empty.body" = "Biraz sonra tekrar bak, liste 30 saniyede bir yenilenir.";
 "nearby.row.tag" = "Yakında";
@@ -1084,21 +1044,6 @@
 "nearby.denied.body" = "Konum erişimi olmadan seni yakındaki kullanıcılara gösteremeyiz. Ayarlar → Gizlilik → Konum Servisleri → RCQ altından tekrar aç.";
 "nearby.denied.cta" = "Ayarlar'ı aç";
 "nearby.error.cta" = "Tekrar dene";
-"hood.title" = "Mahalle";
-"hood.you" = "Sen";
-"hood.warn.title" = "Mahalle Sohbeti şifresiz";
-"hood.warn.body" = "Bu bölgedeki herkes yazdığını okuyabilir. Özel bilgi paylaşma: telefon numarası, adres, afişe asmayacağın hiçbir şey.";
-"hood.empty.title" = "Burası sessiz.";
-"hood.empty.body" = "Sessizliği bozan sen ol.";
-"hood.deleted" = "Mesaj silindi";
-"hood.replying_to" = "%@ yanıtlanıyor";
-"hood.profile.anon" = "Anonim · Mahalle Sohbeti";
-"hood.profile.body.anon" = "Mahalle Sohbeti'ndekiler anonim. Onlara kişi olarak eklenmeyi önerebilirsin; kabul edince gerçek profilini görürsün.";
-"hood.profile.body.real" = "Bu kullanıcı anonim modu kapatmış, gerçek hesabı görünüyor.";
-"hood.profile.already" = "Zaten kişilerinde.";
-"hood.profile.add_contact" = "Kişi olarak ekle";
-"hood.action.reply" = "Yanıtla";
-"hood.action.delete" = "Sil";
 /* ── Radio Chat ───────────────────────────────────────────── */
 "radio.title" = "Telsiz Sohbet";
 "radio.kicker" = "ÖNCE ÇEVRİMDIŞI";

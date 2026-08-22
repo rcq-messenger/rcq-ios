@@ -26,9 +26,8 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var mentionIDs: [UUID] = []
     /// Live copy of the open group (GroupService's copy wins, the opening
     /// snapshot is the fallback), nil for 1:1 / random threads. Cached here
-    /// so ChatView's per-row helpers (owner checks, view-count gating) stop
-    /// running GroupService.find's linear scan on every call in every body
-    /// pass.
+    /// so the roster below stops running GroupService.find's linear scan on
+    /// every call in every body pass.
     @Published private(set) var liveGroup: RCQGroup?
     /// Roster of the open group, derived from `liveGroup`.
     ///

@@ -14,7 +14,6 @@ struct ChatView: View {
     @StateObject private var contacts = ContactService.shared
     @StateObject private var aliasStore = ContactAliasStore.shared
     @StateObject private var groupSvc = GroupService.shared
-    @StateObject private var groupViews = GroupViewsService.shared
 
     /// Member roster for the active group target, or `[]` for 1:1 chats.
     /// Drives @mention rendering + the composer's mention picker. Cached in
@@ -94,42 +93,11 @@ struct ChatView: View {
         }
     }
 
-    /// View counts are a broadcast-mode affordance: only meaningful
-    /// when ONE person (the owner) is talking and everyone else is a
-    /// passive audience. In a chat where every member can post, an
-    /// eye-count per bubble feels like surveillance, so we gate on
-    /// `post_policy == owner_only`. Whether the group is also closed
-    /// is independent (closed just controls join).
-    private var activeGroupIsBroadcast: Bool {
-        vm.liveGroup?.postPolicy == "owner_only"
-    }
-
-    /// True iff the active group is broadcast-mode AND this bubble was
-    /// sent by the group's owner. Owner-only broadcasts are the only
-    /// place we render and ping view counts.
-    private func bubbleEligibleForViews(_ msg: Message) -> Bool {
-        guard let live = vm.liveGroup else { return false }
-        return live.postPolicy == "owner_only" && msg.senderUIN == live.ownerUIN
-    }
-
-    /// Returns the cached aggregate view count for a bubble in an
-    /// owner-only broadcast group's owner message. Nil everywhere else.
-    private func viewCountForBubble(_ msg: Message) -> Int? {
-        guard bubbleEligibleForViews(msg), let gid = activeGroupID else { return nil }
-        return GroupViewsService.shared.count(group: gid, message: msg.id)
-    }
-
-    /// Tells the GroupViewsService we have seen this message. Only fires
-    /// for owner messages in an owner-only broadcast group; otherwise
-    /// silent. The service itself is idempotent per (group, message, viewer).
-    private func pingViewIfCloseGroup(_ msg: Message) {
-        guard bubbleEligibleForViews(msg), let gid = activeGroupID else { return }
-        GroupViewsService.shared.ping(
-            group: gid,
-            message: msg.id,
-            groupIsClosed: true,
-        )
-    }
+    // Per-bubble view counts used to live here: an eye-count under every
+    // owner post in a broadcast group, fed by a server-side table that
+    // recorded which member had read which message. That table is exactly the
+    // kind of per-person metadata this app exists to not keep, so the island
+    // dropped it and the endpoints with it. Nothing replaces the badge.
 
     @ViewBuilder
     private func actionOverlay(for target: Message) -> some View {
@@ -1496,15 +1464,13 @@ struct ChatView: View {
                                 onSwipeReply: {
                                     beginReply(to: msg)
                                 },
-                                currentGroupMembers: currentGroupMembers,
-                                viewCount: viewCountForBubble(msg)
+                                currentGroupMembers: currentGroupMembers
                             )
                             // Skip re-running this row's body unless its own
                             // value inputs changed (see MessageRow.==). Stops
                             // the per-keystroke/-reaction re-render storm.
                             .equatable()
                             .onAppear {
-                                pingViewIfCloseGroup(msg)
                                 // Monotonic: as deeper rows appear, fewer unread
                                 // remain below — badge shrinks to 0 at the newest.
                                 vm.sawRow(msg.id)
@@ -1813,26 +1779,6 @@ struct ChatView: View {
                     try? await Task.sleep(nanoseconds: 120_000_000)
                     jumpAndFlash(to: reactedJumpID, proxy: proxy)
                     ReactionInboxStore.shared.clear(vm.target.thread)
-                }
-                // Pull view counts for the currently-loaded window in
-                // broadcast-mode groups only — that's the surface where
-                // view-counts under owner posts are meaningful. Filtered
-                // further to messages by the owner (only those render
-                // an eye-count badge), so we don't ask the server for
-                // counts we'll never show.
-                if activeGroupIsBroadcast, let gid = activeGroupID,
-                   case .group(let snapshot) = vm.target {
-                    let live = groupSvc.find(snapshot.id) ?? snapshot
-                    let ownerMessageIDs = vm.messages
-                        .filter { $0.senderUIN == live.ownerUIN }
-                        .map { $0.id }
-                    if !ownerMessageIDs.isEmpty {
-                        await GroupViewsService.shared.refresh(
-                            group: gid,
-                            messages: ownerMessageIDs,
-                            groupIsClosed: true,
-                        )
-                    }
                 }
             }
             // @-mention jump FAB — a second circular button directly above the

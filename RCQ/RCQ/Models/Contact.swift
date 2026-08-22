@@ -18,8 +18,8 @@ struct Contact: Identifiable, Hashable, Codable {
     var signalIdentityKey: String?
     /// Gender icon hint. Server has already applied the contact's
     /// `gender_visibility` setting; null = hide. The icon-rendering
-    /// helper accepts this alongside `NearbyPerson.gender` and
-    /// `HoodMessage.gender`, which carry the same string values.
+    /// helper accepts this alongside `NearbyPerson.gender`, which
+    /// carries the same string values.
     var gender: String?
     var unread: Int = 0
     /// Server-gated by the contact's `last_seen_visibility`; null

@@ -11,7 +11,6 @@ struct ContactListView: View {
     @StateObject private var archive = ArchiveStore.shared
 
     @StateObject private var appState = AppState.shared
-    @StateObject private var stories = StoryService.shared
     @StateObject private var news = NewsService.shared
     @StateObject private var accountManager = AccountManager.shared
     // Variant A: held cross-island "message requests" count into the pending
@@ -67,12 +66,10 @@ struct ContactListView: View {
     @State private var previewTarget: ChatTarget?
     /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
     @State private var pressedRowID: String?
-    @State private var showStoryComposer = false
     @State private var showNews = false
     @State private var showOutgoing = false
     @State private var showDiagnostics = false
     @State private var showPresenceInfo = false
-    @State private var storyViewerGroupIndex: StoryViewerWrapper?
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
     @State private var archiveUnlocked = false
@@ -146,15 +143,8 @@ struct ContactListView: View {
                 ToolbarItem(placement: .principal) {
                     identityPrincipal
                 }
-                // One HStack collapses iOS 26's two-pill spacing into a single capsule.
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 8) {
-                        // Operator can hide Stories via the admin console (Features).
-                        if appState.serverCapabilities.stories {
-                            ownStoryButton
-                        }
-                        contactListMenu
-                    }
+                    contactListMenu
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -206,7 +196,6 @@ struct ContactListView: View {
             }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRandom) { RandomChatView() }
-            .background(storiesCoverHost)
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
             .sheet(isPresented: $showCreateGroup) {
@@ -260,7 +249,6 @@ struct ContactListView: View {
                 await vm.refresh()
                 await groups.refresh()
                 await audioRooms.refresh()
-                await stories.refresh()
                 await news.refresh()
                 if appState.pendingOpenPending {
                     showPending = true
@@ -434,12 +422,7 @@ struct ContactListView: View {
 
     @ViewBuilder
     private func contactRowItem(for contact: Contact) -> some View {
-        let group = stories.group(forUIN: contact.uin)
-        ContactRow(
-            contact: contact,
-            storyGroup: group,
-            onTapStory: group == nil ? nil : { openStoryViewer(forUIN: contact.uin) }
-        )
+        ContactRow(contact: contact)
         .contentShape(Rectangle())
         .scaleEffect(pressedRowID == "peer:\(contact.uin)" ? 0.96 : 1.0)
         .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
@@ -459,41 +442,6 @@ struct ContactListView: View {
             insertion: .move(edge: .leading).combined(with: .opacity),
             removal: .opacity
         ))
-    }
-
-    private func openStoryViewer(forUIN uin: Int) {
-        // Resolve at tap-time — the array shifts as stories arrive.
-        if let idx = stories.feed.firstIndex(where: { $0.ownerUIN == uin }) {
-            storyViewerGroupIndex = StoryViewerWrapper(index: idx)
-        }
-    }
-
-    @ViewBuilder
-    private var ownStoryButton: some View {
-        if let myUIN = AuthService.shared.ownUIN,
-           let mineIdx = stories.feed.firstIndex(where: { $0.ownerUIN == myUIN }) {
-            Button {
-                storyViewerGroupIndex = StoryViewerWrapper(index: mineIdx)
-            } label: {
-                StoryThumbnailRing(group: stories.feed[mineIdx], size: 26, ringWidth: 1.8)
-                    .fixedSize()
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var storiesCoverHost: some View {
-        Color.clear
-            .fullScreenCover(isPresented: $showStoryComposer) {
-                NavigationStack { StoryComposerView() }
-            }
-            .fullScreenCover(item: $storyViewerGroupIndex) { wrapper in
-                StoryViewerView(
-                    groups: stories.feed,
-                    initialGroupIndex: wrapper.index,
-                    myUIN: AuthService.shared.ownUIN ?? 0
-                )
-            }
     }
 
     /// Tiny capsule at the top-leading edge of the nav bar showing the
@@ -717,11 +665,6 @@ struct ContactListView: View {
                 Label("contact_list.menu.search".localized, systemImage: "magnifyingglass")
             }
             Button {
-                showStoryComposer = true
-            } label: {
-                Label("contact_list.menu.post_story".localized, systemImage: "camera.badge.ellipsis")
-            }
-            Button {
                 showNews = true
             } label: {
                 // Menu label paints the unread count alongside the
@@ -744,6 +687,19 @@ struct ContactListView: View {
                     path.append(saved)
                 } label: {
                     Label("contact_list.menu.saved".localized, systemImage: "bookmark.fill")
+                }
+            }
+            // Stranger Mode is an extra, not a primary destination: it used to
+            // hold a slot in the bottom bar next to Add / QR / Settings, which
+            // put "talk to a random person" on the same footing as the contact
+            // list itself. It lives here now, still behind the operator's
+            // `random_chat` flag, so an island that does not run it shows
+            // nothing rather than a row that 404s.
+            if appState.serverCapabilities.randomChat {
+                Button {
+                    showRandom = true
+                } label: {
+                    Label("contact_list.menu.random".localized, systemImage: "shuffle")
                 }
             }
             // RCQ relays engage AUTOMATICALLY when a direct connection is
@@ -884,12 +840,7 @@ struct ContactListView: View {
                             )
                     }
                     ForEach(favContacts) { contact in
-                        let group = stories.group(forUIN: contact.uin)
-                        ContactRow(
-                            contact: contact,
-                            storyGroup: group,
-                            onTapStory: group == nil ? nil : { openStoryViewer(forUIN: contact.uin) }
-                        )
+                        ContactRow(contact: contact)
                             .contentShape(Rectangle())
                             .onTapGesture { path.append(contact) }
                             .scaleEffect(pressedRowID == "fav-peer:\(contact.uin)" ? 0.96 : 1.0)
@@ -1567,18 +1518,18 @@ struct ContactListView: View {
         .tint(.red)
     }
 
-    /// IX-style floating capsule. Five icons evenly distributed
-    /// inside a pill-shape backdrop floating above the screen
-    /// bottom — not edge-to-edge. Slight shadow lifts it off the
-    /// chat list.
+    /// IX-style floating capsule. Icons evenly distributed inside a
+    /// pill-shape backdrop floating above the screen bottom, not
+    /// edge-to-edge. Slight shadow lifts it off the chat list.
+    ///
+    /// Stranger Mode used to sit here between QR and Nearby. It is a side
+    /// feature an operator can switch off, so it moved into the overflow menu
+    /// (`contactListMenu`) where the other optional destinations live.
     private var bottomBar: some View {
         HStack(spacing: 0) {
             barButton(icon: "person.badge.plus", label: "contact_list.bar.add".localized) { showAddContact = true }
             barButton(icon: "qrcode.viewfinder", label: "contact_list.bar.qr".localized) { showQR = true }
-            // Operator can hide Random / Nearby via the admin console (Features).
-            if appState.serverCapabilities.randomChat {
-                barButton(icon: "shuffle", label: "contact_list.bar.random".localized) { showRandom = true }
-            }
+            // Operator can hide Nearby via the admin console (Features).
             if appState.serverCapabilities.nearby {
                 barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
             }
@@ -1636,14 +1587,6 @@ struct ContactListView: View {
 /// under the UIN, just as it did in the legacy client.
 private struct ContactRow: View {
     let contact: Contact
-    /// Active story group for this contact (nil if they have no
-    /// posted stories live right now). When non-nil, a circular
-    /// thumbnail ring renders at the right edge of the row; tapping
-    /// it fires `onTapStory` (which the parent wires to the
-    /// fullscreen viewer). Tapping anywhere else still opens the
-    /// chat as before.
-    var storyGroup: StoryGroup? = nil
-    var onTapStory: (() -> Void)? = nil
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
     @ObservedObject private var mentionInbox = MentionInboxStore.shared
@@ -1753,17 +1696,6 @@ private struct ContactRow: View {
                         .foregroundColor(.pink)
                 }
             }
-            if let storyGroup, let onTapStory {
-                // Rightmost: circular thumbnail with segmented ring
-                // for stories. Wrapped in a Button so the tap
-                // doesn't bubble to the row's outer `.onTapGesture`
-                // (which would open the chat instead). Sized 36pt
-                // to match the leading status icon column.
-                Button(action: onTapStory) {
-                    StoryThumbnailRing(group: storyGroup)
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)
@@ -1809,15 +1741,6 @@ private extension DateFormatter {
 /// Identifiable wrapper so the deep-link UIN drives a `.sheet(item:)` presentation.
 private struct DeepLinkUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
 private struct JoinGroupTrigger: Identifiable, Hashable { let id: Int }
-
-/// Identifiable wrapper for `.fullScreenCover(item:)` driving the
-/// story viewer. Carries the index into `StoryService.feed` of the
-/// group whose first story should appear first.
-private struct StoryViewerWrapper: Identifiable {
-    let index: Int
-    var id: Int { index }
-}
-
 
 private struct GroupRow: View {
     let group: RCQGroup

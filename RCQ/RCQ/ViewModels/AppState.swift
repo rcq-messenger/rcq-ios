@@ -1117,7 +1117,6 @@ final class AppState: ObservableObject {
         MessageStore.shared.clearInMemory()
         ContactService.shared.clearForDecoy()
         GroupService.shared.clearForDecoy()
-        StoryService.shared.clearForDecoy()
         VisitStore.shared.clearForDecoy()
         // `reload()` and not `configure(decoy:)`: the latter only rebuilds the
         // container when the mode CHANGES, and we are already in decoy mode —
@@ -1744,9 +1743,7 @@ final class AppState: ObservableObject {
              .roomEnterRejected, .roomRoster, .roomMemberEntered, .roomMemberLeft,
              .roomOffer, .roomAnswer, .roomIce, .roomSpeaking,
              .roomKicked, .roomDeleted, .roomMembershipRevoked, .roomKeyRotated,
-             .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed,
-             .storyPosted, .storyDeleted,
-             .hoodMessage, .hoodCount, .hoodDelete, .hoodReaction:
+             .roomMemberMuted, .roomOwnerOnlyChanged, .roomRenamed:
             // Owned by their respective services that subscribe directly.
             break
         }
@@ -1776,8 +1773,6 @@ struct ServerCapabilities: Decodable, Equatable {
     // and the backing route is also 404-gated server-side.
     var nearby: Bool
     var randomChat: Bool
-    var hood: Bool
-    var stories: Bool
     // An island may run no report desk at all (admin console → Features). When
     // it doesn't, the two report entries go with it: a form the island answers
     // 403 and a screen that stays empty are worse than an absent menu row.
@@ -1793,8 +1788,6 @@ struct ServerCapabilities: Decodable, Equatable {
         hallOfFame: Bool = true,
         nearby: Bool = true,
         randomChat: Bool = true,
-        hood: Bool = true,
-        stories: Bool = true,
         reports: Bool = true,
         maxAccountsPerDevice: Int = 5
     ) {
@@ -1802,8 +1795,6 @@ struct ServerCapabilities: Decodable, Equatable {
         self.hallOfFame = hallOfFame
         self.nearby = nearby
         self.randomChat = randomChat
-        self.hood = hood
-        self.stories = stories
         self.reports = reports
         self.maxAccountsPerDevice = maxAccountsPerDevice
     }
@@ -1815,8 +1806,6 @@ struct ServerCapabilities: Decodable, Equatable {
         case hallOfFame = "hall_of_fame"
         case nearby
         case randomChat = "random_chat"
-        case hood
-        case stories
         case reports
         case maxAccountsPerDevice = "max_accounts_per_device"
     }
@@ -1832,8 +1821,6 @@ struct ServerCapabilities: Decodable, Equatable {
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
         nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true
         randomChat = try c.decodeIfPresent(Bool.self, forKey: .randomChat) ?? true
-        hood = try c.decodeIfPresent(Bool.self, forKey: .hood) ?? true
-        stories = try c.decodeIfPresent(Bool.self, forKey: .stories) ?? true
         reports = try c.decodeIfPresent(Bool.self, forKey: .reports) ?? true
         maxAccountsPerDevice = try c.decodeIfPresent(Int.self, forKey: .maxAccountsPerDevice) ?? 5
     }

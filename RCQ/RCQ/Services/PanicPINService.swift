@@ -11,9 +11,9 @@ import UserNotifications
 /// from the boot that happened before the lock, `KeychainStore` still answers
 /// with the real per-account credentials, and the cross-island paths sign with
 /// the real Ed25519 key. Every screen that fetches — the profile header, linked
-/// devices, my numbers, my reports, the UIN shop, a story, a hood, an avatar
-/// upload — would therefore answer with the REAL account's data inside the
-/// duress view, no matter how carefully the local stores were rebound.
+/// devices, my numbers, my reports, the UIN shop, an avatar upload. Every one
+/// of them would answer with the REAL account's data inside the duress view,
+/// no matter how carefully the local stores were rebound.
 ///
 /// So the gate sits at the two chokepoints every outbound call goes through
 /// (`APIClient.rawRequest` and `IslandHTTP.data`) and refuses. A refusal reads
@@ -335,9 +335,9 @@ final class PanicPINService: ObservableObject {
 
         // In-memory services. `lock()` does not clear these, so a real session
         // that was locked and then opened with the duress PIN handed over its
-        // stories, its call history, its nearby people and its random chat.
+        // profile visitors, its call history, its nearby people and its
+        // random chat.
         VisitStore.shared.clearForDecoy()
-        StoryService.shared.clearForDecoy()
         NearbyService.shared.wipe()
         RandomChatService.shared.wipe()
         CallService.shared.wipe()
@@ -345,10 +345,6 @@ final class PanicPINService: ObservableObject {
         NotificationService.shared.wipe()
         ReactionInboxStore.shared.wipe()
         MentionInboxStore.shared.wipe()
-        // Bucket-local public chat: the messages are real people writing under
-        // the user's real check-in nickname, and `leave()` also unsubscribes so
-        // the duress session stops being present in that bucket.
-        HoodChatService.shared.wipe()
         // Bluetooth/Wi-Fi mesh. Not just a list on screen — an ACTIVE radio
         // advertising this device's callsign to everyone in range, with the
         // discovered peers' names and the session transcript in memory.

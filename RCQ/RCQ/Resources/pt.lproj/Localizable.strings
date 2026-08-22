@@ -267,16 +267,6 @@
 "uin_shop.confirm.cta_priced" = "Confirmar %@";
 "uin_shop.error.taken" = "Alguém pegou antes. Tente outro UIN.";
 "uin_shop.error.cooldown" = "Cedo demais. Tente mais tarde.";
-"hood.composer.placeholder" = "Mensagem para este bairro";
-"hood.author.anonymous" = "Anônimo";
-"hood.expired" = "Expirou";
-"hood.left_minutes" = "faltam %d min";
-"hood.left_hours" = "faltam %d h";
-"hood.left_days" = "faltam %d d";
-"hood.duration.1h" = "1 hora";
-"hood.duration.6h" = "6 horas";
-"hood.duration.24h" = "24 horas";
-"hood.duration.7d" = "7 dias";
 "settings.account.referral" = "Convidar amigos";
 "bug_bounty.title" = "Relato de bug";
 "bug_bounty.heading" = "Achou um bug? Conta pra gente";
@@ -418,30 +408,6 @@
 "common.error.rate_limited" = "Pedidos demais, vá com calma";
 "common.error.server" = "Tropeço do servidor, tente daqui a pouco";
 "common.error.network" = "Tropeço na conexão, tente de novo";
-/* ── Stories ──────────────────────────────────────────────── */
-"story.composer.title" = "Novo story";
-"story.composer.post" = "Publicar";
-"story.composer.empty" = "Escolha uma foto ou tire uma para compartilhar por 24h.";
-"story.composer.choose" = "Escolher origem";
-"story.composer.source_title" = "Origem";
-"story.composer.camera" = "Câmera";
-"story.composer.photo_library" = "Biblioteca de fotos";
-"story.composer.video_library" = "Biblioteca de vídeos";
-"story.composer.caption" = "Legenda (opcional)";
-"story.composer.anonymous" = "Publicar anonimamente";
-"story.error.post_failed" = "Não foi possível publicar o story, tente de novo";
-"story.error.delete_failed" = "Não foi possível apagar o story";
-"story.viewer.anonymous_byline" = "Anônimo";
-"story.viewer.unknown" = "Story";
-"story.viewer.show_viewers" = "Ver quem assistiu";
-"story.viewer.delete" = "Apagar";
-"story.viewer.delete_confirm" = "Apagar este story?";
-"story.viewer.viewers_title" = "Quem viu";
-"story.viewer.no_views" = "Ninguém assistiu ainda.";
-"story.viewer.view_count" = "%d visualizações";
-"story.time.now" = "agora mesmo";
-"story.time.minutes_ago" = "há %dm";
-"story.time.hours_ago" = "há %dh";
 "common.delete" = "Apagar";
 "common.copy" = "Copiar";
 "common.confirm" = "Confirmar";
@@ -456,12 +422,8 @@
 "status.offline" = "Offline";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Offline";
-"hood.error.slow_down" = "Devagar, dá um tempo para a sala.";
-"hood.error.send_failed" = "Não foi possível enviar. Verifique sua conexão.";
-"hood.error.send_failed_code" = "Não foi possível enviar (%d).";
 "contact_list.bar.games" = "Jogos";
 "contact_list.bar.qr" = "QR";
-"contact_list.bar.random" = "Aleatório";
 "contact_list.bar.nearby" = "Por perto";
 "contact_list.bar.settings" = "Configurações";
 "contact_list.section.online" = "Online";
@@ -513,7 +475,7 @@
 "contact_list.menu.saved" = "Mensagens salvas";
 "bypass.menu.enable" = "Ligar os relays do RCQ";
 "bypass.menu.disable" = "Desligar os relays do RCQ";
-"contact_list.menu.post_story" = "Publicar um story";
+"contact_list.menu.random" = "Aleatório";
 "contact_list.menu.news" = "Novidades";
 "news.title" = "Novidades";
 "news.empty" = "Nada ainda.\nOs posts novos aparecem aqui.";
@@ -1048,7 +1010,7 @@
 "disassemble.cta.cancel" = "Cancelar";
 "disassemble.success.body" = "%@ se foi.";
 /* ── Trades ───────────────────────────────────────────────── */
-/* ── Nearby + Hood ────────────────────────────────────────── */
+/* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Por perto";
 "nearby.ttl.30m" = "30 minutos";
 "nearby.ttl.1h" = "1 hora";
@@ -1067,8 +1029,6 @@
 "nearby.active.until" = "Até %@";
 "nearby.active.area" = "· área %@";
 "nearby.active.stop" = "Parar";
-"nearby.hood.title" = "Chat do Bairro";
-"nearby.hood.body" = "Sala pública para todo mundo desta área · sem criptografia";
 "nearby.empty.title" = "Ninguém mais por aqui ainda.";
 "nearby.empty.body" = "Volte daqui a pouco: a lista atualiza a cada 30 segundos.";
 "nearby.row.tag" = "Por perto";
@@ -1084,21 +1044,6 @@
 "nearby.denied.body" = "Sem acesso à localização não dá para te mostrar a outras pessoas por perto. Reative em Ajustes → Privacidade → Serviços de Localização → RCQ.";
 "nearby.denied.cta" = "Abrir Ajustes";
 "nearby.error.cta" = "Tentar de novo";
-"hood.title" = "Bairro";
-"hood.you" = "Você";
-"hood.warn.title" = "O Chat do Bairro não é criptografado";
-"hood.warn.body" = "Qualquer pessoa nesta área pode ler o que você escreve. Não compartilhe informação privada: telefone, endereço, nada que você não colocaria num cartaz.";
-"hood.empty.title" = "Está quieto por aqui.";
-"hood.empty.body" = "Seja quem quebra o silêncio.";
-"hood.deleted" = "Mensagem apagada";
-"hood.replying_to" = "Respondendo a %@";
-"hood.profile.anon" = "Anônimo · Chat do Bairro";
-"hood.profile.body.anon" = "As pessoas no Chat do Bairro são anônimas. Você pode oferecer para adicionar como contato: quando aceitarem, você vê o perfil real.";
-"hood.profile.body.real" = "Este usuário desligou o modo anônimo: a conta real dele está visível.";
-"hood.profile.already" = "Já está nos seus contatos.";
-"hood.profile.add_contact" = "Adicionar como contato";
-"hood.action.reply" = "Responder";
-"hood.action.delete" = "Apagar";
 /* ── Radio Chat ───────────────────────────────────────────── */
 "radio.title" = "Chat por rádio";
 "radio.kicker" = "OFFLINE PRIMEIRO";

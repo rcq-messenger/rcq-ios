@@ -21,7 +21,7 @@ final class NearbyService: NSObject, ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var people: [NearbyPerson] = []
     /// Anonymous handle persisted across launches so strangers can
-    /// re-recognise it in Hood Chat.
+    /// re-recognise it between check-ins.
     @Published private(set) var displayName: String = NearbyService.loadOrMintDisplayName()
     @Published var anonymous: Bool = NearbyService.loadAnonymous()
 
