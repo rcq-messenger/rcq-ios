@@ -60,6 +60,7 @@ struct ContactListView: View {
     @State private var rotateKeyConfirmRoom: AudioRoom?
     @State private var showNearby = false
     @State private var showRandom = false
+    @State private var showRadio = false
     @State private var showQR = false
     @State private var showSearch = false
     @State private var collapsedGroups = false
@@ -196,6 +197,7 @@ struct ContactListView: View {
             }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRandom) { RandomChatView() }
+            .fullScreenCover(isPresented: $showRadio) { RadioDiscoveryView() }
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
             .sheet(isPresented: $showCreateGroup) {
@@ -701,6 +703,17 @@ struct ContactListView: View {
                 } label: {
                     Label("contact_list.menu.random".localized, systemImage: "shuffle")
                 }
+            }
+            // ⚠ Radio has no server side at all: it is the Bluetooth and
+            // Wi-Fi mesh that works when there is no island to reach, which
+            // is the one surface that must never depend on the island's
+            // opinion. Until 22.08 its ONLY door was a toolbar button inside
+            // People Nearby, so retiring Nearby quietly locked the offline
+            // chat behind an online feature. It gets its own door here.
+            Button {
+                showRadio = true
+            } label: {
+                Label("contact_list.menu.radio".localized, systemImage: "antenna.radiowaves.left.and.right")
             }
             // RCQ relays engage AUTOMATICALLY when a direct connection is
             // blocked, but auto-detect can be wrong ("connected" yet nothing

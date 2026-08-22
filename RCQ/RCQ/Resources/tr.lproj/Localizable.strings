@@ -476,6 +476,7 @@
 "bypass.menu.enable" = "RCQ rölelerini aç";
 "bypass.menu.disable" = "RCQ rölelerini kapat";
 "contact_list.menu.random" = "Rastgele Sohbet";
+"contact_list.menu.radio" = "Telsiz sohbeti";
 "contact_list.menu.news" = "Haberler";
 "news.title" = "Haberler";
 "news.empty" = "Henüz haber yok.\nYeni gönderiler burada görünür.";

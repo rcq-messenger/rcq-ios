@@ -476,6 +476,7 @@
 "bypass.menu.enable" = "Увімкнути релеї RCQ";
 "bypass.menu.disable" = "Вимкнути релеї RCQ";
 "contact_list.menu.random" = "Випадковий чат";
+"contact_list.menu.radio" = "Рація";
 "contact_list.menu.news" = "Новини";
 "news.title" = "Новини";
 "news.empty" = "Новин поки немає.\nНові дописи з'являться тут.";

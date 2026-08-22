@@ -467,6 +467,7 @@
 "bypass.menu.enable" = "开启 RCQ 中继";
 "bypass.menu.disable" = "关闭 RCQ 中继";
 "contact_list.menu.random" = "随机聊天";
+"contact_list.menu.radio" = "对讲聊天";
 "contact_list.menu.news" = "新闻";
 "news.title" = "新闻";
 "news.empty" = "暂时没有新闻。\n新的帖子会显示在这里。";
