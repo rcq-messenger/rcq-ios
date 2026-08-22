@@ -709,12 +709,13 @@ final class MessageService {
         guard let mine = try? crypto.bootstrapIdentity() else { return }
         let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
         guard let blob = try? crypto.encrypt(envelope: envelope, for: selfBundle) else { return }
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        let etype = envelopeType(for: envelope)
         do {
             let _: Out = try await APIClient.shared.request(
                 "POST", "/messages/sealed",
-                body: Body(to_uin: me, envelope_type: envelopeType(for: envelope), payload: blob),
+                body: Body(to_uin: me, envelope_type: etype, cls: rcqMessageClass(etype), payload: blob),
                 authenticated: false,
                 retries: 1
             )
@@ -757,12 +758,12 @@ final class MessageService {
         let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
         let carbon: Envelope = .carbon(to: toPeer, gid: toGroup, env: inner)
         guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         do {
             let _: Out = try await APIClient.shared.request(
                 "POST", "/messages/sealed",
-                body: Body(to_uin: me, envelope_type: "carbon", payload: blob),
+                body: Body(to_uin: me, envelope_type: "carbon", cls: rcqMessageClass("carbon"), payload: blob),
                 authenticated: false,
                 retries: 1
             )
@@ -972,6 +973,7 @@ final class MessageService {
                         "POST", "/messages/sealed",
                         body: SealedSendBody(
                             to_uin: contact.uin, envelope_type: envType,
+                            cls: rcqMessageClass(envType),
                             payload: copy.payload, to_device_id: copy.deviceID
                         ),
                         authenticated: false,
@@ -1063,7 +1065,7 @@ final class MessageService {
               let wire = try? JSONDecoder().decode(Envelope.IslandRecordWire.self, from: data) else { return }
         let env = Envelope.homeRecord(rec: wire)
         struct Ack: Decodable {}
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         for c in ContactService.shared.contacts where !c.blocked && c.uin != uin && !c.identityKey.isEmpty {
             let bundle = PeerBundle(uin: c.uin, identityKey: c.identityKey, signingKey: c.signingKey)
             guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { continue }  // v=1
@@ -1076,7 +1078,7 @@ final class MessageService {
                 // Flagship contact: non-pushable type so it doesn't buzz them.
                 _ = try? await APIClient.shared.request(
                     "POST", "/messages/sealed",
-                    body: Body(to_uin: c.uin, envelope_type: "homerec", payload: blob),
+                    body: Body(to_uin: c.uin, envelope_type: "homerec", cls: rcqMessageClass("homerec"), payload: blob),
                     authenticated: false
                 ) as Ack
             }
@@ -1119,6 +1121,10 @@ final class MessageService {
     private struct SealedSendBody: Encodable {
         let to_uin: Int
         let envelope_type: String
+        // Stage 2: mirror the island's `_cls_for` so the row is classified by the
+        // sender, not guessed. Equals the island's derivation for every type we
+        // send today, so push/retention behaviour is unchanged. Additive.
+        let cls: Int
         let payload: String
         let to_device_id: Int?
     }
@@ -1237,8 +1243,10 @@ final class MessageService {
         // nobody while every local signal says it was sent.
         let group = await GroupService.shared.ensureRoster(snapshot.id) ?? snapshot
         struct Entry: Encodable { let to_uin: Int; let payload: String }
-        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
-        struct BroadcastBody: Encodable { let group_id: Int; let envelope_type: String; let payload: String }
+        // Stage 2: `cls` mirrors the island's `_cls_for` (skdm/sknack -> 2, the
+        // rest -> 1); additive, unchanged behaviour for every type sent today.
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payloads: [Entry] }
+        struct BroadcastBody: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
 
         let envType = envelopeType(for: envelope)
@@ -1281,11 +1289,11 @@ final class MessageService {
                     }
                     if !skdmEntries.isEmpty {
                         let _: Out = try await APIClient.shared.request("POST", "/messages/group-sealed",
-                            body: Body(group_id: group.id, envelope_type: "skdm", payloads: skdmEntries), authenticated: false, retries: 1)
+                            body: Body(group_id: group.id, envelope_type: "skdm", cls: rcqMessageClass("skdm"), payloads: skdmEntries), authenticated: false, retries: 1)
                     }
                 }
                 out = try await APIClient.shared.request("POST", "/messages/group-broadcast",
-                    body: BroadcastBody(group_id: group.id, envelope_type: envType, payload: gmsg), authenticated: true, retries: 2)
+                    body: BroadcastBody(group_id: group.id, envelope_type: envType, cls: rcqMessageClass(envType), payload: gmsg), authenticated: true, retries: 2)
                 GroupSenderKeyStore.shared.markDistributed(ownUin: ownUIN, gid: group.id, uins: skdmTargets.map { $0.uin })
                 GroupSenderKeyStore.shared.advanceOwn(ownUin: ownUIN, gid: group.id)
                 // Legacy members (not yet updated) still get their per-member copy.
@@ -1295,7 +1303,7 @@ final class MessageService {
                     for m in legacy { if let e = await legacySeal(m) { legacyEntries.append(e) } }
                     if !legacyEntries.isEmpty {
                         let _: Out = try await APIClient.shared.request("POST", "/messages/group-sealed",
-                            body: Body(group_id: group.id, envelope_type: envType, payloads: legacyEntries), authenticated: authPost, retries: 1)
+                            body: Body(group_id: group.id, envelope_type: envType, cls: rcqMessageClass(envType), payloads: legacyEntries), authenticated: authPost, retries: 1)
                     }
                 }
             } else {
@@ -1306,7 +1314,7 @@ final class MessageService {
                     for await r in tg { if let r { entries.append(r) } }
                 }
                 out = try await APIClient.shared.request("POST", "/messages/group-sealed",
-                    body: Body(group_id: group.id, envelope_type: envType, payloads: entries), authenticated: authPost, retries: 2)
+                    body: Body(group_id: group.id, envelope_type: envType, cls: rcqMessageClass(envType), payloads: entries), authenticated: authPost, retries: 2)
             }
             if let localID {
                 let next: DeliveryState = out.delivered ? .delivered : .sent
@@ -1351,7 +1359,7 @@ final class MessageService {
         if let prev = Self.lastSknack[kid], Date().timeIntervalSince(prev) < 600 { return }
         Self.lastSknack[kid] = Date()
         struct Entry: Encodable { let to_uin: Int; let payload: String }
-        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payloads: [Entry] }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         let env: Envelope = .sknack(gid: gid, kid: kid)
         Task {
@@ -1366,7 +1374,7 @@ final class MessageService {
             }
             guard !entries.isEmpty else { return }
             let _: Out? = try? await APIClient.shared.request("POST", "/messages/group-sealed",
-                body: Body(group_id: gid, envelope_type: "sknack", payloads: entries), authenticated: false, retries: 0)
+                body: Body(group_id: gid, envelope_type: "sknack", cls: rcqMessageClass("sknack"), payloads: entries), authenticated: false, retries: 0)
         }
     }
 
@@ -1376,7 +1384,7 @@ final class MessageService {
         guard GroupSenderKeyStore.shared.ownKidForGroup(ownUin: ownUIN, gid: gid) == kid,
               let snap = GroupSenderKeyStore.shared.ownChainSnapshot(ownUin: ownUIN, gid: gid) else { return }
         struct Entry: Encodable { let to_uin: Int; let payload: String }
-        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [Entry] }
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payloads: [Entry] }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         let env: Envelope = .skdm(gid: gid, kid: snap.kid, epoch: snap.epoch, index: snap.index, ck: snap.ck)
         Task {
@@ -1388,7 +1396,7 @@ final class MessageService {
             let bundle = PeerBundle(uin: m.uin, identityKey: m.identityKey, signingKey: m.signingKey)
             guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { return }
             let _: Out? = try? await APIClient.shared.request("POST", "/messages/group-sealed",
-                body: Body(group_id: gid, envelope_type: "skdm", payloads: [Entry(to_uin: m.uin, payload: blob)]), authenticated: false, retries: 0)
+                body: Body(group_id: gid, envelope_type: "skdm", cls: rcqMessageClass("skdm"), payloads: [Entry(to_uin: m.uin, payload: blob)]), authenticated: false, retries: 0)
         }
     }
 
@@ -1482,6 +1490,7 @@ final class MessageService {
                     "POST", "/messages/sealed",
                     body: SealedSendBody(
                         to_uin: targetUIN, envelope_type: "visit",
+                        cls: rcqMessageClass("visit"),
                         payload: copy.payload, to_device_id: copy.deviceID
                     ),
                     authenticated: false
@@ -2454,6 +2463,16 @@ final class MessageService {
             /// Which install of ours the sender sealed this for; nil from a
             /// sender that addresses the account rather than a device.
             let to_device_id: Int?
+            // Stage 2: the island now serves a retention/push class and a durable
+            // per-mailbox sequence alongside the legacy fields. Both optional so an
+            // older island (or the federation queue) that omits them still decodes.
+            // The cursor and ack stay on `id` (below); `seq` is a stable ordering
+            // token captured for future dedup, never a contiguity check. A gap in
+            // `seq` is NORMAL (one deposit per recipient device draws from the one
+            // mailbox counter, and this device drains only its own rows), so it is
+            // never treated as a missed message.
+            let cls: Int?
+            let seq: Int?
         }
         let myDeviceId = SignalProtocolStores.shared.localDeviceId
         do {

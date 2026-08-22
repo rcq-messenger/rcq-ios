@@ -2,6 +2,77 @@ import CryptoKit
 import Foundation
 import LibSignalClient
 
+// -----------------------------------------------------------
+// Size-padding + message class (Stage 2 core-metadata plan).
+//
+// The one thing a sealed blob still leaks is its LENGTH: the outer wire is
+// fixed-width apart from the inner sealed-sender JSON, so the deposited payload
+// grows with the message. We hide that by padding the INNER plaintext (the bytes
+// fed to the AEAD seal) up to a coarse size bucket before sealing, via a `_pad`
+// filler field. The pad lives INSIDE the seal, so a wire observer that parses the
+// outer JSON sees only the padded `ct`, and it is transparent to every shipped
+// decoder: the v=1 signature is over `ek || env_bytes` (not the inner JSON), and
+// every receiver (this app, its NSE, web, Android) reads the inner by named keys
+// and ignores an unknown `_pad`. So a new client can pad a message an old client
+// still opens byte-for-byte. Padding is a SENDER-ONLY policy: receivers never
+// look at buckets, so clients may pad differently (or not at all) with no interop
+// risk. The ladder is shared with web/Android only so an identically sized text
+// lands on the same rung whatever composed it.
+// -----------------------------------------------------------
+
+/// Size buckets (bytes) the inner plaintext is padded up to. Past the last fixed
+/// rung the ladder continues in multiples of 65536. Coarse on purpose: an
+/// observer learns only which rung a message fell on.
+let RCQ_PAD_BUCKETS: [Int] = [256, 1024, 4096, 16384, 65536]
+
+/// The smallest bucket that holds `n` bytes.
+func rcqBucketFor(_ n: Int) -> Int {
+    for b in RCQ_PAD_BUCKETS where n <= b { return b }
+    return ((n + 65535) / 65536) * 65536
+}
+
+/// The inner-JSON key the filler rides in. The filler is ASCII 'A', which JSON
+/// never escapes, so the padded byte length is exact.
+private let RCQ_PAD_KEY = "_pad"
+/// Byte cost of an EMPTY pad field: `,"_pad":""` is exactly 10 ASCII bytes.
+private let RCQ_PAD_OVERHEAD = 10
+
+/// Kinds whose on-wire size tracks what the user wrote or attached, and so are
+/// worth padding. Receipts / reactions / signalling are omitted: they are tiny,
+/// frequent, and their size carries no content, so buying them uniformity is not
+/// worth the relay bytes. Padding is sender-only, so this set is a local policy
+/// choice and never part of the interop contract. Matches web's PAD_KINDS.
+private let RCQ_PAD_KINDS: Set<String> = ["text", "photo", "video", "file", "location", "edit", "poll", "carbon"]
+func rcqShouldPad(kind: String) -> Bool { RCQ_PAD_KINDS.contains(kind) }
+
+/// Serialize the inner sealed-sender `fields` and, for a content `kind`, pad the
+/// plaintext up to its size bucket with a trailing `_pad` filler. `_pad` adds
+/// exactly `RCQ_PAD_OVERHEAD + k` bytes (the object already has other keys, so
+/// the comma is always there and the ASCII 'A' filler never escapes), so the
+/// serialized result lands on the bucket to the byte.
+func rcqInnerPlaintext(_ fields: [String: Any], kind: String) throws -> Data {
+    let unpadded = try JSONSerialization.data(withJSONObject: fields)
+    guard rcqShouldPad(kind: kind) else { return unpadded }
+    let target = rcqBucketFor(unpadded.count + RCQ_PAD_OVERHEAD)
+    let k = target - unpadded.count - RCQ_PAD_OVERHEAD
+    var padded = fields
+    padded[RCQ_PAD_KEY] = String(repeating: "A", count: k)
+    return try JSONSerialization.data(withJSONObject: padded)
+}
+
+/// Mirror of the island's `_cls_for`: the retention / push class the server
+/// derives from this `envelope_type`. Sent beside `envelope_type` so a new or
+/// opaque type is classified by its sender rather than guessed by the island;
+/// for every type shipped today it equals what the island derives, so push and
+/// retention behaviour is unchanged. 0 = ephemeral, 1 = content, 2 = critical.
+private let RCQ_CLS_EPHEMERAL: Set<String> = ["typing", "read", "visit", "presence", "nudge", "bounce"]
+private let RCQ_CLS_CRITICAL: Set<String> = ["skdm", "sknack"]
+func rcqMessageClass(_ envelopeType: String) -> Int {
+    if RCQ_CLS_EPHEMERAL.contains(envelopeType) { return 0 }
+    if RCQ_CLS_CRITICAL.contains(envelopeType) { return 2 }
+    return 1
+}
+
 /// E2EE layer. v=1 is ECIES sealed-sender on CryptoKit (1:1 + group fan-out).
 /// v=2 wraps a libsignal Double Ratchet session inside the same outer ECIES
 /// tunnel. `decrypt(envelopeB64:)` dispatches on the wire `v` field.
@@ -567,6 +638,40 @@ enum Envelope: Codable, Hashable {
             self = .unknown(kind: kind)
         }
     }
+
+    /// The inner `kind` string this envelope encodes to (mirrors `encode(to:)`).
+    /// The Stage 2 padding policy reads it to decide whether to pad on send.
+    /// Exhaustive on purpose: a new case must teach this map, not fall through.
+    var wireKind: String {
+        switch self {
+        case .unknown(let kind): return kind
+        case .text: return "text"
+        case .photo: return "photo"
+        case .video: return "video"
+        case .voice: return "voice"
+        case .file: return "file"
+        case .location: return "location"
+        case .deleteForEveryone: return "delete"
+        case .systemNotice: return "system"
+        case .readReceipt: return "read"
+        case .deliveredReceipt: return "delivered"
+        case .reaction: return "reaction"
+        case .bounce: return "bounce"
+        case .visit: return "visit"
+        case .edit: return "edit"
+        case .poll: return "poll"
+        case .secureScreen: return "secscreen"
+        case .screenshotTaken: return "shot"
+        case .carbon: return "carbon"
+        case .callSignal: return "call"
+        case .contactRequest: return "contactreq"
+        case .profile: return "profile"
+        case .homeRecord: return "homerec"
+        case .skdm: return "skdm"
+        case .sknack: return "sknack"
+        case .relayShare: return "relay_share"
+        }
+    }
 }
 
 /// Reply quote shipped inline (id + snippet + nickname) so it renders even when
@@ -726,13 +831,17 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             return "api.rcq.app"
         }()
         // signature is over the JSONEncoder bytes, so ship them as-is (no re-serialisation).
-        let plaintext = try JSONSerialization.data(withJSONObject: [
+        // Stage 2: pad the inner plaintext up to a size bucket for content kinds, so
+        // the sealed blob's length no longer tracks the message. Transparent to every
+        // decoder (this app's own decryptV1, the NSE, web, Android): the sig is over
+        // ek||env, not the inner, and receivers ignore the extra `_pad` key.
+        let plaintext = try rcqInnerPlaintext([
             "from": overrideFrom ?? ownUIN,
             "from_host": fromHost,
             "spub": signingPubB64,
             "sig":  signature.base64EncodedString(),
             "env":  envelopeJSON.base64EncodedString(),
-        ])
+        ], kind: envelope.wireKind)
 
         let sealed = try ChaChaPoly.seal(
             plaintext,
@@ -868,7 +977,11 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         // predates the key and reads a missing one as 1.
         let myDeviceId = stores.localDeviceId
         if myDeviceId != 1 { innerFields["dev"] = myDeviceId }
-        let inner = try JSONSerialization.data(withJSONObject: innerFields)
+        // Stage 2: pad the inner plaintext to a size bucket for content kinds (same
+        // scheme + buckets as v=1). The libsignal ct inside `msg` hides the message
+        // but not its LENGTH; `_pad` lands the sealed blob on a bucket. Transparent
+        // to old receivers, which read the inner by named keys and ignore `_pad`.
+        let inner = try rcqInnerPlaintext(innerFields, kind: envelope.wireKind)
         let sealed = try ChaChaPoly.seal(
             inner,
             using: aeadKey,

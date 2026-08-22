@@ -53,14 +53,15 @@ enum CrossIslandSender {
             return
         }
         let uin = contact.uin
-        // v1.8: the OUTER type is the only thing that changes. `"call"` routes
-        // and queues byte-identically to `"message"`, and additionally wakes a
-        // recipient with no live socket (PushKit here, UnifiedPush on Android).
-        // The inner envelope is untouched, so a pre-v1.8 peer sees exactly what
-        // it saw before.
-        let envType = wakingSignals.contains(type) ? "call" : "message"
+        // Stage 2: every call signal deposits as `envelope_type "message"`; the
+        // two waking signals (offer/end) ask for the ring with `ring:true` instead
+        // of the more telling `"call"` type. A Stage 2 island rings a socket-less
+        // peer without learning the row is a call; an older island ignores the
+        // unknown `ring`, still routes and queues the row, and the call degrades
+        // to no-wake rather than breaking. The inner envelope is untouched.
+        let ring = wakingSignals.contains(type)
         Task.detached {
-            let ok = await deposit(host: host, uin: uin, payload: blob, envelopeType: envType)
+            let ok = await deposit(host: host, uin: uin, payload: blob, ring: ring)
             if !ok { print("[CrossIslandSender] call-signal deposit failed (\(type) → \(uin)@\(host))") }
         }
     }
@@ -276,28 +277,32 @@ enum CrossIslandSender {
     /// require-token flip). Best-effort — no token = the legacy path. Off for
     /// real-time call signaling (latency-sensitive).
     ///
-    /// `envelopeType` is `"message"` for everything except the §5d signals that
-    /// have to ring a closed app (see `wakingSignals`). The island routes and
-    /// queues both identically; `"call"` additionally fires the VoIP/UnifiedPush
-    /// wake when the recipient has no live socket.
+    /// `envelopeType` is `"message"` for everything sent here. Stage 2: `cls`
+    /// mirrors the island's own `_cls_for` derivation so a peer classifies the
+    /// row from the sender rather than guessing, and `ring` (the §5d wake) asks a
+    /// socket-less peer's island to ring instead of queueing a banner. Both are
+    /// additive: an older peer island ignores the fields it does not know.
     @discardableResult
     static func deposit(
         host: String, uin: Int, payload: String,
-        mintToken: Bool = false, envelopeType: String = "message"
+        mintToken: Bool = false, envelopeType: String = "message", ring: Bool = false
     ) async -> Bool {
         guard let url = URL(string: "https://\(host)/messages/sealed") else { return false }
         struct Body: Encodable {
             let to_uin: Int
             let envelope_type: String
+            let cls: Int
             let payload: String
             let deposit_token: [String: String]?
+            let ring: Bool?
         }
         let token = mintToken ? await DepositAuthStore.shared.tokenFor(host: host) : nil
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONEncoder().encode(
-            Body(to_uin: uin, envelope_type: envelopeType, payload: payload, deposit_token: token),
+            Body(to_uin: uin, envelope_type: envelopeType, cls: rcqMessageClass(envelopeType),
+                 payload: payload, deposit_token: token, ring: ring ? true : nil),
         )
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
         guard let (_, resp) = try? await IslandHTTP.data(for: req),
