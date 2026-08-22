@@ -163,7 +163,7 @@
 "linkeddevices.slots.revoke.cooldown" = "Una sesión nueva debe esperar antes de revocar otras más antiguas. Inténtalo en %d h.";
 "linkeddevices.slots.revoke.failed" = "No se pudo revocar la ranura.";
 "settings.network.proxy.unset" = "Automático";
-"settings.network.proxy.intro" = "El tráfico no va directo a la isla, sino por nuestros relays: la isla no ve tu dirección, y la red entre tú y la isla no ve que usas RCQ. Donde RCQ está bloqueado, además es el único camino.";
+"settings.network.proxy.intro" = "Si llevas la app por los relays de RCQ, el tráfico deja de ir directo a la isla: la isla no ve tu dirección y la red entre tú y la isla no ve que usas RCQ. Ir directo es más rápido, así que viene desactivado. Donde RCQ está bloqueado, los relays son la única vía.";
 "settings.network.stealth.auto_on" = "Por los relays";
 "settings.network.stealth.off" = "Directa";
 "settings.network.stealth.direct" = "Directa";

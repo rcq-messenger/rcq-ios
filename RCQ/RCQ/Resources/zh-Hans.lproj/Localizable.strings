@@ -154,7 +154,7 @@
 "linkeddevices.slots.revoke.cooldown" = "新会话暂时不能撤销更早的会话，请在 %d 小时后重试。";
 "linkeddevices.slots.revoke.failed" = "无法撤销该槽位。";
 "settings.network.proxy.unset" = "自动";
-"settings.network.proxy.intro" = "流量不直接发往岛，而是先走我们的中继：岛看不到你的地址，你和岛之间的网络也看不出你在用 RCQ。在 RCQ 被封锁的地方，这也是唯一的通路。";
+"settings.network.proxy.intro" = "让应用走 RCQ 中继后，流量就不再直接发往岛：岛看不到你的地址，你与岛之间的网络也看不出你在用 RCQ。直连更快，所以默认关闭。在 RCQ 被封锁的地方，中继是唯一的路。";
 "settings.network.stealth.auto_on" = "走中继";
 "settings.network.stealth.off" = "直连";
 "settings.network.stealth.direct" = "直连";
