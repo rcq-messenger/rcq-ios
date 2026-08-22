@@ -55,6 +55,7 @@ struct OnboardingView: View {
                 title: "onboard.relay.title".localized,
                 body: "onboard.relay.body".localized,
                 hero: .symbol("shield.lefthalf.filled"),
+                relayLink: true,
             ),
         ]
     }
@@ -220,6 +221,9 @@ struct OnboardingView: View {
         let title: String
         let body: String
         let hero: Hero
+        /// The relays slide names the feature, so it carries the "what is a
+        /// relay?" link. No other slide does.
+        var relayLink: Bool = false
     }
 
     private enum Hero {
@@ -249,6 +253,10 @@ struct OnboardingView: View {
                     .foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
+                if p.relayLink {
+                    RelayFAQLink()
+                        .padding(.top, 2)
+                }
             }
             Spacer()
         }

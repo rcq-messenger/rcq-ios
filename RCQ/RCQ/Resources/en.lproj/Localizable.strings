@@ -83,10 +83,10 @@
 "profile.reputation.give_long" = "Give reputation";
 
 "settings.network" = "Network";
-"settings.network.proxy" = "Connection & bypass";
-"settings.network.title" = "Network";
-"settings.masking" = "Masking";
-"settings.network.stealth" = "Stealth mode";
+"settings.network.proxy" = "Connection and relays";
+"settings.network.title" = "RCQ relays";
+"settings.masking" = "Connection";
+"settings.network.stealth" = "RCQ relays";
 "settings.network.diag" = "Connection diagnostics";
 "diag.title" = "Check";
 "diag.run" = "Run";
@@ -95,13 +95,13 @@
 "diag.verdict.problems" = "Some checks didn't pass. Details below.";
 "diag.verdict.checking" = "Checking your connection…";
 "diag.route.title" = "Route";
-"diag.route.relay" = "Through the bypass relay. Censorship circumvention is active.";
+"diag.route.relay" = "Through RCQ relays.";
 "diag.route.direct" = "Direct to the server.";
-"diag.transport.title" = "Bypass transport";
+"diag.transport.title" = "RCQ relays";
 "diag.transport.failed" = "Couldn't start: %@";
 "diag.server.title" = "Server reachable";
 "diag.server.ok" = "The server answered in %d ms.";
-"diag.server.fail" = "Couldn't reach the server. Check your network, or turn on the obfuscated connection if you're on a censored network.";
+"diag.server.fail" = "Couldn't reach the server. Check your network, or turn RCQ relays on.";
 "diag.account.title" = "Your account";
 "diag.account.ok" = "Signed in. Contacts: %d (%d ms).";
 "diag.account.ok_unknown" = "Signed in (%d ms).";
@@ -110,8 +110,8 @@
 "diag.ws.connected" = "Connected. New messages and presence arrive instantly.";
 "diag.ws.offline" = "Offline. Trying to reconnect…";
 "diag.ws.disconnected" = "Not connected right now.";
-"diag.relays.title" = "Bypass relays";
-"diag.relays.count" = "%d relays available if the direct route is blocked.";
+"diag.relays.title" = "Relay list";
+"diag.relays.count" = "%d relays available.";
 "diag.relays.builtin" = "Using the built-in relay list.";
 
 "serverjoin.title" = "Join this server?";
@@ -168,15 +168,15 @@
 "linkeddevices.scan_hint" = "Point at the QR code on chat.rcq.app";
 "linkeddevices.connected" = "Connected %@";
 "settings.network.proxy.unset" = "Automatic";
-"settings.network.proxy.intro" = "RCQ connects to the server directly. If that server is blocked on your network, the app automatically switches to a built-in backup route — you don't need to do anything.";
-"settings.network.stealth.auto_on" = "Auto on";
-"settings.network.stealth.off" = "Off";
+"settings.network.proxy.intro" = "Traffic goes through our relays instead of straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. Where RCQ is blocked, this is also the only way through.";
+"settings.network.stealth.auto_on" = "Through relays";
+"settings.network.stealth.off" = "Direct";
 "settings.network.stealth.direct" = "Direct";
 "settings.network.accounts" = "Accounts";
 "settings.network.custom_server" = "Server";
 "settings.network.custom_server.default" = "api.rcq.app";
 "settings.network.onion" = "Onion routing";
-"settings.network.onion.desc" = "Two relays, so none sees both you and the server. Turns on the protected connection automatically. A little slower.";
+"settings.network.onion.desc" = "Two relays, so neither sees both you and the server. Turns RCQ relays on automatically. A little slower.";
 "settings.network.localproxy" = "Proxy";
 "settings.network.localproxy.desc" = "Route the app through any local proxy: Tor, I2P, AWG/wiresocks, etc. Replaces relays and onion.";
 "settings.network.localproxy.host" = "Host";
@@ -198,16 +198,17 @@
 "settings.network.custom_server.reset.cta" = "Add public account";
 "common.save" = "Save";
 "settings.network.proxy.status.direct" = "Connection: direct";
-"settings.network.proxy.status.auto" = "Connection: built-in proxy (the server was blocked)";
+"settings.network.proxy.status.auto" = "Connection: through RCQ relays";
 "settings.network.proxy.status.manual" = "Connection: manual proxy";
 "settings.network.proxy.manual_label" = "Manual override";
 "settings.network.proxy.placeholder" = "https://example.workers.dev";
-"settings.network.proxy.footer" = "Advanced — usually leave empty. Paste your own proxy or Cloudflare Worker URL to force all chat + media traffic through it. Empty means the automatic behaviour above stays in charge.";
-"settings.network.singbox.label" = "Obfuscated transport (beta)";
-"settings.network.singbox.note" = "Routes all traffic through an encrypted, hard-to-detect tunnel built into the app — no separate VPN needed. Turn this on if the app won't connect on your network.";
+"settings.network.proxy.footer" = "Advanced, usually leave empty. Paste your own proxy or Cloudflare Worker URL to force all chat and media traffic through it. Empty means the automatic behaviour above stays in charge.";
+"settings.network.singbox.label" = "Route the app through RCQ relays";
+"settings.network.singbox.note" = "No separate VPN is needed: the relays are built into the app. The connection to a relay looks like an ordinary visit to an ordinary site, and the relay cannot read the sealed envelopes it carries.";
 "settings.network.singbox.auto_disable" = "Don't engage automatically";
-"settings.network.singbox.auto_disable.note" = "By default the app turns obfuscation on automatically if it can't reach the server directly. If you route your traffic through your own VPN/proxy, enable this so our transport doesn't stack on top of yours.";
-"settings.network.singbox.status.on" = "Obfuscated transport: on";
+"settings.network.singbox.auto_disable.note" = "By default the app turns the relays on by itself if it cannot reach the server directly. If you route your traffic through your own VPN or proxy, turn this on so our transport does not stack on top of yours.";
+"settings.network.singbox.status.on" = "Through RCQ relays";
+"relays.learn_more" = "What is a relay?";
 "settings.network.coming_soon" = "Coming soon";
 
 "settings.traffic" = "File traffic";
@@ -539,11 +540,11 @@
 "uin.tier.mid" = "Premium";
 "uin.tier.legendary" = "Legendary";
 "contact_list.menu.search" = "Search";
-"contact_list.menu.bypass_on" = "Turn on bypass";
-"contact_list.menu.bypass_off" = "Turn off bypass";
+"contact_list.menu.bypass_on" = "Turn RCQ relays on";
+"contact_list.menu.bypass_off" = "Turn RCQ relays off";
 "contact_list.menu.saved" = "Saved Messages";
-"bypass.menu.enable" = "Turn on censorship bypass";
-"bypass.menu.disable" = "Turn off censorship bypass";
+"bypass.menu.enable" = "Turn RCQ relays on";
+"bypass.menu.disable" = "Turn RCQ relays off";
 "contact_list.menu.post_story" = "Post a story";
 "contact_list.menu.news" = "News";
 
@@ -892,10 +893,10 @@
 /* ── Boot / connect ───────────────────────────────────────── */
 
 "boot.connecting" = "connecting…";
-"boot.engaging_stealth" = "stealth mode…";
-"boot.stealth_active" = "stealth active";
-"stealth.tooltip.title" = "Stealth Mode";
-"stealth.tooltip.body" = "Your connection is protected and hidden. If your provider tries to block the connection, we work around it automatically. No VPN needed, it just works.";
+"boot.engaging_stealth" = "engaging relays…";
+"boot.stealth_active" = "through relays";
+"stealth.tooltip.title" = "RCQ relays";
+"stealth.tooltip.body" = "Traffic goes through our relays instead of straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. Where RCQ is blocked, this is also the only way through.";
 
 /* ── Stranger Mode ──────────────────────────────────────────── */
 
@@ -1247,7 +1248,7 @@
 
 "onboard.welcome.kicker" = "RCQ";
 "onboard.welcome.title" = "Welcome";
-"onboard.welcome.body" = "A serious privacy messenger with real end-to-end encryption by default and built-in censorship bypass. No phone, no email, no ads.";
+"onboard.welcome.body" = "A serious privacy messenger with real end-to-end encryption by default and RCQ relays built in. No phone, no email, no ads.";
 
 "onboard.status.kicker" = "STATUS";
 "onboard.status.title" = "Pick your status";
@@ -1255,9 +1256,9 @@
 "onboard.federation.kicker" = "FEDERATION";
 "onboard.federation.title" = "No single owner";
 "onboard.federation.body" = "RCQ isn't one company's server. Every server is an independent island, and anyone can run one. Your account lives on the island you pick, and you keep your number if you move.";
-"onboard.relay.kicker" = "CIRCUMVENTION";
-"onboard.relay.title" = "Built to get through";
-"onboard.relay.body" = "When the network blocks RCQ, the app routes itself through a relay, disguised as ordinary traffic. The relay network is community-run, and onion routing chains it so no single relay sees both you and your island.";
+"onboard.relay.kicker" = "PRIVACY";
+"onboard.relay.title" = "RCQ relays";
+"onboard.relay.body" = "Traffic goes through our relays instead of straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. The relay network is community-run, and onion routing chains them so no single relay sees both you and your island. Where RCQ is blocked, this is also the only way through.";
 
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "Sealed-sender chat";
@@ -1831,12 +1832,12 @@
 "audit.cross.name" = "permitted address + our name";
 "audit.cross.addr" = "our address + permitted name";
 "audit.turn" = "call relay";
-"audit.turn.tunnel.ok" = "reachable through the bypass";
-"audit.turn.tunnel.fail" = "UNREACHABLE even through the bypass";
+"audit.turn.tunnel.ok" = "reachable through RCQ relays";
+"audit.turn.tunnel.fail" = "UNREACHABLE even through RCQ relays";
 "audit.turn.direct.ok" = "reachable directly (443 %@, 3478 %@)";
 "audit.turn.direct.fail" = "UNREACHABLE directly";
 "audit.turn.advice.title" = "what to do";
-"audit.turn.advice" = "turn the censorship bypass on: calls will then travel through it";
+"audit.turn.advice" = "turn RCQ relays on: calls will then travel through them";
 "audit.verdict.CALLS_BLOCKED" = "Messages get through and calls do not: the island answers, but the call relay is unreachable from this network.";
 "audit.verdict.ALL_FINE" = "The island answers directly. Nothing is being filtered here.";
 "audit.verdict.NO_INTERNET" = "Even the control hosts are unreachable: this device has no working internet, so nothing below is about RCQ.";
@@ -1871,7 +1872,7 @@
 "how.q3" = "What do I do when it stops working?";
 "how.a3" = "First find out whether you are being blocked: Settings → Network → Connection diagnostics, and run the full check with your VPN OFF.\n\nIt gives you one line. Send it through Report a bug — that line tells us exactly what is closed on your network, and without it we are guessing.";
 "how.q4" = "What happens when my network blocks RCQ?";
-"how.a4" = "The app notices and goes around it by itself. There is nothing to turn on and no separate VPN: it opens a tunnel to one of our relays and keeps working.\n\nTo whoever is doing the blocking, that traffic looks like an ordinary visit to an ordinary site, the same kind of encrypted connection your browser makes all day. The relay carries sealed envelopes, so it cannot read your messages either.";
+"how.a4" = "The app notices and switches to RCQ relays by itself. There is nothing to turn on and no separate VPN: it opens a connection to one of our relays and keeps working.\n\nTo whoever is doing the blocking, that traffic looks like an ordinary visit to an ordinary site, the same kind of encrypted connection your browser makes all day. The relay carries sealed envelopes, so it cannot read your messages either.";
 "how.q5" = "Can anyone tell who I am writing to?";
-"how.a5" = "Your island knows an envelope is addressed to someone, and does not know it came from you: your name is not on the outside of it.\n\nWhen the tunnel is on, the way out is split between two relays. The first one sees you and does not know which island you are reaching; the second one reaches the island and does not know who you are. Putting the two halves together takes both of them, and they belong to different people in different countries.\n\nWhat nobody can hide: the fact that you use RCQ at all is visible to whoever runs your network, unless the tunnel is on.";
+"how.a5" = "Your island knows an envelope is addressed to someone, and does not know it came from you: your name is not on the outside of it.\n\nWhen RCQ relays are on, the way out is split between two relays. The first one sees you and does not know which island you are reaching; the second one reaches the island and does not know who you are. Putting the two halves together takes both of them, and they belong to different people in different countries.\n\nWhat nobody can hide: the fact that you use RCQ at all is visible to whoever runs your network, unless RCQ relays are on.";
 "how.more" = "More questions on rcq.app/faq →";

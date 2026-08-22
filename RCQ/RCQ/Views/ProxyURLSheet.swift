@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// The RCQ relays screen: what the relays are, whether traffic is going
+/// through them right now, and the one switch that routes the app through
+/// them. Reached from Settings and named "RCQ relays" everywhere the user
+/// meets it.
 struct ProxyURLSheet: View {
     @AppStorage("rcq.proxyURL") private var proxyURL: String = ""
     @AppStorage("rcq.autoProxyActive") private var autoProxyActive: Bool = false
@@ -37,6 +41,8 @@ struct ProxyURLSheet: View {
                             .font(.callout)
                             .foregroundColor(Theme.Color.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        RelayFAQLink()
 
                         HStack(spacing: 7) {
                             Circle().fill(statusColor).frame(width: 8, height: 8)
@@ -114,5 +120,26 @@ struct ProxyURLSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+}
+
+/// "What is a relay?": the single way out of every screen that names RCQ
+/// relays. The founder's call is that the user meets the word "relay" rather
+/// than a euphemism, so the word has to come with somewhere to look it up.
+/// Opens the site's FAQ anchor in the in-app browser, like every other
+/// rcq.app link.
+struct RelayFAQLink: View {
+    static let url = URL(string: "https://rcq.app/faq#relays")!
+
+    var body: some View {
+        Button {
+            InAppBrowser.open(Self.url)
+        } label: {
+            Text("relays.learn_more".localized)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(Theme.Color.accent)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
