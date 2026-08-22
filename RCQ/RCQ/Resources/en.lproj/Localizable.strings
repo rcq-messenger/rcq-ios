@@ -548,6 +548,7 @@
 "chat.action.forward" = "Forward";
 "chat.action.select" = "Select";
 "chat.action.pin" = "Pin";
+"chat.unread_divider" = "Unread messages";
 "chat.pin.attachment" = "📎 Attachment";
 "chat.pin.error.title" = "Couldn't pin";
 "chat.pin.error.forbidden" = "You need the group info right. Ask the owner to grant it.";

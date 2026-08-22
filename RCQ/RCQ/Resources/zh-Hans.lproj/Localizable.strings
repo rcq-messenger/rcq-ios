@@ -505,6 +505,7 @@
 "chat.action.forward" = "转发";
 "chat.action.select" = "选择";
 "chat.action.pin" = "置顶";
+"chat.unread_divider" = "未读消息";
 "chat.pin.attachment" = "📎 附件";
 "chat.pin.error.title" = "无法置顶";
 "chat.pin.error.forbidden" = "需要群组信息权限，请让群主授予。";

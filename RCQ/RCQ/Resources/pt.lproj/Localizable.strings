@@ -514,6 +514,7 @@
 "chat.action.forward" = "Encaminhar";
 "chat.action.select" = "Selecionar";
 "chat.action.pin" = "Fixar";
+"chat.unread_divider" = "Mensagens não lidas";
 "chat.pin.attachment" = "📎 Anexo";
 "chat.pin.error.title" = "Não foi possível fixar";
 "chat.pin.error.forbidden" = "Você precisa da permissão de informações do grupo. Peça ao dono.";

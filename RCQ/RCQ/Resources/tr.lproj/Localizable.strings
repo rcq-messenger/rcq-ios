@@ -514,6 +514,7 @@
 "chat.action.forward" = "İlet";
 "chat.action.select" = "Seç";
 "chat.action.pin" = "Sabitle";
+"chat.unread_divider" = "Okunmamış mesajlar";
 "chat.pin.attachment" = "📎 Ek";
 "chat.pin.error.title" = "Sabitlenemedi";
 "chat.pin.error.forbidden" = "Grup bilgisi yetkisi gerekiyor. Sahibinden istemen gerek.";

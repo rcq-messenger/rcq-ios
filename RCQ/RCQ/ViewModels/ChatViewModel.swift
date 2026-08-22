@@ -337,6 +337,40 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// UserDefaults key for the moment this thread was last read to the end,
+    /// scoped by account like the reading-position key above.
+    private static func seenUpToKey(for target: ChatTarget) -> String? {
+        let scope = AccountManager.shared.activeAccountID?.uuidString ?? "none"
+        switch target {
+        case .peer(let c):  return "rcq.seenupto.\(scope).peer.\(c.uin)"
+        case .group(let g): return "rcq.seenupto.\(scope).group.\(g.id)"
+        case .randomPeer:   return nil
+        }
+    }
+
+    /// The newest message this thread had when it was last read to the end.
+    /// Nil on a thread that predates the watermark, which falls back to the
+    /// counter (see `openFirstUnreadID`).
+    private var seenUpTo: Date? {
+        guard let key = Self.seenUpToKey(for: target) else { return nil }
+        let raw = UserDefaults.standard.double(forKey: key)
+        return raw > 0 ? Date(timeIntervalSince1970: raw) : nil
+    }
+
+    /// Record that everything currently in the thread has been seen. Called
+    /// when the thread is marked seen and whenever the reader sits at the
+    /// bottom, which is the only place where "read to the end" is true.
+    func noteSeenToEnd() {
+        guard let key = Self.seenUpToKey(for: target) else { return }
+        let newest = messages.last?.sentAt ?? Date()
+        let stored = UserDefaults.standard.double(forKey: key)
+        // Never move the mark backwards: a stale row appended out of order
+        // must not un-read the thread.
+        if newest.timeIntervalSince1970 > stored {
+            UserDefaults.standard.set(newest.timeIntervalSince1970, forKey: key)
+        }
+    }
+
     private var didCaptureUnread = false
     /// Unread count snapshotted at init, BEFORE markThreadSeen() clears it —
     /// so we can open scrolled to the first unread message (every-messenger
@@ -372,8 +406,50 @@ final class ChatViewModel: ObservableObject {
     /// group with a big backlog, only the latest page loaded) — without the
     /// clamp it returned nil and the chat opened at the bottom past all the
     /// unread (founder report). Anchor to the oldest loaded message instead.
+    /// Which row the unread line is drawn ABOVE, or nil when the thread has
+    /// nothing unread. Recomputed as the window changes so a message arriving
+    /// while the chat is open does not move a line the reader is looking at:
+    /// it is pinned to the id chosen when the chat opened.
+    private(set) var unreadDividerID: UUID?
+
+    /// Fix the unread line for this visit. Called once, from the same place
+    /// that decides the opening position, so the line and the landing always
+    /// name the same row.
+    func pinUnreadDivider(_ id: UUID?) {
+        guard unreadDividerID != id else { return }
+        unreadDividerID = id
+        objectWillChange.send()
+    }
+
     var openFirstUnreadID: UUID? {
-        guard openUnreadCount > 0, !messages.isEmpty else { return nil }
+        guard !messages.isEmpty else { return nil }
+        // ⚠ THE COUNT IS NOT A POSITION, and treating it as one is what made
+        // the chat "open in a random place". `messages.count - openUnreadCount`
+        // assumed every row in the window had bumped the badge exactly once.
+        // Rows that arrive without bumping it (a call log line, a system
+        // notice, your own message carboned from another device) push the
+        // landing DOWN past real unread; rows that leave (delete for everyone,
+        // a disappearing message expiring) push it UP into history already
+        // read. And the window is in ARRIVAL order while the screen is in
+        // SENT order, so a late row that belongs a week back moved the anchor
+        // a week back with it. Each of those is silent and none of them is
+        // rare on a phone that is one of several devices.
+        //
+        // What actually answers "where did I stop reading" is a watermark: the
+        // newest message present the last time this thread was read to the end.
+        // The first message from somebody else after that IS the first unread,
+        // computed over the same order the screen renders in.
+        if let mark = seenUpTo {
+            let first = flatUnits.first { unit in
+                unit.anchorDate > mark && !unit.isEntirelyOwn && !unit.isSystemOnly
+            }
+            // Nothing newer than the mark means nothing to catch up on, which
+            // is the bottom, not the top.
+            return first?.id
+        }
+        // No watermark yet (a thread last read by a build that predates it):
+        // the old arithmetic, clamped as before.
+        guard openUnreadCount > 0 else { return nil }
         let idx = max(0, messages.count - openUnreadCount)
         return messages[idx].id
     }
@@ -501,6 +577,11 @@ final class ChatViewModel: ObservableObject {
         // the bottom sentinel BEFORE ChatView's .task snapshots the restore
         // target - an ungated clear here raced it and wiped the very spot
         // this feature exists to land on.
+        if atBottom, readPosArmed {
+            // Sitting at the bottom is the one moment "read to the end" is
+            // literally true, so it is where the unread watermark is written.
+            noteSeenToEnd()
+        }
         if atBottom, readPosArmed, let key = Self.readPosKey(for: target) {
             UserDefaults.standard.removeObject(forKey: key)
             // Read to the end: nothing to protect any more, so a later
@@ -664,6 +745,13 @@ final class ChatViewModel: ObservableObject {
             return
         }
         Task { await MessageService.shared.markRead(messages: messages, in: target) }
+    }
+
+    /// Leaving the chat: if the reader is at the bottom, everything the thread
+    /// holds has been seen. Called from ChatView's disappear so a thread read
+    /// to the end does not open at an "unread" it no longer has.
+    func noteLeavingChat() {
+        if isAtBottom { noteSeenToEnd() }
     }
 
     func toggleReaction(_ asset: String, on message: Message) {
@@ -1261,6 +1349,27 @@ final class ChatViewModel: ObservableObject {
             switch self {
             case .single(let m): return m.id
             case .album(let id, _): return id
+            }
+        }
+
+        /// Is every message of this row mine? Own messages are never unread,
+        /// and an own row must not become the first-unread anchor: a message
+        /// carboned from another device would otherwise open the chat at
+        /// something the reader wrote themselves.
+        var isEntirelyOwn: Bool {
+            switch self {
+            case .single(let m): return m.isFromMe
+            case .album(_, let items): return items.allSatisfy { $0.isFromMe }
+            }
+        }
+
+        /// A row that is only a notice the app wrote (a call log line, a TTL
+        /// change, a screenshot notice). Nobody sent it, so it cannot be the
+        /// first unread message either.
+        var isSystemOnly: Bool {
+            switch self {
+            case .single(let m): return m.kind == .systemNotice
+            case .album: return false
             }
         }
 

@@ -456,6 +456,9 @@ struct ChatView: View {
     /// True once the `.task` has re-asserted the open position. Until then a
     /// realizing bottom sentinel is not proof of anything — see its onAppear.
     @State private var settleDone: Bool = false
+    /// The opening position is chosen once, on the first appear. See the guard
+    /// at the top of the settle task.
+    @State private var didSettleOpen: Bool = false
 
     /// Lift the initial-settle mask exactly once, first caller wins.
     @MainActor private func revealChat() {
@@ -804,6 +807,10 @@ struct ChatView: View {
         .onDisappear {
             teardownScreenSecure()
             MessageBannerService.shared.clearActiveIfMatches(vm.target.thread)
+            // Leaving from the bottom means the thread was read to its end,
+            // which is what the next open needs to know to land at the bottom
+            // instead of hunting for an unread that is not there.
+            vm.noteLeavingChat()
             // Persist the reading spot NOW (13a) - a scroll that came to rest
             // inside the 300ms debounce window would otherwise be lost when
             // the VM goes away with the popped screen - and then stop
@@ -1336,6 +1343,20 @@ struct ChatView: View {
             }
             .frame(height: 24)
             .onAppear {
+                // ⚠ NOT WHILE THE CHAT IS STILL OPENING. A LazyVStack builds
+                // from content offset 0, so this probe is the first row to
+                // appear on every open, before the settle below has moved the
+                // viewport anywhere. It then loaded a page of history and
+                // scrolled to the row that had been at the top of the window,
+                // which is about a hundred messages back, landing whenever the
+                // async load happened to finish: sometimes before the settle,
+                // sometimes after it, sometimes after the chat was already
+                // visible. That is the "opens in a random place" the founder
+                // kept seeing and could find no pattern in, because the pattern
+                // was a race. History paging belongs to a reader who has
+                // actually scrolled up to the top of the window; the probe
+                // re-appears when they do.
+                guard settleDone else { return }
                 let priorTopID = vm.messages.first?.id
                 Task {
                     let added = await vm.loadOlder()
@@ -1390,9 +1411,18 @@ struct ChatView: View {
                     ForEach(vm.groupedUnits, id: \.label) { group in
                         DateDivider(label: group.label)
                         ForEach(Array(group.units.enumerated()), id: \.element.id) { idx, unit in
+                            // The line that says WHY the chat opened here. iOS
+                            // had none: the view jumped to the first unread and
+                            // left the reader to work out what they were looking
+                            // at, which reads as landing somewhere at random.
+                            // Android and every other messenger draw it.
+                            if unit.id == vm.unreadDividerID {
+                                UnreadDivider()
+                                    .id(Self.unreadDividerAnchorID)
+                            }
                             switch unit {
-                            case .album(_, let items):
-                                albumRow(items: items)
+                            case .album(let albumID, let items):
+                                albumRow(items: items, unitID: albumID)
                                     // Same badge decrement as the single-message
                                     // rows below — albums used to skip it, so a
                                     // photo-heavy backlog never shrank the count.
@@ -1709,13 +1739,35 @@ struct ChatView: View {
                 }()
                 // Open scrolled to the first unread message if there are unread
                 // (every-messenger behaviour); otherwise settle at the bottom.
+                // ⚠ ONCE per screen. This `.task` re-runs every time the view
+                // re-appears, and coming back from the peer's profile or the
+                // group header is a re-appear. The second run re-settled off a
+                // snapshot frozen at init, against a list that had grown, with
+                // the mask already lifted, so the chat visibly jumped for no
+                // reason the reader could connect to anything they did.
+                if didSettleOpen { return }
+                didSettleOpen = true
                 let unreadID = vm.openFirstUnreadID
+                // Pin the line to the same row the landing uses, before the
+                // first settle, so the row exists by the time we scroll to it.
+                vm.pinUnreadDivider(unreadID)
                 // The quiet re-entry (founder batch 21.08, item 13a): no unread,
                 // but a saved reading spot - resume there instead of the bottom,
                 // the way every messenger does. The unread divider always wins:
                 // new messages move the landing to where reading actually
                 // stopped, which the divider marks better than the saved spot.
-                let restoreID: UUID? = unreadID == nil ? vm.openRestoreUnitID : nil
+                // ⚠ No saved-spot restore any more. "Reopen where reading
+                // stopped" (item 13a) sounds right and reads as random: the
+                // spot came from which rows the LazyVStack had realized, which
+                // is not what the reader saw, and any jump that stilled the
+                // list (a reply-quote tap, a search hit, an @-mention step)
+                // wrote a spot deep in history that the next open then
+                // restored. The founder asked for the rule every modern
+                // messenger uses instead: unread means the unread line,
+                // nothing unread means the bottom. Two outcomes, both
+                // explainable from the screen. The saved spot stays on disk
+                // and unread; nothing reads it at open.
+                let restoreID: UUID? = nil
                 // Arrow on immediately when opening scrolled up (#15) — the
                 // geometry observers correct it within the first layout if
                 // the unread block actually fits on one screen.
@@ -1731,7 +1783,25 @@ struct ChatView: View {
                 // isolation — otherwise it captures the non-Sendable ScrollViewProxy
                 // and the main-actor static anchor from a nonisolated context.
                 @MainActor func settle() {
-                    if let uid = unreadID { proxy.scrollTo(uid, anchor: .top) }
+                    // Anchor on the LINE, not on the first unread row: the
+                    // reader should see "unread messages" at the top of the
+                    // screen with the new ones under it, which is the whole
+                    // point of the line. Falls back to the row itself if the
+                    // line has not been realized (it is drawn in the same
+                    // pass, so this is belt and braces).
+                    // A shade below the very top, not flush against it: the
+                    // navigation bar and the pinned banner float OVER the
+                    // scroll view, so a row parked at the top edge sits behind
+                    // them. Seen on the simulator with `.top`: the line landed
+                    // under the chrome and the reader saw only the messages
+                    // below it, which is the whole thing the line exists to
+                    // explain. `scrollTo` maps the row's anchor point onto the
+                    // viewport's, so a positive fraction lands the row that
+                    // fraction of a screen down: about 110 pt here, which
+                    // clears the bar and the banner both.
+                    if unreadID != nil {
+                        proxy.scrollTo(Self.unreadDividerAnchorID, anchor: UnitPoint(x: 0.5, y: 0.13))
+                    }
                     // anchor .top, exactly like the unread anchor above and
                     // like Android's scrollToItem: the spot is saved off the
                     // TOP row of the reader's screen, so pinning it to the
@@ -1772,7 +1842,12 @@ struct ChatView: View {
                 // Reaction-jump-on-open: someone reacted to my message while I
                 // was away — scroll to + flash it once the layout has settled,
                 // then consume the thread's reacted set so reopening is quiet.
-                if let reactedJumpID {
+                // ⚠ Only when the open landed at the bottom. This jump runs
+                // AFTER the mask has lifted and it animates, so on a chat that
+                // opened at its first unread it visibly walked the reader away
+                // from the very thing they came to read, to an old message of
+                // their own. The unread rule wins; the reaction keeps its badge.
+                if let reactedJumpID, unreadID == nil, restoreID == nil {
                     // Let the settle's final scroll land first, then override it
                     // with the reaction target (a small delay beats the residual
                     // settle motion the same way the chevron tap-burst does).
@@ -1889,6 +1964,10 @@ struct ChatView: View {
     }
 
     private static let bottomAnchorID = "__rcq_chat_bottom_anchor"
+    /// Scroll identity of the unread line. The open anchors on THIS rather
+    /// than on the first unread message, so the line itself is the first thing
+    /// on screen and everything below it is new.
+    private static let unreadDividerAnchorID = "__rcq_chat_unread_divider"
 
     // MARK: - report-with-evidence helpers
 
@@ -2516,7 +2595,17 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func albumRow(items: [Message]) -> some View {
+    /// `unitID` is the row's identity in the scroll view and it is NOT the
+    /// first message's id.
+    ///
+    /// ⚠ A collapsed album is one row for N messages, and `RenderUnit.album`
+    /// identifies it by its albumID while this row used to carry the id of the
+    /// first photo. Two identity spaces for one row, which made every
+    /// `scrollTo` that targeted an album a silent no-op: the settle then did
+    /// nothing at all (its branches are if / else if, so a miss does not fall
+    /// through to the bottom) and the chat was revealed wherever the list
+    /// happened to be, which is the top of the loaded window.
+    private func albumRow(items: [Message], unitID: UUID) -> some View {
         AlbumRowView(
             items: items,
             isInGroupChat: vm.target.thread.isGroup,
@@ -2563,7 +2652,7 @@ struct ChatView: View {
             onTapReaction: { asset in vm.toggleReaction(asset, on: items.first!) },
             onShowReactors: { reactorsSheetMessage = items.first! }
         )
-        .id(items.first!.id)
+        .id(unitID)
     }
 
     private var selectionActionBar: some View {
@@ -3103,6 +3192,24 @@ private struct BottomAnchoredScroll: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// "Unread messages" line, drawn immediately above the first message the
+/// reader has not seen. It is also the chat's opening anchor, so the reader
+/// lands with the line at the top of the screen and the new messages under it.
+private struct UnreadDivider: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+            Text("chat.unread_divider".localized)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(Theme.Color.accent)
+            Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
     }
 }
 
