@@ -476,6 +476,7 @@
 "bypass.menu.enable" = "Ligar os relays do RCQ";
 "bypass.menu.disable" = "Desligar os relays do RCQ";
 "contact_list.menu.random" = "Aleatório";
+"contact_list.menu.radio" = "Chat de rádio";
 "contact_list.menu.news" = "Novidades";
 "news.title" = "Novidades";
 "news.empty" = "Nada ainda.\nOs posts novos aparecem aqui.";

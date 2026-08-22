@@ -491,6 +491,7 @@
 "bypass.menu.enable" = "Включить релеи RCQ";
 "bypass.menu.disable" = "Выключить релеи RCQ";
 "contact_list.menu.random" = "Незнакомец";
+"contact_list.menu.radio" = "Рация";
 "contact_list.menu.news" = "Новости";
 
 "news.title" = "Новости";

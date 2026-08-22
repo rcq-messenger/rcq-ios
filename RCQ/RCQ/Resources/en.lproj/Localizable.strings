@@ -507,6 +507,7 @@
 "bypass.menu.enable" = "Turn RCQ relays on";
 "bypass.menu.disable" = "Turn RCQ relays off";
 "contact_list.menu.random" = "Stranger Mode";
+"contact_list.menu.radio" = "Radio chat";
 "contact_list.menu.news" = "News";
 
 "news.title" = "News";
