@@ -325,6 +325,11 @@ actor APIClient {
 
     func setToken(_ token: String?) { self.token = token }
     func currentToken() -> String? { token }
+    /// The masquerade token of the ACTIVE island (see `serverToken`), for a
+    /// caller that has to reach that island outside `rawRequest`: the deposit
+    /// token mint for an anonymous key lookup goes through `IslandHTTP`, which
+    /// stamps foreign hosts from `AccessTokenStore` and knows nothing of this.
+    func currentServerToken() -> String? { serverToken }
 
     /// Set the pre-shared masquerade token applied to every request as
     /// `X-RCQ-Auth`. AppState flips this on account switch so each
@@ -350,15 +355,21 @@ actor APIClient {
         return true
     }
 
+    /// `headers` rides on top of the ones set here, never instead of them: it
+    /// is for a header the call itself owns (the single-use `X-Deposit-Token`
+    /// an anonymous bundle fetch spends), not for overriding the auth pair.
     func request<T: Decodable>(
         _ method: String,
         _ path: String,
         body: Encodable? = nil,
         query: [String: String] = [:],
         authenticated: Bool = true,
-        retries: Int = 0
+        retries: Int = 0,
+        headers: [String: String] = [:]
     ) async throws -> T {
-        let data = try await rawRequest(method, path, body: body, query: query, authenticated: authenticated, retries: retries)
+        let data = try await rawRequest(
+            method, path, body: body, query: query, authenticated: authenticated, retries: retries, headers: headers
+        )
         if T.self == EmptyResponse.self {
             return EmptyResponse() as! T
         }
@@ -387,7 +398,8 @@ actor APIClient {
         body: Encodable? = nil,
         query: [String: String] = [:],
         authenticated: Bool = true,
-        retries: Int = 0
+        retries: Int = 0,
+        headers: [String: String] = [:]
     ) async throws -> Data {
         // ⚠ The single chokepoint for every REST call this app makes. A decoy
         // session inherits the real account's warm bearer token, so without
@@ -407,6 +419,9 @@ actor APIClient {
         }
         if let serverToken {
             req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
+        for (name, value) in headers {
+            req.setValue(value, forHTTPHeaderField: name)
         }
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")

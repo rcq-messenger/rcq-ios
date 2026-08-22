@@ -1637,6 +1637,12 @@ final class MessageService {
             // to listen. v=1 carries no device id and clears nothing.
             if let dev = decrypted.senderDeviceID, decrypted.senderUIN != ownUIN {
                 SilenceProbe.shared.noteInbound(uin: decrypted.senderUIN, deviceId: dev)
+                // The same device id checked against the cached device list:
+                // one the list does not know is an install the peer linked
+                // after we read it, and our next send would skip it for the
+                // rest of the list's life. Fire-and-forget into the actor.
+                let from = decrypted.senderUIN
+                Task { await SignalCryptoService.noteInboundDevice(forPeerUIN: from, deviceId: dev) }
             }
 
             // Sender-keys distribution / recovery (never rendered). SKDM binds

@@ -3,25 +3,43 @@ import LibSignalClient
 
 /// Short-lived per-peer device list. A peer adds or drops an install rarely,
 /// so re-asking on every send would be pure round-trip; a stale list is
-/// self-correcting (a dropped device 404s on send, a new one starts
-/// receiving on the next refresh).
+/// self-correcting (a dropped device 404s on send or on its bundle, a newly
+/// linked one names itself in its first message, and both drop the entry).
+///
+/// Fifteen minutes with a little jitter per entry (Stage 3 rule, shared with
+/// Android and the web). Not a day: a peer's freshly linked device would get
+/// no carbons from us for an hour, which was a real report on 2026-08-19.
+/// Not five minutes either, now that the read is anonymous but still a
+/// round-trip per live conversation. The jitter keeps every conversation
+/// that woke together from refreshing together.
 actor PeerDeviceCache {
     static let shared = PeerDeviceCache()
 
-    private struct Entry { let devices: [Int]; let at: Date }
-    private static let ttl: TimeInterval = 5 * 60
+    private struct Entry { let devices: [Int]; let expires: Date }
+    private static let ttl: TimeInterval = 15 * 60
+    private static let jitter: TimeInterval = 3 * 60
     private var entries: [Int: Entry] = [:]
 
     func cached(_ uin: Int) -> [Int]? {
-        guard let e = entries[uin], Date().timeIntervalSince(e.at) < Self.ttl else { return nil }
+        guard let e = entries[uin], Date() < e.expires else { return nil }
         return e.devices
     }
 
     func store(_ uin: Int, devices: [Int]) {
-        entries[uin] = Entry(devices: devices, at: Date())
+        let life = Self.ttl + TimeInterval.random(in: -Self.jitter...Self.jitter)
+        entries[uin] = Entry(devices: devices, expires: Date().addingTimeInterval(life))
     }
 
     func invalidate(_ uin: Int) {
+        entries.removeValue(forKey: uin)
+    }
+
+    /// An inbound v=2 envelope named a device of [uin]. If the list we hold
+    /// does not know that device, the list is stale (they linked an install
+    /// since we read it) and our next send would leave it out; drop the entry
+    /// so the next send re-reads. A device we already know changes nothing.
+    func noteInbound(_ uin: Int, deviceId: Int) {
+        guard let e = entries[uin], !e.devices.contains(deviceId) else { return }
         entries.removeValue(forKey: uin)
     }
 }
@@ -179,12 +197,19 @@ extension SignalCryptoService {
     /// Every libsignal device of [uin] a sender has to reach, primary
     /// included. `nil` (endpoint missing, unreachable, or empty) means "no
     /// usable answer" and callers fall back to the single-device wire.
+    ///
+    /// On an island that serves key lookups open (Stage 3) the list is read
+    /// with no session token: it is public material, and the token only told
+    /// the island whose keys we were reading. The list carries no label any
+    /// more and nothing here ever read one.
     static func peerDeviceIDs(forPeerUIN uin: Int) async -> [Int]? {
         if let cached = await PeerDeviceCache.shared.cached(uin) { return cached }
-        struct DeviceResp: Decodable { let device_id: Int; let label: String?; let signal_identity_key: String? }
+        struct DeviceResp: Decodable { let device_id: Int; let signal_identity_key: String? }
         struct DevicesResp: Decodable { let uin: Int; let devices: [DeviceResp] }
-        guard let resp: DevicesResp = try? await APIClient.shared.request("GET", "/keys/\(uin)/devices")
-        else { return nil }
+        let anonymous = await anonymousKeyLookup()
+        guard let resp: DevicesResp = try? await APIClient.shared.request(
+            "GET", "/keys/\(uin)/devices", authenticated: !anonymous
+        ) else { return nil }
         // The list carries each install's published identity, and recording it
         // is what lets the silence probe ask its question for FREE later — a
         // bundle read gives the same answer and costs the peer a one-time
@@ -205,6 +230,24 @@ extension SignalCryptoService {
     /// the peer runs.
     static func invalidatePeerDevices(forPeerUIN uin: Int) async {
         await PeerDeviceCache.shared.invalidate(uin)
+    }
+
+    /// An inbound v=2 envelope from [uin] named [deviceId] as its sender. A
+    /// device the cached list does not know is a device the peer linked after
+    /// we read it; see `PeerDeviceCache.noteInbound`.
+    static func noteInboundDevice(forPeerUIN uin: Int, deviceId: Int) async {
+        await PeerDeviceCache.shared.noteInbound(uin, deviceId: deviceId)
+    }
+
+    /// Whether the ACTIVE island serves the three key lookups without a
+    /// session token (Stage 3). Both flags, never one: `anon_keys` alone
+    /// would hand out the bundle minus its one-time prekey to an anonymous
+    /// caller, and `deposit_auth` alone is an island that still wants the
+    /// bearer on the lookup. An island that advertises neither gets exactly
+    /// the old authenticated wire.
+    private static func anonymousKeyLookup() async -> Bool {
+        let caps = await MainActor.run { AppState.shared.serverCapabilities }
+        return caps.anonKeys && caps.depositAuth
     }
 
     private struct SignedPreKeyResp: Decodable {
@@ -247,7 +290,7 @@ extension SignalCryptoService {
     /// per-device route at all — there the single bundle is all there is.
     private static func fetchBundle(uin: Int, deviceId: UInt32) async throws -> BundleResp {
         do {
-            return try await APIClient.shared.request("GET", "/keys/\(uin)/devices/\(deviceId)/bundle")
+            return try await fetchBundle(path: "/keys/\(uin)/devices/\(deviceId)/bundle")
         } catch {
             // 404 = the list we are fanning out over names a device the island
             // will not serve (revoked, or a registration that never finished).
@@ -257,7 +300,61 @@ extension SignalCryptoService {
                 await invalidatePeerDevices(forPeerUIN: uin)
             }
             guard deviceId == 1 else { throw error }
-            return try await APIClient.shared.request("GET", "/keys/\(uin)/bundle")
+            return try await fetchBundle(path: "/keys/\(uin)/bundle")
+        }
+    }
+
+    /// One bundle GET, anonymous where the island allows it (Stage 3).
+    ///
+    /// The bearer token is replaced by a single-use deposit token in
+    /// `X-Deposit-Token`: the island spends it to hand out the one-time
+    /// prekey and learns nothing about who asked. One token per fetch. The
+    /// island's three answers, and what each does to the token:
+    ///   200: spent, the bundle carries the prekey;
+    ///   403: refused (the epoch rotated under the cached params, or the
+    ///        island stopped issuing). The cached params and every token
+    ///        minted under them are dropped, one fresh token is tried, and
+    ///        a second refusal falls back to the session token for THIS
+    ///        fetch rather than losing the send;
+    ///   404: no such bundle or device, the token was NOT spent and goes
+    ///        back to the reserve. The caller reads the 404 as it always did.
+    /// A token that could not be minted at all (no params, PoW not solved,
+    /// issue refused) also means the session-token path: the island does
+    /// still accept it, and a send is worth more than the metadata it leaks.
+    private static func fetchBundle(path: String) async throws -> BundleResp {
+        guard await anonymousKeyLookup() else {
+            return try await APIClient.shared.request("GET", path)
+        }
+        guard let host = APIClient.shared.baseURL.host else {
+            return try await APIClient.shared.request("GET", path)
+        }
+        let masquerade = await APIClient.shared.currentServerToken()
+        var retried = false
+        while true {
+            guard let token = await DepositAuthStore.shared.tokenFor(host: host, masquerade: masquerade),
+                  let header = DepositAuthStore.headerValue(token)
+            else {
+                print("[Stage3] no deposit token for \(host); bundle read with the session token")
+                return try await APIClient.shared.request("GET", path)
+            }
+            do {
+                return try await APIClient.shared.request(
+                    "GET", path, authenticated: false, headers: ["X-Deposit-Token": header]
+                )
+            } catch let api as APIError {
+                if case .http(404, _) = api {
+                    await DepositAuthStore.shared.giveBack(token, host: host)
+                    throw api
+                }
+                guard case .http(403, _) = api else { throw api }
+                if retried {
+                    print("[Stage3] deposit token refused twice by \(host); bundle read with the session token")
+                    return try await APIClient.shared.request("GET", path)
+                }
+                print("[Stage3] deposit token refused by \(host); re-minting once")
+                retried = true
+                await DepositAuthStore.shared.forget(host: host)
+            }
         }
     }
 
