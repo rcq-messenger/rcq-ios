@@ -484,17 +484,17 @@
 "settings.blocked_users" = "Blocked users";
 "blocked_users.unblock" = "Unblock";
 "blocked_users.unblock.confirm.title" = "Unblock this user?";
-"blocked_users.unblock.confirm.body" = "%@ will be able to message you, see your stories, and interact with you across the app again.";
+"blocked_users.unblock.confirm.body" = "%@ will be able to message you and interact with you across the app again.";
 "blocked_users.unblock.confirm.cta" = "Unblock";
 "blocked_users.empty.title" = "No blocked users";
 "blocked_users.empty.body" = "When you block someone from a chat, profile, or audio room, they'll appear here so you can manage the list.";
-"blocked_users.footer" = "Blocked users can't message you, see your stories, or interact with you across the app. They're not notified that you've blocked them.";
+"blocked_users.footer" = "Blocked users can't message you or interact with you across the app. They're not notified that you've blocked them.";
 
 "safety.block" = "Block user";
 "safety.unblock" = "Unblock user";
 "safety.report" = "Report";
 "safety.block.confirm.title" = "Block this user?";
-"safety.block.confirm.body" = "%@ won't be able to message you, see your stories, or interact with you across the app. You can unblock them later from Settings.";
+"safety.block.confirm.body" = "%@ won't be able to message you or interact with you across the app. You can unblock them later from Settings.";
 "safety.unblock.confirm.title" = "Unblock this user?";
 "safety.unblock.confirm.body" = "%@ will be able to message you and interact with you again.";
 "uin.tier.common" = "Common";
@@ -865,7 +865,7 @@
 "stranger.gate.age_required.title" = "Set your age first";
 "stranger.gate.age_required.body" = "Stranger Mode is for adults only. Please set your age in your profile to use this feature.";
 "stranger.gate.under_18.title" = "Stranger Mode is 18+";
-"stranger.gate.under_18.body" = "Stranger Mode is restricted to users 18 and older. Try Audio Rooms or Hood instead — they're open to everyone.";
+"stranger.gate.under_18.body" = "Stranger Mode is restricted to users 18 and older. Audio Rooms are open to everyone.";
 "stranger.gate.cta.set_age" = "Open profile";
 "random.body" = "Talk to a stranger anonymously for 5 minutes.\nNeither of you sees the other's UIN.";
 "random.queueing.title" = "Looking for a stranger…";
@@ -1209,7 +1209,7 @@
 
 "onboard.nearby.kicker" = "NEARBY";
 "onboard.nearby.title" = "Find people in your area";
-"onboard.nearby.body" = "Drop into Hood Chat with whoever's around right now — anonymously, no UIN exposed unless you choose. Flip on Nearby and start chatting locally.";
+"onboard.nearby.body" = "See who is around right now, anonymously: no UIN exposed unless you choose. Flip on Nearby and start there.";
 
 "onboard.calls.kicker" = "VOICE & VIDEO";
 "onboard.calls.title" = "Calls + groups";

@@ -454,16 +454,16 @@
 "settings.blocked_users" = "Engellenen kullanıcılar";
 "blocked_users.unblock" = "Engeli kaldır";
 "blocked_users.unblock.confirm.title" = "Bu kullanıcının engeli kaldırılsın mı?";
-"blocked_users.unblock.confirm.body" = "%@ sana yine mesaj atabilir, hikayelerini görebilir ve uygulamanın her yerinde seninle etkileşebilir.";
+"blocked_users.unblock.confirm.body" = "%@ sana yine mesaj atabilir ve uygulamanın her yerinde seninle etkileşebilir.";
 "blocked_users.unblock.confirm.cta" = "Engeli kaldır";
 "blocked_users.empty.title" = "Engellenen kullanıcı yok";
 "blocked_users.empty.body" = "Bir sohbetten, profilden ya da sesli odadan birini engellediğinde listeyi buradan yönetebilmen için burada görünür.";
-"blocked_users.footer" = "Engellenen kullanıcılar sana mesaj atamaz, hikayelerini göremez ve uygulamanın hiçbir yerinde seninle etkileşemez. Onları engellediğin kendilerine söylenmez.";
+"blocked_users.footer" = "Engellenen kullanıcılar sana mesaj atamaz ve uygulamanın hiçbir yerinde seninle etkileşemez. Onları engellediğin kendilerine söylenmez.";
 "safety.block" = "Kullanıcıyı engelle";
 "safety.unblock" = "Engeli kaldır";
 "safety.report" = "Bildir";
 "safety.block.confirm.title" = "Bu kullanıcı engellensin mi?";
-"safety.block.confirm.body" = "%@ sana mesaj atamaz, hikayelerini göremez ve uygulamanın hiçbir yerinde seninle etkileşemez. Engeli sonra Ayarlar'dan kaldırabilirsin.";
+"safety.block.confirm.body" = "%@ sana mesaj atamaz ve uygulamanın hiçbir yerinde seninle etkileşemez. Engeli sonra Ayarlar'dan kaldırabilirsin.";
 "safety.unblock.confirm.title" = "Bu kullanıcının engeli kaldırılsın mı?";
 "safety.unblock.confirm.body" = "%@ sana yine mesaj atabilir ve seninle etkileşebilir.";
 "uin.tier.common" = "Sıradan";
@@ -799,7 +799,7 @@
 "stranger.gate.age_required.title" = "Önce yaşını gir";
 "stranger.gate.age_required.body" = "Rastgele Sohbet yalnızca yetişkinler için. Bunu kullanmak için profilinde yaşını gir.";
 "stranger.gate.under_18.title" = "Rastgele Sohbet 18+";
-"stranger.gate.under_18.body" = "Rastgele Sohbet yalnızca 18 yaşını doldurmuş kullanıcılar için. Bunun yerine Sesli odaları ya da Mahalle'yi dene, ikisi de herkese açık.";
+"stranger.gate.under_18.body" = "Rastgele Sohbet yalnızca 18 yaşını doldurmuş kullanıcılar için. Sesli odalar herkese açık.";
 "stranger.gate.cta.set_age" = "Profili aç";
 "random.body" = "Bir yabancıyla 5 dakika anonim konuş.\nİkiniz de birbirinizin UIN'ini görmezsiniz.";
 "random.queueing.title" = "Yabancı aranıyor…";
@@ -1106,7 +1106,7 @@
 "onboard.chat.body" = "Her mesaj uçtan uca şifreli. Sunucu kimin kime yazdığını görmez; gönderenin kimliği başlıkta değil, zarfın içinde mühürlü.";
 "onboard.nearby.kicker" = "YAKINDAKİLER";
 "onboard.nearby.title" = "Bölgendeki insanları bul";
-"onboard.nearby.body" = "Şu anda etraftaki herkesle Mahalle Sohbeti'ne dal: anonim, sen istemedikçe UIN açığa çıkmaz. Yakındakiler'i aç ve yerel sohbete başla.";
+"onboard.nearby.body" = "Şu anda etrafta kimlerin olduğunu gör: anonim, sen istemedikçe UIN açığa çıkmaz. Yakındakiler'i aç ve oradan başla.";
 "onboard.calls.kicker" = "SES VE GÖRÜNTÜ";
 "onboard.calls.title" = "Aramalar + gruplar";
 "onboard.calls.body" = "WebRTC ile sesli ve görüntülü aramalar, eklediğin herkesle grup sohbetleri. Gelen aramalarda push bildirimi seni uyandırır; mühürlü gönderen yönlendirmeyi bizden gizler.";

@@ -454,16 +454,16 @@
 "settings.blocked_users" = "Usuários bloqueados";
 "blocked_users.unblock" = "Desbloquear";
 "blocked_users.unblock.confirm.title" = "Desbloquear este usuário?";
-"blocked_users.unblock.confirm.body" = "%@ vai poder te mandar mensagem, ver seus stories e interagir com você pelo app de novo.";
+"blocked_users.unblock.confirm.body" = "%@ vai poder te mandar mensagem e interagir com você pelo app de novo.";
 "blocked_users.unblock.confirm.cta" = "Desbloquear";
 "blocked_users.empty.title" = "Nenhum usuário bloqueado";
 "blocked_users.empty.body" = "Quando você bloquear alguém por uma conversa, um perfil ou uma sala de áudio, a pessoa aparece aqui para você gerenciar a lista.";
-"blocked_users.footer" = "Usuários bloqueados não podem te mandar mensagem, ver seus stories nem interagir com você pelo app. Eles não são avisados de que você bloqueou.";
+"blocked_users.footer" = "Usuários bloqueados não podem te mandar mensagem nem interagir com você pelo app. Eles não são avisados de que você bloqueou.";
 "safety.block" = "Bloquear usuário";
 "safety.unblock" = "Desbloquear usuário";
 "safety.report" = "Denunciar";
 "safety.block.confirm.title" = "Bloquear este usuário?";
-"safety.block.confirm.body" = "%@ não vai poder te mandar mensagem, ver seus stories nem interagir com você pelo app. Você pode desbloquear depois nas Configurações.";
+"safety.block.confirm.body" = "%@ não vai poder te mandar mensagem nem interagir com você pelo app. Você pode desbloquear depois nas Configurações.";
 "safety.unblock.confirm.title" = "Desbloquear este usuário?";
 "safety.unblock.confirm.body" = "%@ vai poder te mandar mensagem e interagir com você de novo.";
 "uin.tier.common" = "Comum";
@@ -799,7 +799,7 @@
 "stranger.gate.age_required.title" = "Defina sua idade primeiro";
 "stranger.gate.age_required.body" = "O bate-papo aleatório é só para maiores de idade. Defina sua idade no perfil para usar este recurso.";
 "stranger.gate.under_18.title" = "O bate-papo aleatório é 18+";
-"stranger.gate.under_18.body" = "O bate-papo aleatório é restrito a usuários de 18 anos ou mais. Experimente as salas de áudio ou o Bairro: eles são abertos a todos.";
+"stranger.gate.under_18.body" = "O bate-papo aleatório é restrito a usuários de 18 anos ou mais. As salas de áudio são abertas a todos.";
 "stranger.gate.cta.set_age" = "Abrir perfil";
 "random.body" = "Converse com um desconhecido de forma anônima por 5 minutos.\nNenhum dos dois vê o UIN do outro.";
 "random.queueing.title" = "Procurando alguém…";
@@ -1106,7 +1106,7 @@
 "onboard.chat.body" = "Criptografia de ponta a ponta em toda mensagem. O servidor não vê quem escreve para quem: a identidade de quem envia fica lacrada dentro do envelope, não no cabeçalho.";
 "onboard.nearby.kicker" = "POR PERTO";
 "onboard.nearby.title" = "Encontre gente da sua área";
-"onboard.nearby.body" = "Entre no Chat do Bairro com quem estiver por aí agora, de forma anônima, sem expor o UIN a menos que você queira. Ligue o Por perto e comece a conversar ali mesmo.";
+"onboard.nearby.body" = "Veja quem está por perto agora, de forma anônima, sem expor o UIN a menos que você queira. Ligue o Por perto e comece por aí.";
 "onboard.calls.kicker" = "VOZ E VÍDEO";
 "onboard.calls.title" = "Chamadas + grupos";
 "onboard.calls.body" = "Chamadas de voz e vídeo por WebRTC, conversas em grupo com todo mundo que você adicionar. As notificações push te acordam para as chamadas que chegam; o sealed sender esconde o roteamento da gente.";

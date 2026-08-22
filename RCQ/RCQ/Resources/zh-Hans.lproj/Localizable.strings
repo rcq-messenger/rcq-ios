@@ -445,16 +445,16 @@
 "settings.blocked_users" = "已拉黑用户";
 "blocked_users.unblock" = "解除拉黑";
 "blocked_users.unblock.confirm.title" = "解除拉黑该用户？";
-"blocked_users.unblock.confirm.body" = "%@ 将可以再次给你发消息、查看你的动态，并在应用内与你互动。";
+"blocked_users.unblock.confirm.body" = "%@ 将可以再次给你发消息，并在应用内与你互动。";
 "blocked_users.unblock.confirm.cta" = "解除拉黑";
 "blocked_users.empty.title" = "没有拉黑任何人";
 "blocked_users.empty.body" = "当你在聊天、个人资料或语音房间中拉黑某人后，对方会出现在这里，方便你管理名单。";
-"blocked_users.footer" = "被拉黑的用户不能给你发消息、查看你的动态，也不能在应用内与你互动。他们不会收到你已拉黑他们的通知。";
+"blocked_users.footer" = "被拉黑的用户不能给你发消息，也不能在应用内与你互动。他们不会收到你已拉黑他们的通知。";
 "safety.block" = "拉黑用户";
 "safety.unblock" = "解除拉黑";
 "safety.report" = "举报";
 "safety.block.confirm.title" = "拉黑该用户？";
-"safety.block.confirm.body" = "%@ 将无法给你发消息、查看你的动态，也无法在应用内与你互动。之后可以在设置中解除拉黑。";
+"safety.block.confirm.body" = "%@ 将无法给你发消息，也无法在应用内与你互动。之后可以在设置中解除拉黑。";
 "safety.unblock.confirm.title" = "解除拉黑该用户？";
 "safety.unblock.confirm.body" = "%@ 将可以再次给你发消息并与你互动。";
 "uin.tier.common" = "普通";
@@ -790,7 +790,7 @@
 "stranger.gate.age_required.title" = "请先设置年龄";
 "stranger.gate.age_required.body" = "随机聊天仅限成年人使用。请先在个人资料里设置年龄，才能使用这个功能。";
 "stranger.gate.under_18.title" = "随机聊天仅限 18 岁以上";
-"stranger.gate.under_18.body" = "随机聊天仅限 18 岁及以上的用户。可以试试语音房间或 Hood，它们对所有人开放。";
+"stranger.gate.under_18.body" = "随机聊天仅限 18 岁及以上的用户。语音房间对所有人开放。";
 "stranger.gate.cta.set_age" = "打开个人资料";
 "random.body" = "与陌生人匿名聊天 5 分钟。\n双方都看不到对方的 UIN。";
 "random.queueing.title" = "正在寻找陌生人…";
@@ -1097,7 +1097,7 @@
 "onboard.chat.body" = "每一条消息都端到端加密。服务器看不到谁在给谁写：发送者的身份密封在信封内部，而不在信头上。";
 "onboard.nearby.kicker" = "附近";
 "onboard.nearby.title" = "找到你身边的人";
-"onboard.nearby.body" = "和此刻就在周围的人一起进街区聊天：全程匿名，除非你自己愿意，否则不会暴露 UIN。打开附近，就能在本地聊起来。";
+"onboard.nearby.body" = "看看此刻就在附近的人：全程匿名，除非你自己愿意，否则不会暴露 UIN。打开附近，从那里开始。";
 "onboard.calls.kicker" = "语音和视频";
 "onboard.calls.title" = "通话和群组";
 "onboard.calls.body" = "基于 WebRTC 的语音和视频通话，和你添加的所有人建群聊天。来电由推送通知唤醒；密封发送者让我们看不到路由。";
