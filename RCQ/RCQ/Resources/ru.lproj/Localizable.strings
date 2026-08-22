@@ -532,7 +532,7 @@
 "chat.action.forward" = "Переслать";
 "chat.action.select" = "Выбрать";
 "chat.action.pin" = "Закрепить";
-"chat.unread_divider" = "Непрочитанные";
+"chat.unread_divider" = "Непрочитанные сообщения";
 "chat.pin.attachment" = "📎 Вложение";
 "chat.pin.error.title" = "Не удалось закрепить";
 "chat.pin.error.forbidden" = "Нужно право менять информацию группы. Попросите владельца выдать его.";
