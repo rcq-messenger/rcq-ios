@@ -1798,6 +1798,18 @@ struct ServerCapabilities: Decodable, Equatable {
     // path fall back to the legacy `"call"` deposit, which such an island
     // still rings on. Read by `CrossIslandSender`, never by the UI.
     var envelopeClass: Bool
+    // Stage 3 of the metadata plan: the three key lookups (`/keys/{uin}/devices`
+    // and the two bundles) accept no session token, so a fetch no longer tells
+    // the island "A is about to talk to B" under A's identity. `anonKeys` says
+    // the island serves them open; `depositAuth` says it also ISSUES the
+    // anonymous deposit tokens a bundle fetch spends to take a one-time prekey.
+    // Only BOTH together switch the lookups to the anonymous wire: one without
+    // the other would be a half-anonymous request that gets the bundle minus
+    // its prekey. Absent on an old island means false, and false means the
+    // old authenticated path, exactly as before. Read by `SignalSession`,
+    // never by the UI.
+    var anonKeys: Bool
+    var depositAuth: Bool
 
     init(
         uinShop: Bool,
@@ -1806,7 +1818,9 @@ struct ServerCapabilities: Decodable, Equatable {
         randomChat: Bool = true,
         reports: Bool = true,
         maxAccountsPerDevice: Int = 5,
-        envelopeClass: Bool = false
+        envelopeClass: Bool = false,
+        anonKeys: Bool = false,
+        depositAuth: Bool = false
     ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
@@ -1815,6 +1829,8 @@ struct ServerCapabilities: Decodable, Equatable {
         self.reports = reports
         self.maxAccountsPerDevice = maxAccountsPerDevice
         self.envelopeClass = envelopeClass
+        self.anonKeys = anonKeys
+        self.depositAuth = depositAuth
     }
 
     static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
@@ -1827,6 +1843,8 @@ struct ServerCapabilities: Decodable, Equatable {
         case reports
         case maxAccountsPerDevice = "max_accounts_per_device"
         case envelopeClass = "envelope_class"
+        case anonKeys = "anon_keys"
+        case depositAuth = "deposit_auth"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -1844,6 +1862,9 @@ struct ServerCapabilities: Decodable, Equatable {
         maxAccountsPerDevice = try c.decodeIfPresent(Int.self, forKey: .maxAccountsPerDevice) ?? 5
         // Absent means "predates ring": see the field comment.
         envelopeClass = try c.decodeIfPresent(Bool.self, forKey: .envelopeClass) ?? false
+        // Absent means "predates open key lookups": see the field comment.
+        anonKeys = try c.decodeIfPresent(Bool.self, forKey: .anonKeys) ?? false
+        depositAuth = try c.decodeIfPresent(Bool.self, forKey: .depositAuth) ?? false
     }
 }
 

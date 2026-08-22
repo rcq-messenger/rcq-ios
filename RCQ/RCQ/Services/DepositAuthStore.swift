@@ -7,6 +7,11 @@ import _CryptoExtras
 /// deposits, so the recipient island can rate-limit us WITHOUT learning who we are.
 /// See `RCQ/docs/deposit-auth-design.md` + `rcq-server-ref app/routers/deposit_auth.py`.
 ///
+/// Stage 3 of the metadata plan spends the same token on the OWN island: a bundle
+/// fetch that carries one in `X-Deposit-Token` (see `headerValue`) takes a one-time
+/// prekey without a session token, so the island never learns whose keys this
+/// account was reading. Same store, same mint; `host` is simply our own island then.
+///
 /// Per island host: GET /deposit-auth/params (epoch pubkey SPKI + PoW difficulty);
 /// blind a random message, solve the SHA-256 hashcash bound to the blinded value,
 /// POST /deposit-auth/issue, unblind -> a token. Minted a small BATCH at a time
@@ -31,24 +36,65 @@ actor DepositAuthStore {
 
     /// A `deposit_token` `{epoch_id, prepared, sig}` for `host`, or nil when the
     /// island doesn't offer deposit-auth or minting failed.
-    func tokenFor(host: String) async -> [String: String]? {
+    ///
+    /// `masquerade` is the closed-island `X-RCQ-Auth` token when `host` is the
+    /// OWN island: that one lives on `APIClient`, not in `AccessTokenStore`, so
+    /// the mint would otherwise knock on a closed island's door unstamped and
+    /// read the decoy as "no deposit-auth here".
+    func tokenFor(host: String, masquerade: String? = nil) async -> [String: String]? {
         if disabled.contains(host) { return nil }
         if var dq = reserve[host], !dq.isEmpty {
             let t = dq.removeFirst()
             reserve[host] = dq
             return t
         }
-        let minted = await mintBatch(host: host)
+        let minted = await mintBatch(host: host, masquerade: masquerade)
         guard let minted, !minted.isEmpty else { return nil }
         if minted.count > 1 { reserve[host] = Array(minted.dropFirst()) }
         return minted.first
     }
 
-    private func ensureParams(host: String) async -> Params? {
+    /// A token the island refused (403 on spend): the epoch has rotated, or the
+    /// island stopped issuing. Everything minted under the cached params is
+    /// dead with them, so the reserve goes too; the next `tokenFor` re-fetches
+    /// `/params` and mints afresh.
+    func forget(host: String) {
+        params[host] = nil
+        reserve[host] = nil
+    }
+
+    /// A token the island did NOT spend (a 404: no such bundle, no such device)
+    /// goes back to the front of the reserve rather than costing a fresh solve.
+    func giveBack(_ token: [String: String], host: String) {
+        reserve[host, default: []].insert(token, at: 0)
+    }
+
+    /// The token as the `X-Deposit-Token` header carries it: base64url without
+    /// padding of the same `{epoch_id, prepared, sig}` JSON a sealed deposit
+    /// sends in its body. Nil only if the dictionary cannot be serialised,
+    /// which the mint above never produces.
+    static func headerValue(_ token: [String: String]) -> String? {
+        guard let json = try? JSONSerialization.data(withJSONObject: token) else { return nil }
+        return json.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// Closed-island gate: the own island's token first (the caller holds it),
+    /// else whatever `AccessTokenStore` knows about a foreign host.
+    private static func stamp(_ req: inout URLRequest, masquerade: String?) {
+        if let masquerade, !masquerade.isEmpty {
+            req.setValue(masquerade, forHTTPHeaderField: "X-RCQ-Auth")
+        }
+        AccessTokenStore.stamp(&req)
+    }
+
+    private func ensureParams(host: String, masquerade: String?) async -> Params? {
         if let p = params[host] { return p }
         guard let url = URL(string: "https://\(host)/deposit-auth/params") else { return nil }
         var req = URLRequest(url: url)
-        AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
+        Self.stamp(&req, masquerade: masquerade)
         guard let (data, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse else { return nil }
         if http.statusCode == 404 { disabled.insert(host); return nil }   // island doesn't offer it
@@ -63,8 +109,8 @@ actor DepositAuthStore {
         return p
     }
 
-    private func mintBatch(host: String) async -> [[String: String]]? {
-        guard let p = await ensureParams(host: host) else { return nil }
+    private func mintBatch(host: String, masquerade: String?) async -> [[String: String]]? {
+        guard let p = await ensureParams(host: host, masquerade: masquerade) else { return nil }
         guard let pub = try? _RSA.BlindSigning.PublicKey(
             derRepresentation: p.der, parameters: .RSABSSA_SHA384_PSS_Deterministic,
         ) else { return nil }
@@ -77,7 +123,9 @@ actor DepositAuthStore {
             guard let blinding = try? pub.blind(prepared) else { break }
             let blindedB64 = blinding.blindedMessage.base64EncodedString()
             let nonce = DepositPoW.solve(challenge: "\(p.epochId):\(blindedB64)", difficultyBits: p.difficulty)
-            guard let blindSig = await issue(host: host, epochId: p.epochId, blindedB64: blindedB64, powNonce: nonce) else { break }
+            guard let blindSig = await issue(
+                host: host, masquerade: masquerade, epochId: p.epochId, blindedB64: blindedB64, powNonce: nonce
+            ) else { break }
             guard let sig = try? pub.finalize(
                 _RSA.BlindSigning.BlindSignature(rawRepresentation: blindSig),
                 for: prepared, blindingInverse: blinding.inverse,
@@ -93,7 +141,9 @@ actor DepositAuthStore {
 
     /// POST /deposit-auth/issue -> the blind signature bytes, or nil on failure.
     /// A 409 (epoch rotated) drops the cached params so the next mint re-fetches.
-    private func issue(host: String, epochId: String, blindedB64: String, powNonce: String) async -> Data? {
+    private func issue(
+        host: String, masquerade: String?, epochId: String, blindedB64: String, powNonce: String
+    ) async -> Data? {
         guard let url = URL(string: "https://\(host)/deposit-auth/issue") else { return nil }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -101,7 +151,7 @@ actor DepositAuthStore {
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "epoch_id": epochId, "blinded": blindedB64, "pow_nonce": powNonce,
         ])
-        AccessTokenStore.stamp(&req)
+        Self.stamp(&req, masquerade: masquerade)
         guard let (data, resp) = try? await IslandHTTP.data(for: req),
               let http = resp as? HTTPURLResponse else { return nil }
         if http.statusCode == 409 { params[host] = nil; return nil }
