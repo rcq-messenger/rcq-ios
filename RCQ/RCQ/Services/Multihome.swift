@@ -413,6 +413,11 @@ enum Multihome {
             let envelope_type: String
             let payload: String
             let group_id: Int?
+            // Stage 2: served alongside the legacy fields; optional so an older
+            // backup island still decodes, and read only for future ordering. A
+            // backup mailbox drains on the server's fetch cursor, not on `seq`.
+            let cls: Int?
+            let seq: Int?
         }
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
             // ⚠ A phantom front home is OUR OWN island: draining it hits the

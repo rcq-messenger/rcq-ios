@@ -268,8 +268,10 @@ enum CrossIslandGroups {
     /// the open unauthenticated path (same as 1:1), so no jwt needed.
     struct GroupEntry: Encodable { let to_uin: Int; let payload: String }
     static func groupSealedDeposit(host: String, remoteId: Int, envelopeType: String, payloads: [GroupEntry]) async throws {
-        struct Body: Encodable { let group_id: Int; let envelope_type: String; let payloads: [GroupEntry] }
-        let body = try JSONEncoder().encode(Body(group_id: remoteId, envelope_type: envelopeType, payloads: payloads))
+        // Stage 2: `cls` mirrors the island's `_cls_for`; additive, and an older
+        // host island simply ignores the field it does not know.
+        struct Body: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payloads: [GroupEntry] }
+        let body = try JSONEncoder().encode(Body(group_id: remoteId, envelope_type: envelopeType, cls: rcqMessageClass(envelopeType), payloads: payloads))
         guard let url = URL(string: "https://\(host)/messages/group-sealed") else { throw CIGError.http(0) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -288,7 +290,10 @@ enum CrossIslandGroups {
     /// multihome backup drain.
     @MainActor
     static func drainVisitedQueues() async {
-        struct Row: Decodable { let envelope_type: String; let payload: String; let group_id: Int? }
+        // Stage 2: `cls`/`seq` served alongside the legacy fields; optional so an
+        // older host island still decodes, and read only for future ordering. The
+        // guest mailbox is drained on the server's own fetch cursor, not on `seq`.
+        struct Row: Decodable { let envelope_type: String; let payload: String; let group_id: Int?; let cls: Int?; let seq: Int? }
         for v in VisitedIslandsStore.shared.list() {
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: v.jwt)
             if rows == nil, let fresh = await refreshGuest(host: v.host) {

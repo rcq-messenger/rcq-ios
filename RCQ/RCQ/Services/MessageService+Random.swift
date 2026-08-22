@@ -27,13 +27,13 @@ extension MessageService {
         let bundle = PeerBundle(uin: peer.uin, identityKey: peer.identityKey, signingKey: peer.signingKey)
         let blob = try crypto.encrypt(envelope: .text(id: local.id, text: text, replyTo: replyTo), for: bundle)
 
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
 
         do {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/messages/sealed",
-                body: Body(to_uin: peer.uin, envelope_type: "message", payload: blob),
+                body: Body(to_uin: peer.uin, envelope_type: "message", cls: rcqMessageClass("message"), payload: blob),
                 authenticated: false
             )
             let next: DeliveryState = out.delivered ? .delivered : (out.queued ? .sent : .failed)
@@ -210,12 +210,12 @@ extension MessageService {
     func sendRandomEnvelope(_ envelope: Envelope, to peer: RandomPeer, localID: UUID?) async throws {
         let bundle = PeerBundle(uin: peer.uin, identityKey: peer.identityKey, signingKey: peer.signingKey)
         let blob = try crypto.encrypt(envelope: envelope, for: bundle)
-        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let payload: String }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
         do {
             let out: Out = try await APIClient.shared.request(
                 "POST", "/messages/sealed",
-                body: Body(to_uin: peer.uin, envelope_type: "message", payload: blob),
+                body: Body(to_uin: peer.uin, envelope_type: "message", cls: rcqMessageClass("message"), payload: blob),
                 authenticated: false
             )
             if let localID {
