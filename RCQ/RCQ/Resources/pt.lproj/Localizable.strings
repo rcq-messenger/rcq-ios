@@ -165,7 +165,7 @@
 "settings.network.proxy.unset" = "Automático";
 "settings.network.proxy.intro" = "O tráfego não vai direto para a ilha, e sim pelos nossos relays: a ilha não vê o seu endereço, e a rede entre você e a ilha não vê que você usa o RCQ. Onde o RCQ está bloqueado, isto é também o único caminho.";
 "settings.network.stealth.auto_on" = "Pelos relays";
-"settings.network.stealth.off" = "Direta";
+"settings.network.stealth.off" = "Direto";
 "settings.network.stealth.direct" = "Direta";
 "settings.network.accounts" = "Contas";
 "settings.network.custom_server" = "Servidor";

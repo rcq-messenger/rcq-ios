@@ -759,6 +759,16 @@ struct ContactListView: View {
                         systemImage: "shield.lefthalf.filled"
                     )
                 }
+                // This menu is the one place that names the relays while they
+                // are OFF: the shield badge (and its explainer alert) only
+                // exists once they are carrying traffic, so without this the
+                // word "relay" appears here with nowhere to look it up. Android
+                // carries the same item in its home menu for the same reason.
+                Button {
+                    InAppBrowser.open(RelayFAQLink.url)
+                } label: {
+                    Label("relays.learn_more".localized, systemImage: "questionmark.circle")
+                }
                 Button {
                     showDiagnostics = true
                 } label: {
