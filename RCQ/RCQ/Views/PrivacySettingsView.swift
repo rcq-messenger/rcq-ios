@@ -104,9 +104,9 @@ struct PrivacySettingsView: View {
 
     private var pinConfigured: Bool { PanicPINService.shared.isConfigured }
 
-    /// Stealth-mode status label for the trailing slot on the
-    /// PrivacySettingsView row. Reflects the actual connection state,
-    /// not the legacy "always show Авто" placeholder.
+    /// RCQ relays status label for the trailing slot on the
+    /// PrivacySettingsView row: "Through relays" or "Direct". Reflects the
+    /// actual connection state, not the legacy "always show Авто" placeholder.
     private var stealthStatusLabel: String {
         let trimmed = proxyURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
@@ -528,8 +528,8 @@ struct PrivacySettingsView: View {
                 }
             }
             // Onion routing (M3, experimental). One switch for the user: turning
-            // it on ALSO engages the obfuscated connection, because onion routes
-            // THROUGH the obfuscated tunnel and can't work without it.
+            // it on ALSO engages RCQ relays, because onion routes THROUGH them
+            // and can't work without them.
             Toggle(isOn: $onionOptIn) {
                 HStack(spacing: 12) {
                     Image(systemName: "point.3.connected.trianglepath.dotted")
@@ -546,8 +546,8 @@ struct PrivacySettingsView: View {
             }
             .onChange(of: onionOptIn) { on in
                 SingBoxTransport.setOnionOptIn(on)
-                // Onion implies the protected connection: engage it so this is
-                // the only switch the user touches.
+                // Onion implies RCQ relays: engage them so this is the only
+                // switch the user touches.
                 if on, !SingBoxTransport.isEnabled {
                     Task { await SingBoxTransport.shared.setEnabled(true) }
                 }
@@ -681,8 +681,11 @@ struct PrivacySettingsView: View {
         } header: {
             Text("settings.masking".localized)
         } footer: {
-            Text("settings.network.proxy.intro".localized)
-                .font(.caption2)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("settings.network.proxy.intro".localized)
+                    .font(.caption2)
+                RelayFAQLink()
+            }
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }

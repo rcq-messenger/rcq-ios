@@ -369,6 +369,12 @@ struct ContactListView: View {
                 "stealth.tooltip.title".localized,
                 isPresented: $showStealthInfo,
             ) {
+                // The badge names the feature, so it also has to answer "what
+                // is a relay?" with the same FAQ anchor as every other surface.
+                Button("relays.learn_more".localized) {
+                    showStealthInfo = false
+                    InAppBrowser.open(RelayFAQLink.url)
+                }
                 Button("common.done".localized, role: .cancel) { showStealthInfo = false }
             } message: {
                 Text("stealth.tooltip.body".localized)
@@ -740,8 +746,8 @@ struct ContactListView: View {
                     Label("contact_list.menu.saved".localized, systemImage: "bookmark.fill")
                 }
             }
-            // Censorship bypass engages AUTOMATICALLY when a direct connection
-            // is blocked, but auto-detect can be wrong ("connected" yet nothing
+            // RCQ relays engage AUTOMATICALLY when a direct connection is
+            // blocked, but auto-detect can be wrong ("connected" yet nothing
             // flows), so the manual on/off lives here too (Android home-menu
             // parity). Diagnostics stays here for quick access.
             Section {
@@ -1984,7 +1990,7 @@ private struct AudioRoomRow: View {
     }
 }
 
-/// Small "stealth active" badge in the contact list header. Slow
+/// Small "through relays" badge in the contact list header. Slow
 /// breathing pulse so the active state catches the eye without
 /// distracting. Tap surfaces the explainer alert.
 private struct StealthHeaderBadge: View {

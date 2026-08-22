@@ -33,6 +33,9 @@ struct ConnectionDiagnosticsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         header
                         ForEach(lines) { row($0) }
+                        // Two of the lines above are named "RCQ relays" and
+                        // "Relay list", so this screen owes the reader the word.
+                        if !lines.isEmpty { RelayFAQLink() }
                         if running {
                             HStack(spacing: 8) {
                                 ProgressView()
@@ -175,7 +178,7 @@ struct ConnectionDiagnosticsView: View {
         var out: [DiagLine] = []
         func push(_ l: DiagLine) { out.append(l); lines = out }
 
-        // Route: direct vs through the censorship-bypass relay.
+        // Route: direct vs through the RCQ relays.
         let onRelay = SingBoxTransport.shared.isActive
         push(DiagLine(
             title: "diag.route.title".localized,
@@ -183,7 +186,7 @@ struct ConnectionDiagnosticsView: View {
             status: .info
         ))
 
-        // Surface a transport start failure if the bypass tried and failed.
+        // Surface a transport start failure if the relays tried and failed.
         if let err = SingBoxTransport.lastStartError {
             push(DiagLine(
                 title: "diag.transport.title".localized,
@@ -249,7 +252,7 @@ struct ConnectionDiagnosticsView: View {
             status: ws ? .ok : .fail
         ))
 
-        // Bypass relays available (informational).
+        // Relays available in the list (informational).
         let relayCount = RelayConfigStore.shared.currentRelays().count
         push(DiagLine(
             title: "diag.relays.title".localized,
