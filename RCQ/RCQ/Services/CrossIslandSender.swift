@@ -53,16 +53,161 @@ enum CrossIslandSender {
             return
         }
         let uin = contact.uin
-        // Stage 2: every call signal deposits as `envelope_type "message"`; the
-        // two waking signals (offer/end) ask for the ring with `ring:true` instead
-        // of the more telling `"call"` type. A Stage 2 island rings a socket-less
-        // peer without learning the row is a call; an older island ignores the
-        // unknown `ring`, still routes and queues the row, and the call degrades
-        // to no-wake rather than breaking. The inner envelope is untouched.
+        // Stage 2: a call signal deposits as `envelope_type "message"` and the
+        // two waking signals (offer/end) ask for the ring with `ring:true`
+        // instead of the more telling `"call"` type, so a Stage 2 island rings
+        // a socket-less peer without learning the row is a call. An older
+        // island ignores the unknown `ring` and would queue the offer without
+        // waking anyone, so the waking signals first ask the island whether it
+        // honours `ring` (below) and fall back to `"call"` where it does not.
+        // The inner envelope is untouched either way.
         let ring = wakingSignals.contains(type)
-        Task.detached {
-            let ok = await deposit(host: host, uin: uin, payload: blob, ring: ring)
+        // Signals of one call leave in the order they were asked for: each one
+        // deposits from its own task, and the offer now also pays the ring
+        // probe on a slow island, so an ICE batch released the instant the
+        // probe settles would otherwise POST side by side with the offer it
+        // belongs to. A callee drops ICE that arrives before its offer. The
+        // chain is linked HERE, on the main actor in emit order, because two
+        // detached tasks reach any actor in whatever order they are scheduled.
+        // Android chains per call id the same way (`Session.depositCallSignal`),
+        // and so does the web client.
+        let prev = callTails[callID]
+        let job = Task.detached {
+            await prev?.value
+            // A call that does not ring is not a call. An island older than
+            // Stage 2 ignores `ring` and wakes a closed app only for the
+            // `"call"` type, so the two waking signals first ask the peer
+            // island whether it honours `ring` and pay the legible `"call"`
+            // row only where nothing better works. Non-waking signals never
+            // probe and never change type: they mean nothing to an app that is
+            // not already awake. They do WAIT for a probe already running for
+            // this host, because each signal deposits from its own task and the
+            // probe delays only the offer: without the wait an ICE batch sent
+            // right behind the offer lands in the callee island's queue first,
+            // and a callee drops ICE that arrives before its offer.
+            var envelopeType = "message"
+            if ring {
+                let honours = await RingSupport.shared.honoursRing(host: host)
+                if !honours { envelopeType = "call" }
+            } else {
+                await RingSupport.shared.waitForProbe(host: host)
+            }
+            let ok = await deposit(host: host, uin: uin, payload: blob, envelopeType: envelopeType, ring: ring)
             if !ok { print("[CrossIslandSender] call-signal deposit failed (\(type) → \(uin)@\(host))") }
+        }
+        callTails[callID] = job
+        Task { @MainActor in
+            await job.value
+            if callTails[callID] == job { callTails[callID] = nil }
+        }
+    }
+
+    /// The last deposit asked for on each call id, so the next one can queue
+    /// behind it (see `depositCallSignal`). Main-actor only.
+    @MainActor private static var callTails: [String: Task<Void, Never>] = [:]
+
+    /// Start the `ring` probe for `host` without waiting for it, so the memo
+    /// is warm by the time the offer deposits. For the outgoing call start,
+    /// where the callee's island is known seconds before the SDP is ready
+    /// (the offer waits on `createOffer`, which gathers ICE). A warm hit costs
+    /// the offer nothing; a miss costs it the probe it would have paid anyway.
+    /// Same-island calls never come here. Nothing observes the result.
+    static func warmRingSupport(host: String) {
+        Task.detached { _ = await RingSupport.shared.honoursRing(host: host) }
+    }
+
+    /// Per-island memory of "does `/server/info` advertise `envelope_class`"
+    /// (the flag born together with `ring`; see `ServerCapabilities`). An
+    /// actor because the call path asks from a detached task while nothing
+    /// stops two signals of one call (or two calls) asking at once: the
+    /// in-flight task is shared so a host is probed once, not per caller.
+    ///
+    /// A yes is kept for an hour (an island does not forget a capability). A
+    /// no is kept for ten minutes only: it is as often a slow answer or a 404
+    /// on a blocked route as a genuinely old island, and an island that
+    /// upgrades (is2 today, foreign self-hosts whenever they get to it) should
+    /// be rung the cheap way soon after, not after the next app launch.
+    actor RingSupport {
+        static let shared = RingSupport()
+
+        private struct Entry {
+            let honours: Bool
+            let expires: Date
+        }
+        private var entries: [String: Entry] = [:]
+        private var inflight: [String: Task<Bool, Never>] = [:]
+
+        private static let yesTTL: TimeInterval = 60 * 60
+        private static let noTTL: TimeInterval = 10 * 60
+
+        func honoursRing(host: String) async -> Bool {
+            let key = host.lowercased()
+            if let hit = entries[key], hit.expires > Date() { return hit.honours }
+            if let running = inflight[key] { return await running.value }
+            let probe = Task { await CrossIslandSender.probeRingSupport(host: host) }
+            inflight[key] = probe
+            let honours = await probe.value
+            inflight[key] = nil
+            entries[key] = Entry(
+                honours: honours,
+                expires: Date().addingTimeInterval(honours ? Self.yesTTL : Self.noTTL)
+            )
+            return honours
+        }
+
+        /// Block until no probe is running for `host`; never start one. For
+        /// the non-waking signals, which must not overtake the offer that is
+        /// waiting on this probe (see `depositCallSignal`). Returns at once
+        /// when nothing is in flight, memo or no memo.
+        func waitForProbe(host: String) async {
+            guard let running = inflight[host.lowercased()] else { return }
+            _ = await running.value
+        }
+    }
+
+    /// One `/server/info` round trip to a peer island, answering only "does it
+    /// honour `ring`". Anything short of a decoded `envelope_class: true`
+    /// (non-200, no answer, unparseable body, the flag absent or false) is a
+    /// no: the legacy form it triggers rings on every island, so the cost of
+    /// a wrong no is one legible row, while the cost of a wrong yes is a
+    /// silent call.
+    ///
+    /// Goes through `IslandHTTP` like the deposit itself, not a bare session
+    /// (`ServerInfoService.fetch(host:)` is for the join confirm and is fine
+    /// direct): on a censored network a blocked-but-tunnelled island would
+    /// otherwise look "old" merely because the direct fetch failed, and we
+    /// would then send it a `"call"` row for nothing.
+    ///
+    /// The offer sits on the press-to-ringback path, so the answer is bounded
+    /// at 5 s rather than the session's 20. The bound is a RACE against a
+    /// sleep, not a request timeout: `IslandHTTP` reads a thrown error on the
+    /// direct attempt as "this route is blocked", engages the tunnel and marks
+    /// the host blocked for the life of the process, and a 5 s timeout would
+    /// throw exactly that way on an island that is merely slow. The deposit
+    /// itself runs with the session's own ceilings and keeps that fallback; a
+    /// probe that loses the race only says "cannot tell quickly", which is a
+    /// no. The losing request is cancelled, and `IslandHTTP.run` lets a
+    /// cancellation through without a verdict on the route.
+    private static func probeRingSupport(host: String) async -> Bool {
+        guard let url = URL(string: "https://\(host)/server/info") else { return false }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
+        let request = req   // immutable copy: the child closure is Sendable
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                guard let (data, resp) = try? await IslandHTTP.data(for: request),
+                      let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                      let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else { return false }
+                return info.capabilities.envelopeClass
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
         }
     }
 
@@ -277,11 +422,15 @@ enum CrossIslandSender {
     /// require-token flip). Best-effort — no token = the legacy path. Off for
     /// real-time call signaling (latency-sensitive).
     ///
-    /// `envelopeType` is `"message"` for everything sent here. Stage 2: `cls`
-    /// mirrors the island's own `_cls_for` derivation so a peer classifies the
-    /// row from the sender rather than guessing, and `ring` (the §5d wake) asks a
-    /// socket-less peer's island to ring instead of queueing a banner. Both are
-    /// additive: an older peer island ignores the fields it does not know.
+    /// `envelopeType` is `"message"` for everything sent here, with one
+    /// exception below. Stage 2: `cls` mirrors the island's own `_cls_for`
+    /// derivation so a peer classifies the row from the sender rather than
+    /// guessing, and `ring` (the §5d wake) asks a socket-less peer's island to
+    /// ring instead of queueing a banner. Both are additive: an older peer
+    /// island ignores the fields it does not know. The exception is the waking
+    /// call signal to such an older island, which `depositCallSignal` sends as
+    /// `"call"` (plus `ring`, harmless on both) because that is the only type
+    /// it wakes a closed app for.
     @discardableResult
     static func deposit(
         host: String, uin: Int, payload: String,

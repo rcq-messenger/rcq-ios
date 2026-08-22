@@ -849,6 +849,13 @@ enum IslandHTTP {
         do {
             return try await call(session(transfer: transfer))
         } catch {
+            // A cancelled request says nothing about the route: the caller gave
+            // up (the `ring` probe in `CrossIslandSender` races its request
+            // against a 5 s sleep and cancels the loser), and turning that into
+            // "blocked", with sing-box started and the host marked for the life
+            // of the process, would punish a slow island for being slow.
+            if Task.isCancelled || error is CancellationError
+                || (error as? URLError)?.code == .cancelled { throw error }
             // Already tunnelled: this is the island or the relay path, and a
             // second attempt would only double the wait. A thrown error here is
             // always transport-level — an HTTP status comes back in the response.

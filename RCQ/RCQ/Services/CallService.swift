@@ -131,6 +131,14 @@ final class CallService: ObservableObject {
         // looks like, and it is the same story the rest of the duress view
         // tells. A button that visibly does nothing is its own kind of tell.
         if PanicPINService.shared.isDecoy { return }
+        // §5d cross-island: the offer below must first learn whether the
+        // callee's island honours `ring` (`CrossIslandSender.depositCallSignal`).
+        // Ask now, while `createOffer` gathers ICE, so the answer is warm when
+        // the offer deposits. Same branch as `sendCallSignal`: a same-island
+        // peer never gets here. Fire-and-forget; a failure changes nothing.
+        if let host = CrossIslandStore.shared.find(uin: contact.uin)?.host {
+            CrossIslandSender.warmRingSupport(host: host)
+        }
         // outgoing bypasses CallKit: CXStartCallAction + libwebrtc on iOS 17/18 fires an
         // immediate CXEndCallAction once the audio session is touched. Inbound only.
         Task {
