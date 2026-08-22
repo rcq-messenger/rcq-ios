@@ -1763,7 +1763,8 @@ final class AppState: ObservableObject {
 /// legacy backends predating `/server/info` keep working — they 404
 /// the lookup and we fall through to the defaults, which match the
 /// pre-flag behaviour. Future capabilities should follow the same
-/// rule: pick the default that preserves the old behaviour.
+/// rule: pick the default that preserves the old behaviour. The single
+/// exception is `envelopeClass` (default FALSE), explained on the field.
 struct ServerCapabilities: Decodable, Equatable {
     var uinShop: Bool
     var hallOfFame: Bool
@@ -1782,6 +1783,17 @@ struct ServerCapabilities: Decodable, Equatable {
     // How many accounts one device may hold (operator-set). Caps the account
     // switcher; defaults to the historical 5.
     var maxAccountsPerDevice: Int
+    // Stage 2 of the metadata plan: the island classifies a sealed row from the
+    // sender's `cls` and honours `ring` on a `"message"` deposit, so a waking
+    // call signal no longer has to be typed `"call"` to reach a closed app.
+    // THE ONE FLAG WHOSE SAFE DEFAULT IS FALSE. The permissive rule above
+    // preserves old behaviour for surfaces an old island already had; this
+    // flag was born together with `ring`, so an island that omits it is an
+    // island that does not know `ring`, and treating it as capable would turn
+    // every cross-island call to it into silence. False here makes the call
+    // path fall back to the legacy `"call"` deposit, which such an island
+    // still rings on. Read by `CrossIslandSender`, never by the UI.
+    var envelopeClass: Bool
 
     init(
         uinShop: Bool,
@@ -1789,7 +1801,8 @@ struct ServerCapabilities: Decodable, Equatable {
         nearby: Bool = true,
         randomChat: Bool = true,
         reports: Bool = true,
-        maxAccountsPerDevice: Int = 5
+        maxAccountsPerDevice: Int = 5,
+        envelopeClass: Bool = false
     ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
@@ -1797,6 +1810,7 @@ struct ServerCapabilities: Decodable, Equatable {
         self.randomChat = randomChat
         self.reports = reports
         self.maxAccountsPerDevice = maxAccountsPerDevice
+        self.envelopeClass = envelopeClass
     }
 
     static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
@@ -1808,6 +1822,7 @@ struct ServerCapabilities: Decodable, Equatable {
         case randomChat = "random_chat"
         case reports
         case maxAccountsPerDevice = "max_accounts_per_device"
+        case envelopeClass = "envelope_class"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -1823,6 +1838,8 @@ struct ServerCapabilities: Decodable, Equatable {
         randomChat = try c.decodeIfPresent(Bool.self, forKey: .randomChat) ?? true
         reports = try c.decodeIfPresent(Bool.self, forKey: .reports) ?? true
         maxAccountsPerDevice = try c.decodeIfPresent(Int.self, forKey: .maxAccountsPerDevice) ?? 5
+        // Absent means "predates ring": see the field comment.
+        envelopeClass = try c.decodeIfPresent(Bool.self, forKey: .envelopeClass) ?? false
     }
 }
 
