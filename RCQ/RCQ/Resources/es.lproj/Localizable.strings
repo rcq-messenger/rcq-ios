@@ -514,6 +514,7 @@
 "chat.action.forward" = "Reenviar";
 "chat.action.select" = "Seleccionar";
 "chat.action.pin" = "Fijar";
+"chat.unread_divider" = "Mensajes no leídos";
 "chat.pin.attachment" = "📎 Adjunto";
 "chat.pin.error.title" = "No se pudo fijar";
 "chat.pin.error.forbidden" = "Necesitas el permiso de información del grupo. Pídeselo al propietario.";

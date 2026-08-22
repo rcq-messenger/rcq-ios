@@ -514,6 +514,7 @@
 "chat.action.forward" = "Переслати";
 "chat.action.select" = "Вибрати";
 "chat.action.pin" = "Закріпити";
+"chat.unread_divider" = "Непрочитані";
 "chat.pin.attachment" = "📎 Вкладення";
 "chat.pin.error.title" = "Не вдалося закріпити";
 "chat.pin.error.forbidden" = "Потрібне право змінювати інформацію групи. Попросіть власника надати його.";
