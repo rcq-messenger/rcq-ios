@@ -769,8 +769,18 @@ final class WebSocketService: ObservableObject {
         // Пункт 13: a key slot of this account was revoked (possibly by
         // another session). Registry-style announce, same channel as slot
         // claims; the slots screen refreshes its list on it, nothing heavier.
+        // The cached list of our own devices is stale from this moment too.
         case "device_slot_revoked":
             NotificationCenter.default.post(name: .rcqDeviceSlotRevoked, object: nil)
+            Task { await SignalCryptoService.invalidateOwnDevices() }
+
+        // The registry of this account changed (a web session linked or
+        // revoked, by any install). The devices screen re-reads on its own;
+        // what has to go is the cached list of our own devices, or a fan-out
+        // to ourselves and the bootstrap's slot check would run on it until
+        // it expired.
+        case "device_linked", "device_revoked":
+            Task { await SignalCryptoService.invalidateOwnDevices() }
 
         // Every event name here carries a sealed envelope in `payload`. The
         // server echoes back whatever `envelope_type` the sender declared, so
