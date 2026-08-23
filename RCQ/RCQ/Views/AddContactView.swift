@@ -291,14 +291,9 @@ private struct GroupPreviewHit: View {
                     .font(Theme.Font.nickname)
                     .foregroundColor(Theme.Color.textPrimary)
                 HStack(spacing: 4) {
-                    Text(String(
-                        format: (preview.memberCount == 1
-                            ? "contact_list.members_one"
-                            : "contact_list.members_many").localized,
-                        preview.memberCount,
-                    ))
-                    .font(Theme.Font.monoSmall)
-                    .foregroundColor(Theme.Color.textMono)
+                    Text(MemberCountLabel.text(preview.memberCount))
+                        .font(Theme.Font.monoSmall)
+                        .foregroundColor(Theme.Color.textMono)
                     if let nick = preview.ownerNickname, !nick.isEmpty {
                         Text("·").foregroundColor(Theme.Color.textMono)
                         Image(systemName: "crown.fill")
@@ -338,14 +333,9 @@ struct JoinGroupSheet: View {
                         Text(preview.name).font(.title3.bold())
                             .foregroundColor(Theme.Color.textPrimary)
                             .multilineTextAlignment(.center)
-                        Text(String(
-                            format: (preview.memberCount == 1
-                                ? "contact_list.members_one"
-                                : "contact_list.members_many").localized,
-                            preview.memberCount,
-                        ))
-                        .font(.callout)
-                        .foregroundColor(Theme.Color.textSecondary)
+                        Text(MemberCountLabel.text(preview.memberCount))
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textSecondary)
                     }
                     Button {
                         Task { await join() }
@@ -412,12 +402,7 @@ private struct GroupHit: View {
             )
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text(String(
-                    format: (group.memberCount == 1
-                        ? "contact_list.members_one"
-                        : "contact_list.members_many").localized,
-                    group.memberCount
-                ))
+                Text(MemberCountLabel.text(group.memberCount))
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }
             Spacer()

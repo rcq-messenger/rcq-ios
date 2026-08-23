@@ -9,6 +9,12 @@ import SwiftUI
 /// second half. Switching here is reversible: the number in use goes into the
 /// collection rather than back into the pool, so there is always a way back.
 ///
+/// Releasing (DELETE /uin/mine/{uin}) is the one thing here that is NOT
+/// reversible, and it is the thing this screen was missing: every switch parks
+/// the previous number in the collection whether anyone wanted it or not, so
+/// the collection fills with numbers nobody chose and there was no way to say
+/// no to one. Same place Android puts it, on the row itself.
+///
 /// Reachable regardless of the shop toggle — an operator who closes their shop
 /// must not strand people on the wrong number, and a self-hoster can hand a
 /// member a second number by hand (POST /admin/uin/grant).
@@ -18,10 +24,16 @@ struct MyUINsView: View {
     @State private var data: AppState.MyUINs?
     @State private var loading = true
     @State private var switching: Int?
+    @State private var releasing: Int?
     @State private var confirmTarget: Int?
+    @State private var releaseTarget: Int?
     @State private var error: String?
 
     private var activeUIN: Int { data?.active ?? AuthService.shared.ownUIN ?? 0 }
+
+    /// One number at a time, and nothing else while it is in flight: both calls
+    /// rewrite the whole collection server-side.
+    private var busy: Bool { switching != nil || releasing != nil }
 
     var body: some View {
         NavigationStack {
@@ -77,6 +89,22 @@ struct MyUINsView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 10)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        // The rules the server actually enforces, said once
+                        // here rather than only in a refusal: the cap, and
+                        // that a release cannot be taken back.
+                        Text(
+                            String(
+                                format: "my_uins.footer.rules".localized,
+                                data?.maxOwned ?? 10
+                            )
+                        )
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 2)
+                        .padding(.bottom, 16)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
@@ -114,6 +142,27 @@ struct MyUINsView: View {
             } message: {
                 Text(String(format: "my_uins.confirm.body".localized, String(activeUIN)))
             }
+            // The warning lives in the dialog rather than on the row: the
+            // number goes back into the pool and somebody else can take it, so
+            // this is read once, not glanced at.
+            .confirmationDialog(
+                releaseTarget.map { String(format: "my_uins.release.confirm.title".localized, String($0)) } ?? "",
+                isPresented: Binding(
+                    get: { releaseTarget != nil },
+                    set: { if !$0 { releaseTarget = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("my_uins.release.cta".localized, role: .destructive) {
+                    if let target = releaseTarget {
+                        releaseTarget = nil
+                        Task { await release(target) }
+                    }
+                }
+                Button("common.cancel".localized, role: .cancel) { releaseTarget = nil }
+            } message: {
+                Text("my_uins.release.confirm.body".localized)
+            }
         }
     }
 
@@ -137,7 +186,7 @@ struct MyUINsView: View {
     }
 
     private func heldRow(_ item: AppState.OwnedUIN) -> some View {
-        HStack {
+        HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: "\(item.uin)")
                     .font(.system(size: 19, weight: .medium, design: .monospaced))
@@ -148,13 +197,20 @@ struct MyUINsView: View {
                     .foregroundColor(Theme.Color.textSecondary)
             }
             Spacer()
-            if switching == item.uin {
+            if switching == item.uin || releasing == item.uin {
                 ProgressView().scaleEffect(0.8)
             } else {
+                // Release sits before Switch and quieter than it, same order
+                // Android uses: this is tidying up, not the thing the screen
+                // is for, and the confirm dialog carries the warning.
+                Button("my_uins.release".localized) { releaseTarget = item.uin }
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .disabled(busy)
                 Button("my_uins.use".localized) { confirmTarget = item.uin }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Theme.Color.accent)
-                    .disabled(switching != nil)
+                    .disabled(busy)
             }
         }
         .padding(.vertical, 15)
@@ -190,7 +246,36 @@ struct MyUINsView: View {
         case .cooldown:
             error = "uin_shop.error.cooldown".localized
         case .other(let msg):
-            error = msg
+            // /activate refuses a suspended account with a JSON body; showing
+            // it raw is how somebody meets `{"detail":{"code":...}}`.
+            error = AppState.uinRefusalText(msg)
+        }
+    }
+
+    /// Give a number back. The server answers with the whole collection, so the
+    /// screen takes that rather than dropping the row locally and hoping.
+    private func release(_ uin: Int) async {
+        releasing = uin
+        error = nil
+        let result = await AppState.shared.releaseUIN(uin)
+        releasing = nil
+        switch result {
+        case .success(let updated):
+            data = updated
+        case .inUse:
+            error = "my_uins.release.error.in_use".localized
+        case .notOwned:
+            // Already gone, most likely from another device. Re-reading is the
+            // honest answer, not an error about a number nobody holds.
+            await reload()
+        case .unsupported:
+            error = "my_uins.release.error.unsupported".localized
+        case .rateLimited:
+            error = "my_uins.release.error.too_often".localized
+        case .suspended:
+            error = "uin.error.suspended".localized
+        case .other(let msg):
+            error = AppState.uinRefusalText(msg)
         }
     }
 }

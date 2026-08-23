@@ -45,6 +45,11 @@ struct NewsSheet: View {
                     initialIndex: target.startIndex,
                 )
             }
+            // A link in a post body opens over the app in the in-app browser,
+            // like every other link in RCQ, instead of throwing the reader out
+            // to Safari. Stated here rather than inherited from the root so a
+            // tap keeps working whoever presents this sheet.
+            .environment(\.openURL, OpenURLAction { url in InAppBrowser.open(url) })
         }
     }
 
@@ -99,6 +104,94 @@ struct NewsSheet: View {
     }
 }
 
+/// Turns the plain text of a news post into an `AttributedString` with its
+/// links tappable. Posts are written by hand and routinely carry a release
+/// link or a Habr article, and as plain `Text` they were dead on the screen.
+///
+/// `NSDataDetector` does the finding, but its idea of where a link ends is not
+/// a Russian sentence's: it already drops a trailing `.` or `,`, and it keeps a
+/// Cyrillic path (percent-encoding it correctly), but it swallows a closing
+/// `»` and everything glued after it, and it keeps a trailing `?` that was the
+/// question mark of the sentence. Both are narrowed off here.
+private enum NewsBodyText {
+
+    private static let detector: NSDataDetector? = {
+        try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+    }()
+
+    /// Characters that never appear inside a link somebody typed, but do
+    /// appear right after one in Russian text. The match is cut at the first
+    /// of them.
+    private static let stoppers = CharacterSet(charactersIn: "«»„“”‹›\"'<>")
+    /// Sentence punctuation the detector leaves attached to the tail.
+    /// `)` is deliberately absent: the detector balances parentheses itself,
+    /// so a trailing one belongs to the link.
+    private static let tailPunctuation = CharacterSet(charactersIn: ".,;:!?…")
+
+    static func linkified(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        // NSDataDetector is not cheap and the feed re-evaluates its rows.
+        // Scan only when a link marker is present, the same gate the chat
+        // bubbles use.
+        guard text.contains("://") || text.contains("www.") else { return attr }
+        for span in spans(in: text) {
+            guard let lo = AttributedString.Index(span.range.lowerBound, within: attr),
+                  let hi = AttributedString.Index(span.range.upperBound, within: attr) else { continue }
+            attr[lo..<hi].link = span.url
+            attr[lo..<hi].foregroundColor = Theme.Color.accent
+            attr[lo..<hi].underlineStyle = .single
+        }
+        return attr
+    }
+
+    private struct Span { let range: Range<String.Index>; let url: URL }
+
+    private static func spans(in text: String) -> [Span] {
+        guard let detector else { return [] }
+        let ns = text as NSString
+        var out: [Span] = []
+        detector.enumerateMatches(
+            in: text, options: [], range: NSRange(location: 0, length: ns.length)
+        ) { match, _, _ in
+            guard let match, let matchRange = Range(match.range, in: text) else { return }
+            let matched = ns.substring(with: match.range)
+            let kept = narrowed(matched)
+            guard !kept.isEmpty else { return }
+            if kept.utf16.count == matched.utf16.count {
+                guard let url = match.url else { return }
+                out.append(Span(range: matchRange, url: url))
+                return
+            }
+            // Re-detect inside the shortened text rather than re-parsing it by
+            // hand: that is what percent-encodes a Cyrillic path for us.
+            let keptRange = NSRange(location: match.range.location, length: kept.utf16.count)
+            guard let range = Range(keptRange, in: text), let url = firstURL(in: kept) else { return }
+            out.append(Span(range: range, url: url))
+        }
+        return out
+    }
+
+    /// The part of [matched] that was actually meant as a link.
+    private static func narrowed(_ matched: String) -> String {
+        var scalars = matched.unicodeScalars
+        if let stop = scalars.firstIndex(where: { stoppers.contains($0) }) {
+            scalars = String.UnicodeScalarView(scalars[..<stop])
+        }
+        while let last = scalars.last, tailPunctuation.contains(last) {
+            scalars.removeLast()
+        }
+        return String(scalars)
+    }
+
+    private static func firstURL(in s: String) -> URL? {
+        guard let detector, !s.isEmpty else { return nil }
+        let ns = s as NSString
+        return detector
+            .firstMatch(in: s, options: [], range: NSRange(location: 0, length: ns.length))?
+            .url
+    }
+}
+
 /// Sheet-presentation target for the news image gallery. Identifiable
 /// keyed off the post + start index so re-tapping a different image
 /// in the same post re-presents the viewer at the new page.
@@ -138,7 +231,7 @@ private struct NewsPostCard: View {
                 }
                 Spacer()
             }
-            Text(post.body)
+            Text(NewsBodyText.linkified(post.body))
                 .font(.body)
                 .foregroundColor(Theme.Color.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)

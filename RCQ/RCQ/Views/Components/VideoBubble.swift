@@ -1,16 +1,17 @@
-import AVKit
 import SwiftUI
 import UIKit
 
 /// Video message bubble. Inline thumbnail + play overlay + duration badge.
-/// Tap → downloads encrypted blob, decrypts to temp file, plays via AVPlayerViewController.
+/// Tap opens `AlbumViewerPresenter` as a single-item album, which owns the
+/// download, the decrypt and the playback. This file no longer hosts a
+/// player of its own: the standalone `VideoPlayerSheet` that used to live
+/// here was unreachable and drew AVKit's native transport, the exact
+/// double-controls problem item 9b removed from the viewer.
 struct VideoBubble: View {
     let message: Message
     var maxWidth: CGFloat = 240
 
     @State private var thumb: UIImage?
-    @State private var preparing = false
-    @State private var playerURL: URL?
     /// Spoiler video renders a blurred thumbnail until the first tap
     /// (which reveals; the second tap plays). Session-only state.
     @State private var spoilerRevealed = false
@@ -59,8 +60,6 @@ struct VideoBubble: View {
                 uploadRing
             } else if didFailUpload {
                 uploadFailed
-            } else if preparing {
-                ProgressView().tint(.white).scaleEffect(1.2)
             } else if spoilerCovered {
                 Image(systemName: "eye.slash.fill")
                     .font(.system(size: 26))
@@ -137,99 +136,9 @@ struct VideoBubble: View {
         thumb = image
     }
 
-    private func play() async {
-        guard !preparing else { return }
-        guard let raw = message.mediaID else { return }
-        let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return }
-        preparing = true
-        defer { preparing = false }
-        if let url = await MediaService.shared.decryptToFile(mediaID: parts[0], keyBase64: parts[1]) {
-            self.playerURL = url
-        }
-    }
-
     private func durationLabel(_ sec: Double) -> String {
         let s = Int(sec.rounded())
         return String(format: "%d:%02d", s / 60, s % 60)
-    }
-}
-
-private struct PlayableURL: Identifiable, Hashable {
-    let url: URL
-    var id: URL { url }
-}
-
-struct VideoPlayerSheet: View {
-    let url: URL
-    let onClose: () -> Void
-
-    @State private var player: AVPlayer?
-    @State private var saveState: VideoSaveDelegate.State = .idle
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let player {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
-                    .onAppear { player.play() }
-                    .onDisappear { player.pause() }
-            }
-            VStack {
-                HStack {
-                    Button(action: saveVideo) {
-                        Image(systemName: saveStateIcon)
-                            .font(.system(size: 24))
-                            .foregroundColor(.white.opacity(0.85))
-                            .padding()
-                    }
-                    .disabled(saveState == .saving || saveState == .done)
-                    Spacer()
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white.opacity(0.85))
-                            .padding()
-                    }
-                }
-                Spacer()
-            }
-        }
-        .onAppear { player = AVPlayer(url: url) }
-    }
-
-    private var saveStateIcon: String {
-        switch saveState {
-        case .idle:    return "square.and.arrow.down"
-        case .saving:  return "ellipsis.circle"
-        case .done:    return "checkmark.circle.fill"
-        case .failed:  return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private func saveVideo() {
-        let path = url.path
-        guard UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(path) else {
-            saveState = .failed
-            return
-        }
-        saveState = .saving
-        let delegate = VideoSaveDelegate { result in
-            saveState = result
-            if result == .done {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    await MainActor.run { saveState = .idle }
-                }
-            }
-        }
-        UISaveVideoAtPathToSavedPhotosAlbum(
-            path, delegate,
-            #selector(VideoSaveDelegate.didFinish(videoPath:error:contextInfo:)),
-            Unmanaged.passRetained(delegate).toOpaque()
-        )
     }
 }
 

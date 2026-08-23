@@ -168,7 +168,9 @@ private enum DestinationRow {
             .frame(width: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(g.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text("\(g.memberCount) member\(g.memberCount == 1 ? "" : "s")")
+                // Was a hardcoded English "member(s)", the one member count
+                // in the app that never went through the string table.
+                Text(MemberCountLabel.text(g.memberCount))
                     .font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
             }
             Spacer()

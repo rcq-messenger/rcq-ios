@@ -141,6 +141,17 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     /// exposes the nickname on this row.
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
+    /// The island's per-viewer verdict on this member's profile card (founder
+    /// item 22): may THIS client turn the name into a link? A member list is
+    /// the first surface the setting names, and the roster row is the only
+    /// place the answer can travel, because a reaction or a photo carries
+    /// nothing but a UIN.
+    ///
+    /// Nil on the fan-out frames (`group_created`, `group_membership_changed`,
+    /// `room_member_entered`): one payload goes to many recipients, so there is
+    /// no single viewer to answer for. Nil FAILS OPEN and the next roster read
+    /// repaints it.
+    var profileOpenable: Bool? = nil
 
     var id: Int { uin }
 
@@ -165,6 +176,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case senderKeys = "sender_keys"
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
+        case profileOpenable = "profile_openable"
     }
 
     init(from decoder: Decoder) throws {
@@ -182,6 +194,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.senderKeys = (try? c.decodeIfPresent(Bool.self, forKey: .senderKeys)) ?? false
         self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
+        self.profileOpenable = try? c.decodeIfPresent(Bool.self, forKey: .profileOpenable)
     }
 }
 
@@ -218,13 +231,5 @@ enum ChatTarget: Hashable {
         case .group(let g): return g.name
         case .randomPeer: return "chat.random.stranger".localized
         }
-    }
-
-    /// Returns the group if the viewer should see a read-only hint
-    /// instead of the composer (broadcast-mode and not allowed to post).
-    func broadcastReadOnly(viewerUIN: Int?) -> RCQGroup? {
-        guard case .group(let g) = self else { return nil }
-        guard let me = viewerUIN else { return nil }
-        return g.canPost(me) ? nil : g
     }
 }

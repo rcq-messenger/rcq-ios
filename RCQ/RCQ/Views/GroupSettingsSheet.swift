@@ -1,11 +1,18 @@
 import SwiftUI
 
-/// All owner/admin group controls in one sheet — name, description,
-/// photo, post policy, entry price, closed flag, member-roster
-/// visibility. Group Info used to scatter these inline (rename in the
-/// header, description block, an "owner settings" block); the list
-/// grew long enough to deserve its own surface, reached via the gear
-/// button in Group Info.
+/// All owner/moderator group controls in one sheet: name, description,
+/// photo, pinned announcement, and the owner-only rules of the room: who
+/// may post, whether it is closed, whether the roster is hidden, whether
+/// links and files are allowed, and the slowmode step. Group Info used to
+/// scatter these inline (rename in the header, description block, an "owner
+/// settings" block); the list grew long enough to deserve its own surface,
+/// reached via the gear button in Group Info.
+///
+/// The gates are the island's own (`patch_group`): the `info` capability
+/// edits name / description / picture / pin, and only the OWNER decides who
+/// posts, whether the group is closed, whether the roster is hidden, and the
+/// content policy. Section order mirrors the desktop's GroupSettingsModal so
+/// the same room reads the same on both.
 struct GroupSettingsSheet: View {
     let groupID: Int
 
@@ -21,6 +28,19 @@ struct GroupSettingsSheet: View {
     @State private var avatarUploading = false
     @State private var confirmAvatarRemove = false
     @State private var error: String?
+
+    /// Live positions of the three content-policy controls.
+    ///
+    /// Held here rather than read straight off `GroupService.rules` because
+    /// that map is only written when the PATCH comes back. Driving a Toggle
+    /// from it means the knob shows the OLD rule until the round trip lands,
+    /// and any emission from the service in between (a group-list poll, an
+    /// unread bump) re-evaluates this body and visibly snaps the knob back.
+    /// So: write the control's position immediately, roll it back and say why
+    /// if the island refuses.
+    @State private var noLinks = false
+    @State private var noFiles = false
+    @State private var slowmode = 0
 
     private var currentGroup: RCQGroup? { groups.find(groupID) }
 
@@ -44,6 +64,7 @@ struct GroupSettingsSheet: View {
                         pinSection(g)
                         if amOwner {
                             audienceSection(g)
+                            contentPolicySection()
                         }
                         if let error {
                             Section {
@@ -72,6 +93,19 @@ struct GroupSettingsSheet: View {
                 nameDraft = g.name
                 descriptionDraft = g.description ?? ""
                 pinnedDraft = g.pinnedText ?? ""
+            }
+            // The rules of the room do not live on the group row (see
+            // `GroupService.RoomRules`), and the toggles here must never draw
+            // a permissive default over a room that has them switched off.
+            // This is the roster-less list, not a per-group fetch.
+            //
+            // Seeded twice on purpose: once from whatever the service already
+            // holds so the controls open in the right position, once from the
+            // island's answer.
+            .task {
+                seedRules()
+                await groups.refreshRules()
+                seedRules()
             }
             .confirmationDialog(
                 "group.avatar.remove.confirm".localized,
@@ -308,6 +342,131 @@ struct GroupSettingsSheet: View {
             Text("group.section.settings".localized)
         }
         .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// Owner-only rules of the room: what may be posted in it and how often.
+    /// The two toggles read as RESTRICTIONS ("disable links") while the wire
+    /// carries the allowed-flags, hence the inversion. Same wording and same
+    /// inversion as the desktop, so an owner switching between the two does
+    /// not have to re-read which way the switch points.
+    ///
+    /// ⚠ Both are client-honored: the island cannot see inside a sealed
+    /// envelope, so it publishes the rule and every client obeys it. Slowmode
+    /// is the one the island enforces itself.
+    @ViewBuilder
+    private func contentPolicySection() -> some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { noLinks },
+                set: { off in applyLinks(off) }
+            )) {
+                settingLabel("group.settings.no_links", hint: "group.settings.no_links.hint")
+            }
+            .tint(Theme.Color.accent)
+
+            Toggle(isOn: Binding(
+                get: { noFiles },
+                set: { off in applyFiles(off) }
+            )) {
+                settingLabel("group.settings.no_files", hint: "group.settings.no_files.hint")
+            }
+            .tint(Theme.Color.accent)
+
+            VStack(alignment: .leading, spacing: 8) {
+                settingLabel("group.settings.slowmode", hint: "group.settings.slowmode.hint")
+                Picker(
+                    "group.settings.slowmode".localized,
+                    selection: Binding(
+                        get: { slowmode },
+                        set: { v in applySlowmode(v) }
+                    )
+                ) {
+                    ForEach(GroupService.RoomRules.slowmodeSteps, id: \.self) { step in
+                        Text(Self.slowmodeLabel(step)).tag(step)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 2)
+        } header: {
+            Text("group.section.content_policy".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    /// One step of the slowmode picker. The menu is fixed (`_SLOWMODE_STEPS`
+    /// on the island) so every client shows the same five buttons.
+    private static func slowmodeLabel(_ seconds: Int) -> String {
+        if seconds <= 0 { return "group.settings.slowmode.off".localized }
+        if seconds < 60 { return String(format: "group.settings.slowmode.sec".localized, seconds) }
+        return "group.settings.slowmode.min".localized
+    }
+
+    private func settingLabel(_ title: String, hint: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.localized)
+                .foregroundColor(Theme.Color.textPrimary)
+            Text(hint.localized)
+                .font(.caption2)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Content policy
+
+    /// Put the three controls where the room's rules say they belong.
+    private func seedRules() {
+        let r = groups.rules(groupID)
+        noLinks = !r.linksAllowed
+        noFiles = !r.filesAllowed
+        slowmode = r.slowmodeSec
+    }
+
+    /// One shape for all three: move the control now, PATCH, and on a refusal
+    /// (offline, not the owner any more, a step the island does not take) put
+    /// it back where it was and say what happened. A switch that reverts on
+    /// its own with no message reads as "the room is frozen" when it is not.
+    private func applyLinks(_ off: Bool) {
+        let previous = noLinks
+        noLinks = off
+        Task {
+            do { try await groups.setLinksAllowed(groupID: groupID, allowed: !off) }
+            catch {
+                noLinks = previous
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func applyFiles(_ off: Bool) {
+        let previous = noFiles
+        noFiles = off
+        Task {
+            do { try await groups.setFilesAllowed(groupID: groupID, allowed: !off) }
+            catch {
+                noFiles = previous
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func applySlowmode(_ seconds: Int) {
+        let previous = slowmode
+        // The picker only offers `slowmodeSteps`, and `setSlowmode` returns
+        // without a PATCH for anything else. Refuse it here too rather than
+        // leave the segment sitting on a value nobody stored.
+        guard GroupService.RoomRules.slowmodeSteps.contains(seconds) else { return }
+        slowmode = seconds
+        Task {
+            do { try await groups.setSlowmode(groupID: groupID, seconds: seconds) }
+            catch {
+                slowmode = previous
+                self.error = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Actions

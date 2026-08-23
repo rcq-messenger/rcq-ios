@@ -18,7 +18,7 @@ final class SoundService: ObservableObject {
         case joinAll
     }
 
-    private func filename(for cue: Cue) -> String? {
+    private nonisolated static func filename(for cue: Cue) -> String? {
         switch cue {
         case .messageIncoming:   return "message_incoming"
         case .contactOnline:     return "contact_online"
@@ -62,27 +62,106 @@ final class SoundService: ObservableObject {
     /// content, and the NSE/foreground gate filters). `.all` = default.
     enum NotifyMode: String { case all, mentions, none }
 
-    private var players: [Cue: AVAudioPlayer] = [:]
+    /// Cue players, in a lock-protected box rather than main-actor state, so
+    /// `prewarm()` can build them on a background queue. `AVAudioPlayer` is
+    /// created on one thread and played from another all over iOS; what is not
+    /// safe is two threads writing the same dictionary, and that is what the
+    /// lock is for.
+    private final class PlayerCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var players: [Cue: AVAudioPlayer] = [:]
 
-    private init() {
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
-        preload()
+        func get(_ cue: Cue) -> AVAudioPlayer? {
+            lock.lock()
+            defer { lock.unlock() }
+            return players[cue]
+        }
+
+        /// Keeps the first player built for a cue. `play` and `prewarm` can
+        /// both build one for the same cue in the same instant; either is
+        /// playable, and returning the incumbent means nobody swaps a player
+        /// out from under a `play()` in flight.
+        func putIfAbsent(_ player: AVAudioPlayer, for cue: Cue) -> AVAudioPlayer {
+            lock.lock()
+            defer { lock.unlock() }
+            if let existing = players[cue] { return existing }
+            players[cue] = player
+            return player
+        }
     }
 
-    private func preload() {
-        let candidates = ["aif", "aiff", "wav", "m4a", "mp3"]
-        for cue in Cue.allCases {
-            guard let basename = filename(for: cue) else { continue }
-            for ext in candidates {
-                guard let url = Bundle.main.url(forResource: basename, withExtension: ext) else { continue }
-                if let player = try? AVAudioPlayer(contentsOf: url) {
-                    player.prepareToPlay()
-                    players[cue] = player
-                    break
-                }
+    private let players = PlayerCache()
+    private var sessionConfigured = false
+    private var prewarmed = false
+
+    /// Deliberately empty. This singleton is a `@StateObject` of
+    /// `ContactListView`, so its initialiser is the last thing that runs before
+    /// the first painted chat list, and it used to activate an `AVAudioSession`
+    /// and open, parse and prepare six audio files there. Measured on the
+    /// simulator: 25 ms for the first `setCategory` (it wakes mediaserverd),
+    /// 5 ms for `setActive`, 90 ms for the six players. None of it is needed to
+    /// draw a list of contacts.
+    private init() {}
+
+    /// Builds the six cue players off the main thread. Called from
+    /// `RootView.task`, so it starts after the first frame rather than before
+    /// it, and it costs the main thread nothing at all.
+    ///
+    /// Deliberately does NOT touch `AVAudioSession`: that stays lazy in
+    /// `ensureSessionConfigured` below, on the main actor, where it can see
+    /// whether a call or a room owns the session. Doing it from here would open
+    /// a window in which a call started in the same instant gets `.ambient` set
+    /// on top of its `playAndRecord`.
+    func prewarm() {
+        guard !prewarmed else { return }
+        prewarmed = true
+        let cache = players
+        DispatchQueue.global(qos: .utility).async {
+            for cue in Cue.allCases {
+                guard cache.get(cue) == nil, let built = Self.makePlayer(for: cue) else { continue }
+                _ = cache.putIfAbsent(built, for: cue)
             }
         }
+    }
+
+    /// Configure and activate the shared session, once, and only from outside a
+    /// conversation.
+    ///
+    /// ⚠ The guard is the whole point. `preload()` used to run at launch, long
+    /// before any call or room existed, so the `.ambient` category was always
+    /// set on an idle session. Called lazily instead, the first cue that plays
+    /// could be `joinMe` INSIDE an audio room, and setting `.ambient` on top of
+    /// a live `playAndRecord`/`voiceChat` session kills the room's audio. Skip
+    /// it there (the room owns an active session, the cue is audible through
+    /// it, which is exactly what happened before) and leave the flag down so a
+    /// later chime outside a conversation still configures it.
+    private func ensureSessionConfigured() {
+        guard !sessionConfigured, !inConversation else { return }
+        sessionConfigured = true
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
+
+    /// One player per cue, taken from the cache or built on the spot when a cue
+    /// plays before `prewarm` got to it.
+    private func player(for cue: Cue) -> AVAudioPlayer? {
+        if let cached = players.get(cue) { return cached }
+        guard let built = Self.makePlayer(for: cue) else { return nil }
+        return players.putIfAbsent(built, for: cue)
+    }
+
+    /// Pure: opens the bundled file and prepares a player. Callable from any
+    /// thread, which is what lets `prewarm` run off the main one.
+    private nonisolated static func makePlayer(for cue: Cue) -> AVAudioPlayer? {
+        guard let basename = Self.filename(for: cue) else { return nil }
+        for ext in ["aif", "aiff", "wav", "m4a", "mp3"] {
+            guard let url = Bundle.main.url(forResource: basename, withExtension: ext) else { continue }
+            if let player = try? AVAudioPlayer(contentsOf: url) {
+                player.prepareToPlay()
+                return player
+            }
+        }
+        return nil
     }
 
     // MARK: - playback
@@ -119,7 +198,8 @@ final class SoundService: ObservableObject {
         if cue == .contactOnline && !contactOnlineSoundEnabled { return }
         if cue == .contactOffline && !contactOfflineSoundEnabled { return }
         if let thread, isMuted(thread: thread) { return }
-        if let player = players[cue] {
+        ensureSessionConfigured()
+        if let player = player(for: cue) {
             player.currentTime = 0
             player.play()
         }

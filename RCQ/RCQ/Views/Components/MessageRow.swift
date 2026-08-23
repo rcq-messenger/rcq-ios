@@ -45,6 +45,14 @@ struct MessageRow: View, Equatable {
     let onTapReplyQuote: (UUID) -> Void
     let onSwipeReply: () -> Void
     var currentGroupMembers: [RCQGroupMember] = []
+    /// This room's `links_allowed` rule, already resolved for THIS viewer by
+    /// `ChatView.linksAllowed` (owner / admin / any granted cap stay exempt,
+    /// the same set the island exempts). False means the body still shows the
+    /// URL exactly as written, but nothing here turns it into a tap: no
+    /// tappable run, no preview card, and a group invite draws as the plain
+    /// text bubble instead of a join card, because a join card is the most
+    /// clickable link there is. Web: `linksAllowed` in Chat.tsx.
+    var linksAllowed: Bool = true
 
     /// Make the row diff-skippable. Without Equatable, SwiftUI re-runs `body`
     /// for EVERY realized row on any parent (ChatView) state change — a
@@ -66,6 +74,7 @@ struct MessageRow: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.showSelectionAffordance == rhs.showSelectionAffordance
             && lhs.currentGroupMembers == rhs.currentGroupMembers
+            && lhs.linksAllowed == rhs.linksAllowed
     }
 
     /// Resolve a `#<uin>` in the body to a nick (group member / contact) so it
@@ -310,7 +319,8 @@ struct MessageRow: View, Equatable {
         case .photo, .video, .voice, .file, .location, .poll, .relay: return false
         default: break
         }
-        return GroupLinkParser.parse(message.text) == nil
+        // Links off: an invite is a link, so it falls back to the plain bubble.
+        return !linksAllowed || GroupLinkParser.parse(message.text) == nil
     }
 
     @ViewBuilder
@@ -364,7 +374,8 @@ struct MessageRow: View, Equatable {
                     EmoticonText(
                         text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
                         members: currentGroupMembers,
-                        uinNick: uinNick
+                        uinNick: uinNick,
+                        linksEnabled: linksAllowed
                     )
                     .fixedSize(horizontal: false, vertical: true)
                     if collapsed {
@@ -390,7 +401,7 @@ struct MessageRow: View, Equatable {
             .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             if isTranslated { translatedFooter }
             // Read off the original body so a translation that mangles the URL still gets a preview.
-            if let url = LinkDetector.firstURL(in: message.text) {
+            if linksAllowed, let url = LinkDetector.firstURL(in: message.text) {
                 LinkPreviewCard(url: url)
             }
         }
@@ -465,7 +476,8 @@ struct MessageRow: View, Equatable {
                             color: Theme.Color.textSecondary,
                             emoticonSize: 15,
                             members: currentGroupMembers,
-                            uinNick: uinNick
+                            uinNick: uinNick,
+                            linksEnabled: linksAllowed
                         )
                         .lineLimit(2)
                     }
@@ -523,7 +535,7 @@ struct MessageRow: View, Equatable {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 PhotoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick, linksEnabled: linksAllowed)
                         // Same full-height pin as the plain-text bubble below, so a
                         // long caption never truncates to a couple of lines.
                         .fixedSize(horizontal: false, vertical: true)
@@ -537,7 +549,7 @@ struct MessageRow: View, Equatable {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 VideoBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick, linksEnabled: linksAllowed)
                         // Same full-height pin as the plain-text bubble below, so a
                         // long caption never truncates to a couple of lines.
                         .fixedSize(horizontal: false, vertical: true)
@@ -558,7 +570,7 @@ struct MessageRow: View, Equatable {
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick, linksEnabled: linksAllowed)
                         // Same full-height pin as the plain-text bubble below, so a
                         // long caption never truncates to a couple of lines.
                         .fixedSize(horizontal: false, vertical: true)
@@ -572,7 +584,7 @@ struct MessageRow: View, Equatable {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 LocationBubble(message: message)
                 if !displayBody.isEmpty {
-                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick)
+                    EmoticonText(text: displayBody, members: currentGroupMembers, uinNick: uinNick, linksEnabled: linksAllowed)
                         // Same full-height pin as the plain-text bubble below, so a
                         // long caption never truncates to a couple of lines.
                         .fixedSize(horizontal: false, vertical: true)
@@ -583,15 +595,22 @@ struct MessageRow: View, Equatable {
                 }
             }
         } else if message.kind == .poll {
-            // Group polls — `creatorIsMe` toggles the "Close" footer
-            // button so only the original creator sees the affordance.
-            // PollBubble owns its own background + max-width clip.
-            PollBubble(message: message, creatorIsMe: message.isFromMe)
+            // Polls are gone (14a): the ballots were never end-to-end encrypted
+            // (the island stored `voter_uin` and `option_index` in the clear,
+            // including for a poll the composer had marked anonymous) and the
+            // creator column sitting beside the envelope UUID named the author
+            // of a message that is otherwise sealed.
+            //
+            // ⚠ This branch STAYS. A peer on an old build still sends `.poll`,
+            // and old rows are still on disk here; a removed feature has to
+            // answer, not vanish. It also deliberately ignores `message.text`,
+            // which on those rows is the raw payload JSON.
+            pollRemovedBubble
         } else if message.kind == .relay {
             // In-chat bridge sharing: a relay a contact handed you (Add) or you
             // sent. RelayShareBubble owns its own background.
             RelayShareBubble(message: message)
-        } else if let share = GroupLinkParser.parse(message.text) {
+        } else if linksAllowed, let share = GroupLinkParser.parse(message.text) {
             VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
                 GroupLinkBubble(groupID: share.groupID, host: share.host, rawURL: share.url)
                 if isTranslated { translatedFooter }
@@ -611,7 +630,8 @@ struct MessageRow: View, Equatable {
                 EmoticonText(
                     text: collapsed ? Self.collapsedPrefix(displayBody) : displayBody,
                     members: currentGroupMembers,
-                    uinNick: uinNick
+                    uinNick: uinNick,
+                    linksEnabled: linksAllowed
                 )
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 10).padding(.vertical, 6)
@@ -630,13 +650,33 @@ struct MessageRow: View, Equatable {
                 }
                 if isTranslated { translatedFooter }
                 // Read off the original body so a translation that mangles the URL still gets a preview.
-                if let url = LinkDetector.firstURL(in: message.text) {
+                if linksAllowed, let url = LinkDetector.firstURL(in: message.text) {
                     LinkPreviewCard(url: url)
                 }
             }
         }
     }
 
+
+    /// What a poll looks like now: a plain, calm "this is not a thing any more"
+    /// card. No question, no options, no tallies - none of it can be shown
+    /// honestly (the tallies came off an endpoint that now answers 410) and the
+    /// question would be pulled out of a payload we no longer parse.
+    private var pollRemovedBubble: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Color.textSecondary)
+            Text("chat.poll.removed".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: 280, alignment: .leading)
+        .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
+        .cornerRadius(Theme.Metrics.bubbleRadius)
+    }
 
     private var translatedFooter: some View {
         HStack(spacing: 4) {

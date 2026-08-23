@@ -23,7 +23,48 @@ final class WebRTCManager: NSObject, ObservableObject {
     @Published private(set) var cameraOff: Bool = false
     @Published private(set) var speakerOn: Bool = false
 
-    private let factory: RTCPeerConnectionFactory
+    /// Built on first use, never at launch.
+    ///
+    /// `RTCInitializeSSL` plus an `RTCPeerConnectionFactory` with the default
+    /// video codec factories is the most expensive thing the app used to do
+    /// before its first frame: `RootView` holds `CallService` as a
+    /// `@StateObject`, `CallService.init` registers its ICE callbacks here, and
+    /// that alone built BoringSSL's tables and enumerated the VideoToolbox
+    /// encoders and decoders while the splash was still being laid out. Nobody
+    /// needs any of it until a call exists, and every path below is either a
+    /// user tapping "call" or an inbound offer, both of which await the network
+    /// on the very next line.
+    ///
+    /// `lazy` is sound here because the class is `@MainActor`: there is no
+    /// second thread that could race the initialiser.
+    private lazy var factory: RTCPeerConnectionFactory = {
+        CallAudio.prepareForWebRTC()
+        RTCInitializeSSL()
+        let encoderFactory = RTCDefaultVideoEncoderFactory()
+        let decoderFactory = RTCDefaultVideoDecoderFactory()
+        let built = RTCPeerConnectionFactory(
+            encoderFactory: encoderFactory,
+            decoderFactory: decoderFactory
+        )
+        // ⚠ WebRTC ignores the loopback adapter when it enumerates networks,
+        // which means it cannot reach a TURN server on 127.0.0.1 — and that is
+        // exactly where [CallTunnel] puts one so that call media can ride the
+        // obfuscated connection. Left alone, the tunnel is built, listens, and
+        // is never dialled.
+        //
+        // The native default for network_ignore_mask is the loopback bit; the
+        // options object below starts from nothing and sets only what is asked
+        // for, so handing it over is what clears it. Every other ignore flag
+        // stays false, which is what it already was.
+        //
+        // Clearing it only makes loopback usable, it does not put loopback
+        // candidates anywhere they matter: the tunnelled path is relay-only, so
+        // the sole candidate gathered is the relay address the island allocated.
+        let options = RTCPeerConnectionFactoryOptions()
+        options.ignoreLoopbackNetworkAdapter = false
+        built.setOptions(options)
+        return built
+    }()
     private var peerConnection: RTCPeerConnection?
     private var localAudioTrack: RTCAudioTrack?
     private var videoCapturer: RTCCameraVideoCapturer?
@@ -119,30 +160,6 @@ final class WebRTCManager: NSObject, ObservableObject {
     }
 
     private override init() {
-        RTCInitializeSSL()
-        let encoderFactory = RTCDefaultVideoEncoderFactory()
-        let decoderFactory = RTCDefaultVideoDecoderFactory()
-        self.factory = RTCPeerConnectionFactory(
-            encoderFactory: encoderFactory,
-            decoderFactory: decoderFactory
-        )
-        // ⚠ WebRTC ignores the loopback adapter when it enumerates networks,
-        // which means it cannot reach a TURN server on 127.0.0.1 — and that is
-        // exactly where [CallTunnel] puts one so that call media can ride the
-        // obfuscated connection. Left alone, the tunnel is built, listens, and
-        // is never dialled.
-        //
-        // The native default for network_ignore_mask is the loopback bit; the
-        // options object below starts from nothing and sets only what is asked
-        // for, so handing it over is what clears it. Every other ignore flag
-        // stays false, which is what it already was.
-        //
-        // Clearing it only makes loopback usable, it does not put loopback
-        // candidates anywhere they matter: the tunnelled path is relay-only, so
-        // the sole candidate gathered is the relay address the island allocated.
-        let options = RTCPeerConnectionFactoryOptions()
-        options.ignoreLoopbackNetworkAdapter = false
-        self.factory.setOptions(options)
         super.init()
     }
 
@@ -579,6 +596,10 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// activateNow=true for outgoing calls (no CallKit); false for inbound
     /// where CallKit's didActivate flips isAudioEnabled itself.
     private func configureAudioSession(speaker: Bool, activateNow: Bool) {
+        // Manual audio used to be armed at launch by `CallProvider.init`; it is
+        // armed here instead, before anything touches the session. `isAudioEnabled`
+        // below only means anything with it on.
+        CallAudio.prepareForWebRTC()
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         do {

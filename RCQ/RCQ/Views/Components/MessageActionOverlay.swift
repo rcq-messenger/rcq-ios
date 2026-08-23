@@ -26,14 +26,42 @@ struct MessageActionOverlay: View {
 
     @State private var showDeleteSubmenu = false
 
-    /// The user's chosen quick reactions (≤6), defaulting to the historical six
-    /// until customised in the emoji picker.
+    /// The user's chosen quick reactions, defaulting to the historical set until
+    /// customised in the emoji picker.
     @ObservedObject private var emojiPrefs = EmoticonPrefsStore.shared
 
-    private static let assets: [String] = [
-        "good", "give_heart", "biggrin", "rofl", "shok", "cray",
-        "mad", "diablo", "cool", "kiss", "give_rose", "man_in_love",
-    ]
+    /// The quick bar's order FOR THIS OPENING (21): most-used first, ties left
+    /// exactly as the picker configured them.
+    ///
+    /// ⚠⚠ Two rules matter more than the counting itself.
+    ///
+    /// 1. The order settles when the bar OPENS and never moves while it is open.
+    ///    That is what this `@State` is for. Sorting inline in `body` off the
+    ///    live counts would re-order the row the moment a tap bumped a weight -
+    ///    the buttons would move under the finger that is pressing them, which
+    ///    turns a picker into a game of chance. This view is built fresh every
+    ///    time `actionTarget` goes non-nil, so one appearance is one order.
+    ///
+    /// 2. Ties break by the CONFIGURED order, not alphabetically and not by
+    ///    whatever the dictionary felt like. `Array.sort` in Swift is not a
+    ///    stable sort, so the tie-break is written out by hand below rather than
+    ///    left to luck; on a fresh account every weight is zero and the bar must
+    ///    read exactly as the emoji picker left it.
+    @State private var orderedReactions: [String] = []
+
+    /// Settle the order. Reads the counts once, here, on appear.
+    private func settleReactionOrder() {
+        let configured = emojiPrefs.reactions
+        let counts = EmoticonUsageStore.shared.counts
+        orderedReactions = configured.enumerated()
+            .sorted { a, b in
+                let ca = counts[a.element] ?? 0
+                let cb = counts[b.element] ?? 0
+                if ca != cb { return ca > cb }
+                return a.offset < b.offset
+            }
+            .map(\.element)
+    }
 
     var body: some View {
         // Telegram-style overlay: bubble "lifts" to a comfortable
@@ -85,6 +113,10 @@ struct MessageActionOverlay: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
             }
         }
+        // "The bar opens" - see `orderedReactions`. onAppear, not `.task`: the
+        // work is synchronous and must be done before the first paint, so the
+        // row never visibly re-shuffles in front of the user.
+        .onAppear { settleReactionOrder() }
     }
 
     // MARK: - reactions
@@ -99,8 +131,19 @@ struct MessageActionOverlay: View {
         // a comfortable reading width even when content fits.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                ForEach(emojiPrefs.reactions, id: \.self) { asset in
+                // The settled order, with the configured list as the fallback
+                // for the single frame before onAppear runs.
+                ForEach(orderedReactions.isEmpty ? emojiPrefs.reactions : orderedReactions, id: \.self) { asset in
                     Button {
+                        // Count it only when it is being SET. `onReact` toggles,
+                        // and taking a reaction back off is not a vote for it.
+                        // The counts live in the app's existing
+                        // `EmoticonUsageStore` rather than a second store of
+                        // their own; picking a kolobok is picking a kolobok,
+                        // whether it lands in a message or on one.
+                        if message.reactions[AuthService.shared.ownUIN ?? 0] != asset {
+                            EmoticonUsageStore.shared.bump(asset)
+                        }
                         onReact(asset)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         onDismiss()

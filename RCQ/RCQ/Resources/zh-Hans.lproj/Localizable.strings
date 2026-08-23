@@ -272,6 +272,7 @@
 "bug_bounty.submit.cta" = "发送";
 "bug_bounty.submit.sending" = "发送中…";
 "bug_bounty.submit.sent" = "已发送";
+"bug_bounty.submit.sent_number" = "已发送 · #%d";
 "bug_bounty.disclosure" = "涉及数据泄露或绕过端到端加密的安全漏洞，请发邮件到 legal@rcq.app，主题里写 [SECURITY]，不要提交到这里。";
 "bug_bounty.alert.title" = "反馈";
 "bug_bounty.shake.toggle" = "摇一摇反馈";
@@ -282,17 +283,12 @@
 "bug_bounty.attach.hint" = "可以附上截图或一小段录像，最多 3 个文件。";
 "bug_bounty.attach.cta" = "添加";
 "bug_bounty.attach.paste" = "粘贴";
-"chat.attach.poll" = "投票";
 "chat.attach.share_group" = "邀请";
-"chat.attach.share_connection" = "连接方式";
 "relay.share.title" = "连接方式";
 "relay.share.invalid" = "不支持的连接";
 "relay.share.sent_note" = "你分享了一个连接方式";
 "relay.share.added" = "已添加到你的连接";
 "relay.share.add" = "添加";
-"relay.share.pick.title" = "分享连接方式";
-"relay.share.pick.body" = "把一个中继交给这位联系人，等他自己的连接被封时也能连上。他点“添加”就能用。";
-"relay.share.group.warn" = "群组里的每个成员都会看到这个中继。稀缺的境内中继只在你信任的群组里分享。";
 "relay.import.title" = "添加中继";
 "relay.import.hint" = "rcq-relay://… 或访问密钥";
 "relay.key.active" = "已填入访问密钥";
@@ -332,26 +328,6 @@
 "paid_traffic.price_suffix" = "本文件";
 "paid_traffic.enable" = "开启付费流量";
 "paid_traffic.cancel" = "取消";
-"poll.compose.title" = "新建投票";
-"poll.compose.question_header" = "问题";
-"poll.compose.question_placeholder" = "问题是什么？";
-"poll.compose.options_header" = "选项";
-"poll.compose.option_placeholder" = "选项 %d";
-"poll.compose.add_option" = "添加选项";
-"poll.compose.multi" = "允许多选";
-"poll.compose.anonymous" = "匿名投票";
-"poll.compose.flags_footer" = "匿名：群组看不到谁投了什么。多选：每个成员可以选多个选项。";
-"poll.compose.send" = "发送";
-"poll.header.single" = "投票 · 单选";
-"poll.header.multi" = "投票 · 多选";
-"poll.header.anonymous" = "匿名";
-"poll.header.closed" = "已结束";
-"poll.footer.total_votes" = "%d 票";
-"poll.row.more_voters" = "+%d 人";
-"poll.footer.close" = "结束投票";
-"poll.error.parse" = "无法读取这个投票。";
-"poll.error.vote" = "无法保存你的投票。";
-"poll.error.close" = "无法结束。";
 "contact_list.ctx.report" = "举报";
 "report.title" = "举报";
 "report.heading" = "举报用户";
@@ -430,11 +406,6 @@
 "outgoing.state.declined" = "已拒绝";
 "outgoing.cancel" = "取消";
 "outgoing.dismiss" = "移除";
-"presence.countdown.h_unit" = "小时";
-"presence.countdown.m_unit" = "分钟";
-"presence.countdown.lt1m" = "<1 分钟";
-"presence.info.title" = "离开后仍显示在线";
-"presence.info.body" = "关闭应用后，你仍会在这段时间内显示为在线。可在“设置”→“隐私与网络”中修改。";
 // ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "默认";
 "uin_listing.share.cta_open" = "在市场中打开 →";
@@ -479,6 +450,7 @@
 "contact_list.pending_many" = "%d 条待处理的好友请求";
 "contact_list.members_one" = "%d 位成员";
 "contact_list.members_many" = "%d 位成员";
+"contact_list.members_compact" = "%@ 位成员";
 "contact_list.ctx.open_chat" = "打开聊天";
 "contact_list.ctx.send_message" = "发消息";
 "contact_list.ctx.quick_preview" = "快速预览";
@@ -511,6 +483,11 @@
 "chat.pin.error.forbidden" = "需要群组信息权限，请让群主授予。";
 "chat.pin.error.rejected" = "该文本无法用作置顶内容。";
 "chat.pin.error.generic" = "置顶未完成，请检查网络后重试。";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "该群组已禁用链接。";
+"chat.files_off.notice" = "该群组已禁用文件。";
+"chat.slowmode.wait" = "慢速模式：请等待 %d 秒";
 "chat.selection.delete" = "删除（%d）";
 "chat.selection.forward" = "转发（%d）";
 "chat.selection.cancel" = "取消";
@@ -680,7 +657,6 @@
 "chat.preview.market_item" = "市场商品";
 "chat.preview.uin_listing" = "UIN 挂单";
 "chat.preview.group_invite" = "群组邀请";
-"chat.preview.poll" = "投票";
 "chat.preview.premium_photo" = "🔒 付费照片";
 "chat.preview.premium_video" = "🔒 付费视频";
 "chat.preview.generic" = "消息";
@@ -698,6 +674,40 @@
 "group.no_matches" = "没有找到。试试完整的 UIN。";
 "group.title" = "群组";
 "group.section.members" = "成员（%d）";
+"group.section.members.compact" = "成员（%@）";
+"group.section.content_policy" = "这里允许什么";
+"group.settings.no_links" = "关闭链接";
+"group.settings.no_links.hint" = "消息里的链接只显示为纯文本，无法打开。";
+"group.settings.no_files" = "关闭文件";
+"group.settings.no_files.hint" = "这里不能发送或下载文件。";
+"group.settings.slowmode" = "慢速模式";
+"group.settings.slowmode.hint" = "每位成员两条消息之间的间隔。";
+"group.settings.slowmode.off" = "关闭";
+"group.settings.slowmode.sec" = "%d 秒";
+"group.settings.slowmode.min" = "1 分钟";
+"group.role.moderator" = "管理员";
+"group.member.promote" = "设为管理员";
+"group.member.demote" = "收回权限";
+"group.perm.grant_all" = "全部权限";
+"group.perm.revoke_all" = "收回";
+"group.perm.hint" = "删除：可以移除任何人的消息。成员：可以移出成员。信息：可以修改名称、头像和置顶消息。这些都不是所有权：在你从下面转让之前，群组仍然属于你。";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "转让群主";
+"group.transfer.cta" = "转让";
+"group.transfer.working" = "转让中…";
+"group.transfer.confirm" = "把这个群转让给 %@？你仍留在群里，只是普通成员，会失去群主权限和所有管理员权限。只有新群主才能转让回来。";
+"group.transfer.done.title" = "群主已转让";
+"group.transfer.done" = "现在的群主是 %@。你仍是成员：可以退出，也可以留下。";
+"group.transfer.stay" = "留下";
+"group.transfer.err.owner_only" = "只有群主才能转让群组。";
+"group.transfer.err.already_owner" = "他已经是这个群的群主。";
+"group.transfer.err.not_a_member" = "他已经不在这个群里。";
+"group.transfer.err.no_such_user" = "这座岛不认识他。";
+"group.transfer.err.target_suspended" = "该账号已被停用。";
+"group.transfer.err.rate_limited_in" = "尝试次数过多，请在 %d 秒后重试。";
+"group.transfer.err.rate_limited" = "尝试次数过多，请稍后再试。";
+"group.transfer.err.failed" = "无法转让群组。";
 "group.section.notifications" = "通知";
 "group.notifications.mute" = "静音通知";
 "group.notifications.unmute" = "取消静音";
@@ -953,12 +963,10 @@
 "pool.section_share" = "占抽取的 %.0f%%";
 "pool.cap" = "上限 %d";
 "pool.cap_remaining" = "剩余 %d / %d";
-"settings.privacy.persistent_presence" = "退出后仍可见";
 "settings.privacy.relay_calls" = "通话始终走中继";
 "settings.privacy.relay_calls.desc" = "通话的音频和视频经我们的中继转发，对方不会知道你的 IP 地址。关掉之后通话质量可能更好，但对方会看到你的地址。";
 "settings.privacy.strangers" = "陌生人进入请求";
 "settings.privacy.strangers.desc" = "联系人以外的消息会先进入请求列表，等待你接受。若是你先给对方写信，对方的回复会照常送达。";
-"settings.privacy.persistent_presence.desc" = "即使应用已关闭，联系人也能看到你的状态（在线 / 离开 / 请勿打扰）。";
 "settings.privacy.hof_opt_in" = "名人堂";
 "settings.privacy.hof_opt_in.desc" = "允许把你列入 rcq.app 上的公开名人堂候选。只展示昵称和 UIN，而且要通过审核。你可以随时关掉。";
 "settings.privacy.hof_add_image" = "添加图片 / GIF";
@@ -966,13 +974,6 @@
 "settings.privacy.hof_remove_image" = "移除图片";
 "settings.privacy.hof_image_too_large" = "图片太大。请选一张小一点的（最大约 256 KB）。";
 "settings.privacy.hof_image_error" = "图片上传失败。请重试。";
-"settings.privacy.presence_ttl" = "时长";
-"settings.privacy.presence_ttl.forever" = "永久";
-"settings.privacy.presence_ttl.30m" = "30 分钟";
-"settings.privacy.presence_ttl.1h" = "1 小时";
-"settings.privacy.presence_ttl.3h" = "3 小时";
-"settings.privacy.presence_ttl.8h" = "8 小时";
-"settings.privacy.presence_ttl.24h" = "24 小时";
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 "radio.info.title" = "关于电台聊天";
 "radio.info.header.title" = "本地网状聊天";
@@ -1591,6 +1592,25 @@
 "myreports.status.resolved" = "已解决";
 "myreports.status.dismissed" = "已拒绝";
 "myreports.status.duplicate" = "重复";
+
+"myreports.number" = "反馈 #%d";
+"myreports.number.short" = "#%d";
+"myreports.copy" = "复制反馈内容";
+"myreports.copy_answer" = "复制回复";
+"myreports.edit" = "修改反馈";
+"myreports.edit.placeholder" = "你的反馈";
+"myreports.edit.save" = "保存";
+"myreports.edit.error" = "保存失败，请重试。";
+"myreports.edit.answered" = "已经有回复了，反馈正文不能再改。可以继续补充留言。";
+"myreports.edit.unsupported" = "这个岛还不支持修改反馈。";
+"myreports.edit.not_editable" = "崩溃报告由应用自己发送，正文无法改写。";
+"myreports.edit.too_often" = "一小时内修改次数过多，请稍后再试。";
+"myreports.remove" = "从我的列表中移除";
+"myreports.remove.cta" = "移除";
+"myreports.remove.confirm.title" = "把反馈 %@ 从列表中移除？";
+"myreports.remove.confirm.body" = "它不再显示在这个页面。什么都不会被删除：运营方保留反馈和回复，它仍然计入名人堂。";
+"myreports.remove.refused" = "这条还在处理中，在有结论之前会留在你的列表里。";
+"myreports.remove.error" = "移除失败，请重试。";
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "我的 UIN";
 "my_uins.active" = "你当前使用的号码";
@@ -1606,6 +1626,21 @@
 "uin_shop.held.body" = "它已在你的收藏里，你仍然使用 %@。可以现在切换过去，也可以之后在“我的 UIN”里切换。";
 "uin_shop.held.now" = "现在切换";
 "uin_shop.held.later" = "稍后";
+
+"my_uins.release" = "释放";
+"my_uins.release.cta" = "释放";
+"my_uins.release.confirm.title" = "释放 %@？";
+"my_uins.release.confirm.body" = "号码会回到公共号池，别人可能会拿走。此操作无法撤销。";
+"my_uins.release.error.in_use" = "不能释放你正在使用的号码。请先切换到另一个。";
+"my_uins.release.error.unsupported" = "这个岛还不支持释放号码。";
+"my_uins.release.error.too_often" = "一小时内释放次数过多，请稍后再试。";
+"my_uins.error.not_owned" = "这个号码已经不在你的收藏里了。";
+"my_uins.footer.rules" = "一个账号最多可以持有 %d 个号码。释放掉的号码会回到公共号池，任何人都可能拿走，且无法找回；你正在使用的号码不能释放。";
+"uin.error.suspended" = "账号已被冻结，无法更改它的号码。";
+"uin.error.too_many" = "你持有的号码已经达到一个账号的上限。请先在「我的 UIN」里释放一个。";
+"uin_shop.error.generic" = "服务器拒绝了请求，请重试。";
+"uin_shop.info.cap.title" = "最多可以持有多少个";
+"uin_shop.info.cap.body" = "一个账号最多可以持有 %1$d 个号码，你现在有 %2$d 个。可以在「我的 UIN」里交还一个，正在使用的那个除外，并且无法撤销：释放掉的号码会回到公共号池，任何人都可能拿走。";
 /* Full network check (NetworkAudit) */
 "audit.run" = "完整网络检测";
 "audit.hint" = "会向这个岛、前置域名、中继以及两个众所周知的对照主机建立普通连接，以判断这个网络在过滤什么。不会向任何地方发送数据，结果由你自己复制出去。";
@@ -1661,3 +1696,58 @@
 "how.q5" = "有人能知道我在跟谁聊天吗？";
 "how.a5" = "你的岛知道有个信封寄给了某人，却不知道它出自你手。\n\nRCQ 中继开着时，出口的路被分给两台中继。第一台看得见你，却不知道你要去哪个岛；第二台到得了岛，却不知道你是谁。\n\n藏不住的是：只要 RCQ 中继没开，你在用 RCQ 这件事，掌管你网络的人就看得到。";
 "how.more" = "更多问题见 rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "搜索设置";
+"settings.search.placeholder" = "主题、PIN、壁纸…";
+"settings.search.empty.idle" = "输入以查找设置。";
+"settings.privacy.profile_card" = "谁可以打开我的资料卡";
+"settings.privacy.profile_card.desc" = "你在成员列表、反应列表或照片上方的名字会打开你的资料卡。被挡在外面的人将无法打开它，但仍然可以给你写消息。";
+"notifs.muted.empty" = "没有静音的人。";
+
+"chat.poll.removed" = "投票功能已不再支持";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "语音消息";
+"audio.strip.play" = "播放";
+"audio.strip.pause" = "暂停";
+"audio.strip.close" = "停止播放";
+"album.sender.open_profile" = "打开资料";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "添加聊天";
+"sections.empty" = "空的。用 + 把聊天移到这里。";
+"sections.reorder.hint" = "用箭头移动分区。";
+"sections.reorder.done" = "完成";
+"sections.move_up" = "上移";
+"sections.move_down" = "下移";
+"sections.menu.reorder" = "重新排序分区";
+"sections.menu.new" = "新建分区";
+"sections.menu.rename" = "重命名";
+"sections.menu.delete" = "删除分区";
+"sections.menu.delete.confirm" = "删除这个分区吗？聊天不会动，会回到原来的位置。";
+"sections.menu.pin" = "询问 PIN";
+"sections.menu.pin.off" = "不再询问 PIN";
+"sections.menu.pin.note" = "在你于本设备输入 PIN 之前隐藏该分区。聊天本身并不会因此被加密。";
+"sections.new.placeholder" = "分区名称";
+"sections.new.save" = "创建";
+"sections.rename.save" = "保存";
+"sections.locked.title" = "会询问 PIN";
+"sections.locked.nopin" = "已在另一台设备上隐藏。本机没有设置 PIN。";
+"sections.locked.open_anyway" = "仍然打开";
+"sections.picker.title" = "添加到 %@";
+"sections.picker.search" = "搜索";
+"sections.picker.save" = "保存";
+"sections.picker.nobody" = "暂时没有可添加的人。";
+"sections.err.too_many_sections" = "一个账号最多只能有这么多分区。";
+"sections.err.section_full" = "这个分区已满。";
+"sections.err.too_many_members" = "所有分区里的聊天太多了。";
+"sections.err.too_large" = "分区列表太大，无法保存。";
+"sections.err.unreadable" = "你的分区是由更新版本的 RCQ 写入的。";
+"pin_verify.title.section" = "打开该分区";

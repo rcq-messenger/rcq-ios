@@ -30,6 +30,10 @@ struct UINShopView: View {
     /// it now or later?" step.
     @State private var held: Int?
     @State private var showMyUINs = false
+    /// Read once for the collection cap and how much of it is used. The server
+    /// refuses the eleventh number with 409 `too_many_uins`, and finding that
+    /// out at the refusal is finding it out too late.
+    @State private var collection: AppState.MyUINs?
 
     private var ownUIN: Int? { AuthService.shared.ownUIN }
     private var typedLength: Int { typed.count }
@@ -189,6 +193,12 @@ struct UINShopView: View {
                 Text(String(format: "uin_shop.held.body".localized, String(ownUIN ?? 0)))
             }
             .sheet(isPresented: $showMyUINs) { MyUINsView() }
+            // Re-read on the way back from My numbers: a release there changes
+            // the count this screen prints.
+            .onChange(of: showMyUINs) { open in
+                if !open { Task { collection = await AppState.shared.myUINs() } }
+            }
+            .task { collection = await AppState.shared.myUINs() }
         }
     }
 
@@ -296,6 +306,18 @@ struct UINShopView: View {
                 title: "uin_shop.info.migrate.title",
                 body: "uin_shop.info.migrate.body"
             )
+            // The cap and the one irreversible thing in the whole flow. Both
+            // are server rules the app used to keep to itself: the cap only
+            // showed up as a refusal on the eleventh number, and nothing
+            // anywhere said that giving a number back is final.
+            infoRow(
+                title: "uin_shop.info.cap.title".localized,
+                bodyText: String(
+                    format: "uin_shop.info.cap.body".localized,
+                    collection?.maxOwned ?? 10,
+                    (collection?.owned ?? []).count
+                )
+            )
             if let uin = ownUIN {
                 Text(String(format: "uin_shop.info.current".localized, String(uin)))
                     .font(.caption2.monospacedDigit())
@@ -307,11 +329,17 @@ struct UINShopView: View {
     }
 
     private func infoRow(title: String, body: String) -> some View {
+        infoRow(title: title.localized, bodyText: body.localized)
+    }
+
+    /// Same row for copy that is already formatted (a count folded into the
+    /// sentence), so the caller localises and the row only lays out.
+    private func infoRow(title: String, bodyText: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title.localized)
+            Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(Theme.Color.textPrimary)
-            Text(body.localized)
+            Text(bodyText)
                 .font(.system(size: 13, weight: .regular))
                 .foregroundColor(Theme.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -413,13 +441,17 @@ struct UINShopView: View {
         switch result {
         case .success:
             held = parsed
+            collection = await AppState.shared.myUINs()
         case .taken:
             error = "uin_shop.error.taken".localized
             quote = nil
         case .cooldown:
             error = "uin_shop.error.cooldown".localized
         case .other(let msg):
-            error = msg
+            // The cap and a suspended account both arrive here as a JSON
+            // body; uinRefusalText turns them into sentences and leaves a
+            // transport failure's own wording alone.
+            error = AppState.uinRefusalText(msg)
         }
     }
 
@@ -436,7 +468,7 @@ struct UINShopView: View {
         case .taken:
             error = "uin_shop.error.taken".localized
         case .other(let msg):
-            error = msg
+            error = AppState.uinRefusalText(msg)
         }
     }
 

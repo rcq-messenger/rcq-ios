@@ -27,6 +27,11 @@ struct BugBountySheet: View {
     @State private var attachments: [Attachment] = []
     @State private var sending: Bool = false
     @State private var sentOK: Bool = false
+    /// The number the operator will quote when he answers (`reports.id`). Shown
+    /// on the confirmation so the reporter can write "about #123" instead of
+    /// describing the report a second time. An island older than the field
+    /// sends nothing, and then the confirmation is just "Sent".
+    @State private var sentNumber: Int?
     @State private var errorMessage: String?
     @AppStorage("rcq.shake_to_bug_disabled") private var shakeDisabled: Bool = false
 
@@ -176,7 +181,12 @@ struct BugBountySheet: View {
                     .foregroundColor(Theme.Color.textSecondary)
                 Spacer()
                 if sentOK {
-                    Label("bug_bounty.submit.sent".localized, systemImage: "checkmark.circle.fill")
+                    Label(
+                        sentNumber.map {
+                            String(format: "bug_bounty.submit.sent_number".localized, $0)
+                        } ?? "bug_bounty.submit.sent".localized,
+                        systemImage: "checkmark.circle.fill"
+                    )
                         .font(.callout.weight(.semibold))
                         .foregroundColor(Theme.Color.accent)
                 } else {
@@ -458,8 +468,11 @@ struct BugBountySheet: View {
         sending = true
         defer { sending = false }
         do {
-            struct Out: Decodable { let id: Int }
-            let _: Out = try await APIClient.shared.request(
+            // `number` IS `id` server-side; it is sent separately so a client
+            // does not have to guess whether the primary key is something it
+            // should be keeping off the screen.
+            struct Out: Decodable { let id: Int; let number: Int? }
+            let out: Out = try await APIClient.shared.request(
                 "POST", "/reports",
                 body: Body(
                     target_uin: me,
@@ -471,6 +484,7 @@ struct BugBountySheet: View {
                     attachments: readyAttachments
                 )
             )
+            sentNumber = out.number ?? out.id
             sentOK = true
             description = ""
             attachments = []

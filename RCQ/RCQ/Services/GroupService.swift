@@ -10,6 +10,66 @@ final class GroupService: ObservableObject {
     /// bindings; UnreadStore is the source of truth and survives
     /// app launches.
     @Published private(set) var unread: [Int: Int] = [:]
+    /// Room rules per own-island group id, see `RoomRules`. Filled from the
+    /// very same payloads the group list and the PATCH replies already carry,
+    /// so it costs no extra round trip.
+    @Published private(set) var roomRules: [Int: RoomRules] = [:]
+
+    /// The rules of a room, with the permissive defaults for a group nothing
+    /// has been fetched for yet (an island that predates the fields answers
+    /// exactly the same way).
+    func rules(_ groupID: Int) -> RoomRules { roomRules[groupID] ?? RoomRules() }
+
+    /// The three owner-only levers `GroupPatchIn` calls `links_allowed`,
+    /// `files_allowed` and `slowmode_sec`: what may be posted in the room and
+    /// how often. `post_policy` (read-only room) and these together are the
+    /// "freeze" controls; the desktop has had them since the group-settings
+    /// modal shipped, iOS had none of them.
+    ///
+    /// ⚠ Kept BESIDE the group rather than on it: `RCQGroup` lives in a file
+    /// this change does not own. Folding `linksAllowed` / `filesAllowed` /
+    /// `slowmodeSec` into the model later is a drop-in replacement: the wire
+    /// keys and the defaults are the ones written here.
+    struct RoomRules: Equatable, Decodable {
+        var linksAllowed: Bool = true
+        var filesAllowed: Bool = true
+        var slowmodeSec: Int = 0
+
+        /// The steps the island accepts (`_SLOWMODE_STEPS` in `groups.py`).
+        /// A fixed menu rather than a free integer so every client draws the
+        /// same picker and a room reads the same on all of them.
+        static let slowmodeSteps = [0, 5, 10, 30, 60]
+
+        enum CodingKeys: String, CodingKey {
+            case linksAllowed = "links_allowed"
+            case filesAllowed = "files_allowed"
+            case slowmodeSec = "slowmode_sec"
+        }
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // An older island sends none of the three. "Everything allowed,
+            // no slowmode" is exactly how such a room behaves.
+            self.linksAllowed = (try? c.decodeIfPresent(Bool.self, forKey: .linksAllowed)) ?? true
+            self.filesAllowed = (try? c.decodeIfPresent(Bool.self, forKey: .filesAllowed)) ?? true
+            self.slowmodeSec = (try? c.decodeIfPresent(Int.self, forKey: .slowmodeSec)) ?? 0
+        }
+    }
+
+    /// One `GroupOut` read twice: once as the model, once as the rules the
+    /// same payload carries. Every group response goes through this, so the
+    /// rules map is never a fetch of its own.
+    private struct GroupWithRules: Decodable {
+        let group: RCQGroup
+        let rules: RoomRules
+
+        init(from decoder: Decoder) throws {
+            self.group = try RCQGroup(from: decoder)
+            self.rules = try RoomRules(from: decoder)
+        }
+    }
 
     private init() {
         // Hydrate from the persisted store on first access so the
@@ -21,6 +81,18 @@ final class GroupService: ObservableObject {
     func incrementUnread(_ groupID: Int) {
         UnreadStore.shared.incrementGroup(groupID)
         unread[groupID, default: 0] += 1
+    }
+
+    /// A page of unread bumps, applied in one pass. See
+    /// `ContactService.applyUnreadDeltas`.
+    func applyUnreadDeltas(_ deltas: [Int: Int]) {
+        guard !deltas.isEmpty else { return }
+        UnreadStore.shared.incrementGroups(deltas)
+        var next = unread
+        for (id, delta) in deltas where delta > 0 {
+            next[id, default: 0] += delta
+        }
+        unread = next
     }
 
     func clearUnread(_ groupID: Int) {
@@ -99,9 +171,10 @@ final class GroupService: ObservableObject {
             // two base64 keys, which on the beta group is a couple of hundred
             // kilobytes on the boot path, on every poll. It is fetched per
             // group, on demand, by `ensureRoster`.
-            let list: [RCQGroup] = try await APIClient.shared.request(
+            let rows: [GroupWithRules] = try await APIClient.shared.request(
                 "GET", "/groups", query: ["members": "0"]
             )
+            let list = rows.map(\.group)
             guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
             // §5c: groups joined on OTHER islands, fetched with the guest creds;
             // ids rewritten to the local alias + host stamped. Per-island
@@ -134,6 +207,7 @@ final class GroupService: ObservableObject {
             guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
                   !PanicPINService.shared.isLocked else { return }
             self.groups = own + foreign
+            for row in rows { self.roomRules[row.group.id] = row.rules }
             self.rosterAccount = account
             self.groupsLoaded = true
             saveSnapshot()
@@ -150,12 +224,13 @@ final class GroupService: ObservableObject {
 
     func create(name: String, memberUINs: [Int]) async throws -> RCQGroup {
         struct Body: Encodable { let name: String; let member_uins: [Int] }
-        let g: RCQGroup = try await APIClient.shared.request(
+        let row: GroupWithRules = try await APIClient.shared.request(
             "POST", "/groups", body: Body(name: name, member_uins: memberUINs)
         )
-        upsert(g)
+        roomRules[row.group.id] = row.rules
+        upsert(row.group)
         noteMembershipBegan()
-        return g
+        return row.group
     }
 
     /// Stage 5: a room this account just entered has its log cursor seeded
@@ -169,10 +244,37 @@ final class GroupService: ObservableObject {
     }
 
     func reload(_ groupID: Int) async throws -> RCQGroup {
-        let g: RCQGroup = try await APIClient.shared.request("GET", "/groups/\(groupID)")
-        upsert(g)
-        return g
+        let row: GroupWithRules = try await APIClient.shared.request("GET", "/groups/\(groupID)")
+        roomRules[groupID] = row.rules
+        upsert(row.group)
+        return row.group
     }
+
+    /// The rules of every own-island room, without the rosters. The list poll
+    /// fills the same map for free; this is the explicit ask for the one screen
+    /// that must not draw a stale toggle (group settings), and it is the
+    /// roster-less shape of the list, not a per-group fetch.
+    func refreshRules() async {
+        guard AppState.shared.networkReady, !PanicPINService.shared.isDecoy else { return }
+        struct Row: Decodable {
+            let id: Int
+            let rules: RoomRules
+            enum CodingKeys: String, CodingKey { case id }
+            init(from decoder: Decoder) throws {
+                self.id = try decoder.container(keyedBy: CodingKeys.self).decode(Int.self, forKey: .id)
+                self.rules = try RoomRules(from: decoder)
+            }
+        }
+        guard let rows: [Row] = try? await APIClient.shared.request(
+            "GET", "/groups", query: ["members": "0"]
+        ) else { return }
+        for r in rows { roomRules[r.id] = r.rules }
+    }
+
+    /// Groups whose roster has been fetched from the island at least once in
+    /// this app run. See `ensureRoster` for why "at least once" and not
+    /// "when empty".
+    private var rosterFetched = Set<Int>()
 
     /// The group WITH its roster, fetching it if the list did not carry one.
     ///
@@ -182,27 +284,44 @@ final class GroupService: ObservableObject {
     /// that would deliver to nobody while looking like it worked. A foreign
     /// group is left alone: its roster comes from its own island, and its id
     /// here is a local negative alias that our island knows nothing about.
+    ///
+    /// ⚠ Fetched once per group per app run even when a roster is already
+    /// here, because the one that is here is whatever the first payload of the
+    /// run happened to carry and nothing overwrites it afterwards: the list
+    /// poll asks `?members=0` and `refreshNow`/`upsert` both deliberately keep
+    /// the roster they already paid for, and the membership broadcast for a
+    /// room over a hundred people carries the group id alone. So a member who
+    /// set a picture, renamed themselves or joined after that first payload
+    /// stayed invisible for the rest of the run, which is founder item 29,
+    /// "a group member who is not my contact shows no avatar": a contact's
+    /// picture is refreshed by every `/contacts` poll, a group member's was
+    /// refreshed by nothing. Android fixed the same hole with the same rule
+    /// (`Session.kt`, `rosterFetched`).
     @discardableResult
     func ensureRoster(_ groupID: Int) async -> RCQGroup? {
         guard let cached = find(groupID) else { return nil }
-        if !cached.members.isEmpty || cached.host != nil { return cached }
-        guard let full: RCQGroup = try? await APIClient.shared.request(
+        if cached.host != nil { return cached }
+        if !cached.members.isEmpty && rosterFetched.contains(groupID) { return cached }
+        guard let full: GroupWithRules = try? await APIClient.shared.request(
             "GET", "/groups/\(groupID)"
         ) else { return cached }
-        guard let idx = groups.firstIndex(where: { $0.id == groupID }) else { return full }
+        rosterFetched.insert(groupID)
+        roomRules[groupID] = full.rules
+        guard let idx = groups.firstIndex(where: { $0.id == groupID }) else { return full.group }
         // Only the roster is taken: everything else on the row is already live
         // and may have been patched locally while this was in flight.
-        groups[idx].members = full.members
-        groups[idx].memberCount = full.memberCount
+        groups[idx].members = full.group.members
+        groups[idx].memberCount = full.group.memberCount
         return groups[idx]
     }
 
     func addMember(groupID: Int, uin: Int) async throws {
         struct Body: Encodable { let uin: Int }
-        let g: RCQGroup = try await APIClient.shared.request(
+        let row: GroupWithRules = try await APIClient.shared.request(
             "POST", "/groups/\(groupID)/members", body: Body(uin: uin)
         )
-        upsert(g)
+        roomRules[groupID] = row.rules
+        upsert(row.group)
     }
 
     enum CrossIslandAddError: Error { case notCrossIsland, unreachable }
@@ -247,6 +366,8 @@ final class GroupService: ObservableObject {
         )
         if uin == AuthService.shared.ownUIN {
             groups.removeAll { $0.id == groupID }
+            roomRules[groupID] = nil
+            rosterFetched.remove(groupID)
             MessageStore.shared.clearThread(.group(id: groupID))
             clearUnread(groupID)
         } else {
@@ -257,34 +378,190 @@ final class GroupService: ObservableObject {
     func leave(_ groupID: Int) async throws {
         guard let me = AuthService.shared.ownUIN else { return }
         try await removeMember(groupID: groupID, uin: me)
+        // Leaving is an explicit local action, which is the only thing that
+        // ever prunes the sections slot. The key carries the group's HOST: a
+        // foreign group's local id is a negative alias allocated in first-sight
+        // order and means nothing on another device.
+        SectionsVault.forgetSectionMember(Sections.key(forGroupID: groupID))
+    }
+
+    /// Every partial group update goes through here: one PATCH, one decode of
+    /// the reply into both the model and the room rules it carries, one upsert.
+    @discardableResult
+    private func patchGroup(_ groupID: Int, _ body: Encodable) async throws -> RCQGroup {
+        let row: GroupWithRules = try await APIClient.shared.request(
+            "PATCH", "/groups/\(groupID)", body: body
+        )
+        roomRules[groupID] = row.rules
+        upsert(row.group)
+        return row.group
     }
 
     func rename(groupID: Int, name: String) async throws {
         struct Body: Encodable { let name: String }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(name: name)
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(name: name))
     }
 
-    /// Owner: grant/revoke a member's moderator caps (subset of
-    /// delete|members|info). Returns the updated group with the new roster.
+    /// SPEC 6.6, the full capability list, in the order the island stores it.
+    /// The owner holds all three implicitly and is the only caller the island
+    /// lets grant them, so there is no escalation chain.
+    ///   `delete`  retract another member's message for everyone
+    ///   `members` remove members
+    ///   `info`    edit name, description, picture, pinned message
+    /// There is no admin ROLE behind these: the role column is never written to
+    /// "admin" anywhere on the island. Nor is a cap ownership. The crown moves
+    /// in exactly two ways, and `transferOwner` below is the deliberate one
+    /// (the other is the owner leaving, which promotes the oldest member).
+    static let allPermissions = ["delete", "members", "info"]
+
+    /// Owner: grant/revoke a member's moderator caps (any subset of
+    /// `allPermissions`; the empty list demotes back to a plain member).
+    /// Returns with the updated group and roster already upserted.
     func setMemberPermissions(groupID: Int, uin: Int, permissions: [String]) async throws {
         struct Body: Encodable { let permissions: [String] }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "POST", "/groups/\(groupID)/members/\(uin)/permissions", body: Body(permissions: permissions)
+        // Canonical order + no strangers, the same shape the island stores;
+        // it rejects an unknown cap with a 400 rather than ignoring it.
+        let clean = Self.allPermissions.filter { permissions.contains($0) }
+        let row: GroupWithRules = try await APIClient.shared.request(
+            "POST", "/groups/\(groupID)/members/\(uin)/permissions", body: Body(permissions: clean)
         )
-        upsert(g)
+        roomRules[groupID] = row.rules
+        upsert(row.group)
+    }
+
+    // MARK: - Ownership
+
+    /// Why the island refused a handover, in its own vocabulary. Every one of
+    /// these is a fact about the TARGET or about us rather than a network
+    /// hiccup, so each gets its own sentence instead of a shared "could not".
+    enum TransferOwnerError: Error {
+        /// 403. We are not the owner any more (somebody else's transfer, or
+        /// our own from another device, landed first).
+        case ownerOnly
+        /// 400. The target is us.
+        case alreadyOwner
+        /// 404. No membership row for them in this group any more.
+        case notAMember
+        /// 404. A membership row whose account this island cannot resolve: a
+        /// burned or migrated account, or a member of another island. There is
+        /// no wire form for "the owner lives elsewhere", so this is refused
+        /// rather than approximated.
+        case noSuchUser
+        /// 409. The account cannot authenticate at all, so it could not pull a
+        /// single owner lever and the room would be left unmanageable.
+        case targetSuspended
+        /// 429, ten per hour. `retryAfter` is the island's own count of
+        /// seconds, when it sent one.
+        case rateLimited(retryAfter: Int?)
+        /// Anything else: no connection, a 500, or an island too old to have
+        /// the endpoint at all (a bare 404 from the router, no `detail.code`).
+        case other(String)
+
+        var message: String {
+            switch self {
+            case .ownerOnly:       return "group.transfer.err.owner_only".localized
+            case .alreadyOwner:    return "group.transfer.err.already_owner".localized
+            case .notAMember:      return "group.transfer.err.not_a_member".localized
+            case .noSuchUser:      return "group.transfer.err.no_such_user".localized
+            case .targetSuspended: return "group.transfer.err.target_suspended".localized
+            case .rateLimited(let wait):
+                guard let wait, wait > 0 else { return "group.transfer.err.rate_limited".localized }
+                return "group.transfer.err.rate_limited_in".localized(wait)
+            case .other(let text):
+                return text.isEmpty ? "group.transfer.err.failed".localized : text
+            }
+        }
+    }
+
+    /// Hand the whole room to another member (founder item 23, the half that
+    /// needed a server). Owner only, and one way from here: the island answers
+    /// with the group as it now stands, and the moment that lands we are a
+    /// plain member of it.
+    ///
+    /// ⚠ The response replaces the WHOLE local group, not just `ownerUIN`. The
+    /// roles moved with it (their row became the owner's, ours stopped being)
+    /// and so did both `permissions` lists, because a capability is a grant
+    /// FROM the owner and the owner is somebody else now. Patching the single
+    /// field would leave every screen still drawing our row with rights it no
+    /// longer has, and the client-enforced `delete` cap honouring them.
+    ///
+    /// ⚠ OWN-ISLAND ONLY. Group membership is local by construction: a member
+    /// is a bare number that means something only against this island's users,
+    /// so the island refuses a target it cannot resolve (`no_such_user`) and
+    /// there is no form in which "the new owner lives on island B" can be
+    /// expressed. A cross-island group's id here is a local negative alias our
+    /// island knows nothing about; callers gate on `group.host == nil`.
+    @discardableResult
+    func transferOwner(groupID: Int, toUIN: Int) async throws -> RCQGroup {
+        struct Body: Encodable { let to_uin: Int }
+        do {
+            let row: GroupWithRules = try await APIClient.shared.request(
+                "POST", "/groups/\(groupID)/transfer-owner", body: Body(to_uin: toUIN)
+            )
+            roomRules[groupID] = row.rules
+            upsert(row.group)
+            return row.group
+        } catch {
+            throw Self.transferRefusal(error)
+        }
+    }
+
+    /// The island's refusal, typed. `detail.code` is the branch; the status is
+    /// only consulted for a 429 that reached us through something that ate the
+    /// body (a proxy, an older limiter), because the ceiling is still the thing
+    /// that happened.
+    static func transferRefusal(_ error: Error) -> TransferOwnerError {
+        if let typed = error as? TransferOwnerError { return typed }
+        guard let api = error as? APIError, case .http(let status, let body) = api else {
+            return .other(APIErrorPresenter.friendly(error))
+        }
+        switch parseCode(body) {
+        case "owner_only":       return .ownerOnly
+        case "already_owner":    return .alreadyOwner
+        case "not_a_member":     return .notAMember
+        case "no_such_user":     return .noSuchUser
+        case "target_suspended": return .targetSuspended
+        case "rate_limited":     return .rateLimited(retryAfter: parseInt(body, key: "retry_after"))
+        default: break
+        }
+        if status == 429 { return .rateLimited(retryAfter: parseInt(body, key: "retry_after")) }
+        return .other("group.transfer.err.failed".localized)
+    }
+
+    /// One sentence for a handover that did not land, whatever it was.
+    static func transferFailureMessage(_ error: Error) -> String {
+        transferRefusal(error).message
+    }
+
+    /// The COMPACT `group_membership_changed`: above a hundred members the
+    /// island cannot afford to push the whole snapshot to everyone, so it
+    /// sends the group id and `owner_uin` alone (`_broadcast_membership`).
+    ///
+    /// ⚠ Ignoring it is not harmless. Every other owner-only lever is enforced
+    /// by the island, which 403s a stale client the moment it pulls one; the
+    /// moderator `delete` cap is honoured by the RECEIVING client against its
+    /// cached roster, because sealed sender leaves the island no sender to
+    /// check. So a stale `ownerUIN` is a revoked owner whose deletes still land
+    /// on every big group, until the next boot.
+    ///
+    /// Only the number is written. The cached roster still carries the old
+    /// roles, and that is deliberately left to the next `/groups` fetch: the
+    /// event exists precisely because the roster of a room this size is too
+    /// expensive to move, and re-fetching one here would spend exactly what the
+    /// compact form saved. Nothing reads a stale role as a right, either -
+    /// `RCQGroupMember.canDelete` asks for role "admin" or an explicit cap, and
+    /// the ex-owner's row carries neither.
+    func applyOwnerLocally(groupID: Int, ownerUIN: Int) {
+        guard let idx = groups.firstIndex(where: { $0.id == groupID }),
+              groups[idx].ownerUIN != ownerUIN else { return }
+        groups[idx].ownerUIN = ownerUIN
     }
 
     /// Owner/admin — set the free-text group description. Pass an
     /// empty string to clear it (server treats empty as "remove").
     func setDescription(groupID: Int, description: String) async throws {
         struct Body: Encodable { let description: String }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(description: description)
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(description: description))
     }
 
     /// The pin slot the server actually has: `GroupPatchIn.pinned_text` is a
@@ -350,11 +627,7 @@ final class GroupService: ObservableObject {
     /// an over-long body is a 422 that never touches the row.
     func setPinnedText(groupID: Int, pinnedText: String) async throws {
         struct Body: Encodable { let pinned_text: String }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)",
-            body: Body(pinned_text: Self.clampPinnedText(pinnedText))
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(pinned_text: Self.clampPinnedText(pinnedText)))
     }
 
     /// Optimistically swap a group's pinned text in the local published list so
@@ -370,13 +643,11 @@ final class GroupService: ObservableObject {
     }
 
     /// Owner-only — flip the broadcast mode. `"all"` lets everyone
-    /// post, `"owner_only"` makes the group a one-way channel.
+    /// post, `"owner_only"` makes the group a one-way channel. The
+    /// read-only half of the founder's "заморозка".
     func setPostPolicy(groupID: Int, policy: String) async throws {
         struct Body: Encodable { let post_policy: String }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(post_policy: policy)
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(post_policy: policy))
     }
 
     /// Owner-only — flip `is_closed`. Closed groups reject self-join
@@ -384,20 +655,40 @@ final class GroupService: ObservableObject {
     /// invite (the `add_member` endpoint) inserts membership.
     func setIsClosed(groupID: Int, isClosed: Bool) async throws {
         struct Body: Encodable { let is_closed: Bool }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(is_closed: isClosed)
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(is_closed: isClosed))
     }
 
     /// Owner-only — hide the member roster in Group Info from
     /// everyone but the owner.
     func setMembersHidden(groupID: Int, hidden: Bool) async throws {
         struct Body: Encodable { let members_hidden: Bool }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH", "/groups/\(groupID)", body: Body(members_hidden: hidden)
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(members_hidden: hidden))
+    }
+
+    /// Owner-only: may links in this room be opened. Client-honored, because the
+    /// island cannot see inside a sealed envelope, so it publishes the rule
+    /// and every client renders links as plain text while it is off.
+    func setLinksAllowed(groupID: Int, allowed: Bool) async throws {
+        struct Body: Encodable { let links_allowed: Bool }
+        try await patchGroup(groupID, Body(links_allowed: allowed))
+    }
+
+    /// Owner-only: may files be sent here. Client-honored, same reason as
+    /// `setLinksAllowed`.
+    func setFilesAllowed(groupID: Int, allowed: Bool) async throws {
+        struct Body: Encodable { let files_allowed: Bool }
+        try await patchGroup(groupID, Body(files_allowed: allowed))
+    }
+
+    /// Owner-only: the pause between messages for each member, in seconds.
+    /// The other half of "заморозка": the room stays open but stops being a
+    /// place anyone can flood. Only `RoomRules.slowmodeSteps` are accepted;
+    /// anything else is a 422 that never reaches the row. Enforced by the
+    /// island itself for authenticated senders, moderators and owner exempt.
+    func setSlowmode(groupID: Int, seconds: Int) async throws {
+        struct Body: Encodable { let slowmode_sec: Int }
+        guard RoomRules.slowmodeSteps.contains(seconds) else { return }
+        try await patchGroup(groupID, Body(slowmode_sec: seconds))
     }
 
     /// Admin / owner — swap the uploaded avatar. Pass `nil` for both
@@ -409,15 +700,10 @@ final class GroupService: ObservableObject {
             let avatar_media_id: String
             let avatar_media_key: String
         }
-        let g: RCQGroup = try await APIClient.shared.request(
-            "PATCH",
-            "/groups/\(groupID)",
-            body: Body(
-                avatar_media_id: mediaID ?? "",
-                avatar_media_key: keyBase64 ?? "",
-            ),
-        )
-        upsert(g)
+        try await patchGroup(groupID, Body(
+            avatar_media_id: mediaID ?? "",
+            avatar_media_key: keyBase64 ?? "",
+        ))
     }
 
     /// Lightweight info for a non-member — used by AddContactView's
@@ -509,12 +795,13 @@ final class GroupService: ObservableObject {
 
     func join(groupID: Int) async -> JoinResult {
         do {
-            let g: RCQGroup = try await APIClient.shared.request(
+            let row: GroupWithRules = try await APIClient.shared.request(
                 "POST", "/groups/\(groupID)/join",
             )
-            upsert(g)
+            roomRules[groupID] = row.rules
+            upsert(row.group)
             noteMembershipBegan()
-            return .success(g)
+            return .success(row.group)
         } catch APIError.http(403, let body) {
             // 403 from /join now covers two distinct cases: caller is
             // blocked by the owner, OR the group is closed and only
@@ -540,6 +827,19 @@ final class GroupService: ObservableObject {
         }
     }
 
+    /// `detail.code` out of an error body: the shape every structured refusal
+    /// on this island uses (`{"detail": {"code": "...", ...}}`). Nil for the
+    /// router's own `{"detail": "Not Found"}`, which is how an island too old
+    /// for an endpoint answers.
+    private static func parseCode(_ body: String?) -> String? {
+        guard let raw = body?.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
+              let detail = json["detail"] as? [String: Any] else {
+            return nil
+        }
+        return detail["code"] as? String
+    }
+
     private static func parseInt(_ body: String?, key: String) -> Int? {
         guard let raw = body?.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
@@ -554,8 +854,11 @@ final class GroupService: ObservableObject {
             "DELETE", "/groups/\(groupID)"
         )
         groups.removeAll { $0.id == groupID }
+        roomRules[groupID] = nil
+        rosterFetched.remove(groupID)
         MessageStore.shared.clearThread(.group(id: groupID))
         clearUnread(groupID)
+        SectionsVault.forgetSectionMember(Sections.key(forGroupID: groupID))
     }
 
     func upsert(_ g: RCQGroup) {
@@ -594,6 +897,8 @@ final class GroupService: ObservableObject {
 
     func purge(_ groupID: Int) {
         groups.removeAll { $0.id == groupID }
+        roomRules[groupID] = nil
+        rosterFetched.remove(groupID)
         // Drop the icon-badge slot for this group so the counter
         // doesn't stick after a leave / group_deleted event.
         BadgeCounter.reset(threadKey: BadgeCounter.threadKey(groupID: groupID))
@@ -619,6 +924,10 @@ final class GroupService: ObservableObject {
         refreshInFlight = nil
         groups = []
         unread = [:]
+        roomRules = [:]
+        // The next account's group ids are its own; a leftover "already
+        // fetched" mark would deny it its first roster.
+        rosterFetched = []
     }
 
     func clearForDecoy() {
@@ -626,6 +935,8 @@ final class GroupService: ObservableObject {
         refreshInFlight = nil
         groups = []
         unread = [:]
+        roomRules = [:]
+        rosterFetched = []
     }
 
     func groupID(for thread: ThreadID) -> Int? {

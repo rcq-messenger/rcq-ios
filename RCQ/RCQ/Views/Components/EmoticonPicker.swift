@@ -4,8 +4,10 @@ import SwiftUI
 /// the Android `LocalStores` panel/reaction prefs:
 ///  - `panel`: the emoticons shown in the composer smiley panel. EMPTY by
 ///    default → the panel shows a "Choose" CTA until the user picks a set.
-///  - `reactions`: the quick reactions on the long-press reaction row (≤6).
-///    Defaults to the historical six until customised.
+///  - `reactions`: the quick reactions on the long-press reaction row (≤40).
+///    Defaults to the historical six until customised. The cap used to be six
+///    as well; the founder asked for the same room the panel gets, and the
+///    reaction bar scrolls horizontally, so a long set costs layout nothing.
 ///
 /// Persisted as plain UserDefaults `[String]` arrays of asset names, like
 /// `EmoticonUsageStore`. Not per-account (one set across identities), matching
@@ -18,7 +20,7 @@ final class EmoticonPrefsStore: ObservableObject {
     /// Android `Emoticons.defaultReactions` so a reaction renders identically.
     static let defaultReactions = ["good", "give_heart", "laugh1", "scare", "cray", "ireful1"]
     static let panelCap = 40
-    static let reactionCap = 6
+    static let reactionCap = 40
 
     private static let panelKey = "rcq.panel_emojis"
     private static let reactionKey = "rcq.reaction_emojis"
@@ -55,7 +57,7 @@ final class EmoticonPrefsStore: ObservableObject {
         UserDefaults.standard.set(panel, forKey: Self.panelKey)
     }
 
-    /// Toggle [asset] in the reaction set, respecting the cap of 6.
+    /// Toggle [asset] in the reaction set, respecting the cap.
     func toggleReaction(_ asset: String) {
         if let i = reactions.firstIndex(of: asset) {
             reactions.remove(at: i)
@@ -70,7 +72,7 @@ final class EmoticonPrefsStore: ObservableObject {
 /// their quick reactions in a single place (founder spec), mirroring the
 /// Android `EmojiPickerDialog`. A segmented control switches which set the taps
 /// edit; the grid offers the whole bundled set (`Emoticons.fullSet`) with a
-/// tint + checkmark on the assets already chosen. Caps: panel 40, reactions 6
+/// tint + checkmark on the assets already chosen. Caps: panel 40, reactions 40
 /// (an add past the cap is a no-op).
 struct EmoticonPickerSheet: View {
     @ObservedObject private var prefs = EmoticonPrefsStore.shared
@@ -95,8 +97,8 @@ struct EmoticonPickerSheet: View {
                 .padding(.top, 8)
 
                 Text(tab == 0
-                     ? "Tap to add emoticons to your composer panel (up to 40)."
-                     : "Tap to choose your quick reactions (up to 6).")
+                     ? "Tap to add emoticons to your composer panel (up to \(EmoticonPrefsStore.panelCap))."
+                     : "Tap to choose your quick reactions (up to \(EmoticonPrefsStore.reactionCap)).")
                     .font(.caption)
                     .foregroundColor(Theme.Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -2,17 +2,53 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-/// QR surface for adding contacts. My-code tab renders a QR for
-/// `rcq://add/{ownUIN}`; Scan tab opens the camera and routes a
-/// detected `rcq://add/{uin}` to a contact-add request.
+/// QR surface for adding contacts. Two states, no tabs: the my-code state
+/// renders a QR for `rcq://add/{ownUIN}`, the scan state opens the camera and
+/// routes a detected `rcq://add/{uin}` to a contact-add request. One button
+/// moves between them and the panes cross-fade, so the sheet can size itself
+/// to whichever state is up (fitted for the code, full for the camera).
 struct QRSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var auth = AuthService.shared
     @StateObject private var presence = PresenceService.shared
     @State private var mode: Mode = .myCode
     @State private var scanResult: ScanResult?
+    /// Natural height of the my-code column, reported by the column itself.
+    /// The sheet is sized to it so it ends at its bottom-most element instead
+    /// of standing at full height with dead space under the buttons.
+    @State private var codeHeight: CGFloat = 0
+    @State private var detent: PresentationDetent = .height(QRSheet.estimatedCodeHeight)
 
     enum Mode: Hashable { case myCode, scan }
+
+    /// Inline navigation bar: inside the sheet's height, outside the column
+    /// we measure.
+    private static let navigationBarHeight: CGFloat = 44
+    /// First-frame guess, replaced the moment the column reports its real
+    /// size. Close enough that the correction does not read as a jump.
+    private static let estimatedCodeHeight: CGFloat = 600
+
+    /// Home-indicator strip: also inside the sheet's height and outside the
+    /// measured column.
+    private static var bottomSafeInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return scene?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 0
+    }
+
+    private static func detent(forColumnHeight height: CGFloat) -> PresentationDetent {
+        guard height > 0 else { return .height(estimatedCodeHeight) }
+        return .height(height + navigationBarHeight + bottomSafeInset)
+    }
+
+    private var codeDetent: PresentationDetent { Self.detent(forColumnHeight: codeHeight) }
+
+    /// Cross-fade to the other state. One control does this in both
+    /// directions (the "scan a code" button on the code, the "my code" button
+    /// on the camera), which is what replaced the segmented tabs.
+    private func swap(to newMode: Mode) {
+        withAnimation(.easeInOut(duration: 0.25)) { mode = newMode }
+    }
 
     enum ScanResult: Equatable {
         case sent(uin: Int)
@@ -33,20 +69,12 @@ struct QRSheet: View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Picker("", selection: $mode) {
-                        Text("qr.tab.my_code".localized).tag(Mode.myCode)
-                        Text("qr.tab.scan".localized).tag(Mode.scan)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-
-                    Group {
-                        switch mode {
-                        case .myCode: myCodePane
-                        case .scan:   scanPane
-                        }
-                    }
+                // Two states, one slot. With the tabs gone the swap itself has
+                // to carry the change, so the panes sit on top of each other
+                // and cross-fade.
+                switch mode {
+                case .myCode: myCodePane.transition(.opacity)
+                case .scan:   scanPane.transition(.opacity)
                 }
             }
             .navigationTitle("qr.title".localized)
@@ -54,6 +82,28 @@ struct QRSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
+                }
+                // Handing the link to somebody who is not in the room: the
+                // code itself only works face to face. This lived in Settings
+                // as a toolbar button until the settings search took that slot,
+                // and it belongs here anyway, next to the other two ways of
+                // passing the same link on. Only on the code pane: there is
+                // nothing to share while the camera is up.
+                ToolbarItem(placement: .confirmationAction) {
+                    if mode == .myCode, let uin = auth.ownUIN,
+                       let url = URL(string: "https://rcq.app/u/\(uin)") {
+                        ShareLink(
+                            item: url,
+                            subject: Text(auth.nickname.isEmpty ? "RCQ" : auth.nickname),
+                            message: Text(String(
+                                format: "settings.share.message".localized,
+                                auth.nickname.isEmpty ? "RCQ" : auth.nickname,
+                                uin
+                            )),
+                        ) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
                 }
             }
             .alert(
@@ -73,6 +123,19 @@ struct QRSheet: View {
             } message: { result in
                 Text(alertMessage(for: result))
             }
+        }
+        // The code stands exactly as tall as the code needs; the camera takes
+        // the whole sheet, which is what the tabs used to eat into.
+        .presentationDetents([codeDetent, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+        .onChange(of: mode) { newMode in
+            detent = newMode == .scan ? .large : codeDetent
+        }
+        // ⚠ Take the INCOMING height: `codeHeight` read off `self` in here is
+        // still the old value.
+        .onChange(of: codeHeight) { height in
+            guard mode == .myCode else { return }
+            detent = Self.detent(forColumnHeight: height)
         }
     }
 
@@ -140,7 +203,7 @@ struct QRSheet: View {
                                 .foregroundColor(Theme.Color.textPrimary)
                                 .cornerRadius(6)
                         }
-                        Button { mode = .scan } label: {
+                        Button { swap(to: .scan) } label: {
                             Label("qr.button.scan_code".localized, systemImage: "qrcode.viewfinder")
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
@@ -152,7 +215,17 @@ struct QRSheet: View {
                     .padding(.horizontal, 16)
                     Spacer().frame(height: 24)
                 }
+                // Hands the column's natural height to `codeDetent`.
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: CodeColumnHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                )
             }
+            .onPreferenceChange(CodeColumnHeightKey.self) { codeHeight = $0 }
         } else {
             ProgressView().tint(Theme.Color.accent)
         }
@@ -160,28 +233,40 @@ struct QRSheet: View {
 
     // MARK: - scan
 
-    @ViewBuilder
     private var scanPane: some View {
-        QRScannerView { code in
-            Task { await handleScan(code) }
-        }
-        .overlay(alignment: .top) {
-            VStack(spacing: 6) {
-                Text("qr.scan.aim".localized)
-                    .font(.caption.weight(.semibold))
+        VStack(spacing: 0) {
+            // Just the instruction. The `rcq://add/{uin}` line under it told
+            // the person nothing they could act on and read like debug output
+            // left on the screen.
+            Text("qr.scan.aim".localized)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color.black.opacity(0.55))
+                .cornerRadius(6)
+                .padding(.top, 14)
+            Spacer(minLength: 0)
+            // The way back, in the same corner of the sheet the "scan a code"
+            // button occupies on the other side.
+            Button { swap(to: .myCode) } label: {
+                Label("qr.tab.my_code".localized, systemImage: "qrcode")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white)
-                Text("rcq://add/{uin}")
-                    .font(.caption2.monospaced())
-                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal, 18).padding(.vertical, 12)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.black.opacity(0.55))
-            .cornerRadius(6)
-            .padding(.top, 14)
+            .padding(.bottom, 18)
         }
-        // Camera fills to the sheet edges (default sheet safe-area
-        // would leave a visible bg strip under the preview).
-        .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Camera as a BACKGROUND: it fills to the sheet edges (the default
+        // sheet safe area would leave a visible bg strip under the preview)
+        // without dragging the controls above it into the unsafe area too.
+        .background(
+            QRScannerView { code in
+                Task { await handleScan(code) }
+            }
+            .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
+        )
     }
 
     /// Our own add-code payload (spec §5). Carries the island host for a
@@ -318,6 +403,15 @@ struct QRSheet: View {
         case .failed(let msg):
             return msg
         }
+    }
+}
+
+/// Carries the my-code column's natural height up so the sheet can end where
+/// the content ends instead of standing at full height.
+private struct CodeColumnHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

@@ -281,6 +281,7 @@
 "bug_bounty.submit.cta" = "Gönder";
 "bug_bounty.submit.sending" = "Gönderiliyor…";
 "bug_bounty.submit.sent" = "Gönderildi";
+"bug_bounty.submit.sent_number" = "Gönderildi · #%d";
 "bug_bounty.disclosure" = "Veri sızıntısı ya da uçtan uca şifrelemeyi atlatma ihtimali olan güvenlik açıklarını buraya değil, konu satırında [SECURITY] yazan bir e-postayla legal@rcq.app adresine yolla.";
 "bug_bounty.alert.title" = "Hata bildirimi";
 "bug_bounty.shake.toggle" = "Sallayınca bildir";
@@ -291,17 +292,12 @@
 "bug_bounty.attach.hint" = "Ekran görüntüsü ya da kısa bir klip ekle, en fazla 3 dosya.";
 "bug_bounty.attach.cta" = "Ekle";
 "bug_bounty.attach.paste" = "Yapıştır";
-"chat.attach.poll" = "Anket";
 "chat.attach.share_group" = "Davet";
-"chat.attach.share_connection" = "Bağlantı";
 "relay.share.title" = "Bağlanma yolu";
 "relay.share.invalid" = "Desteklenmeyen bağlantı";
 "relay.share.sent_note" = "Bir bağlanma yolu paylaştın";
 "relay.share.added" = "Bağlantılarına eklendi";
 "relay.share.add" = "Ekle";
-"relay.share.pick.title" = "Bağlantı paylaş";
-"relay.share.pick.body" = "Bu kişiye bir röle ver, kendi bağlantıları engellendiğinde geçebilsin. Kullanmak için Ekle'ye dokunur.";
-"relay.share.group.warn" = "Bu röleyi gruptaki herkes görür. Az bulunan yerli röleleri yalnızca güvendiğin gruplarda paylaş.";
 "relay.import.title" = "Röle ekle";
 "relay.import.hint" = "rcq-relay://… ya da bir erişim anahtarı";
 "relay.key.active" = "Erişim anahtarı girildi";
@@ -341,26 +337,6 @@
 "paid_traffic.price_suffix" = "bu dosya";
 "paid_traffic.enable" = "Ücretli trafiği aç";
 "paid_traffic.cancel" = "İptal";
-"poll.compose.title" = "Yeni anket";
-"poll.compose.question_header" = "SORU";
-"poll.compose.question_placeholder" = "Soru ne?";
-"poll.compose.options_header" = "SEÇENEKLER";
-"poll.compose.option_placeholder" = "Seçenek %d";
-"poll.compose.add_option" = "Seçenek ekle";
-"poll.compose.multi" = "Birden çok cevaba izin ver";
-"poll.compose.anonymous" = "Anonim oy";
-"poll.compose.flags_footer" = "Anonim: grup kimin neye oy verdiğini göremez. Çoklu: her üye birkaç seçenek işaretleyebilir.";
-"poll.compose.send" = "Gönder";
-"poll.header.single" = "Anket · tek seçim";
-"poll.header.multi" = "Anket · çok seçim";
-"poll.header.anonymous" = "anonim";
-"poll.header.closed" = "kapandı";
-"poll.footer.total_votes" = "%d oy";
-"poll.row.more_voters" = "+%d kişi daha";
-"poll.footer.close" = "Anketi kapat";
-"poll.error.parse" = "Bu anket okunamadı.";
-"poll.error.vote" = "Oyun kaydedilemedi.";
-"poll.error.close" = "Kapatılamadı.";
 "contact_list.ctx.report" = "Bildir";
 "report.title" = "Bildir";
 "report.heading" = "Kullanıcıyı bildir";
@@ -439,11 +415,6 @@
 "outgoing.state.declined" = "Reddedildi";
 "outgoing.cancel" = "Geri çek";
 "outgoing.dismiss" = "Kapat";
-"presence.countdown.h_unit" = "sa";
-"presence.countdown.m_unit" = "dk";
-"presence.countdown.lt1m" = "<1dk";
-"presence.info.title" = "Çıktıktan sonra görünür kal";
-"presence.info.body" = "Uygulamayı kapattıktan sonra bu süre boyunca çevrimiçi görünürsün. Ayarlar, Gizlilik ve ağ altından değiştirebilirsin.";
 // ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "Varsayılan";
 "uin_listing.share.cta_open" = "Pazarda aç →";
@@ -488,6 +459,7 @@
 "contact_list.pending_many" = "%d bekleyen kişi isteği";
 "contact_list.members_one" = "%d üye";
 "contact_list.members_many" = "%d üye";
+"contact_list.members_compact" = "%@ üye";
 "contact_list.ctx.open_chat" = "Sohbeti aç";
 "contact_list.ctx.send_message" = "Mesaj gönder";
 "contact_list.ctx.quick_preview" = "Hızlı bakış";
@@ -520,6 +492,11 @@
 "chat.pin.error.forbidden" = "Grup bilgisi yetkisi gerekiyor. Sahibinden istemen gerek.";
 "chat.pin.error.rejected" = "Bu metin sabitleme için kabul edilmedi.";
 "chat.pin.error.generic" = "Sabitleme tamamlanmadı. Bağlantını kontrol edip tekrar dene.";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "Bu grupta bağlantılar kapalı.";
+"chat.files_off.notice" = "Bu grupta dosyalar kapalı.";
+"chat.slowmode.wait" = "Yavaş mod: %d sn bekleyin";
 "chat.selection.delete" = "Sil (%d)";
 "chat.selection.forward" = "İlet (%d)";
 "chat.selection.cancel" = "İptal";
@@ -689,7 +666,6 @@
 "chat.preview.market_item" = "Pazar eşyası";
 "chat.preview.uin_listing" = "UIN ilanı";
 "chat.preview.group_invite" = "Grup daveti";
-"chat.preview.poll" = "Anket";
 "chat.preview.premium_photo" = "🔒 Ücretli fotoğraf";
 "chat.preview.premium_video" = "🔒 Ücretli video";
 "chat.preview.generic" = "Mesaj";
@@ -707,6 +683,40 @@
 "group.no_matches" = "Sonuç yok. Tam UIN'i dene.";
 "group.title" = "Grup";
 "group.section.members" = "Üyeler (%d)";
+"group.section.members.compact" = "Üyeler (%@)";
+"group.section.content_policy" = "Burada neye izin var";
+"group.settings.no_links" = "Bağlantıları kapat";
+"group.settings.no_links.hint" = "Mesajlardaki bağlantılar düz metin kalır ve açılmaz.";
+"group.settings.no_files" = "Dosyaları kapat";
+"group.settings.no_files.hint" = "Burada dosya gönderilemez ve indirilemez.";
+"group.settings.slowmode" = "Yavaş mod";
+"group.settings.slowmode.hint" = "Her üye için mesajlar arasında bir bekleme.";
+"group.settings.slowmode.off" = "Kapalı";
+"group.settings.slowmode.sec" = "%d sn";
+"group.settings.slowmode.min" = "1 dk";
+"group.role.moderator" = "Moderatör";
+"group.member.promote" = "Yönetici yap";
+"group.member.demote" = "Yetkileri al";
+"group.perm.grant_all" = "Tüm yetkiler";
+"group.perm.revoke_all" = "Geri al";
+"group.perm.hint" = "Silme: herkesin mesajını kaldırabilir. Üyeler: kişileri çıkarabilir. Bilgi: adı, fotoğrafı ve sabitlenen mesajı değiştirebilir. Bunların hiçbiri sahiplik değil: sen aşağıdan devretmedikçe grup senin kalır.";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "Sahipliği devret";
+"group.transfer.cta" = "Devret";
+"group.transfer.working" = "Devrediliyor…";
+"group.transfer.confirm" = "Bu grubu %@ kişisine devretmek istiyor musun? Grupta sıradan bir üye olarak kalırsın ama grup sahibi haklarını ve tüm moderatör yetkilerini kaybedersin. Geri vermek yalnızca yeni sahibin elinde.";
+"group.transfer.done.title" = "Sahiplik devredildi";
+"group.transfer.done" = "Grubun sahibi artık %@. Hâlâ üyesin: çıkabilir ya da kalabilirsin.";
+"group.transfer.stay" = "Kal";
+"group.transfer.err.owner_only" = "Grubu yalnızca sahibi devredebilir.";
+"group.transfer.err.already_owner" = "Bu grubun sahibi zaten o.";
+"group.transfer.err.not_a_member" = "Artık bu grupta değil.";
+"group.transfer.err.no_such_user" = "Bu ada onu tanımıyor.";
+"group.transfer.err.target_suspended" = "O hesap askıya alınmış.";
+"group.transfer.err.rate_limited_in" = "Çok fazla deneme. %d sn sonra tekrar dene.";
+"group.transfer.err.rate_limited" = "Çok fazla deneme. Sonra tekrar dene.";
+"group.transfer.err.failed" = "Grup devredilemedi.";
 "group.section.notifications" = "Bildirimler";
 "group.notifications.mute" = "Bildirimleri sustur";
 "group.notifications.unmute" = "Bildirimlerin sesini aç";
@@ -962,12 +972,10 @@
 "pool.section_share" = "çekilişlerde %%%.0f";
 "pool.cap" = "üst sınır %d";
 "pool.cap_remaining" = "%d / %d kaldı";
-"settings.privacy.persistent_presence" = "Çıktıktan sonra görünürlük";
 "settings.privacy.relay_calls" = "Aramaları hep röleden geçir";
 "settings.privacy.relay_calls.desc" = "Arama sesini ve görüntüsünü rölemizden geçirir, böylece karşı taraf IP adresini hiç öğrenmez. Bunu kapatmak arama kalitesini artırabilir ama adresini gösterir.";
 "settings.privacy.strangers" = "Yabancılar isteklere düşsün";
 "settings.privacy.strangers.desc" = "Kişilerinizde olmayanların mesajları siz kabul edene kadar İstekler bölümünde bekler. Önce siz yazdıysanız yanıtı doğrudan gelir.";
-"settings.privacy.persistent_presence.desc" = "Kişilerin, uygulama kapalıyken bile durumunu (Çevrimiçi / Uzakta / Rahatsız etmeyin) görür.";
 "settings.privacy.hof_opt_in" = "Şöhret Salonu";
 "settings.privacy.hof_opt_in.desc" = "rcq.app adresindeki herkese açık Şöhret Salonu için değerlendirilmeye izin ver. Yalnızca takma adın ve UIN'in, o da onaylanırsa. Bunu istediğin zaman kapatabilirsin.";
 "settings.privacy.hof_add_image" = "Görsel / GIF ekle";
@@ -975,13 +983,6 @@
 "settings.privacy.hof_remove_image" = "Görseli kaldır";
 "settings.privacy.hof_image_too_large" = "Görsel çok büyük. Daha küçüğünü seç (en fazla ~256 KB).";
 "settings.privacy.hof_image_error" = "Görsel yüklenemedi. Tekrar dene.";
-"settings.privacy.presence_ttl" = "Süre";
-"settings.privacy.presence_ttl.forever" = "Sonsuza dek";
-"settings.privacy.presence_ttl.30m" = "30 dakika";
-"settings.privacy.presence_ttl.1h" = "1 saat";
-"settings.privacy.presence_ttl.3h" = "3 saat";
-"settings.privacy.presence_ttl.8h" = "8 saat";
-"settings.privacy.presence_ttl.24h" = "24 saat";
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 "radio.info.title" = "Telsiz Sohbet hakkında";
 "radio.info.header.title" = "Yerel mesh sohbet";
@@ -1600,6 +1601,25 @@
 "myreports.status.resolved" = "Çözüldü";
 "myreports.status.dismissed" = "Reddedildi";
 "myreports.status.duplicate" = "Tekrar";
+
+"myreports.number" = "Bildirim #%d";
+"myreports.number.short" = "#%d";
+"myreports.copy" = "Bildirimi kopyala";
+"myreports.copy_answer" = "Yanıtı kopyala";
+"myreports.edit" = "Bildirimi düzenle";
+"myreports.edit.placeholder" = "Bildiriminiz";
+"myreports.edit.save" = "Kaydet";
+"myreports.edit.error" = "Değişiklik kaydedilemedi. Tekrar deneyin.";
+"myreports.edit.answered" = "Zaten bir yanıt var, bu yüzden bildirimin metni artık değiştirilemez. Bunun yerine yazışmaya devam edin.";
+"myreports.edit.unsupported" = "Bu ada henüz bir bildirimi değiştiremiyor.";
+"myreports.edit.not_editable" = "Çökme raporunu uygulamanın kendisi gönderir, metni yeniden yazılamaz.";
+"myreports.edit.too_often" = "Bir saat içinde çok fazla düzenleme. Daha sonra deneyin.";
+"myreports.remove" = "Listemden kaldır";
+"myreports.remove.cta" = "Kaldır";
+"myreports.remove.confirm.title" = "%@ numaralı bildirim listenizden kaldırılsın mı?";
+"myreports.remove.confirm.body" = "Bu ekranda görünmeyi bırakır. Hiçbir şey silinmez: operatörlerde bildirim de yanıt da kalır ve şeref listesinde saymaya devam eder.";
+"myreports.remove.refused" = "Bu bildirim hâlâ inceleniyor, bu yüzden bir karar çıkana kadar listenizde kalır.";
+"myreports.remove.error" = "Kaldırılamadı. Tekrar deneyin.";
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "UIN'lerim";
 "my_uins.active" = "Şu numarayla cevap veriyorsun";
@@ -1615,6 +1635,21 @@
 "uin_shop.held.body" = "Koleksiyonunda duruyor ve hâlâ %@ olarak cevap veriyorsun. Şimdi üzerine geç ya da sonra UIN'lerim ekranından yap.";
 "uin_shop.held.now" = "Üzerine geç";
 "uin_shop.held.later" = "Sonra";
+
+"my_uins.release" = "Serbest bırak";
+"my_uins.release.cta" = "Serbest bırak";
+"my_uins.release.confirm.title" = "%@ serbest bırakılsın mı?";
+"my_uins.release.confirm.body" = "Numara havuza geri döner ve başka biri onu alabilir. Bu geri alınamaz.";
+"my_uins.release.error.in_use" = "Yanıt verdiğiniz numarayı serbest bırakamazsınız. Önce başka bir numaraya geçin.";
+"my_uins.release.error.unsupported" = "Bu ada henüz bir numarayı serbest bırakamıyor.";
+"my_uins.release.error.too_often" = "Bir saat içinde çok fazla serbest bırakma. Daha sonra deneyin.";
+"my_uins.error.not_owned" = "Bu numara artık koleksiyonunuzda değil.";
+"my_uins.footer.rules" = "Bir hesap en fazla %d numara tutabilir. Serbest bırakılan numara havuza döner, onu herkes alabilir ve geri getirilemez; yanıt verdiğiniz numara ise serbest bırakılamaz.";
+"uin.error.suspended" = "Hesap askıya alınmış, bu yüzden numaraları değiştirilemez.";
+"uin.error.too_many" = "Bir hesabın tutabileceği kadar numaranız zaten var. Önce UIN'lerim ekranında bir tanesini serbest bırakın.";
+"uin_shop.error.generic" = "Sunucu kabul etmedi. Tekrar deneyin.";
+"uin_shop.info.cap.title" = "Kaç tane tutabilirsiniz";
+"uin_shop.info.cap.body" = "Bir hesap en fazla %1$d numara tutabilir, sizde şu anda %2$d tane var. UIN'lerim ekranında bir numarayı geri verebilirsiniz, yanıt verdiğiniz numara hariç, ve bu geri alınamaz: serbest bırakılan numara havuza döner ve onu herkes alabilir.";
 /* Full network check (NetworkAudit) */
 "audit.run" = "Tam ağ kontrolü";
 "audit.hint" = "Bu ağın neyi süzdüğünü anlamak için bu adaya, cepheye, rölelere ve iki bilinen kontrol sunucusuna düz bağlantı açar. Hiçbir yere bir şey gönderilmez; sonucu kendin kopyalarsın.";
@@ -1670,3 +1705,58 @@
 "how.q5" = "Kime yazdığımı biri öğrenebilir mi?";
 "how.a5" = "Adanız bir zarfın birine gittiğini bilir, sizden çıktığını bilmez.\n\nRCQ röleleri açıkken dışarı çıkan yol iki röle arasında bölünür. Birincisi sizi görür ama hangi adaya gittiğinizi bilmez; ikincisi adaya ulaşır ama kim olduğunuzu bilmez.\n\nGizlenemeyen şey: RCQ kullandığınız, ağınızı elinde tutan tarafa görünür, röleler kapalı olduğu sürece.";
 "how.more" = "Daha fazla soru: rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "Ayarlarda ara";
+"settings.search.placeholder" = "Tema, PIN, duvar kâğıdı…";
+"settings.search.empty.idle" = "Bir ayar bulmak için yazın.";
+"settings.privacy.profile_card" = "Profil kartımı kim açabilir";
+"settings.privacy.profile_card.desc" = "Üye listesindeki, tepki listesindeki ya da bir fotoğrafın üstündeki adın kartını açar. Burada dışarıda kalanlar kartı açamayacak; yine de sana yazabilecekler.";
+"notifs.muted.empty" = "Kimse sessize alınmadı.";
+
+"chat.poll.removed" = "Anketler artık desteklenmiyor";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "Sesli mesaj";
+"audio.strip.play" = "Oynat";
+"audio.strip.pause" = "Duraklat";
+"audio.strip.close" = "Oynatmayı durdur";
+"album.sender.open_profile" = "Profili aç";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "Sohbet ekle";
+"sections.empty" = "Boş. Buraya sohbet taşımak için + kullanın.";
+"sections.reorder.hint" = "Bölümleri oklarla taşıyın.";
+"sections.reorder.done" = "Bitti";
+"sections.move_up" = "Yukarı taşı";
+"sections.move_down" = "Aşağı taşı";
+"sections.menu.reorder" = "Bölümleri sırala";
+"sections.menu.new" = "Yeni bölüm";
+"sections.menu.rename" = "Yeniden adlandır";
+"sections.menu.delete" = "Bölümü sil";
+"sections.menu.delete.confirm" = "Bu bölüm silinsin mi? Sohbetler yerinde kalır ve her zamanki yerlerine döner.";
+"sections.menu.pin" = "PIN sorulsun";
+"sections.menu.pin.off" = "PIN sorulmasın";
+"sections.menu.pin.note" = "Bu cihazda PIN girene kadar bu bölümü gizler. Sohbetlerin kendisi bununla şifrelenmez.";
+"sections.new.placeholder" = "Bölüm adı";
+"sections.new.save" = "Oluştur";
+"sections.rename.save" = "Kaydet";
+"sections.locked.title" = "PIN soruyor";
+"sections.locked.nopin" = "Başka bir cihazda gizlenmiş. Burada PIN tanımlı değil.";
+"sections.locked.open_anyway" = "Yine de aç";
+"sections.picker.title" = "%@ bölümüne ekle";
+"sections.picker.search" = "Ara";
+"sections.picker.save" = "Kaydet";
+"sections.picker.nobody" = "Henüz eklenecek kimse yok.";
+"sections.err.too_many_sections" = "Bir hesabın taşıyabileceği bölüm sayısı bu kadar.";
+"sections.err.section_full" = "Bu bölüm dolu.";
+"sections.err.too_many_members" = "Tüm bölümlerinizde toplam sohbet sayısı çok fazla.";
+"sections.err.too_large" = "Bölüm listesi kaydedilemeyecek kadar büyük.";
+"sections.err.unreadable" = "Bölümleriniz RCQ'nun daha yeni bir sürümüyle yazılmış.";
+"pin_verify.title.section" = "Bu bölümü aç";

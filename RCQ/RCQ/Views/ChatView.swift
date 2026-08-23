@@ -45,18 +45,175 @@ struct ChatView: View {
         // circuits) but a promise about a person who is not in the thread.
         if case .peer(let c) = vm.target, c.uin == AuthService.shared.ownUIN { return false }
         if message.isFromMe { return true }
-        guard case .group(let snapshot) = vm.target,
-              let me = AuthService.shared.ownUIN else { return false }
+        guard case .group(let snapshot) = vm.target else { return false }
         let live = groupSvc.find(snapshot.id) ?? snapshot
+        guard let me = myUIN(in: live) else { return false }
         return live.moderator(me)
+    }
+
+    /// The island a group actually lives on, for one we joined as a GUEST on
+    /// another island: its host plus the id it has over there. `nil` for a group
+    /// on our own island.
+    ///
+    /// ⚠ A guest group is addressed locally by a NEGATIVE alias id
+    /// (`VisitedIslandsStore.aliasFor`), which is not a group id anywhere on any
+    /// island. Anything that talks to the server about the group has to
+    /// translate back through here first - the same shape `MessageService` uses
+    /// before it deposits a cross-island send.
+    private func foreignGroupRef(_ group: RCQGroup) -> (host: String, remoteId: Int)? {
+        guard let host = group.host,
+              let ref = VisitedIslandsStore.shared.refByAlias(group.id) else { return nil }
+        return (host, ref.remoteId)
+    }
+
+    /// Our own UIN *inside this group*. A guest group's roster, its `ownerUIN`
+    /// and every permission on it are expressed in the HOST island's uin space,
+    /// and our uin over there is the guest one, not the primary. Checking the
+    /// primary uin against a foreign roster finds nobody, so every capability
+    /// this screen asks about (pin, delete for everyone, may I post) quietly
+    /// answered "no" in a cross-island group even for its owner.
+    ///
+    /// ⚠ Memoized, because `readOnlyGroup` below reads this from `body`.
+    /// Resolving it for a guest group reaches UserDefaults and decodes the alias
+    /// table, and doing that on every body pass of the chat screen is exactly
+    /// the kind of per-render work this file has spent months taking back out. A
+    /// reference box rather than `@State`, the same trick `CaretBox` uses here:
+    /// the answer cannot change while one chat is open (same account, same
+    /// group, same island) and filling it in should invalidate nothing.
+    private func myUIN(in group: RCQGroup) -> Int? {
+        if groupUINBox.groupID == group.id { return groupUINBox.resolved }
+        let resolved: Int?
+        if let ref = foreignGroupRef(group) {
+            resolved = CrossIslandGroups.foreignCreds(host: ref.host, ownUIN: AuthService.shared.ownUIN)?.uin
+        } else {
+            resolved = AuthService.shared.ownUIN
+        }
+        groupUINBox.groupID = group.id
+        groupUINBox.resolved = resolved
+        return resolved
+    }
+
+    /// See `myUIN(in:)`. `groupID` doubles as the "already resolved" flag so a
+    /// legitimately nil uin is not recomputed forever.
+    private final class GroupUINBox {
+        var groupID: Int?
+        var resolved: Int?
+    }
+    @State private var groupUINBox = GroupUINBox()
+
+    /// The live group behind the open target, or nil for a 1:1 / random thread.
+    private var liveGroup: RCQGroup? {
+        guard case .group(let snapshot) = vm.target else { return nil }
+        return groupSvc.find(snapshot.id) ?? snapshot
+    }
+
+    /// The group this viewer may not post in, or nil when they may.
+    ///
+    /// `ChatTarget` used to carry this rule, asked with the PRIMARY uin. On a
+    /// guest island that is the wrong number: the roster is written in the host
+    /// island's uin space, so the owner of a foreign group was told they could
+    /// not post in it. Asked here with `myUIN(in:)` instead, and the version on
+    /// `ChatTarget` is gone so nobody can reach for the wrong one.
+    private var readOnlyGroup: RCQGroup? {
+        guard let live = liveGroup else { return nil }
+        guard let me = myUIN(in: live) else { return nil }
+        return live.canPost(me) ? nil : live
+    }
+
+    // MARK: - Room rules
+
+    /// Exempt from this room's content rules - links off, files off, slow mode:
+    /// the owner, an admin, or a member holding ANY granted cap.
+    ///
+    /// This is not a house rule of the client. It is the set the ISLAND
+    /// exempts (`_enforce_group_slowmode` in `messages.py`: owner, `role ==
+    /// "admin"`, or a non-empty `permissions`), and the set the web composer
+    /// keys on (`roomExempt` in `Chat.tsx`). Matching it exactly is the whole
+    /// point: a composer that gates where the server does not takes an ability
+    /// away from a moderator, and one that does not gate where the server does
+    /// promises a send the island answers with a 429.
+    ///
+    /// ⚠ Asked with `myUIN(in:)`, never the primary uin: a guest group's
+    /// roster, its `ownerUIN` and every permission on it live in the HOST
+    /// island's uin space. See `readOnlyGroup` for the same trap.
+    ///
+    /// A 1:1 or a stranger thread has no room, so it is exempt by definition.
+    /// A member whose roster has not been fetched yet is NOT exempt: the list
+    /// is polled `?members=0` and `members` can legitimately be empty, so
+    /// "nobody found" has to mean "no cap", the same answer the island gives.
+    private var roomExempt: Bool {
+        guard let live = liveGroup else { return true }
+        guard let me = myUIN(in: live) else { return false }
+        if me == live.ownerUIN { return true }
+        guard let mine = live.members.first(where: { $0.uin == me }) else { return false }
+        return mine.role == "admin" || !mine.permissions.isEmpty
+    }
+
+    /// The owner-set rules of the open room, already resolved for this viewer.
+    ///
+    /// Read as ONE value rather than three computed properties because every
+    /// one of them would re-run `liveGroup` (a linear scan of the group list)
+    /// and `roomExempt` on every body pass, and the message list reads it per
+    /// render. Call sites bind it once and pass the booleans down.
+    ///
+    /// ⚠ A cross-island group is addressed by a NEGATIVE alias id that the
+    /// rules map is not keyed by (`GroupService.roomRules` is filled from the
+    /// own-island `/groups` payload only), so a guest room reads as fully
+    /// permissive. That is the same answer an island that predates the fields
+    /// gives, and it fails OPEN: the host island still refuses what it refuses.
+    private var roomPolicy: (linksAllowed: Bool, filesAllowed: Bool, slowmodeSec: Int) {
+        guard let live = liveGroup, !roomExempt else { return (true, true, 0) }
+        let rules = groupSvc.rules(live.id)
+        return (rules.linksAllowed, rules.filesAllowed, rules.slowmodeSec)
+    }
+
+    private var linksAllowed: Bool { roomPolicy.linksAllowed }
+    private var filesAllowed: Bool { roomPolicy.filesAllowed }
+
+    /// Does [text] carry something a links-off room refuses? Same test the web
+    /// runs before it hands a draft to the wire (`/https?:\/\//i`), plus the
+    /// `rcq://` group-invite scheme, which is a link by any other name.
+    private static func carriesLink(_ text: String) -> Bool {
+        text.range(of: "(?:https?://|rcq://)", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// Gate every outgoing path on the room's rules. Returns true when the send
+    /// must NOT happen, having said why.
+    ///
+    /// It sits on the send paths and not inside the envelope builder on
+    /// purpose: a retry of an old row, or a re-send of something already in the
+    /// log, must never be eaten by a rule the room only just grew.
+    private func roomRulesBlockSend(text: String? = nil, isFile: Bool = false) -> Bool {
+        let policy = roomPolicy
+        if let text, !policy.linksAllowed, Self.carriesLink(text) {
+            roomRuleNotice = "chat.links_off.notice".localized
+            return true
+        }
+        if isFile, !policy.filesAllowed {
+            roomRuleNotice = "chat.files_off.notice".localized
+            return true
+        }
+        guard policy.slowmodeSec > 0, let gid = activeGroupID else { return false }
+        let left = Int(ceil(SlowmodeClock.until[gid].map { $0.timeIntervalSinceNow } ?? 0))
+        if left > 0 {
+            roomRuleNotice = String(format: "chat.slowmode.wait".localized, left)
+            return true
+        }
+        return false
+    }
+
+    /// Start the room's cooldown once a send leaves. Armed at initiation, not
+    /// on the receipt: the point is pacing the person, not their network.
+    private func armSlowmode() {
+        let sec = roomPolicy.slowmodeSec
+        guard sec > 0, let gid = activeGroupID else { return }
+        SlowmodeClock.until[gid] = Date().addingTimeInterval(TimeInterval(sec))
     }
 
     /// Owner / info-moderator may pin a chat message into the group's single
     /// pin slot. Only in groups (1:1 has no pin).
     private func canPinMessage() -> Bool {
-        guard case .group(let snapshot) = vm.target,
-              let me = AuthService.shared.ownUIN else { return false }
-        let live = groupSvc.find(snapshot.id) ?? snapshot
+        guard let live = liveGroup, let me = myUIN(in: live) else { return false }
         return live.members.first { $0.uin == me }?.canManageInfo(ownerUIN: live.ownerUIN) == true
     }
 
@@ -65,6 +222,21 @@ struct ChatView: View {
     /// by design so new joiners see it before key exchange). Cut to the slot the
     /// server has: a longer body is a 422, and a 422 leaves the OLD pin up.
     private func pinTextFor(_ message: Message) -> String {
+        // ⚠ Two kinds keep something in `text` that is NOT the prose the
+        // bubble shows, and the pin slot is plaintext on the island so new
+        // joiners can read it before key exchange.
+        //   `.poll`  rows received before the removal still hold the whole
+        //            PollPayload JSON there (question, options, and the
+        //            anonymous flag), while the bubble draws "no longer
+        //            supported". Pinning one would publish the body of a poll
+        //            marked anonymous, in the clear, to the whole room.
+        //   `.relay` holds an rcq-relay:// token, credentials included.
+        // Both pin as the label their bubble shows instead.
+        switch message.kind {
+        case .poll:  return "chat.poll.removed".localized
+        case .relay: return "relay.share.title".localized
+        default:     break
+        }
         let t = GroupService.clampPinnedText(message.text)
         if !t.isEmpty { return t }
         return "chat.pin.attachment".localized
@@ -72,16 +244,36 @@ struct ChatView: View {
 
     private func pinMessage(_ message: Message) {
         guard case .group(let snapshot) = vm.target else { return }
+        let live = groupSvc.find(snapshot.id) ?? snapshot
         let text = pinTextFor(message)
-        let previous = groupSvc.find(snapshot.id)?.pinnedText
+        let previous = live.pinnedText
         // Optimistic + instant: swap the displayed pin right away, expand the
         // banner so the change is obvious, then PATCH (which reconciles via
         // upsert). Makes the new pin replace the old one immediately.
         groupSvc.applyPinnedTextLocally(groupID: snapshot.id, pinnedText: text)
         expandPin(groupID: snapshot.id)
+        let foreign = foreignGroupRef(live)
+        let me = AuthService.shared.ownUIN
         Task {
             do {
-                try await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text)
+                if let foreign {
+                    // ⚠ Cross-island / guest group. `GroupService.setPinnedText`
+                    // PATCHes OUR island at `/groups/<id>`, and this group's
+                    // local id is a negative alias, so that request asked our
+                    // own island to change a group it has never heard of.
+                    // Pinning here could not work at all: the call failed, the
+                    // optimistic swap was rolled back, and the pin read as one
+                    // that "does not replace anything". Send it to the island
+                    // the group lives on, with the guest token.
+                    try await ChatPinRouting.setForeignPinnedText(
+                        host: foreign.host,
+                        remoteId: foreign.remoteId,
+                        ownUIN: me,
+                        pinnedText: GroupService.clampPinnedText(text)
+                    )
+                } else {
+                    try await groupSvc.setPinnedText(groupID: snapshot.id, pinnedText: text)
+                }
             } catch {
                 // A rejected pin used to be invisible: the optimistic swap stayed
                 // on screen until the next poll quietly put the old text back, so
@@ -244,6 +436,37 @@ struct ChatView: View {
     @StateObject private var chatSettings = ChatSettingsStore.shared
     @StateObject private var emoticonUsage = EmoticonUsageStore.shared
     @StateObject private var emojiPrefs = EmoticonPrefsStore.shared
+    @StateObject private var chatBackground = ChatBackgroundStore.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// How this screen's own chrome paints itself over the chat wallpaper.
+    ///
+    /// The same rule the home screen decides by (`WallpaperSurface.mode`): flat
+    /// when no wallpaper is set, so nothing moves for the people who never set
+    /// one; translucent over a blur when one is, so the picture reads through
+    /// the chrome instead of being visible only around it; and the theme
+    /// reasserted when, and only when, a CUSTOM image has been measured to
+    /// stand on the wrong side of the active theme. The built-in presets can
+    /// never get there, they are authored per theme.
+    private var wallpaperSurfaceMode: WallpaperSurface {
+        chatBackground.surface(home: false, isLightTheme: colorScheme == .light)
+    }
+
+    /// Ground for the round floating buttons over the message list.
+    ///
+    /// `.ultraThinMaterial` alone takes its tone from what is BEHIND it, which
+    /// over a wallpaper is the wallpaper: a white photo under the dark theme
+    /// turns the disc light while the glyph on it stays `textPrimary` (#EDEDED),
+    /// and the button is gone. That is the empty-chat CTA's bug one layer up,
+    /// so only that case gets the theme colour put back; every other case draws
+    /// exactly what it draws today.
+    private var floatingButtonGround: some View {
+        Circle()
+            .fill(Theme.Color.bgPrimary.opacity(
+                wallpaperSurfaceMode == .reasserted ? WallpaperSurface.reasserted.tint : 0
+            ))
+            .background(.ultraThinMaterial, in: Circle())
+    }
     @State private var showEmojiPanel = false
     @State private var showEmojiPicker = false
     @State private var showInfo = false
@@ -293,9 +516,10 @@ struct ChatView: View {
             }
         }
     }
-    @State private var showPollComposer: Bool = false
+    // Polls (14a) and in-chat relay sharing (14b) both used to open a composer
+    // from here. Both compose paths are gone; see `MessageRow` for what an
+    // incoming one of either still does.
     @State private var showShareGroupPicker: Bool = false
-    @State private var showRelayPicker: Bool = false
     @State private var headerShowsLastSeen: Bool = false
     @State private var showLocationPicker: Bool = false
     @State private var showTTLPicker = false
@@ -315,6 +539,11 @@ struct ChatView: View {
     /// back to what it showed before. Shown as an alert; silence here is what
     /// made a rejected pin look like a pin that simply did not replace.
     @State private var pinError: String?
+    /// Non-nil = the composer refused a send because of the room's rules
+    /// (links off, files off, slow mode still running). Said as a sentence
+    /// rather than swallowed: the alternative is a send that simply does not
+    /// happen, or the raw 429 the island answers with.
+    @State private var roomRuleNotice: String?
     @State private var composerHeight: CGFloat = 36
     /// Tracks the last seen `composerHeight` so the scroll handler can
     /// detect SHRINK (send cleared a long draft) vs GROW (typing into
@@ -575,15 +804,33 @@ struct ChatView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if vm.isPeerTyping, case .peer(let c) = vm.target {
-                    TypingIndicator(label: "\(aliasStore.displayName(for: c.uin, fallback: c.nickname)) is typing…")
+                    // `chat.typing` has carried the "%@ is typing" wording in
+                    // all seven catalogues the whole time; this call site was
+                    // simply built by hand and never asked for it, so the one
+                    // line of chat chrome that names a person stayed English
+                    // for every non-English user.
+                    TypingIndicator(label: "chat.typing".localized(
+                        aliasStore.displayName(for: c.uin, fallback: c.nickname)
+                    ))
                 }
                 if case .randomPeer(let peer) = vm.target {
                     randomCTAStrip(peer: peer)
                 }
                 if vm.isSelecting {
                     selectionActionBar
-                } else if let inGroup = vm.target.broadcastReadOnly(viewerUIN: AuthService.shared.ownUIN) {
-                    broadcastReadOnlyHint(group: inGroup)
+                } else if readOnlyGroup != nil {
+                    // A composer you cannot type in, NOT a strip of text where
+                    // the composer was (24). Two reasons. The screen keeps the
+                    // shape every other chat has, so "I cannot write here" is
+                    // read off a greyed-out field the way it is read everywhere
+                    // else on the platform, instead of off a sentence. And the
+                    // bar keeps taking part in layout: the message list's bottom
+                    // inset comes from whatever this branch renders, and the
+                    // composer's own `composerHeight` only ever moves while
+                    // `EmoticonTextField` is mounted - swapping in a shorter
+                    // notice moves the seam under the list for no reason the
+                    // reader can connect to anything.
+                    readOnlyComposer
                 } else {
                     if !vm.pendingMedia.isEmpty {
                         // No explicit background — tiles float over the
@@ -599,8 +846,17 @@ struct ChatView: View {
                 }
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
+            // ⚠ A modifier and not an inline `.background { }`. This closure is
+            // one link of the longest modifier chain in the app, and the whole
+            // chain type-checks as ONE expression: writing the ground out in
+            // place here puts the compiler over its limit and the file stops
+            // building ("unable to type-check this expression in reasonable
+            // time", reported on a line a few hundred further down, which is
+            // the part of this that costs an afternoon). One concrete generic
+            // call costs nothing.
+            .modifier(BottomBarGround(surface: wallpaperSurfaceMode))
         }
-        .callMinimizedBarInset()
+        .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
@@ -641,92 +897,9 @@ struct ChatView: View {
         }
         // Pickers go through UIKit (ImperativePicker) — hosting a PHPicker sheet inside the
         // random-chat fullScreenCover triggers an iOS 26 cascade-dismiss bug.
-        .sheet(isPresented: $showAttachmentMenu, onDismiss: handleAttachDismiss) {
-            AttachmentPickerSheet(
-                isRandom: { if case .randomPeer = vm.target { return true } else { return false } }(),
-                onMedia: { picks in
-                    // Telegram-style: media chosen INSIDE the sheet
-                    // rather than via a follow-up UnifiedMediaPicker.
-                    // Route the picked items straight into the
-                    // composer's pending-media queue and close the
-                    // sheet — no `pendingAttachAction` middleman needed.
-                    showAttachmentMenu = false
-                    Task { @MainActor in
-                        for item in picks {
-                            switch item {
-                            case .photo(let img):
-                                vm.queuePendingPhotos([img])
-                            case .video(let url):
-                                let thumb = await Self.makeVideoThumbnail(url: url)
-                                vm.queuePendingVideo(url: url, thumbnail: thumb)
-                            case .gif(let data, let preview):
-                                vm.queuePendingGIF(data: data, preview: preview)
-                            }
-                        }
-                    }
-                },
-                onCamera: {
-                    pendingAttachAction = .camera
-                    showAttachmentMenu = false
-                },
-                onDocument: {
-                    pendingAttachAction = .document
-                    showAttachmentMenu = false
-                },
-                onLocation: {
-                    pendingAttachAction = .location
-                    showAttachmentMenu = false
-                },
-                // Polls only make sense in groups — anchor `onPoll` to
-                // nil for 1:1 / random so the row is hidden entirely.
-                onPoll: pollPickerHandler,
-                // Sharing a group invite into another chat is a 1:1
-                // affordance — sharing into the same group is
-                // contrived. Hidden in random-chat (privacy) and
-                // hidden in group chats (no use-case).
-                onShareGroup: shareGroupPickerHandler,
-                onShareConnection: shareConnectionHandler
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showRelayPicker) {
-            RelaySharePickerSheet(isGroup: { if case .group = vm.target { return true } else { return false } }()) { relay in
-                showRelayPicker = false
-                Task { await vm.shareRelay(relay) }
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showPollComposer) {
-            PollComposerSheet { draft in
-                Task { await submitPoll(draft) }
-            }
-            .presentationDetents([.large])
-        }
-        .sheet(isPresented: $showShareGroupPicker) {
-            ShareGroupPickerSheet { picked in
-                // Send the canonical share URL as plain text — the
-                // receiving client's `GroupLinkParser` upgrades the
-                // bubble into a `GroupLinkBubble` card automatically.
-                let url = GroupLinkParser.canonicalURL(forGroupID: picked.host != nil ? (VisitedIslandsStore.shared.refByAlias(picked.id)?.remoteId ?? picked.id) : picked.id, host: picked.host ?? Multihome.ownHost())
-                Task { await vm.sendText(url.absoluteString) }
-            }
-            .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showLocationPicker) {
-            LocationPickerSheet(
-                onSend: { coord in
-                    showLocationPicker = false
-                    Task { @MainActor in
-                        if let err = await vm.sendLocation(latitude: coord.latitude, longitude: coord.longitude) {
-                            videoError = err
-                        }
-                    }
-                },
-                onCancel: { showLocationPicker = false },
-            )
-        }
+        .sheet(isPresented: $showAttachmentMenu, onDismiss: handleAttachDismiss) { attachmentSheet }
+        .sheet(isPresented: $showShareGroupPicker) { shareGroupSheet }
+        .sheet(isPresented: $showLocationPicker) { locationSheet }
         .confirmationDialog(
             "chat.menu.disappearing".localized,
             isPresented: $showTTLPicker,
@@ -899,6 +1072,17 @@ struct ChatView: View {
             .environment(\.openURL, OpenURLAction { url in
                 if url.scheme == "rcq", url.host == "member", let uin = Int(url.lastPathComponent) {
                     pinnedExpansion = nil
+                    // Same gate as the reactions sheet and the album header:
+                    // this is a card opened from a name the subject never
+                    // chose to be a link. A mention carries nothing but the
+                    // number, so the island's verdict is looked up in the
+                    // rosters this client already holds.
+                    guard ProfileCardPrivacy.canOpenCard(
+                        uin: uin,
+                        openable: ProfileCardPrivacy.verdict(for: uin),
+                        myUIN: AuthService.shared.ownUIN,
+                        isContact: ContactService.shared.contacts.contains { $0.uin == uin }
+                    ) else { return .handled }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinnedMemberUIN = uin }
                     return .handled
                 }
@@ -1101,6 +1285,7 @@ struct ChatView: View {
                         peerSubtitle(for: live)
                     }
                 }
+                .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
                 Color.clear.frame(width: 24, height: 1)
             }
             .contentShape(Rectangle())
@@ -1126,15 +1311,16 @@ struct ChatView: View {
                             .font(.system(.subheadline, weight: .semibold))
                             .foregroundColor(Theme.Color.textPrimary)
                             .lineLimit(1)
-                        Text(String(
-                            format: (live.memberCount == 1
-                                ? "contact_list.members_one"
-                                : "contact_list.members_many").localized,
-                            live.memberCount
-                        ))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Theme.Color.textMono)
+                        // Proportional, not monospaced: the rest of the app
+                        // stopped using mono (see `Theme.Font.mono`) and a
+                        // count is not a column that has to line up with
+                        // anything. Compact from a thousand up so a big room
+                        // does not push the name off the bar.
+                        Text(MemberCountLabel.text(live.memberCount))
+                            .font(.system(size: 11))
+                            .foregroundColor(Theme.Color.textSecondary)
                     }
+                    .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
                     // Mirror peer-header layout: a trailing 24pt clear
                     // spacer balances the leading avatar so the title
                     // text stays centred under the nav bar.
@@ -1144,21 +1330,14 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
         case .randomPeer:
-            HStack(spacing: 8) {
-                Image(systemName: "theatermasks.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(Theme.Color.accent)
-                    .frame(width: 24, height: 24)
-                VStack(spacing: 0) {
-                    Text("chat.random.stranger".localized)
-                        .font(.system(.subheadline, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Text("anonymous")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Color.textMono)
-                }
-                Color.clear.frame(width: 24, height: 1)
-            }
+            // A stranger has no avatar and no UIN to show, so the header is
+            // just the title. The theatre-masks glyph read as decoration on a
+            // bar where every other chat shows a face, and the subtitle under
+            // it was a hardcoded, never-localized "anonymous".
+            Text("chat.random.stranger".localized)
+                .font(.system(.subheadline, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+                .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
         }
     }
 
@@ -1234,8 +1413,8 @@ struct ChatView: View {
             case .group:
                 // Hide the disappearing-timer toggle when you can't post here
                 // (owner-only broadcast group, non-owner): setting a TTL you can't
-                // act on is meaningless. Read-only => broadcastReadOnly != nil.
-                if vm.target.broadcastReadOnly(viewerUIN: AuthService.shared.ownUIN) == nil {
+                // act on is meaningless. Read-only => readOnlyGroup != nil.
+                if readOnlyGroup == nil {
                     Button {
                         showTTLPicker = true
                     } label: {
@@ -1287,11 +1466,118 @@ struct ChatView: View {
         chatSettings.ttl(for: vm.target.thread) != nil
     }
 
+    /// The "say hi" empty state, or nothing at all in a room the viewer may not
+    /// post in (24). A CTA that asks for a first message from somebody the room
+    /// will not let speak is worse than an empty screen.
+    @ViewBuilder
     private var emptyChatPlaceholder: some View {
+        if readOnlyGroup == nil {
+            emptyChatCTA
+        }
+    }
+
+
+    /// The three composer sheets, lifted out of `body`.
+    ///
+    /// ⚠ Their CONTENT, not their presentation: the `.sheet` modifiers stay
+    /// where they were, in the same order, so nothing about when they present
+    /// changes. What moves is the several hundred tokens of view-building that
+    /// used to sit inside `body`'s single expression. The type checker budgets
+    /// one expression at a time, and this one is forty-odd modifiers long: with
+    /// the sheet bodies inline, one more argument anywhere in the chain tipped
+    /// the whole file into "unable to type-check this expression in reasonable
+    /// time", reported against a line three hundred rows away from the change.
+    private var attachmentSheet: some View {
+        AttachmentPickerSheet(
+            isRandom: { if case .randomPeer = vm.target { return true } else { return false } }(),
+            filesAllowed: filesAllowed,
+            onMedia: { picks in
+                // Telegram-style: media chosen INSIDE the sheet
+                // rather than via a follow-up UnifiedMediaPicker.
+                // Route the picked items straight into the
+                // composer's pending-media queue and close the
+                // sheet, no `pendingAttachAction` middleman needed.
+                showAttachmentMenu = false
+                Task { @MainActor in
+                    for item in picks {
+                        switch item {
+                        case .photo(let img):
+                            vm.queuePendingPhotos([img])
+                        case .video(let url):
+                            let thumb = await Self.makeVideoThumbnail(url: url)
+                            vm.queuePendingVideo(url: url, thumbnail: thumb)
+                        case .gif(let data, let preview):
+                            vm.queuePendingGIF(data: data, preview: preview)
+                        }
+                    }
+                }
+            },
+            onCamera: {
+                pendingAttachAction = .camera
+                showAttachmentMenu = false
+            },
+            onDocument: {
+                pendingAttachAction = .document
+                showAttachmentMenu = false
+            },
+            onLocation: {
+                pendingAttachAction = .location
+                showAttachmentMenu = false
+            },
+            // Sharing a group invite into another chat is a 1:1
+            // affordance: sharing into the same group is
+            // contrived. Hidden in random-chat (privacy) and
+            // hidden in group chats (no use-case).
+            //
+            // The Poll (14a) and Share-a-connection (14b) chips that used to
+            // sit beside it are gone with their features.
+            onShareGroup: shareGroupPickerHandler
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var shareGroupSheet: some View {
+        ShareGroupPickerSheet { picked in
+            // Send the canonical share URL as plain text. The
+            // receiving client's `GroupLinkParser` upgrades the
+            // bubble into a `GroupLinkBubble` card automatically.
+            let url = GroupLinkParser.canonicalURL(forGroupID: picked.host != nil ? (VisitedIslandsStore.shared.refByAlias(picked.id)?.remoteId ?? picked.id) : picked.id, host: picked.host ?? Multihome.ownHost())
+            // An invite IS a link: a room with links off means all of them.
+            if roomRulesBlockSend(text: url.absoluteString) { return }
+            armSlowmode()
+            Task { await vm.sendText(url.absoluteString) }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var locationSheet: some View {
+        LocationPickerSheet(
+            onSend: { coord in
+                showLocationPicker = false
+                if roomRulesBlockSend() { return }
+                armSlowmode()
+                Task { @MainActor in
+                    if let err = await vm.sendLocation(latitude: coord.latitude, longitude: coord.longitude) {
+                        videoError = err
+                    }
+                }
+            },
+            onCancel: { showLocationPicker = false },
+        )
+    }
+
+    private var emptyChatCTA: some View {
         VStack(spacing: 10) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 38, weight: .light))
-                .foregroundColor(Theme.Color.divider)
+                // ⚠ NOT `Theme.Color.divider`. That token is a hairline colour
+                // (#303030 in dark) chosen to be nearly invisible against a flat
+                // background, and this glyph is drawn over the chat WALLPAPER:
+                // on the graphite preset (#232526) it scored about 1.18:1 and
+                // the CTA simply was not there. A hairline token is never a
+                // glyph colour, least of all on a surface we do not control.
+                .foregroundColor(Theme.Color.textSecondary)
             Text("chat.empty.title".localized)
                 .font(.system(.subheadline, weight: .semibold))
                 .foregroundColor(Theme.Color.textPrimary)
@@ -1301,6 +1587,16 @@ struct ChatView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
+        // The glyph stopped being a hairline token (see above), but all three
+        // lines still stand on bare wallpaper, and `textSecondary` on the light
+        // "Sunset" preset is about 2.9:1. On the home screen no label is left
+        // standing on the picture; this one gets the same treatment.
+        .padding(wallpaperSurfaceMode == .none ? 0 : 16)
+        .wallpaperChromePill(
+            Theme.Color.bgPrimary, wallpaperSurfaceMode,
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .padding(.horizontal, wallpaperSurfaceMode == .none ? 0 : 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 120)
         .allowsHitTesting(false)
@@ -1380,7 +1676,12 @@ struct ChatView: View {
     }
 
     private var messageScroll: some View {
-        ScrollViewReader { proxy in
+        // Bound ONCE here rather than read per row: `roomPolicy` re-runs
+        // `liveGroup` (a linear scan of the group list) and the roster lookup
+        // in `roomExempt`, and this list re-renders on every incoming frame.
+        // The rows take it as a value, so `MessageRow.==` still diffs it.
+        let linksOK = linksAllowed
+        return ScrollViewReader { proxy in
             ZStack(alignment: .bottomTrailing) {
             if vm.messages.isEmpty {
                 emptyChatPlaceholder
@@ -1409,7 +1710,7 @@ struct ChatView: View {
                     // label identity lets SwiftUI see new groups inserted
                     // at the top while existing ones keep their place.
                     ForEach(vm.groupedUnits, id: \.label) { group in
-                        DateDivider(label: group.label)
+                        DateDivider(label: group.label, surface: wallpaperSurfaceMode)
                         ForEach(Array(group.units.enumerated()), id: \.element.id) { idx, unit in
                             // The line that says WHY the chat opened here. iOS
                             // had none: the view jumped to the first unread and
@@ -1417,7 +1718,7 @@ struct ChatView: View {
                             // at, which reads as landing somewhere at random.
                             // Android and every other messenger draw it.
                             if unit.id == vm.unreadDividerID {
-                                UnreadDivider()
+                                UnreadDivider(surface: wallpaperSurfaceMode)
                                     .id(Self.unreadDividerAnchorID)
                             }
                             switch unit {
@@ -1494,7 +1795,8 @@ struct ChatView: View {
                                 onSwipeReply: {
                                     beginReply(to: msg)
                                 },
-                                currentGroupMembers: currentGroupMembers
+                                currentGroupMembers: currentGroupMembers,
+                                linksAllowed: linksOK
                             )
                             // Skip re-running this row's body unless its own
                             // value inputs changed (see MessageRow.==). Stops
@@ -1875,7 +2177,7 @@ struct ChatView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .frame(width: 38, height: 38)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .background(floatingButtonGround)
                         .overlay(
                             Circle().stroke(Theme.Color.divider, lineWidth: 0.5)
                         )
@@ -1936,7 +2238,7 @@ struct ChatView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .frame(width: 38, height: 38)
-                        .background(.ultraThinMaterial, in: Circle())
+                        .background(floatingButtonGround)
                         .overlay(
                             Circle().stroke(Theme.Color.divider, lineWidth: 0.5)
                         )
@@ -2026,13 +2328,11 @@ struct ChatView: View {
         case .file:  raw = "📎 \(message.fileName ?? "chat.attach.document".localized)"
         case .location: raw = "📍 \("chat.preview.location".localized)"
         case .poll:
-            // The text field on a `.poll` row is the JSON-encoded
-            // PollPayload — surface the question only so the reply
-            // strip reads as "📊 What should we order?" instead of
-            // the raw `{"question":...,"options":...}` blob.
-            let q = PollPayload.decode(from: message.text)?.question
-                ?? "chat.preview.poll".localized
-            raw = "📊 \(q)"
+            // Polls are gone (14a). The `text` of an old `.poll` row is still a
+            // JSON blob on disk, so this branch must stay and must never fall
+            // through to `raw = message.text` - that would print raw braces into
+            // a reply strip.
+            raw = "📊 \("chat.poll.removed".localized)"
         default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
         }
         // Quote the replied-to message generously so the bubble shows it in
@@ -2081,20 +2381,55 @@ struct ChatView: View {
         return sender(units[index]) != sender(units[index - 1])
     }
 
-    private func broadcastReadOnlyHint(group: RCQGroup) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "megaphone.fill")
+    /// The composer for a room this viewer may not post in (24): the same bar,
+    /// the same height, the same seam under the message list, with everything
+    /// dead. The placeholder says why, so the greyed-out field is not a mystery.
+    ///
+    /// Deliberately built out of the same pieces as `inputBar` rather than
+    /// reusing it disabled: the live bar carries a UIViewRepresentable text view
+    /// that becomes first responder on a token bump, and a first responder we
+    /// never want to hand the keyboard to is worse than one that does not exist.
+    private var readOnlyComposer: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            Image(systemName: "paperclip")
+                .font(.system(size: 18, weight: .medium))
                 .foregroundColor(Theme.Color.textSecondary)
-            Text("group.compose.broadcast_only".localized)
-                .font(.callout)
+                .frame(width: 36, height: 36)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.Color.textSecondary)
+                Text("group.compose.broadcast_only".localized)
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 14).padding(.trailing, 10)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.regularMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            Image(systemName: "mic.fill")
+                .font(.system(size: 18))
                 .foregroundColor(Theme.Color.textSecondary)
-            Spacer()
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(.regularMaterial))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
         }
-        .padding(.horizontal, 14).padding(.vertical, 14)
-        .frame(maxWidth: .infinity)
-        // Blurred material backdrop (like iOS system bars) so the read-only
-        // notice reads as a deliberate bar over the content, not stray text.
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .opacity(0.55)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("group.compose.broadcast_only".localized))
     }
 
     private var isStrangerMode: Bool {
@@ -2151,9 +2486,10 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Capsule().fill(Theme.Color.bgSecondary.opacity(0.96))
-            )
+            // Opaque (16). This strip floats in the chat ZStack directly over
+            // live message rows, and at 0.96 the bubbles underneath showed
+            // through it as moving ghosts while the list scrolled.
+            .background(Capsule().fill(Theme.Color.bgSecondary))
             .overlay(
                 Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5)
             )
@@ -2225,9 +2561,13 @@ struct ChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        // Opaque (16). The expanded pin is a panel floating over the message
+        // list inside the same ZStack, and the 0.96 fill let whole bubbles read
+        // through it - scrolling behind a pin made the pin's own text move.
+        // The long-press overlay still covers it, because that draws above.
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Theme.Color.bgSecondary.opacity(0.96))
+                .fill(Theme.Color.bgSecondary)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2263,6 +2603,10 @@ struct ChatView: View {
     }
 
     private func pinnedSegments(_ text: String, defaultHost: String? = nil) -> [PinSegment] {
+        // Links off: the announcement still says what it says, but an invite in
+        // it does not become a join card - a join card is the most clickable
+        // link there is. Web drops the same card behind `linksAllowed`.
+        guard linksAllowed else { return [.text(text)] }
         guard let rx = try? NSRegularExpression(
             pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)", options: [.caseInsensitive]
         ) else { return [.text(text)] }
@@ -2324,25 +2668,29 @@ struct ChatView: View {
     /// view); without it they're colour-only (the banner), so the whole banner
     /// taps to expand and the user clicks the link/nick there.
     private func pinnedAttributed(_ text: String, linkable: Bool) -> AttributedString {
+        // A links-off room keeps the URL as prose: not tappable, not even
+        // accent-coloured, because colouring it is the promise of a tap.
+        let linkable = linkable && linksAllowed
+        let plainURLs = !linksAllowed
         let nickByUIN: [Int: String] = Dictionary(
             currentGroupMembers.map { ($0.uin, $0.nickname) }, uniquingKeysWith: { a, _ in a }
         )
         // Matches both `#<uin>` and `UIN <uin>` (the format used in real pins).
+        func run(_ chunk: String) -> AttributedString {
+            plainURLs ? AttributedString(chunk) : ChatView.linkified(chunk, linkable: linkable)
+        }
         guard let regex = try? NSRegularExpression(pattern: "(?:#|UIN\\s+)(\\d{3,})", options: [.caseInsensitive]) else {
-            return ChatView.linkified(text, linkable: linkable)
+            return run(text)
         }
         let ns = text as NSString
         let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return ChatView.linkified(text, linkable: linkable) }
+        guard !matches.isEmpty else { return run(text) }
 
         var result = AttributedString()
         var cursor = 0
         for m in matches {
             if m.range.location > cursor {
-                result.append(ChatView.linkified(
-                    ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor)),
-                    linkable: linkable
-                ))
+                result.append(run(ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))))
             }
             let token = ns.substring(with: m.range)            // "#911" / "UIN 911"
             let uin = Int(ns.substring(with: m.range(at: 1)))  // 911
@@ -2357,7 +2705,7 @@ struct ChatView: View {
             cursor = m.range.location + m.range.length
         }
         if cursor < ns.length {
-            result.append(ChatView.linkified(ns.substring(from: cursor), linkable: linkable))
+            result.append(run(ns.substring(from: cursor)))
         }
         return result
     }
@@ -2689,7 +3037,10 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "trash.fill")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(canDelete ? .red : Theme.Color.divider)
+                    // Same rule as the empty-state glyph (18): `divider` is a
+                    // hairline colour, not a disabled-glyph colour. A dimmed
+                    // label token reads as "off" without disappearing.
+                    .foregroundColor(canDelete ? .red : Theme.Color.textSecondary.opacity(0.5))
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
@@ -2812,6 +3163,12 @@ struct ChatView: View {
 
     private var sendButton: some View {
         Button {
+            // The room's rules, on the SEND path rather than on the button:
+            // a draft typed before the owner flipped the switch, and the
+            // hardware-return key, both get here without passing a control.
+            // A caption rides with the media, so it is the same text test.
+            if roomRulesBlockSend(text: vm.input) { return }
+            armSlowmode()
             Task {
                 if !vm.pendingMedia.isEmpty {
                     if let err = await vm.sendPendingMediaWithCaption() {
@@ -2833,27 +3190,15 @@ struct ChatView: View {
         .buttonStyle(.plain)
     }
 
-    /// Composer "Poll" row handler. `nil` for 1:1 / random chats so
-    /// `AttachmentPickerSheet` hides the row entirely. For groups,
-    /// closing the attach sheet first then presenting the composer
-    /// avoids the iOS 26 sheet-after-sheet bug (matching the same
-    /// pattern as `pendingAttachAction`).
-    private var pollPickerHandler: (() -> Void)? {
-        guard case .group = vm.target else { return nil }
-        return {
-            showAttachmentMenu = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                showPollComposer = true
-            }
-        }
-    }
-
     /// Composer "Share group" handler. Hidden only in random-chat
     /// (privacy — a stranger shouldn't see a member's group list).
     /// Available in both 1:1 AND group chats — sharing a group into
     /// another group is a legit "invite the whole crew to this other
     /// chat" pattern.
     private var shareGroupPickerHandler: (() -> Void)? {
+        // An invite is a link, so a links-off room drops the chip with the
+        // rest of them (web hides the same entry behind `linksAllowed`).
+        guard linksAllowed else { return nil }
         switch vm.target {
         case .peer, .group:
             return {
@@ -2867,54 +3212,18 @@ struct ChatView: View {
         }
     }
 
-    /// In-chat bridge sharing: hand a relay to a peer OR drop it into a group (the
-    /// highest-reach censorship-resistant path — every member can Add it). Hidden
-    /// only in random/stranger mode.
-    private var shareConnectionHandler: (() -> Void)? {
-        switch vm.target {
-        case .peer, .group:
-            return {
-                showAttachmentMenu = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    showRelayPicker = true
-                }
-            }
-        case .randomPeer:
-            return nil
-        }
-    }
-
-    /// Wire a finished poll-composer draft into the send pipeline:
-    /// create the server-side poll (gets back `poll_id`), then
-    /// broadcast a `.poll` envelope so every group member's chat
-    /// renders a fresh `PollBubble` ready to vote.
-    private func submitPoll(_ draft: PollComposerSheet.PollDraft) async {
-        guard case .group(let g) = vm.target else { return }
-        let messageID = UUID()
-        do {
-            let pollID = try await PollService.shared.createPoll(
-                inGroupID: g.id,
-                messageID: messageID.uuidString,
-                numOptions: draft.options.count,
-                singleChoice: draft.singleChoice,
-                anonymous: draft.anonymous
-            )
-            try await MessageService.shared.sendPoll(
-                envelopeID: messageID,
-                pollID: pollID,
-                question: draft.question,
-                options: draft.options,
-                singleChoice: draft.singleChoice,
-                anonymous: draft.anonymous,
-                to: g
-            )
-        } catch {
-            // Surface to the user via the existing toast plumbing if
-            // available; for v1 we just print so the dev console
-            // shows the failure path.
-            print("[poll] submit failed: \(error)")
-        }
-    }
+    // In-chat relay sharing used to have a composer here: a picker over the
+    // off-config relay pool, then an `rcq-relay://` token sealed inside an
+    // ordinary message. The COMPOSE half is cut (14b) - the founder does not
+    // want it and cannot use it, and it costs the island nothing either way,
+    // because the relay rides as an inner envelope kind inside a normal sealed
+    // message and the backend has never known the feature exists.
+    //
+    // ⚠ The RECEIVE half stays, deliberately: see `RelayShareBubble` in
+    // `MessageRow`. Rendering an incoming relay as "no longer supported" would
+    // take a working way through a block away from the one user who is behind
+    // one, which is the opposite of what this app is for. A cut product surface
+    // must not cost somebody their connection.
 
     /// Drains the pending attach action AFTER the menu sheet has
     /// fully torn down. The media picker is presented via UIKit
@@ -2972,6 +3281,13 @@ struct ChatView: View {
                 DocumentPickerPresenter.present(
                     onPick: { picked in
                         Task { @MainActor in
+                            // The chip is gone when files are off, so this only
+                            // fires for a menu that was already open when the
+                            // owner flipped the switch. Guarded anyway: the
+                            // island refuses the deposit either way, and a
+                            // sentence beats a red error off the wire.
+                            if roomRulesBlockSend(isFile: true) { return }
+                            armSlowmode()
                             if let err = await vm.sendFile(
                                 fileURL: picked.url,
                                 fileName: picked.fileName,
@@ -3020,6 +3336,15 @@ struct ChatView: View {
         // do the work explicitly. No swipes. Everyone understands.
         Button {
             Task {
+                // ⚠ Playback first, recording second. `VoicePlayer` is the
+                // process-wide owner and `VoiceRecorder` does not know about
+                // it: starting a recording over a playing clip reconfigures
+                // the session to `.playAndRecord` + `.defaultToSpeaker` under
+                // running playback, so the clip goes on out of the loudspeaker
+                // straight into the open mic and is baked into the voice note.
+                // Its `teardown()` then deactivates the session out from under
+                // a player that still believes it owns it.
+                VoicePlayer.shared.stop()
                 let ok = await VoiceRecorder.shared.start()
                 if !ok { voicePermissionDenied = true }
             }
@@ -3055,7 +3380,9 @@ struct ChatView: View {
                 pendingVoicePreview = nil
             },
             onSend: {
+                if roomRulesBlockSend() { return }
                 pendingVoicePreview = nil
+                armSlowmode()
                 Task {
                     if let err = await vm.sendVoice(
                         fileURL: preview.url, durationSec: preview.duration
@@ -3174,6 +3501,52 @@ struct ChatView: View {
     }
 }
 
+/// The pin slot of a group that lives on ANOTHER island.
+///
+/// `GroupService` reaches the server through `APIClient`, which is pinned to our
+/// own island, and a guest group is addressed locally by a NEGATIVE alias id
+/// (`VisitedIslandsStore.aliasFor`). So `PATCH /groups/<alias>` asked our own
+/// island to change a group it has never heard of, and pinning a message inside
+/// a cross-island or guest group could not work on iOS at all: the call failed,
+/// the optimistic banner rolled back, and the user saw a pin that did nothing.
+///
+/// The shape here is the one `CrossIslandGroups` uses for every other guest
+/// call - raw request, guest jwt, the closed-island token stamp, routed through
+/// `IslandHTTP` so it survives a censored network. It is written as `APIError`
+/// on the way out so `GroupService.pinFailureMessage` can still tell a 403
+/// ("you do not have the info right") from a dead connection.
+///
+/// ⚠ This belongs in `CrossIslandGroups` next to `groupSealedDeposit`, as a
+/// generic foreign PATCH that `GroupService` could route every group edit
+/// through - rename, description and the room-rule toggles are all broken in a
+/// guest group for exactly the same reason. It sits here because that file is
+/// owned by another change in flight; move it when that lands.
+enum ChatPinRouting {
+    /// `ownUIN` is handed in rather than read here: `AuthService` is main-actor
+    /// isolated and this call is not, and the caller is already on the main
+    /// actor when it decides the group is foreign.
+    static func setForeignPinnedText(
+        host: String, remoteId: Int, ownUIN: Int?, pinnedText: String
+    ) async throws {
+        struct Body: Encodable { let pinned_text: String }
+        guard let creds = CrossIslandGroups.foreignCreds(host: host, ownUIN: ownUIN),
+              let url = URL(string: "https://\(host)/groups/\(remoteId)") else {
+            throw APIError.http(0, nil)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(creds.jwt)", forHTTPHeaderField: "Authorization")
+        AccessTokenStore.stamp(&req)
+        req.httpBody = try JSONEncoder().encode(Body(pinned_text: pinnedText))
+        let (data, resp) = try await IslandHTTP.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else {
+            throw APIError.http(code, String(data: data, encoding: .utf8))
+        }
+    }
+}
+
 /// Carries the expanded-pin content's natural height up so the pin ScrollView
 /// can shrink to fit short pins (#13).
 private struct PinHeightKey: PreferenceKey {
@@ -3195,17 +3568,86 @@ private struct BottomAnchoredScroll: ViewModifier {
     }
 }
 
+/// The bottom bar's ground, over a wallpaper only.
+///
+/// The whole bar (typing line, random-chat strip, composer, emoji panel)
+/// stands ON the wallpaper: it lives in a `safeAreaInset`, and
+/// `ChatBackgroundView` ignores the safe area, so the picture is painted behind
+/// it. It had no ground of its own at all, which left the attach / mic / send
+/// glyphs (`textPrimary`, `accent`) and the typing line (`textSecondary`)
+/// standing on whatever the user picked. Nothing is painted without a
+/// wallpaper, so nothing moves for anybody who never set one.
+private struct BottomBarGround: ViewModifier {
+    let surface: WallpaperSurface
+
+    func body(content: Content) -> some View {
+        content.background {
+            if surface != .none {
+                Rectangle()
+                    .fill(Theme.Color.bgPrimary.opacity(surface.tint))
+                    .background(.ultraThinMaterial)
+                    // The ground runs to the screen edge instead of stopping at
+                    // the home indicator, which would leave a strip of
+                    // wallpaper under the composer.
+                    //
+                    // ⚠ `.container`, not the default `.all`: `.all` includes
+                    // the KEYBOARD region, and a ground that grows to follow
+                    // the keyboard is a layout loop with the very inset it is
+                    // the background of.
+                    .ignoresSafeArea(.container, edges: .bottom)
+            }
+        }
+    }
+}
+
+/// The nav bar's name + subtitle block, given a ground of its own when a
+/// wallpaper is set.
+///
+/// `.toolbarBackground(.visible, for: .navigationBar)` paints a MATERIAL, not a
+/// colour, so the wallpaper scrolls under the bar and tints it. The subtitle is
+/// `textMono`, the palest label the screen has, and on a light picture it goes
+/// to nothing. Same defect the founder reported on the main screen's UIN, same
+/// shape of fix, and nothing at all without a wallpaper.
+private struct HeaderPillOverWallpaper: ViewModifier {
+    let surface: WallpaperSurface
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, surface == .none ? 0 : 8)
+            .padding(.vertical, surface == .none ? 0 : 2)
+            .wallpaperChromePill(Theme.Color.bgPrimary, surface, in: Capsule(style: .continuous))
+    }
+}
+
 /// "Unread messages" line, drawn immediately above the first message the
 /// reader has not seen. It is also the chat's opening anchor, so the reader
 /// lands with the line at the top of the screen and the new messages under it.
 private struct UnreadDivider: View {
+    var surface: WallpaperSurface = .none
+
     var body: some View {
-        HStack(spacing: 8) {
-            Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
-            Text("chat.unread_divider".localized)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Theme.Color.accent)
-            Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+        Group {
+            if surface == .none {
+                HStack(spacing: 8) {
+                    Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+                    Text("chat.unread_divider".localized)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Theme.Color.accent)
+                    Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+                }
+            } else {
+                // Same answer the day divider gives, for the same reason: two
+                // half-transparent accent hairlines and a 10pt label on a
+                // picture is a line nobody can follow. Over a wallpaper the
+                // label gets the contrast pill and the rules go.
+                Text("chat.unread_divider".localized)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Theme.Color.accent)
+                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .background(Theme.Color.bgSecondary.opacity(surface.pillTint))
+                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -3215,10 +3657,13 @@ private struct UnreadDivider: View {
 
 private struct DateDivider: View {
     let label: String
-    @StateObject private var bg = ChatBackgroundStore.shared
+    /// Passed in rather than read off the store per row: this view is built
+    /// once per day-group on every pass of the message list.
+    var surface: WallpaperSurface = .none
+
     var body: some View {
         Group {
-            if bg.selection.isEmpty {
+            if surface == .none {
                 HStack {
                     Rectangle().fill(Theme.Color.divider).frame(height: 1)
                     Text(label)
@@ -3234,7 +3679,7 @@ private struct DateDivider: View {
                     .font(.system(size: 10))
                     .foregroundColor(Theme.Color.textPrimary)
                     .padding(.horizontal, 10).padding(.vertical, 3)
-                    .background(Theme.Color.bgSecondary.opacity(0.85))
+                    .background(Theme.Color.bgSecondary.opacity(surface.pillTint))
                     .clipShape(Capsule())
                     .frame(maxWidth: .infinity)
             }
@@ -3257,17 +3702,21 @@ struct ChatBgPreset: Identifiable {
 }
 
 enum ChatBackgrounds {
-    /// Mirrors the Android ChatBackgrounds presets (same ids + gradients).
-    static let presets: [ChatBgPreset] = [
-        ChatBgPreset(id: "ocean", label: "Ocean", colors: [Color(hex: 0x1A2980), Color(hex: 0x26D0CE)]),
-        ChatBgPreset(id: "midnight", label: "Midnight", colors: [Color(hex: 0x0F2027), Color(hex: 0x203A43), Color(hex: 0x2C5364)]),
-        ChatBgPreset(id: "forest", label: "Forest", colors: [Color(hex: 0x134E5E), Color(hex: 0x71B280)]),
-        ChatBgPreset(id: "sunset", label: "Sunset", colors: [Color(hex: 0xFF8008), Color(hex: 0xFFC837)]),
-        ChatBgPreset(id: "lavender", label: "Lavender", colors: [Color(hex: 0xE0C3FC), Color(hex: 0x8EC5FC)]),
-        ChatBgPreset(id: "rose", label: "Rose", colors: [Color(hex: 0xFFDEE9), Color(hex: 0xB5FFFC)]),
-        ChatBgPreset(id: "cream", label: "Cream", colors: [Color(hex: 0xF3EFE7), Color(hex: 0xF3EFE7)]),
-        ChatBgPreset(id: "graphite", label: "Graphite", colors: [Color(hex: 0x232526), Color(hex: 0x414345)]),
-    ]
+    /// The same eight presets the home screen paints, in the same order and
+    /// under the same ids, because they ARE the same list: `Theme.Wallpaper`
+    /// is the single authority and this is the view-side shape of it.
+    ///
+    /// ⚠ This used to hold its own hard-coded gradients, authored once for the
+    /// dark theme. When the home screen moved to the per-theme table the two
+    /// lists disagreed: the settings tile showed a navy "Midnight" while the
+    /// screen behind it painted a pale one, and the chat kept the dark stops
+    /// under light-theme text. One list, one answer, both themes.
+    ///
+    /// The stops are trait-resolved colours, so a light/dark flip repaints
+    /// without anybody re-reading this.
+    static let presets: [ChatBgPreset] = Theme.Wallpaper.presets.map {
+        ChatBgPreset(id: $0.id, label: $0.label, colors: $0.colors)
+    }
     static func preset(_ id: String) -> ChatBgPreset? { presets.first { $0.id == id } }
 }
 
@@ -3328,61 +3777,9 @@ struct PendingEvidenceReport: Identifiable {
     var id: UUID { message.id }
 }
 
-/// In-chat bridge sharing: pick a relay from your pool to hand the 1:1 peer so
-/// they can route through it when their own relays are blocked. See
-/// RCQ/docs/bridge-sharing-design.md.
-private struct RelaySharePickerSheet: View {
-    var isGroup: Bool = false
-    let onPick: (RelayConfigStore.RelayEntry) -> Void
-
-    private var pool: [RelayConfigStore.RelayEntry] {
-        // Off-config only (community: contact-shared + broker), NOT the
-        // signed-config pool. Sharing official relays is redundant (every user
-        // already has them) and surfacing their IPs just helps a censor
-        // enumerate them. Mirrors Android shareableRelays(). The routing pool
-        // (poolRelays()) still includes the official relays — only this
-        // share-picker list is filtered. NB: official relays are ALSO in the
-        // broker, so subtract the signed-config set explicitly.
-        let official = Set(RelayConfigStore.shared.currentRelays().map {
-            "\($0.proto.rawValue):\($0.server):\($0.port)"
-        })
-        var seen = Set<String>()
-        return (ContactRelayStore.shared.relays() + BrokerRelayStore.shared.relays()).filter { r in
-            let key = "\(r.proto.rawValue):\(r.server):\(r.port)"
-            guard !official.contains(key) else { return false }
-            return seen.insert(key).inserted
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Text("relay.share.pick.body".localized)
-                        .font(.caption).foregroundColor(Theme.Color.textSecondary)
-                    if isGroup {
-                        Text("relay.share.group.warn".localized)
-                            .font(.caption2).foregroundColor(.orange)
-                    }
-                }
-                ForEach(pool, id: \.tag) { r in
-                    Button {
-                        onPick(r)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "shield.lefthalf.filled").foregroundColor(Theme.Color.accent)
-                            Text("\(r.proto.rawValue.uppercased()) · \(r.server):\(r.port)")
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("relay.share.pick.title".localized)
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-}
-
+// `RelaySharePickerSheet` lived here: pick a relay out of your off-config pool
+// and hand it to the open chat. Cut with the rest of the compose path (14b).
+// Receiving one still works and still offers Add - see `RelayShareBubble`.
 
 /// Shared m:ss.t formatter for the voice pills.
 private func formatRecordingDuration(_ secs: TimeInterval) -> String {
@@ -3474,7 +3871,7 @@ private struct VoicePreviewPill: View {
         let isThisPlaying = voicePlayer.playingMessageID == preview.id && voicePlayer.isPlaying
         return HStack(spacing: 10) {
             Button {
-                voicePlayer.stop()
+                stopAudition()
                 onDiscard()
             } label: {
                 Image(systemName: "trash.fill")
@@ -3500,7 +3897,7 @@ private struct VoicePreviewPill: View {
             .foregroundColor(Theme.Color.textPrimary)
             Spacer()
             Button {
-                voicePlayer.stop()
+                stopAudition()
                 onSend()
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
@@ -3514,5 +3911,70 @@ private struct VoicePreviewPill: View {
         .frame(maxWidth: .infinity, minHeight: 44)
         .background(Capsule().fill(Theme.Color.bgSecondary.opacity(0.6)))
         .overlay(Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5))
+    }
+
+    /// Stop the DRAFT, and only the draft.
+    ///
+    /// ⚠ `VoicePlayer.stop()` is the process-wide owner's stop: it tears the
+    /// player down whatever is loaded into it. Calling it unconditionally here
+    /// means sending or discarding a recording also kills the audio document
+    /// the user had playing in this chat and dismisses the app-wide strip. The
+    /// pill's intent is "stop auditioning my draft", so it only fires when the
+    /// draft is what is loaded.
+    private func stopAudition() {
+        guard voicePlayer.playingMessageID == preview.id else { return }
+        voicePlayer.stop()
+    }
+}
+
+/// Slow-mode deadlines, per group, for THIS process.
+///
+/// Outside the view on purpose: leaving the chat and coming back must not hand
+/// out a free send, and the deadline is not worth a round trip to ask for. Web
+/// keeps the same map at module scope (`_slowUntil` in `Chat.tsx`). Memory
+/// only, like the web one: a cold start is the island's problem, and the island
+/// still holds its own limiter.
+@MainActor
+private enum SlowmodeClock {
+    static var until: [Int: Date] = [:]
+}
+
+/// Two things this screen hangs off `body`, in ONE node of its modifier chain:
+/// the persistent-strip inset where ChatView is its own presentation root, and
+/// the alert that says which room rule refused a send.
+///
+/// ⚠ One node, and it matters. `body` here is a single expression carrying
+/// forty-odd modifiers, and the type checker gives ONE expression a fixed
+/// budget: hanging an `.alert` and a conditional inset off the end of that
+/// chain separately tipped the whole file into "unable to type-check this
+/// expression in reasonable time" - which lands not on the line that added
+/// them but on whatever the solver gave up on, three hundred lines away. A
+/// `ViewModifier`'s own `body` is a fresh expression with its own budget, so
+/// the work moves out of the chain instead of onto it.
+private struct ChatRoomChrome: ViewModifier {
+    let target: ChatTarget
+    @Binding var notice: String?
+
+    func body(content: Content) -> some View {
+        stripInset(content)
+            // Title-only (the notice IS the sentence), so a five-second slow
+            // mode wait does not arrive under a heading.
+            .alert(notice ?? "", isPresented: Binding(
+                get: { notice != nil },
+                set: { if !$0 { notice = nil } }
+            )) {
+                Button("common.ok".localized, role: .cancel) {}
+            }
+    }
+
+    /// The persistent strips - minimized call, minimized audio room,
+    /// now-playing audio - are hosted ONCE by the navigation stack in
+    /// ContactListView, and every screen pushed into that stack inherits the
+    /// inset. Random chat is the exception: there ChatView is presented in its
+    /// own `fullScreenCover`, which starts a fresh safe area the stack's inset
+    /// never reaches, so that path reserves the space itself.
+    @ViewBuilder
+    private func stripInset(_ content: Content) -> some View {
+        if case .randomPeer = target { content.callMinimizedBarInset() } else { content }
     }
 }

@@ -7,6 +7,13 @@ import UIKit
 /// fetched lazily on tap (small files preview instantly, big PDFs show
 /// the progress ring while downloading). Cached after the first open
 /// via `MediaService`'s data cache so re-tap is instant.
+///
+/// AUDIO is the exception (founder item 9a): a document whose mime is
+/// `audio/*` used to hand the whole screen to QuickLook's player. It now
+/// plays through `VoicePlayer` - the same owner the voice bubbles use, so
+/// a song and a voice note can never overlap - and surfaces in the
+/// app-wide `AudioPlayerBar` instead, which survives leaving the chat.
+/// QuickLook is still the fallback for a codec `AVAudioPlayer` refuses.
 struct FileBubble: View {
     let message: Message
     var maxWidth: CGFloat = 260
@@ -24,6 +31,13 @@ struct FileBubble: View {
     }
     private var didFailUpload: Bool {
         message.mediaID == nil && message.deliveryState == .failed
+    }
+
+    /// Route this document into the audio strip rather than QuickLook?
+    /// Uploads are excluded: there is nothing to fetch yet.
+    private var isAudio: Bool {
+        guard !isUploading, !didFailUpload else { return false }
+        return Self.looksLikeAudio(mime: mime, name: fileName)
     }
 
     var body: some View {
@@ -49,6 +63,9 @@ struct FileBubble: View {
                                 .foregroundColor(Theme.Color.textMono)
                                 .tracking(1.2)
                         }
+                    }
+                    if isAudio {
+                        AudioFileProgressLine(messageID: message.id)
                     }
                 }
                 Spacer(minLength: 4)
@@ -79,6 +96,8 @@ struct FileBubble: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(Theme.Color.accent)
+            } else if isAudio {
+                AudioFileGlyph(messageID: message.id)
             } else {
                 Image(systemName: Self.glyph(forMime: mime, name: fileName))
                     .font(.system(size: 22, weight: .regular))
@@ -104,6 +123,51 @@ struct FileBubble: View {
 
     private func openTap() {
         guard !downloading, !isUploading, !didFailUpload else { return }
+        guard message.mediaID != nil else { return }
+        if isAudio {
+            audioTap()
+        } else {
+            quickLookTap()
+        }
+    }
+
+    /// Play / pause through the process-wide owner. The first tap has to
+    /// download + decrypt, so the tile spins; every later tap is a plain
+    /// toggle with no network.
+    private func audioTap() {
+        if VoicePlayer.shared.playingMessageID == message.id {
+            VoicePlayer.shared.togglePlayPause()
+            return
+        }
+        downloading = true
+        failed = false
+        Task {
+            let outcome = await VoicePlayer.shared.playAudioFile(
+                messageID: message.id,
+                mediaToken: message.mediaID,
+                title: fileName,
+                fileExtension: (fileName as NSString).pathExtension
+            )
+            await MainActor.run {
+                downloading = false
+                switch outcome {
+                case .started:
+                    break
+                case .unplayable:
+                    // Codec AVAudioPlayer will not open, or the blob would
+                    // not decrypt: fall through to the old behaviour rather
+                    // than leaving the tap dead.
+                    quickLookTap()
+                case .busy:
+                    // A call or an audio room owns the audio. Deliberately
+                    // NOT QuickLook - that would play the file over them.
+                    break
+                }
+            }
+        }
+    }
+
+    private func quickLookTap() {
         guard let raw = message.mediaID else { return }
         let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return }
@@ -125,6 +189,21 @@ struct FileBubble: View {
     }
 
     // MARK: - helpers
+
+    /// Containers `AVAudioPlayer` cannot open at all. Everything else that
+    /// declares itself audio gets the strip, and the runtime fallback in
+    /// `audioTap` catches whatever this list misses.
+    private static let unplayableAudioExtensions: Set<String> = [
+        "ogg", "oga", "opus", "wma", "ra", "rm", "mid", "midi", "amr",
+    ]
+
+    static func looksLikeAudio(mime: String, name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        if unplayableAudioExtensions.contains(ext) { return false }
+        if mime.lowercased().hasPrefix("audio/") { return true }
+        return ["mp3", "m4a", "m4b", "aac", "wav", "aif", "aiff", "caf", "alac", "flac", "au"]
+            .contains(ext)
+    }
 
     static func formatSize(_ bytes: Int) -> String {
         let f = ByteCountFormatter()
@@ -176,6 +255,49 @@ struct FileBubble: View {
         let url = tmpDir.appendingPathComponent(fileName)
         try? data.write(to: url, options: [.atomic])
         QuickLookPresenter.present(url: url)
+    }
+}
+
+/// Play / pause glyph for an audio document.
+///
+/// A separate view on purpose: `VoicePlayer` republishes `elapsed` and
+/// `progress` twenty times a second, and observing it from `FileBubble`
+/// itself would re-render the whole bubble (name, size, icon tile,
+/// layout) on every tick for every audio file in the thread. Only this
+/// 22pt glyph and the hairline below it pay that cost.
+private struct AudioFileGlyph: View {
+    let messageID: UUID
+    @StateObject private var player = VoicePlayer.shared
+
+    var body: some View {
+        let active = player.playingMessageID == messageID
+        Image(systemName: active && player.isPlaying ? "pause.fill" : "play.fill")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundColor(Theme.Color.accent)
+    }
+}
+
+/// Hairline under the size row, filled while this file is the one loaded
+/// into the player. Zero height when it is not, so a bubble that is not
+/// playing keeps exactly the layout it had before item 9a.
+private struct AudioFileProgressLine: View {
+    let messageID: UUID
+    @StateObject private var player = VoicePlayer.shared
+
+    var body: some View {
+        if player.playingMessageID == messageID {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.Color.divider)
+                    Capsule()
+                        .fill(Theme.Color.accent)
+                        .frame(width: geo.size.width * CGFloat(player.progress))
+                        .animation(.linear(duration: 0.05), value: player.progress)
+                }
+            }
+            .frame(height: 3)
+            .padding(.top, 2)
+        }
     }
 }
 

@@ -118,7 +118,13 @@ enum BackupRecordMapping {
         // Always written, even empty: a reader meeting an absent field has to
         // guess, and one of them guessed wrong badly enough to drop a file.
         r.reactions = Dictionary(uniqueKeysWithValues: m.reactions.map { (String($0.key), $0.value) })
-        r.expires_at = m.ttlSeconds.map { ms(m.sentAt.addingTimeInterval(TimeInterval($0))) }
+        // Through `Message.expiresAt`, not a second copy of the arithmetic:
+        // the deadline now counts from the SENDER's compose time when they
+        // supplied one, and an archive that recomputed it from `sentAt` would
+        // hand a restore a different moment than the sweeper is using. What
+        // travels is the absolute instant, which is the only part a reader on
+        // another device can act on.
+        r.expires_at = m.expiresAt.map(ms)
         r.forwarded_from = m.forwardedFromName
         r.deleted_for_everyone = m.deletedForEveryone ? true : nil
         r.poll_id = m.pollID

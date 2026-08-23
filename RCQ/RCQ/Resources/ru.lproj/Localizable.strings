@@ -279,6 +279,7 @@
 "bug_bounty.submit.cta" = "Отправить";
 "bug_bounty.submit.sending" = "Отправляем…";
 "bug_bounty.submit.sent" = "Отправлено";
+"bug_bounty.submit.sent_number" = "Отправлено · №%d";
 "bug_bounty.disclosure" = "Уязвимости с потенциальным leak'ом данных или обходом E2EE — пиши на legal@rcq.app с пометкой [SECURITY], не сюда.";
 "bug_bounty.alert.title" = "Сообщение о баге";
 "bug_bounty.shake.toggle" = "Открывать встряхиванием";
@@ -290,17 +291,12 @@
 "bug_bounty.attach.cta" = "Добавить";
 "bug_bounty.attach.paste" = "Из буфера";
 
-"chat.attach.poll" = "Опрос";
 "chat.attach.share_group" = "Пригласить";
-"chat.attach.share_connection" = "Подключение";
 "relay.share.title" = "Способ подключения";
 "relay.share.invalid" = "Подключение не поддерживается";
 "relay.share.sent_note" = "Вы поделились способом подключения";
 "relay.share.added" = "Добавлено в ваши подключения";
 "relay.share.add" = "Добавить";
-"relay.share.pick.title" = "Поделиться подключением";
-"relay.share.pick.body" = "Передайте контакту relay, чтобы он смог пробиться, когда его подключения заблокированы. Он нажмёт Добавить, чтобы использовать его.";
-"relay.share.group.warn" = "Relay увидят все участники группы. Делитесь дефицитными домашними relay только в проверенных группах.";
 "relay.import.title" = "Добавить relay";
 "relay.import.hint" = "rcq-relay://… или ключ доступа";
 "relay.key.active" = "Ключ доступа введён";
@@ -342,26 +338,6 @@
 "paid_traffic.price_suffix" = "за этот файл";
 "paid_traffic.enable" = "Включить платный трафик";
 "paid_traffic.cancel" = "Отмена";
-"poll.compose.title" = "Новый опрос";
-"poll.compose.question_header" = "ВОПРОС";
-"poll.compose.question_placeholder" = "О чём опрос?";
-"poll.compose.options_header" = "ВАРИАНТЫ";
-"poll.compose.option_placeholder" = "Вариант %d";
-"poll.compose.add_option" = "Добавить вариант";
-"poll.compose.multi" = "Можно несколько ответов";
-"poll.compose.anonymous" = "Анонимные голоса";
-"poll.compose.flags_footer" = "Анонимный: группа не видит кто за что голосовал. Несколько: можно выбрать сразу несколько вариантов.";
-"poll.compose.send" = "Создать";
-"poll.header.single" = "Опрос · один ответ";
-"poll.header.multi" = "Опрос · несколько ответов";
-"poll.header.anonymous" = "анонимный";
-"poll.header.closed" = "закрыт";
-"poll.footer.total_votes" = "%d голосов";
-"poll.row.more_voters" = "+ ещё %d";
-"poll.footer.close" = "Закрыть опрос";
-"poll.error.parse" = "Не удалось прочитать опрос.";
-"poll.error.vote" = "Не удалось сохранить голос.";
-"poll.error.close" = "Не удалось закрыть.";
 
 "contact_list.ctx.report" = "Пожаловаться";
 
@@ -381,7 +357,7 @@
 "settings.account.burn.message" = "Аккаунт будет удалён на сервере и на этом устройстве. Вы получите новый UIN. Старые контакты и группы исчезнут — никакой связи с новой личностью. Это нельзя отменить.";
 
 "settings.link_web" = "Подключить Web";
-"settings.share.message" = "Добавь меня в RCQ — %@ (%d)";
+"settings.share.message" = "Добавь меня в RCQ: %@ (%d)";
 "settings.link_web.footer" = "Использовать chat.rcq.app в десктопном браузере. Сгенерирует одноразовый код, который вы вставите в браузере. Пока что только отправка — ответы по-прежнему приходят на iOS.";
 
 "link_web.title" = "Подключить Web";
@@ -451,11 +427,6 @@
 "outgoing.state.declined" = "Отклонена";
 "outgoing.cancel" = "Отменить";
 "outgoing.dismiss" = "Убрать";
-"presence.countdown.h_unit" = "ч";
-"presence.countdown.m_unit" = "м";
-"presence.countdown.lt1m" = "<1м";
-"presence.info.title" = "Видимость после выхода";
-"presence.info.body" = "Вас показывают онлайн ещё столько времени после закрытия приложения. Изменить можно в Настройки, Приватность и сеть.";
 
 // ── Маркет предметов ───────────────────────────────────────────────
 "sound.default" = "Стандартный";
@@ -504,6 +475,7 @@
 "contact_list.pending_many" = "%d входящих заявок";
 "contact_list.members_one" = "%d участник";
 "contact_list.members_many" = "%d участников";
+"contact_list.members_compact" = "%@ участников";
 "contact_list.ctx.open_chat" = "Открыть чат";
 "contact_list.ctx.send_message" = "Написать";
 "contact_list.ctx.quick_preview" = "Быстрый просмотр";
@@ -538,6 +510,11 @@
 "chat.pin.error.forbidden" = "Нужно право менять информацию группы. Попросите владельца выдать его.";
 "chat.pin.error.rejected" = "Этот текст не подошёл для закрепления.";
 "chat.pin.error.generic" = "Закрепить не вышло. Проверьте связь и попробуйте снова.";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "Ссылки отключены в этой группе.";
+"chat.files_off.notice" = "Файлы отключены в этой группе.";
+"chat.slowmode.wait" = "Медленный режим: подождите %d с";
 "chat.selection.delete" = "Удалить (%d)";
 "chat.selection.forward" = "Переслать (%d)";
 "chat.selection.cancel" = "Отмена";
@@ -720,7 +697,6 @@
 "chat.preview.market_item" = "Предмет с маркета";
 "chat.preview.uin_listing" = "Лот UIN";
 "chat.preview.group_invite" = "Приглашение в группу";
-"chat.preview.poll" = "Опрос";
 "chat.preview.premium_photo" = "🔒 Премиум-фото";
 "chat.preview.premium_video" = "🔒 Премиум-видео";
 "chat.preview.generic" = "Сообщение";
@@ -743,6 +719,8 @@
 "group.no_matches" = "Никого не найдено. Попробуйте полный UIN.";
 "group.title" = "Группа";
 "group.section.members" = "Участники (%d)";
+"group.section.members.compact" = "Участники (%@)";
+"group.section.content_policy" = "Что здесь можно";
 "group.section.notifications" = "Уведомления";
 "group.notifications.mute" = "Отключить уведомления";
 "group.notifications.unmute" = "Включить уведомления";
@@ -778,6 +756,15 @@
 "group.settings.change_photo" = "Сменить фото";
 "group.settings.hide_members" = "Скрыть список участников";
 "group.settings.hide_members.hint" = "Кто в группе видишь только ты. Остальные видят в инфо группы только количество участников.";
+"group.settings.no_links" = "Отключить ссылки";
+"group.settings.no_links.hint" = "Ссылки в сообщениях остаются простым текстом и не открываются.";
+"group.settings.no_files" = "Отключить файлы";
+"group.settings.no_files.hint" = "Файлы нельзя отправить или скачать в этой группе.";
+"group.settings.slowmode" = "Медленный режим";
+"group.settings.slowmode.hint" = "Пауза между сообщениями для каждого участника.";
+"group.settings.slowmode.off" = "Выкл";
+"group.settings.slowmode.sec" = "%d с";
+"group.settings.slowmode.min" = "1 мин";
 "group.members.hidden" = "Список участников скрыт владельцем.";
 "group.avatar.remove.confirm" = "Удалить фото группы?";
 "group.unavailable" = "Группа недоступна.";
@@ -794,11 +781,34 @@
 "group.confirm.leave" = "Покинуть эту группу?";
 "group.role.owner" = "Создатель";
 "group.role.admin" = "Админ";
+"group.role.moderator" = "Модератор";
+"group.member.promote" = "Сделать админом";
+"group.member.demote" = "Забрать права";
 "group.member.remove" = "Удалить из группы";
 "group.perm.title" = "Права модератора";
 "group.perm.delete" = "Удалять";
 "group.perm.members" = "Участники";
 "group.perm.info" = "Инфо";
+"group.perm.grant_all" = "Все права";
+"group.perm.revoke_all" = "Забрать";
+"group.perm.hint" = "«Удалять»: убирать чужие сообщения. «Участники»: исключать людей. «Инфо»: менять название, фото и закреплённое. Ничто из этого не делает человека владельцем: группа остаётся вашей, пока вы сами не передадите её ниже.";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "Передать владение";
+"group.transfer.cta" = "Передать";
+"group.transfer.working" = "Передаём…";
+"group.transfer.confirm" = "Сделать владельцем группы %@? Вы останетесь в группе обычным участником, но потеряете права владельца и все права модератора. Вернуть владение сможет только новый владелец.";
+"group.transfer.done.title" = "Владение передано";
+"group.transfer.done" = "Теперь группой владеет %@. Вы остались обычным участником: можно выйти, а можно остаться.";
+"group.transfer.stay" = "Остаться";
+"group.transfer.err.owner_only" = "Передать группу может только владелец.";
+"group.transfer.err.already_owner" = "Он уже владелец этой группы.";
+"group.transfer.err.not_a_member" = "Его больше нет в этой группе.";
+"group.transfer.err.no_such_user" = "Этот остров его не знает.";
+"group.transfer.err.target_suspended" = "Эта учётная запись заблокирована.";
+"group.transfer.err.rate_limited_in" = "Слишком много попыток. Повторите через %d с.";
+"group.transfer.err.rate_limited" = "Слишком много попыток. Попробуйте позже.";
+"group.transfer.err.failed" = "Не удалось передать группу.";
 "group.member.remove.confirm" = "Исключить %@ из группы?";
 "group.member.action.trade" = "Предложить обмен";
 "group.member.action.add" = "Добавить";
@@ -1015,12 +1025,10 @@
 "pool.section_share" = "%.0f%% выпадений";
 "pool.cap" = "лимит %d";
 "pool.cap_remaining" = "%d / %d осталось";
-"settings.privacy.persistent_presence" = "Видимость после выхода";
 "settings.privacy.relay_calls" = "Всегда ретранслировать звонки";
 "settings.privacy.relay_calls.desc" = "Пропускать звук и видео через наш ретранслятор, чтобы собеседник не узнал ваш IP-адрес. Если выключить, качество может вырасти, но собеседник увидит ваш адрес.";
 "settings.privacy.strangers" = "Незнакомцы в запросы";
 "settings.privacy.strangers.desc" = "Сообщения не из контактов ждут в запросах, пока вы их не примете. Если вы написали человеку первым, его ответ придёт как обычно.";
-"settings.privacy.persistent_presence.desc" = "Контакты видят ваш статус (В сети / Отошёл / Не беспокоить) даже когда приложение закрыто.";
 "settings.privacy.hof_opt_in" = "Зал славы";
 "settings.privacy.hof_opt_in.desc" = "Разрешить рассматривать вас для публичного зала славы на rcq.app. Только ник и UIN, и только если одобрят. Можно выключить в любой момент.";
 "settings.privacy.hof_add_image" = "Добавить картинку / GIF";
@@ -1028,13 +1036,6 @@
 "settings.privacy.hof_remove_image" = "Убрать картинку";
 "settings.privacy.hof_image_too_large" = "Картинка слишком большая. Выберите поменьше (макс ~256 КБ).";
 "settings.privacy.hof_image_error" = "Не удалось загрузить картинку. Попробуйте ещё раз.";
-"settings.privacy.presence_ttl" = "Длительность";
-"settings.privacy.presence_ttl.forever" = "Бессрочно";
-"settings.privacy.presence_ttl.30m" = "30 минут";
-"settings.privacy.presence_ttl.1h" = "1 час";
-"settings.privacy.presence_ttl.3h" = "3 часа";
-"settings.privacy.presence_ttl.8h" = "8 часов";
-"settings.privacy.presence_ttl.24h" = "24 часа";
 
 /* ── Информация о радио-чате ───────────────────────────────── */
 
@@ -1701,6 +1702,28 @@
 "myreports.status.dismissed" = "Отклонено";
 "myreports.status.duplicate" = "Дубликат";
 
+/* Пункт 26: ряд иконок на обращении (копировать / изменить / убрать) и номер,
+   который называет оператор. Убрать это скрыть у себя, а не удалить, поэтому в
+   текстах нигде нет слова «удалить». */
+"myreports.number" = "Обращение №%d";
+"myreports.number.short" = "№%d";
+"myreports.copy" = "Копировать обращение";
+"myreports.copy_answer" = "Копировать ответ";
+"myreports.edit" = "Изменить обращение";
+"myreports.edit.placeholder" = "Ваше обращение";
+"myreports.edit.save" = "Сохранить";
+"myreports.edit.error" = "Не удалось сохранить. Попробуйте ещё раз.";
+"myreports.edit.answered" = "На обращение уже ответили, поэтому сам текст изменить нельзя. Допишите ответом.";
+"myreports.edit.unsupported" = "Этот остров пока не умеет менять обращения.";
+"myreports.edit.not_editable" = "Отчёт о падении отправляет само приложение, его текст изменить нельзя.";
+"myreports.edit.too_often" = "Слишком много правок за час. Попробуйте позже.";
+"myreports.remove" = "Убрать из моего списка";
+"myreports.remove.cta" = "Убрать";
+"myreports.remove.confirm.title" = "Убрать обращение %@ из списка?";
+"myreports.remove.confirm.body" = "Оно исчезнет с этого экрана. Ничего не стирается: у операторов остаётся и обращение, и ответ, и оно по-прежнему учитывается в зале славы.";
+"myreports.remove.refused" = "Это обращение ещё рассматривается, поэтому оно останется в списке до решения.";
+"myreports.remove.error" = "Не удалось убрать. Попробуйте ещё раз.";
+
 /* Мои номера — сейф UIN (сервер: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "Мои UIN'ы";
 "my_uins.active" = "Вы отвечаете как";
@@ -1716,6 +1739,23 @@
 "uin_shop.held.body" = "Он в вашей коллекции, а отвечаете вы по-прежнему как %@. Перейти на него можно сейчас или позже, на экране «Мои UIN'ы».";
 "uin_shop.held.now" = "Перейти на него";
 "uin_shop.held.later" = "Позже";
+
+/* Освободить номер (сервер: DELETE /uin/mine/{uin}). Необратимо, не тот номер,
+   которым отвечаете, и не чаще двадцати раз в час. */
+"my_uins.release" = "Освободить";
+"my_uins.release.cta" = "Освободить";
+"my_uins.release.confirm.title" = "Освободить %@?";
+"my_uins.release.confirm.body" = "Номер вернётся в общий пул, и его может занять кто-то другой. Отменить это нельзя.";
+"my_uins.release.error.in_use" = "Нельзя освободить номер, которым вы отвечаете. Сначала перейдите на другой.";
+"my_uins.release.error.unsupported" = "Этот остров пока не умеет освобождать номера.";
+"my_uins.release.error.too_often" = "Слишком много освобождений за час. Попробуйте позже.";
+"my_uins.error.not_owned" = "Этого номера уже нет в вашей коллекции.";
+"my_uins.footer.rules" = "Один аккаунт может держать до %d номеров. Освобождённый номер возвращается в общий пул, его может занять кто угодно, и вернуть его нельзя. Номер, которым вы отвечаете, освободить нельзя.";
+"uin.error.suspended" = "Аккаунт заморожен, менять его номера нельзя.";
+"uin.error.too_many" = "У вас уже столько номеров, сколько может держать один аккаунт. Сначала освободите один на экране «Мои UIN'ы».";
+"uin_shop.error.generic" = "Сервер отказал. Попробуйте ещё раз.";
+"uin_shop.info.cap.title" = "Сколько номеров можно держать";
+"uin_shop.info.cap.body" = "Один аккаунт может держать до %1$d номеров, у вас сейчас %2$d. Освободить номер можно на экране «Мои UIN'ы», кроме того, которым вы отвечаете. Отменить это нельзя: освобождённый номер возвращается в общий пул, и его может занять кто угодно.";
 
 /* Полная проверка сети (NetworkAudit) */
 "audit.run" = "Полная проверка сети";
@@ -1774,3 +1814,108 @@
 "how.q5" = "Может ли кто-то узнать, кому я пишу?";
 "how.a5" = "Ваш остров знает, что конверт кому-то адресован, и не знает, что он от вас: вашего имени снаружи нет.\n\nКогда включены релеи RCQ, путь наружу разделён между двумя релеями. Первый видит вас и не знает, до какого острова вы идёте; второй доходит до острова и не знает, кто вы. Чтобы сложить половинки, нужны оба, а они принадлежат разным людям в разных странах.\n\nЧего скрыть нельзя: сам факт, что вы пользуетесь RCQ, виден тому, кто держит вашу сеть, пока релеи RCQ не включены.";
 "how.more" = "Больше вопросов на rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "Поиск по настройкам";
+"settings.search.placeholder" = "Тема, PIN, обои…";
+"settings.search.empty.idle" = "Введите запрос, чтобы найти настройку.";
+"settings.privacy.profile_card" = "Кто может открыть мою карточку";
+"settings.privacy.profile_card.desc" = "Ваше имя в списке участников, в списке реакций или над фотографией открывает карточку профиля. Тот, кому закрыто, открыть её не сможет, писать вам по-прежнему сможет.";
+"notifs.muted.empty" = "Никто не заглушён.";
+
+/* Синонимы для поиска по настройкам: через запятую, нигде не показываются,
+   ищутся вместе с видимой подписью строки. Латиница рядом с русским словом
+   намеренно: её ищут не реже. */
+"settings.search.alias.theme" = "тема, тёмная, светлая, оформление, цвета, ночной режим, theme, dark";
+"settings.search.alias.textSize" = "размер текста, шрифт, крупный текст, доступность, font";
+"settings.search.alias.appIcon" = "иконка, значок приложения, спрятать иконку, icon";
+"settings.search.alias.chatBackground" = "обои, фон, фон чата, картинка за чатом, wallpaper, background";
+"settings.search.alias.homeBackground" = "обои, фон главного экрана, список чатов, wallpaper, background";
+"settings.search.alias.animatedAvatars" = "аватарки, анимация, гифки, живые аватары, gif, avatar";
+"settings.search.alias.sounds" = "звук, звуки, мелодия, рингтон, беззвучно, sound";
+"settings.search.alias.language" = "язык, локаль, русский, английский, перевод, language";
+"settings.search.alias.privacyScreen" = "приватность, конфиденциальность, видимость, privacy";
+"settings.search.alias.networkScreen" = "сеть, соединение, прокси, релеи, обход, блокировки, vpn, network";
+"settings.search.alias.notificationsScreen" = "уведомления, пуши, оповещения, push";
+"settings.search.alias.blockedUsers" = "заблокированные, чёрный список, блок, игнор, block";
+"settings.search.alias.historyFile" = "резервная копия, бэкап, экспорт, файл переписки, сохранить чаты, backup";
+"settings.search.alias.historyClear" = "очистить историю, удалить сообщения, стереть переписку";
+"settings.search.alias.uinShop" = "магазин, купить номер, короткий номер, uin, shop";
+"settings.search.alias.myUINs" = "мои номера, мои uin, номера аккаунта";
+"settings.search.alias.islandRules" = "правила, правила острова, остров, условия";
+"settings.search.alias.recoveryPhrase" = "фраза восстановления, сид, восстановить аккаунт, мнемоника, seed, recovery";
+"settings.search.alias.linkedDevices" = "устройства, сессии, слоты ключей, веб, десктоп, отозвать устройство, devices";
+"settings.search.alias.backupIsland" = "запасной остров, копия, мультихоминг, второй остров, backup";
+"settings.search.alias.burnAccount" = "удалить аккаунт, сжечь, стереть аккаунт, delete account";
+"settings.search.alias.about" = "о программе, версия, сборка, лицензии, about";
+"settings.search.alias.bugBounty" = "сообщить о баге, баг, ошибка, поддержка, репорт, bug";
+"settings.search.alias.myReports" = "мои обращения, мои репорты, тикеты, ответы поддержки";
+"settings.search.alias.profileVisibility" = "профиль, анкета, кто видит мой профиль, город, возраст, о себе";
+"settings.search.alias.profileCard" = "карточка, карточка профиля, открыть карточку, список участников, список реакций, имя над фотографией, profile card";
+"settings.search.alias.lastSeen" = "был в сети, последний визит, время последнего входа, онлайн";
+"settings.search.alias.relayCalls" = "звонки через релей, скрыть ip, мой адрес, turn, звонки";
+"settings.search.alias.strangers" = "незнакомцы, запросы, чужие, карантин, спам";
+"settings.search.alias.genderVisibility" = "пол, гендер, кто видит мой пол";
+"settings.search.alias.groupInvites" = "приглашения в группы, кто может добавлять меня в группы, инвайты";
+"settings.search.alias.callPolicy" = "звонки, кто может мне звонить, вызовы";
+"settings.search.alias.readReceipts" = "прочтения, галочки, отчёты о прочтении, статус прочитано";
+"settings.search.alias.howItWorks" = "как это работает, помощь, справка, вопросы, faq";
+"settings.search.alias.panicPIN" = "пин, пин-код, пароль, код, паника, принуждение, блокировка, замок, подставной, pin";
+"settings.search.alias.migrate" = "переезд, сменить номер, новый uin, перенести аккаунт";
+"settings.search.alias.hallOfFame" = "зал славы, стена, доска почёта, hall of fame, hof";
+"settings.search.alias.accounts" = "аккаунты, переключить аккаунт, несколько аккаунтов, профили";
+"settings.search.alias.stealth" = "релеи, обход, блокировки, прокси, маскировка, цензура, dpi, vpn";
+"settings.search.alias.onion" = "онион, тор, маршрутизация, анонимность, tor, onion";
+"settings.search.alias.localProxy" = "локальный прокси, свой прокси, порт, socks5, tor, i2p, proxy";
+"settings.search.alias.customServer" = "сервер, остров, свой сервер, самохостинг, хост, server";
+"settings.search.alias.diagnostics" = "диагностика, проверка соединения, отладка, тест";
+"settings.search.alias.sharedRelays" = "релеи, мосты, ключ доступа, добавить релей, импорт релея";
+"settings.search.alias.contactRequests" = "запросы в контакты, заявки, пуши, push";
+"settings.search.alias.mutedSenders" = "заглушённые, без звука, отключить уведомления, muted";
+
+"chat.poll.removed" = "Опросы больше не поддерживаются";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "Голосовое сообщение";
+"audio.strip.play" = "Воспроизвести";
+"audio.strip.pause" = "Пауза";
+"audio.strip.close" = "Остановить воспроизведение";
+"album.sender.open_profile" = "Открыть профиль";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "Добавить чаты";
+"sections.empty" = "Пусто. Кнопка + переносит сюда чат.";
+"sections.reorder.hint" = "Двигайте секции стрелками.";
+"sections.reorder.done" = "Готово";
+"sections.move_up" = "Выше";
+"sections.move_down" = "Ниже";
+"sections.menu.reorder" = "Переставить секции";
+"sections.menu.new" = "Новая секция";
+"sections.menu.rename" = "Переименовать";
+"sections.menu.delete" = "Удалить секцию";
+"sections.menu.delete.confirm" = "Удалить секцию? Чаты останутся на месте и вернутся туда, где были раньше.";
+"sections.menu.pin" = "Спрашивать PIN";
+"sections.menu.pin.off" = "Не спрашивать PIN";
+"sections.menu.pin.note" = "Прячет секцию, пока вы не введёте PIN на этом устройстве. Сами чаты этим не шифруются.";
+"sections.new.placeholder" = "Название секции";
+"sections.new.save" = "Создать";
+"sections.rename.save" = "Сохранить";
+"sections.locked.title" = "Спрашивает PIN";
+"sections.locked.nopin" = "Скрыта на другом устройстве. Здесь PIN не задан.";
+"sections.locked.open_anyway" = "Всё равно открыть";
+"sections.picker.title" = "Добавить в «%@»";
+"sections.picker.search" = "Поиск";
+"sections.picker.save" = "Сохранить";
+"sections.picker.nobody" = "Пока некого добавить.";
+"sections.err.too_many_sections" = "Больше секций в одном аккаунте не бывает.";
+"sections.err.section_full" = "Секция заполнена.";
+"sections.err.too_many_members" = "Слишком много чатов во всех секциях.";
+"sections.err.too_large" = "Список секций слишком большой, он не сохранится.";
+"sections.err.unreadable" = "Секции записаны более новой версией RCQ.";
+"pin_verify.title.section" = "Открыть секцию";

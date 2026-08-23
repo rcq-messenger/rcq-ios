@@ -34,8 +34,22 @@ struct CallMinimizedBar: View {
 }
 
 extension View {
-    /// Reserve top safe-area for `CallMinimizedBar`. Must be applied on every
-    /// screen — `safeAreaInset` doesn't pass through `navigationDestination`.
+    /// Reserve top safe-area for the persistent strips - minimized call,
+    /// minimized audio room, now-playing audio.
+    ///
+    /// ⚠ APPLY THIS TO THE `NavigationStack` ITSELF, not to the view inside it.
+    /// The old rule written here said it had to go on every screen because
+    /// `safeAreaInset` "doesn't pass through `navigationDestination`", and that
+    /// is only true of an inset applied to the stack's ROOT CONTENT: the root
+    /// is a sibling of the pushed destination, so of course the destination
+    /// never sees it. On the stack, the inset wraps everything the stack ever
+    /// draws and every push inherits it, which is what a strip that survives
+    /// leaving the chat needs. Applying it per screen is what made a call
+    /// disappear the moment the user opened Group Info.
+    ///
+    /// A `.sheet` or `.fullScreenCover` still starts a fresh safe area that no
+    /// ancestor inset reaches, so a modal that wants the strip applies it to
+    /// its own stack (one line covers everything pushed inside it).
     func callMinimizedBarInset() -> some View {
         modifier(CallMinimizedBarInset())
     }
@@ -44,6 +58,12 @@ extension View {
 private struct CallMinimizedBarInset: ViewModifier {
     @StateObject private var calls = CallService.shared
     @StateObject private var rooms = AudioRoomService.shared
+    /// ⚠ `AudioPlayerBarPresence`, NOT `VoicePlayer`. The inset's animation
+    /// has to fire on the same change that mounts the strip, but observing
+    /// the player itself would re-evaluate this whole inset (and re-measure
+    /// the safe area) twenty times a second for the length of a song, on
+    /// every screen that applies the modifier.
+    @StateObject private var audio = AudioPlayerBarPresence.shared
 
     private var roomBarVisible: Bool {
         rooms.activeRoomID != nil && rooms.isMinimized
@@ -63,8 +83,14 @@ private struct CallMinimizedBarInset: ViewModifier {
                             .padding(.horizontal, 8)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
+                    // Last in the stack (closest to the content) so a live
+                    // call always keeps the top slot. `VoicePlayer` refuses to
+                    // play while a call or a room is up, so in practice this
+                    // never renders alongside either.
+                    AudioPlayerBar()
                 }
                 .animation(.easeInOut(duration: 0.28), value: roomBarVisible)
+                .animation(.easeInOut(duration: 0.22), value: audio.isVisible)
             }
     }
 }

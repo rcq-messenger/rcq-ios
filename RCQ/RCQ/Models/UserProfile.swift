@@ -51,15 +51,21 @@ struct UserProfile: Codable, Hashable {
     /// for the send-time gate so MessageService doesn't have to
     /// round-trip `/users/me/info` on every read.
     var readReceiptsVisibility: String?
-    /// Opt-in flag: when true, the server keeps broadcasting the
-    /// owner's chosen status to contacts even when the WebSocket has
-    /// been gone past the staleness threshold. Lets the user appear
-    /// "around" with their selected status even when the app is not
-    /// running. Owner-only echo, nil for third-party fetches.
-    var presencePersistent: Bool?
-    /// Optional TTL (minutes) for `presencePersistent`. 0/nil = forever.
-    /// Allowed values mirror the iOS picker: 30, 60, 180, 480, 1440.
-    var presenceTTLMinutes: Int?
+    /// Owner-only echo of the profile-CARD policy (founder item 22). Same
+    /// tri-state. Not to be confused with `profileVisibility` right above it:
+    /// that one blanks the optional FIELDS for outsiders, this one decides
+    /// whether the card opens at all. Nil for third-party fetches, so the
+    /// Privacy screen is the only reader.
+    var profileCardPolicy: String?
+    /// The island's per-viewer verdict on THIS subject's card: may the client
+    /// holding this row turn their name into a link? The twin of
+    /// `Contact.callable`. Always true for one's own card.
+    ///
+    /// Optional for back-compat with an island too old to send it, and nil
+    /// FAILS OPEN at `ProfileCardPrivacy.canOpenCard` on purpose: a name that
+    /// silently stops being tappable reads as a broken screen, and the
+    /// enforcement that matters is the island withholding the card anyway.
+    var profileOpenable: Bool?
     /// Owner-only echo of the Hall-of-Fame opt-in (consent to be
     /// considered). The founder approves who actually appears on the
     /// public wall; this flag is just the user's consent. Nil for
@@ -85,8 +91,8 @@ struct UserProfile: Codable, Hashable {
         case groupInvitePolicy = "group_invite_policy"
         case callPolicy = "call_policy"
         case readReceiptsVisibility = "read_receipts_visibility"
-        case presencePersistent = "presence_persistent"
-        case presenceTTLMinutes = "presence_ttl_minutes"
+        case profileCardPolicy = "profile_card_policy"
+        case profileOpenable = "profile_openable"
         case hofOptIn = "hof_opt_in"
         case hofAvatar = "hof_avatar"
         case avatarMediaID = "avatar_media_id"

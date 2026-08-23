@@ -25,7 +25,23 @@ final class AudioRoomMeshManager: NSObject {
     /// handleOffer / handleAnswer.
     private var pendingIce: [Int: [String]] = [:]
 
-    private let factory: RTCPeerConnectionFactory
+    /// Built on first use. Same reasoning as `WebRTCManager.factory`, and the
+    /// same cost twice over: `AudioRoomService` is a `@StateObject` of
+    /// `RootView` and its initialiser registers the two track callbacks here,
+    /// so the app built a SECOND peer-connection factory before the first
+    /// frame as well. The room path reaches it from `start(roomID:)`, which
+    /// already fetches TURN over the network.
+    private lazy var factory: RTCPeerConnectionFactory = {
+        CallAudio.prepareForWebRTC()
+        // RTCInitializeSSL is a safe no-op if WebRTCManager already ran it.
+        RTCInitializeSSL()
+        let encoderFactory = RTCDefaultVideoEncoderFactory()
+        let decoderFactory = RTCDefaultVideoDecoderFactory()
+        return RTCPeerConnectionFactory(
+            encoderFactory: encoderFactory,
+            decoderFactory: decoderFactory
+        )
+    }()
     private let stunServers = RTCIceServer(urlStrings: [
         "stun:stun.l.google.com:19302",
         "stun:stun1.l.google.com:19302",
@@ -37,14 +53,6 @@ final class AudioRoomMeshManager: NSObject {
     private var ownStun: RTCIceServer?
 
     private override init() {
-        // RTCInitializeSSL is a safe no-op if WebRTCManager already ran it.
-        RTCInitializeSSL()
-        let encoderFactory = RTCDefaultVideoEncoderFactory()
-        let decoderFactory = RTCDefaultVideoDecoderFactory()
-        self.factory = RTCPeerConnectionFactory(
-            encoderFactory: encoderFactory,
-            decoderFactory: decoderFactory
-        )
         super.init()
     }
 
@@ -361,6 +369,10 @@ final class AudioRoomMeshManager: NSObject {
     private var peerDelegates: [Int: MeshPeerDelegate] = [:]
 
     private func configureAudioSession() {
+        // See WebRTCManager.configureAudioSession: `isAudioEnabled` at the
+        // bottom of this function only means anything under manual audio, and
+        // manual audio is no longer armed at launch.
+        CallAudio.prepareForWebRTC()
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         do {

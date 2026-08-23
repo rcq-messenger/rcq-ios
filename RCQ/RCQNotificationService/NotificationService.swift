@@ -421,27 +421,33 @@ class NotificationService: UNNotificationServiceExtension {
         }
 
         switch decrypted.envelope {
-        case .text(_, let text, _, _, _):
+        case .text(_, let text, _, _, _, _):
             content.body = text.isEmpty ? "Message" : text
-        case .photo(_, _, _, let caption, _, _, _, _, _):
+        case .photo(_, _, _, let caption, _, _, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "📷 Photo" : "📷 \(cap)"
-        case .video(_, _, _, _, _, let caption, _, _, _, _, _):
+        case .video(_, _, _, _, _, let caption, _, _, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
             content.body = cap.isEmpty ? "🎬 Video" : "🎬 \(cap)"
         case .voice:
             content.body = "🎤 Voice message"
-        case .file(_, _, _, let fname, _, _, let caption, _, _, _):
+        case .file(_, _, _, let fname, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
-            content.body = cap.isEmpty ? "📎 \(fname)" : "📎 \(fname) — \(cap)"
-        case .location(_, _, _, let caption, _, _, _):
+            content.body = cap.isEmpty ? "📎 \(fname)" : "📎 \(fname): \(cap)"
+        case .location(_, _, _, let caption, _, _, _, _):
             let cap = caption?.trimmingCharacters(in: .whitespaces) ?? ""
-            content.body = cap.isEmpty ? "📍 Location" : "📍 Location — \(cap)"
+            content.body = cap.isEmpty ? "📍 Location" : "📍 Location: \(cap)"
         case .systemNotice(_, let text):
             content.body = text.isEmpty ? "System notice" : text
-        case .poll(_, _, let question, _, _, _):
-            let q = question.trimmingCharacters(in: .whitespaces)
-            content.body = q.isEmpty ? "📊 New poll" : "📊 \(q)"
+        case .poll:
+            // ⚠ The question is DELIBERATELY not printed. Polls were removed
+            // (14a) and the app draws such a row as "no longer supported"
+            // without ever touching the body, so printing it here would put
+            // the one thing the removal exists to stop retaining onto the
+            // lock screen, and then promise content the chat denies having.
+            // A peer on an old build still sends them, so the banner stays:
+            // a removed feature answers, it does not vanish.
+            content.body = "📊 Poll"
         case .screenshotTaken:
             content.body = "📸 Screenshot"
         case .relayShare:
@@ -659,11 +665,11 @@ class NotificationService: UNNotificationServiceExtension {
         guard uin > 0 else { return false }
         let needle = "#\(uin)"
         switch envelope {
-        case .text(_, let t, _, _, _):                      return t.contains(needle)
-        case .photo(_, _, _, let c, _, _, _, _, _):         return (c ?? "").contains(needle)
-        case .video(_, _, _, _, _, let c, _, _, _, _, _):   return (c ?? "").contains(needle)
-        case .file(_, _, _, _, _, _, let c, _, _, _):       return (c ?? "").contains(needle)
-        case .location(_, _, _, let c, _, _, _):            return (c ?? "").contains(needle)
+        case .text(_, let t, _, _, _, _):                   return t.contains(needle)
+        case .photo(_, _, _, let c, _, _, _, _, _, _):      return (c ?? "").contains(needle)
+        case .video(_, _, _, _, _, let c, _, _, _, _, _, _): return (c ?? "").contains(needle)
+        case .file(_, _, _, _, _, _, let c, _, _, _, _):    return (c ?? "").contains(needle)
+        case .location(_, _, _, let c, _, _, _, _):         return (c ?? "").contains(needle)
         default:                                            return false
         }
     }

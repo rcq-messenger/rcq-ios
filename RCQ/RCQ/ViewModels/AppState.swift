@@ -361,6 +361,7 @@ final class AppState: ObservableObject {
         await ContactService.shared.refresh()
         await GroupService.shared.refresh()
         await MessageService.shared.fetchOfflineQueue()
+        await VaultSync.sweep(force: true)
     }
 
     /// Whether `/server/info` of the island we are on has been read this
@@ -368,7 +369,21 @@ final class AppState: ObservableObject {
     /// and nothing that is gated on a flag (the room log above all) runs,
     /// so a boot that fell into the offline branch, or whose one read timed
     /// out, is followed by another read at the next online moment.
-    private var serverInfoRead = false
+    @Published private(set) var serverInfoRead = false
+
+    /// Does this island run a vault? ⚠⚠ THREE STATES, not two: true, false and
+    /// nil for "not answered yet".
+    ///
+    /// Sections are hidden entirely without a vault, and only an explicit "no"
+    /// un-files anything. Reading "not answered yet" as "no" is not a cosmetic
+    /// flash: it takes the members of a PIN-gated section and draws them, by
+    /// name and with their unread badges, in Online / Offline / Other islands,
+    /// while the section's own header disappears from the list. The web client
+    /// shipped that way for a day. A chat can only BE filed if the island had a
+    /// vault when it was filed, so an unanswered probe keeps the cached filing.
+    var vaultCapability: Bool? {
+        serverInfoRead ? serverCapabilities.vault : nil
+    }
 
     /// Read `/server/info` for the island we are on and adopt the answer:
     /// the capability flags, the account cap, the island's name and house
@@ -872,7 +887,12 @@ final class AppState: ObservableObject {
                 async let groups: Void = GroupService.shared.refresh(joinInFlight: true)
                 async let queue: Void = MessageService.shared.fetchOfflineQueue()
                 async let caps: Void = MessageService.shared.advertiseSenderKeysCapability()
-                _ = await (groups, queue, caps)
+                // The vault's own catch-up: which slots moved while this device
+                // was away. `vault_changed` is pub/sub with no replay, so a
+                // change another device made while this one was off is only
+                // ever heard here or on the next socket reconnect.
+                async let vault: Void = VaultSync.sweep(force: true)
+                _ = await (groups, queue, caps, vault)
             }
             Task { @MainActor in
                 // Kept in order among themselves: authorisation has to be
@@ -982,6 +1002,21 @@ final class AppState: ObservableObject {
             case active, owned
             case maxOwned = "max_owned"
         }
+
+        /// ⚠ Written by hand because the synthesised one does NOT fall back to
+        /// a property's default value: a missing `max_owned` threw
+        /// `keyNotFound` and, since the caller decodes with `try?`, the whole
+        /// screen came back empty. The default above was doing nothing on
+        /// exactly the islands it was written for (the flagship always sends
+        /// the field, so this never showed up there). `owned` gets the same
+        /// treatment: an island that omits an empty list is a screen with no
+        /// numbers, not a screen with no vault.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            active = try container.decode(Int.self, forKey: .active)
+            owned = try container.decodeIfPresent([OwnedUIN].self, forKey: .owned) ?? []
+            maxOwned = try container.decodeIfPresent(Int.self, forKey: .maxOwned) ?? 10
+        }
     }
 
     /// Everything this account holds. Answers whether or not the island runs
@@ -990,6 +1025,81 @@ final class AppState: ObservableObject {
     /// this returns nil, which the UI reads as "no vault here".
     func myUINs() async -> MyUINs? {
         try? await APIClient.shared.request("GET", "/uin/mine")
+    }
+
+    /// What came back from `releaseUIN`. Separate from `MigrationResult`
+    /// because giving a number away is not a migration and every refusal on it
+    /// means something different to the person reading it.
+    enum ReleaseResult: Equatable {
+        /// The server answers with the WHOLE collection after the release, so
+        /// the screen replaces its state instead of guessing what changed.
+        case success(MyUINs)
+        /// 400 `uin_in_use`: you cannot give away the number you answer as.
+        case inUse
+        /// 404 `not_owned`: this account does not hold it. Somebody released
+        /// it from another device, or it was never here.
+        case notOwned
+        /// 404/405 from the router rather than from the handler: an island too
+        /// old to have the route at all. Told apart from `notOwned` by the
+        /// body, because "you do not own this" and "this island cannot do
+        /// this" are two different lies to tell somebody.
+        case unsupported
+        /// 429: twenty releases an hour, which is a handful of deliberate taps
+        /// and never a loop.
+        case rateLimited
+        /// 403 `suspended`.
+        case suspended
+        case other(String)
+    }
+
+    /// Give a held number back to the pool.
+    ///
+    /// Collecting numbers nobody chose is a side effect of the vault: moving
+    /// onto a number parks the previous one in the collection whether it was
+    /// wanted or not, and the long number handed out at signup is usually the
+    /// first one people stop wanting. Until now iOS had no way to say no.
+    ///
+    /// ⚠ Irreversible. The number goes back into the pool and somebody else
+    /// may take it, which is why this is a deliberate call behind a confirm
+    /// and not a swipe.
+    func releaseUIN(_ uin: Int) async -> ReleaseResult {
+        do {
+            let out: MyUINs = try await APIClient.shared.request("DELETE", "/uin/mine/\(uin)")
+            return .success(out)
+        } catch APIError.http(400, _) {
+            return .inUse
+        } catch APIError.http(403, _) {
+            return .suspended
+        } catch APIError.http(404, let body) {
+            // Our handler says `{"detail":{"code":"not_owned"}}`; the router's
+            // own miss says `{"detail":"Not Found"}`.
+            return (body ?? "").contains("not_owned") ? .notOwned : .unsupported
+        } catch APIError.http(405, _) {
+            return .unsupported
+        } catch APIError.http(429, _) {
+            return .rateLimited
+        } catch APIError.http(_, let body) {
+            return .other(body ?? "Server refused")
+        } catch {
+            return .other(error.localizedDescription)
+        }
+    }
+
+    /// A refusal from the number endpoints, turned into something a person can
+    /// read. The server sends `{"detail":{"code":"..."}}`, and putting that on
+    /// screen verbatim is how a user meets raw JSON.
+    ///
+    /// A transport failure is already a sentence ("The Internet connection
+    /// appears to be offline") and must survive untouched, so anything without
+    /// a `code` is passed straight through.
+    static func uinRefusalText(_ raw: String) -> String {
+        guard raw.contains("\"code\"") else { return raw }
+        if raw.contains("suspended") { return "uin.error.suspended".localized }
+        if raw.contains("too_many_uins") { return "uin.error.too_many".localized }
+        if raw.contains("uin_in_use") { return "my_uins.release.error.in_use".localized }
+        if raw.contains("not_owned") { return "my_uins.error.not_owned".localized }
+        if raw.contains("self_target") { return "uin_shop.status.self".localized }
+        return "uin_shop.error.generic".localized
     }
 
     /// Take a UIN into the collection WITHOUT becoming it. The account keeps
@@ -1008,12 +1118,19 @@ final class AppState: ObservableObject {
                 body: Body(uin: uin, switch: false)
             )
             return .success(newUIN: uin)
-        } catch APIError.http(409, _) {
+        } catch APIError.http(409, let body) {
+            // 409 is TWO refusals wearing one status code: somebody else has
+            // the number, or this account is at the collection cap. Reporting
+            // the cap as "someone grabbed it first" sent people hunting for
+            // another number they also could not have.
+            if (body ?? "").contains("too_many_uins") {
+                return .other("uin.error.too_many".localized)
+            }
             return .taken
         } catch APIError.http(429, _) {
             return .cooldown
         } catch APIError.http(_, let body) {
-            return .other(body ?? "Server refused")
+            return .other(Self.uinRefusalText(body ?? "Server refused"))
         } catch {
             return .other(error.localizedDescription)
         }
@@ -1198,6 +1315,7 @@ final class AppState: ObservableObject {
         VoIPPushService.shared.wipe()
         FavoritesStore.shared.wipe()
         ArchiveStore.shared.wipe()
+        SectionsStore.shared.wipe()
         ContactSoundStore.shared.wipe()
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
@@ -1614,6 +1732,10 @@ final class AppState: ObservableObject {
         CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         StrangerQuarantine.shared.bind(accountID: AccountManager.shared.activeAccountID)
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // The sections tree is per account and holds section names plus the uin
+        // of every filed chat, so it is rebound here rather than left standing.
+        SectionsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        ContactsVault.resetSyncState()
         PushDecryptCache.wipe()
         // Probe timers key on bare peer uins, which mean nothing on the
         // account we are switching to. The cached device lists key on the
@@ -1658,10 +1780,10 @@ final class AppState: ObservableObject {
 
         MessageDB.shared.reload()
         SignalProtocolDB.shared.reload()
-        // Load the NEW account's conversations into the in-memory store now that
-        // MessageDB points at its SQLite file. The singleton's init→rehydrate
-        // only runs once at app launch, so without this the chat list stayed
-        // EMPTY after an account switch until an app restart (founder report).
+        // Re-point the in-memory store at the NEW account's SQLite file. The
+        // windows themselves were dropped by `resetInMemory` above, so this is
+        // now the cheap half of what it used to be: nothing is read back here,
+        // and each chat reads its own window when it is opened.
         MessageStore.shared.reloadFromDB()
         // Favorites are per-account — reload the new account's set so stars
         // don't bleed over from the previously active account.
@@ -1742,9 +1864,19 @@ final class AppState: ObservableObject {
             // Drain offline queue on every (re)connect. The flags first when
             // they were never read: the room-log half of the drain is gated
             // on them.
-            Task {
-                await refreshServerInfoIfUnread()
-                await MessageService.shared.fetchOfflineQueue()
+            //
+            // Never before `booted`. The socket opens in the middle of the
+            // boot chain, and the drain that used to start right here walked
+            // the whole backlog on the main actor while the first frames were
+            // still being laid out: the list appeared and then stopped
+            // answering. The drain has its own home at the end of `doBoot`
+            // (and `runOnlineSync`), behind the interface; a socket that comes
+            // up before that point can wait for it.
+            if booted {
+                Task {
+                    await refreshServerInfoIfUnread()
+                    await MessageService.shared.fetchOfflineQueue()
+                }
             }
             // Re-sync audio room subscription if we were inside one.
             // Skipped the unconditional contact refresh that used to
@@ -1891,7 +2023,13 @@ final class AppState: ObservableObject {
             ContactService.shared.removeLocal(peer)
 
         case .groupChanged(let group):
+            // The whole snapshot, so `ownerUIN` and every member's role come
+            // with it: `upsert` replaces the row rather than diffing the
+            // roster, which is what makes a handover land here live.
             GroupService.shared.upsert(group)
+
+        case .groupOwnerChanged(let id, let owner):
+            GroupService.shared.applyOwnerLocally(groupID: id, ownerUIN: owner)
 
         case .groupDeleted(let id):
             GroupService.shared.purge(id)

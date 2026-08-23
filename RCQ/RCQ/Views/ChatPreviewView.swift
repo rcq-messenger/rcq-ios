@@ -36,6 +36,12 @@ struct ChatPreviewView: View {
         // layer, then round it HERE, where the bounds are the card's own.
         .compositingGroup()
         .clipShape(Self.cardShape(compact))
+        // The window this card draws is read from CoreData on demand, and a
+        // long press on a chat the user has not opened is a demand. On
+        // `onAppear` rather than inside `messages`: the preview is built while
+        // the menu is presented, and mutating a published store from a body is
+        // how "Publishing changes from within view updates" happens.
+        .onAppear { MessageStore.shared.ensureLoaded(target.thread) }
     }
 
     @ViewBuilder
@@ -70,12 +76,7 @@ struct ChatPreviewView: View {
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                    Text(String(
-                        format: (live.memberCount == 1
-                            ? "contact_list.members_one"
-                            : "contact_list.members_many").localized,
-                        live.memberCount
-                    ))
+                    Text(MemberCountLabel.text(live.memberCount))
                         .font(.caption)
                         .foregroundColor(Theme.Color.textSecondary)
                 }
@@ -97,9 +98,18 @@ struct ChatPreviewView: View {
         if recent.isEmpty {
             VStack {
                 Spacer()
-                Text("chat.preview.no_messages".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
+                // Empty only counts once the window has actually been read.
+                // `body` runs before the `onAppear` below, so on the first
+                // frame of a preview for a chat nobody has opened this session
+                // the dictionary is empty for the ordinary reason — which drew
+                // "no messages" over every such chat and then popped the
+                // history in mid-transition, and made a genuinely empty chat
+                // indistinguishable from an unread one.
+                if store.isLoaded(thread) {
+                    Text("chat.preview.no_messages".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
                 Spacer()
             }
         } else {
@@ -289,17 +299,15 @@ private struct ChatPreviewBubble: View {
                     .foregroundColor(Theme.Color.textPrimary)
                     .lineLimit(1)
             case .poll:
-                // Mini-card for `.poll` in the long-press preview —
-                // chat-row's `PollBubble` is too heavy for a preview
-                // snapshot (it triggers a /polls/{id} fetch + bar
-                // rendering). Just show the question + a chart glyph.
+                // Polls are gone (14a). The branch stays so an old poll row in
+                // the long-press preview reads the same as it does in the chat,
+                // and never falls through to printing its leftover payload JSON.
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "chart.bar.doc.horizontal")
-                        .foregroundColor(Theme.Color.accent)
-                    Text(PollPayload.decode(from: message.text)?.question
-                         ?? message.previewSnippet)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Text("chat.poll.removed".localized)
                         .font(.callout)
-                        .foregroundColor(Theme.Color.textPrimary)
+                        .foregroundColor(Theme.Color.textSecondary)
                         .lineLimit(4)
                 }
             default:

@@ -316,6 +316,10 @@ final class PanicPINService: ObservableObject {
         CrossIslandRequestsStore.shared.bind(accountID: decoyNamespace)
         StrangerQuarantine.shared.bind(accountID: decoyNamespace)
         VisitedIslandsStore.shared.bind(accountID: decoyNamespace)
+        // The sections tree names the user's own buckets and every chat filed
+        // into them, including the one they gated behind this very PIN. A decoy
+        // session gets the empty namespace like every other per-account store.
+        SectionsStore.shared.bind(accountID: decoyNamespace)
 
         // The App-Group uin → nickname map is what the NOTIFICATION EXTENSION
         // titles a push with. It has no idea a decoy session is up, so leaving
@@ -369,6 +373,7 @@ final class PanicPINService: ObservableObject {
         CrossIslandRequestsStore.shared.bind(accountID: id)
         StrangerQuarantine.shared.bind(accountID: id)
         VisitedIslandsStore.shared.bind(accountID: id)
+        SectionsStore.shared.bind(accountID: id)
         VisitStore.shared.reloadFromDisk()
         PresenceService.shared.reloadOwnAvatarFromDisk()
         DuressGate.set(false)

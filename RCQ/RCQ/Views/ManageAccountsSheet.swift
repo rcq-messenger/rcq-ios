@@ -144,11 +144,21 @@ struct ManageAccountsSheet: View {
 
     private func row(for account: Account) -> some View {
         let isActive = account.id == accountManager.activeAccountID
+        let card = AccountCardCache.card(for: account.id)
+        // The card's UIN is a cache; the Keychain is the record. Prefer the
+        // record and let the card answer only when the Keychain slot is empty
+        // (an account whose per-account migration has not run).
         let uin = KeychainStore.string(KeychainStore.Keys.uin, forAccount: account.id)
+            ?? card?.uin.map(String.init)
+        let label = displayLabel(for: account)
         return HStack(alignment: .top, spacing: 12) {
+            // The island's own face, generated from its name and host: this
+            // screen listed accounts as three lines of grey text, and which
+            // island a row belongs to is the thing it is FOR.
+            IslandAvatarView(name: label, host: account.displayHost, size: 36)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(displayLabel(for: account))
+                    Text(label)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                     if isActive {
@@ -168,10 +178,22 @@ struct ManageAccountsSheet: View {
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if let uin {
-                    Text(verbatim: "#\(uin)")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+                HStack(spacing: 6) {
+                    if let uin {
+                        Text(verbatim: "#\(uin)")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+                    }
+                    // The name this account goes by on that island, off its own
+                    // cached card. Nothing is fetched to draw it, which is the
+                    // point: every row but the active one belongs to an island
+                    // this process is not talking to.
+                    if let nickname = card?.nickname, !nickname.isEmpty {
+                        Text(nickname)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
+                            .lineLimit(1)
+                    }
                 }
             }
             Spacer(minLength: 8)
@@ -233,10 +255,14 @@ struct ManageAccountsSheet: View {
 
     // MARK: - actions
 
-    /// Best-effort human label for an account row. Falls back through
-    /// the same three layers the switcher pill uses: explicit
-    /// displayLabel → matching catalogue entry name → bare host.
+    /// Best-effort human label for an account row. Falls back through the same
+    /// four layers the switcher pill uses: the island's own cached name (what
+    /// its operator typed, served by `/server/info`) → explicit displayLabel →
+    /// matching catalogue entry name → bare host.
     private func displayLabel(for account: Account) -> String {
+        if let cached = AccountCardCache.card(for: account.id)?.islandName, !cached.isEmpty {
+            return cached
+        }
         if let label = account.displayLabel, !label.isEmpty {
             return label
         }
@@ -263,6 +289,10 @@ struct ManageAccountsSheet: View {
         KeychainStore.wipeAccount(account.id)
         MessageDB.wipe(accountID: account.id)
         SignalProtocolDB.wipeFiles(accountID: account.id)
+        // The switcher's cached card for this account goes with the rest of its
+        // local state; leaving it behind would keep an island name and a
+        // nickname on the device for an account that no longer exists.
+        AccountCardCache.forget(account.id)
         accountManager.remove(account.id)
     }
 }

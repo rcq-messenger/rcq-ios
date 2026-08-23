@@ -1,0 +1,155 @@
+[
+  {
+    "name": "null loses to a real k, and k has no stamp to break the tie",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Work\",\"m\":{\"p:5\":100}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":null,\"n\":\"Work\",\"m\":{\"p:5\":100}}],\"d\":{},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "null on both sides drops the field",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":null,\"n\":null,\"o\":null,\"p\":null,\"h\":null}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":null,\"n\":null,\"o\":null,\"p\":null,\"h\":null}],\"d\":{},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "null loses on a stamp tie for every stamped field",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":null,\"o\":null,\"p\":null,\"h\":null,\"t\":{\"n\":7,\"o\":7,\"p\":7,\"h\":7}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Work\",\"o\":0,\"p\":0,\"h\":0,\"t\":{\"n\":7,\"o\":7,\"p\":7,\"h\":7}}],\"d\":{},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "the newer stamp still wins when it carries null",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Work\",\"t\":{\"n\":5}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":null,\"t\":{\"n\":9}}],\"d\":{},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "an unknown key that is null on one side takes the other value",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":null,\"qq\":null}],\"d\":{},\"w\":0,\"top\":null}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"b\":2,\"a\":1},\"qq\":7}],\"d\":{},\"w\":0,\"top\":{\"deep\":{\"y\":2,\"x\":1}}}",
+    "watch": [
+      "top:top",
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "an unknown key that is null on both sides stays null",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":null}],\"d\":{},\"w\":0,\"top\":null}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":null}],\"d\":{},\"w\":0,\"top\":null}",
+    "watch": []
+  },
+  {
+    "name": "a multi-key object under an unknown key, ranked by the bytes it arrived as",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":9,\"a\":1}}],\"d\":{},\"w\":0,\"tt\":{\"z\":9,\"a\":1}}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":1,\"a\":9}}],\"d\":{},\"w\":0,\"tt\":{\"z\":1,\"a\":9}}",
+    "watch": [
+      "top:tt",
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "the same object written with its members in the other order",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"a\":1,\"z\":9}}],\"d\":{},\"w\":0,\"tt\":{\"a\":1,\"z\":9}}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":1,\"a\":9}}],\"d\":{},\"w\":0,\"tt\":{\"z\":1,\"a\":9}}",
+    "watch": [
+      "top:tt",
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "nested objects and an array under an unknown key",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"o\":{\"d\":4,\"c\":3},\"l\":[{\"n\":2,\"m\":1},\"s\"]}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"o\":{\"d\":4,\"c\":9},\"l\":[{\"n\":2,\"m\":1},\"s\"]}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "an object against a string, a number, a boolean and an array",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"o1\":{\"z\":1,\"a\":2},\"o2\":\"zzz\",\"o3\":true,\"o4\":[9,{\"b\":1,\"a\":2}]}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"o1\":\"zzz\",\"o2\":{\"z\":1,\"a\":2},\"o3\":[9,{\"b\":1,\"a\":2}],\"o4\":true}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:o1",
+      "rec:aaaaaaaa:o2",
+      "rec:aaaaaaaa:o3",
+      "rec:aaaaaaaa:o4"
+    ]
+  },
+  {
+    "name": "per-field lww with a built-in record",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Work\",\"o\":7168,\"p\":1,\"h\":0,\"t\":{\"n\":1756000000000,\"o\":1756000000000,\"p\":1756000000000,\"h\":0},\"m\":{\"p:100200\":1756000000000,\"p:4471@is2.rcq.app\":1756000000000},\"x\":{\"p:770\":1755000000000}}],\"d\":{\"b7c1d2e3\":1755900000000},\"w\":1756000000000}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Home\",\"o\":9216,\"t\":{\"n\":1756000001000,\"o\":1}},{\"id\":\"sys.archive\",\"k\":\"d\",\"o\":7168,\"p\":1,\"t\":{\"o\":0,\"p\":1756000000000}}],\"d\":{},\"w\":5}",
+    "watch": []
+  },
+  {
+    "name": "one chat one section, and the tombstone that follows it",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"m\":{\"p:5\":100},\"x\":{}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"bbbbbbbb\",\"k\":\"u\",\"n\":\"B\",\"m\":{\"p:5\":200},\"x\":{}}],\"d\":{},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "a touched section outlives its tombstone",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"Work\",\"t\":{\"n\":300}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[],\"d\":{\"aaaaaaaa\":200},\"w\":0}",
+    "watch": []
+  },
+  {
+    "name": "unknown keys ride along in the same places",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"future\":1},\"q\":\"x\"}],\"d\":{},\"w\":0,\"qq\":7}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"q\":\"y\"}],\"d\":{},\"w\":0,\"qq\":9}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "whitespace in the bytes is not part of the value",
+    "a": "{\"v\": 1, \"s\": [ {\"id\": \"aaaaaaaa\", \"k\": \"u\", \"n\": \"A\", \"zz\": { \"z\" : 9 , \"a\" : 1 } } ], \"d\": {}, \"w\": 0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":1,\"a\":9}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "a stranger's value with raw utf-8 and a nested array of objects",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"имя\":\"Работа\",\"l\":[{\"b\":1,\"a\":2},[3,4],null,true]}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"имя\":\"Работа\",\"l\":[{\"b\":1,\"a\":2},[3,4],null,false]}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "an empty object and an empty array under unknown keys",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"e1\":{},\"e2\":[]}],\"d\":{},\"w\":0,\"e3\":{}}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"e1\":{\"a\":1},\"e2\":[0]}],\"d\":{},\"w\":0,\"e3\":[]}",
+    "watch": [
+      "top:e3",
+      "rec:aaaaaaaa:e1",
+      "rec:aaaaaaaa:e2"
+    ]
+  },
+  {
+    "name": "a record that is not an object sits between two that are",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":9,\"a\":1}},7,{\"id\":\"bbbbbbbb\",\"k\":\"u\",\"n\":\"B\",\"zz\":{\"z\":9,\"a\":1}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"z\":1,\"a\":9}},{\"id\":\"bbbbbbbb\",\"k\":\"u\",\"n\":\"B\",\"zz\":{\"z\":1,\"a\":9}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz",
+      "rec:bbbbbbbb:zz"
+    ]
+  },
+  {
+    "name": "the escapes a real writer produces, inside a stranger's value",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"q\":\"x\\\"y\\\\z\",\"t\":\"a\\tb\",\"u\":\"é\",\"raw\":\"юя\",\"nl\":\"a\\nb\"}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"q\":\"x\\\"y\\\\z\",\"t\":\"a\\tb\",\"u\":\"é\",\"raw\":\"юя\",\"nl\":\"a\\rb\"}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  },
+  {
+    "name": "a slash in a stranger's value ranks as a slash",
+    "a": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"q\":\"a/b\"}}],\"d\":{},\"w\":0}",
+    "b": "{\"v\":1,\"s\":[{\"id\":\"aaaaaaaa\",\"k\":\"u\",\"n\":\"A\",\"zz\":{\"q\":\"aZb\"}}],\"d\":{},\"w\":0}",
+    "watch": [
+      "rec:aaaaaaaa:zz"
+    ]
+  }
+]

@@ -1,14 +1,17 @@
 import SwiftUI
 
-/// Photo message bubble. Loads encrypted bytes, decrypts via MediaService, tap → fullscreen viewer.
+/// Photo message bubble. Loads encrypted bytes, decrypts via MediaService,
+/// tap opens `AlbumViewerPresenter` as a single-item album. The old
+/// `FullscreenPhotoViewer` that used to serve that tap was unreachable and
+/// is gone.
 struct PhotoBubble: View {
     let message: Message
     var maxWidth: CGFloat = 240
     /// Pin frame to this size and `.scaledToFill` — used by premium flow so locked/unlocked render at matching dimensions.
     var forcedSize: CGSize? = nil
-    /// Skip both the built-in tap-to-fullscreen and the fullScreenCover.
-    /// Album tiles set this so their parent owns the tap (and routes
-    /// it to the album-wide viewer with paging).
+    /// Skip the built-in tap-to-fullscreen. Album tiles set this so their
+    /// parent owns the tap (and routes it to the album-wide viewer with
+    /// paging).
     var disableTap: Bool = false
 
     @State private var image: UIImage?
@@ -21,7 +24,6 @@ struct PhotoBubble: View {
     /// between mediaID arriving (upload done) and the decrypt
     /// finishing does not flash the error triangle.
     @State private var loadFailed = false
-    @State private var fullscreen = false
     /// Spoiler media renders blurred until the first tap. Per-view
     /// session state — scrolling far away and back re-blurs, which
     /// matches the Android renderer.
@@ -176,83 +178,6 @@ struct PhotoBubble: View {
         }
     }
 
-}
-
-struct FullscreenPhotoViewer: View {
-    let image: UIImage
-    var onClose: () -> Void
-
-    @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
-    @State private var saveState: PhotoSaveDelegate.State = .idle
-
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .scaleEffect(scale)
-                .gesture(
-                    MagnificationGesture()
-                        .onChanged { v in scale = max(1, lastScale * v) }
-                        .onEnded { _ in lastScale = scale }
-                )
-                .gesture(
-                    TapGesture(count: 2).onEnded {
-                        scale = scale > 1 ? 1 : 2.5
-                        lastScale = scale
-                    }
-                )
-            VStack {
-                HStack {
-                    Button {
-                        savePhoto()
-                    } label: {
-                        Image(systemName: saveStateIcon)
-                            .font(.system(size: 24))
-                            .foregroundColor(.white.opacity(0.85))
-                            .padding()
-                    }
-                    .disabled(saveState == .saving || saveState == .done)
-                    Spacer()
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white.opacity(0.85))
-                            .padding()
-                    }
-                }
-                Spacer()
-            }
-        }
-        .onTapGesture(perform: onClose)
-    }
-
-    private var saveStateIcon: String {
-        switch saveState {
-        case .idle:    return "square.and.arrow.down"
-        case .saving:  return "ellipsis.circle"
-        case .done:    return "checkmark.circle.fill"
-        case .failed:  return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private func savePhoto() {
-        saveState = .saving
-        let delegate = PhotoSaveDelegate { result in
-            saveState = result
-            if result == .done {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    await MainActor.run { saveState = .idle }
-                }
-            }
-        }
-        // passRetained — UIKit selector callback fires after closure scope otherwise.
-        UIImageWriteToSavedPhotosAlbum(image, delegate, #selector(PhotoSaveDelegate.didFinish(image:error:contextInfo:)), Unmanaged.passRetained(delegate).toOpaque())
-    }
 }
 
 final class PhotoSaveDelegate: NSObject {

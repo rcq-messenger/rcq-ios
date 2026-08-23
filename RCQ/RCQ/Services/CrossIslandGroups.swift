@@ -370,8 +370,20 @@ enum CrossIslandGroups {
             guard let out: FetchOut = try? await postJSON(
                 "https://\(host)/messages/group-log/fetch", body: FetchIn(limit: 500), jwt: jwt
             ) else { return }
-            let got = MessageService.shared.ingestGroupLogRows(out.rows, drain: drain) {
-                VisitedIslandsStore.shared.aliasFor(host: host, remoteId: $0)
+            // On the one drain chain, not beside it. This walk runs off
+            // `Multihome`'s 30 s poll, so it lands in the middle of the queue
+            // drain as often as not, and both walks share the one page-batch
+            // slot in MessageService: the second to arrive silently piles its
+            // unread counts, badge bumps and delivered receipts into the
+            // first's batch, then acks its rows to the island anyway. The
+            // island deletes them; the bookkeeping goes wherever the other
+            // walk's batch went. Only the ingest is chained — the fetch and
+            // the ack above stay off it, so a slow island cannot hold the
+            // queue drain up.
+            let got = await MessageService.shared.serialisedDrain {
+                await MessageService.shared.ingestGroupLogRows(out.rows, drain: drain) {
+                    VisitedIslandsStore.shared.aliasFor(host: host, remoteId: $0)
+                }
             }
             let acks = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
             guard !acks.isEmpty else { return }

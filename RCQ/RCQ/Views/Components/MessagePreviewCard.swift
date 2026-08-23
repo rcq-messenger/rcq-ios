@@ -49,13 +49,10 @@ struct MessagePreviewCard: View {
                 // not present on the real chat row.
                 VoiceBubble(message: message)
             case .poll:
-                // The full `PollBubble` would trigger a /polls/{id}
-                // fetch + tap-to-vote scaffolding inside a read-only
-                // preview — too heavy. Render a compact card with
-                // just the question, the type chip, and the option
-                // labels so the user recognises what they
-                // long-pressed without the raw JSON the default
-                // `text` branch would otherwise show.
+                // Polls are gone (14a). The branch stays so the long-press
+                // preview of an old poll row shows the same placeholder the
+                // chat row does, instead of falling through to the default
+                // branch and rendering the leftover payload JSON.
                 pollSummary
             default:
                 EmoticonText(text: message.text)
@@ -67,37 +64,15 @@ struct MessagePreviewCard: View {
         }
     }
 
-    @ViewBuilder
     private var pollSummary: some View {
-        let payload = PollPayload.decode(from: message.text)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "chart.bar.doc.horizontal")
-                    .foregroundColor(Theme.Color.accent)
-                Text(payload?.singleChoice ?? true
-                     ? "poll.header.single".localized
-                     : "poll.header.multi".localized)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-            }
-            Text(payload?.question ?? "chat.preview.poll".localized)
-                .font(.body.weight(.semibold))
-                .foregroundColor(Theme.Color.textPrimary)
+        HStack(spacing: 8) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Color.textSecondary)
+            Text("chat.poll.removed".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let options = payload?.options {
-                ForEach(Array(options.enumerated()), id: \.offset) { _, label in
-                    HStack(spacing: 6) {
-                        Image(systemName: "circle")
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Text(label)
-                            .font(.callout)
-                            .foregroundColor(Theme.Color.textPrimary)
-                            .lineLimit(1)
-                    }
-                }
-            }
         }
         .padding(12)
         .frame(maxWidth: 320, alignment: .leading)

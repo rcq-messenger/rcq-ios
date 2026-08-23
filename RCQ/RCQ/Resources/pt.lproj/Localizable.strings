@@ -281,6 +281,7 @@
 "bug_bounty.submit.cta" = "Enviar";
 "bug_bounty.submit.sending" = "Enviando…";
 "bug_bounty.submit.sent" = "Enviado";
+"bug_bounty.submit.sent_number" = "Enviado · n.º %d";
 "bug_bounty.disclosure" = "Falhas de segurança com risco de vazamento de dados ou de quebra da criptografia de ponta a ponta: escreva para legal@rcq.app com [SECURITY] no assunto, não aqui.";
 "bug_bounty.alert.title" = "Relato de bug";
 "bug_bounty.shake.toggle" = "Chacoalhar para relatar";
@@ -291,17 +292,12 @@
 "bug_bounty.attach.hint" = "Anexe capturas de tela ou um vídeo curto, até 3 arquivos.";
 "bug_bounty.attach.cta" = "Adicionar";
 "bug_bounty.attach.paste" = "Colar";
-"chat.attach.poll" = "Enquete";
 "chat.attach.share_group" = "Convite";
-"chat.attach.share_connection" = "Conexão";
 "relay.share.title" = "Forma de conexão";
 "relay.share.invalid" = "Conexão não suportada";
 "relay.share.sent_note" = "Você compartilhou uma forma de conectar";
 "relay.share.added" = "Adicionado às suas conexões";
 "relay.share.add" = "Adicionar";
-"relay.share.pick.title" = "Compartilhar uma conexão";
-"relay.share.pick.body" = "Passe um relay para este contato, para ele conseguir passar quando as conexões dele estiverem bloqueadas. Ele toca em Adicionar para usar.";
-"relay.share.group.warn" = "Todos os membros do grupo vão ver este relay. Só compartilhe relays nacionais escassos em grupos de confiança.";
 "relay.import.title" = "Adicionar um relay";
 "relay.import.hint" = "rcq-relay://… ou uma chave de acesso";
 "relay.key.active" = "Chave de acesso inserida";
@@ -341,26 +337,6 @@
 "paid_traffic.price_suffix" = "este arquivo";
 "paid_traffic.enable" = "Ligar tráfego pago";
 "paid_traffic.cancel" = "Cancelar";
-"poll.compose.title" = "Nova enquete";
-"poll.compose.question_header" = "PERGUNTA";
-"poll.compose.question_placeholder" = "Qual é a pergunta?";
-"poll.compose.options_header" = "OPÇÕES";
-"poll.compose.option_placeholder" = "Opção %d";
-"poll.compose.add_option" = "Adicionar opção";
-"poll.compose.multi" = "Permitir várias respostas";
-"poll.compose.anonymous" = "Votos anônimos";
-"poll.compose.flags_footer" = "Anônima: o grupo não vê quem votou em quê. Múltipla: cada membro pode marcar várias opções.";
-"poll.compose.send" = "Enviar";
-"poll.header.single" = "Enquete · escolha única";
-"poll.header.multi" = "Enquete · escolha múltipla";
-"poll.header.anonymous" = "anônima";
-"poll.header.closed" = "encerrada";
-"poll.footer.total_votes" = "%d votos";
-"poll.row.more_voters" = "mais %d";
-"poll.footer.close" = "Encerrar enquete";
-"poll.error.parse" = "Não foi possível ler esta enquete.";
-"poll.error.vote" = "Não foi possível salvar seu voto.";
-"poll.error.close" = "Não foi possível encerrar.";
 "contact_list.ctx.report" = "Denunciar";
 "report.title" = "Denúncia";
 "report.heading" = "Denunciar usuário";
@@ -439,11 +415,6 @@
 "outgoing.state.declined" = "Recusada";
 "outgoing.cancel" = "Cancelar";
 "outgoing.dismiss" = "Descartar";
-"presence.countdown.h_unit" = "h";
-"presence.countdown.m_unit" = "m";
-"presence.countdown.lt1m" = "<1m";
-"presence.info.title" = "Continuar visível depois de sair";
-"presence.info.body" = "Você continua aparecendo como online por esse tempo depois de fechar o app. Mude em Configurações, Privacidade e rede.";
 // ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "Padrão";
 "uin_listing.share.cta_open" = "Abrir no mercado →";
@@ -488,6 +459,7 @@
 "contact_list.pending_many" = "%d solicitações de contato pendentes";
 "contact_list.members_one" = "%d membro";
 "contact_list.members_many" = "%d membros";
+"contact_list.members_compact" = "%@ membros";
 "contact_list.ctx.open_chat" = "Abrir conversa";
 "contact_list.ctx.send_message" = "Enviar mensagem";
 "contact_list.ctx.quick_preview" = "Prévia rápida";
@@ -520,6 +492,11 @@
 "chat.pin.error.forbidden" = "Você precisa da permissão de informações do grupo. Peça ao dono.";
 "chat.pin.error.rejected" = "Esse texto não foi aceito para fixar.";
 "chat.pin.error.generic" = "A fixação não foi concluída. Verifique a conexão e tente de novo.";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "Links estão desativados neste grupo.";
+"chat.files_off.notice" = "Arquivos estão desativados neste grupo.";
+"chat.slowmode.wait" = "Modo lento: aguarde %d s";
 "chat.selection.delete" = "Apagar (%d)";
 "chat.selection.forward" = "Encaminhar (%d)";
 "chat.selection.cancel" = "Cancelar";
@@ -689,7 +666,6 @@
 "chat.preview.market_item" = "Item do mercado";
 "chat.preview.uin_listing" = "Anúncio de UIN";
 "chat.preview.group_invite" = "Convite de grupo";
-"chat.preview.poll" = "Enquete";
 "chat.preview.premium_photo" = "🔒 Foto paga";
 "chat.preview.premium_video" = "🔒 Vídeo pago";
 "chat.preview.generic" = "Mensagem";
@@ -707,6 +683,40 @@
 "group.no_matches" = "Nada encontrado. Tente o UIN completo.";
 "group.title" = "Grupo";
 "group.section.members" = "Membros (%d)";
+"group.section.members.compact" = "Membros (%@)";
+"group.section.content_policy" = "O que é permitido aqui";
+"group.settings.no_links" = "Desativar links";
+"group.settings.no_links.hint" = "Os links das mensagens ficam como texto e não abrem.";
+"group.settings.no_files" = "Desativar arquivos";
+"group.settings.no_files.hint" = "Aqui não dá para enviar nem baixar arquivos.";
+"group.settings.slowmode" = "Modo lento";
+"group.settings.slowmode.hint" = "Uma pausa entre mensagens para cada membro.";
+"group.settings.slowmode.off" = "Não";
+"group.settings.slowmode.sec" = "%d s";
+"group.settings.slowmode.min" = "1 min";
+"group.role.moderator" = "Moderador";
+"group.member.promote" = "Tornar admin";
+"group.member.demote" = "Tirar permissões";
+"group.perm.grant_all" = "Todas as permissões";
+"group.perm.revoke_all" = "Tirar";
+"group.perm.hint" = "Excluir: pode remover a mensagem de qualquer um. Membros: pode remover pessoas. Info: pode mudar o nome, a foto e a mensagem fixada. Nada disso é a propriedade do grupo: ele continua seu até você transferi-lo abaixo.";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "Transferir a propriedade";
+"group.transfer.cta" = "Transferir";
+"group.transfer.working" = "Transferindo…";
+"group.transfer.confirm" = "Transferir este grupo para %@? Você continua no grupo como membro comum, mas perde os direitos de dono e qualquer permissão de moderação. Só o novo dono pode devolver.";
+"group.transfer.done.title" = "Propriedade transferida";
+"group.transfer.done" = "Agora %@ é o dono do grupo. Você continua sendo membro: pode sair ou ficar.";
+"group.transfer.stay" = "Ficar";
+"group.transfer.err.owner_only" = "Só o dono pode transferir o grupo.";
+"group.transfer.err.already_owner" = "Ele já é o dono deste grupo.";
+"group.transfer.err.not_a_member" = "Ele não está mais neste grupo.";
+"group.transfer.err.no_such_user" = "Esta ilha não o conhece.";
+"group.transfer.err.target_suspended" = "Essa conta está suspensa.";
+"group.transfer.err.rate_limited_in" = "Tentativas demais. Tente de novo em %d s.";
+"group.transfer.err.rate_limited" = "Tentativas demais. Tente mais tarde.";
+"group.transfer.err.failed" = "Não foi possível transferir o grupo.";
 "group.section.notifications" = "Notificações";
 "group.notifications.mute" = "Silenciar notificações";
 "group.notifications.unmute" = "Ativar notificações";
@@ -962,12 +972,10 @@
 "pool.section_share" = "%.0f%% dos sorteios";
 "pool.cap" = "limite %d";
 "pool.cap_remaining" = "restam %d / %d";
-"settings.privacy.persistent_presence" = "Visibilidade depois de sair";
 "settings.privacy.relay_calls" = "Sempre passar chamadas por relay";
 "settings.privacy.relay_calls.desc" = "Manda o áudio e o vídeo da chamada pelo nosso relay, assim o outro lado nunca fica sabendo seu endereço IP. Desligar isto pode melhorar a qualidade da chamada e mostra seu endereço a ele.";
 "settings.privacy.strangers" = "Desconhecidos vão para solicitações";
 "settings.privacy.strangers.desc" = "Mensagens de pessoas fora dos seus contatos esperam em Solicitações até você aceitá-las. Se você escreveu primeiro, a resposta chega normalmente.";
-"settings.privacy.persistent_presence.desc" = "Os contatos veem seu status (Online / Ausente / Não perturbe) mesmo com o app fechado.";
 "settings.privacy.hof_opt_in" = "Hall da Fama";
 "settings.privacy.hof_opt_in.desc" = "Permite ser considerado para o Hall da Fama público em rcq.app. Só seu apelido e UIN, e só se for aprovado. Você pode desligar isto quando quiser.";
 "settings.privacy.hof_add_image" = "Adicionar imagem / GIF";
@@ -975,13 +983,6 @@
 "settings.privacy.hof_remove_image" = "Remover imagem";
 "settings.privacy.hof_image_too_large" = "A imagem é grande demais. Escolha uma menor (máx. ~256 KB).";
 "settings.privacy.hof_image_error" = "Não foi possível enviar a imagem. Tente de novo.";
-"settings.privacy.presence_ttl" = "Duração";
-"settings.privacy.presence_ttl.forever" = "Para sempre";
-"settings.privacy.presence_ttl.30m" = "30 minutos";
-"settings.privacy.presence_ttl.1h" = "1 hora";
-"settings.privacy.presence_ttl.3h" = "3 horas";
-"settings.privacy.presence_ttl.8h" = "8 horas";
-"settings.privacy.presence_ttl.24h" = "24 horas";
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 "radio.info.title" = "Sobre o Chat por rádio";
 "radio.info.header.title" = "Chat local em malha";
@@ -1600,6 +1601,25 @@
 "myreports.status.resolved" = "Resolvido";
 "myreports.status.dismissed" = "Recusado";
 "myreports.status.duplicate" = "Duplicado";
+
+"myreports.number" = "Relato n.º %d";
+"myreports.number.short" = "n.º %d";
+"myreports.copy" = "Copiar o relato";
+"myreports.copy_answer" = "Copiar a resposta";
+"myreports.edit" = "Editar o relato";
+"myreports.edit.placeholder" = "O seu relato";
+"myreports.edit.save" = "Salvar";
+"myreports.edit.error" = "Não foi possível salvar a alteração. Tente de novo.";
+"myreports.edit.answered" = "Já existe uma resposta, então o texto do relato não pode mais ser alterado. Escreva algo a mais.";
+"myreports.edit.unsupported" = "Esta ilha ainda não sabe alterar um relato.";
+"myreports.edit.not_editable" = "Um relatório de falha é enviado pelo próprio app, então o texto dele não pode ser reescrito.";
+"myreports.edit.too_often" = "Muitas edições em uma hora. Tente mais tarde.";
+"myreports.remove" = "Remover da minha lista";
+"myreports.remove.cta" = "Remover";
+"myreports.remove.confirm.title" = "Remover o relato %@ da sua lista?";
+"myreports.remove.confirm.body" = "Ele para de aparecer nesta tela. Nada é apagado: os operadores mantêm o relato e a resposta, e ele continua contando no hall da fama.";
+"myreports.remove.refused" = "Este ainda está em análise, então ele fica na sua lista até haver um veredito.";
+"myreports.remove.error" = "Não foi possível remover. Tente de novo.";
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "Meus UINs";
 "my_uins.active" = "Você responde como";
@@ -1615,6 +1635,21 @@
 "uin_shop.held.body" = "Ele está na sua coleção e você ainda responde como %@. Passe a usá-lo agora, ou depois em Meus UINs.";
 "uin_shop.held.now" = "Passar a usar";
 "uin_shop.held.later" = "Depois";
+
+"my_uins.release" = "Liberar";
+"my_uins.release.cta" = "Liberar";
+"my_uins.release.confirm.title" = "Liberar %@?";
+"my_uins.release.confirm.body" = "O número volta para o fundo comum e outra pessoa pode pegá-lo. Isso não pode ser desfeito.";
+"my_uins.release.error.in_use" = "Você não pode liberar o número com o qual responde. Mude para outro primeiro.";
+"my_uins.release.error.unsupported" = "Esta ilha ainda não sabe liberar um número.";
+"my_uins.release.error.too_often" = "Muitas liberações em uma hora. Tente mais tarde.";
+"my_uins.error.not_owned" = "Este número não está mais na sua coleção.";
+"my_uins.footer.rules" = "Uma conta pode ter até %d números. Um número liberado volta para o fundo comum, qualquer um pode pegá-lo e não dá para trazê-lo de volta; o número com o qual você responde não pode ser liberado.";
+"uin.error.suspended" = "A conta está suspensa, então os números dela não podem ser alterados.";
+"uin.error.too_many" = "Você já tem tantos números quanto uma conta pode ter. Libere um em Meus UIN primeiro.";
+"uin_shop.error.generic" = "O servidor recusou. Tente de novo.";
+"uin_shop.info.cap.title" = "Quantos você pode ter";
+"uin_shop.info.cap.body" = "Uma conta pode ter até %1$d números, e você tem %2$d. Dá para devolver um em Meus UIN, menos aquele com o qual você responde, e não dá para desfazer: um número liberado volta para o fundo comum e qualquer um pode pegá-lo.";
 /* Full network check (NetworkAudit) */
 "audit.run" = "Verificação completa da rede";
 "audit.hint" = "Abre conexões simples com esta ilha, com o front, com os relays e com dois hosts de controle conhecidos, para descobrir o que esta rede filtra. Nada é enviado a lugar nenhum; copie o resultado você mesmo.";
@@ -1670,3 +1705,58 @@
 "how.q5" = "Alguém consegue saber para quem eu escrevo?";
 "how.a5" = "Sua ilha sabe que um envelope é endereçado a alguém e não sabe que ele partiu de você.\n\nCom os relays do RCQ ligados, o caminho de saída é dividido entre dois relays. O primeiro vê você e não sabe a que ilha você vai; o segundo chega à ilha e não sabe quem você é.\n\nO que não dá para esconder: que você usa RCQ é visível para quem controla a sua rede, enquanto os relays estiverem desligados.";
 "how.more" = "Mais perguntas em rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "Buscar nas configurações";
+"settings.search.placeholder" = "Tema, PIN, papel de parede…";
+"settings.search.empty.idle" = "Digite para encontrar uma configuração.";
+"settings.privacy.profile_card" = "Quem pode abrir meu cartão de perfil";
+"settings.privacy.profile_card.desc" = "Seu nome numa lista de membros, numa lista de reações ou sobre uma foto abre seu cartão. Quem ficar de fora não vai conseguir abri-lo; ainda assim poderá escrever para você.";
+"notifs.muted.empty" = "Ninguém está silenciado.";
+
+"chat.poll.removed" = "As enquetes não são mais suportadas";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "Mensagem de voz";
+"audio.strip.play" = "Reproduzir";
+"audio.strip.pause" = "Pausar";
+"audio.strip.close" = "Parar a reprodução";
+"album.sender.open_profile" = "Abrir perfil";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "Adicionar conversas";
+"sections.empty" = "Vazia. Use + para trazer uma conversa para cá.";
+"sections.reorder.hint" = "Mova as seções com as setas.";
+"sections.reorder.done" = "Pronto";
+"sections.move_up" = "Subir";
+"sections.move_down" = "Descer";
+"sections.menu.reorder" = "Reordenar seções";
+"sections.menu.new" = "Nova seção";
+"sections.menu.rename" = "Renomear";
+"sections.menu.delete" = "Excluir seção";
+"sections.menu.delete.confirm" = "Excluir esta seção? As conversas continuam onde estão e voltam para o lugar de sempre.";
+"sections.menu.pin" = "Pedir o PIN";
+"sections.menu.pin.off" = "Parar de pedir o PIN";
+"sections.menu.pin.note" = "Esconde esta seção até você digitar seu PIN neste aparelho. As conversas em si não ficam criptografadas por isso.";
+"sections.new.placeholder" = "Nome da seção";
+"sections.new.save" = "Criar";
+"sections.rename.save" = "Salvar";
+"sections.locked.title" = "Pede o PIN";
+"sections.locked.nopin" = "Escondida em outro aparelho. Aqui não há PIN definido.";
+"sections.locked.open_anyway" = "Abrir mesmo assim";
+"sections.picker.title" = "Adicionar em %@";
+"sections.picker.search" = "Buscar";
+"sections.picker.save" = "Salvar";
+"sections.picker.nobody" = "Ainda não há ninguém para adicionar.";
+"sections.err.too_many_sections" = "É o máximo de seções que uma conta comporta.";
+"sections.err.section_full" = "Esta seção está cheia.";
+"sections.err.too_many_members" = "Conversas demais somando todas as suas seções.";
+"sections.err.too_large" = "A lista de seções é grande demais para salvar.";
+"sections.err.unreadable" = "Suas seções foram escritas por uma versão mais nova do RCQ.";
+"pin_verify.title.section" = "Abrir esta seção";

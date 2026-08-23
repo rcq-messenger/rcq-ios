@@ -116,6 +116,48 @@ final class MediaService {
         }
     }
 
+    /// The most plaintext this app will materialise from ONE monolithic blob.
+    ///
+    /// ⚠⚠ A receive-side ceiling, and it exists because the send side stopped
+    /// being one. A single-seal blob has to be held whole, copied into the
+    /// sealed box and allocated again as plaintext before its tag can be
+    /// checked, so a 400 MB video is roughly a gigabyte of live allocation for
+    /// one tap on a bubble: jetsam takes the app out before anything can be
+    /// shown, and to the person that is "RCQ crashes when I open a video".
+    /// Refusing reads as a failed download, which is honest and survivable.
+    /// Chunked containers are NOT subject to this: they cost one chunk.
+    nonisolated static let inMemoryPlaintextCeiling: Int = 96 * 1024 * 1024
+
+    /// `fetchBlob` for a blob nobody should hold: the same island ladder, with
+    /// the bytes written straight to `destination`.
+    nonisolated static func fetchBlob(mediaID: String, host: String? = nil, to destination: URL) async throws {
+        if let host, let url = URL(string: "https://\(host)/media/\(mediaID)"),
+           await downloadIsland(url, to: destination) {
+            return
+        }
+        do {
+            try await APIClient.shared.downloadBlob("/media/\(mediaID)", to: destination)
+        } catch {
+            for v in VisitedIslandsStore.shared.list() {
+                if let url = URL(string: "https://\(v.host)/media/\(mediaID)"),
+                   await downloadIsland(url, to: destination) {
+                    return
+                }
+            }
+            throw error
+        }
+    }
+
+    private nonisolated static func downloadIsland(_ url: URL, to destination: URL) async -> Bool {
+        guard let (tmp, resp) = try? await IslandHTTP.download(for: URLRequest(url: url)) else { return false }
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            try? FileManager.default.removeItem(at: tmp)
+            return false
+        }
+        try? FileManager.default.removeItem(at: destination)
+        return (try? FileManager.default.moveItem(at: tmp, to: destination)) != nil
+    }
+
     /// Deposit an already-encrypted blob under a client-chosen id
     /// (`PUT /media/{id}`, idempotent, no auth — same trust model as the
     /// envelope deposit). Plain URLSession to the peer's island, the same
@@ -298,8 +340,17 @@ final class MediaService {
         do {
             let blob = try await Self.fetchBlob(mediaID: mediaID)
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
+            let ceiling = Self.inMemoryPlaintextCeiling
             let plain: Data? = await Task.detached(priority: .userInitiated) {
                 let key = SymmetricKey(data: keyBytes)
+                // A chunked container arrives here whenever a client that seals
+                // large files that way sent something this path fetches. It is
+                // opened chunk by chunk; the ceiling is on the plaintext this
+                // function has promised to return whole, not on the download.
+                if MediaChunkedBlob.looksChunked(blob) {
+                    return try? MediaChunkedBlob.decryptToData(blob: blob, key: key, ceiling: ceiling)
+                }
+                guard blob.count <= ceiling + 12 + 16 else { return nil }
                 guard let box = try? AES.GCM.SealedBox(combined: blob),
                       let plain = try? AES.GCM.open(box, using: key) else { return nil }
                 return plain
@@ -313,17 +364,50 @@ final class MediaService {
     }
 
     /// Download + decrypt to a temp file. AVPlayer needs a URL. Caller deletes the file.
+    ///
+    /// ⚠⚠ Nothing on this path holds the whole file, and that is not an
+    /// optimisation. This is where the heaviest blobs in the app land, and the
+    /// old shape (fetch to `Data`, copy into a sealed box, allocate the
+    /// plaintext, write it out) was three full-size copies of a video: for a
+    /// long clip that is a jetsam kill, which the person reads as the app
+    /// quitting when they tap play. The download streams to disk, and a chunked
+    /// container is opened one chunk at a time.
+    ///
+    /// A monolithic blob still has to be held whole (its one tag covers all of
+    /// it), so it is refused past `inMemoryPlaintextCeiling` instead of being
+    /// attempted. A failed decrypt is a bubble that says so; an OOM is not.
     func decryptToFile(mediaID: String, keyBase64: String) async -> URL? {
+        guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
+        let key = SymmetricKey(data: keyBytes)
+        let fm = FileManager.default
+        let container = fm.temporaryDirectory.appendingPathComponent("rcq-blob-\(mediaID).bin")
+        let out = fm.temporaryDirectory.appendingPathComponent("rcq-play-\(mediaID).mp4")
+        // The scratch path is the one the decrypt writes to, so a container
+        // that fails half way through never leaves a truncated clip behind
+        // under the name a player is about to be handed.
+        let scratch = fm.temporaryDirectory.appendingPathComponent("rcq-play-\(mediaID).part")
+        defer {
+            try? fm.removeItem(at: container)
+            try? fm.removeItem(at: scratch)
+        }
         do {
-            let blob = try await Self.fetchBlob(mediaID: mediaID)
-            guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
-            let key = SymmetricKey(data: keyBytes)
-            let box = try AES.GCM.SealedBox(combined: blob)
-            let plain = try AES.GCM.open(box, using: key)
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("rcq-play-\(mediaID).mp4")
-            try plain.write(to: url, options: .atomic)
-            return url
+            try await Self.fetchBlob(mediaID: mediaID, to: container)
+            let ceiling = Self.inMemoryPlaintextCeiling
+            let chunked = MediaChunkedBlob.looksChunked(fileAt: container)
+            try await Task.detached(priority: .userInitiated) {
+                if chunked {
+                    try MediaChunkedBlob.decrypt(fileAt: container, key: key, to: scratch)
+                    return
+                }
+                let size = (try FileManager.default.attributesOfItem(atPath: container.path)[.size] as? Int) ?? 0
+                guard size <= ceiling + 12 + 16 else { throw MediaChunkedBlob.Failure.tooLarge }
+                let blob = try Data(contentsOf: container, options: .mappedIfSafe)
+                let plain = try AES.GCM.open(try AES.GCM.SealedBox(combined: blob), using: key)
+                try plain.write(to: scratch, options: .atomic)
+            }.value
+            try? fm.removeItem(at: out)
+            try fm.moveItem(at: scratch, to: out)
+            return out
         } catch {
             return nil
         }

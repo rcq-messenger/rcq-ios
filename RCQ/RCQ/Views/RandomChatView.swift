@@ -191,8 +191,14 @@ struct RandomChatView: View {
                     .cornerRadius(8)
             }
             .padding(.horizontal, 32)
-            Button("common.close".localized) { dismiss() }
-                .foregroundColor(Theme.Color.textSecondary)
+            // Leaving is the destructive end of the session, so it is red, and
+            // the colour lives on the Text: the app sets a green `.tint` at the
+            // root, and a plain `Button("…")` takes that tint no matter what
+            // `.foregroundColor` the button itself carries.
+            Button { dismiss() } label: {
+                Text("common.close".localized)
+                    .foregroundColor(Theme.Color.statusBusy)
+            }
             Spacer()
         }
     }

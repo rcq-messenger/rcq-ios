@@ -24,6 +24,11 @@ import Foundation
 /// fill to the next 512-byte boundary: the island learns a size class.
 enum Vault {
     static let contacts = "contacts"
+    /// The user's own chat-list sections (founder item 1 of 23.08,
+    /// `docs/sections-design-2026-08-23.md`). A second slot, derived exactly
+    /// like the first: the island stores 32 hex characters and a sealed blob
+    /// and attaches no meaning to either.
+    static let sections = "sections"
 
     enum SealError: Error { case format, seal }
 

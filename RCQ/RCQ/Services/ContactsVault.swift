@@ -52,15 +52,57 @@ enum ContactsVault {
 
     private static let tombstoneTTLMs = 90 * 24 * 3600 * 1000
 
-    /// The highest version of the slot this install has seen, per account:
-    /// the floor below which an island's answer is a rollback rather than data.
-    private static var versionKey: String {
-        guard let id = AppGroup.readActiveAccountID() else { return "rcq.vault.contacts.version" }
-        return "rcq.vault.contacts.version.\(id.uuidString)"
+    /// Set for the rest of the session when the island serves a version below
+    /// the floor, or when another device retired this derivation
+    /// (`vault_reset`). Keyed by account so switching accounts clears it.
+    /// ⚠ A String, not an `Optional<UUID>`: an install with no active account
+    /// id answers nil, and `nil == nil` would read as "stopped" straight away.
+    private static var stoppedFor: String?
+
+    private static func accountKey() -> String {
+        AppGroup.readActiveAccountID()?.uuidString ?? "none"
     }
-    private static var lastSeenVersion: Int {
-        get { UserDefaults.standard.integer(forKey: versionKey) }
-        set { UserDefaults.standard.set(newValue, forKey: versionKey) }
+
+    /// Stop the slot for this session from outside: `/auth/reissue` on another
+    /// device retired the derivation this install's slot name and seal key come
+    /// from, so anything written from here would be sealed with a key the user
+    /// has just declared dead, under a name nothing will ever read again.
+    static func retire() {
+        stoppedFor = accountKey()
+        lastMirrored = nil
+    }
+
+    /// Account switch inside one process.
+    static func resetSyncState() {
+        stoppedFor = nil
+        lastMirrored = nil
+    }
+
+    /// Re-read the slot because another device wrote it (`vault_changed`, or
+    /// the reconnect sweep).
+    ///
+    /// The slot is still a MIRROR of the island's own list (stage 4, mirror
+    /// phase), so re-reading it does not change what the app draws. What it
+    /// does do is move the rollback floor up to what the other device just
+    /// wrote, which is what keeps this install's next mirror write from opening
+    /// with a 409, and drop the "already folded this list" fingerprint so the
+    /// next `/contacts` refresh folds against the fresh copy instead of
+    /// assuming its own is current.
+    @MainActor
+    static func refreshFromVault() async {
+        guard !PanicPINService.shared.isDecoy else { return }
+        guard AppState.shared.serverCapabilities.vault else { return }
+        guard stoppedFor != accountKey() else { return }
+        guard let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return }
+        let slot = Vault.slotId(identityPriv: ik, name: Vault.contacts)
+        guard let cur = try? await VaultClient.get(slot) else { return }
+        if cur.version < VaultFloor.lastSeen(slot) {
+            stoppedFor = accountKey()
+            os_log("contacts slot is below the floor; the mirror is stopped for this session", log: log, type: .error)
+            return
+        }
+        VaultFloor.remember(slot, cur.version)
+        lastMirrored = nil
     }
 
     /// Fold the server's list into the slot. Never throws: the roster is on
@@ -80,17 +122,25 @@ enum ContactsVault {
         if inFlight { return .skipped }
         inFlight = true
         defer { inFlight = false }
+        guard stoppedFor != accountKey() else { return .skipped }
         let slot = Vault.slotId(identityPriv: ik, name: Vault.contacts)
         let now = Int(Date().timeIntervalSince1970 * 1000)
-        var floor = lastSeenVersion
+        var floor = VaultFloor.lastSeen(slot)
         do {
             for _ in 0..<5 {
-                let cur = try await VaultAPI.get(slot)
+                let cur = try await VaultClient.get(slot)
                 if cur.version < floor {
-                    // The island served an older version than this install has
-                    // seen. In the mirror phase the server list is the truth
-                    // anyway; stop trusting the floor and rewrite from the list.
-                    lastSeenVersion = 0
+                    // ⚠ The island served an older version than this install
+                    // has seen. This used to clear the floor and rewrite the
+                    // slot from the server list; it must not. The island cannot
+                    // tell "restored from a backup" apart from "your derivation
+                    // was retired by /auth/reissue", and rewriting there
+                    // republishes the whole contact list under the retired slot
+                    // name, sealed with the key the user has just declared
+                    // compromised. Stop for the session and log it; a genuinely
+                    // rolled-back island heals on its own, because another
+                    // device's writes carry its version back over the floor.
+                    stoppedFor = accountKey()
                     return .failed("rolled back: \(cur.version) < \(floor)")
                 }
                 var remote = Blob()
@@ -101,14 +151,14 @@ enum ContactsVault {
                     }
                 }
                 guard let next = fold(remote, onIsland, now: now) else {
-                    lastSeenVersion = cur.version
+                    VaultFloor.remember(slot, cur.version)
                     lastMirrored = key
                     return .unchanged
                 }
                 let sealed = try Vault.seal(identityPriv: ik, slot: slot, version: cur.version + 1, plaintext: try JSONEncoder().encode(next))
-                let w = try await VaultAPI.put(slot, blob: sealed.base64EncodedString(), basedOn: cur.version)
+                let w = try await VaultClient.put(slot, blob: sealed.base64EncodedString(), basedOn: cur.version)
                 if let v = w.version {
-                    lastSeenVersion = v
+                    VaultFloor.remember(slot, v)
                     lastMirrored = key
                     return .written
                 }
@@ -164,62 +214,5 @@ enum ContactsVault {
 
     private static func same(_ x: Entry, _ y: Entry) -> Bool {
         (x.b ?? 0) == (y.b ?? 0) && (x.n ?? "") == (y.n ?? "") && (x.h ?? "") == (y.h ?? "")
-    }
-}
-
-/// The four vault calls (spec §4.9). 404 and 409 are answers the caller acts
-/// on, not failures, so they come back as values with the version.
-enum VaultAPI {
-    struct SlotRead { let blob: String?; let version: Int }
-    struct Write { let version: Int?; let current: Int }
-    struct SlotRef: Decodable { let slot: String; let version: Int }
-
-    private struct Detail: Decodable { let detail: Body?; struct Body: Decodable { let code: String?; let version: Int? } }
-    private struct GetBody: Decodable { let blob: String; let version: Int }
-    private struct VersionBody: Decodable { let version: Int }
-    private struct ListBody: Decodable { let slots: [SlotRef] }
-    private struct PutBody: Encodable { let blob: String; let version: Int }
-
-    static func list() async throws -> [SlotRef] {
-        let r: ListBody = try await APIClient.shared.request("GET", "/vault")
-        return r.slots
-    }
-
-    static func get(_ slot: String) async throws -> SlotRead {
-        do {
-            let data = try await APIClient.shared.rawRequest("GET", "/vault/\(slot)")
-            let b = try JSONDecoder().decode(GetBody.self, from: data)
-            return SlotRead(blob: b.blob, version: b.version)
-        } catch APIError.http(404, let body) {
-            return SlotRead(blob: nil, version: detailVersion(body) ?? 0)
-        }
-    }
-
-    /// `basedOn` is the version this write is based on (0 only for a slot
-    /// that never existed).
-    static func put(_ slot: String, blob: String, basedOn: Int) async throws -> Write {
-        do {
-            let data = try await APIClient.shared.rawRequest("PUT", "/vault/\(slot)", body: PutBody(blob: blob, version: basedOn))
-            let v = try JSONDecoder().decode(VersionBody.self, from: data).version
-            return Write(version: v, current: v)
-        } catch APIError.http(409, let body) {
-            return Write(version: nil, current: detailVersion(body) ?? 0)
-        }
-    }
-
-    /// A delete names the version it is based on, like a write. True when it
-    /// landed (or there was nothing to delete), false when stale.
-    static func delete(_ slot: String, basedOn: Int) async throws -> Bool {
-        do {
-            _ = try await APIClient.shared.rawRequest("DELETE", "/vault/\(slot)", query: ["version": String(basedOn)])
-            return true
-        } catch APIError.http(409, _) {
-            return false
-        }
-    }
-
-    private static func detailVersion(_ body: String?) -> Int? {
-        guard let body, let data = body.data(using: .utf8) else { return nil }
-        return (try? JSONDecoder().decode(Detail.self, from: data))?.detail?.version
     }
 }

@@ -281,6 +281,7 @@
 "bug_bounty.submit.cta" = "Надіслати";
 "bug_bounty.submit.sending" = "Надсилання…";
 "bug_bounty.submit.sent" = "Надіслано";
+"bug_bounty.submit.sent_number" = "Надіслано · №%d";
 "bug_bounty.disclosure" = "Уразливості безпеки з можливим витоком даних чи обходом наскрізного шифрування — пиши на legal@rcq.app з [SECURITY] у темі, не сюди.";
 "bug_bounty.alert.title" = "Звіт про помилку";
 "bug_bounty.shake.toggle" = "Струснути, щоб повідомити";
@@ -291,17 +292,12 @@
 "bug_bounty.attach.hint" = "Прикріпи скриншоти або короткий кліп, до 3 файлів.";
 "bug_bounty.attach.cta" = "Додати";
 "bug_bounty.attach.paste" = "Вставити";
-"chat.attach.poll" = "Опитування";
 "chat.attach.share_group" = "Запрошення";
-"chat.attach.share_connection" = "З'єднання";
 "relay.share.title" = "Спосіб з'єднання";
 "relay.share.invalid" = "Непідтримуване з'єднання";
 "relay.share.sent_note" = "Ти поділився способом з'єднання";
 "relay.share.added" = "Додано до твоїх з'єднань";
 "relay.share.add" = "Додати";
-"relay.share.pick.title" = "Поділитися з'єднанням";
-"relay.share.pick.body" = "Дай цьому контакту релей, щоб він пройшов, коли його власні з'єднання заблокують. Він натисне «Додати», щоб ним користуватися.";
-"relay.share.group.warn" = "Цей релей побачить кожен учасник групи. Ділися рідкісними домашніми релеями лише в групах, яким довіряєш.";
 "relay.import.title" = "Додати релей";
 "relay.import.hint" = "rcq-relay://… або ключ доступу";
 "relay.key.active" = "Ключ доступу введено";
@@ -341,26 +337,6 @@
 "paid_traffic.price_suffix" = "цей файл";
 "paid_traffic.enable" = "Увімкнути платний трафік";
 "paid_traffic.cancel" = "Скасувати";
-"poll.compose.title" = "Нове опитування";
-"poll.compose.question_header" = "ПИТАННЯ";
-"poll.compose.question_placeholder" = "Яке питання?";
-"poll.compose.options_header" = "ВАРІАНТИ";
-"poll.compose.option_placeholder" = "Варіант %d";
-"poll.compose.add_option" = "Додати варіант";
-"poll.compose.multi" = "Дозволити кілька відповідей";
-"poll.compose.anonymous" = "Анонімні голоси";
-"poll.compose.flags_footer" = "Анонімно: група не бачить, хто за що голосував. Кілька відповідей: кожен учасник може обрати кілька варіантів.";
-"poll.compose.send" = "Надіслати";
-"poll.header.single" = "Опитування · один варіант";
-"poll.header.multi" = "Опитування · кілька варіантів";
-"poll.header.anonymous" = "анонімне";
-"poll.header.closed" = "закрито";
-"poll.footer.total_votes" = "%d голосів";
-"poll.row.more_voters" = "ще %d";
-"poll.footer.close" = "Закрити опитування";
-"poll.error.parse" = "Не вдалося прочитати це опитування.";
-"poll.error.vote" = "Не вдалося зберегти твій голос.";
-"poll.error.close" = "Не вдалося закрити.";
 "contact_list.ctx.report" = "Поскаржитися";
 "report.title" = "Скарга";
 "report.heading" = "Поскаржитися на користувача";
@@ -378,7 +354,7 @@
 "settings.account.burn.message" = "Твій акаунт буде видалено на сервері і на цьому пристрої. Ти почнеш із зовсім новим UIN. Старі контакти і групи зникнуть — жодного зв'язку з твоєю новою особистістю в них не лишиться. Скасувати це неможливо.";
 "settings.account.burn.tally" = "%d предметів, %d жетонів, %d самоцвітів";
 "settings.link_web" = "Підключити веб";
-"settings.share.message" = "Додай мене в RCQ — %@ (%d)";
+"settings.share.message" = "Додай мене в RCQ: %@ (%d)";
 "settings.link_web.footer" = "Користуйся chat.rcq.app у браузері на комп'ютері. Створює одноразовий код, який ти вставляєш на сайті. Поки що лише надсилання — відповіді й далі приходять на iOS.";
 "link_web.title" = "Підключити веб";
 "link_web.instructions.title" = "Підключити chat.rcq.app";
@@ -439,11 +415,6 @@
 "outgoing.state.declined" = "Відхилено";
 "outgoing.cancel" = "Відкликати";
 "outgoing.dismiss" = "Прибрати";
-"presence.countdown.h_unit" = "год";
-"presence.countdown.m_unit" = "хв";
-"presence.countdown.lt1m" = "<1 хв";
-"presence.info.title" = "Лишатися видимим після виходу";
-"presence.info.body" = "Ти показуєшся в мережі ще стільки часу після того, як закриєш застосунок. Змінити можна в налаштуваннях, «Приватність і мережа».";
 // ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "Типовий";
 "uin_listing.share.cta_open" = "Відкрити на ринку →";
@@ -488,6 +459,7 @@
 "contact_list.pending_many" = "%d запитів у контакти";
 "contact_list.members_one" = "%d учасник";
 "contact_list.members_many" = "%d учасників";
+"contact_list.members_compact" = "%@ учасників";
 "contact_list.ctx.open_chat" = "Відкрити чат";
 "contact_list.ctx.send_message" = "Написати";
 "contact_list.ctx.quick_preview" = "Швидкий перегляд";
@@ -520,6 +492,11 @@
 "chat.pin.error.forbidden" = "Потрібне право змінювати інформацію групи. Попросіть власника надати його.";
 "chat.pin.error.rejected" = "Цей текст не підійшов для закріплення.";
 "chat.pin.error.generic" = "Закріпити не вдалося. Перевірте зв'язок і спробуйте ще раз.";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "Посилання вимкнено в цій групі.";
+"chat.files_off.notice" = "Файли вимкнено в цій групі.";
+"chat.slowmode.wait" = "Повільний режим: зачекайте %d с";
 "chat.selection.delete" = "Видалити (%d)";
 "chat.selection.forward" = "Переслати (%d)";
 "chat.selection.cancel" = "Скасувати";
@@ -689,7 +666,6 @@
 "chat.preview.market_item" = "Предмет з ринку";
 "chat.preview.uin_listing" = "Оголошення UIN";
 "chat.preview.group_invite" = "Запрошення в групу";
-"chat.preview.poll" = "Опитування";
 "chat.preview.premium_photo" = "🔒 Платне фото";
 "chat.preview.premium_video" = "🔒 Платне відео";
 "chat.preview.generic" = "Повідомлення";
@@ -707,6 +683,40 @@
 "group.no_matches" = "Нічого не знайдено. Спробуй повний UIN.";
 "group.title" = "Група";
 "group.section.members" = "Учасники (%d)";
+"group.section.members.compact" = "Учасники (%@)";
+"group.section.content_policy" = "Що тут можна";
+"group.settings.no_links" = "Вимкнути посилання";
+"group.settings.no_links.hint" = "Посилання в повідомленнях лишаються простим текстом і не відкриваються.";
+"group.settings.no_files" = "Вимкнути файли";
+"group.settings.no_files.hint" = "Файли не можна надіслати або завантажити в цій групі.";
+"group.settings.slowmode" = "Повільний режим";
+"group.settings.slowmode.hint" = "Пауза між повідомленнями для кожного учасника.";
+"group.settings.slowmode.off" = "Вимк";
+"group.settings.slowmode.sec" = "%d с";
+"group.settings.slowmode.min" = "1 хв";
+"group.role.moderator" = "Модератор";
+"group.member.promote" = "Зробити адміном";
+"group.member.demote" = "Забрати права";
+"group.perm.grant_all" = "Усі права";
+"group.perm.revoke_all" = "Забрати";
+"group.perm.hint" = "«Видаляти»: прибирати чужі повідомлення. «Учасники»: виключати людей. «Інфо»: змінювати назву, фото і закріплене. Ніщо з цього не робить людину власником: група лишається вашою, доки ви самі не передасте її нижче.";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "Передати володіння";
+"group.transfer.cta" = "Передати";
+"group.transfer.working" = "Передаємо…";
+"group.transfer.confirm" = "Зробити власником групи %@? Ви лишитеся в групі звичайним учасником, але втратите права власника та всі права модератора. Повернути володіння зможе лише новий власник.";
+"group.transfer.done.title" = "Володіння передано";
+"group.transfer.done" = "Тепер групою володіє %@. Ви лишаєтеся звичайним учасником: можна вийти, а можна лишитися.";
+"group.transfer.stay" = "Лишитися";
+"group.transfer.err.owner_only" = "Передати групу може лише власник.";
+"group.transfer.err.already_owner" = "Він уже власник цієї групи.";
+"group.transfer.err.not_a_member" = "Його більше немає в цій групі.";
+"group.transfer.err.no_such_user" = "Цей острів його не знає.";
+"group.transfer.err.target_suspended" = "Цей обліковий запис заблоковано.";
+"group.transfer.err.rate_limited_in" = "Забагато спроб. Повторіть через %d с.";
+"group.transfer.err.rate_limited" = "Забагато спроб. Спробуйте пізніше.";
+"group.transfer.err.failed" = "Не вдалося передати групу.";
 "group.section.notifications" = "Сповіщення";
 "group.notifications.mute" = "Вимкнути звук сповіщень";
 "group.notifications.unmute" = "Увімкнути звук сповіщень";
@@ -962,12 +972,10 @@
 "pool.section_share" = "%.0f%% випадінь";
 "pool.cap" = "межа %d";
 "pool.cap_remaining" = "%d / %d лишилося";
-"settings.privacy.persistent_presence" = "Видимість після виходу";
 "settings.privacy.relay_calls" = "Дзвінки завжди через релей";
 "settings.privacy.relay_calls.desc" = "Вести звук і відео дзвінка через наш релей, щоб інша сторона ніколи не дізналася твою IP-адресу. Якщо вимкнути, якість дзвінка може стати кращою, а твою адресу буде видно.";
 "settings.privacy.strangers" = "Незнайомці в запити";
 "settings.privacy.strangers.desc" = "Повідомлення не з контактів чекають у запитах, доки ви їх не приймете. Якщо ви написали людині першою, її відповідь надійде як зазвичай.";
-"settings.privacy.persistent_presence.desc" = "Контакти бачать твій статус (У мережі / Відійшов / Не турбувати), навіть коли застосунок закрито.";
 "settings.privacy.hof_opt_in" = "Зала слави";
 "settings.privacy.hof_opt_in.desc" = "Дозволити розглянути тебе для публічної Зали слави на rcq.app. Лише нік і UIN, і лише якщо схвалять. Вимкнути можна будь-коли.";
 "settings.privacy.hof_add_image" = "Додати зображення / GIF";
@@ -975,13 +983,6 @@
 "settings.privacy.hof_remove_image" = "Прибрати зображення";
 "settings.privacy.hof_image_too_large" = "Зображення завелике. Візьми менше (до ~256 КБ).";
 "settings.privacy.hof_image_error" = "Не вдалося вивантажити зображення. Спробуй ще раз.";
-"settings.privacy.presence_ttl" = "Тривалість";
-"settings.privacy.presence_ttl.forever" = "Завжди";
-"settings.privacy.presence_ttl.30m" = "30 хвилин";
-"settings.privacy.presence_ttl.1h" = "1 година";
-"settings.privacy.presence_ttl.3h" = "3 години";
-"settings.privacy.presence_ttl.8h" = "8 годин";
-"settings.privacy.presence_ttl.24h" = "24 години";
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 "radio.info.title" = "Про Радіочат";
 "radio.info.header.title" = "Локальний меш-чат";
@@ -1600,6 +1601,25 @@
 "myreports.status.resolved" = "Вирішено";
 "myreports.status.dismissed" = "Відхилено";
 "myreports.status.duplicate" = "Дублікат";
+
+"myreports.number" = "Звернення №%d";
+"myreports.number.short" = "№%d";
+"myreports.copy" = "Копіювати звернення";
+"myreports.copy_answer" = "Копіювати відповідь";
+"myreports.edit" = "Змінити звернення";
+"myreports.edit.placeholder" = "Ваше звернення";
+"myreports.edit.save" = "Зберегти";
+"myreports.edit.error" = "Не вдалося зберегти. Спробуйте ще раз.";
+"myreports.edit.answered" = "На звернення вже відповіли, тому сам текст змінити не можна. Допишіть відповіддю.";
+"myreports.edit.unsupported" = "Цей острів ще не вміє змінювати звернення.";
+"myreports.edit.not_editable" = "Звіт про збій надсилає сам застосунок, його текст змінити не можна.";
+"myreports.edit.too_often" = "Забагато правок за годину. Спробуйте пізніше.";
+"myreports.remove" = "Прибрати з мого списку";
+"myreports.remove.cta" = "Прибрати";
+"myreports.remove.confirm.title" = "Прибрати звернення %@ зі списку?";
+"myreports.remove.confirm.body" = "Воно зникне з цього екрана. Нічого не стирається: в операторів лишається і звернення, і відповідь, і воно й далі враховується в залі слави.";
+"myreports.remove.refused" = "Це звернення ще розглядають, тому воно лишиться у списку до рішення.";
+"myreports.remove.error" = "Не вдалося прибрати. Спробуйте ще раз.";
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "Мої UIN";
 "my_uins.active" = "Ти відповідаєш як";
@@ -1615,6 +1635,21 @@
 "uin_shop.held.body" = "Він у твоїй колекції, а відповідаєш ти й далі як %@. Перейди на нього зараз або пізніше в розділі «Мої UIN».";
 "uin_shop.held.now" = "Перейти на нього";
 "uin_shop.held.later" = "Пізніше";
+
+"my_uins.release" = "Звільнити";
+"my_uins.release.cta" = "Звільнити";
+"my_uins.release.confirm.title" = "Звільнити %@?";
+"my_uins.release.confirm.body" = "Номер повернеться до спільного пулу, і його може зайняти хтось інший. Скасувати це не можна.";
+"my_uins.release.error.in_use" = "Не можна звільнити номер, яким ви відповідаєте. Спершу перейдіть на інший.";
+"my_uins.release.error.unsupported" = "Цей острів ще не вміє звільняти номери.";
+"my_uins.release.error.too_often" = "Забагато звільнень за годину. Спробуйте пізніше.";
+"my_uins.error.not_owned" = "Цього номера вже немає у вашій колекції.";
+"my_uins.footer.rules" = "Один акаунт може тримати до %d номерів. Звільнений номер повертається до спільного пулу, його може зайняти будь-хто, і повернути його не можна. Номер, яким ви відповідаєте, звільнити не можна.";
+"uin.error.suspended" = "Акаунт заморожено, тому змінювати його номери не можна.";
+"uin.error.too_many" = "У вас уже стільки номерів, скільки може тримати один акаунт. Спершу звільніть один на екрані «Мої UIN».";
+"uin_shop.error.generic" = "Сервер відмовив. Спробуйте ще раз.";
+"uin_shop.info.cap.title" = "Скільки номерів можна тримати";
+"uin_shop.info.cap.body" = "Один акаунт може тримати до %1$d номерів, у вас зараз %2$d. Звільнити номер можна на екрані «Мої UIN», крім того, яким ви відповідаєте. Скасувати це не можна: звільнений номер повертається до спільного пулу, і його може зайняти будь-хто.";
 /* Full network check (NetworkAudit) */
 "audit.run" = "Повна перевірка мережі";
 "audit.hint" = "Відкриває звичайні з'єднання до цього острова, фронту, релеїв і двох відомих контрольних хостів, щоб зрозуміти, що фільтрує ця мережа. Нікуди нічого не надсилається; результат скопіюй собі сам.";
@@ -1670,3 +1705,58 @@
 "how.q5" = "Чи може хтось дізнатися, кому я пишу?";
 "how.a5" = "Ваш острів знає, що конверт комусь адресовано, і не знає, що він від вас.\n\nКоли релеї RCQ увімкнені, шлях назовні поділено між двома релеями. Перший бачить вас і не знає, до якого острова ви йдете; другий доходить до острова і не знає, хто ви.\n\nЧого приховати не можна: сам факт, що ви користуєтеся RCQ, видно тому, хто тримає вашу мережу, доки релеї не ввімкнені.";
 "how.more" = "Більше питань на rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "Пошук у налаштуваннях";
+"settings.search.placeholder" = "Тема, PIN, шпалери…";
+"settings.search.empty.idle" = "Введіть запит, щоб знайти налаштування.";
+"settings.privacy.profile_card" = "Хто може відкрити мою картку";
+"settings.privacy.profile_card.desc" = "Ваше ім'я у списку учасників, у списку реакцій або над фотографією відкриває картку профілю. Той, кому закрито, відкрити її не зможе, писати вам усе одно зможе.";
+"notifs.muted.empty" = "Нікого не заглушено.";
+
+"chat.poll.removed" = "Опитування більше не підтримуються";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "Голосове повідомлення";
+"audio.strip.play" = "Відтворити";
+"audio.strip.pause" = "Пауза";
+"audio.strip.close" = "Зупинити відтворення";
+"album.sender.open_profile" = "Відкрити профіль";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "Додати чати";
+"sections.empty" = "Порожньо. Кнопка + переносить сюди чат.";
+"sections.reorder.hint" = "Рухайте секції стрілками.";
+"sections.reorder.done" = "Готово";
+"sections.move_up" = "Вище";
+"sections.move_down" = "Нижче";
+"sections.menu.reorder" = "Переставити секції";
+"sections.menu.new" = "Нова секція";
+"sections.menu.rename" = "Перейменувати";
+"sections.menu.delete" = "Видалити секцію";
+"sections.menu.delete.confirm" = "Видалити секцію? Чати залишаться на місці й повернуться туди, де були раніше.";
+"sections.menu.pin" = "Питати PIN";
+"sections.menu.pin.off" = "Не питати PIN";
+"sections.menu.pin.note" = "Ховає секцію, доки ви не введете PIN на цьому пристрої. Самі чати цим не шифруються.";
+"sections.new.placeholder" = "Назва секції";
+"sections.new.save" = "Створити";
+"sections.rename.save" = "Зберегти";
+"sections.locked.title" = "Питає PIN";
+"sections.locked.nopin" = "Прихована на іншому пристрої. Тут PIN не задано.";
+"sections.locked.open_anyway" = "Однаково відкрити";
+"sections.picker.title" = "Додати в «%@»";
+"sections.picker.search" = "Пошук";
+"sections.picker.save" = "Зберегти";
+"sections.picker.nobody" = "Поки нема кого додати.";
+"sections.err.too_many_sections" = "Більше секцій в одному акаунті не буває.";
+"sections.err.section_full" = "Секція заповнена.";
+"sections.err.too_many_members" = "Забагато чатів у всіх секціях разом.";
+"sections.err.too_large" = "Список секцій завеликий, він не збережеться.";
+"sections.err.unreadable" = "Секції записані новішою версією RCQ.";
+"pin_verify.title.section" = "Відкрити секцію";

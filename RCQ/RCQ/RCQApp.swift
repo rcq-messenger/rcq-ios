@@ -23,23 +23,56 @@ extension Notification.Name {
 final class ShakeMotionDetector {
     static let shared = ShakeMotionDetector()
     private let manager = CMMotionManager()
-    private var lastFired: Date = .distantPast
     private static let threshold: Double = 2.5
     private static let cooldown: TimeInterval = 1.0
 
+    /// Sample delivery queue. Serial (`maxConcurrentOperationCount = 1`), which
+    /// is what makes the cooldown state below safe without a lock.
+    ///
+    /// Samples used to be delivered to `.main` twenty times a second, for the
+    /// whole life of the process, so the main thread woke up to compute a
+    /// square root and compare two dates while the user was reading a chat.
+    /// The only thing that has to happen on the main thread is the
+    /// notification, and that happens on the ~never that a shake lands.
+    private let queue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "app.rcq.shake"
+        q.maxConcurrentOperationCount = 1
+        q.qualityOfService = .utility
+        return q
+    }()
+
+    /// Cooldown state, off the main actor: touched only from `queue`, which is
+    /// serial, so the class is safe to hand to CoreMotion.
+    private final class Cooldown: @unchecked Sendable {
+        private var lastFired: Date = .distantPast
+        func shouldFire(at now: Date, after interval: TimeInterval) -> Bool {
+            guard now.timeIntervalSince(lastFired) > interval else { return false }
+            lastFired = now
+            return true
+        }
+    }
+    private let cooldown = Cooldown()
+
+    /// Called from `RootView.task`, not from `RCQApp.init`: starting the
+    /// accelerometer is not needed to paint anything, and on a VoIP-push
+    /// background launch there is no UI to shake at all.
     func start() {
         guard manager.isAccelerometerAvailable, !manager.isAccelerometerActive else { return }
         manager.accelerometerUpdateInterval = 1.0 / 20.0  // 20 Hz — plenty for shake detection
-        manager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
-            guard let self, let d = data else { return }
+        manager.startAccelerometerUpdates(to: queue) { [cooldown] data, _ in
+            guard let d = data else { return }
             let m = sqrt(d.acceleration.x * d.acceleration.x
                        + d.acceleration.y * d.acceleration.y
                        + d.acceleration.z * d.acceleration.z)
             guard m > Self.threshold else { return }
-            let now = Date()
-            guard now.timeIntervalSince(self.lastFired) > Self.cooldown else { return }
-            self.lastFired = now
-            NotificationCenter.default.post(name: .rcqDeviceShook, object: nil)
+            guard cooldown.shouldFire(at: Date(), after: Self.cooldown) else { return }
+            // Observers are SwiftUI views (`RootView.onReceive`), so the post
+            // has to land on the main thread, and CoreMotion no longer
+            // delivers us there.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .rcqDeviceShook, object: nil)
+            }
         }
     }
 
@@ -247,13 +280,20 @@ struct RCQApp: App {
         _ = AccountManager.shared
         // Eager-touch so PushKit + LanguageManager (App Group mirror) are
         // initialised before any push reaches the NSE.
+        //
+        // ⚠ VoIPPushService STAYS here and must not move to a `.task` on a
+        // view. A VoIP push launches the process into the BACKGROUND, where no
+        // scene is connected and no SwiftUI body ever runs. PushKit would
+        // never get a registry, the push would never be delivered, and the call
+        // would never ring. `PKPushRegistry` costs a delegate assignment.
+        //
+        // CallProvider is NOT touched here any more: it built a CXProvider
+        // before the first frame so that two `RTCAudioSession` booleans would
+        // be set, and those moved to `CallAudio.prepareForWebRTC()`. The
+        // provider is now built by whoever first reports a call, including
+        // synchronously inside the PushKit delivery handler.
         _ = VoIPPushService.shared
-        _ = CallProvider.shared
         _ = LanguageManager.shared
-        // Boot the accelerometer-based shake detector. Posts
-        // `.rcqDeviceShook` notifications when the device crosses the
-        // shake threshold; consumed by RootView for Bug Bounty.
-        ShakeMotionDetector.shared.start()
         #if DEBUG
         // R2: the PIN vault's slot payload is a fixed-size box. Fail loudly in
         // development the moment a newly added field pushes the worst-case JSON
@@ -330,6 +370,19 @@ struct RootView: View {
             } else {
                 await appState.boot()
             }
+        }
+        // Launch work that nothing on screen depends on. A `.task` on the root
+        // runs after the first frame is on its way, and only when there is a
+        // scene at all, which is the point: a VoIP-push background launch has
+        // no use for the accelerometer.
+        .task {
+            // Posts `.rcqDeviceShook` when the device crosses the shake
+            // threshold; consumed below for Bug Bounty.
+            ShakeMotionDetector.shared.start()
+            // Opens the six cue files on a utility queue. Used to happen in
+            // `SoundService.init`, which `ContactListView` triggers, i.e. on the
+            // main thread immediately before the first painted list.
+            SoundService.shared.prewarm()
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
@@ -472,8 +525,10 @@ struct RootView: View {
                 BootSplash()
             }
         }
-        // Each top-level screen applies `.callMinimizedBarInset()` itself
-        // because safeAreaInset doesn't pass through NavigationStack pushes.
+        // The strips are hosted once, on the NavigationStack inside
+        // ContactListView, so every screen pushed into it inherits the inset.
+        // Not here: the two covers below are the call and the room themselves,
+        // and neither wants a strip pointing at what is already full screen.
         .fullScreenCover(isPresented: callPresented) { CallScreen() }
         .fullScreenCover(isPresented: roomPresented) {
             AudioRoomScreen(initialRoomName: audioRooms.activeRoomName ?? "audio_room.screen.fallback_name".localized)

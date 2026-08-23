@@ -31,6 +31,19 @@ struct Contact: Identifiable, Hashable, Codable {
     /// that omits it — nil is treated as callable. The server enforces the
     /// policy on the call_offer regardless.
     var callable: Bool? = nil
+    /// Whether WE may open this contact's profile card, per THEIR
+    /// `profile_card_policy` (founder item 22). The exact twin of `callable`
+    /// one line up: the island computes the verdict per viewer and publishes
+    /// the boolean, never the raw policy.
+    ///
+    /// Optional for back-compat with an island that omits it, and nil FAILS
+    /// OPEN at `ProfileCardPrivacy.canOpenCard`. The island withholds the card
+    /// fields regardless, so the worst a stale nil buys is a link that opens a
+    /// card stripped down to its identity floor.
+    ///
+    /// ⚠ NOT in `CodingKeys` by accident: it must survive `CrossIslandStore`'s
+    /// JSON persistence the way `host` does, so it IS listed there.
+    var profileOpenable: Bool? = nil
     /// Federation (F2): the island host where this peer lives, set ONLY for a
     /// cross-island contact (stored locally, never from the server `/contacts`).
     /// When present, `MessageService.sendEnvelope` deposits to their island via
@@ -55,6 +68,7 @@ struct Contact: Identifiable, Hashable, Codable {
         case gender
         case lastSeen = "last_seen"
         case callable
+        case profileOpenable = "profile_openable"
         case host
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"

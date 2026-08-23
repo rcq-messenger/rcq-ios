@@ -11,21 +11,23 @@ import UniformTypeIdentifiers
 /// wrong-looking value.
 struct PrivacySettingsView: View {
     // Two panes from one view: Settings opens it as either Privacy (visibility,
-    // presence, security, migration, HoF) or Network (server, proxy, obfuscation,
+    // security, migration, HoF) or Network (server, proxy, obfuscation,
     // relays). Splitting the surfaces was a user request; keeping one struct
     // avoids duplicating the large shared state. Default .privacy preserves any
     // existing call site.
     enum Pane { case privacy, network }
     var pane: Pane = .privacy
+    /// Row the Settings search sent us to (item 28). Scrolled into view and
+    /// washed with accent for a moment once the sheet is up.
+    var highlight: SettingsRow?
 
     @Environment(\.dismiss) private var dismiss
 
+    /// The highlight while it is still showing; dropped on a timer so the wash
+    /// fades instead of staying on the row for as long as the sheet is open.
+    @State private var activeHighlight: SettingsRow?
+
     @State private var lastSeenVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.lastSeen") ?? "everyone"
-    /// Opt-in: when ON, the server keeps showing the user's chosen
-    /// status to contacts even after the WS connection has been gone
-    /// past the staleness window. Lets the user appear "around" with
-    /// Online / Away / DND even when the app is not running.
-    @State private var presencePersistent: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.presencePersistent")
     @State private var relayCalls: Bool = CallPrivacy.alwaysRelay
     /// Same-island stranger quarantine - device-local like the relay switch:
     /// the mailbox itself stays open (sealed sender), this decides where THIS
@@ -65,10 +67,6 @@ struct PrivacySettingsView: View {
     @State private var showHofPicker: Bool = false
     @State private var hofBusy: Bool = false
     @State private var hofError: String? = nil
-    /// Allowed values match the server allow-list: 0 (forever), 30,
-    /// 60, 180, 480, 1440. Picker labels render to the localised
-    /// strings below.
-    @State private var presenceTTLMinutes: Int = UserDefaults.standard.integer(forKey: "rcq.privacy.presenceTTL")
     @State private var gender: String = ""
     // Seed visibility pickers from the cached last-known values so they render
     // their real state instantly instead of snapping from the defaults when the
@@ -76,6 +74,11 @@ struct PrivacySettingsView: View {
     // reconciles + re-caches.
     @State private var genderVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.genderVisibility") ?? "nobody"
     @State private var profileVisibility: String = UserDefaults.standard.string(forKey: "rcq.privacy.profileVisibility") ?? "everyone"
+    /// Founder item 22: who may OPEN my card, as opposed to what they read
+    /// once it is open. Device-local for now (see `ProfileCardPrivacy`), and
+    /// written through to the island anyway so it is already there the day the
+    /// column exists.
+    @State private var profileCardPolicy: String = ProfileCardPrivacy.myPolicy
     @State private var groupInvitePolicy: String = UserDefaults.standard.string(forKey: "rcq.privacy.groupInvitePolicy") ?? "everyone"
     /// Mirrored to `@AppStorage("rcq.privacy.callPolicy")` so
     /// `ChatView` can gate the call-button affordance without
@@ -115,187 +118,259 @@ struct PrivacySettingsView: View {
         return "settings.network.stealth.direct".localized
     }
 
+    // MARK: - search index
+    //
+    // ⚠ Both panes, in screen order. A row added below belongs here; the DEBUG
+    // check in `SettingsSearchIndex` is what catches one that forgot.
+    static let searchEntries: [SettingsSearchEntry] = [
+        // Privacy pane
+        .init(row: .profileVisibility, titleKey: "settings.privacy.profile",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .profileCard, titleKey: "settings.privacy.profile_card",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .lastSeen, titleKey: "settings.privacy.last_seen",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .relayCalls, titleKey: "settings.privacy.relay_calls",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .strangers, titleKey: "settings.privacy.strangers",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .genderVisibility, titleKey: "settings.privacy.gender_visible",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .groupInvites, titleKey: "settings.privacy.group_invites",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .callPolicy, titleKey: "settings.privacy.calls",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .readReceipts, titleKey: "settings.privacy.read_receipts",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .howItWorks, titleKey: "how.title",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .panicPIN, titleKey: "settings.panic_pin",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .migrate, titleKey: "settings.migrate",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .hallOfFame, titleKey: "settings.privacy.hof_opt_in",
+              sectionKey: "settings.privacy", destination: .privacy),
+        // Network pane
+        .init(row: .accounts, titleKey: "settings.network.accounts",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .stealth, titleKey: "settings.network.stealth",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .onion, titleKey: "settings.network.onion",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .localProxy, titleKey: "settings.network.localproxy",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .customServer, titleKey: "settings.network.custom_server",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .diagnostics, titleKey: "settings.network.diag",
+              sectionKey: "settings.network", destination: .network),
+        .init(row: .sharedRelays, titleKey: "relay.shared.section",
+              sectionKey: "settings.network", destination: .network),
+    ]
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                Form {
-                    // One Section per option so its footer (a per-
-                    // policy explanation) docks directly under the
-                    // picker instead of dumping all five descriptions
-                    // in one bottom block. Reads top-down, no need to
-                    // hunt for the right paragraph.
-                  if pane == .privacy {
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.profile".localized,
-                            selection: $profileVisibility,
-                            field: "profile_visibility"
-                        )
-                    } footer: {
-                        Text("settings.privacy.profile.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.last_seen".localized,
-                            selection: $lastSeenVisibility,
-                            field: "last_seen_visibility"
-                        )
-                    } footer: {
-                        Text("settings.privacy.last_seen.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    // Device-local, not a server policy: it decides what THIS
-                    // phone puts in its own ICE candidates. Same switch and the
-                    // same words as Android, because it is the same choice.
-                    Section {
-                        Toggle(isOn: $relayCalls) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.privacy.relay_calls".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.privacy.relay_calls.desc".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
+                ScrollViewReader { proxy in
+                    Form {
+                        // One Section per option so its footer (a per-
+                        // policy explanation) docks directly under the
+                        // picker instead of dumping all five descriptions
+                        // in one bottom block. Reads top-down, no need to
+                        // hunt for the right paragraph.
+                      if pane == .privacy {
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.profile".localized,
+                                selection: $profileVisibility,
+                                field: "profile_visibility"
+                            )
+                            .settingsSearchRow(.profileVisibility, highlight: activeHighlight)
+                        } footer: {
+                            Text("settings.privacy.profile.desc".localized)
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        // Founder item 22, directly under its neighbour because the
+                        // two are constantly confused: the row above decides what
+                        // is READ once the card is open, this one decides whether
+                        // the name is a link at all. The surfaces that hand a
+                        // stranger that link are incidental - a reactions sheet, a
+                        // sender name over a photo, a member roster - and nobody
+                        // chose to appear on any of them.
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.profile_card".localized,
+                                selection: $profileCardPolicy,
+                                field: "profile_card_policy"
+                            )
+                            .onChange(of: profileCardPolicy) { newValue in
+                                // Mirror for the surfaces that ask while they draw.
+                                ProfileCardPrivacy.myPolicy = newValue
                             }
+                            .settingsSearchRow(.profileCard, highlight: activeHighlight)
+                        } footer: {
+                            // The "not in effect yet" footnote that used to sit
+                            // here is gone: the island now keeps the value and
+                            // publishes the per-viewer verdict, so the sentence
+                            // had turned into the opposite of the truth. The
+                            // description above is the whole story again.
+                            Text("settings.privacy.profile_card.desc".localized)
                         }
-                        .tint(Theme.Color.accent)
-                        .onChange(of: relayCalls) { newValue in
-                            CallPrivacy.alwaysRelay = newValue
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.last_seen".localized,
+                                selection: $lastSeenVisibility,
+                                field: "last_seen_visibility"
+                            )
+                            .settingsSearchRow(.lastSeen, highlight: activeHighlight)
+                        } footer: {
+                            Text("settings.privacy.last_seen.desc".localized)
                         }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    // Opt-in stranger quarantine (web parity, founder-approved
-                    // wording). Per-account on this device; default OFF.
-                    Section {
-                        Toggle(isOn: $strangersToRequests) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.privacy.strangers".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.privacy.strangers.desc".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        // Device-local, not a server policy: it decides what THIS
+                        // phone puts in its own ICE candidates. Same switch and the
+                        // same words as Android, because it is the same choice.
+                        Section {
+                            Toggle(isOn: $relayCalls) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("settings.privacy.relay_calls".localized)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text("settings.privacy.relay_calls.desc".localized)
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
                             }
-                        }
-                        .tint(Theme.Color.accent)
-                        .onChange(of: strangersToRequests) { newValue in
-                            StrangerQuarantine.shared.enabled = newValue
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        Toggle(isOn: $presencePersistent) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.privacy.persistent_presence".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.privacy.persistent_presence.desc".localized)
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
+                            .tint(Theme.Color.accent)
+                            .onChange(of: relayCalls) { newValue in
+                                CallPrivacy.alwaysRelay = newValue
                             }
+                            .settingsSearchRow(.relayCalls, highlight: activeHighlight)
                         }
-                        .tint(Theme.Color.accent)
-                        .onChange(of: presencePersistent) { newValue in
-                            Task { await pushBoolField("presence_persistent", newValue) }
-                            // (Re)anchor the local countdown shown in the
-                            // contact-list header, or clear it when turned off.
-                            if newValue {
-                                PresenceWindow.anchor(ttlMinutes: presenceTTLMinutes, uin: AuthService.shared.ownUIN)
-                            } else {
-                                PresenceWindow.clear(uin: AuthService.shared.ownUIN)
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        // Opt-in stranger quarantine (web parity, founder-approved
+                        // wording). Per-account on this device; default OFF.
+                        Section {
+                            Toggle(isOn: $strangersToRequests) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("settings.privacy.strangers".localized)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text("settings.privacy.strangers.desc".localized)
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
                             }
-                        }
-                        if presencePersistent {
-                            Picker(selection: $presenceTTLMinutes) {
-                                Text("settings.privacy.presence_ttl.30m".localized).tag(30)
-                                Text("settings.privacy.presence_ttl.1h".localized).tag(60)
-                                Text("settings.privacy.presence_ttl.3h".localized).tag(180)
-                                Text("settings.privacy.presence_ttl.8h".localized).tag(480)
-                                Text("settings.privacy.presence_ttl.24h".localized).tag(1440)
-                            } label: {
-                                Text("settings.privacy.presence_ttl".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
+                            .tint(Theme.Color.accent)
+                            .onChange(of: strangersToRequests) { newValue in
+                                StrangerQuarantine.shared.enabled = newValue
                             }
-                            .onChange(of: presenceTTLMinutes) { newValue in
-                                Task { await pushIntField("presence_ttl_minutes", newValue) }
-                                PresenceWindow.anchor(ttlMinutes: newValue, uin: AuthService.shared.ownUIN)
+                            .settingsSearchRow(.strangers, highlight: activeHighlight)
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        // ⚠ "Visibility after leaving" (presence_persistent +
+                        // presence_ttl_minutes) stood here and was removed on
+                        // 2026-08-23. It never worked: this client only ever sent
+                        // the flag, never the TTL, so the island read NULL as
+                        // "forever"; and the island's window was anchored on
+                        // last_seen, which the 25s heartbeat rewrites, so it
+                        // restarted instead of burning down. The countdown the
+                        // user saw was a purely local clock with nothing behind
+                        // it. The columns are gone server-side and both keys are
+                        // pinned false/null in every response.
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.gender_visible".localized,
+                                selection: $genderVisibility,
+                                field: "gender_visibility"
+                            )
+                            .disabled(gender.isEmpty)
+                            .settingsSearchRow(.genderVisibility, highlight: activeHighlight)
+                        } footer: {
+                            Text(gender.isEmpty
+                                 ? "settings.privacy.gender_visible.desc.empty".localized
+                                 : "settings.privacy.gender_visible.desc".localized)
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.group_invites".localized,
+                                selection: $groupInvitePolicy,
+                                field: "group_invite_policy"
+                            )
+                            .settingsSearchRow(.groupInvites, highlight: activeHighlight)
+                        } footer: {
+                            Text("settings.privacy.group_invites.desc".localized)
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.calls".localized,
+                                selection: $callPolicy,
+                                field: "call_policy"
+                            )
+                            .onChange(of: callPolicy) { newValue in
+                                // Mirror to AppStorage so ChatView can
+                                // hide its call buttons immediately,
+                                // without waiting for a /users/me/info
+                                // round-trip.
+                                callPolicyCache = newValue
                             }
+                            .settingsSearchRow(.callPolicy, highlight: activeHighlight)
+                        } footer: {
+                            Text("settings.privacy.calls.desc".localized)
                         }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.gender_visible".localized,
-                            selection: $genderVisibility,
-                            field: "gender_visibility"
-                        )
-                        .disabled(gender.isEmpty)
-                    } footer: {
-                        Text(gender.isEmpty
-                             ? "settings.privacy.gender_visible.desc.empty".localized
-                             : "settings.privacy.gender_visible.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.group_invites".localized,
-                            selection: $groupInvitePolicy,
-                            field: "group_invite_policy"
-                        )
-                    } footer: {
-                        Text("settings.privacy.group_invites.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.calls".localized,
-                            selection: $callPolicy,
-                            field: "call_policy"
-                        )
-                        .onChange(of: callPolicy) { newValue in
-                            // Mirror to AppStorage so ChatView can
-                            // hide its call buttons immediately,
-                            // without waiting for a /users/me/info
-                            // round-trip.
-                            callPolicyCache = newValue
+                        .listRowBackground(Theme.Color.bgSecondary)
+                        Section {
+                            scopePicker(
+                                title: "settings.privacy.read_receipts".localized,
+                                selection: $readReceiptsVisibility,
+                                field: "read_receipts_visibility"
+                            )
+                            .onChange(of: readReceiptsVisibility) { newValue in
+                                // MessageService reads this on every
+                                // markRead - mirror immediately so the
+                                // gate flips without a round-trip.
+                                readReceiptsCache = newValue
+                            }
+                            .settingsSearchRow(.readReceipts, highlight: activeHighlight)
+                        } footer: {
+                            Text("settings.privacy.read_receipts.desc".localized)
                         }
-                    } footer: {
-                        Text("settings.privacy.calls.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    Section {
-                        scopePicker(
-                            title: "settings.privacy.read_receipts".localized,
-                            selection: $readReceiptsVisibility,
-                            field: "read_receipts_visibility"
-                        )
-                        .onChange(of: readReceiptsVisibility) { newValue in
-                            // MessageService reads this on every
-                            // markRead — mirror immediately so the
-                            // gate flips without a round-trip.
-                            readReceiptsCache = newValue
-                        }
-                    } footer: {
-                        Text("settings.privacy.read_receipts.desc".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
+                        .listRowBackground(Theme.Color.bgSecondary)
 
-                    howItWorksSection
+                        howItWorksSection
 
-                    securitySection
-                    migrationSection
-                    // Hall of Fame is a flagship-only surface — hidden on
-                    // self-hosted islands (gated on the server's hall_of_fame
-                    // capability, like the UIN shop).
-                    if AppState.shared.serverCapabilities.hallOfFame {
-                        hofSection   // #27: Hall of Fame at the very bottom (under migration)
+                        securitySection
+                        migrationSection
+                        // Hall of Fame is a flagship-only surface - hidden on
+                        // self-hosted islands (gated on the server's hall_of_fame
+                        // capability, like the UIN shop).
+                        if AppState.shared.serverCapabilities.hallOfFame {
+                            hofSection   // #27: Hall of Fame at the very bottom (under migration)
+                        }
+                      }
+                      if pane == .network {
+                        networkSection
+                        relaySharingSection
+                      }
                     }
-                  }
-                  if pane == .network {
-                    networkSection
-                    relaySharingSection
-                  }
+                    .scrollContentBackground(.hidden)
+                    // The sheet has to be on screen before a scroll means
+                    // anything, so the jump waits a beat rather than firing
+                    // from `onAppear` into a list that has not laid out yet.
+                    .onAppear {
+                        guard let highlight else { return }
+                        activeHighlight = highlight
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            withAnimation { proxy.scrollTo(highlight, anchor: .center) }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+                            if activeHighlight == highlight {
+                                withAnimation { activeHighlight = nil }
+                            }
+                        }
+                    }
                 }
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle((pane == .network ? "settings.network" : "settings.privacy").localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -424,6 +499,7 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textPrimary)
                 }
             }
+            .settingsSearchRow(.howItWorks, highlight: activeHighlight)
         } footer: {
             Text("how.footer.short".localized)
         }
@@ -468,6 +544,7 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.panicPIN, highlight: activeHighlight)
         } footer: {
             Text("settings.panic_pin.footer".localized)
         }
@@ -506,6 +583,7 @@ struct PrivacySettingsView: View {
                             .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
+                .settingsSearchRow(.accounts, highlight: activeHighlight)
             }
             Button {
                 showProxyURL = true
@@ -527,6 +605,7 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.stealth, highlight: activeHighlight)
             // Onion routing (M3, experimental). One switch for the user: turning
             // it on ALSO engages RCQ relays, because onion routes THROUGH them
             // and can't work without them.
@@ -553,6 +632,7 @@ struct PrivacySettingsView: View {
                 }
             }
             .disabled(localProxy)
+            .settingsSearchRow(.onion, highlight: activeHighlight)
             // Local proxy: route everything through the user's OWN local Tor /
             // i2p SOCKS5/HTTP. Mutually exclusive with relays/onion.
             Toggle(isOn: $localProxy) {
@@ -579,6 +659,7 @@ struct PrivacySettingsView: View {
                 if on { onionOptIn = false }
                 Task { await SingBoxTransport.shared.setLocalProxyEnabled(on, host: lpHost, port: port, type: lpType) }
             }
+            .settingsSearchRow(.localProxy, highlight: activeHighlight)
             if localProxy {
                 HStack {
                     Text("settings.network.localproxy.host".localized)
@@ -663,6 +744,7 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.customServer, highlight: activeHighlight)
             Button {
                 showDiagnostics = true
             } label: {
@@ -678,6 +760,7 @@ struct PrivacySettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.diagnostics, highlight: activeHighlight)
         } header: {
             Text("settings.masking".localized)
         } footer: {
@@ -707,6 +790,7 @@ struct PrivacySettingsView: View {
             .onChange(of: hofOptIn) { newValue in
                 Task { await pushBoolField("hof_opt_in", newValue) }
             }
+            .settingsSearchRow(.hallOfFame, highlight: activeHighlight)
             if hofOptIn {
                 HStack(spacing: 12) {
                     hofAvatarPreview
@@ -797,6 +881,7 @@ struct PrivacySettingsView: View {
                     Text("relay.import.title".localized).foregroundColor(Theme.Color.accent)
                 }
             }
+            .settingsSearchRow(.sharedRelays, highlight: activeHighlight)
         } header: {
             Text("relay.shared.section".localized)
         }
@@ -825,6 +910,7 @@ struct PrivacySettingsView: View {
                 }
             }
             .disabled(migrating)
+            .settingsSearchRow(.migrate, highlight: activeHighlight)
             if let migrateError {
                 Text(migrateError)
                     .font(.caption2)
@@ -888,6 +974,12 @@ struct PrivacySettingsView: View {
     }
 
     private func loadVisibility() async {
+        // Seed from the per-account mirror first so the picker is right on the
+        // first frame, then let the fetch below overwrite it. The mirror is
+        // what the drawing surfaces read, so it must never be the stale half.
+        if profileCardPolicy != ProfileCardPrivacy.myPolicy {
+            profileCardPolicy = ProfileCardPrivacy.myPolicy
+        }
         guard let uin = AuthService.shared.ownUIN else { return }
         do {
             let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
@@ -906,29 +998,17 @@ struct PrivacySettingsView: View {
                 readReceiptsVisibility = v
                 readReceiptsCache = v
             }
-            if let v = p.presencePersistent { presencePersistent = v; d.set(v, forKey: "rcq.privacy.presencePersistent") }
+            // Owner-only echo. The island is the source of truth: if this
+            // device pushed a value that never landed (offline, or an island
+            // too old for the field), the picker must snap back to what is
+            // actually being enforced rather than keep showing the wish.
+            if let v = p.profileCardPolicy {
+                profileCardPolicy = v
+                ProfileCardPrivacy.myPolicy = v
+            }
             if let v = p.hofOptIn { hofOptIn = v; d.set(v, forKey: "rcq.privacy.hofOptIn") }
             hofAvatar = p.hofAvatar
             hofPreview = p.hofAvatar.flatMap(Self.decodeDataUri)
-            // Seed the local countdown anchor if the feature is on but we
-            // have none yet (enabled before this existed / on another
-            // device). Active changes above re-anchor it; load never
-            // overrides an existing anchor.
-            if presencePersistent, PresenceWindow.expiry(uin: uin) == nil {
-                let ttl = p.presenceTTLMinutes ?? 1440
-                PresenceWindow.anchor(ttlMinutes: ttl == 0 ? 1440 : ttl, uin: uin)
-            }
-            if let v = p.presenceTTLMinutes {
-                // Migrate legacy "forever" (0) silently to 24h so the
-                // picker shows a real selection. The forever option was
-                // removed because it lies about presence: app closed for
-                // days, contacts still see "online".
-                presenceTTLMinutes = v == 0 ? 1440 : v
-                d.set(presenceTTLMinutes, forKey: "rcq.privacy.presenceTTL")
-                if v == 0 {
-                    Task { await pushIntField("presence_ttl_minutes", 1440) }
-                }
-            }
             gender = p.gender ?? ""
         } catch {
             // Soft-fail — the picker write paths still work, the
@@ -937,38 +1017,9 @@ struct PrivacySettingsView: View {
         }
     }
 
-    /// Int variant — for presence_ttl_minutes and any future numeric
-    /// preference. Same dynamic-key trick as the bool/string variants
-    /// so the server's PUT /users/me partial-update path treats it as
-    /// a single-field set.
-    private func pushIntField(_ key: String, _ value: Int) async {
-        struct Body: Encodable {
-            let key: String
-            let value: Int
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.container(keyedBy: DynamicKey.self)
-                try c.encode(value, forKey: DynamicKey(stringValue: key)!)
-            }
-        }
-        struct DynamicKey: CodingKey {
-            var stringValue: String
-            var intValue: Int? { nil }
-            init?(stringValue: String) { self.stringValue = stringValue }
-            init?(intValue: Int) { return nil }
-        }
-        do {
-            let _: UserProfile = try await APIClient.shared.request(
-                "PUT", "/users/me",
-                body: Body(key: key, value: value)
-            )
-        } catch {
-            // Soft-fail; user can re-pick.
-        }
-    }
-
-    /// Boolean variant of `pushField` for toggles like
-    /// `presence_persistent`. The server's PUT /users/me handler treats
-    /// missing keys as no-op so the partial payload is safe.
+    /// Boolean variant of `pushField` for toggles like `hof_opt_in`. The
+    /// server's PUT /users/me handler treats missing keys as no-op so the
+    /// partial payload is safe.
     private func pushBoolField(_ key: String, _ value: Bool) async {
         struct Body: Encodable {
             let key: String
@@ -1123,6 +1174,174 @@ struct PrivacySettingsView: View {
         guard let r = s.range(of: ";base64,") else { return nil }
         guard let data = Data(base64Encoded: String(s[r.upperBound...])) else { return nil }
         return UIImage(data: data)
+    }
+}
+
+/// Who may OPEN my profile card (founder item 22). Straight port of the web
+/// client's `lib/profile-card-privacy.ts` so the two agree key for key: the
+/// island field is `profile_card_policy`, the tri-state is the same
+/// everyone / contacts / nobody, and the device-local mirror is stored under
+/// the same `privacy.profileCard` suffix the web scopes into localStorage.
+///
+/// The complaint behind it: a card is reachable from surfaces nobody chose to
+/// appear on. React to a message in a group and your name lands in the "who
+/// reacted" sheet; send a photo and your name sits over it in the viewer; join
+/// anything and you are a row in a member list. Every one of those names is a
+/// link, so being in a room is enough for a stranger to read your card.
+///
+/// This is NOT `profile_visibility`, which blanks the optional FIELDS (city,
+/// age, about, ...) for outsiders and still lets the card open on an empty
+/// card. Item 22 is about the tap itself.
+///
+/// ⚠⚠ WHERE THE ENFORCEMENT ACTUALLY LIVES. A flag on my phone cannot stop a
+/// remote user from opening my card: the stranger tapping my name is running
+/// THEIR client, which never reads my `UserDefaults`. So the local mirror is a
+/// cache for drawing THIS screen, never the enforcement. Both server halves
+/// now exist:
+///   1. a `profile_card_policy` column, gating `GET /users/{uin}/info` the way
+///      `last_seen_visibility` already gates the timestamp. A card that may not
+///      be opened degrades to the identity floor (uin, nickname, keys, avatar)
+///      rather than 403, because a 403 would take `identity_key` with it and
+///      the setting promises the shut-out person can still write to you; and
+///   2. a per-viewer verdict published next to every row that carries a name -
+///      `profile_openable`, the twin of the existing `callable` - so this
+///      client knows not to draw the link in the first place.
+/// `canOpenCard` still fails OPEN on a nil verdict, because a name that
+/// silently stops being tappable reads as a broken screen, an island may be
+/// older than the field, and the fan-out frames cannot carry a per-viewer
+/// answer at all. Failing open costs nothing: the island already withheld the
+/// contents, so the worst case is a card opened onto its identity floor.
+enum ProfileCardPrivacy {
+    /// Same suffix as the web's `scopedKey('privacy.profileCard')`.
+    ///
+    /// ⚠ Scoped PER ACCOUNT, unlike `rcq.privacy.callPolicy` and
+    /// `rcq.privacy.readReceiptsVisibility`, which are flat keys reseeded from
+    /// the server on every open. This one is read by surfaces that draw before
+    /// any fetch completes, so a flat key would let account A's choice paint
+    /// account B's screen for the first frame. It reconciles against
+    /// `UserProfile.profileCardPolicy` in `loadVisibility`; the island is the
+    /// source of truth and this is only the seed.
+    private static let legacyKey = "rcq.privacy.profileCard"
+
+    /// The active account's key. Falls back to the flat one before any account
+    /// exists (fresh install, first-run screens).
+    static var defaultsKey: String {
+        guard let id = AppGroup.readActiveAccountID() else { return legacyKey }
+        return "\(legacyKey).\(id.uuidString)"
+    }
+
+    /// My own setting. Defaults to "everyone", matching the server default for
+    /// the profile gates: a fresh account is not silently unreachable.
+    static var myPolicy: String {
+        get {
+            let d = UserDefaults.standard
+            let key = defaultsKey
+            // One-time move of a pre-scoping value onto whichever account is
+            // open when this first runs. On the ordinary one-account device
+            // that is the account that chose it; a device that already had two
+            // gets one wrong assignment instead of a silent reset to the
+            // permissive default, and either way the flag enforces nothing yet.
+            if key != legacyKey, d.string(forKey: key) == nil,
+               let inherited = d.string(forKey: legacyKey) {
+                d.set(inherited, forKey: key)
+                d.removeObject(forKey: legacyKey)
+            }
+            return coerce(d.string(forKey: key)) ?? "everyone"
+        }
+        set { UserDefaults.standard.set(coerce(newValue) ?? "everyone", forKey: defaultsKey) }
+    }
+
+    private static func coerce(_ raw: String?) -> String? {
+        switch raw {
+        case "everyone", "contacts", "nobody": return raw
+        default: return nil
+        }
+    }
+
+    /// May this client turn the subject's name into a link to their card?
+    ///
+    /// Every argument is optional on purpose: these rows come from four
+    /// different endpoints and none of them is guaranteed to carry any of it.
+    /// - `openable`: the island's verdict for THIS viewer, once it publishes
+    ///   one. Wins outright when present.
+    /// - `policy`: the raw tri-state. Only ever echoed to the owner, so in
+    ///   practice this is set only when the subject is me.
+    ///
+    /// ⚠ Fails OPEN on anything it does not know.
+    static func canOpenCard(
+        uin: Int?,
+        openable: Bool? = nil,
+        policy: String? = nil,
+        myUIN: Int? = nil,
+        isContact: Bool = false
+    ) -> Bool {
+        // My own card is always mine to open, whatever I told the island.
+        if let uin, let myUIN, uin == myUIN { return true }
+        if let openable { return openable }
+        switch coerce(policy) {
+        case "nobody": return false
+        case "contacts": return isContact
+        default: return true
+        }
+    }
+
+    /// The island's verdict for a bare UIN, for the three surfaces that have
+    /// nothing else: a reaction row, a sender name over a photo, and an
+    /// `rcq://member/<uin>` mention. None of them carries anything but the
+    /// number, so the answer has to be looked up in whatever roster this
+    /// client already holds.
+    ///
+    /// Contacts first, then group rosters. Both come from the island computed
+    /// FOR THIS VIEWER, so they agree; the contact row is preferred only
+    /// because it is the smaller and more frequently refreshed list.
+    ///
+    /// ⚠ Returns nil when nothing is known, which `canOpenCard` treats as
+    /// "open". That is the same fail-open every caller already had, and it is
+    /// the honest answer: a group we have not loaded a roster for cannot be
+    /// consulted, and guessing "closed" would grey out a name for a person who
+    /// never asked for that.
+    @MainActor
+    static func verdict(for uin: Int) -> Bool? {
+        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }),
+           let v = c.profileOpenable {
+            return v
+        }
+        for g in GroupService.shared.groups {
+            if let m = g.members.first(where: { $0.uin == uin }), let v = m.profileOpenable {
+                return v
+            }
+        }
+        return nil
+    }
+}
+
+/// One-time scrub of everything "visibility after leaving" left on the device
+/// when the feature was removed (2026-08-23).
+///
+/// Removing the switch is not enough on an install that had it ON. Two things
+/// outlive the UI: the seed cache the Privacy screen used to read, and the
+/// countdown anchor (`rcq.presenceWindow.<uin>`) that the contact-list header
+/// still ticks off for up to 24 hours. Neither has anything behind it any
+/// more, so both go on the first launch that reaches Settings.
+///
+/// ⚠ Deliberately written against the RAW keys instead of calling
+/// `PresenceWindow.clear` - the anchor's owner lives in `ContactListView` and
+/// is due for deletion with the chip itself, and this scrub must not be what
+/// breaks that build.
+enum PresenceRemovalCleanup {
+    private static let doneKey = "rcq.cleanup.presenceRemoved"
+    private static let anchorPrefix = "rcq.presenceWindow."
+
+    static func runOnce() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: doneKey) else { return }
+        d.removeObject(forKey: "rcq.privacy.presencePersistent")
+        d.removeObject(forKey: "rcq.privacy.presenceTTL")
+        // Keyed by UIN, so every account that ever ran on this device has one.
+        for key in d.dictionaryRepresentation().keys where key.hasPrefix(anchorPrefix) {
+            d.removeObject(forKey: key)
+        }
+        d.set(true, forKey: doneKey)
     }
 }
 
