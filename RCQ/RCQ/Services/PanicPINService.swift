@@ -493,6 +493,7 @@ final class PanicPINService: ObservableObject {
             syncPushPrivacy()
             MessageDB.shared.configure(decoy: false, dataKey: dataKey)
             await MessageDB.shared.reencryptAllRows()
+            RosterSnapshot.resealAll()
             return
         }
 
@@ -672,6 +673,7 @@ final class PanicPINService: ObservableObject {
         lockState = .unlocked
         syncPushPrivacy()
         MessageDB.shared.configure(decoy: false, dataKey: nil)
+        RosterSnapshot.resealAll()
     }
 
     // MARK: - helpers

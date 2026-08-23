@@ -247,11 +247,19 @@ struct ContactListView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .task {
-                await vm.refresh()
-                await groups.refresh()
-                await audioRooms.refresh()
-                await news.refresh()
+            .task(id: appState.networkReady) {
+                // Four independent fetches, together rather than in single
+                // file; the services coalesce with the boot's own catch-up,
+                // so this costs no second request when one is in flight.
+                // Keyed on the boot reaching "token and base in place": with
+                // the list painted from disk this view mounts before that,
+                // and the fetches it fires then are refused by the services,
+                // so they run again the moment they can succeed.
+                async let c: Void = vm.refresh()
+                async let g: Void = groups.refresh(joinInFlight: true)
+                async let a: Void = audioRooms.refresh()
+                async let n: Void = news.refresh()
+                _ = await (c, g, a, n)
                 if appState.pendingOpenPending {
                     showPending = true
                     appState.pendingOpenPending = false

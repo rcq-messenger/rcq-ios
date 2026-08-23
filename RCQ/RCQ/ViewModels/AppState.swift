@@ -351,6 +351,7 @@ final class AppState: ObservableObject {
         let baseURL = APIClient.shared.baseURL
         let serverToken = AccountManager.shared.active?.serverToken
         WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL, serverToken: serverToken)
+        networkReady = true
         // The boot that led here ran offline, so the island's capabilities
         // are still the legacy defaults: read them before the drain below,
         // or a room log the account already reads stays untouched for the
@@ -540,8 +541,44 @@ final class AppState: ObservableObject {
         // exhausted iOS network flows).
         if booting { return }
         booting = true
-        defer { booting = false }
+        bootChainDone = false
+        defer {
+            booting = false
+            bootChainDone = true
+        }
         await doBoot(suggestedNickname: suggestedNickname)
+    }
+
+    /// True once a boot chain has run to its end (any exit). The watchdog
+    /// used to key on `booted`, which now flips BEFORE the network chain when
+    /// the roster came from disk, so it keys on this instead.
+    private var bootChainDone = true
+
+    /// True once this boot has a session token in APIClient and a resolved
+    /// base: the point from which a roster fetch can succeed. With the chat
+    /// list on screen before the chain runs, its own fetches would otherwise
+    /// fire unauthenticated against whatever base was last used, and the
+    /// single-flight refresh would then hand the boot's own fetch that same
+    /// doomed request. The services refuse to fetch while this is false, and
+    /// the chat list re-runs its fetches when it flips. False again for the
+    /// length of an account switch.
+    @Published private(set) var networkReady = false
+
+    /// Paint the chat list from the last roster on disk (see
+    /// `RosterSnapshot`). True when there was one worth showing.
+    private func hydrateRosterFromDisk() -> Bool {
+        let contacts = ContactService.shared.hydrateFromSnapshot()
+        let groups = GroupService.shared.hydrateFromSnapshot()
+        AudioRoomService.shared.hydrateFromSnapshot()
+        return contacts || groups
+    }
+
+    /// Wait for a boot chain in flight to reach its end. For the paths that
+    /// replace the account under the app (switch, burn, migration).
+    func settleBoot() async {
+        while booting {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
     private func doBoot(suggestedNickname: String? = nil) async {
@@ -574,6 +611,7 @@ final class AppState: ObservableObject {
         // site instead of FastAPI — `/health` and `/auth/register`
         // would both 404 to the scanner, and to us too if we forget
         // the token.
+        networkReady = false
         await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
 
         // Offline-first path. If we already have a local identity AND no
@@ -599,8 +637,24 @@ final class AppState: ObservableObject {
             return
         }
 
+        // The list, now. A returning user with a roster on disk gets the chat
+        // list on the first frame and the rest of this function becomes the
+        // catch-up behind it: the probe chain, the identity check, the socket,
+        // the fresh roster. Before this, `booted` waited at the end of ten to
+        // twelve serial round trips, and the fifteen-second watchdog then
+        // surrendered to an empty list. The header's orange dot says
+        // "connecting" until the socket is up, which is the honest state.
+        if let uin = cachedUIN, cachedToken != nil, hydrateRosterFromDisk() {
+            MessageService.shared.configure(ownUIN: uin)
+            booted = true
+        }
+
         if !pathSatisfied, let uin = cachedUIN, cachedToken != nil {
             isOffline = true
+            // A roster painted from disk keeps its last-known presence for
+            // the second or two until /contacts lands; with no network that
+            // second never comes, and "online" would be a lie.
+            ContactService.shared.markAllOffline()
             MessageService.shared.configure(ownUIN: uin)
             booted = true
             return
@@ -621,7 +675,7 @@ final class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: watchdogSeconds * 1_000_000_000)
             guard let self else { return }
             await MainActor.run {
-                guard !self.booted else { return }
+                guard !self.bootChainDone else { return }
                 if cachedUIN != nil && cachedToken != nil {
                     // Only claim offline if the socket has not already proved
                     // otherwise. The boot chain overrunning fifteen seconds is
@@ -632,6 +686,7 @@ final class AppState: ObservableObject {
                     // redialing on the strength of it.
                     if !WebSocketService.shared.linkUp {
                         self.isOffline = true
+                        if !self.networkReady { ContactService.shared.markAllOffline() }
                         self.scheduleTransportRetry()
                     }
                     if let uin = cachedUIN {
@@ -733,6 +788,7 @@ final class AppState: ObservableObject {
             if reach == .unreachable {
                 if let uin = cachedUIN, cachedToken != nil {
                     isOffline = true
+                    ContactService.shared.markAllOffline()
                     MessageService.shared.configure(ownUIN: uin)
                     booted = true
                     scheduleTransportRetry()
@@ -767,6 +823,8 @@ final class AppState: ObservableObject {
             // two of them supersede each other's socket in a loop and share one
             // offline-queue cursor.
             let token = await claimInstallTokenIfNeeded(bootToken) ?? bootToken
+            // From here a fetch can succeed: token set, base resolved.
+            networkReady = true
 
             // Capability fetch. Failure is non-fatal: we keep the
             // permissive defaultLegacy set, which matches every
@@ -787,8 +845,15 @@ final class AppState: ObservableObject {
             // Only what the first screen genuinely cannot be drawn without.
             // Contacts because the list IS the first screen; presence because
             // the header renders the person's own status. Both are small.
-            await syncOwnPresenceFromServer(uin: uin)
-            await ContactService.shared.refresh()
+            // The identity check above already fetched the own profile; one
+            // round trip fewer on the boot path.
+            if let me = AuthService.shared.bootProfile {
+                applyOwnProfile(me)
+                AuthService.shared.bootProfile = nil
+            } else {
+                await syncOwnPresenceFromServer(uin: uin)
+            }
+            await ContactService.shared.refresh(joinInFlight: true)
 
             print("[boot] complete — booted")
             booted = true
@@ -804,7 +869,7 @@ final class AppState: ObservableObject {
             // of it is needed to show a list of chats, and the pieces are
             // independent, so they go concurrently rather than in single file.
             Task { @MainActor in
-                async let groups: Void = GroupService.shared.refresh()
+                async let groups: Void = GroupService.shared.refresh(joinInFlight: true)
                 async let queue: Void = MessageService.shared.fetchOfflineQueue()
                 async let caps: Void = MessageService.shared.advertiseSenderKeysCapability()
                 _ = await (groups, queue, caps)
@@ -822,6 +887,7 @@ final class AppState: ObservableObject {
             // boot rather than blocking the UI on a transport error.
             if let uin = cachedUIN, cachedToken != nil {
                 isOffline = true
+                if !networkReady { ContactService.shared.markAllOffline() }
                 MessageService.shared.configure(ownUIN: uin)
                 booted = true
             } else {
@@ -1008,8 +1074,12 @@ final class AppState: ObservableObject {
             return .other(error.localizedDescription)
         }
 
+        await settleBoot()
+        networkReady = false
         WebSocketService.shared.disconnect()
         ContactService.shared.wipe()
+        // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
+        RosterSnapshot.deleteActive()
         GroupService.shared.wipe()
         AudioRoomService.shared.wipe()
         PushDecryptCache.wipe()
@@ -1107,9 +1177,13 @@ final class AppState: ObservableObject {
                 return false
             }
         }
+        await settleBoot()
+        networkReady = false
         WebSocketService.shared.disconnect()
 
         ContactService.shared.wipe()
+        // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
+        RosterSnapshot.deleteActive()
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
         SilenceProbe.shared.reset()
@@ -1490,6 +1564,12 @@ final class AppState: ObservableObject {
     /// mirrors burnAccount()'s pile minus the destructive bits
     /// (wipeLocalIdentity, deleteServerAccount, SignalProtocolDB.wipe).
     private func rebootForActiveAccount() async {
+        // The chat list is interactive while the boot chain still runs, so
+        // a switch can now land mid-chain; boot() drops a concurrent boot,
+        // which would leave the new account half-booted under the old one's
+        // identity. Let the running chain end first (its watchdog bounds it).
+        await settleBoot()
+        networkReady = false
         WebSocketService.shared.disconnect()
         // Drop AuthService's in-memory snapshot of the OLD active
         // account FIRST so any view that re-renders during the
@@ -1616,18 +1696,22 @@ final class AppState: ObservableObject {
     private func syncOwnPresenceFromServer(uin: Int) async {
         do {
             let me: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
-            // Coerce a legacy .offline self-row to .online — the picker
-            // can't reach .offline directly.
-            let resolved: UserStatus = (me.status == .offline) ? .online : me.status
-            PresenceService.shared.status = resolved
-            PresenceService.shared.statusMessage = me.statusMessage
-            AuthService.shared.updateNicknameLocal(me.nickname)
-            // The same response has carried the picture all along and this was
-            // throwing it away, which is why the header had nothing to draw.
-            PresenceService.shared.setOwnAvatar(id: me.avatarMediaID, key: me.avatarMediaKey)
+            applyOwnProfile(me)
         } catch {
             // Soft-fail.
         }
+    }
+
+    private func applyOwnProfile(_ me: UserProfile) {
+        // Coerce a legacy .offline self-row to .online — the picker
+        // can't reach .offline directly.
+        let resolved: UserStatus = (me.status == .offline) ? .online : me.status
+        PresenceService.shared.status = resolved
+        PresenceService.shared.statusMessage = me.statusMessage
+        AuthService.shared.updateNicknameLocal(me.nickname)
+        // The same response has carried the picture all along and this was
+        // throwing it away, which is why the header had nothing to draw.
+        PresenceService.shared.setOwnAvatar(id: me.avatarMediaID, key: me.avatarMediaKey)
     }
 
     /// Manual censorship-bypass toggle (Android parity — the home ⋮ menu item).
@@ -1702,7 +1786,10 @@ final class AppState: ObservableObject {
             // come-and-go was noise the user asked to kill. (It also
             // had a bug: a non-contact resolved `wasOnline` to true
             // via the nil-compare, so their going-offline chimed.)
-            if contact != nil {
+            // No chime against a roster restored from disk: its statuses are
+            // last-known, not live, so the first live word about anybody
+            // would read as them arriving or leaving right now.
+            if contact != nil, !ContactService.shared.hydratedFromSnapshot {
                 if status == .offline && wasOnline {
                     SoundService.shared.play(.contactOffline, thread: .peer(uin: uin))
                 } else if status != .offline && !wasOnline {

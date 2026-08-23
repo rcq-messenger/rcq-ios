@@ -45,10 +45,28 @@ final class AudioRoomService: ObservableObject {
 
     // MARK: - HTTP API
 
+    /// Paint the room list from disk before the network is asked (see
+    /// `RosterSnapshot`). Called from `AppState.doBoot`, never from `init`.
+    @discardableResult
+    func hydrateFromSnapshot() -> Bool {
+        if PanicPINService.shared.isDecoy { return false }
+        guard let list = RosterSnapshot.load(.rooms, as: [AudioRoom].self) else { return false }
+        rooms = list
+        hasLoadedOnce = true
+        return true
+    }
+
+    func saveSnapshot() {
+        guard hasLoadedOnce else { return }
+        RosterSnapshot.save(rooms, as: .rooms)
+    }
+
     func refresh() async {
+        guard AppState.shared.networkReady else { return }
         do {
             let list: [AudioRoom] = try await APIClient.shared.request("GET", "/audio_rooms")
             self.rooms = list
+            RosterSnapshot.save(list, as: .rooms)
         } catch {
             print("[AudioRoomService] refresh failed: \(error)")
         }

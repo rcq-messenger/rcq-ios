@@ -158,6 +158,7 @@ final class AccountManager: ObservableObject {
     /// app is back to a fresh-install state.
     func remove(_ id: UUID) {
         accounts.removeAll(where: { $0.id == id })
+        RosterSnapshot.delete(accountID: id)
         if activeAccountID == id {
             activeAccountID = accounts.first?.id
         }

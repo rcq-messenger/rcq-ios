@@ -28,9 +28,16 @@ final class ContactListViewModel: ObservableObject {
     @Published var pendingCount: Int = 0
 
     init() {
-        service.$contacts.receive(on: DispatchQueue.main).assign(to: &$contacts)
+        // Seeded, not only subscribed: the service is already holding the
+        // roster (from disk on a cold start) when this view model is made,
+        // and `assign` alone would paint one empty frame and then re-diff the
+        // whole list. Both are `@MainActor`, so no queue hop either.
+        contacts = service.contacts
+        pendingCount = service.pendingRequests.count
+        hasLoadedOnce = service.hydratedFromSnapshot || service.rosterLoaded
+        service.$contacts.dropFirst().assign(to: &$contacts)
         service.$pendingRequests
-            .receive(on: DispatchQueue.main)
+            .dropFirst()
             .map { $0.count }
             .assign(to: &$pendingCount)
     }
@@ -70,8 +77,10 @@ final class ContactListViewModel: ObservableObject {
             .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
     }
 
+    /// The list mounting or being pulled has no intent of its own: a fetch
+    /// already in the air (the boot's) is the answer it wants.
     func refresh() async {
-        await service.refresh()
+        await service.refresh(joinInFlight: true)
         hasLoadedOnce = true
     }
     func remove(_ uin: Int) async { try? await service.remove(uin) }

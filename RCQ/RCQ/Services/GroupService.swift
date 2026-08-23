@@ -30,7 +30,60 @@ final class GroupService: ObservableObject {
         unread[groupID] = 0
     }
 
-    func refresh() async {
+    /// Paint the group list from disk before the network is asked (see
+    /// `RosterSnapshot`). Called from `AppState.doBoot`, never from `init`.
+    @discardableResult
+    func hydrateFromSnapshot() -> Bool {
+        if PanicPINService.shared.isDecoy { return false }
+        guard let list = RosterSnapshot.load(.groups, as: [RCQGroup].self), !list.isEmpty else { return false }
+        groups = list
+        unread = UnreadStore.shared.allGroupCounts
+        return true
+    }
+
+    /// One fetch at a time; the second caller awaits the first (the chat
+    /// list's `.task` and the boot's catch-up ask within the same frame).
+    private var refreshInFlight: Task<Void, Never>?
+    private var rosterEpoch = 0
+
+    private var wantsFollowUp = false
+
+    /// See `ContactService.refresh(joinInFlight:)`.
+    func refresh(joinInFlight: Bool = false) async {
+        guard AppState.shared.networkReady else { return }
+        if let running = refreshInFlight {
+            if joinInFlight {
+                await running.value
+                return
+            }
+            wantsFollowUp = true
+            await running.value
+            if !wantsFollowUp {
+                if let next = refreshInFlight { await next.value }
+                return
+            }
+        }
+        wantsFollowUp = false
+        let epoch = rosterEpoch
+        let task = Task { @MainActor in await self.refreshNow(epoch: epoch) }
+        refreshInFlight = task
+        await task.value
+        if refreshInFlight == task { refreshInFlight = nil }
+    }
+
+    /// The own-island groups as they stand, to disk. Not the foreign ones:
+    /// `host` is not part of a group's wire shape, so a cross-island group
+    /// would come back as an own-island one under a negative alias id; they
+    /// are re-fetched from their islands by the next refresh. Without the
+    /// rosters either (fetched per group on demand; the beta group's alone
+    /// would be the size of the file).
+    func saveSnapshot() {
+        let own = groups.filter { $0.host == nil }.map { g -> RCQGroup in var l = g; l.members = []; return l }
+        guard !own.isEmpty || !groups.isEmpty else { return }
+        RosterSnapshot.save(own, as: .groups)
+    }
+
+    private func refreshNow(epoch: Int) async {
         if PanicPINService.shared.isDecoy { return }
         do {
             // Without the roster: a chat-list row wants a name, a picture and a
@@ -41,6 +94,7 @@ final class GroupService: ObservableObject {
             let list: [RCQGroup] = try await APIClient.shared.request(
                 "GET", "/groups", query: ["members": "0"]
             )
+            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
             // §5c: groups joined on OTHER islands, fetched with the guest creds;
             // ids rewritten to the local alias + host stamped. Per-island
             // failures degrade to "no groups from there" — never block the own
@@ -69,7 +123,9 @@ final class GroupService: ObservableObject {
                 merged.members = cached
                 return merged
             }
+            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
             self.groups = own + foreign
+            saveSnapshot()
             // Mirror id → name into the App Group so the NSE can title a
             // group-message push with the group's name (not just the sender).
             GroupNameCache.setAll(Dictionary(list.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }))
@@ -546,11 +602,15 @@ final class GroupService: ObservableObject {
 
     /// Local cache reset used by the burn flow.
     func wipe() {
+        rosterEpoch += 1
+        refreshInFlight = nil
         groups = []
         unread = [:]
     }
 
     func clearForDecoy() {
+        rosterEpoch += 1
+        refreshInFlight = nil
         groups = []
         unread = [:]
     }
