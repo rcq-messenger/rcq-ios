@@ -8,6 +8,9 @@ final class AuthService: ObservableObject {
     @Published private(set) var ownUIN: Int?
     @Published private(set) var nickname: String = ""
     @Published private(set) var isReady: Bool = false
+    /// The own profile as answered by the identity check of the last
+    /// `bootstrapIfNeeded`, for the boot to apply without a second fetch.
+    var bootProfile: UserProfile?
 
     private init() {
         if let uinStr = KeychainStore.string(KeychainStore.Keys.uin), let uin = Int(uinStr) {
@@ -44,7 +47,11 @@ final class AuthService: ObservableObject {
            let uin = Int(uinStr) {
             await APIClient.shared.setToken(token)
             do {
-                let _: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
+                let me: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
+                // Kept for the boot: this answer carries the own status,
+                // nickname and picture, and the boot used to ask for the same
+                // profile a second time a moment later to read them.
+                self.bootProfile = me
                 self.ownUIN = uin
                 self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
                 // Fire-and-forget Stage 3 top-up. Failure is non-fatal —
@@ -85,6 +92,12 @@ final class AuthService: ObservableObject {
                     print("[boot] island confirmed identity unknown — wiping + re-registering")
                     stashWipedIdentityBackup(uin: uin)
                     await wipeLocalIdentity()
+                    // The roster belonged to the identity that is gone; the
+                    // fresh one starts empty, in memory and on disk.
+                    ContactService.shared.wipe()
+                    GroupService.shared.wipe()
+                    AudioRoomService.shared.wipe()
+                    RosterSnapshot.deleteActive()
                 case .transient:
                     // Can't prove the account is gone (no signing key, the
                     // recover endpoint unreachable / unsupported, or the key
@@ -408,6 +421,7 @@ final class AuthService: ObservableObject {
     /// the new account's empty state. Bootstrap repopulates these
     /// from the new account's Keychain prefix.
     func resetForAccountSwitch() {
+        bootProfile = nil
         ownUIN = nil
         nickname = ""
         isReady = false

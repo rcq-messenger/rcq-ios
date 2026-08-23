@@ -409,7 +409,7 @@ struct RootView: View {
         // stranger whose contact row hasn't been upserted yet
         // doesn't get their fresh badge wiped.
         BadgeCounter.syncIcon()
-        guard appState.booted, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
+        guard appState.booted, appState.networkReady, !panicPIN.isLocked, !panicPIN.isDecoy else { return }
         // Clear the Notification Center tray now the user is back in the app —
         // delivered banners used to linger until manually swiped (#10). Badge is
         // synced separately above.

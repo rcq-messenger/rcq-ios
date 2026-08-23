@@ -35,10 +35,130 @@ final class ContactService: ObservableObject {
 
     private init() {}
 
-    func refresh() async {
+    /// What `RosterSnapshot` keeps for this service.
+    private struct Snapshot: Codable {
+        var contacts: [Contact]
+        var pending: [PendingRequest]
+        var outgoing: [OutgoingRequest]
+    }
+
+    /// Paint the roster from disk before the network is asked. Called from
+    /// `AppState.doBoot` after the account is active and the decoy check has
+    /// run, never from `init` (the singleton outlives account switches).
+    /// Everyone comes back `.offline`: the snapshot is the roster, not
+    /// evidence of presence, and the socket's presence frames correct it
+    /// within seconds. `rosterLoaded` stays false on purpose: the stranger
+    /// quarantine keys on a LIVE roster and must fail open on a stale one.
+    /// Returns whether anything was restored, so the boot knows it may show
+    /// the list early. Statuses are the last known ones: a stale "online"
+    /// for the second until /contacts lands beats a list that reshuffles
+    /// itself on arrival; a boot that ends offline calls `markAllOffline`.
+    @discardableResult
+    func hydrateFromSnapshot() -> Bool {
+        if PanicPINService.shared.isDecoy { return false }
+        guard let snap = RosterSnapshot.load(.contacts, as: Snapshot.self) else { return false }
+        var list = snap.contacts
+        let persisted = UnreadStore.shared.allPeerCounts
+        for i in list.indices {
+            list[i].unread = persisted[list[i].uin] ?? 0
+        }
+        list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
+        let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
+        contacts = list + cross
+        pendingRequests = snap.pending
+        outgoingRequests = snap.outgoing
+        hydratedFromSnapshot = !contacts.isEmpty
+        return hydratedFromSnapshot
+    }
+
+    /// Write the roster as it stands to disk (the island's rows only; the
+    /// cross-island ones have their own store). Also called when a PIN is
+    /// set or removed, so the file changes its sealing with the history.
+    func saveSnapshot() {
+        guard rosterLoaded else { return }
+        let own = contacts.filter { $0.host == nil }
+        RosterSnapshot.save(Snapshot(contacts: own, pending: pendingRequests, outgoing: outgoingRequests), as: .contacts)
+    }
+
+    /// True when the roster on screen came from disk and no live fetch has
+    /// replaced it yet. The chat list reads it to know the empty state is
+    /// not "no contacts" but "nothing known yet".
+    private(set) var hydratedFromSnapshot = false
+
+    /// Presence frames that landed while a `/contacts` fetch was in flight.
+    /// The fetch started before them, so its answer can be older than they
+    /// are; when it lands, these rows keep what the socket said.
+    private var presenceTouchedDuringRefresh: [Int: (UserStatus, String?)] = [:]
+
+    /// Everyone offline: for a boot that ends without a network, so a roster
+    /// restored from disk does not keep claiming people are here.
+    func markAllOffline() {
+        guard contacts.contains(where: { $0.host == nil && $0.status != .offline }) else { return }
+        contacts = contacts.map { c in
+            var m = c
+            if m.host == nil { m.status = .offline }
+            return m
+        }
+    }
+
+    /// One fetch at a time. With the list painted from disk the chat list's
+    /// `.task` and the boot's catch-up both ask for a refresh within the same
+    /// frame, and two concurrent fetches would race each other into the
+    /// array (and spend the rate budget twice). The second caller awaits the
+    /// first's result. A fetch is refused outright until the boot has a token
+    /// and a base (`AppState.networkReady`): before that it could only fail,
+    /// and with the coalescing above it would take the boot's own fetch down
+    /// with it.
+    private var refreshInFlight: Task<Void, Never>?
+    /// Bumped by `wipe()`: a fetch that was in flight for the previous account
+    /// finds a different epoch when it lands and drops its answer.
+    private var rosterEpoch = 0
+
+    /// Set by a caller that arrived while a fetch was in flight and carries
+    /// new intent (a request just accepted, a socket event): the answer in
+    /// the air predates it, so one more fetch follows.
+    private var wantsFollowUp = false
+
+    /// `joinInFlight`: the caller has no intent of its own (the boot's
+    /// catch-up, the chat list mounting) and is content with a fetch that is
+    /// already running. Everyone else gets a fetch that started after them.
+    func refresh(joinInFlight: Bool = false) async {
+        guard AppState.shared.networkReady else { return }
+        if let running = refreshInFlight {
+            if joinInFlight {
+                await running.value
+                return
+            }
+            wantsFollowUp = true
+            await running.value
+            if !wantsFollowUp {
+                // Another waiter already started the follow-up; ride it.
+                if let next = refreshInFlight { await next.value }
+                return
+            }
+        }
+        wantsFollowUp = false
+        let epoch = rosterEpoch
+        let task = Task { @MainActor in await self.refreshNow(epoch: epoch) }
+        refreshInFlight = task
+        await task.value
+        if refreshInFlight == task { refreshInFlight = nil }
+    }
+
+    private func refreshNow(epoch: Int) async {
         if PanicPINService.shared.isDecoy { return }
+        presenceTouchedDuringRefresh = [:]
         do {
+            // The three lists are independent; the roster is what the screen
+            // waits for, so it is published the moment it lands and the two
+            // request lists follow.
+            async let pendingFetch: [PendingRequest] = APIClient.shared.request("GET", "/contacts/pending")
+            async let outgoingFetch: [OutgoingRequest] = APIClient.shared.request("GET", "/contacts/outgoing")
             var list: [Contact] = try await APIClient.shared.request("GET", "/contacts")
+            // The account changed under this fetch: not our roster any more.
+            // Locked in the meantime: the key is gone and nothing may be
+            // published or written until the unlock refreshes again.
+            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
             // What the island served, before the local filters below: the
             // vault mirror folds THIS list, the same one the other clients
             // fold, so two devices never take turns rewriting the slot over a
@@ -60,15 +180,27 @@ final class ContactService: ObservableObject {
             // launch (#8). They're un-filtered only on an EXPLICIT re-add
             // (sendAddRequest / accepting their request).
             list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
+            // A presence frame that arrived while this fetch was in the air is
+            // newer than the status the answer carries.
+            for i in list.indices {
+                if let (st, msg) = presenceTouchedDuringRefresh[list[i].uin] {
+                    list[i].status = st
+                    list[i].statusMessage = msg
+                }
+            }
             // Federation (F2): merge local cross-island contacts (peers on other
             // islands — not in the server roster) so they show + open a chat.
             let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
             self.contacts = list + cross
             self.rosterLoaded = true
-            let pending: [PendingRequest] = try await APIClient.shared.request("GET", "/contacts/pending")
+            self.hydratedFromSnapshot = false
+            let pending = (try? await pendingFetch) ?? self.pendingRequests
+            let outgoing = (try? await outgoingFetch) ?? self.outgoingRequests
+            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
             self.pendingRequests = pending
-            let outgoing: [OutgoingRequest] = try await APIClient.shared.request("GET", "/contacts/outgoing")
             self.outgoingRequests = outgoing
+            // What the next cold start paints before it asks anyone.
+            saveSnapshot()
             // Push the latest uin → nickname map into the App Group
             // cache so the NSE can resolve sender names on push.
             //
@@ -108,6 +240,7 @@ final class ContactService: ObservableObject {
     }
 
     func updatePresence(uin: Int, status: UserStatus, statusMessage: String?) {
+        if refreshInFlight != nil { presenceTouchedDuringRefresh[uin] = (status, statusMessage) }
         guard let idx = contacts.firstIndex(where: { $0.uin == uin }) else { return }
         contacts[idx].status = status
         contacts[idx].statusMessage = statusMessage
@@ -375,10 +508,15 @@ final class ContactService: ObservableObject {
         contacts[idx].unread = 0
     }
 
-    /// Local cache reset used by the burn flow.
+    /// Local cache reset used by the burn flow and the account switch. Memory
+    /// only: the snapshot on disk is per account and survives a switch like
+    /// the Keychain rows do; a burn deletes it itself (`RosterSnapshot.delete`).
     func wipe() {
+        rosterEpoch += 1
+        refreshInFlight = nil
         contacts = []
         rosterLoaded = false
+        hydratedFromSnapshot = false
         pendingRequests = []
         outgoingRequests = []
         UnreadStore.shared.wipeAll()
@@ -387,8 +525,11 @@ final class ContactService: ObservableObject {
     }
 
     func clearForDecoy() {
+        rosterEpoch += 1
+        refreshInFlight = nil
         contacts = []
         rosterLoaded = false
+        hydratedFromSnapshot = false
         pendingRequests = []
         outgoingRequests = []
     }
