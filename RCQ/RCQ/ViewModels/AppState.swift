@@ -1888,6 +1888,12 @@ struct ServerCapabilities: Decodable, Equatable {
     // read before every drain, never assumed. Read by `MessageService`, never
     // by the UI.
     var groupLog: Bool
+    // Stage 4 of the metadata plan: the island serves PUT/GET/DELETE
+    // /vault/{slot}, opaque versioned client-sealed slots per account. An
+    // island that advertises it gets the contact list mirrored into the
+    // account's `contacts` slot after every roster refresh (see
+    // `ContactsVault`); one that does not is left alone. Absent means false.
+    var vault: Bool
 
     init(
         uinShop: Bool,
@@ -1899,7 +1905,8 @@ struct ServerCapabilities: Decodable, Equatable {
         envelopeClass: Bool = false,
         anonKeys: Bool = false,
         depositAuth: Bool = false,
-        groupLog: Bool = false
+        groupLog: Bool = false,
+        vault: Bool = false
     ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
@@ -1911,6 +1918,7 @@ struct ServerCapabilities: Decodable, Equatable {
         self.anonKeys = anonKeys
         self.depositAuth = depositAuth
         self.groupLog = groupLog
+        self.vault = vault
     }
 
     static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
@@ -1926,6 +1934,7 @@ struct ServerCapabilities: Decodable, Equatable {
         case anonKeys = "anon_keys"
         case depositAuth = "deposit_auth"
         case groupLog = "group_log"
+        case vault
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -1948,6 +1957,8 @@ struct ServerCapabilities: Decodable, Equatable {
         depositAuth = try c.decodeIfPresent(Bool.self, forKey: .depositAuth) ?? false
         // Absent means "predates the room log": see the field comment.
         groupLog = try c.decodeIfPresent(Bool.self, forKey: .groupLog) ?? false
+        // Absent means "predates the vault": see the field comment.
+        vault = try c.decodeIfPresent(Bool.self, forKey: .vault) ?? false
     }
 }
 

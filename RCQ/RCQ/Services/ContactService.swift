@@ -39,6 +39,11 @@ final class ContactService: ObservableObject {
         if PanicPINService.shared.isDecoy { return }
         do {
             var list: [Contact] = try await APIClient.shared.request("GET", "/contacts")
+            // What the island served, before the local filters below: the
+            // vault mirror folds THIS list, the same one the other clients
+            // fold, so two devices never take turns rewriting the slot over a
+            // contact one of them hides locally.
+            let served = list
             // Server doesn't track per-client unread counts (privacy
             // posture: unread is a local UI concern). Fold persisted
             // counters back into the freshly-decoded contact rows so
@@ -83,6 +88,15 @@ final class ContactService: ObservableObject {
                 nickMap[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname)
             }
             NicknameCache.setAll(nickMap)
+            // Stage 4, mirror phase: the list the island just served is sealed
+            // into the account's vault slot so a reinstall has a roster once
+            // the island stops serving one. Behind the paint, never throwing;
+            // a write only happens when the slot disagrees with the list.
+            Task { @MainActor in
+                if case .failed(let why) = await ContactsVault.mirror(served) {
+                    os_log("contacts mirror: %{public}@", log: Self.log, type: .info, why)
+                }
+            }
             // (Removed: the blanket "un-remove every roster UIN" that used to live
             // here — it resurrected contacts the user had deliberately deleted
             // every launch, #8. Re-adds now clear the filter explicitly in
