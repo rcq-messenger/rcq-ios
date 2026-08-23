@@ -327,10 +327,11 @@ enum CrossIslandGroups {
     /// asked again after an hour, so an island that upgrades while we run
     /// is picked up without a relaunch. Unreachable counts as no: the queue
     /// drain above already failed for it in that case, and the next pass
-    /// asks again.
+    /// asks again. Shared with the backup-home drain in `Multihome`: a room
+    /// can live on a backup home as well as on a visited island.
     private static var groupLogByHost: [String: (value: Bool, at: Date)] = [:]
 
-    private static func hostKeepsGroupLog(_ host: String) async -> Bool {
+    static func hostKeepsGroupLog(_ host: String) async -> Bool {
         let key = host.lowercased()
         if let known = groupLogByHost[key], known.value || Date().timeIntervalSince(known.at) < 3600 {
             return known.value
@@ -341,14 +342,17 @@ enum CrossIslandGroups {
         return value
     }
 
-    /// Drain the guest's room logs on `host` and ack what landed, the same
-    /// loop as `MessageService.drainOwnGroupLog` on our own island: rows go
-    /// through the one ingest path filed under the local alias, the ack is
-    /// keyed by the island's own room id, and the loop only continues while
-    /// an ack moved a cursor (the fetch reads from the island's cursor, so a
-    /// pass that acked nothing would read the same rows again).
+    /// Drain our room logs on `host` (a visited island, or a backup home
+    /// that hosts a room we are in) and ack what landed, the same loop as
+    /// `MessageService.drainOwnGroupLogIfAdvertised` on our own island: rows
+    /// go through the one ingest path filed under the local alias, the ack
+    /// is keyed by the island's own room id, and the loop only continues
+    /// while an ack moved a cursor and landed (the fetch reads from the
+    /// island's cursor, so a pass that acked nothing, or whose ack failed,
+    /// would read the same rows again). Called right after the host's
+    /// legacy queue was read, never beside it.
     @MainActor
-    private static func drainGroupLog(host: String, jwt: String) async {
+    static func drainGroupLog(host: String, jwt: String) async {
         struct FetchIn: Encodable { let limit: Int }
         struct FetchOut: Decodable {
             let rows: [MessageService.GroupLogRow]
@@ -359,21 +363,23 @@ enum CrossIslandGroups {
         struct AckRoom: Encodable { let gid: Int; let upto: Int }
         struct AckIn: Encodable { let rooms: [AckRoom] }
         struct AckOut: Decodable { let deleted: Int }
+        let drain = MessageService.shared.beginGroupLogDrain()
         var passes = 0
         repeat {
             passes += 1
             guard let out: FetchOut = try? await postJSON(
                 "https://\(host)/messages/group-log/fetch", body: FetchIn(limit: 500), jwt: jwt
             ) else { return }
-            let acks = MessageService.shared.ingestGroupLogRows(out.rows) {
+            let got = MessageService.shared.ingestGroupLogRows(out.rows, drain: drain) {
                 VisitedIslandsStore.shared.aliasFor(host: host, remoteId: $0)
             }
-            guard acks.contains(where: { $0.value > (out.cursors[String($0.key)] ?? 0) }) else { return }
-            let _: AckOut? = try? await postJSON(
+            let acks = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
+            guard !acks.isEmpty else { return }
+            let acked: AckOut? = try? await postJSON(
                 "https://\(host)/messages/group-log/ack",
                 body: AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) }), jwt: jwt
             )
-            guard out.more, passes < 20 else { return }
+            guard acked != nil, out.more, passes < 20 else { return }
         } while true
     }
 

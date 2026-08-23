@@ -426,12 +426,14 @@ enum Multihome {
             // advances that cursor with no ack. Rows it takes never reach the
             // ack-protected main drain. Never drain through a front.
             if isOwnHost(home.host) { continue }
-            var rows: [Row]? = try? await getQueue(host: home.host, jwt: home.jwt)
+            var jwt = home.jwt
+            var rows: [Row]? = try? await getQueue(host: home.host, jwt: jwt)
             if rows == nil {
-                // Token may have expired — refresh via recover and retry once.
+                // Token may have expired: refresh via recover and retry once.
                 guard let fresh = try? await recoverOn(host: home.host, signingPriv: signingPriv) else { continue }
                 MultihomeStore.shared.updateCreds(ownUin: ownUin, host: home.host, uin: fresh.uin, jwt: fresh.token)
-                rows = try? await getQueue(host: home.host, jwt: fresh.token)
+                jwt = fresh.token
+                rows = try? await getQueue(host: home.host, jwt: jwt)
             }
             guard let rows else { continue }
             for r in rows {
@@ -456,6 +458,15 @@ enum Multihome {
                         BadgeCounter.syncIcon()
                     }
                 }
+            }
+            // Stage 5: the rooms this island hosts for us live in its log
+            // once it keeps one, the same as on a visited island, and once
+            // any client of this account has read that log the backup
+            // mailbox carries no room rows at all. Same per-host question,
+            // same drain, same alias, with the token the queue read ended
+            // up with. An island without the flag sees neither call.
+            if await CrossIslandGroups.hostKeepsGroupLog(home.host) {
+                await CrossIslandGroups.drainGroupLog(host: home.host, jwt: jwt)
             }
         }
     }
@@ -896,13 +907,26 @@ final class GroupSenderKeyStore {
         let index: Int
         let payload: String
         let serverTime: Date
+        /// When this install parked it, for the age limit; `serverTime` is
+        /// when the island took the post, which a long-offline device can
+        /// meet weeks later. Optional so an entry written before the field
+        /// existed still decodes (it then ages by `serverTime`).
+        var heldAt: Date?
     }
 
     private static let heldKey = "rcq.senderkeys.held.v1"   // [ "<ownUin>" : [HeldGmsg] ]
-    /// Oldest entries go past this. Fifty unreadable broadcasts on one
-    /// account is already a broken room, and the bound keeps a flood of
-    /// un-openable rows cheap.
+    /// Entries past this are evicted, oldest first from the kid that holds
+    /// the most. Fifty unreadable broadcasts on one account is already a
+    /// broken room, and the bound keeps a flood of un-openable rows cheap.
     private static let heldCap = 50
+    /// A hold older than this is dead. A NACK for the kid goes out every
+    /// ten minutes while rows keep failing, and an owner who has not
+    /// answered in a week is not going to: that is what a broadcast from
+    /// another install of OUR OWN account looks like (it never sends us its
+    /// SKDM; the carbon carries the message instead), and without the age
+    /// limit every such post stays here for good and crowds out rows that
+    /// are genuinely waiting on a key.
+    private static let heldMaxAge: TimeInterval = 7 * 24 * 3600
 
     private func loadHeld() -> [String: [HeldGmsg]] {
         guard let d = defaults.data(forKey: Self.heldKey),
@@ -920,10 +944,21 @@ final class GroupSenderKeyStore {
     func holdGmsg(ownUin: Int, _ entry: HeldGmsg) {
         lock.lock(); defer { lock.unlock() }
         var all = loadHeld()
-        var list = all[String(ownUin)] ?? []
+        let cutoff = Date().addingTimeInterval(-Self.heldMaxAge)
+        var list = (all[String(ownUin)] ?? []).filter { ($0.heldAt ?? $0.serverTime) > cutoff }
         if list.contains(where: { $0.kid == entry.kid && $0.epoch == entry.epoch && $0.index == entry.index }) { return }
-        list.append(entry)
-        if list.count > Self.heldCap { list.removeFirst(list.count - Self.heldCap) }
+        var stamped = entry
+        stamped.heldAt = Date()
+        list.append(stamped)
+        // Over the cap, the kid with the most rows gives up its oldest: one
+        // kid nobody will ever answer for must not evict the others.
+        while list.count > Self.heldCap {
+            var perKid: [String: Int] = [:]
+            for h in list { perKid[h.kid, default: 0] += 1 }
+            guard let worst = perKid.max(by: { $0.value < $1.value })?.key,
+                  let idx = list.firstIndex(where: { $0.kid == worst }) else { break }
+            list.remove(at: idx)
+        }
         all[String(ownUin)] = list
         saveHeld(all)
     }
