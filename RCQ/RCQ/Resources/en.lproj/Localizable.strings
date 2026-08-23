@@ -5,8 +5,8 @@
    `String.localized` extension's bundle fallback.
 
    Convention: ALL user-visible strings should route through
-   `"key".localized`. Hardcoded English literals are tech debt —
-   migrate them as you touch each view.
+   `"key".localized`. Hardcoded English literals are tech debt.
+   Migrate them as you touch each view.
 */
 
 /* ── Settings ─────────────────────────────────────────────── */
@@ -44,9 +44,9 @@
 "settings.minis.toggle" = "Game minis";
 "settings.minis.toggle.footer" = "Show floating Crash and UIN auction widgets on the chat list so you can keep an eye on a round or a bid without staying inside the game.";
 "settings.trades.realtime" = "Real-time trade pop-ups";
-"settings.trades.realtime.footer" = "When on, an incoming trade opens immediately. Off — trades wait quietly in the Trades window and in the chat with the sender.";
+"settings.trades.realtime.footer" = "When on, an incoming trade opens immediately. Off: trades wait quietly in the Trades window and in the chat with the sender.";
 "settings.language" = "Language";
-"settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally — missing strings fall back to English.";
+"settings.language.footer" = "Pick the language for the app interface. Translations roll out incrementally. Missing strings fall back to English.";
 
 "settings.privacy" = "Privacy";
 "settings.privacy_network" = "Privacy & network";
@@ -63,20 +63,20 @@
 "settings.privacy.scope.everyone" = "Everyone";
 "settings.privacy.scope.contacts" = "Contacts only";
 "settings.privacy.scope.nobody" = "Nobody";
-"settings.privacy.footer" = "Last seen — who sees your online timestamp. Gender — opt-in info that respects its own visibility scope. Group invites — \"Contacts only\" lets people in your contacts add you to groups; \"Nobody\" blocks unsolicited adds entirely. Trade offers — same shape; \"Nobody\" blocks every incoming trade including gifts. Calls — \"Nobody\" hides every call button in the app; \"Contacts\" only allows calls between mutual contacts.";
-"settings.privacy.profile.desc" = "Who can see your name, age, city, country, interests, homepage, and \"about\" text. Nickname, UIN, online status, and equipped pet stay visible to everyone — those are needed for chat to work.";
+"settings.privacy.footer" = "Last seen: who sees your online timestamp. Gender: opt-in info that respects its own visibility scope. Group invites: \"Contacts only\" lets people in your contacts add you to groups; \"Nobody\" blocks unsolicited adds entirely. Trade offers: same shape; \"Nobody\" blocks every incoming trade including gifts. Calls: \"Nobody\" hides every call button in the app; \"Contacts\" only allows calls between mutual contacts.";
+"settings.privacy.profile.desc" = "Who can see your name, age, city, country, interests, homepage, and \"about\" text. Nickname, UIN, online status, and equipped pet stay visible to everyone. Those are needed for chat to work.";
 "settings.privacy.last_seen.desc" = "Who can see your online timestamp. \"Nobody\" hides it entirely.";
 "settings.privacy.gender_visible.desc" = "Who can see the Gender field on your profile and next to your nickname in lists.";
-"settings.privacy.gender_visible.desc.empty" = "Pick a gender on your profile first — there's nothing to hide otherwise.";
-"settings.privacy.group_invites.desc" = "Who can add you to groups. \"Contacts only\" — mutual friends only; \"Nobody\" blocks invites entirely.";
+"settings.privacy.gender_visible.desc.empty" = "Pick a gender on your profile first. There's nothing to hide otherwise.";
+"settings.privacy.group_invites.desc" = "Who can add you to groups. \"Contacts only\": mutual friends only; \"Nobody\" blocks invites entirely.";
 "settings.privacy.trade_offers.desc" = "Who can send you trades and gifts. \"Nobody\" blocks every incoming offer, including free gifts.";
 "settings.privacy.calls.desc" = "Who can call you. \"Nobody\" hides every call button in chats and menus; \"Contacts\" allows mutual friends only.";
 "settings.privacy.footer.short" = "Last seen, gender, group invites, trade offers, calls, read receipts.";
 "settings.privacy.calls" = "Calls from";
 "settings.privacy.read_receipts" = "Read receipts to";
-"settings.privacy.read_receipts.desc" = "When you read a message, your contact sees the second checkmark. \"Nobody\" turns this off — you'll still see when others read yours.";
+"settings.privacy.read_receipts.desc" = "When you read a message, your contact sees the second checkmark. \"Nobody\" turns this off. You'll still see when others read yours.";
 "settings.privacy.reputation" = "Reputation visible to";
-"settings.privacy.reputation.desc" = "Who can see your reputation counter on your profile. Anyone can still grant you reputation — visibility only hides the running total.";
+"settings.privacy.reputation.desc" = "Who can see your reputation counter on your profile. Anyone can still grant you reputation; visibility only hides the running total.";
 
 "profile.reputation.label" = "reputation";
 "profile.reputation.give_short" = "Give";
@@ -123,7 +123,7 @@
 "weblink.body" = "This will log %@ in as your account so you can chat there. Only continue if you opened this QR yourself.";
 "weblink.confirm" = "Connect";
 "weblink.done" = "Connected. The device should log in now.";
-"weblink.error" = "Couldn't connect. The code may have expired — reload the page and try again.";
+"weblink.error" = "Couldn't connect. The code may have expired. Reload the page and try again.";
 "linkeddevices.title" = "Linked devices";
 "linkeddevices.nav" = "Devices";
 "multihome.title" = "Your backup";
@@ -185,11 +185,11 @@
 "settings.network.localproxy.test" = "Test connection";
 "settings.network.localproxy.hint" = "Orbot (Tor): 127.0.0.1:9050 · i2pd: 127.0.0.1:4447 · AWG/wiresocks: 127.0.0.1:25344. Start your proxy first. On iPhone, Orbot's VPN mode already covers the whole app.";
 "settings.network.custom_server.intro.title" = "Use a different server";
-"settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref — self-host or use a friend's instance.";
+"settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref. Self-host or use a friend's instance.";
 "settings.network.custom_server.current.label" = "ACTIVE SERVER";
 "settings.network.custom_server.input.label" = "NEW SERVER URL";
 "settings.network.custom_server.invalid" = "URL must start with http:// or https:// and have a hostname.";
-"settings.network.custom_server.warning" = "This adds a new account on the chosen server. Your current account (UIN, contacts, groups and history) stays on this device — switch between your accounts from the account switcher.";
+"settings.network.custom_server.warning" = "This adds a new account on the chosen server. Your current account (UIN, contacts, groups and history) stays on this device. Switch between your accounts from the account switcher.";
 "settings.network.custom_server.confirm.title" = "Add an account on this server?";
 "settings.network.custom_server.confirm.body" = "Adds a new account on the chosen server and switches to it. Your current account stays on this device and you can switch back anytime.";
 "settings.network.custom_server.confirm.cta" = "Add account";
@@ -216,7 +216,7 @@
 "settings.traffic.used.value" = "%d MB";
 "settings.traffic.spent" = "Spent";
 "settings.traffic.pay_large" = "Pay tokens for files > 50 MB";
-"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 token per 10 MB — no size limit while you have tokens.";
+"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 token per 10 MB. No size limit while you have tokens.";
 
 "settings.history" = "History";
 "settings.history.file" = "Chat history file";
@@ -262,7 +262,7 @@
 "uin_shop.hint.too_short" = "Need at least 3 digits";
 "uin_shop.price.label" = "PRICE";
 "uin_shop.info.what.title" = "What is a UIN";
-"uin_shop.info.what.body" = "Your UIN is your handle in RCQ — a number tied to no phone or email. Other users find you by it; shorter UINs are scarcer, so they cost more.";
+"uin_shop.info.what.body" = "Your UIN is your handle in RCQ: a number tied to no phone or email. Other users find you by it; shorter UINs are scarcer, so they cost more.";
 "uin_shop.info.migrate.title" = "Taking a number does not change who you are";
 "uin_shop.info.migrate.body" = "The number joins your collection and you keep answering as you do now. Moving onto it is a separate step on My UINs, and it is reversible: the number you leave stays yours too, so nobody else can take it. Contacts, groups, profile and chat history come with you either way.";
 "uin_shop.info.current" = "Your current UIN · %@";
@@ -283,7 +283,7 @@
 "bug_bounty.section.how" = "HOW IT WORKS";
 "bug_bounty.how.b1" = "Describe the issue specifically: steps to reproduce, what you expected, what you got, your iOS version.";
 "bug_bounty.how.b2" = "We review reports manually.";
-"bug_bounty.how.b3" = "Duplicates of already-known bugs are ignored — be specific and recent.";
+"bug_bounty.how.b3" = "Duplicates of already-known bugs are ignored. Be specific and recent.";
 "bug_bounty.section.submit" = "SUBMIT";
 "bug_bounty.submit.hint" = "Between 20 and 1000 characters.";
 "bug_bounty.submit.placeholder" = "What broke / how to reproduce / iOS version";
@@ -291,7 +291,7 @@
 "bug_bounty.submit.sending" = "Sending…";
 "bug_bounty.submit.sent" = "Sent";
 "bug_bounty.submit.sent_number" = "Sent · #%d";
-"bug_bounty.disclosure" = "Security vulnerabilities with potential data leak or E2EE bypass — email legal@rcq.app with [SECURITY] in the subject, not here.";
+"bug_bounty.disclosure" = "Security vulnerabilities with potential data leak or E2EE bypass: email legal@rcq.app with [SECURITY] in the subject, not here.";
 "bug_bounty.alert.title" = "Bug Report";
 "bug_bounty.shake.toggle" = "Shake to report";
 "bug_bounty.shake.toggle_hint" = "Shake the device to open this sheet from anywhere in the app.";
@@ -348,7 +348,7 @@
 "group.settings.closed.hint" = "Only invitations from the owner add new members. The shared link still shows a preview but can't auto-join.";
 
 "paid_traffic.title" = "Pay for traffic?";
-"paid_traffic.body" = "This file is %@ — bigger than the free 50 MB cap. Enable paid traffic in Settings to send it.";
+"paid_traffic.body" = "This file is %@, bigger than the free 50 MB cap. Enable paid traffic in Settings to send it.";
 "paid_traffic.price_suffix" = "this file";
 "paid_traffic.enable" = "Enable paid traffic";
 "paid_traffic.cancel" = "Cancel";
@@ -368,16 +368,16 @@
 "settings.account.footer" = "Deletes your account on the server, wipes every key and message on this device, and starts you over with a fresh UIN. Your old contacts can no longer reach you.";
 "settings.account.burn.title" = "Permanently delete this account?";
 "settings.account.burn.confirm" = "Delete permanently";
-"settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone — they keep no link to your new identity. This cannot be undone.";
+"settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone; they keep no link to your new identity. This cannot be undone.";
 "settings.account.burn.tally" = "%d items, %d tokens, %d gems";
 
 "settings.link_web" = "Link Web";
 "settings.share.message" = "Add me on RCQ: %@ (%d)";
-"settings.link_web.footer" = "Use chat.rcq.app on a desktop browser. Generates a one-shot code you paste into the site. Send-only for now — replies still arrive on iOS.";
+"settings.link_web.footer" = "Use chat.rcq.app on a desktop browser. Generates a one-shot code you paste into the site. Send-only for now; replies still arrive on iOS.";
 
 "link_web.title" = "Link Web";
 "link_web.instructions.title" = "Connect chat.rcq.app";
-"link_web.instructions.body" = "Open chat.rcq.app in your desktop browser. Copy the code below and paste it on the site — your account connects.";
+"link_web.instructions.body" = "Open chat.rcq.app in your desktop browser. Copy the code below and paste it on the site. Your account connects.";
 "link_web.copy_blob" = "Copy code";
 "link_web.copied" = "Copied";
 "link_web.regenerate" = "Generate fresh code";
@@ -400,12 +400,12 @@
 "common.error" = "Error";
 "common.error.insufficient" = "The island refused the send. Try again.";
 "common.error.already_done" = "Already done";
-"common.error.session_ended" = "Session ended — try the next round";
-"common.error.conflict" = "Conflict — try again";
+"common.error.session_ended" = "Session ended. Try the next round";
+"common.error.conflict" = "Conflict. Try again";
 "common.error.gone" = "Not found";
-"common.error.rate_limited" = "Too many requests — slow down";
-"common.error.server" = "Server hiccup — try again in a moment";
-"common.error.network" = "Connection hiccup — try again";
+"common.error.rate_limited" = "Too many requests. Slow down";
+"common.error.server" = "Server hiccup. Try again in a moment";
+"common.error.network" = "Connection hiccup. Try again";
 
 "common.delete" = "Delete";
 "common.copy" = "Copy";
@@ -451,7 +451,7 @@
 "uin_listing.share.toast.sent" = "Sent to the chat.";
 "uin_listing.share.toast.error" = "Couldn't send: %@";
 
-// ── User safety (Block / Report) — shared menu across UGC surfaces
+// ── User safety (Block / Report): shared menu across UGC surfaces
 "settings.blocked_users" = "Blocked users";
 "blocked_users.unblock" = "Unblock";
 "blocked_users.unblock.confirm.title" = "Unblock this user?";
@@ -545,7 +545,7 @@
 
 "chat.action.report_content" = "Report content";
 
-/* Report with evidence — long-press on a media bubble */
+/* Report with evidence (long-press on a media bubble) */
 "report_evidence.title" = "Report Content";
 "report_evidence.heading" = "Report this content";
 "report_evidence.body" = "By submitting this report, you authorize RCQ moderators to view this decrypted media for review. The file will be uploaded to our moderation queue and reviewed within 24 hours. False reports may result in restrictions on your account.";
@@ -566,7 +566,7 @@
 /* ── Auction mini-bar ─────────────────────────────────────── */
 
 "auction.mini.leading" = "Leading · %d";
-"auction.mini.outbid" = "Outbid — re-bid?";
+"auction.mini.outbid" = "Outbid. Re-bid?";
 "auction.mini.bid_cta" = "Raise";
 "chat.menu.voice_call" = "Voice call";
 "chat.menu.video_call" = "Video call";
@@ -643,7 +643,7 @@
 "media.error.compression" = "Couldn't compress that media. Try a smaller file.";
 "media.error.encryption" = "Couldn't encrypt that media. Try again.";
 "media.error.deposit" = "Couldn't deposit the media to the recipient's island. Try again.";
-"media.error.too_large" = "This file is %@ MB — over the %@ MB limit. Try a shorter clip or lower-resolution capture.";
+"media.error.too_large" = "This file is %@ MB, over the %@ MB limit. Try a shorter clip or lower-resolution capture.";
 "media.bubble.failed" = "Failed";
 
 "contact_list.empty.title" = "No contacts yet";
@@ -651,7 +651,7 @@
 "contact_list.empty.cta" = "Add a contact";
 
 "chat.empty.title" = "No messages yet";
-"chat.empty.body" = "Say hi — your first message starts the thread.";
+"chat.empty.body" = "Say hi. Your first message starts the thread.";
 
 "create_group.title" = "New Group";
 "create_group.name_placeholder" = "Group name";
@@ -669,12 +669,12 @@
 "notifs.section.trades" = "TRADE OFFERS";
 "notifs.trades_from_contacts" = "From contacts";
 "notifs.trades_from_strangers" = "From everyone else";
-"notifs.trades.footer" = "Most spam comes from non-contacts — \"From everyone else\" is off by default.";
+"notifs.trades.footer" = "Most spam comes from non-contacts, so \"From everyone else\" is off by default.";
 "notifs.section.muted" = "MUTED CONTACTS";
 "notifs.muted.footer" = "Pushes from these contacts (and trade offers from them) won't wake your phone. Mute or unmute a contact from the chat list's long-press menu.";
 "notifs.unmute" = "Unmute";
 "chat.forwarded_from" = "Forwarded from %@";
-"chat.received_while_away" = "Received while you were away — %@";
+"chat.received_while_away" = "Received while you were away: %@";
 "chat.random.add_request_sent" = "Request sent";
 "chat.random.add_request" = "Add as contact";
 "chat.random.skip_left" = "%d:%02d left";
@@ -728,7 +728,7 @@
 "call.outgoing.calling" = "Calling…";
 "call.incoming.video" = "Incoming video call…";
 "call.incoming.voice" = "Incoming call…";
-/* §5d cross-island wake: the island cannot know the caller — shown until the envelope decrypts */
+/* §5d cross-island wake: the island cannot know the caller; shown until the envelope decrypts */
 "call.incoming.unknown_caller" = "Incoming call";
 "call.action.decline" = "Decline";
 "call.action.accept" = "Accept";
@@ -855,7 +855,7 @@
 
 "share.title" = "Share my RCQ";
 "share.find_me" = "Find me on RCQ";
-"share.message" = "My UIN is %d — open in RCQ: rcq://add/%d";
+"share.message" = "My UIN is %d. Open in RCQ: rcq://add/%d";
 "share.cta.share" = "Share";
 "share.cta.copy_link" = "Copy link";
 
@@ -881,7 +881,7 @@
 "stranger.gate.cta.set_age" = "Open profile";
 "random.body" = "Talk to a stranger anonymously for 5 minutes.\nNeither of you sees the other's UIN.";
 "random.queueing.title" = "Looking for a stranger…";
-"random.queueing.body" = "Stay on this screen — we'll connect you the moment somebody else is online and ready.";
+"random.queueing.body" = "Stay on this screen. We'll connect you the moment somebody else is online and ready.";
 "random.cta.start" = "Start";
 "random.ended.expired" = "Your 5-minute window is up. Tap Start to meet somebody new.";
 "random.ended.peer_left" = "The stranger left the chat.";
@@ -897,9 +897,9 @@
 "about.stats.users" = "people on RCQ";
 "about.privacy.section" = "PRIVACY";
 "about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
-"about.privacy.b2" = "Sealed sender — server can't link who messages whom.";
+"about.privacy.b2" = "Sealed sender: server can't link who messages whom.";
 "about.privacy.b3" = "The backend never sees message contents: messages are stored only as encrypted blobs and deleted once delivered.";
-"about.privacy.b4" = "No phone number, no email — UIN is the only identity.";
+"about.privacy.b4" = "No phone number, no email: UIN is the only identity.";
 "about.privacy.b5" = "History lives on your device only, encrypted at rest when locked.";
 "about.privacy.b6" = "Your account lives on an island, a server anyone can run. Islands never talk to each other, your app is what connects them.";
 "about.contact.section" = "CONTACT";
@@ -916,11 +916,11 @@
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 
-/* Pet names — slug-keyed */
+/* Pet names, slug-keyed */
 
-/* Voice packs — notification sounds */
+/* Voice packs (notification sounds) */
 
-/* Pet lore — slug-keyed */
+/* Pet lore, slug-keyed */
 
 /* ── Add contact / search ─────────────────────────────────── */
 
@@ -941,12 +941,12 @@
 "join_group.error.generic" = "Couldn't join. Try again.";
 
 "chat.menu.premium_content" = "Premium content";
-"chat.premium.coming_soon" = "Coming soon. The owner will be able to post photos/videos behind a blur with a token price — members unlock per-message and the owner gets 95% (5% marketplace fee).";
+"chat.premium.coming_soon" = "Coming soon. The owner will be able to post photos/videos behind a blur with a token price. Members unlock per-message and the owner gets 95% (5% marketplace fee).";
 "add.section.people" = "PEOPLE";
 "add.cta.add" = "Add to contacts";
 "add.cta.in_list" = "Already in your contact list";
 "add.cta.sending" = "Sending…";
-"add.cta.sent" = "Request sent — pending approval";
+"add.cta.sent" = "Request sent, pending approval";
 "add.trade" = "Trade";
 "add.contact_info" = "Contact Info";
 "add.row.added" = "Added";
@@ -1037,7 +1037,7 @@
 "ci.contactreq.subtitle" = "Wants to add you as a contact";
 "ci.request_not_sent" = "Added, but their island did not take the contact request. They will not see it yet.";
 "ci.add_row.subtitle" = "Cross-island contact (another RCQ island)";
-"ci.add_self" = "This is you — your account on this island";
+"ci.add_self" = "This is you: your account on this island";
 "contact_list.section.cross_island" = "Other islands";
 "pending.cta.decline" = "Decline";
 
@@ -1049,7 +1049,7 @@
 "shop.tokens_n" = "%d tokens";
 "shop.best_value" = "BEST VALUE";
 "shop.per_token" = "%d¢ per token";
-"shop.balance" = "Your balance lives server-side under your UIN. Real App Store purchase will come later — packs above credit your wallet instantly for testing.";
+"shop.balance" = "Your balance lives server-side under your UIN. Real App Store purchase will come later. Packs above credit your wallet instantly for testing.";
 
 "pool.title" = "Pool";
 "pool.section_share" = "%.0f%% of pulls";
@@ -1115,7 +1115,7 @@
 "nearby.ttl.3h" = "3 hours";
 "nearby.optin.heading" = "People Nearby";
 "nearby.optin.body" = "Show up on a list of users in your area for a limited time.";
-"nearby.optin.privacy_note" = "Only a coarse area tag is shared — your exact location stays on this device.";
+"nearby.optin.privacy_note" = "Only a coarse area tag is shared; your exact location stays on this device.";
 "nearby.optin.visible_for" = "Visible for";
 "nearby.optin.anonymous" = "Show me anonymously";
 "nearby.optin.anonymous.on" = "Others see “%@” instead of your real nickname.";
@@ -1128,13 +1128,13 @@
 "nearby.active.area" = "· area %@";
 "nearby.active.stop" = "Stop";
 "nearby.empty.title" = "Nobody else here yet.";
-"nearby.empty.body" = "Check back in a bit — the list refreshes every 30 seconds.";
+"nearby.empty.body" = "Check back in a bit. The list refreshes every 30 seconds.";
 "nearby.row.tag" = "Nearby";
 "nearby.row.in_contacts" = "In contacts";
 "nearby.row.requested" = "Requested";
 "nearby.profile.anonymous" = "Anonymous · Nearby";
 "nearby.profile.body.anon" = "Profiles in Nearby are anonymous. Add as a contact and you'll see the real one if they accept.";
-"nearby.profile.body.real" = "This user opted out of anonymous mode — their real account is visible.";
+"nearby.profile.body.real" = "This user opted out of anonymous mode, so their real account is visible.";
 "nearby.profile.already" = "Already in your contacts.";
 "nearby.profile.sent" = "Request sent.";
 "nearby.profile.add_contact" = "Add as contact";
@@ -1162,8 +1162,8 @@
 "radio.invite.accept" = "Accept";
 "radio.invite.decline" = "Decline";
 "radio.password.required" = "Password required";
-"radio.error.wrong_password" = "Wrong password — try again";
-"radio.error.connect_lost" = "Lost connection before joining — try again";
+"radio.error.wrong_password" = "Wrong password. Try again";
+"radio.error.connect_lost" = "Lost connection before joining. Try again";
 "radio.joining" = "Joining %@…";
 "radio.password.body" = "Enter the password for %@.";
 "radio.password.field" = "Password";
@@ -1174,15 +1174,15 @@
 "radio.room.name_placeholder" = "e.g. hangout";
 "radio.room.password_protected" = "Password-protected";
 "radio.room.password_placeholder" = "At least 6 characters";
-"radio.room.password_footer" = "Anyone with the password can join. PBKDF2-derived AES key — share it out-of-band, not over radio.";
-"radio.room.open_footer" = "Open room — anyone in range can join. Use password mode for closed sessions.";
+"radio.room.password_footer" = "Anyone with the password can join. PBKDF2-derived AES key. Share it out-of-band, not over radio.";
+"radio.room.open_footer" = "Open room: anyone in range can join. Use password mode for closed sessions.";
 "radio.composer.placeholder" = "Say something local…";
 "radio.header.room" = "%d inside · radio";
 "radio.header.one_to_one" = "radio · 1:1";
 "radio.voice.speaking_pill" = "%@ on air";
 "radio.error.voice_start_failed" = "Couldn't open the mic";
-"radio.error.mic_denied" = "Microphone access denied — enable it in Settings";
-"radio.error.mic_simulator" = "Push-to-talk needs a real device — the iOS Simulator's mic stack reports an invalid format under voiceChat mode";
+"radio.error.mic_denied" = "Microphone access denied. Enable it in Settings";
+"radio.error.mic_simulator" = "Push-to-talk needs a real device. The iOS Simulator's mic stack reports an invalid format under voiceChat mode";
 
 /* ── Onboarding ───────────────────────────────────────────── */
 
@@ -1198,7 +1198,7 @@
 
 "onboard.status.kicker" = "STATUS";
 "onboard.status.title" = "Pick your status";
-"onboard.status.body" = "Online, Away, DND, Invisible, Offline. The classic five — and they actually mean something. Tap your status icon to switch.";
+"onboard.status.body" = "Online, Away, DND, Invisible, Offline. The classic five, and they actually mean something. Tap your status icon to switch.";
 "onboard.federation.kicker" = "FEDERATION";
 "onboard.federation.title" = "No single owner";
 "onboard.federation.body" = "RCQ isn't one company's server. Every server is an independent island, and anyone can run one. Your account lives on the island you pick, and you keep your number if you move.";
@@ -1208,7 +1208,7 @@
 
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "Sealed-sender chat";
-"onboard.chat.body" = "End-to-end encrypted on every message. The server doesn't see who's writing to whom — the sender's identity is sealed inside the envelope, not in the header.";
+"onboard.chat.body" = "End-to-end encrypted on every message. The server doesn't see who's writing to whom: the sender's identity is sealed inside the envelope, not in the header.";
 
 "onboard.nearby.kicker" = "NEARBY";
 "onboard.nearby.title" = "Find people in your area";
@@ -1220,15 +1220,15 @@
 
 "onboard.pets.kicker" = "PETS";
 "onboard.pets.title" = "Get a digital pet";
-"onboard.pets.body" = "Open boxes and collect rare animated pets. Upgrade them, gift them, trade them. The same pet can drop at different rarities — chase the perfect copy.";
+"onboard.pets.body" = "Open boxes and collect rare animated pets. Upgrade them, gift them, trade them. The same pet can drop at different rarities. Chase the perfect copy.";
 
 "onboard.trade.kicker" = "TRADE";
 "onboard.trade.title" = "Trade in real time";
-"onboard.trade.body" = "Send an offer in a chat — the recipient sees it instantly. Items, tokens, gems, on either side. Empty \"requested\" = gift. Empty \"offered\" = buy request.";
+"onboard.trade.body" = "Send an offer in a chat, and the recipient sees it instantly. Items, tokens, gems, on either side. Empty \"requested\" = gift. Empty \"offered\" = buy request.";
 
 "onboard.privacy.kicker" = "PRIVACY";
 "onboard.privacy.title" = "You decide who sees what";
-"onboard.privacy.body" = "Per-field visibility for last-seen, gender, group invites, trade offers — Everyone, Contacts only, or Nobody. Permanently delete the account whenever you want; nothing's salvageable after.";
+"onboard.privacy.body" = "Per-field visibility for last-seen, gender, group invites, trade offers: Everyone, Contacts only, or Nobody. Permanently delete the account whenever you want; nothing's salvageable after.";
 
 /* ── Rarity (used in chips, filters, history) ─────────────── */
 
@@ -1241,7 +1241,7 @@
 "games.soon" = "SOON";
 "games.cta.topup" = "Top up wallet";
 "games.crash.title" = "Crash";
-"games.crash.body" = "The multiplier rises — cash out before it crashes.";
+"games.crash.body" = "The multiplier rises. Cash out before it crashes.";
 "games.hi_lo.title" = "Hi-Lo";
 "games.hi_lo.body" = "Guess if the next card is higher or lower.";
 "games.limbo.title" = "Limbo";
@@ -1254,7 +1254,7 @@
 "crash.phase.crashed" = "CRASHED";
 "crash.feed.title" = "Cashed out";
 "crash.feed.bets" = "%d players";
-"crash.feed.empty" = "Nobody has bet yet — be the first";
+"crash.feed.empty" = "Nobody has bet yet. Be the first";
 "crash.row.holding" = "HOLDING";
 "crash.row.burned" = "BURNED";
 
@@ -1270,13 +1270,13 @@
 "hilo.cta.lower" = "LOWER";
 "hilo.cta.cashout" = "CASH OUT %.2fx";
 "hilo.banner.won" = "Won %.2fx · +%d tokens";
-"hilo.banner.lost" = "Card %@ — wrong. Bet lost.";
+"hilo.banner.lost" = "Card %@: wrong. Bet lost.";
 
 "hilo.rules.title" = "Hi-Lo rules";
 "hilo.rules.how.title" = "How to play";
-"hilo.rules.how.body" = "Place a bet — the server reveals a card A through K. Guess if the next card is higher or lower than the current one. Each correct guess compounds the multiplier. Wrong guess = bet lost. Cash out any time = bet × current multiplier.";
+"hilo.rules.how.body" = "Place a bet, and the server reveals a card A through K. Guess if the next card is higher or lower than the current one. Each correct guess compounds the multiplier. Wrong guess = bet lost. Cash out any time = bet × current multiplier.";
 "hilo.rules.payout.title" = "Multiplier";
-"hilo.rules.payout.body" = "Smaller probability = bigger multiplier. On a 7, higher and lower are roughly even (×1.83). On an A (higher is almost certain) it's only ×1.04. On a K — mirrored. Each correct step multiplies the chain.";
+"hilo.rules.payout.body" = "Smaller probability = bigger multiplier. On a 7, higher and lower are roughly even (×1.83). On an A (higher is almost certain) it's only ×1.04. On a K, mirrored. Each correct step multiplies the chain.";
 "hilo.rules.fair.title" = "Provably fair";
 "hilo.rules.fair.body" = "Every card in the round is determined BEFORE start: SHA256(seed + index). You see the hash immediately; the seed is revealed when the round ends so you can verify every draw by hand.";
 
@@ -1300,7 +1300,7 @@
 "limbo.bet.label" = "Bet";
 "limbo.cta.roll" = "ROLL %d";
 "limbo.banner.won" = "Rolled %.2fx · +%d tokens";
-"limbo.banner.lost" = "Rolled %.2fx (needed ≥%.2fx) — missed";
+"limbo.banner.lost" = "Rolled %.2fx (needed ≥%.2fx), missed";
 
 "limbo.rules.title" = "Limbo rules";
 "limbo.rules.how.title" = "How to play";
@@ -1316,27 +1316,27 @@
 "crash.cashout.label" = "CASH OUT %.2fx";
 "crash.you_cashed" = "You cashed out ✓";
 "crash.spectating" = "Wait for next round";
-"crash.result.lost" = "Crashed at %.2fx — bet lost";
+"crash.result.lost" = "Crashed at %.2fx. Bet lost";
 "crash.result.won" = "Won! %.2fx · +%d tokens";
 "crash.result.next_in" = "Next round in %d s";
 "crash.banner.cashed" = "Cashed %.2fx · +%d tokens";
 "crash.error.betting_closed" = "Bets already closed";
-"crash.error.cashout_too_late" = "Too late — the round crashed just as your tap arrived. Bet is forfeit.";
+"crash.error.cashout_too_late" = "Too late. The round crashed just as your tap arrived. Bet is forfeit.";
 "crash.error.already_cashed" = "You've already cashed out this round";
 "crash.error.already_bet" = "You've already bet this round";
 "crash.error.no_bet" = "You have no bet in this round";
 "crash.error.insufficient" = "Not enough tokens";
-"crash.error.network" = "Connection hiccup — try again";
+"crash.error.network" = "Connection hiccup. Try again";
 
 "crash.rules.title" = "Crash rules";
 "crash.rules.how.title" = "How to play";
-"crash.rules.how.body" = "Each round: 8 seconds to place a bet, then the multiplier rises from 1.00x. At any moment tap CASH OUT — you lock in bet × current multiplier. Stay in too long and the round crashes — you lose everything.";
+"crash.rules.how.body" = "Each round: 8 seconds to place a bet, then the multiplier rises from 1.00x. At any moment tap CASH OUT: you lock in bet × current multiplier. Stay in too long and the round crashes. You lose everything.";
 "crash.rules.payout.title" = "Payout";
-"crash.rules.payout.body" = "Winnings = bet × multiplier at cashout. Example: bet 10 tokens, cashed at 2.50x → +25 tokens. The longer you hold, the bigger the potential win — and the higher the crash risk.";
+"crash.rules.payout.body" = "Winnings = bet × multiplier at cashout. Example: bet 10 tokens, cashed at 2.50x → +25 tokens. The longer you hold, the bigger the potential win, and the higher the crash risk.";
 "crash.rules.fair.title" = "Provably fair";
-"crash.rules.fair.body" = "The crash point is decided BEFORE bets open: SHA256(seed + round_id). The hash is published at round start, the seed itself is revealed when the round ends. You can verify by hand — nobody can change the result after your bet.";
+"crash.rules.fair.body" = "The crash point is decided BEFORE bets open: SHA256(seed + round_id). The hash is published at round start, the seed itself is revealed when the round ends. You can verify by hand; nobody can change the result after your bet.";
 "crash.rules.risk.title" = "Risk";
-"crash.rules.risk.body" = "About 3% of rounds crash instantly at 1.00x — that's the mathematical house edge (tokens are burned, nobody profits). 50% of rounds crash before 2.00x. 10% make it past 10x. Play with what you're willing to lose.";
+"crash.rules.risk.body" = "About 3% of rounds crash instantly at 1.00x. That's the mathematical house edge (tokens are burned, nobody profits). 50% of rounds crash before 2.00x. 10% make it past 10x. Play with what you're willing to lose.";
 
 "contact_list.bar.add" = "Add";  /* legacy key kept for transitional bundles */
 
@@ -1398,7 +1398,7 @@
 
 "audio_room.menu.rotate_key" = "Rotate join key";
 "audio_room.rotate.confirm.title" = "Rotate the join key?";
-"audio_room.rotate.confirm.body" = "The old key stops working. Everyone already in your list keeps the room — their key updates automatically. Anyone holding the old key without joining can no longer enter.";
+"audio_room.rotate.confirm.body" = "The old key stops working. Everyone already in your list keeps the room; their key updates automatically. Anyone holding the old key without joining can no longer enter.";
 "audio_room.rotate.confirm.do" = "Rotate";
 "audio_room.rotate.toast" = "Key rotated";
 
@@ -1411,42 +1411,42 @@
 /* ── Pet Hunt screen ───────────────────────────── */
 "pet_hunt.daily_yield" = "%d tokens / day at full uptime";
 "pet_hunt.daily_gems" = "%d gems / day at full uptime";
-"pet_hunt.cap_reached" = "Buffer full — claim now or yield is lost";
+"pet_hunt.cap_reached" = "Buffer full. Claim now or yield is lost";
 "pet_hunt.claim" = "Claim";
 "pet_hunt.send" = "SEND TO HUNT";
 "pet_hunt.hunts_left" = "%d / %d hunts left today";
 "pet_hunt.cta.open_memorial" = "Memorial";
 "pool.rarity.section" = "Rarity roll";
-"pool.rarity.hint" = "Rarity is rolled independently of the kind that drops — any pet, smiley pack, or voice can land at any rarity at the chances below.";
+"pool.rarity.hint" = "Rarity is rolled independently of the kind that drops: any pet, smiley pack, or voice can land at any rarity at the chances below.";
 "pet_hunt.empty.no_pet.title" = "No pet equipped";
 "pet_hunt.accumulator.title" = "In buffer";
 "pet_hunt.spec.daily_yield" = "Tokens / day";
 "pet_hunt.spec.daily_gems" = "Gems / day";
 "pet_hunt.spec.hourly_rate" = "Tokens / hour";
 
-/* Pet Hunt — info sheet */
+/* Pet Hunt: info sheet */
 "pet_hunt.info.title" = "How it works";
 "pet_hunt.info.passive.title" = "Passive farming";
-"pet_hunt.info.passive.body" = "Your equipped pet earns tokens 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours — claim daily or you lose the overflow.";
+"pet_hunt.info.passive.body" = "Your equipped pet earns tokens 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours. Claim daily or you lose the overflow.";
 "pet_hunt.info.zones.title" = "Hunt zones";
 "pet_hunt.info.zones.body" = "Three daily hunts let you risk your pet for bigger rewards. Forest is safe, Mountain is risky, Cave is hardcore. Stronger pets succeed more often AND survive failure more often.";
 "pet_hunt.info.death.title" = "Permadeath";
 "pet_hunt.info.death.body" = "If your pet fails a hunt and gets wounded at level 0, it dies forever. Disasters in Mountain and Cave can kill any pet regardless of level. Temper your pets before sending them to hard zones.";
 
-/* Pet Hunt — zone picker */
+/* Pet Hunt: zone picker */
 "pet_hunt.zone_picker.title" = "Choose hunt";
 "pet_hunt.zone_picker.intro" = "Bigger reward, bigger risk. Your pet quality changes the actual numbers.";
 "pet_hunt.zone.forest" = "Forest";
 "pet_hunt.zone.forest.reward" = "Tokens 3–8 × stats + gems 0–2";
-"pet_hunt.zone.forest.risk" = "Safe — only minor wounds, no death";
+"pet_hunt.zone.forest.risk" = "Safe: only minor wounds, no death";
 "pet_hunt.zone.mountain" = "Mountain";
 "pet_hunt.zone.mountain.reward" = "Tokens 8–20 × stats + gems 1–4";
-"pet_hunt.zone.mountain.risk" = "Risky — wounds common, rare deaths";
+"pet_hunt.zone.mountain.risk" = "Risky: wounds common, rare deaths";
 "pet_hunt.zone.cave" = "Cave";
 "pet_hunt.zone.cave.reward" = "Tokens 20–50 × stats + gems 2–7";
-"pet_hunt.zone.cave.risk" = "Hardcore — frequent wounds, real death risk";
+"pet_hunt.zone.cave.risk" = "Hardcore: frequent wounds, real death risk";
 
-/* Pet Hunt — result */
+/* Pet Hunt: result */
 "pet_hunt.result.success" = "Successful hunt";
 "pet_hunt.result.success.body" = "Your pet returned from the %@ unscathed.";
 "pet_hunt.result.wound" = "Wounded";
@@ -1454,7 +1454,7 @@
 "pet_hunt.result.death" = "Did not return";
 "pet_hunt.result.death.body" = "Your pet has fallen. It will be remembered in the Memorial.";
 
-/* Pet Hunt — memorial */
+/* Pet Hunt: memorial */
 "pet_hunt.memorial.title" = "Memorial";
 "pet_hunt.memorial.empty.title" = "Nobody's fallen yet";
 "pet_hunt.memorial.empty.body" = "Pets that die on hunts will be remembered here.";
@@ -1480,11 +1480,11 @@
 "uin_auction.cta.bid" = "Bid";
 "uin_auction.cta.topup" = "Top up";
 "uin_auction.insufficient_hint" = "Not enough tokens";
-"uin_auction.need_tokens" = "Not enough tokens — buy more";
+"uin_auction.need_tokens" = "Not enough tokens. Buy more";
 "uin_auction.history.title" = "BID HISTORY";
 "uin_auction.history.empty" = "Be the first to bid";
 "uin_auction.waiting.title" = "Preparing the next lot…";
-"uin_auction.waiting.body" = "A new auction starts in a few seconds. Legendary UINs drop occasionally — stick around.";
+"uin_auction.waiting.body" = "A new auction starts in a few seconds. Legendary UINs drop occasionally, so stick around.";
 "uin_auction.error.bid_too_low" = "Min bid is %d tokens";
 "uin_auction.error.no_amount" = "Enter a bid amount first.";
 "uin_auction.error.insufficient" = "Need %d tokens, have %d";
@@ -1492,12 +1492,12 @@
 "uin_auction.error.ended" = "Auction ended";
 "uin_auction.outbid_refund" = "You've been outbid. %d tokens refunded.";
 "uin_auction.banner.outbid.title" = "Outbid on UIN auction";
-"uin_auction.banner.outbid.body" = "You were outbid — %d tokens refunded. Tap to rebid.";
+"uin_auction.banner.outbid.body" = "You were outbid, %d tokens refunded. Tap to rebid.";
 "uin_auction.recent.title" = "Recent winners";
 "uin_auction.recent.empty" = "No completed auctions yet";
 "uin_auction.recent.won_by" = "Won by %@";
 "uin_auction.owned.title" = "My UINs";
-"uin_auction.owned.body" = "UINs won at auction. Activate any as your current UIN — runs the migration (99 tokens).";
+"uin_auction.owned.body" = "UINs won at auction. Activate any as your current UIN; this runs the migration (99 tokens).";
 "uin_auction.owned.empty" = "No won UINs yet. Win an auction!";
 "uin_auction.owned.activate" = "Activate";
 "uin_auction.owned.sell" = "Sell on marketplace";
@@ -1530,7 +1530,7 @@
 "settings.privacy.screen_security" = "Screen security";
 "settings.privacy.screen_security.desc" = "Hide content from screenshots and recordings";
 "settings.privacy.screen_security.footer" = "When on, screenshots and screen recordings of RCQ come out blank, and the app is hidden in the app switcher. Off by default.";
-"settings.privacy.screen_security.moved" = "Screen privacy is now per chat — open a chat, tap ⋯, then Screenshot alerts.";
+"settings.privacy.screen_security.moved" = "Screen privacy is now per chat. Open a chat, tap ⋯, then Screenshot alerts.";
 "secscreen.menu_on" = "Screenshot alerts: on";
 "secscreen.menu_off" = "Screenshot alerts";
 "secscreen.you_screenshotted" = "You took a screenshot";
@@ -1542,7 +1542,7 @@
 "panic_pin.lock.title" = "Enter PIN";
 "panic_pin.settings.title" = "Security PIN";
 "panic_pin.settings.section" = "App PIN";
-"panic_pin.settings.footer" = "Your message history on this device is encrypted with a key derived from this PIN. The PIN is asked at launch and after the app has been in the background. It protects against a coerced unlock or someone glancing at your phone — not against a forensic lab: your identity keys and server-side metadata still exist.";
+"panic_pin.settings.footer" = "Your message history on this device is encrypted with a key derived from this PIN. The PIN is asked at launch and after the app has been in the background. It protects against a coerced unlock or someone glancing at your phone, not against a forensic lab: your identity keys and server-side metadata still exist.";
 "panic_pin.setup.action" = "Set up a PIN";
 "panic_pin.setup.footer" = "Once set, the app locks and your message history is encrypted on this device with a key derived from the PIN.";
 "panic_pin.change.action" = "Change PIN";
@@ -1574,13 +1574,13 @@
 "panic_pin.wipe.remove.confirm.action" = "Remove";
 "panic_pin.wipe.warning.title" = "This PIN destroys data";
 "panic_pin.wipe.warning.body" = "Entering the wipe PIN at the lock screen permanently erases all messages, contacts and keys on this device and starts a brand-new empty account. There is no confirmation step and no undo. Nothing is deleted on the server unless you switch that on below. Set it only if you accept the risk of entering it by mistake.";
-"panic_pin.wipe.warning.continue" = "I understand — continue";
+"panic_pin.wipe.warning.continue" = "I understand, continue";
 "panic_pin.remove_all.action" = "Turn off Security PIN";
 "panic_pin.remove_all.confirm.title" = "Turn off the PIN?";
 "panic_pin.remove_all.confirm.body" = "The app will no longer lock, and your message history will be decrypted back to plaintext on this device.";
 "panic_pin.remove_all.confirm.action" = "Turn off";
 
-/* Panic-PIN — Face ID add-on */
+/* Panic-PIN: Face ID add-on */
 "panic_pin.biometric.reason" = "Unlock RCQ";
 "panic_pin.lock.use_biometric" = "Unlock with Face ID";
 "panic_pin.biometric.section" = "Face ID";
@@ -1593,18 +1593,18 @@
 "panic_pin.autolock.5m" = "5 min";
 "panic_pin.autolock.15m" = "15 min";
 "panic_pin.biometric.toggle" = "Unlock with Face ID";
-"panic_pin.biometric.footer" = "Use Face ID for everyday quick unlock. The PIN stays as a fallback. Note: Face ID is a convenience — it does not protect against being forced to unlock, since someone can hold the phone to your face. For that, use the PIN modes below.";
-"panic_pin.biometric.footer.conflict" = "Face ID can't be used together with a wipe PIN — a biometric unlock can't tell the modes apart, and a forced face-unlock would bypass them. Remove the wipe PIN to enable Face ID.";
+"panic_pin.biometric.footer" = "Use Face ID for everyday quick unlock. The PIN stays as a fallback. Note: Face ID is a convenience; it does not protect against being forced to unlock, since someone can hold the phone to your face. For that, use the PIN modes below.";
+"panic_pin.biometric.footer.conflict" = "Face ID can't be used together with a wipe PIN: a biometric unlock can't tell the modes apart, and a forced face-unlock would bypass them. Remove the wipe PIN to enable Face ID.";
 "panic_pin.wipe.footer.biometric" = "Turn off Face ID to set a wipe PIN. The two can't be used together.";
 "panic_pin.error.biometric_conflict" = "Face ID and the wipe PIN can't be enabled at the same time.";
 "panic_pin.error.biometric_failed" = "Couldn't enable Face ID. Try again.";
 
 "panic_pin.lock.locked_out" = "Too many attempts";
 
-/* Panic-PIN — decoy mode */
+/* Panic-PIN: decoy mode */
 "panic_pin.decoy.section" = "Decoy PIN";
 "panic_pin.decoy.footer" = "An optional second PIN. Entering it at the lock screen opens a separate decoy account that works offline, and your real contacts and chats stay encrypted and out of reach. Use it if you may be forced to unlock and show the app. Fill it with a few real but harmless conversations copied from your own chats: the numbers and dates are rewritten as they are copied, and a blank account looks staged.";
-"panic_pin.decoy.footer.biometric" = "Turn off Face ID to set a decoy PIN. The two can't be used together — a face-unlock can't open the decoy.";
+"panic_pin.decoy.footer.biometric" = "Turn off Face ID to set a decoy PIN. The two can't be used together: a face-unlock can't open the decoy.";
 "panic_pin.decoy.action" = "Add a decoy PIN";
 "panic_pin.decoy.change" = "Change decoy PIN";
 "panic_pin.decoy.remove" = "Remove decoy PIN";
@@ -1618,12 +1618,12 @@
 "panic_pin.decoy.seed.count" = "%d messages";
 "panic_pin.decoy.seed.empty" = "There are no text conversations to copy yet.";
 "panic_pin.decoy.seed.none_picked" = "Pick at least one conversation. Saving with none selected would leave the decoy empty.";
-"panic_pin.decoy.seed.failed" = "The decoy could not be filled. Nothing was changed — try picking the conversations again.";
+"panic_pin.decoy.seed.failed" = "The decoy could not be filled. Nothing was changed. Try picking the conversations again.";
 "panic_pin.wipe.server.toggle" = "Also delete the account on the server";
 "panic_pin.wipe.server.footer" = "Off by default. When on, the wipe PIN also asks the server to delete the account itself, so the number stops existing and nobody can write to it. When off, only this device is cleared: the account stays alive and you can sign back into it from another device.";
 "panic_pin.wipe.footer.server_where" = "Whether the wipe PIN also deletes the account on the server is chosen when you set the PIN. It is off unless you turn it on, and it cannot be shown here: the setting is sealed with the wipe PIN itself, so nothing short of entering that PIN can read it.";
 
-/* Voice recording — lock + preview */
+/* Voice recording: lock + preview */
 "chat.voice.locked" = "Locked";
 "chat.voice.cancel_armed" = "Release to cancel";
 "chat.voice.cancel_hint" = "Cancel";
@@ -1632,16 +1632,16 @@
 "chat.voice.lock_armed" = "Release to lock";
 "chat.voice.swipe_hints" = "← cancel   ↑ lock";
 
-/* Onboarding — reworked pages (anonymity / mesh / security PIN) */
+/* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANONYMOUS";
 "onboard.anon.title" = "No phone, no email";
-"onboard.anon.body" = "Your identity is a numeric UIN — nothing else. The account isn't tied to you. Burn it and start over whenever you want.";
+"onboard.anon.body" = "Your identity is a numeric UIN, nothing else. The account isn't tied to you. Burn it and start over whenever you want.";
 "onboard.mesh.kicker" = "OFFLINE MESH";
 "onboard.mesh.title" = "Chat with no internet";
-"onboard.mesh.body" = "Radio Chat finds people near you over Bluetooth and Wi-Fi Direct. Messages hop device to device — no servers, no cell signal needed.";
+"onboard.mesh.body" = "Radio Chat finds people near you over Bluetooth and Wi-Fi Direct. Messages hop device to device: no servers, no cell signal needed.";
 "onboard.pin.kicker" = "SECURITY PIN";
 "onboard.pin.title" = "Locked on your device";
-"onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device — with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
+"onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device, with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
 
 /* Account switcher + add account */
 "contact_list.add_account" = "New server";
@@ -1649,7 +1649,7 @@
 "manage_accounts.title" = "Accounts";
 "manage_accounts.add_by_phrase" = "Add account by recovery phrase";
 "manage_accounts.intro.title" = "Accounts on this device";
-"manage_accounts.intro.body" = "The active account can't be removed from here — switch to another one first. Removing from the device doesn't touch the server-side account; use Burn account in Privacy settings for that.";
+"manage_accounts.intro.body" = "The active account can't be removed from here. Switch to another one first. Removing from the device doesn't touch the server-side account; use Burn account in Privacy settings for that.";
 "manage_accounts.switch" = "Switch";
 "manage_accounts.active_badge" = "ACTIVE";
 "manage_accounts.delete" = "Remove";
@@ -1659,7 +1659,7 @@
 "manage_accounts.empty" = "No accounts";
 "add_account.title" = "New account";
 "add_account.intro.title" = "Which server?";
-"add_account.intro.body" = "Keep multiple accounts on different servers side by side. Your current one stays — its history and contacts are untouched. Switch between them with the pill at the top.";
+"add_account.intro.body" = "Keep multiple accounts on different servers side by side. Your current one stays; its history and contacts are untouched. Switch between them with the pill at the top.";
 "add_account.search" = "Search servers";
 "add_account.empty" = "No matches";
 "add_account.custom.label" = "OR ENTER A URL MANUALLY";
@@ -1674,7 +1674,7 @@
 "add_account.error" = "Couldn't register. Check the URL and your network.";
 "add_account.limit" = "Reached the %d-account device limit. Remove one via Manage accounts and try again.";
 
-/* Server picker — final onboarding page */
+/* Server picker: final onboarding page */
 "onboard.server.pill.prefix" = "server:";
 "onboard.server.pill.change" = "change";
 "onboard.server.picker.title" = "Choose a server";
@@ -1683,7 +1683,7 @@
 "onboard.server.picker.search" = "Search servers";
 "onboard.server.picker.empty" = "No matches";
 
-"boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it — try a VPN.";
+"boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it. Try a VPN.";
 "boot.error.title" = "Couldn't connect";
 "boot.error.retrying" = "Retrying in %ds…";
 "boot.error.retry_now" = "Retry now";
@@ -1771,7 +1771,7 @@
 "myreports.remove.refused" = "This one is still under review, so it stays on your list until there is a verdict.";
 "myreports.remove.error" = "Could not remove it. Try again.";
 
-/* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
+/* My numbers: the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "My UINs";
 "my_uins.active" = "You answer as";
 "my_uins.active.sub" = "This is the number people reach you at.";
@@ -1853,9 +1853,9 @@
 "how.q1" = "Who can read what I send?";
 "how.a1" = "Only the person you sent it to. The text is encrypted on your device and decrypted on theirs, and the island in between carries a sealed envelope it cannot open.\n\nWhat the island does see: that you were online, and who your envelopes were addressed to. What it does not see: what is inside them.";
 "how.q2" = "What is an island, and why is there more than one?";
-"how.a2" = "An island is a server that holds your mail. RCQ is not one server but many independent ones: ours, other people's, and yours if you run one.\n\nYour number is issued by an island, so the same number on two islands is two different people — an address is the number AND the island. People on different islands still write to each other, call, and share groups.";
+"how.a2" = "An island is a server that holds your mail. RCQ is not one server but many independent ones: ours, other people's, and yours if you run one.\n\nYour number is issued by an island, so the same number on two islands is two different people: an address is the number AND the island. People on different islands still write to each other, call, and share groups.";
 "how.q3" = "What do I do when it stops working?";
-"how.a3" = "First find out whether you are being blocked: Settings → Network → Connection diagnostics, and run the full check with your VPN OFF.\n\nIt gives you one line. Send it through Report a bug — that line tells us exactly what is closed on your network, and without it we are guessing.";
+"how.a3" = "First find out whether you are being blocked: Settings → Network → Connection diagnostics, and run the full check with your VPN OFF.\n\nIt gives you one line. Send it through Report a bug. That line tells us exactly what is closed on your network, and without it we are guessing.";
 "how.q4" = "What happens when my network blocks RCQ?";
 "how.a4" = "The app notices and switches to RCQ relays by itself. There is nothing to turn on and no separate VPN: it opens a connection to one of our relays and keeps working.\n\nTo whoever is doing the blocking, that traffic looks like an ordinary visit to an ordinary site, the same kind of encrypted connection your browser makes all day. The relay carries sealed envelopes, so it cannot read your messages either.";
 "how.q5" = "Can anyone tell who I am writing to?";

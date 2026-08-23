@@ -7,8 +7,8 @@
    files inherit any missing key from this file via the
    `String.localized` extension's bundle fallback.
    Convention: ALL user-visible strings should route through
-   `"key".localized`. Hardcoded English literals are tech debt —
-   migrate them as you touch each view.
+   `"key".localized`. Hardcoded English literals are tech debt.
+   Migrate them as you touch each view.
 */
 /* ── Settings ─────────────────────────────────────────────── */
 "settings.title" = "Ayarlar";
@@ -421,7 +421,7 @@
 "uin_listing.share.toast.title" = "Paylaş";
 "uin_listing.share.toast.sent" = "Sohbete gönderildi.";
 "uin_listing.share.toast.error" = "Gönderilemedi: %@";
-// ── User safety (Block / Report) — shared menu across UGC surfaces
+// ── User safety (Block / Report): shared menu across UGC surfaces
 "settings.blocked_users" = "Engellenen kullanıcılar";
 "blocked_users.unblock" = "Engeli kaldır";
 "blocked_users.unblock.confirm.title" = "Bu kullanıcının engeli kaldırılsın mı?";
@@ -509,7 +509,7 @@
 "chat.action.delete_for_everyone" = "Herkesten sil";
 "chat.action.react" = "Tepki ver";
 "chat.action.report_content" = "İçeriği bildir";
-/* Report with evidence — long-press on a media bubble */
+/* Report with evidence (long-press on a media bubble) */
 "report_evidence.title" = "İçeriği bildir";
 "report_evidence.heading" = "Bu içeriği bildir";
 "report_evidence.body" = "Bu bildirimi göndererek RCQ moderatörlerinin bu medyayı inceleme için şifresi çözülmüş hâlde görmesine izin vermiş olursun. Dosya moderasyon kuyruğumuza yüklenir ve 24 saat içinde incelenir. Asılsız bildirimler hesabına kısıtlama getirebilir.";
@@ -845,9 +845,9 @@
 "contact.last_seen.hours" = "%d sa önce";
 "contact.last_seen.days" = "%d gün önce";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
-/* Pet names — slug-keyed */
-/* Voice packs — notification sounds */
-/* Pet lore — slug-keyed */
+/* Pet names, slug-keyed */
+/* Voice packs (notification sounds) */
+/* Pet lore, slug-keyed */
 /* ── Add contact / search ─────────────────────────────────── */
 "add.title" = "Bul";
 "add.search.placeholder" = "UIN, takma ad, grup adı…";
@@ -1301,7 +1301,7 @@
 "pet_hunt.spec.daily_yield" = "Günde jeton";
 "pet_hunt.spec.daily_gems" = "Günde taş";
 "pet_hunt.spec.hourly_rate" = "Saatte jeton";
-/* Pet Hunt — info sheet */
+/* Pet Hunt: info sheet */
 "pet_hunt.info.title" = "Nasıl işler";
 "pet_hunt.info.passive.title" = "Pasif kazanç";
 "pet_hunt.info.passive.body" = "Takılı evcil hayvanın 7/24 jeton kazanır. Nadirlik, seviye ve saflık arttıkça hız da artar. Tampon 24 saatte dolar; her gün al, yoksa taşanı kaybedersin.";
@@ -1309,7 +1309,7 @@
 "pet_hunt.info.zones.body" = "Günde üç av, daha büyük ödüller için evcil hayvanını riske atmanı sağlar. Orman güvenli, Dağ riskli, Mağara acımasız. Güçlü hayvanlar hem daha sık başarır HEM DE başarısızlıktan daha sık sağ çıkar.";
 "pet_hunt.info.death.title" = "Kalıcı ölüm";
 "pet_hunt.info.death.body" = "Evcil hayvanın bir avda başarısız olur ve 0. seviyede yaralanırsa temelli ölür. Dağ ve Mağara'daki felaketler seviyesi ne olursa olsun her hayvanı öldürebilir. Zor bölgelere yollamadan önce hayvanlarını tavla.";
-/* Pet Hunt — zone picker */
+/* Pet Hunt: zone picker */
 "pet_hunt.zone_picker.title" = "Av seç";
 "pet_hunt.zone_picker.intro" = "Ödül büyüdükçe risk de büyür. Gerçek sayıları hayvanının kalitesi değiştirir.";
 "pet_hunt.zone.forest" = "Orman";
@@ -1321,14 +1321,14 @@
 "pet_hunt.zone.cave" = "Mağara";
 "pet_hunt.zone.cave.reward" = "Jeton 20–50 × özellikler + taş 2–7";
 "pet_hunt.zone.cave.risk" = "Acımasız: sık yara, gerçek ölüm riski";
-/* Pet Hunt — result */
+/* Pet Hunt: result */
 "pet_hunt.result.success" = "Av başarılı";
 "pet_hunt.result.success.body" = "Evcil hayvanın %@ bölgesinden çizik almadan döndü.";
 "pet_hunt.result.wound" = "Yaralandı";
 "pet_hunt.result.wound.body" = "Evcil hayvanın yaralandı ve bir seviye kaybetti. Şimdi %d. seviyede.";
 "pet_hunt.result.death" = "Dönmedi";
 "pet_hunt.result.death.body" = "Evcil hayvanın düştü. Anıt'ta anılacak.";
-/* Pet Hunt — memorial */
+/* Pet Hunt: memorial */
 "pet_hunt.memorial.title" = "Anıt";
 "pet_hunt.memorial.empty.title" = "Henüz düşen yok";
 "pet_hunt.memorial.empty.body" = "Avda ölen evcil hayvanlar burada anılacak.";
@@ -1450,7 +1450,7 @@
 "panic_pin.remove_all.confirm.title" = "PIN kapatılsın mı?";
 "panic_pin.remove_all.confirm.body" = "Uygulama artık kilitlenmez ve mesaj geçmişin bu cihazda düz metne çözülür.";
 "panic_pin.remove_all.confirm.action" = "Kapat";
-/* Panic-PIN — Face ID add-on */
+/* Panic-PIN: Face ID add-on */
 "panic_pin.biometric.reason" = "RCQ'nun kilidini aç";
 "panic_pin.lock.use_biometric" = "Face ID ile aç";
 "panic_pin.biometric.section" = "Face ID";
@@ -1469,7 +1469,7 @@
 "panic_pin.error.biometric_conflict" = "Face ID ile silme PIN'i aynı anda açık olamaz.";
 "panic_pin.error.biometric_failed" = "Face ID açılamadı. Tekrar dene.";
 "panic_pin.lock.locked_out" = "Çok fazla deneme";
-/* Panic-PIN — decoy mode */
+/* Panic-PIN: decoy mode */
 "panic_pin.decoy.section" = "Sahte PIN";
 "panic_pin.decoy.footer" = "İsteğe bağlı ikinci bir PIN. Kilit ekranında girildiğinde çevrimdışı çalışan ayrı bir sahte hesap açar; gerçek kişilerin ve sohbetlerin şifreli ve erişilemez kalır. Zorla telefonu açtırılıp uygulamayı göstermen ihtimali varsa kullan. Kendi sohbetlerinden kopyalanan birkaç gerçek ama zararsız yazışmayla doldur: numaralar ve tarihler kopyalanırken yeniden yazılır, bomboş bir hesap ise kurgu gibi durur.";
 "panic_pin.decoy.footer.biometric" = "Sahte PIN kurmak için Face ID'yi kapat. İkisi birlikte kullanılamaz: yüz taraması sahte hesabı açamaz.";
@@ -1488,7 +1488,7 @@
 "panic_pin.wipe.server.toggle" = "Sunucudaki hesabı da sil";
 "panic_pin.wipe.server.footer" = "Varsayılan olarak kapalı. Açıkken silme PIN'i sunucudan hesabın kendisini de silmesini ister: numara var olmaktan çıkar ve kimse ona yazamaz. Kapalıyken yalnızca bu cihaz temizlenir: hesap yaşamaya devam eder ve başka bir cihazdan tekrar girebilirsin.";
 "panic_pin.wipe.footer.server_where" = "Silme PIN'inin sunucudaki hesabı da silip silmeyeceği, PIN'i kurarken seçilir. Sen açmadıkça kapalıdır ve burada gösterilemez: ayar silme PIN'inin kendisiyle mühürlenir, yani onu girmeden okunamaz.";
-/* Voice recording — lock + preview */
+/* Voice recording: lock + preview */
 "chat.voice.locked" = "Kilitli";
 "chat.voice.cancel_armed" = "İptal için bırak";
 "chat.voice.cancel_hint" = "İptal";
@@ -1496,7 +1496,7 @@
 "chat.voice.lock_hint" = "Kilitle";
 "chat.voice.lock_armed" = "Kilitlemek için bırak";
 "chat.voice.swipe_hints" = "← iptal   ↑ kilit";
-/* Onboarding — reworked pages (anonymity / mesh / security PIN) */
+/* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANONİM";
 "onboard.anon.title" = "Telefon yok, e-posta yok";
 "onboard.anon.body" = "Kimliğin sayısal bir UIN, başka bir şey değil. Hesap sana bağlı değil. İstediğin zaman yak ve baştan başla.";
@@ -1536,7 +1536,7 @@
 "add_account.adding" = "Sunucuya kaydediliyor…";
 "add_account.error" = "Kaydolunamadı. Adresi ve ağını kontrol et.";
 "add_account.limit" = "Cihaz başına %d hesap sınırına ulaştın. Hesapları yönet'ten birini kaldırıp tekrar dene.";
-/* Server picker — final onboarding page */
+/* Server picker: final onboarding page */
 "onboard.server.pill.prefix" = "sunucu:";
 "onboard.server.pill.change" = "değiştir";
 "onboard.server.picker.title" = "Sunucu seç";
@@ -1620,7 +1620,7 @@
 "myreports.remove.confirm.body" = "Bu ekranda görünmeyi bırakır. Hiçbir şey silinmez: operatörlerde bildirim de yanıt da kalır ve şeref listesinde saymaya devam eder.";
 "myreports.remove.refused" = "Bu bildirim hâlâ inceleniyor, bu yüzden bir karar çıkana kadar listenizde kalır.";
 "myreports.remove.error" = "Kaldırılamadı. Tekrar deneyin.";
-/* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
+/* My numbers: the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "UIN'lerim";
 "my_uins.active" = "Şu numarayla cevap veriyorsun";
 "my_uins.active.sub" = "İnsanlar sana bu numaradan ulaşır.";

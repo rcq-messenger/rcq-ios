@@ -53,18 +53,18 @@
 "settings.privacy.scope.everyone" = "所有人";
 "settings.privacy.scope.contacts" = "仅联系人";
 "settings.privacy.scope.nobody" = "无人";
-"settings.privacy.footer" = "最后上线时间——谁能看到你的在线时间。性别——自愿填写的信息，有自己的可见范围。群组邀请——“仅联系人”允许你的联系人把你加入群组；“无人”会完全阻止未经请求的添加。交易请求——同样的规则；“无人”会阻止所有传入的交易，包括礼物。通话——“无人”会隐藏应用里的所有通话按钮；“仅联系人”只允许互为联系人的双方通话。";
+"settings.privacy.footer" = "最后上线时间：谁能看到你的在线时间。性别：自愿填写的信息，有自己的可见范围。群组邀请：“仅联系人”允许你的联系人把你加入群组；“无人”会完全阻止未经请求的添加。交易请求：同样的规则；“无人”会阻止所有传入的交易，包括礼物。通话：“无人”会隐藏应用里的所有通话按钮；“仅联系人”只允许互为联系人的双方通话。";
 "settings.privacy.profile.desc" = "谁能看到你的姓名、年龄、城市、国家、兴趣、主页和“关于我”。昵称、UIN、在线状态和已装备的宠物始终对所有人可见，聊天需要这些才能正常工作。";
 "settings.privacy.last_seen.desc" = "谁能看到你的在线时间。“无人”会把它完全隐藏。";
 "settings.privacy.gender_visible.desc" = "谁能在你的个人资料上、以及列表中昵称旁边看到性别一栏。";
 "settings.privacy.gender_visible.desc.empty" = "请先在个人资料里选择性别，否则没有可隐藏的内容。";
-"settings.privacy.group_invites.desc" = "谁可以把你加入群组。“仅联系人”——只有互为好友的人；“无人”会完全阻止邀请。";
+"settings.privacy.group_invites.desc" = "谁可以把你加入群组。“仅联系人”：只有互为好友的人；“无人”会完全阻止邀请。";
 "settings.privacy.trade_offers.desc" = "谁可以给你发送交易和礼物。“无人”会阻止所有传入的请求，包括免费礼物。";
 "settings.privacy.calls.desc" = "谁可以呼叫你。“无人”会隐藏聊天和菜单里的所有通话按钮；“仅联系人”只允许互为好友的人。";
 "settings.privacy.footer.short" = "最后上线时间、性别、群组邀请、交易请求、通话、已读回执。";
 "settings.privacy.calls" = "通话来自";
 "settings.privacy.read_receipts" = "已读回执发送给";
-"settings.privacy.read_receipts.desc" = "你读了消息后，联系人会看到第二个对勾。“无人”会关闭它——你仍然能看到别人什么时候读了你的消息。";
+"settings.privacy.read_receipts.desc" = "你读了消息后，联系人会看到第二个对勾。“无人”会关闭它。你仍然能看到别人什么时候读了你的消息。";
 "settings.privacy.reputation" = "声望可见范围";
 "settings.privacy.reputation.desc" = "谁能在你的个人资料上看到声望计数。任何人仍然可以给你赠送声望，这项设置只隐藏总数。";
 "profile.reputation.label" = "声望";
@@ -110,7 +110,7 @@
 "weblink.body" = "这会让 %@ 以你的账号登录，好在那边聊天。只有这个 QR 是你自己打开的，才继续。";
 "weblink.confirm" = "连接";
 "weblink.done" = "已连接。该设备现在应该会登录。";
-"weblink.error" = "无法连接。代码可能已经过期——请刷新页面后重试。";
+"weblink.error" = "无法连接。代码可能已经过期，请刷新页面后重试。";
 "linkeddevices.title" = "已连接设备";
 "linkeddevices.nav" = "设备";
 "multihome.title" = "你的备份";
@@ -171,11 +171,11 @@
 "settings.network.localproxy.test" = "测试连接";
 "settings.network.localproxy.hint" = "Orbot (Tor)：127.0.0.1:9050 · i2pd：127.0.0.1:4447 · AWG/wiresocks：127.0.0.1:25344。请先启动你的代理。在 iPhone 上，Orbot 的 VPN 模式已经覆盖了整个应用。";
 "settings.network.custom_server.intro.title" = "使用其他服务器";
-"settings.network.custom_server.intro.body" = "在当前账号之外，再在任意兼容的 RCQ 后端上添加一个账号。服务器代码开源，见 github.com/rcq-messenger/rcq-server-ref——可以自己搭建，也可以用朋友的实例。";
+"settings.network.custom_server.intro.body" = "在当前账号之外，再在任意兼容的 RCQ 后端上添加一个账号。服务器代码开源，见 github.com/rcq-messenger/rcq-server-ref。可以自己搭建，也可以用朋友的实例。";
 "settings.network.custom_server.current.label" = "当前服务器";
 "settings.network.custom_server.input.label" = "新服务器 URL";
 "settings.network.custom_server.invalid" = "URL 必须以 http:// 或 https:// 开头，并且带有主机名。";
-"settings.network.custom_server.warning" = "这会在所选服务器上添加一个新账号。你当前的账号（UIN、联系人、群组和聊天记录）留在这台设备上——在账号切换器里可以在几个账号之间切换。";
+"settings.network.custom_server.warning" = "这会在所选服务器上添加一个新账号。你当前的账号（UIN、联系人、群组和聊天记录）留在这台设备上。在账号切换器里可以在几个账号之间切换。";
 "settings.network.custom_server.confirm.title" = "在这个服务器上添加账号？";
 "settings.network.custom_server.confirm.body" = "会在所选服务器上添加一个新账号并切换过去。你当前的账号留在这台设备上，随时可以切回来。";
 "settings.network.custom_server.confirm.cta" = "添加账号";
@@ -201,7 +201,7 @@
 "settings.traffic.used.value" = "%d MB";
 "settings.traffic.spent" = "已花费";
 "settings.traffic.pay_large" = "超过 50 MB 的文件用代币支付";
-"settings.traffic.pay_large.footer" = "50 MB 以内免费。超出部分每 10 MB 收 1 个代币——只要还有代币，就没有大小限制。";
+"settings.traffic.pay_large.footer" = "50 MB 以内免费。超出部分每 10 MB 收 1 个代币。只要还有代币，就没有大小限制。";
 "settings.history" = "聊天记录";
 "settings.history.file" = "聊天记录文件";
 "backup.intro" = "把这台设备上的聊天记录保存成文件，用你的恢复短语加密。文件是你的：想放在哪儿就放在哪儿。它不会上传给我们，我们也读不了它。";
@@ -412,7 +412,7 @@
 "uin_listing.share.toast.title" = "分享";
 "uin_listing.share.toast.sent" = "已发送到聊天。";
 "uin_listing.share.toast.error" = "发送失败：%@";
-// ── User safety (Block / Report) — shared menu across UGC surfaces
+// ── User safety (Block / Report): shared menu across UGC surfaces
 "settings.blocked_users" = "已拉黑用户";
 "blocked_users.unblock" = "解除拉黑";
 "blocked_users.unblock.confirm.title" = "解除拉黑该用户？";
@@ -500,7 +500,7 @@
 "chat.action.delete_for_everyone" = "为所有人删除";
 "chat.action.react" = "回应";
 "chat.action.report_content" = "举报内容";
-/* Report with evidence — long-press on a media bubble */
+/* Report with evidence (long-press on a media bubble) */
 "report_evidence.title" = "举报内容";
 "report_evidence.heading" = "举报这条内容";
 "report_evidence.body" = "提交这份举报，即表示你授权 RCQ 审核人员查看解密后的该媒体文件以进行审核。文件会上传到我们的审核队列，并在 24 小时内处理。虚假举报可能导致你的账号被限制。";
@@ -836,9 +836,9 @@
 "contact.last_seen.hours" = "%d 小时前";
 "contact.last_seen.days" = "%d 天前";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
-/* Pet names — slug-keyed */
-/* Voice packs — notification sounds */
-/* Pet lore — slug-keyed */
+/* Pet names, slug-keyed */
+/* Voice packs (notification sounds) */
+/* Pet lore, slug-keyed */
 /* ── Add contact / search ─────────────────────────────────── */
 "add.title" = "查找";
 "add.search.placeholder" = "UIN、昵称、群组名称…";
@@ -1292,7 +1292,7 @@
 "pet_hunt.spec.daily_yield" = "代币 / 天";
 "pet_hunt.spec.daily_gems" = "宝石 / 天";
 "pet_hunt.spec.hourly_rate" = "代币 / 小时";
-/* Pet Hunt — info sheet */
+/* Pet Hunt: info sheet */
 "pet_hunt.info.title" = "玩法说明";
 "pet_hunt.info.passive.title" = "被动产出";
 "pet_hunt.info.passive.body" = "已装备的宠物全天候赚取代币。稀有度越高、等级越高、纯度越高，速率就越快。缓冲区上限是 24 小时，请每天领取，否则溢出的部分会丢失。";
@@ -1300,7 +1300,7 @@
 "pet_hunt.info.zones.body" = "每天三次狩猎，可以让宠物冒险换取更大的奖励。森林安全，山地有风险，洞穴是硬核。宠物越强，成功的次数越多，失败后活下来的次数也越多。";
 "pet_hunt.info.death.title" = "永久死亡";
 "pet_hunt.info.death.body" = "如果宠物在 0 级时狩猎失败并受伤，它会永远死去。山地和洞穴里的灾难可以杀死任何宠物，与等级无关。送去困难区域之前，先把宠物强化好。";
-/* Pet Hunt — zone picker */
+/* Pet Hunt: zone picker */
 "pet_hunt.zone_picker.title" = "选择狩猎";
 "pet_hunt.zone_picker.intro" = "奖励越大，风险越高。宠物的品质会改变实际数值。";
 "pet_hunt.zone.forest" = "森林";
@@ -1312,14 +1312,14 @@
 "pet_hunt.zone.cave" = "洞穴";
 "pet_hunt.zone.cave.reward" = "代币 20–50 × 属性 + 宝石 2–7";
 "pet_hunt.zone.cave.risk" = "硬核：频繁受伤，有真实的死亡风险";
-/* Pet Hunt — result */
+/* Pet Hunt: result */
 "pet_hunt.result.success" = "狩猎成功";
 "pet_hunt.result.success.body" = "你的宠物从 %@ 平安归来。";
 "pet_hunt.result.wound" = "受伤";
 "pet_hunt.result.wound.body" = "你的宠物受了伤，掉了一级。现在是 %d 级。";
 "pet_hunt.result.death" = "没有回来";
 "pet_hunt.result.death.body" = "你的宠物倒下了。纪念碑会记住它。";
-/* Pet Hunt — memorial */
+/* Pet Hunt: memorial */
 "pet_hunt.memorial.title" = "纪念碑";
 "pet_hunt.memorial.empty.title" = "还没有谁倒下";
 "pet_hunt.memorial.empty.body" = "在狩猎中死去的宠物会记在这里。";
@@ -1441,7 +1441,7 @@
 "panic_pin.remove_all.confirm.title" = "关闭 PIN？";
 "panic_pin.remove_all.confirm.body" = "应用不再锁定，本设备上的聊天记录会被解密回明文。";
 "panic_pin.remove_all.confirm.action" = "关闭";
-/* Panic-PIN — Face ID add-on */
+/* Panic-PIN: Face ID add-on */
 "panic_pin.biometric.reason" = "解锁 RCQ";
 "panic_pin.lock.use_biometric" = "使用 Face ID 解锁";
 "panic_pin.biometric.section" = "Face ID";
@@ -1460,7 +1460,7 @@
 "panic_pin.error.biometric_conflict" = "Face ID 和擦除 PIN 不能同时启用。";
 "panic_pin.error.biometric_failed" = "无法启用 Face ID，请重试。";
 "panic_pin.lock.locked_out" = "尝试次数过多";
-/* Panic-PIN — decoy mode */
+/* Panic-PIN: decoy mode */
 "panic_pin.decoy.section" = "伪装 PIN";
 "panic_pin.decoy.footer" = "可选的第二个 PIN。在锁屏上输入它会打开一个独立的伪装账号，这个账号离线工作，你真正的联系人和聊天记录仍然是加密的，无法被看到。如果你可能被迫解锁并展示应用，就用它。用几段真实但无害的聊天把它填满，内容从你自己的聊天里复制，号码和日期在复制时会被改写；空空如也的账号一看就是临时做出来的。";
 "panic_pin.decoy.footer.biometric" = "关闭 Face ID 才能设置伪装 PIN。两者不能同时使用：人脸解锁打不开伪装账号。";
@@ -1479,7 +1479,7 @@
 "panic_pin.wipe.server.toggle" = "同时删除服务器上的账号";
 "panic_pin.wipe.server.footer" = "默认关闭。打开后，擦除 PIN 还会请求服务器删除账号本身：号码不再存在，谁也写不进来。关闭时只清空本设备：账号仍然存在，你可以在另一台设备上重新登录。";
 "panic_pin.wipe.footer.server_where" = "擦除 PIN 是否同时删除服务器上的账号，是在设置这个 PIN 时选的。默认不删除，而且这里无法显示当前的值：这项设置是用擦除 PIN 本身封起来的，只有输入那个 PIN 才能读出来。";
-/* Voice recording — lock + preview */
+/* Voice recording: lock + preview */
 "chat.voice.locked" = "已锁定";
 "chat.voice.cancel_armed" = "松开取消";
 "chat.voice.cancel_hint" = "取消";
@@ -1487,7 +1487,7 @@
 "chat.voice.lock_hint" = "锁定";
 "chat.voice.lock_armed" = "松开锁定";
 "chat.voice.swipe_hints" = "← 取消   ↑ 锁定";
-/* Onboarding — reworked pages (anonymity / mesh / security PIN) */
+/* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "匿名";
 "onboard.anon.title" = "不要手机号，不要邮箱";
 "onboard.anon.body" = "你的身份就是一个数字 UIN，除此之外什么都没有。账号和你本人没有任何关联。随时可以销毁它，从头再来。";
@@ -1527,7 +1527,7 @@
 "add_account.adding" = "正在服务器上注册…";
 "add_account.error" = "注册失败。请检查 URL 和网络。";
 "add_account.limit" = "已达到每台设备 %d 个账号的上限。请在“管理账号”里移除一个，然后重试。";
-/* Server picker — final onboarding page */
+/* Server picker: final onboarding page */
 "onboard.server.pill.prefix" = "服务器：";
 "onboard.server.pill.change" = "更改";
 "onboard.server.picker.title" = "选择服务器";
@@ -1611,7 +1611,7 @@
 "myreports.remove.confirm.body" = "它不再显示在这个页面。什么都不会被删除：运营方保留反馈和回复，它仍然计入名人堂。";
 "myreports.remove.refused" = "这条还在处理中，在有结论之前会留在你的列表里。";
 "myreports.remove.error" = "移除失败，请重试。";
-/* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
+/* My numbers: the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "我的 UIN";
 "my_uins.active" = "你当前使用的号码";
 "my_uins.active.sub" = "别人通过这个号码找到你。";
