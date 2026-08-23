@@ -35,6 +35,12 @@ final class MessageService {
 
     func configure(ownUIN: Int) {
         self.ownUIN = ownUIN
+        // The room-log marks are per account and per island: an account
+        // switch starts from what the next drain's `cursors` say.
+        groupLogAcked = [:]
+        pendingLiveAcks = [:]
+        liveAckFlush?.cancel()
+        liveAckFlush = nil
         // Throwaway identity fallback for wiped Keychain — AuthService's
         // 404/401 recovery forces a real re-register on next /users/me.
         if let existing = SignalCryptoService.loadFromKeychain(ownUIN: ownUIN) {
@@ -1333,22 +1339,61 @@ final class MessageService {
 
     // MARK: - sender-keys receive helpers
 
-    /// Decode a `gmsg` broadcast via the stored chain. Returns the inner
-    /// envelope + real sender, or nil when the message is mine (carbon handles
-    /// it), a replay, unverifiable, or pending an SKDM (a NACK is fired then).
-    private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> DecryptedEnvelope? {
-        guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return nil }
-        if GroupSenderKeyStore.shared.ownsKid(ownUin: ownUIN, hdr.kid) { return nil } // my own echoed broadcast
+    /// What became of a `gmsg` broadcast on the way in.
+    private enum GmsgOpen {
+        case opened(DecryptedEnvelope)
+        /// The kid is unknown here: a NACK went out (debounced) and the raw
+        /// row is worth keeping until the SKDM lands. The room-log drain
+        /// holds it; the live socket and the legacy queue leave it for
+        /// redelivery as before.
+        case keyMissing(kid: String, epoch: Int, index: Int)
+        /// My own echo, a replay, an epoch mismatch, a bad signature: no
+        /// redelivery will ever open this copy.
+        case dropped
+    }
+
+    /// Surfaced through `ingest`'s `decryptError` so a caller that acks can
+    /// tell "hold this" from "drop this" without opening the wire itself.
+    enum GmsgOpenError: Error {
+        case keyMissing(kid: String, epoch: Int, index: Int)
+    }
+
+    /// Decode a `gmsg` broadcast via the stored chain. `.opened` carries the
+    /// inner envelope + real sender; `.dropped` when the message is mine
+    /// (carbon handles it), a replay, or unverifiable; `.keyMissing` when it
+    /// is pending an SKDM (a NACK is fired then).
+    private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> GmsgOpen {
+        guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return .dropped }
+        if GroupSenderKeyStore.shared.ownsKid(ownUin: ownUIN, hdr.kid) { return .dropped } // my own echoed broadcast
         guard let key = GroupSenderKeyStore.shared.deriveInbound(ownUin: ownUIN, kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
-            if !GroupSenderKeyStore.shared.knowsKid(ownUin: ownUIN, hdr.kid) { sendSknack(gid: gid, kid: hdr.kid) }
-            return nil
+            if !GroupSenderKeyStore.shared.knowsKid(ownUin: ownUIN, hdr.kid) {
+                sendSknack(gid: gid, kid: hdr.kid)
+                return .keyMissing(kid: hdr.kid, epoch: hdr.epoch, index: hdr.index)
+            }
+            return .dropped
         }
-        guard let opened = SenderKeys.openGmsg(payloadB64, gid: gid, mk: key.mk, expectedSpubB64: key.spub) else { return nil }
+        guard let opened = SenderKeys.openGmsg(payloadB64, gid: gid, mk: key.mk, expectedSpubB64: key.spub) else { return .dropped }
         guard opened.verified else {
             print("[MessageService] gmsg sig did not verify; dropping gid=\(gid) kid=\(hdr.kid)")
-            return nil
+            return .dropped
         }
-        return DecryptedEnvelope(senderUIN: key.senderUin, envelope: opened.envelope)
+        return .opened(DecryptedEnvelope(senderUIN: key.senderUin, envelope: opened.envelope))
+    }
+
+    /// Replay the broadcasts the room-log drain held for `kid` now that its
+    /// SKDM was accepted: each raw row goes back through `ingest`, the normal
+    /// decode path, in arrival order. A row that still does not open (the
+    /// SKDM was for a newer epoch) is dropped by `openIncomingGmsg` itself
+    /// and cannot NACK-storm: the kid is known now. What lands counts as
+    /// drained content (unread, badge), never as a banner: it is backlog.
+    private func replayHeldGmsg(kid: String) {
+        let held = GroupSenderKeyStore.shared.takeHeldGmsg(ownUin: ownUIN, kid: kid)
+        for h in held {
+            let packet = WebSocketService.EnvelopePacket(
+                type: "gmsg", payload: h.payload, serverTime: h.serverTime, offline: true, groupID: h.gid
+            )
+            if let outcome = ingest(envelope: packet) { noteDrainedContent(outcome) }
+        }
     }
 
     private static var lastSknack: [String: Date] = [:]
@@ -1618,8 +1663,18 @@ final class MessageService {
             let fromNSE: Bool
             if ws.type == "gmsg" {
                 // Sender-keys broadcast: not a sealed envelope — decode via the chain.
-                guard let gid = ws.groupID, let opened = openIncomingGmsg(ws.payload, gid: gid) else { return nil }
-                decrypted = opened
+                guard let gid = ws.groupID else { return nil }
+                switch openIncomingGmsg(ws.payload, gid: gid) {
+                case .opened(let opened):
+                    decrypted = opened
+                case .keyMissing(let kid, let epoch, let index):
+                    // Named so the room-log drain can hold the row and ack
+                    // it; every other caller reads nil as it always did.
+                    decryptError = GmsgOpenError.keyMissing(kid: kid, epoch: epoch, index: index)
+                    return nil
+                case .dropped:
+                    return nil
+                }
                 fromNSE = false
             } else if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
                 decrypted = cached
@@ -1649,8 +1704,10 @@ final class MessageService {
             // the chain to its authenticated sender; SKNACK asks the kid owner to
             // re-distribute. Both ride the per-member sealed path.
             if case .skdm(let gid, let kid, let epoch, let index, let ck) = decrypted.envelope {
-                if let sk = decrypted.senderSigningKey {
-                    GroupSenderKeyStore.shared.acceptSkdm(ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck)
+                if let sk = decrypted.senderSigningKey,
+                   GroupSenderKeyStore.shared.acceptSkdm(ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck) {
+                    // The key the held broadcasts were waiting for.
+                    replayHeldGmsg(kid: kid)
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
@@ -2616,5 +2673,205 @@ final class MessageService {
                 await ContactService.shared.refresh()
             }
         } catch { }
+        // Stage 5: rooms on an island that keeps a log per room are drained
+        // from it, next to the queue above rather than instead of it. Both
+        // are read on every drain: the queue still carries 1:1 rows and the
+        // room rows written before this account read the log for the first
+        // time. A failed queue fetch does not skip the log.
+        await fetchGroupLog()
+    }
+
+    // MARK: - Stage 5: the room log
+
+    /// One row of a room's log, as served by /messages/group-log/fetch.
+    /// Same envelope types and payloads as the legacy group rows of
+    /// /messages/queue: `gmsg` broadcasts plus the rows sealed to this member
+    /// (`skdm`, `sknack`, `reaction`, legacy per-member `message`...).
+    struct GroupLogRow: Decodable {
+        let gid: Int
+        let seq: Int
+        let envelope_type: String
+        let cls: Int?
+        let payload: String
+        let received_at: Date
+    }
+
+    /// The room-log position this device is known to be acked up to, per
+    /// room, for the rooms the island has told us about (the fetch's
+    /// `cursors` plus our own acks). Only a live frame reads it, to decide
+    /// whether its `seq` is the very next one and may be acked on the spot.
+    /// The island's cursor is authoritative; this is a local echo of it and
+    /// is dropped with the account. Keyed by LOCAL group id (own island only:
+    /// the live socket is ours).
+    private var groupLogAcked: [Int: Int] = [:]
+    /// Live acks coalesce for a moment so a burst of posts is one call.
+    private var pendingLiveAcks: [Int: Int] = [:]
+    private var liveAckFlush: Task<Void, Never>?
+    private var groupLogDrainInFlight = false
+    private var groupLogDrainAgain = false
+
+    /// Drain every room's log on our own island, then ack what landed.
+    /// A no-op on an island that does not advertise `group_log`: such an
+    /// island keeps serving room rows through /messages/queue and must never
+    /// see these calls. Serialised: a drain asked for while one runs queues
+    /// one more pass rather than racing it for the same rows.
+    func fetchGroupLog() async {
+        guard AppState.shared.serverCapabilities.groupLog else { return }
+        if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
+        if groupLogDrainInFlight { groupLogDrainAgain = true; return }
+        groupLogDrainInFlight = true
+        defer { groupLogDrainInFlight = false }
+        repeat {
+            groupLogDrainAgain = false
+            await drainOwnGroupLog()
+        } while groupLogDrainAgain
+    }
+
+    private func drainOwnGroupLog() async {
+        struct FetchIn: Encodable { let limit: Int }
+        struct FetchOut: Decodable {
+            let rows: [GroupLogRow]
+            // JSON objects keyed by the room id as a string. Decoded as
+            // [String: Int] on purpose: JSONDecoder reads [Int: Int] from an
+            // ARRAY of alternating keys and values, not from an object.
+            let heads: [String: Int]
+            let cursors: [String: Int]
+            let more: Bool
+        }
+        // `rooms` omitted = every room this account is in, from the island's
+        // stored cursor for this device: one round trip for all rooms. A
+        // device's first read of a room starts at its head (no backlog for a
+        // fresh install), the same rule as the 1:1 watermark.
+        //
+        // The loop continues while the island says `limit` cut it short, but
+        // only while the ack moved a cursor: the fetch reads from the island's
+        // cursor, so a pass that acked nothing would read the same rows again.
+        var passes = 0
+        repeat {
+            passes += 1
+            let out: FetchOut
+            do {
+                out = try await APIClient.shared.request(
+                    "POST", "/messages/group-log/fetch", body: FetchIn(limit: 500)
+                )
+            } catch {
+                return
+            }
+            for (gid, cursor) in out.cursors {
+                if let id = Int(gid) { groupLogAcked[id] = max(groupLogAcked[id] ?? 0, cursor) }
+            }
+            let acks = ingestGroupLogRows(out.rows)
+            guard acks.contains(where: { $0.value > (out.cursors[String($0.key)] ?? 0) }) else { return }
+            for (gid, upto) in acks { groupLogAcked[gid] = max(groupLogAcked[gid] ?? 0, upto) }
+            await ackGroupLog(acks)
+            guard out.more, passes < 20 else { return }
+        } while true
+    }
+
+    /// Feed log rows through the SAME ingest as the legacy group rows of the
+    /// queue (decrypt, dedupe by message UUID, store, unread). Returns, per
+    /// room, the seq the room's cursor may move to: the highest seq of the
+    /// CONTIGUOUS handled prefix, in the spirit of the legacy ack. A row is
+    /// handled when it was persisted, recognised as a duplicate, dropped for
+    /// good (own echo, replay), or a `gmsg` whose sender key has not arrived:
+    /// that one is held on disk and replayed when its SKDM lands, so it never
+    /// pins the room's cursor. A row that failed to open for any other reason
+    /// stops the prefix; the island serves it again on the next drain.
+    /// `localGid` maps the island's room id to the id the rest of the app
+    /// files the thread under (a foreign room lives under a negative alias);
+    /// the returned acks are keyed by the ISLAND's id, the one it acks by.
+    func ingestGroupLogRows(_ rows: [GroupLogRow], localGid: (Int) -> Int = { $0 }) -> [Int: Int] {
+        var upto: [Int: Int] = [:]
+        var blocked = Set<Int>()
+        for r in rows {
+            if blocked.contains(r.gid) { continue }
+            let gid = localGid(r.gid)
+            let env = WebSocketService.EnvelopePacket(
+                type: r.envelope_type, payload: r.payload, serverTime: r.received_at,
+                offline: true, groupID: gid
+            )
+            var decryptError: Error?
+            let outcome = ingest(envelope: env, decryptError: &decryptError)
+            var handled = outcome != nil || decryptError == nil
+            if !handled, r.envelope_type == "gmsg",
+               case .keyMissing(let kid, let epoch, let index)? = decryptError as? GmsgOpenError {
+                GroupSenderKeyStore.shared.holdGmsg(ownUin: ownUIN, .init(
+                    gid: gid, kid: kid, epoch: epoch, index: index, payload: r.payload, serverTime: r.received_at
+                ))
+                handled = true
+            }
+            if handled {
+                upto[r.gid] = max(upto[r.gid] ?? 0, r.seq)
+            } else {
+                blocked.insert(r.gid)
+            }
+            if let outcome, outcome.isNewContent { noteDrainedContent(outcome) }
+        }
+        return upto
+    }
+
+    /// Unread and app-icon bookkeeping for content a drain (not the live
+    /// socket) landed: the chat list counter and the icon, never a banner or
+    /// a sound, the same as the legacy queue drain does for its rows.
+    private func noteDrainedContent(_ outcome: IngestOutcome) {
+        let viewing = MessageBannerService.shared.isViewing(outcome.thread)
+        guard !viewing else { return }
+        switch outcome.thread {
+        case .peer(let uin):
+            ContactService.shared.incrementUnread(for: uin)
+            if !outcome.wasInNSECache {
+                BadgeCounter.increment(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+            }
+        case .group(let id):
+            GroupService.shared.incrementUnread(id)
+            if !outcome.wasInNSECache {
+                BadgeCounter.increment(threadKey: BadgeCounter.threadKey(groupID: id))
+            }
+        }
+        BadgeCounter.syncIcon()
+    }
+
+    /// Move this device's cursor forward in each room, one call for all of
+    /// them. Best-effort like the queue ack: a lost ack re-serves the rows,
+    /// the UUID dedupe absorbs them, and the next ack moves the cursor.
+    /// Backwards acks are ignored by the island, so a stale one is harmless.
+    private func ackGroupLog(_ acks: [Int: Int]) async {
+        guard !acks.isEmpty else { return }
+        struct AckRoom: Encodable { let gid: Int; let upto: Int }
+        struct AckIn: Encodable { let rooms: [AckRoom] }
+        struct AckOut: Decodable { let deleted: Int }
+        let body = AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) })
+        do {
+            let _: AckOut = try await APIClient.shared.request("POST", "/messages/group-log/ack", body: body)
+        } catch {
+            // Non-fatal. See above.
+        }
+    }
+
+    /// A live `gmsg` frame that the island logged at `seq` has been dealt
+    /// with. When it is the very next row after what this device is acked up
+    /// to, ack it so the next fetch does not serve it again. A `seq` further
+    /// ahead means rows landed in the log that this socket never saw (the
+    /// socket came up before the drain, or dropped frames): never ack past
+    /// them, run a drain instead. A `seq` at or below the mark is a row the
+    /// drain already took. Nothing is acked for a room the island has not
+    /// told us the cursor of yet: the drain gets there first.
+    func noteLiveGroupLogRow(gid: Int, seq: Int) {
+        guard AppState.shared.serverCapabilities.groupLog else { return }
+        guard let acked = groupLogAcked[gid] else { return }
+        if seq == acked + 1 {
+            groupLogAcked[gid] = seq
+            pendingLiveAcks[gid] = max(pendingLiveAcks[gid] ?? 0, seq)
+            liveAckFlush?.cancel()
+            liveAckFlush = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled, let self else { return }
+                let acks = self.pendingLiveAcks
+                self.pendingLiveAcks = [:]
+                await self.ackGroupLog(acks)
+            }
+        } else if seq > acked + 1 {
+            Task { await fetchGroupLog() }
+        }
     }
 }

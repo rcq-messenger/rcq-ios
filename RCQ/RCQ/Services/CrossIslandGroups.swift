@@ -295,9 +295,11 @@ enum CrossIslandGroups {
         // guest mailbox is drained on the server's own fetch cursor, not on `seq`.
         struct Row: Decodable { let envelope_type: String; let payload: String; let group_id: Int?; let cls: Int?; let seq: Int? }
         for v in VisitedIslandsStore.shared.list() {
-            var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: v.jwt)
+            var jwt = v.jwt
+            var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
             if rows == nil, let fresh = await refreshGuest(host: v.host) {
-                rows = try? await getJSON("https://\(v.host)/messages/queue", jwt: fresh.jwt)
+                jwt = fresh.jwt
+                rows = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
             }
             guard let rows else { continue }
             for r in rows {
@@ -308,7 +310,71 @@ enum CrossIslandGroups {
                 )
                 _ = MessageService.shared.ingest(envelope: packet)
             }
+            // Stage 5: a room lives on its island, so whether it is drained
+            // from a log is that island's call, not ours. Only a host that
+            // advertises `group_log` gets the fetch; the queue above stays
+            // the whole receive path for every other one.
+            if await hostKeepsGroupLog(v.host) {
+                await drainGroupLog(host: v.host, jwt: jwt)
+            }
         }
+    }
+
+    // MARK: Stage 5: the room log on a visited island
+
+    /// Per-host answer to "does this island keep a log per room", read off
+    /// its /server/info. A yes is kept for the life of the process; a no is
+    /// asked again after an hour, so an island that upgrades while we run
+    /// is picked up without a relaunch. Unreachable counts as no: the queue
+    /// drain above already failed for it in that case, and the next pass
+    /// asks again.
+    private static var groupLogByHost: [String: (value: Bool, at: Date)] = [:]
+
+    private static func hostKeepsGroupLog(_ host: String) async -> Bool {
+        let key = host.lowercased()
+        if let known = groupLogByHost[key], known.value || Date().timeIntervalSince(known.at) < 3600 {
+            return known.value
+        }
+        let info: ServerInfoResponse? = try? await getJSON("https://\(host)/server/info", jwt: nil)
+        let value = info?.capabilities.groupLog ?? false
+        groupLogByHost[key] = (value, Date())
+        return value
+    }
+
+    /// Drain the guest's room logs on `host` and ack what landed, the same
+    /// loop as `MessageService.drainOwnGroupLog` on our own island: rows go
+    /// through the one ingest path filed under the local alias, the ack is
+    /// keyed by the island's own room id, and the loop only continues while
+    /// an ack moved a cursor (the fetch reads from the island's cursor, so a
+    /// pass that acked nothing would read the same rows again).
+    @MainActor
+    private static func drainGroupLog(host: String, jwt: String) async {
+        struct FetchIn: Encodable { let limit: Int }
+        struct FetchOut: Decodable {
+            let rows: [MessageService.GroupLogRow]
+            // Keyed by the room id as a string; see the own-island drain.
+            let cursors: [String: Int]
+            let more: Bool
+        }
+        struct AckRoom: Encodable { let gid: Int; let upto: Int }
+        struct AckIn: Encodable { let rooms: [AckRoom] }
+        struct AckOut: Decodable { let deleted: Int }
+        var passes = 0
+        repeat {
+            passes += 1
+            guard let out: FetchOut = try? await postJSON(
+                "https://\(host)/messages/group-log/fetch", body: FetchIn(limit: 500), jwt: jwt
+            ) else { return }
+            let acks = MessageService.shared.ingestGroupLogRows(out.rows) {
+                VisitedIslandsStore.shared.aliasFor(host: host, remoteId: $0)
+            }
+            guard acks.contains(where: { $0.value > (out.cursors[String($0.key)] ?? 0) }) else { return }
+            let _: AckOut? = try? await postJSON(
+                "https://\(host)/messages/group-log/ack",
+                body: AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) }), jwt: jwt
+            )
+            guard out.more, passes < 20 else { return }
+        } while true
     }
 
     // MARK: raw HTTP
@@ -325,12 +391,22 @@ enum CrossIslandGroups {
     }
 
     private static func postJSON<T: Decodable>(_ urlString: String, json: [String: String], jwt: String?) async throws -> T {
+        try await postJSON(urlString, data: try JSONSerialization.data(withJSONObject: json), jwt: jwt)
+    }
+
+    /// Same call with a typed body, for the shapes a flat string map cannot
+    /// carry (the room-log fetch and ack nest lists and ints).
+    private static func postJSON<T: Decodable>(_ urlString: String, body: Encodable, jwt: String?) async throws -> T {
+        try await postJSON(urlString, data: try JSONEncoder().encode(body), jwt: jwt)
+    }
+
+    private static func postJSON<T: Decodable>(_ urlString: String, data: Data, jwt: String?) async throws -> T {
         guard let url = URL(string: urlString) else { throw CIGError.http(0) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let jwt { req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization") }
-        req.httpBody = try JSONSerialization.data(withJSONObject: json)
+        req.httpBody = data
         AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
         let (data, resp) = try await IslandHTTP.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0

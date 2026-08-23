@@ -1674,7 +1674,17 @@ final class AppState: ObservableObject {
             }
 
         case .envelope(let env):
-            guard let outcome = MessageService.shared.ingest(envelope: env) else { return }
+            var decryptError: Error?
+            let outcome = MessageService.shared.ingest(envelope: env, decryptError: &decryptError)
+            // Stage 5: a logged broadcast names its seq. Once this frame is
+            // dealt with (stored, deduped, or dropped for good: our own echo,
+            // a replay) the room's cursor may move past it, so the next log
+            // fetch does not serve it again. One that did not open stays
+            // unacked and comes back through the drain, which holds it.
+            if let gid = env.groupID, let seq = env.seq, outcome != nil || decryptError == nil {
+                MessageService.shared.noteLiveGroupLogRow(gid: gid, seq: seq)
+            }
+            guard let outcome else { return }
             // Same envelope can arrive twice (WS live + HTTP queue drain);
             // MessageStore dedupes by UUID, only fire effects on first.
             guard outcome.isNewContent else { return }
@@ -1832,6 +1842,15 @@ struct ServerCapabilities: Decodable, Equatable {
     // never by the UI.
     var anonKeys: Bool
     var depositAuth: Bool
+    // Stage 5 of the metadata plan: a post into a room is one row in the
+    // room's log, read through /messages/group-log/fetch on a per-device
+    // cursor, instead of one queue row per member. Absent on an old island
+    // means false, and false means the client never calls the log endpoints:
+    // its rooms keep arriving through /messages/queue exactly as before. The
+    // first fetch flips the account to "log reader" on the island, so this is
+    // read before every drain, never assumed. Read by `MessageService`, never
+    // by the UI.
+    var groupLog: Bool
 
     init(
         uinShop: Bool,
@@ -1842,7 +1861,8 @@ struct ServerCapabilities: Decodable, Equatable {
         maxAccountsPerDevice: Int = 5,
         envelopeClass: Bool = false,
         anonKeys: Bool = false,
-        depositAuth: Bool = false
+        depositAuth: Bool = false,
+        groupLog: Bool = false
     ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
@@ -1853,6 +1873,7 @@ struct ServerCapabilities: Decodable, Equatable {
         self.envelopeClass = envelopeClass
         self.anonKeys = anonKeys
         self.depositAuth = depositAuth
+        self.groupLog = groupLog
     }
 
     static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
@@ -1867,6 +1888,7 @@ struct ServerCapabilities: Decodable, Equatable {
         case envelopeClass = "envelope_class"
         case anonKeys = "anon_keys"
         case depositAuth = "deposit_auth"
+        case groupLog = "group_log"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -1887,6 +1909,8 @@ struct ServerCapabilities: Decodable, Equatable {
         // Absent means "predates open key lookups": see the field comment.
         anonKeys = try c.decodeIfPresent(Bool.self, forKey: .anonKeys) ?? false
         depositAuth = try c.decodeIfPresent(Bool.self, forKey: .depositAuth) ?? false
+        // Absent means "predates the room log": see the field comment.
+        groupLog = try c.decodeIfPresent(Bool.self, forKey: .groupLog) ?? false
     }
 }
 
