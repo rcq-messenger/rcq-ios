@@ -879,4 +879,66 @@ final class GroupSenderKeyStore {
         guard let c = loadOut()[outK(ownUin, gid)] else { return nil }
         return OwnSnapshot(kid: c.kid, epoch: c.epoch, index: c.index, ck: c.ck)
     }
+
+    // MARK: held broadcasts (Stage 5 room log)
+
+    /// One `gmsg` the room log served before the SKDM carrying its sender
+    /// key did. Kept exactly as it came off the wire, so the replay goes
+    /// through the normal decode; `epoch`/`index` only serve the dedup.
+    /// Mirrors web held-gmsg.ts and Android heldGmsg, on disk rather than in
+    /// memory because the row is ACKED once held: the island's cursor has
+    /// moved past it, and a relaunch before the key lands would otherwise
+    /// lose the message for good.
+    struct HeldGmsg: Codable {
+        let gid: Int
+        let kid: String
+        let epoch: Int
+        let index: Int
+        let payload: String
+        let serverTime: Date
+    }
+
+    private static let heldKey = "rcq.senderkeys.held.v1"   // [ "<ownUin>" : [HeldGmsg] ]
+    /// Oldest entries go past this. Fifty unreadable broadcasts on one
+    /// account is already a broken room, and the bound keeps a flood of
+    /// un-openable rows cheap.
+    private static let heldCap = 50
+
+    private func loadHeld() -> [String: [HeldGmsg]] {
+        guard let d = defaults.data(forKey: Self.heldKey),
+              let m = try? JSONDecoder().decode([String: [HeldGmsg]].self, from: d) else { return [:] }
+        return m
+    }
+    private func saveHeld(_ m: [String: [HeldGmsg]]) {
+        if let d = try? JSONEncoder().encode(m) { defaults.set(d, forKey: Self.heldKey) }
+    }
+
+    /// Park one broadcast whose kid is unknown here. Deduped by chain
+    /// position (kid, epoch, index): the same row can be served by the log
+    /// and arrive live while the key is still missing, and only one copy can
+    /// ever derive a message key.
+    func holdGmsg(ownUin: Int, _ entry: HeldGmsg) {
+        lock.lock(); defer { lock.unlock() }
+        var all = loadHeld()
+        var list = all[String(ownUin)] ?? []
+        if list.contains(where: { $0.kid == entry.kid && $0.epoch == entry.epoch && $0.index == entry.index }) { return }
+        list.append(entry)
+        if list.count > Self.heldCap { list.removeFirst(list.count - Self.heldCap) }
+        all[String(ownUin)] = list
+        saveHeld(all)
+    }
+
+    /// Remove and return every broadcast held under `kid`, in arrival order.
+    /// Entries held for other kids stay put.
+    func takeHeldGmsg(ownUin: Int, kid: String) -> [HeldGmsg] {
+        lock.lock(); defer { lock.unlock() }
+        var all = loadHeld()
+        guard let list = all[String(ownUin)], !list.isEmpty else { return [] }
+        let taken = list.filter { $0.kid == kid }
+        if taken.isEmpty { return [] }
+        let rest = list.filter { $0.kid != kid }
+        all[String(ownUin)] = rest.isEmpty ? nil : rest
+        saveHeld(all)
+        return taken
+    }
 }

@@ -65,6 +65,11 @@ final class WebSocketService: ObservableObject {
         /// Which of OUR devices this copy was sealed for (v=2 fan-out).
         /// nil = a sender that addresses the account, not a device.
         let toDeviceID: Int?
+        /// Stage 5: the row's position in the room's log, when the island
+        /// wrote the broadcast there (it did if any member reads the log).
+        /// nil on a live frame the island did not log and on every queue
+        /// row. Read only to ack a live row behind the log drain's cursor.
+        let seq: Int?
 
         init(
             type: String,
@@ -72,7 +77,8 @@ final class WebSocketService: ObservableObject {
             serverTime: Date,
             offline: Bool,
             groupID: Int?,
-            toDeviceID: Int? = nil
+            toDeviceID: Int? = nil,
+            seq: Int? = nil
         ) {
             self.type = type
             self.payload = payload
@@ -80,6 +86,7 @@ final class WebSocketService: ObservableObject {
             self.offline = offline
             self.groupID = groupID
             self.toDeviceID = toDeviceID
+            self.seq = seq
         }
     }
 
@@ -811,9 +818,13 @@ final class WebSocketService: ObservableObject {
             // account sees every fan-out copy, so the frame has to say which
             // device it was sealed for.
             let toDeviceID = dict["to_device_id"] as? Int
+            // Stage 5: a logged broadcast says where it sits in the room's
+            // log, so the receiver can move its cursor past it without a
+            // fetch. Absent when the island did not log the post.
+            let seq = dict["seq"] as? Int
             events.send(.envelope(envelope: EnvelopePacket(
                 type: type, payload: payload, serverTime: serverTime, offline: offline,
-                groupID: groupID, toDeviceID: toDeviceID
+                groupID: groupID, toDeviceID: toDeviceID, seq: seq
             )))
 
         default:
