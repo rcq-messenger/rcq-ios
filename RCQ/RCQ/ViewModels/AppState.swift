@@ -43,6 +43,10 @@ final class AppState: ObservableObject {
     /// host, which is all we honestly know.
     @Published var serverName: String = ""
     @Published var serverWelcome: String = ""
+    /// Which logo the island we are on is currently serving, "" for none. Read
+    /// by `IslandAvatarView` (through the switcher's per-account card, so a row
+    /// for an island this process is not talking to still has one).
+    @Published var serverLogoVersion: String = ""
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     /// Island host from a contact link's `?h=` (spec §5) — set BEFORE
@@ -398,6 +402,7 @@ final class AppState: ObservableObject {
         AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
         serverName = info.name
         serverWelcome = info.welcome ?? ""
+        serverLogoVersion = info.logoVersion ?? ""
         // Stage 3: the island reads bundles against anonymous deposit
         // tokens, and each costs a proof of work. Mint the first batch
         // now, in the background, so the first message to a new peer
@@ -1316,6 +1321,7 @@ final class AppState: ObservableObject {
         FavoritesStore.shared.wipe()
         ArchiveStore.shared.wipe()
         SectionsStore.shared.wipe()
+        SectionCollapseStore.shared.wipe()
         ContactSoundStore.shared.wipe()
         ChatSettingsStore.shared.wipe()
         NearbyService.shared.wipe()
@@ -1326,6 +1332,11 @@ final class AppState: ObservableObject {
         ReactionInboxStore.shared.wipe()
         MentionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()
+        // ⚠ Host-keyed, so it is NOT touched on an account switch (the other
+        // accounts still need their islands drawn). A burn is the one path that
+        // says everything is erased, and the file names in there are one island
+        // host per file, a private self-hosted one included.
+        IslandLogoStore.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -1720,6 +1731,11 @@ final class AppState: ObservableObject {
         // Settings while the incoming one's reply is still in the air.
         serverName = ""
         serverWelcome = ""
+        // ⚠ And the logo version with them, or the switcher's pill would keep
+        // drawing the OUTGOING island's picture over the incoming island's
+        // name for as long as the new reply takes: the cached card for the
+        // account we just moved to is what fills it back in.
+        serverLogoVersion = ""
         AccountManager.serverMaxAccounts = AccountManager.hardCap
 
         ContactService.shared.wipe()
@@ -1735,6 +1751,9 @@ final class AppState: ObservableObject {
         // The sections tree is per account and holds section names plus the uin
         // of every filed chat, so it is rebound here rather than left standing.
         SectionsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // Which sections are folded is per account too: the ids in it are the
+        // outgoing account's, and they mean nothing in the incoming one's tree.
+        SectionCollapseStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         ContactsVault.resetSyncState()
         PushDecryptCache.wipe()
         // Probe timers key on bare peer uins, which mean nothing on the
@@ -2199,7 +2218,30 @@ struct ServerInfoResponse: Decodable {
     /// read by nothing, which is why the admin panel warned that typing here
     /// changed nothing.
     let welcome: String?
+    /// Digest of the island's logo; nil or empty means it has none and every
+    /// caller draws the lettered tile (`IslandAvatarView`).
+    ///
+    /// ⚠ A VERSION, NOT A URL AND NOT THE PICTURE. The island sends twelve
+    /// characters and the client builds
+    /// `https://<host>/server/logo?v=<version>` itself. Two reasons. This
+    /// reply is read on every boot AND by `fetch(host:)` against islands we are
+    /// only PROBING, so a data URI in here would put a picture on all of those
+    /// paths every time. And a URL would let any island, including one we have
+    /// no account on, point the phone at a third-party host and collect the
+    /// request; an island only ever gets to say WHETHER it has a logo and
+    /// WHICH one.
+    ///
+    /// Absent on an island older than the field, which reads as no logo and
+    /// draws the tile: the same permissive default the capability flags take.
+    let logoVersion: String?
     let capabilities: ServerCapabilities
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case welcome
+        case logoVersion = "logo_version"
+        case capabilities
+    }
 }
 
 @MainActor

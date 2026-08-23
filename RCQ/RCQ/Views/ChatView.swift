@@ -3630,9 +3630,20 @@ private struct UnreadDivider: View {
             if surface == .none {
                 HStack(spacing: 8) {
                     Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
+                    // The label is measured BEFORE the two rules and keeps
+                    // every point it asks for; the rules divide the remainder.
+                    // Without the priority HStack serves its least flexible
+                    // child first with only available/3 (about 111pt on a 390pt
+                    // phone), and the Russian label needs 145pt, so it broke
+                    // onto two lines while each rule sat on a third it did not
+                    // need. The rules are the elastic part of this row, never
+                    // the text.
                     Text("chat.unread_divider".localized)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Theme.Color.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .layoutPriority(1)
                     Rectangle().fill(Theme.Color.accent.opacity(0.5)).frame(height: 1)
                 }
             } else {
@@ -3643,6 +3654,8 @@ private struct UnreadDivider: View {
                 Text("chat.unread_divider".localized)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Theme.Color.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .padding(.horizontal, 10).padding(.vertical, 3)
                     .background(Theme.Color.bgSecondary.opacity(surface.pillTint))
                     .clipShape(Capsule())
@@ -3666,10 +3679,18 @@ private struct DateDivider: View {
             if surface == .none {
                 HStack {
                     Rectangle().fill(Theme.Color.divider).frame(height: 1)
+                    // Same priority as the unread divider above, for the same
+                    // reason: the label takes what it needs, the rules take the
+                    // rest. "EEE, d MMM" is short enough to survive the
+                    // available/3 proposal today, but only by accident, and a
+                    // locale with longer weekday or month names would wrap.
                     Text(label)
                         .font(.system(size: 10))
                         .foregroundColor(Theme.Color.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                         .padding(.horizontal, 6)
+                        .layoutPriority(1)
                     Rectangle().fill(Theme.Color.divider).frame(height: 1)
                 }
             } else {

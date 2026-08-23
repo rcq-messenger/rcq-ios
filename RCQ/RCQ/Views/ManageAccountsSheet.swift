@@ -152,10 +152,18 @@ struct ManageAccountsSheet: View {
             ?? card?.uin.map(String.init)
         let label = displayLabel(for: account)
         return HStack(alignment: .top, spacing: 12) {
-            // The island's own face, generated from its name and host: this
+            // The island's own face: its operator's logo when it set one, and
+            // the tile generated from its name and host when it did not. This
             // screen listed accounts as three lines of grey text, and which
-            // island a row belongs to is the thing it is FOR.
-            IslandAvatarView(name: label, host: account.displayHost, size: 36)
+            // island a row belongs to is the thing it is FOR. The version comes
+            // off that account's OWN card, never the active one's: a row for an
+            // account on another island keeps that island's picture.
+            IslandAvatarView(
+                name: label,
+                host: account.displayHost,
+                logoVersion: card?.islandLogoVersion ?? "",
+                size: 36
+            )
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(label)
