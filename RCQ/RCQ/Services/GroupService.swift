@@ -87,7 +87,18 @@ final class GroupService: ObservableObject {
             "POST", "/groups", body: Body(name: name, member_uins: memberUINs)
         )
         upsert(g)
+        noteMembershipBegan()
         return g
+    }
+
+    /// Stage 5: a room this account just entered has its log cursor seeded
+    /// at the head by the island itself; one log fetch right away is the
+    /// cheap second line, so the cursor exists on this device's side too
+    /// before anyone posts and a first read of the room after a post can
+    /// never start past it. Idempotent, and a no-op on an island without
+    /// the room log.
+    private func noteMembershipBegan() {
+        Task { await MessageService.shared.fetchGroupLog() }
     }
 
     func reload(_ groupID: Int) async throws -> RCQGroup {
@@ -435,6 +446,7 @@ final class GroupService: ObservableObject {
                 "POST", "/groups/\(groupID)/join",
             )
             upsert(g)
+            noteMembershipBegan()
             return .success(g)
         } catch APIError.http(403, let body) {
             // 403 from /join now covers two distinct cases: caller is

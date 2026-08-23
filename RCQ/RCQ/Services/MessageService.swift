@@ -1392,7 +1392,11 @@ final class MessageService {
             let packet = WebSocketService.EnvelopePacket(
                 type: "gmsg", payload: h.payload, serverTime: h.serverTime, offline: true, groupID: h.gid
             )
-            if let outcome = ingest(envelope: packet) { noteDrainedContent(outcome) }
+            // Only new content counts: a held broadcast can be a reaction,
+            // a receipt or an edit (every envelope kind rides `gmsg`), or a
+            // row another path stored meanwhile, and none of those is an
+            // unread message or a number on the icon.
+            if let outcome = ingest(envelope: packet), outcome.isNewContent { noteDrainedContent(outcome) }
         }
     }
 
@@ -1662,7 +1666,7 @@ final class MessageService {
             let decrypted: DecryptedEnvelope
             let fromNSE: Bool
             if ws.type == "gmsg" {
-                // Sender-keys broadcast: not a sealed envelope — decode via the chain.
+                // Sender-keys broadcast: not a sealed envelope, decoded via the chain.
                 guard let gid = ws.groupID else { return nil }
                 switch openIncomingGmsg(ws.payload, gid: gid) {
                 case .opened(let opened):
@@ -2511,11 +2515,39 @@ final class MessageService {
         }
     }
 
+    // MARK: - one drain at a time
+
+    /// The tail of the chain of drains of this island's mailbox. Every drain
+    /// runs on it, one after another: the legacy queue and then the room
+    /// log, never two side by side. Each reader moves the island's cursors
+    /// for the rows IT was served, and two readers of one cursor is how a
+    /// row gets acked that only the other one has seen. Each caller waits
+    /// for its own drain, so a push wake still returns when its rows are in
+    /// (the background budget is spent on that). Never awaited from inside
+    /// `ingest`: the drain would be waiting on itself.
+    private var drainTail: Task<Void, Never>?
+
+    private func serialisedDrain(_ body: @escaping @MainActor () async -> Void) async {
+        let previous = drainTail
+        let task = Task { @MainActor in
+            await previous?.value
+            await body()
+        }
+        drainTail = task
+        await task.value
+    }
+
+    /// Drain this island's mailbox: the legacy queue, then (Stage 5) the
+    /// room log on an island that keeps one. Serialised; see above.
     func fetchOfflineQueue() async {
+        await serialisedDrain { await self.drainQueueThenLog() }
+    }
+
+    private func drainQueueThenLog() async {
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
         // Multihoming v1: make sure the backup-island poll is running (no-op
         // without backup homes; idempotent). Independent of the primary fetch
-        // below — when the primary island is down, that loop IS delivery.
+        // below: when the primary island is down, that loop IS delivery.
         if ownUIN != 0 { Multihome.startPolling(ownUin: ownUIN) }
         struct Row: Decodable {
             let id: Int
@@ -2678,7 +2710,7 @@ final class MessageService {
         // are read on every drain: the queue still carries 1:1 rows and the
         // room rows written before this account read the log for the first
         // time. A failed queue fetch does not skip the log.
-        await fetchGroupLog()
+        await drainOwnGroupLogIfAdvertised()
     }
 
     // MARK: - Stage 5: the room log
@@ -2696,9 +2728,9 @@ final class MessageService {
         let received_at: Date
     }
 
-    /// The room-log position this device is known to be acked up to, per
-    /// room, for the rooms the island has told us about (the fetch's
-    /// `cursors` plus our own acks). Only a live frame reads it, to decide
+    /// The log position this device is known to stand at, per room, on our
+    /// own island: the fetch's `cursors`, our own acks, and after a complete
+    /// drain the island's `heads`. Only a live frame reads it, to decide
     /// whether its `seq` is the very next one and may be acked on the spot.
     /// The island's cursor is authoritative; this is a local echo of it and
     /// is dropped with the account. Keyed by LOCAL group id (own island only:
@@ -2707,27 +2739,57 @@ final class MessageService {
     /// Live acks coalesce for a moment so a burst of posts is one call.
     private var pendingLiveAcks: [Int: Int] = [:]
     private var liveAckFlush: Task<Void, Never>?
-    private var groupLogDrainInFlight = false
-    private var groupLogDrainAgain = false
+
+    /// A row that keeps failing to open and so pins its room's cursor. One
+    /// per LOCAL room (a foreign room lives under a negative alias, so one
+    /// map serves every island). `drain` is the last drain that counted it:
+    /// a blocked row is re-served on every page of a drain, and a page is
+    /// not a new attempt.
+    private struct GroupLogStall {
+        let seq: Int
+        /// How it failed, so a row that starts failing differently starts
+        /// its count over.
+        let way: String
+        var strikes: Int
+        var drain: Int
+    }
+    private var groupLogStalls: [Int: GroupLogStall] = [:]
+    private var groupLogDrainSerial = 0
+    /// Consecutive drains a row may fail the same way before this device
+    /// gives up on it and moves the cursor past it.
+    private static let groupLogStrikeLimit = 3
+
+    /// Name one drain: one walk of an island's log pages. Handed to
+    /// `ingestGroupLogRows` so a blocked row is struck once per drain.
+    func beginGroupLogDrain() -> Int {
+        groupLogDrainSerial += 1
+        return groupLogDrainSerial
+    }
+
+    /// What a page of log rows came to, keyed by the ISLAND's room id (the
+    /// one it acks by): per room the seq the cursor may move to, and the
+    /// rooms a row stopped in front of.
+    struct GroupLogIngest {
+        var upto: [Int: Int] = [:]
+        var blocked = Set<Int>()
+    }
+
+    /// The room log alone, on the same chain as the full drain and never
+    /// beside it. For the moments the queue need not be read again: a room
+    /// just joined or created, whose cursor should exist on the island
+    /// before anyone posts in it (the island seeds it on membership; this
+    /// is the cheap second line).
+    func fetchGroupLog() async {
+        await serialisedDrain { await self.drainOwnGroupLogIfAdvertised() }
+    }
 
     /// Drain every room's log on our own island, then ack what landed.
     /// A no-op on an island that does not advertise `group_log`: such an
     /// island keeps serving room rows through /messages/queue and must never
-    /// see these calls. Serialised: a drain asked for while one runs queues
-    /// one more pass rather than racing it for the same rows.
-    func fetchGroupLog() async {
+    /// see these calls. Runs only from the drain chain (see `serialisedDrain`).
+    private func drainOwnGroupLogIfAdvertised() async {
         guard AppState.shared.serverCapabilities.groupLog else { return }
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
-        if groupLogDrainInFlight { groupLogDrainAgain = true; return }
-        groupLogDrainInFlight = true
-        defer { groupLogDrainInFlight = false }
-        repeat {
-            groupLogDrainAgain = false
-            await drainOwnGroupLog()
-        } while groupLogDrainAgain
-    }
-
-    private func drainOwnGroupLog() async {
         struct FetchIn: Encodable { let limit: Int }
         struct FetchOut: Decodable {
             let rows: [GroupLogRow]
@@ -2744,10 +2806,19 @@ final class MessageService {
         // fresh install), the same rule as the 1:1 watermark.
         //
         // The loop continues while the island says `limit` cut it short, but
-        // only while the ack moved a cursor: the fetch reads from the island's
-        // cursor, so a pass that acked nothing would read the same rows again.
+        // only while an ack moved a cursor: the fetch reads from the island's
+        // cursor, so a pass that acked nothing, or whose ack did not land,
+        // would read the same rows again. Twenty pages is the most one drain
+        // walks; the next drain picks up a deeper backlog.
+        // Pinned to the account the drain started for: a switch while a
+        // page is in flight rebinds the token and empties the marks, and a
+        // page read under the old account must not write marks, or acks,
+        // under the new one.
+        let account = ownUIN
+        let drain = beginGroupLogDrain()
+        var blockedRooms = Set<Int>()
         var passes = 0
-        repeat {
+        while passes < 20 {
             passes += 1
             let out: FetchOut
             do {
@@ -2757,35 +2828,67 @@ final class MessageService {
             } catch {
                 return
             }
+            guard ownUIN == account else { return }
             for (gid, cursor) in out.cursors {
                 if let id = Int(gid) { groupLogAcked[id] = max(groupLogAcked[id] ?? 0, cursor) }
             }
-            let acks = ingestGroupLogRows(out.rows)
-            guard acks.contains(where: { $0.value > (out.cursors[String($0.key)] ?? 0) }) else { return }
-            for (gid, upto) in acks { groupLogAcked[gid] = max(groupLogAcked[gid] ?? 0, upto) }
-            await ackGroupLog(acks)
-            guard out.more, passes < 20 else { return }
-        } while true
+            let got = ingestGroupLogRows(out.rows, drain: drain)
+            blockedRooms.formUnion(got.blocked)
+            let advancing = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
+            if !advancing.isEmpty {
+                // An ack that did not land ends the drain rather than
+                // re-fetching the same page: the rows are on disk, the
+                // island serves them once more next time, the dedupe absorbs
+                // the repeat.
+                guard await ackGroupLog(advancing), ownUIN == account else { return }
+                for (gid, upto) in advancing { groupLogAcked[gid] = max(groupLogAcked[gid] ?? 0, upto) }
+            }
+            if !out.more {
+                // A complete drain: this device now stands at the head of
+                // every room, not merely at the last row it was served. Rows
+                // sealed to OTHER members take seqs on the same axis and are
+                // never served here, so the head is usually past our last
+                // row, and a live frame right behind the head would
+                // otherwise look like a gap forever. A room a row is still
+                // blocking keeps its mark at the ack: a live ack past the
+                // head would bury that row under the cursor.
+                for (gid, head) in out.heads {
+                    guard let id = Int(gid), !blockedRooms.contains(id) else { continue }
+                    groupLogAcked[id] = max(groupLogAcked[id] ?? 0, head)
+                }
+                return
+            }
+            // `more` with nothing acked: the island would hand out this very
+            // page again.
+            if advancing.isEmpty { return }
+        }
     }
 
     /// Feed log rows through the SAME ingest as the legacy group rows of the
-    /// queue (decrypt, dedupe by message UUID, store, unread). Returns, per
-    /// room, the seq the room's cursor may move to: the highest seq of the
-    /// CONTIGUOUS handled prefix, in the spirit of the legacy ack. A row is
-    /// handled when it was persisted, recognised as a duplicate, dropped for
-    /// good (own echo, replay), or a `gmsg` whose sender key has not arrived:
-    /// that one is held on disk and replayed when its SKDM lands, so it never
-    /// pins the room's cursor. A row that failed to open for any other reason
-    /// stops the prefix; the island serves it again on the next drain.
+    /// queue (decrypt, dedupe by message UUID, store, unread). EVERY row is
+    /// ingested, as on the legacy drain: a row that fails to open stops only
+    /// the ack behind it, never the rows behind it, which land now and are
+    /// absorbed by the UUID dedupe and the chain position when the island
+    /// serves them again. Returns, per room, the seq the room's cursor may
+    /// move to: the highest seq of the CONTIGUOUS handled prefix, in the
+    /// spirit of the legacy ack. A row is handled when it was persisted,
+    /// recognised as a duplicate, dropped for good (own echo, replay), or a
+    /// `gmsg` whose sender key has not arrived: that one is held on disk and
+    /// replayed when its SKDM lands, so it never pins the room's cursor. A
+    /// row that failed to open for any other reason is re-served in front
+    /// of the cursor on the next drain; once it has failed the same way on
+    /// `groupLogStrikeLimit` consecutive drains it is taken as unreadable
+    /// on this device and acked, so one bad row never silences a room (nor,
+    /// past a page of its room, every room with a higher id).
     /// `localGid` maps the island's room id to the id the rest of the app
     /// files the thread under (a foreign room lives under a negative alias);
     /// the returned acks are keyed by the ISLAND's id, the one it acks by.
-    func ingestGroupLogRows(_ rows: [GroupLogRow], localGid: (Int) -> Int = { $0 }) -> [Int: Int] {
-        var upto: [Int: Int] = [:]
-        var blocked = Set<Int>()
+    func ingestGroupLogRows(_ rows: [GroupLogRow], drain: Int, localGid: (Int) -> Int = { $0 }) -> GroupLogIngest {
+        var result = GroupLogIngest()
+        var seen: [Int: Int] = [:]   // island gid -> local gid, for the stall bookkeeping
         for r in rows {
-            if blocked.contains(r.gid) { continue }
             let gid = localGid(r.gid)
+            seen[r.gid] = gid
             let env = WebSocketService.EnvelopePacket(
                 type: r.envelope_type, payload: r.payload, serverTime: r.received_at,
                 offline: true, groupID: gid
@@ -2800,14 +2903,54 @@ final class MessageService {
                 ))
                 handled = true
             }
-            if handled {
-                upto[r.gid] = max(upto[r.gid] ?? 0, r.seq)
-            } else {
-                blocked.insert(r.gid)
+            if !handled, !result.blocked.contains(r.gid), let error = decryptError {
+                // The row in front of this room's cursor. Later failures in
+                // the same room are behind it and get their own turn once
+                // the cursor reaches them.
+                handled = strikeGroupLogRow(localGid: gid, seq: r.seq, error: error, drain: drain)
+            }
+            if handled, !result.blocked.contains(r.gid) {
+                result.upto[r.gid] = max(result.upto[r.gid] ?? 0, r.seq)
+            } else if !handled {
+                result.blocked.insert(r.gid)
             }
             if let outcome, outcome.isNewContent { noteDrainedContent(outcome) }
         }
-        return upto
+        // A room whose page went through whole has nothing in front of its
+        // cursor any more: whatever was counted against it opened, or the
+        // island no longer serves it.
+        for (islandGid, gid) in seen where !result.blocked.contains(islandGid) {
+            groupLogStalls[gid] = nil
+        }
+        return result
+    }
+
+    /// A row in front of its room's cursor failed to open. Counted once per
+    /// drain; on the `groupLogStrikeLimit`th consecutive drain it fails the
+    /// same way, it is given up on here. Returns true when the row is to be
+    /// acked past as unreadable on this device.
+    private func strikeGroupLogRow(localGid gid: Int, seq: Int, error: Error, drain: Int) -> Bool {
+        let way = String(describing: error)
+        let stall: GroupLogStall
+        if var known = groupLogStalls[gid], known.seq == seq, known.way == way {
+            if known.drain != drain {
+                known.strikes += 1
+                known.drain = drain
+            }
+            stall = known
+        } else {
+            stall = GroupLogStall(seq: seq, way: way, strikes: 1, drain: drain)
+        }
+        guard stall.strikes >= Self.groupLogStrikeLimit else {
+            groupLogStalls[gid] = stall
+            return false
+        }
+        os_log(
+            "group log: row gid=%d seq=%d failed the same way on %d drains, unreadable here, acking past it",
+            log: Self.log, type: .error, gid, seq, stall.strikes
+        )
+        groupLogStalls[gid] = nil
+        return true
     }
 
     /// Unread and app-icon bookkeeping for content a drain (not the live
@@ -2832,46 +2975,48 @@ final class MessageService {
     }
 
     /// Move this device's cursor forward in each room, one call for all of
-    /// them. Best-effort like the queue ack: a lost ack re-serves the rows,
-    /// the UUID dedupe absorbs them, and the next ack moves the cursor.
-    /// Backwards acks are ignored by the island, so a stale one is harmless.
-    private func ackGroupLog(_ acks: [Int: Int]) async {
-        guard !acks.isEmpty else { return }
+    /// them. Returns whether the island took it. A lost ack costs a re-served
+    /// page, never a message: the rows are on disk, the UUID dedupe absorbs
+    /// the repeat, and the next ack moves the cursor. Backwards acks are
+    /// ignored by the island, so a stale one is harmless.
+    private func ackGroupLog(_ acks: [Int: Int]) async -> Bool {
+        guard !acks.isEmpty else { return true }
         struct AckRoom: Encodable { let gid: Int; let upto: Int }
         struct AckIn: Encodable { let rooms: [AckRoom] }
         struct AckOut: Decodable { let deleted: Int }
         let body = AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) })
         do {
             let _: AckOut = try await APIClient.shared.request("POST", "/messages/group-log/ack", body: body)
+            return true
         } catch {
-            // Non-fatal. See above.
+            return false
         }
     }
 
     /// A live `gmsg` frame that the island logged at `seq` has been dealt
-    /// with. When it is the very next row after what this device is acked up
-    /// to, ack it so the next fetch does not serve it again. A `seq` further
-    /// ahead means rows landed in the log that this socket never saw (the
-    /// socket came up before the drain, or dropped frames): never ack past
-    /// them, run a drain instead. A `seq` at or below the mark is a row the
-    /// drain already took. Nothing is acked for a room the island has not
-    /// told us the cursor of yet: the drain gets there first.
+    /// with. When it is the very next row after where this device is known
+    /// to stand, ack it so the next fetch does not serve it again; the acks
+    /// coalesce for a moment so a burst of posts is one call. Anything else
+    /// is left to the next drain, which settles it through `heads`: a `seq`
+    /// at or below the mark is a row the drain already took, and a gap
+    /// proves nothing either way. Rows sealed to OTHER members (their
+    /// SKDMs, a reaction from a legacy client) take seqs on the same axis
+    /// and are invisible to this member, so a jump of two can be one post
+    /// this socket missed or one row that was never ours; no guess is made
+    /// here, and no drain is run for it. Nothing is acked for a room with
+    /// no mark yet either: the drain gets there first.
     func noteLiveGroupLogRow(gid: Int, seq: Int) {
         guard AppState.shared.serverCapabilities.groupLog else { return }
-        guard let acked = groupLogAcked[gid] else { return }
-        if seq == acked + 1 {
-            groupLogAcked[gid] = seq
-            pendingLiveAcks[gid] = max(pendingLiveAcks[gid] ?? 0, seq)
-            liveAckFlush?.cancel()
-            liveAckFlush = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                guard !Task.isCancelled, let self else { return }
-                let acks = self.pendingLiveAcks
-                self.pendingLiveAcks = [:]
-                await self.ackGroupLog(acks)
-            }
-        } else if seq > acked + 1 {
-            Task { await fetchGroupLog() }
+        guard let acked = groupLogAcked[gid], seq == acked + 1 else { return }
+        groupLogAcked[gid] = seq
+        pendingLiveAcks[gid] = max(pendingLiveAcks[gid] ?? 0, seq)
+        liveAckFlush?.cancel()
+        liveAckFlush = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled, let self else { return }
+            let acks = self.pendingLiveAcks
+            self.pendingLiveAcks = [:]
+            _ = await self.ackGroupLog(acks)
         }
     }
 }

@@ -351,10 +351,58 @@ final class AppState: ObservableObject {
         let baseURL = APIClient.shared.baseURL
         let serverToken = AccountManager.shared.active?.serverToken
         WebSocketService.shared.connect(uin: uin, token: token, baseURL: baseURL, serverToken: serverToken)
+        // The boot that led here ran offline, so the island's capabilities
+        // are still the legacy defaults: read them before the drain below,
+        // or a room log the account already reads stays untouched for the
+        // rest of the run.
+        await refreshServerInfo()
         await syncOwnPresenceFromServer(uin: uin)
         await ContactService.shared.refresh()
         await GroupService.shared.refresh()
         await MessageService.shared.fetchOfflineQueue()
+    }
+
+    /// Whether `/server/info` of the island we are on has been read this
+    /// session. Until it has, `serverCapabilities` is the legacy default
+    /// and nothing that is gated on a flag (the room log above all) runs,
+    /// so a boot that fell into the offline branch, or whose one read timed
+    /// out, is followed by another read at the next online moment.
+    private var serverInfoRead = false
+
+    /// Read `/server/info` for the island we are on and adopt the answer:
+    /// the capability flags, the account cap, the island's name and house
+    /// rules, plus the deposit-token prewarm the flags may call for. Only a
+    /// successful read is adopted; a miss keeps what is known (never a
+    /// downgrade on a transient failure) and leaves `serverInfoRead` false
+    /// so the next opening asks again.
+    func refreshServerInfo() async {
+        guard let info = await ServerInfoService.fetch() else { return }
+        serverInfoRead = true
+        serverCapabilities = info.capabilities
+        AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
+        serverName = info.name
+        serverWelcome = info.welcome ?? ""
+        // Stage 3: the island reads bundles against anonymous deposit
+        // tokens, and each costs a proof of work. Mint the first batch
+        // now, in the background, so the first message to a new peer
+        // does not sit on one. Idempotent: a stocked reserve rests.
+        if info.capabilities.anonKeys && info.capabilities.depositAuth,
+           let host = APIClient.shared.baseURL.host {
+            let base = APIClient.shared.baseURL.absoluteString
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let masquerade = await APIClient.shared.currentServerToken()
+            Task.detached(priority: .utility) {
+                await DepositAuthStore.shared.prewarm(host: host, masquerade: masquerade, base: base)
+            }
+        }
+    }
+
+    /// The socket came up while the island's flags were never read (an
+    /// offline boot that the path monitor did not catch up on, or a read
+    /// that timed out): read them before the drain that follows the open.
+    private func refreshServerInfoIfUnread() async {
+        guard !serverInfoRead else { return }
+        await refreshServerInfo()
     }
 
     /// elapsedRealtime-ish stamp of the last ladder walk, so a flapping socket
@@ -720,32 +768,15 @@ final class AppState: ObservableObject {
             // offline-queue cursor.
             let token = await claimInstallTokenIfNeeded(bootToken) ?? bootToken
 
-            // Capability fetch. Failure is non-fatal — we keep the
+            // Capability fetch. Failure is non-fatal: we keep the
             // permissive defaultLegacy set, which matches every
             // backend's behaviour before v0.4 added /server/info.
             // Self-host backends running rcq-server-ref return
             // {uin_shop: false} here and SettingsView drops the row
             // entirely; api.rcq.app returns {uin_shop: true} and the
-            // surface stays.
-            if let info = await ServerInfoService.fetch() {
-                serverCapabilities = info.capabilities
-                AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
-                serverName = info.name
-                serverWelcome = info.welcome ?? ""
-                // Stage 3: the island reads bundles against anonymous deposit
-                // tokens, and each costs a proof of work. Mint the first batch
-                // now, in the background, so the first message to a new peer
-                // does not sit on one.
-                if info.capabilities.anonKeys && info.capabilities.depositAuth,
-                   let host = APIClient.shared.baseURL.host {
-                    let base = APIClient.shared.baseURL.absoluteString
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                    let masquerade = await APIClient.shared.currentServerToken()
-                    Task.detached(priority: .utility) {
-                        await DepositAuthStore.shared.prewarm(host: host, masquerade: masquerade, base: base)
-                    }
-                }
-            }
+            // surface stays. A miss here is retried by the first online
+            // sync or socket open; see `refreshServerInfo`.
+            await refreshServerInfo()
 
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(
@@ -1480,6 +1511,7 @@ final class AppState: ObservableObject {
         // briefly show the UIN-shop row in Settings until the new
         // /server/info reply lands.
         serverCapabilities = .defaultLegacy
+        serverInfoRead = false
         // Same reason: the outgoing island's name and rules must not sit in
         // Settings while the incoming one's reply is still in the air.
         serverName = ""
@@ -1617,8 +1649,13 @@ final class AppState: ObservableObject {
             // clear any stale offline badge the boot watchdog may have set after
             // a slow first connect (the "Без сети while everything works" case).
             if isOffline { isOffline = false }
-            // Drain offline queue on every (re)connect.
-            Task { await MessageService.shared.fetchOfflineQueue() }
+            // Drain offline queue on every (re)connect. The flags first when
+            // they were never read: the room-log half of the drain is gated
+            // on them.
+            Task {
+                await refreshServerInfoIfUnread()
+                await MessageService.shared.fetchOfflineQueue()
+            }
             // Re-sync audio room subscription if we were inside one.
             // Skipped the unconditional contact refresh that used to
             // live here — presence diffs come in via WS events, so
