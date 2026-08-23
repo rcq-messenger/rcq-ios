@@ -320,6 +320,9 @@ final class PanicPINService: ObservableObject {
         // into them, including the one they gated behind this very PIN. A decoy
         // session gets the empty namespace like every other per-account store.
         SectionsStore.shared.bind(accountID: decoyNamespace)
+        // The fold state goes with the tree. Left on the real account's slot it
+        // would fold the decoy's own sections by the real user's habits.
+        SectionCollapseStore.shared.bind(accountID: decoyNamespace)
 
         // The App-Group uin → nickname map is what the NOTIFICATION EXTENSION
         // titles a push with. It has no idea a decoy session is up, so leaving
@@ -374,6 +377,7 @@ final class PanicPINService: ObservableObject {
         StrangerQuarantine.shared.bind(accountID: id)
         VisitedIslandsStore.shared.bind(accountID: id)
         SectionsStore.shared.bind(accountID: id)
+        SectionCollapseStore.shared.bind(accountID: id)
         VisitStore.shared.reloadFromDisk()
         PresenceService.shared.reloadOwnAvatarFromDisk()
         DuressGate.set(false)

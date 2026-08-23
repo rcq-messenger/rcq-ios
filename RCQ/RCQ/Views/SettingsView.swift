@@ -776,7 +776,17 @@ struct SettingsView: View {
     private var islandSection: some View {
         Section {
             HStack {
-                Image(systemName: "server.rack").foregroundColor(Theme.Color.accent)
+                // Was `server.rack`: the same drawing on every island, on the
+                // one row whose whole job is to say WHICH island. The
+                // operator's logo now, or the lettered tile for an island that
+                // set none, which is still a mark of its own rather than one
+                // glyph shared by all of them.
+                IslandAvatarView(
+                    name: appState.serverName,
+                    host: islandHost,
+                    logoVersion: appState.serverLogoVersion,
+                    size: 28
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text(appState.serverName.isEmpty ? islandHost : appState.serverName)
                         .foregroundColor(Theme.Color.textPrimary)

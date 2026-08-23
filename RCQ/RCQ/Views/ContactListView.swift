@@ -1,4 +1,7 @@
 import SwiftUI
+// `CGImageSource`, for decoding an island's logo at a bounded size rather than
+// at whatever size its operator declared. See `IslandLogoStore.decode`.
+import ImageIO
 
 struct ContactListView: View {
     @StateObject private var vm = ContactListViewModel()
@@ -33,10 +36,12 @@ struct ContactListView: View {
     /// `docs/sections-design-2026-08-23.md`). The tree comes from the vault, so
     /// the same sections, in the same order, are on the desktop and on the web.
     @ObservedObject private var sectionsStore = SectionsStore.shared
+    /// Which sections are folded up. Device-local and per account, and it
+    /// SURVIVES this screen: the flags used to be `@State` here, so folding
+    /// Offline away lasted exactly as long as the view did (founder, 23.08).
+    @ObservedObject private var collapseStore = SectionCollapseStore.shared
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
-    @State private var collapsedCrossIsland = false
-
     @State private var showAddContact = false
     @State private var showAddAccount = false
     @State private var showManageAccounts = false
@@ -66,14 +71,12 @@ struct ContactListView: View {
     @State private var showSettings = false
     @State private var showCreateGroup = false
     @State private var showAudioRoomSheet = false
-    @State private var collapsedAudioRooms = false
     @State private var rotateKeyConfirmRoom: AudioRoom?
     @State private var showNearby = false
     @State private var showRandom = false
     @State private var showRadio = false
     @State private var showQR = false
     @State private var showSearch = false
-    @State private var collapsedGroups = false
     @State private var previewTarget: ChatTarget?
     // The press-down scale used to be a `@State` HERE, holding the id of the
     // row under the finger. `onLongPressGesture(pressing:)` fires on touch
@@ -84,12 +87,6 @@ struct ContactListView: View {
     @State private var showNews = false
     @State private var showOutgoing = false
     @State private var showDiagnostics = false
-    @State private var collapsedFavorites = false
-    @State private var collapsedArchive = true
-    /// Collapse state for the user's OWN sections. The built-ins keep the flags
-    /// they already had, defaults and all (Archive folded, Offline folded
-    /// except under duress).
-    @State private var collapsedSections: Set<String> = []
     /// Sections whose PIN has been answered, for THIS appearance of the screen.
     /// Never persisted, never in the collapse set: it resets when the section
     /// is collapsed, when the app goes to the background, and on every cold
@@ -156,8 +153,11 @@ struct ContactListView: View {
                 PINVerifySheet(title: (wrap.id == Sections.sysArchive
                                        ? "pin_verify.title.archive"
                                        : "pin_verify.title.section").localized) {
+                    // ⚠ The unlocked state and NOTHING ELSE. Writing "expanded"
+                    // to the collapse store here is how a gate stops being a
+                    // gate: the next cold start would read it back and the
+                    // section would stand open with the PIN never asked.
                     unlockedSections.insert(wrap.id)
-                    setCollapsed(wrap.id, false)
                 }
             }
             .sheet(item: Binding(
@@ -658,10 +658,36 @@ struct ContactListView: View {
                         // disambiguator a user remembers, so it leads the
                         // suffix and never truncates off the end.
                         let title = uin.map { "\(primary) · #\($0)" } ?? primary
+                        // ⚠ The founder's report (24.08): "the context menu
+                        // shows nothing". Every row here was text and nothing
+                        // else, so a switcher listing three islands drew three
+                        // identical lines and the one control whose job is to
+                        // say WHERE each account lives said it in words only.
+                        //
+                        // A `Menu` row is a `UIMenu` action under the hood: it
+                        // has an image slot, not a view slot, so the island's
+                        // face has to arrive as a flat UIImage (see
+                        // `IslandLogoStore.menuIcon`, which draws the lettered
+                        // tile itself when the island has no logo, so NO row is
+                        // ever left without a mark).
+                        //
+                        // The active row keeps the checkmark: it is the one
+                        // thing this menu has to answer before anything else,
+                        // and a tick sitting on top of a picture in a system
+                        // menu row is not a thing UIKit will draw.
                         if account.id == accountManager.activeAccountID {
                             Label(title, systemImage: "checkmark")
                         } else {
-                            Text(title)
+                            let card = AccountCardCache.card(for: account.id)
+                            Label {
+                                Text(title)
+                            } icon: {
+                                Image(uiImage: IslandLogoStore.shared.menuIcon(
+                                    name: primary,
+                                    host: card?.host ?? account.displayHost,
+                                    version: card?.islandLogoVersion ?? ""
+                                ))
+                            }
                         }
                     }
                 }
@@ -697,6 +723,12 @@ struct ContactListView: View {
                 IslandAvatarView(
                     name: accountTitle(for: accountManager.active),
                     host: accountManager.active?.displayHost ?? "",
+                    // The live one for the island we are ON, falling back to
+                    // the card so a cold start draws the right picture before
+                    // `/server/info` has answered.
+                    logoVersion: appState.serverLogoVersion.isEmpty
+                        ? (accountManager.activeAccountID.flatMap { AccountCardCache.card(for: $0)?.islandLogoVersion } ?? "")
+                        : appState.serverLogoVersion,
                     size: 28
                 )
             }
@@ -740,6 +772,12 @@ struct ContactListView: View {
         [
             accountManager.activeAccountID?.uuidString ?? "",
             appState.serverName,
+            // ⚠ In the key, not just in the payload. The card is written when
+            // this string changes and at no other time, so an operator who set
+            // or replaced their island's logo without touching its name would
+            // never have it recorded, and the switcher would keep the old
+            // picture until something else about the account moved.
+            appState.serverLogoVersion,
             auth.nickname,
             String(auth.ownUIN ?? 0),
         ].joined(separator: "|")
@@ -751,6 +789,7 @@ struct ContactListView: View {
         AccountCardCache.record(
             AccountCard(
                 islandName: appState.serverName.trimmingCharacters(in: .whitespacesAndNewlines),
+                islandLogoVersion: appState.serverLogoVersion,
                 host: account.displayHost,
                 uin: auth.ownUIN,
                 nickname: auth.nickname
@@ -1271,7 +1310,11 @@ struct ContactListView: View {
         // A device with no PIN configured cannot honour the flag another device
         // set. It shows the key glyph and, on expand, one line and a way past.
         let noticeOpen = locked && !panicPIN.isConfigured && noticeSections.contains(rec.id)
-        let collapsed = locked || isCollapsed(rec.id)
+        // ⚠ A PIN-gated section does not consult the stored fold state at all.
+        // It is collapsed until the PIN is answered and open for as long as
+        // that answer lives in view memory -- ALWAYS collapsed again on the
+        // next open, whatever the user last did to the header.
+        let collapsed = pinned ? locked : isCollapsed(rec.id)
         VStack(spacing: 0) {
             sectionHeader(
                 rec, count: count, unreadBadge: unreadBadge, plusAction: plusAction,
@@ -1301,12 +1344,13 @@ struct ContactListView: View {
                 } else {
                     noticeSections.insert(rec.id)
                 }
+            } else if pinned {
+                // Unlocked and open: the tap puts the gate back. Nothing is
+                // written -- the unlocked set is view memory and the fold state
+                // of a gated section is not stored.
+                unlockedSections.remove(rec.id)
             } else {
-                let next = !isCollapsed(rec.id)
-                setCollapsed(rec.id, next)
-                // Collapsing a section the user got past the PIN for puts the
-                // gate back.
-                if next { unlockedSections.remove(rec.id) }
+                setCollapsed(rec.id, !isCollapsed(rec.id))
             }
         } label: {
             HStack(spacing: 6) {
@@ -1395,29 +1439,31 @@ struct ContactListView: View {
         return id == Sections.sysArchive && panicPIN.isConfigured
     }
 
-    private func isCollapsed(_ id: String) -> Bool {
+    /// What a section does before the user has ever touched its header.
+    ///
+    /// ⚠ Offline folds by default EXCEPT in a decoy session: the seeded roster
+    /// is a handful of contacts and Offline is the only section they can land
+    /// in, so the default folded the whole duress view away behind one header
+    /// and the decoy opened on an empty-looking chat list. Read live rather
+    /// than stored, which is the reason the store keeps a CHOICE per section
+    /// instead of a set of "ids that differ from the default".
+    private func defaultCollapsed(_ id: String) -> Bool {
         switch id {
-        case Sections.sysFav: return collapsedFavorites
-        case Sections.sysCI: return collapsedCrossIsland
-        case Sections.sysGroups: return collapsedGroups
-        case Sections.sysOnline: return vm.collapsedOnline
-        case Sections.sysOffline: return vm.collapsedOffline
-        case Sections.sysArchive: return collapsedArchive
-        default: return collapsedSections.contains(id)
+        case Sections.sysArchive: return true
+        case Sections.sysOffline: return !panicPIN.isDecoy
+        default: return false
         }
     }
 
+    private func isCollapsed(_ id: String) -> Bool {
+        collapseStore.isCollapsed(id, default: defaultCollapsed(id))
+    }
+
+    /// ⚠ Only ever called for a section that is NOT behind a PIN. A gated
+    /// section's fold state is not stored anywhere (design §3): it is `locked`
+    /// on every entry to this screen, and the unlocked state is view memory.
     private func setCollapsed(_ id: String, _ value: Bool) {
-        switch id {
-        case Sections.sysFav: collapsedFavorites = value
-        case Sections.sysCI: collapsedCrossIsland = value
-        case Sections.sysGroups: collapsedGroups = value
-        case Sections.sysOnline: vm.collapsedOnline = value
-        case Sections.sysOffline: vm.collapsedOffline = value
-        case Sections.sysArchive: collapsedArchive = value
-        default:
-            if value { collapsedSections.insert(id) } else { collapsedSections.remove(id) }
-        }
+        collapseStore.set(id, collapsed: value)
     }
 
     /// One line and a way past, for a section another device gated while this
@@ -1573,7 +1619,7 @@ struct ContactListView: View {
     private func commitDeleteSection() {
         guard let id = deleteSectionID else { return }
         deleteSectionID = nil
-        collapsedSections.remove(id)
+        collapseStore.forget(id)
         unlockedSections.remove(id)
         applySections { Sections.deleteSection($0, id) }
     }
@@ -1638,9 +1684,15 @@ struct ContactListView: View {
         }
     }
 
+    /// The audio-rooms strip folds and remembers it like every other section.
+    /// It has no record in the sections tree (it is not a chat list section the
+    /// vault knows about), so it carries an id of its own.
     private var audioRoomsSection: some View {
-        VStack(spacing: 0) {
-            Button { collapsedAudioRooms.toggle() } label: {
+        let collapsedAudioRooms = isCollapsed(SectionCollapseStore.audioRoomsID)
+        return VStack(spacing: 0) {
+            Button {
+                setCollapsed(SectionCollapseStore.audioRoomsID, !collapsedAudioRooms)
+            } label: {
                 HStack(spacing: 6) {
                     CollapseChevron(collapsed: collapsedAudioRooms)
                     Text("audio_room.section.title".localized.uppercased())
@@ -2595,6 +2647,14 @@ struct AccountCard: Codable {
     /// What the island calls itself. Empty when it has never answered or its
     /// operator left the field blank; callers fall back to the host.
     var islandName: String
+    /// Digest of the island's logo, "" for none. Same story as the name: only
+    /// the ACTIVE account can read `/server/info`, so this is the one moment it
+    /// can be recorded, and the switcher then draws every island from disk.
+    ///
+    /// Decodes as "" on a card written before this field existed, which reads
+    /// as "no logo" and draws the lettered tile: an upgrade shows the old
+    /// switcher until the first `/server/info` of the new run lands.
+    var islandLogoVersion: String = ""
     var host: String
     var uin: Int?
     var nickname: String
@@ -2620,9 +2680,17 @@ enum AccountCardCache {
         // A half-known card (the boot has the host but `/server/info` has not
         // landed yet) must not overwrite a full one from the last run, or the
         // switcher would lose the island's name for a second on every launch.
+        //
+        // ⚠ The logo version rides the SAME guard, and only on the same
+        // condition. An empty version otherwise means one of two things and
+        // they are opposites: "the reply has not landed" (keep what we had) and
+        // "the operator removed the logo" (believe it). `islandName` being
+        // empty too is what tells them apart, because a landed reply from an
+        // island that has a name fills that in whether or not it has a picture.
         if fresh.islandName.isEmpty, let existing = card(for: id), !existing.islandName.isEmpty {
             var merged = fresh
             merged.islandName = existing.islandName
+            if merged.islandLogoVersion.isEmpty { merged.islandLogoVersion = existing.islandLogoVersion }
             write(merged, for: id)
             return
         }
@@ -2640,19 +2708,65 @@ enum AccountCardCache {
     }
 }
 
-/// An island's face: its initial on a colour derived from its host.
+/// An island's face: the logo its operator set, or its initial on a colour
+/// derived from its host.
 ///
-/// Islands have no avatar on the wire (`/server/info` serves a name and a
-/// welcome text and nothing else), so this is generated rather than fetched,
-/// which also means it is free and always available. Rounded square, not a
-/// circle: a person is a circle and a group is a circle, and an island is
-/// neither.
+/// Islands had no picture on the wire at all until 2026-08-24, so this was
+/// generated and nothing else. It still is for every island whose operator has
+/// not set one, and that fallback is the point rather than a leftover: an
+/// island is always drawn by something, and the something is per-island either
+/// way. Rounded square, not a circle: a person is a circle and a group is a
+/// circle, and an island is neither.
+///
+/// ⚠⚠ FALLS BACK IN FOUR DIRECTIONS AND NEVER SHOWS A BROKEN IMAGE:
+///   * an island with no logo -> `logoVersion` is "" -> the tile;
+///   * an island too old to know the field -> it is absent from the reply,
+///     which decodes to nil -> the tile;
+///   * an island that has not answered yet, or at all -> no version on its
+///     card -> the tile, on the FIRST frame, replaced in place if a logo lands;
+///   * bytes that arrive but do not decode, or a 404 -> `IslandLogoStore`
+///     answers nil -> the tile.
+/// There is no state in which this draws an empty box.
 struct IslandAvatarView: View {
     let name: String
     let host: String
+    /// `logo_version` from that island's `/server/info`, off the account's own
+    /// card for a row this process is not talking to. "" draws the tile.
+    var logoVersion: String = ""
     var size: CGFloat = 28
 
+    /// Seeded from the decrypted-free memory cache so a hot logo is already
+    /// there on the first frame instead of flashing the tile, exactly as
+    /// `PersonAvatarView` seeds itself from `MediaService.cachedImage`. Switcher
+    /// rows and the pill redraw constantly.
+    @State private var image: UIImage?
+
+    init(name: String, host: String, logoVersion: String = "", size: CGFloat = 28) {
+        self.name = name
+        self.host = host
+        self.logoVersion = logoVersion
+        self.size = size
+        _image = State(initialValue: IslandLogoStore.shared.cached(host: host, version: logoVersion))
+    }
+
     var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+            } else {
+                tile
+            }
+        }
+        .task(id: "\(host)|\(logoVersion)") {
+            image = await IslandLogoStore.shared.load(host: host, version: logoVersion)
+        }
+    }
+
+    private var tile: some View {
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(Self.tint(for: host))
             .frame(width: size, height: size)
@@ -2663,7 +2777,7 @@ struct IslandAvatarView: View {
             )
     }
 
-    private static func initial(name: String, host: String) -> String {
+    static func initial(name: String, host: String) -> String {
         let source = name.isEmpty ? host : name
         // First LETTER, not first character: a name that opens with an emoji or
         // a bracket would otherwise draw a tile with punctuation on it.
@@ -2672,8 +2786,10 @@ struct IslandAvatarView: View {
     }
 
     /// ⚠ FNV-1a over the host, never `hashValue`: Swift's hashing is seeded per
-    /// process, so an island would change colour on every launch.
-    private static func tint(for host: String) -> Color {
+    /// process, so an island would change colour on every launch. The other
+    /// three clients run the identical hash for the identical reason, so an
+    /// island with no logo is the same colour on all four.
+    static func tint(for host: String) -> Color {
         var hash: UInt32 = 2_166_136_261
         for byte in host.lowercased().utf8 {
             hash = (hash ^ UInt32(byte)) &* 16_777_619
@@ -2685,6 +2801,269 @@ struct IslandAvatarView: View {
             saturation: 0.46,
             brightness: 0.62
         )
+    }
+}
+
+/// The islands' own pictures: fetched once per version, then read off the disk.
+///
+/// Same shape as an account avatar (`MediaService`): an NSCache in front, a
+/// file cache behind it, and a network read only on a miss of both. What is
+/// different, and why this is not `MediaService`, is that a logo is PUBLIC
+/// PLAINTEXT: no media id, no AES key, nothing to decrypt. Running it through
+/// the media path would mean opening something that was never sealed.
+///
+/// ⚠ KEYED ON HOST **AND** VERSION. An operator can replace their island's
+/// logo, and a cache keyed on the host alone would keep the old one until the
+/// app was reinstalled. The version is a digest of the picture, so a new logo
+/// is a new key, a new URL and a new file.
+///
+/// Nothing here can fail into a broken image: every miss, refusal, timeout and
+/// unreadable file answers nil, and nil draws the lettered tile.
+final class IslandLogoStore {
+    static let shared = IslandLogoStore()
+
+    /// `nonisolated(unsafe)` for the same reason `MediaService`'s caches are:
+    /// NSCache is documented thread-safe but the Foundation overlay does not
+    /// mark it Sendable, and `cached(host:version:)` is peeked from a SwiftUI
+    /// `init` where an actor hop is not available.
+    nonisolated(unsafe) private let memory: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        // A phone holds a handful of islands, and a logo is at most 64 KB by
+        // the island's own cap. The whole store is smaller than one photo.
+        c.countLimit = 16
+        return c
+    }()
+
+    /// Islands whose logo failed this run, so a dead or logo-less island is not
+    /// re-asked on every appearance of every row that names it. Cleared when
+    /// the version changes, because that is a different picture.
+    nonisolated(unsafe) private let missed = NSCache<NSString, NSNumber>()
+
+    private var dir: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("island-logos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    private func key(_ host: String, _ version: String) -> String { "\(host)|\(version)" }
+
+    private func file(_ host: String, _ version: String) -> URL {
+        let safe = key(host, version).replacingOccurrences(
+            of: "[^A-Za-z0-9_|.-]", with: "_", options: .regularExpression
+        )
+        return dir.appendingPathComponent(safe)
+    }
+
+    /// What we already hold, with no disk and no network. Read from a SwiftUI
+    /// `init` to seed the first frame.
+    func cached(host: String, version: String) -> UIImage? {
+        guard !host.isEmpty, !version.isEmpty else { return nil }
+        return memory.object(forKey: key(host, version) as NSString)
+    }
+
+    /// The island's logo, from memory, then disk, then the island. nil means
+    /// "draw the tile", which covers every case worth distinguishing to a
+    /// caller: no logo, an island too old for the field, an island that did not
+    /// answer, or bytes that did not decode. None of them is an error.
+    func load(host: String, version: String) async -> UIImage? {
+        guard !host.isEmpty, !version.isEmpty else { return nil }
+        let k = key(host, version)
+        if let hit = memory.object(forKey: k as NSString) { return hit }
+        if missed.object(forKey: k as NSString) != nil { return nil }
+        let path = file(host, version)
+        if let data = try? Data(contentsOf: path), let img = Self.decode(data) {
+            memory.setObject(img, forKey: k as NSString)
+            return img
+        }
+        // `?v=` so a changed logo is a changed URL: no cache in the chain, ours
+        // or a middlebox's, can hand back the old picture.
+        var comps = URLComponents(string: "https://\(host)/server/logo")
+        comps?.queryItems = [URLQueryItem(name: "v", value: version)]
+        guard let url = comps?.url else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.setValue("image/*", forHTTPHeaderField: "Accept")
+        do {
+            // ⚠⚠ `IslandHTTP`, NOT `URLSession.shared`. The host here is any
+            // island the user has been shown a join confirm for, and the shared
+            // session carries no proxy configuration at all: on a censored
+            // network this picture was the one request that stepped outside a
+            // tunnel the user had deliberately engaged, handing that island our
+            // real IP and the local network its SNI before anybody had joined
+            // anything. It is also why the ACTIVE island's own logo silently
+            // never arrived on a network where everything else worked.
+            let (data, resp) = try await IslandHTTP.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  http.expectedContentLength <= Int64(Self.maxBytes),
+                  data.count <= Self.maxBytes,
+                  let img = Self.decode(data) else {
+                missed.setObject(1, forKey: k as NSString)
+                return nil
+            }
+            try? data.write(to: path, options: .atomic)
+            trim()
+            memory.setObject(img, forKey: k as NSString)
+            return img
+        } catch {
+            missed.setObject(1, forKey: k as NSString)
+            return nil
+        }
+    }
+
+    /// Ceiling on a logo, four times the 64 KB our own admin path accepts.
+    ///
+    /// ⚠⚠ THAT CAP IS OURS, NOT THEIRS. It is enforced where an operator
+    /// UPLOADS a logo to an island we run; what a foreign island answers this
+    /// unauthenticated GET with is whatever it likes, and this cache is drawn
+    /// BEFORE the user has an account there. Loose on purpose: the point is not
+    /// to police somebody else's operator, it is that nothing unbounded is ever
+    /// held or written.
+    private static let maxBytes = 256 * 1024
+
+    /// Every logo file this store may keep, all islands together. Android holds
+    /// the identical 4 MB on the identical directory.
+    private static let maxDiskBytes = 4 * 1024 * 1024
+
+    /// Longest edge we ever decode to. The picture is drawn at 56 pt at its
+    /// largest, so this is already generous on a 3x screen.
+    private static let maxPixels = 256
+
+    /// Untrusted bytes to a picture, or nil.
+    ///
+    /// ⚠⚠ NOT `UIImage(data:)`. That accepts anything ImageIO parses and
+    /// decodes at the size the FILE declares, so a 60 KB PNG (inside the cap
+    /// above, not an oversized body at all) whose header says 25000x25000
+    /// costs about 2.5 GB of pixels the moment SwiftUI draws it into the 56 pt
+    /// frame, and the app is killed before the user has joined the island. Two
+    /// gates, the same two Android puts on the same bytes (`isJpegOrPng` plus
+    /// `rememberSampledBitmap(maxPx = 256)`): the format must be one the
+    /// islands actually serve, and the decode is a thumbnail with a hard pixel
+    /// ceiling rather than a full-size one.
+    private static func decode(_ data: Data) -> UIImage? {
+        guard isImage(data), let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        // The declared size, read from the header without decoding a pixel. A
+        // thumbnail request alone would be enough for memory, but refusing an
+        // absurd claim outright is cheaper than asking ImageIO to scale it.
+        if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+            let w = (props[kCGImagePropertyPixelWidth] as? Int) ?? 0
+            let h = (props[kCGImagePropertyPixelHeight] as? Int) ?? 0
+            if w > 8192 || h > 8192 { return nil }
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// PNG, JPEG, GIF or WebP by its first bytes, which is the set an island
+    /// accepts on upload. The `Content-Type` is the island's claim about its own
+    /// body and is not consulted.
+    private static func isImage(_ d: Data) -> Bool {
+        if d.count < 12 { return false }
+        let b = [UInt8](d.prefix(12))
+        if b[0] == 0x89, b[1] == 0x50, b[2] == 0x4E, b[3] == 0x47 { return true }   // PNG
+        if b[0] == 0xFF, b[1] == 0xD8, b[2] == 0xFF { return true }                 // JPEG
+        if b[0] == 0x47, b[1] == 0x49, b[2] == 0x46, b[3] == 0x38 { return true }   // GIF8
+        // RIFF....WEBP
+        if b[0] == 0x52, b[1] == 0x49, b[2] == 0x46, b[3] == 0x46,
+           b[8] == 0x57, b[9] == 0x45, b[10] == 0x42, b[11] == 0x50 { return true }
+        return false
+    }
+
+    /// Evict oldest files until the directory is under the cap.
+    ///
+    /// ⚠ `logo_version` is a string the island chooses, so a replaced logo
+    /// leaves its predecessor behind under a different name, and a hostile
+    /// island can mint a fresh version on every `/server/info`, which is a fresh
+    /// key, a fresh miss and a fresh file every time. Without this the
+    /// directory only grows. Android bounds the same directory the same way.
+    private func trim() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else { return }
+        var sized = files.map { url -> (URL, Int, Date) in
+            let v = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            return (url, v?.fileSize ?? 0, v?.contentModificationDate ?? .distantPast)
+        }
+        var total = sized.reduce(0) { $0 + $1.1 }
+        guard total > Self.maxDiskBytes else { return }
+        sized.sort { $0.2 < $1.2 }
+        for (url, size, _) in sized {
+            if total <= Self.maxDiskBytes { break }
+            try? fm.removeItem(at: url)
+            total -= size
+        }
+    }
+
+    /// Forget every island's picture.
+    ///
+    /// ⚠ The file names are HOSTS. A burn deletes the account's own record of
+    /// the islands it visited, and leaving this directory behind would mean an
+    /// app that reports everything erased while the container still holds one
+    /// file per island host the device ever drew, a private self-hosted one
+    /// included.
+    func wipe() {
+        memory.removeAllObjects()
+        missed.removeAllObjects()
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// The island's face as a flat `UIImage`, for a place that can only take
+    /// one: a `Menu` row, whose label SwiftUI hands to UIKit as a `UIMenu`
+    /// action with an image slot and no room for a view.
+    ///
+    /// Falls back to DRAWING the lettered tile rather than to no icon at all,
+    /// so every row in the switcher carries its island's mark whether or not
+    /// that island set a logo. Rendered `.alwaysOriginal`: a UIMenu image is
+    /// treated as a template by default and a coloured logo would come out as
+    /// a grey silhouette.
+    @MainActor
+    func menuIcon(name: String, host: String, version: String, size: CGFloat = 24) -> UIImage {
+        if let logo = cached(host: host, version: version) {
+            return Self.rounded(logo, size: size).withRenderingMode(.alwaysOriginal)
+        }
+        let initial = IslandAvatarView.initial(name: name, host: host)
+        let tint = UIColor(IslandAvatarView.tint(for: host))
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        return renderer.image { ctx in
+            let rect = CGRect(x: 0, y: 0, width: size, height: size)
+            let path = UIBezierPath(roundedRect: rect, cornerRadius: size * 0.28)
+            tint.setFill()
+            path.fill()
+            let font = UIFont.systemFont(ofSize: size * 0.5, weight: .bold)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.white,
+            ]
+            let text = initial as NSString
+            let box = text.size(withAttributes: attrs)
+            text.draw(
+                at: CGPoint(x: (size - box.width) / 2, y: (size - box.height) / 2),
+                withAttributes: attrs
+            )
+            _ = ctx
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
+    /// Square-crop and round a logo to the menu's icon size. A UIMenu draws its
+    /// image at whatever size it is given, so an operator's 256px mark has to
+    /// be brought down here rather than by the menu.
+    private static func rounded(_ image: UIImage, size: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        return renderer.image { _ in
+            let rect = CGRect(x: 0, y: 0, width: size, height: size)
+            UIBezierPath(roundedRect: rect, cornerRadius: size * 0.28).addClip()
+            // Aspect-FILL, so a non-square logo is cropped rather than
+            // letterboxed onto a transparent bar.
+            let scale = max(size / image.size.width, size / image.size.height)
+            let w = image.size.width * scale
+            let h = image.size.height * scale
+            image.draw(in: CGRect(x: (size - w) / 2, y: (size - h) / 2, width: w, height: h))
+        }
     }
 }
 

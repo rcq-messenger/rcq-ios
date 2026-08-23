@@ -25,10 +25,18 @@ struct ServerJoinSheet: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 34, weight: .light))
-                .foregroundColor(Theme.Color.accent)
-                .padding(.top, 8)
+            // Was `server.rack`: the same drawing on every island, on the one
+            // screen where somebody decides whether to go to THIS one. The
+            // island's own logo now, or its lettered tile while the reply is in
+            // the air, for an island that set none, and for one that never
+            // answers at all.
+            IslandAvatarView(
+                name: info?.name ?? "",
+                host: request.host,
+                logoVersion: info?.logoVersion ?? "",
+                size: 56
+            )
+            .padding(.top, 8)
 
             Text(info?.name.isEmpty == false ? (info?.name ?? "") : "serverjoin.title".localized)
                 .font(.title3.weight(.semibold))
