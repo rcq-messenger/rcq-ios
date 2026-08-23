@@ -67,17 +67,22 @@ enum ContactsVault {
     /// screen already and a vault that is down is not the user's problem at
     /// that moment. One at a time per process.
     private static var inFlight = false
+    /// The edges last folded this process, as a fingerprint keyed by account,
+    /// so a refresh that changed nothing costs no vault read.
+    private static var lastMirrored: String?
     @MainActor
     static func mirror(_ list: [Contact]) async -> Outcome {
         guard AppState.shared.serverCapabilities.vault else { return .skipped }
         guard let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return .skipped }
+        let onIsland = list.filter { $0.host == nil }
+        let key = (AppGroup.readActiveAccountID()?.uuidString ?? "") + "|" + onIsland.map { "\($0.uin):\($0.blocked ? 1 : 0):\($0.nickname)" }.sorted().joined(separator: "\n")
+        if key == lastMirrored { return .unchanged }
         if inFlight { return .skipped }
         inFlight = true
         defer { inFlight = false }
         let slot = Vault.slotId(identityPriv: ik, name: Vault.contacts)
         let now = Int(Date().timeIntervalSince1970 * 1000)
         var floor = lastSeenVersion
-        let onIsland = list.filter { $0.host == nil }
         do {
             for _ in 0..<5 {
                 let cur = try await VaultAPI.get(slot)
@@ -97,12 +102,14 @@ enum ContactsVault {
                 }
                 guard let next = fold(remote, onIsland, now: now) else {
                     lastSeenVersion = cur.version
+                    lastMirrored = key
                     return .unchanged
                 }
                 let sealed = try Vault.seal(identityPriv: ik, slot: slot, version: cur.version + 1, plaintext: try JSONEncoder().encode(next))
                 let w = try await VaultAPI.put(slot, blob: sealed.base64EncodedString(), basedOn: cur.version)
                 if let v = w.version {
                     lastSeenVersion = v
+                    lastMirrored = key
                     return .written
                 }
                 // Stale: somebody else's write landed between our read and ours.
