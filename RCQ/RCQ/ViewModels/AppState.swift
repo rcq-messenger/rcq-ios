@@ -139,6 +139,10 @@ final class AppState: ObservableObject {
             )
             jwt = resp.token
         } catch { return false }
+        // Our own device list just changed under us: the web session will
+        // claim a key slot the moment it boots. Re-read rather than trust a
+        // list from before the link.
+        await SignalCryptoService.invalidateOwnDevices()
         let apiBase = APIClient.shared.baseURL.absoluteString
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let payload: [String: Any] = [
@@ -728,6 +732,19 @@ final class AppState: ObservableObject {
                 AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
                 serverName = info.name
                 serverWelcome = info.welcome ?? ""
+                // Stage 3: the island reads bundles against anonymous deposit
+                // tokens, and each costs a proof of work. Mint the first batch
+                // now, in the background, so the first message to a new peer
+                // does not sit on one.
+                if info.capabilities.anonKeys && info.capabilities.depositAuth,
+                   let host = APIClient.shared.baseURL.host {
+                    let base = APIClient.shared.baseURL.absoluteString
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    let masquerade = await APIClient.shared.currentServerToken()
+                    Task.detached(priority: .utility) {
+                        await DepositAuthStore.shared.prewarm(host: host, masquerade: masquerade, base: base)
+                    }
+                }
             }
 
             let baseURL = APIClient.shared.baseURL
@@ -1065,6 +1082,8 @@ final class AppState: ObservableObject {
         GroupService.shared.wipe()
         PushDecryptCache.wipe()
         SilenceProbe.shared.reset()
+        // Same reason as the probe: the device lists key on bare peer uins.
+        await PeerDeviceCache.shared.invalidateAll()
         NotificationPrefsService.shared.wipe()
         MessageStore.shared.clearAll()
         VisitStore.shared.wipe()
@@ -1479,8 +1498,11 @@ final class AppState: ObservableObject {
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         PushDecryptCache.wipe()
         // Probe timers key on bare peer uins, which mean nothing on the
-        // account we are switching to.
+        // account we are switching to. The cached device lists key on the
+        // same uins: uin 777 on the island we are leaving and uin 777 on the
+        // one we are joining are two people with two sets of devices.
         SilenceProbe.shared.reset()
+        await PeerDeviceCache.shared.invalidateAll()
         NotificationPrefsService.shared.wipe()
         // Soft switch: clear only the IN-MEMORY thread cache. Do NOT delete rows
         // — history lives in a per-account SQLite file and must survive so a

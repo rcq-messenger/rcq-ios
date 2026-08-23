@@ -180,7 +180,9 @@ enum SignalIdentityBootstrap {
             "POST", "/keys/devices",
             body: DeviceBody(bundle: body, label: label, sealedSenderPub: sealedSenderPub)
         )
-        print("[SignalBootstrap] another install owns the primary slot — registered as device \(out.device_id)")
+        print("[SignalBootstrap] another install owns the primary slot, registered as device \(out.device_id)")
+        // The list we hold of our own devices predates this row.
+        await SignalCryptoService.invalidateOwnDevices()
         return out.device_id
     }
 

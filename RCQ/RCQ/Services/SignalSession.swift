@@ -34,12 +34,23 @@ actor PeerDeviceCache {
         entries.removeValue(forKey: uin)
     }
 
+    /// Everything: an account switch or a burn. Entries key on bare peer
+    /// uins, and the same uin on the island we are leaving and the one we
+    /// are joining is a different person with a different set of devices;
+    /// fanning out over the old list would skip the new peer's second
+    /// install until the entry expired, up to eighteen minutes.
+    func invalidateAll() {
+        entries.removeAll()
+    }
+
     /// An inbound v=2 envelope named a device of [uin]. If the list we hold
     /// does not know that device, the list is stale (they linked an install
     /// since we read it) and our next send would leave it out; drop the entry
-    /// so the next send re-reads. A device we already know changes nothing.
+    /// so the next send re-reads. A device we already know changes nothing,
+    /// and neither does an EMPTY list: that is "no registry here", not a
+    /// list that went stale.
     func noteInbound(_ uin: Int, deviceId: Int) {
-        guard let e = entries[uin], !e.devices.contains(deviceId) else { return }
+        guard let e = entries[uin], !e.devices.isEmpty, !e.devices.contains(deviceId) else { return }
         entries.removeValue(forKey: uin)
     }
 }
@@ -198,15 +209,20 @@ extension SignalCryptoService {
     /// included. `nil` (endpoint missing, unreachable, or empty) means "no
     /// usable answer" and callers fall back to the single-device wire.
     ///
-    /// On an island that serves key lookups open (Stage 3) the list is read
-    /// with no session token: it is public material, and the token only told
-    /// the island whose keys we were reading. The list carries no label any
-    /// more and nothing here ever read one.
+    /// On an island that serves key lookups open (Stage 3) a PEER's list is
+    /// read with no session token: it is public material, and the token only
+    /// told the island whose keys we were reading. Our OWN list stays
+    /// authenticated: the owner asking about itself names no pair, and it is
+    /// the one read the island still answers with labels (server
+    /// 2026.08.23.5), which the key-slots screen shows. Nothing here reads a
+    /// label, so the decoder has none.
     static func peerDeviceIDs(forPeerUIN uin: Int) async -> [Int]? {
         if let cached = await PeerDeviceCache.shared.cached(uin) { return cached }
         struct DeviceResp: Decodable { let device_id: Int; let signal_identity_key: String? }
         struct DevicesResp: Decodable { let uin: Int; let devices: [DeviceResp] }
-        let anonymous = await anonymousKeyLookup()
+        let own = await MainActor.run { AuthService.shared.ownUIN }
+        var anonymous = false
+        if uin != own { anonymous = await anonymousKeyLookup() }
         guard let resp: DevicesResp = try? await APIClient.shared.request(
             "GET", "/keys/\(uin)/devices", authenticated: !anonymous
         ) else { return nil }
@@ -237,6 +253,16 @@ extension SignalCryptoService {
     /// we read it; see `PeerDeviceCache.noteInbound`.
     static func noteInboundDevice(forPeerUIN uin: Int, deviceId: Int) async {
         await PeerDeviceCache.shared.noteInbound(uin, deviceId: deviceId)
+    }
+
+    /// Drop the cached list of our OWN account: the island announced a
+    /// device linked or revoked (`device_linked`, `device_revoked`,
+    /// `device_slot_revoked` on the socket), or this install just linked or
+    /// registered one itself. The next read, by the bootstrap's slot check or
+    /// by a fan-out, sees the registry as it is now.
+    static func invalidateOwnDevices() async {
+        guard let own = await MainActor.run(body: { AuthService.shared.ownUIN }) else { return }
+        await PeerDeviceCache.shared.invalidate(own)
     }
 
     /// Whether the ACTIVE island serves the three key lookups without a
@@ -309,15 +335,20 @@ extension SignalCryptoService {
     /// The bearer token is replaced by a single-use deposit token in
     /// `X-Deposit-Token`: the island spends it to hand out the one-time
     /// prekey and learns nothing about who asked. One token per fetch. The
-    /// island's three answers, and what each does to the token:
+    /// island's answers, and what each does to the token:
     ///   200: spent, the bundle carries the prekey;
     ///   403: refused (the epoch rotated under the cached params, or the
     ///        island stopped issuing). The cached params and every token
-    ///        minted under them are dropped, one fresh token is tried, and
-    ///        a second refusal falls back to the session token for THIS
+    ///        minted under that epoch are dropped, one fresh token is tried,
+    ///        and a second refusal falls back to the session token for THIS
     ///        fetch rather than losing the send;
     ///   404: no such bundle or device, the token was NOT spent and goes
-    ///        back to the reserve. The caller reads the 404 as it always did.
+    ///        back to the reserve. The caller reads the 404 as it always did;
+    ///   429, no answer at all (transport), a cancelled request: the island
+    ///        never verified the token, so it goes back to the reserve too.
+    ///        (A request cancelled in flight MAY have been verified; the
+    ///        worst case is one refused fetch and a re-mint, cheaper than
+    ///        solving a proof of work for every one that was not.)
     /// A token that could not be minted at all (no params, PoW not solved,
     /// issue refused) also means the session-token path: the island does
     /// still accept it, and a send is worth more than the metadata it leaks.
@@ -325,14 +356,16 @@ extension SignalCryptoService {
         guard await anonymousKeyLookup() else {
             return try await APIClient.shared.request("GET", path)
         }
-        guard let host = APIClient.shared.baseURL.host else {
+        let base = APIClient.shared.baseURL
+        guard let host = base.host else {
             return try await APIClient.shared.request("GET", path)
         }
         let masquerade = await APIClient.shared.currentServerToken()
         var retried = false
         while true {
-            guard let token = await DepositAuthStore.shared.tokenFor(host: host, masquerade: masquerade),
-                  let header = DepositAuthStore.headerValue(token)
+            guard let token = await DepositAuthStore.shared.tokenFor(
+                host: host, masquerade: masquerade, base: mintBase(base)
+            ), let header = DepositAuthStore.headerValue(token)
             else {
                 print("[Stage3] no deposit token for \(host); bundle read with the session token")
                 return try await APIClient.shared.request("GET", path)
@@ -342,20 +375,36 @@ extension SignalCryptoService {
                     "GET", path, authenticated: false, headers: ["X-Deposit-Token": header]
                 )
             } catch let api as APIError {
-                if case .http(404, _) = api {
+                switch api {
+                case .http(403, _):
+                    if retried {
+                        print("[Stage3] deposit token refused twice by \(host); bundle read with the session token")
+                        return try await APIClient.shared.request("GET", path)
+                    }
+                    print("[Stage3] deposit token refused by \(host); re-minting once")
+                    retried = true
+                    await DepositAuthStore.shared.forget(host: host, epoch: token["epoch_id"] ?? "")
+                case .http(404, _), .http(429, _), .transport:
                     await DepositAuthStore.shared.giveBack(token, host: host)
                     throw api
+                default:
+                    throw api
                 }
-                guard case .http(403, _) = api else { throw api }
-                if retried {
-                    print("[Stage3] deposit token refused twice by \(host); bundle read with the session token")
-                    return try await APIClient.shared.request("GET", path)
-                }
-                print("[Stage3] deposit token refused by \(host); re-minting once")
-                retried = true
-                await DepositAuthStore.shared.forget(host: host)
+            } catch {
+                // CancellationError / URLError.cancelled: the request may not
+                // even have left.
+                await DepositAuthStore.shared.giveBack(token, host: host)
+                throw error
             }
         }
+    }
+
+    /// The origin the own island's deposit tokens are minted at: the active
+    /// base as the API calls use it (scheme, host, any path prefix of a proxy
+    /// base), without the trailing slash. `https://host` alone would miss a
+    /// prefix and read the proxy's 404 page as "no deposit-auth here".
+    private static func mintBase(_ base: URL) -> String {
+        base.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     /// What a device of [uin] publishes as its libsignal identity. The

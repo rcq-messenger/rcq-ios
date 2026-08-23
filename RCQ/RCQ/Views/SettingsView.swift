@@ -1196,6 +1196,14 @@ struct LinkedDevicesView: View {
 
     /// Best-effort beside the registry: an island too old for per-device keys
     /// 404s here, which simply leaves the section out.
+    ///
+    /// Authenticated on purpose, and it has to stay so: since Stage 3 the
+    /// island answers `/keys/{uin}/devices` to anyone, but fills `label` only
+    /// for the OWNER asking about their own account (server 2026.08.23.5).
+    /// Read it anonymously and every slot below turns "unnamed", and the
+    /// revoke confirm could no longer say which install it is about to
+    /// retire. The owner about itself names no pair, so there is nothing to
+    /// hide from the island here.
     private func reloadSlots() async {
         guard !PanicPINService.shared.isDecoy else { slots = []; ownSlot = nil; return }
         guard let uin = SignalProtocolStores.shared.localUIN else { return }
