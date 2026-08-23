@@ -1260,6 +1260,12 @@ final class AppState: ObservableObject {
     func switchToAccount(_ id: UUID) async {
         guard AccountManager.shared.accounts.contains(where: { $0.id == id }) else { return }
         guard id != AccountManager.shared.activeAccountID else { return }
+        // BEFORE the flip: the chat list is interactive while a boot chain
+        // still runs, and a fetch of the outgoing account that lands after
+        // `setActive` would be published, cached and vaulted under the
+        // incoming one. The services also check the account id per fetch;
+        // this makes the window not exist in the first place.
+        await settleBoot()
         AccountManager.shared.setActive(id)
         await rebootForActiveAccount()
     }

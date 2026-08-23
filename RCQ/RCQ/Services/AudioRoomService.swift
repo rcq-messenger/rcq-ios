@@ -56,17 +56,24 @@ final class AudioRoomService: ObservableObject {
         return true
     }
 
+    /// The account the list belongs to; see ContactService. Nil until a live
+    /// answer landed, which is also what gates the write.
+    private var roomsAccount: UUID?
+
     func saveSnapshot() {
-        guard hasLoadedOnce else { return }
-        RosterSnapshot.save(rooms, as: .rooms)
+        guard roomsAccount != nil else { return }
+        RosterSnapshot.save(rooms, as: .rooms, accountID: roomsAccount)
     }
 
     func refresh() async {
         guard AppState.shared.networkReady else { return }
+        let account = AccountManager.shared.activeAccountID
         do {
             let list: [AudioRoom] = try await APIClient.shared.request("GET", "/audio_rooms")
+            guard account == AccountManager.shared.activeAccountID, !PanicPINService.shared.isLocked else { return }
             self.rooms = list
-            RosterSnapshot.save(list, as: .rooms)
+            self.roomsAccount = account
+            saveSnapshot()
         } catch {
             print("[AudioRoomService] refresh failed: \(error)")
         }
@@ -267,6 +274,7 @@ final class AudioRoomService: ObservableObject {
     }
 
     func wipe() {
+        roomsAccount = nil
         rooms.removeAll()
         tearDownLocal()
         lastJoinError = nil

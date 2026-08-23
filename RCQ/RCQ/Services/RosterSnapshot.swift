@@ -57,14 +57,19 @@ enum RosterSnapshot {
     /// when the first restore happens.
     private static var dataKey: SymmetricKey? { PanicPINService.shared.dataKey }
 
-    static func save<T: Encodable>(_ value: T, as kind: Kind) {
+    /// `accountID` is the account the data BELONGS to, not whichever one is
+    /// active when the write happens: an account switch flips the active id
+    /// before the in-flight fetch of the previous account lands, and a write
+    /// resolved at that moment would put one account's roster in another
+    /// account's file.
+    static func save<T: Encodable>(_ value: T, as kind: Kind, accountID: UUID?) {
         if PanicPINService.shared.isDecoy { return }
         // A PIN is configured but not unlocked in this process (the app was
         // locked with a fetch still in the air): nothing may be written in
         // the clear. The drain refuses to touch the history in this state
         // for the same reason.
         if PanicPINService.shared.isConfigured, dataKey == nil { return }
-        guard let id = AppGroup.readActiveAccountID(), let url = url(kind, accountID: id) else { return }
+        guard let id = accountID, id == AppGroup.readActiveAccountID(), let url = url(kind, accountID: id) else { return }
         do {
             var data = try JSONEncoder().encode(value)
             if let key = dataKey {
