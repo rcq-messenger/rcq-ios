@@ -751,24 +751,66 @@ final class GroupSenderKeyStore {
         defaults.set([String](), forKey: Self.ownedKey)
     }
 
+    // The decoded maps, kept in memory after the first read.
+    //
+    // Every load used to JSON-decode the WHOLE map and every save re-encode
+    // it, and opening one group broadcast does up to two loads and one save
+    // (`ownsKid`, `deriveInbound`, and `knowsKid` when the chain is unknown).
+    // Draining a room's backlog paid that per message.
+    //
+    // Safe to cache because this process is the only writer: the store lives
+    // in the App Group container, but `Multihome.swift` is not in the
+    // notification-extension target (the NSE opens sealed 1:1 envelopes, never
+    // `gmsg`), so nothing outside this class can move a chain under it.
+    //
+    // ⚠ CACHE, NOT BUFFER. Every save still writes through to UserDefaults on
+    // the spot. A chain is ratchet state: holding writes back to batch them
+    // would mean a kill between the derive and the flush leaves the chain
+    // behind where the messages it opened already are.
+    //
+    // Guarded by `lock`, which every reader and writer below now takes.
+    private var outCache: [String: OutChain]?
+    private var inCache: [String: InChain]?
+    private var ownedCache: [String]?
+
     private func loadOut() -> [String: OutChain] {
+        if let outCache { return outCache }
         guard let d = defaults.data(forKey: Self.outKey),
-              let m = try? JSONDecoder().decode([String: OutChain].self, from: d) else { return [:] }
+              let m = try? JSONDecoder().decode([String: OutChain].self, from: d) else {
+            outCache = [:]
+            return [:]
+        }
+        outCache = m
         return m
     }
     private func saveOut(_ m: [String: OutChain]) {
+        outCache = m
         if let d = try? JSONEncoder().encode(m) { defaults.set(d, forKey: Self.outKey) }
     }
     private func loadIn() -> [String: InChain] {
+        if let inCache { return inCache }
         guard let d = defaults.data(forKey: Self.inKey),
-              let m = try? JSONDecoder().decode([String: InChain].self, from: d) else { return [:] }
+              let m = try? JSONDecoder().decode([String: InChain].self, from: d) else {
+            inCache = [:]
+            return [:]
+        }
+        inCache = m
         return m
     }
     private func saveIn(_ m: [String: InChain]) {
+        inCache = m
         if let d = try? JSONEncoder().encode(m) { defaults.set(d, forKey: Self.inKey) }
     }
-    private func loadOwned() -> [String] { (defaults.array(forKey: Self.ownedKey) as? [String]) ?? [] }
-    private func saveOwned(_ l: [String]) { defaults.set(l, forKey: Self.ownedKey) }
+    private func loadOwned() -> [String] {
+        if let ownedCache { return ownedCache }
+        let l = (defaults.array(forKey: Self.ownedKey) as? [String]) ?? []
+        ownedCache = l
+        return l
+    }
+    private func saveOwned(_ l: [String]) {
+        ownedCache = l
+        defaults.set(l, forKey: Self.ownedKey)
+    }
 
     private func outK(_ ownUin: Int, _ gid: Int) -> String { "\(ownUin):\(gid)" }
     private func inK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
@@ -879,14 +921,27 @@ final class GroupSenderKeyStore {
         return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
     }
 
-    func knowsKid(ownUin: Int, _ kid: String) -> Bool { loadIn()[inK(ownUin, kid)] != nil }
+    // These four were lock-free while every read went straight to UserDefaults.
+    // The maps live in memory now, so they take the lock like everybody else.
+    // None of them calls another method that takes it.
+    func knowsKid(ownUin: Int, _ kid: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return loadIn()[inK(ownUin, kid)] != nil
+    }
     /// Only THIS account's kids count as own: another local account's
     /// broadcast must be decoded like anybody else's, not eaten as an echo.
-    func ownsKid(ownUin: Int, _ kid: String) -> Bool { loadOwned().contains(ownedK(ownUin, kid)) }
-    func ownKidForGroup(ownUin: Int, gid: Int) -> String? { loadOut()[outK(ownUin, gid)]?.kid }
+    func ownsKid(ownUin: Int, _ kid: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return loadOwned().contains(ownedK(ownUin, kid))
+    }
+    func ownKidForGroup(ownUin: Int, gid: Int) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return loadOut()[outK(ownUin, gid)]?.kid
+    }
 
     struct OwnSnapshot { let kid: String; let epoch: Int; let index: Int; let ck: String }
     func ownChainSnapshot(ownUin: Int, gid: Int) -> OwnSnapshot? {
+        lock.lock(); defer { lock.unlock() }
         guard let c = loadOut()[outK(ownUin, gid)] else { return nil }
         return OwnSnapshot(kid: c.kid, epoch: c.epoch, index: c.index, ck: c.ck)
     }

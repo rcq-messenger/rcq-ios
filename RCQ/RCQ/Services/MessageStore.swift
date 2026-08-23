@@ -15,8 +15,8 @@ final class MessageStore: ObservableObject {
     /// Drives the ChatView "load earlier" affordance + scroll-up hook.
     @Published private(set) var hasOlderInDB: [ThreadID: Bool] = [:]
 
-    /// How many rows we keep in memory per thread by default. App
-    /// launch fetches this many for every known thread; ChatView's
+    /// How many rows we keep in memory per thread by default. Read when a
+    /// thread is first asked for (see `ensureLoaded`), not at launch; ChatView's
     /// scroll-up gesture extends the window by `loadOlderPageSize`.
     static let initialWindowSize: Int = 100
     static let loadOlderPageSize: Int = 50
@@ -25,34 +25,110 @@ final class MessageStore: ObservableObject {
 
     private var sweepTimer: Timer?
 
+    /// Threads whose window has been read from CoreData this session.
+    ///
+    /// Not the same question as `threads[t] != nil`: a live message landing in
+    /// a chat nobody has opened creates a one-row window, and opening that chat
+    /// must still go and fetch the hundred rows behind it.
+    private var loadedThreads: Set<ThreadID> = []
+
+    /// Timer ticks since the last DB-wide expiry sweep. Seeded AT the interval
+    /// so the FIRST tick runs one: launch itself must not pay for it.
+    ///
+    /// ⚠ Seeded at the interval, not at `Int.max`. `Int.max` reads like "high
+    /// enough to fire immediately" and does the exact opposite: the tick below
+    /// increments it, `Int.max` wraps to `Int.min`, and the comparison is false
+    /// for the rest of the process. The DB sweep then never ran at all, and a
+    /// disappearing message in a chat the user never opened outlived its
+    /// deadline on disk until the day that chat was opened.
+    private var ticksSinceDBSweep = MessageStore.dbSweepEveryTicks
+    /// One DB sweep per this many 30 s ticks.
+    private static let dbSweepEveryTicks = 10
+
     private init() {
-        if PanicPINService.shared.lockState == .unlocked {
-            rehydrate()
-        }
-        sweepExpired()
+        // Nothing is read here any more. Launch used to walk every thread in
+        // the database and pull a hundred rows for each, on the main actor,
+        // before the chat list could paint, for windows the user would open at
+        // most one of. Windows are read when something asks for one; see
+        // `ensureLoaded`.
         startSweepTimer()
     }
 
-    private func rehydrate() {
-        // Old path used `fetchAll()` and grouped, which forced every
-        // message ever stored into memory at app launch. That is fine
-        // for users with a few short chats and ruinous for active
-        // groups where 200 members trade thousands of messages a day.
-        // Now we discover the set of threads first and pull only the
-        // most recent `initialWindowSize` for each.
-        var loaded: [ThreadID: [Message]] = [:]
-        var hasMore: [ThreadID: Bool] = [:]
-        for t in MessageDB.shared.fetchThreadIDs() {
-            let tail = MessageDB.shared.fetchRecent(thread: t, limit: Self.initialWindowSize)
-            loaded[t] = tail
-            if let oldest = tail.first {
-                hasMore[t] = MessageDB.shared.hasOlder(thread: t, before: oldest.sentAt)
-            } else {
-                hasMore[t] = false
+    /// Read this thread's window from CoreData, once per session.
+    ///
+    /// Every reader and every mutator of a thread goes through here first, so
+    /// "the window is in memory" holds exactly where it used to hold after the
+    /// launch-time rehydrate. Anything that skipped it would silently no-op on
+    /// a chat that has not been opened yet.
+    func ensureLoaded(_ thread: ThreadID) {
+        // Behind the panic PIN there is no data key, so every sealed field
+        // would read back as an empty string and the window would cache that.
+        // The launch-time rehydrate this replaces had the same guard.
+        guard PanicPINService.shared.lockState == .unlocked else { return }
+        guard !loadedThreads.contains(thread) else { return }
+        loadWindow(thread)
+    }
+
+    /// Whether this thread's window has been read from CoreData yet, for a
+    /// view that has to tell "this chat is empty" apart from "this chat has
+    /// not been read off disk yet". Safe to ask from a `body`: `loadWindow`
+    /// always assigns `threads[thread]`, so the answer changing republishes.
+    func isLoaded(_ thread: ThreadID) -> Bool {
+        loadedThreads.contains(thread)
+    }
+
+    /// Every thread in the database, windowed. Only for readers that genuinely
+    /// search across all chats (the search overlay); nothing on the launch path
+    /// may call this.
+    func ensureAllLoaded() {
+        guard PanicPINService.shared.lockState == .unlocked else { return }
+        for t in MessageDB.shared.fetchThreadIDs() where !loadedThreads.contains(t) {
+            loadWindow(t)
+        }
+    }
+
+    private func loadWindow(_ thread: ThreadID) {
+        let tail = MessageDB.shared.fetchRecent(thread: thread, limit: Self.initialWindowSize)
+        // Expired rows are dropped on the way in rather than waiting for the
+        // next sweep tick, so a disappearing message can never be on screen
+        // for the half-minute after its deadline.
+        let now = Date()
+        var window = tail.filter { msg in
+            guard let deadline = msg.expiresAt else { return true }
+            return deadline >= now
+        }
+        if window.count != tail.count {
+            let kept = Set(window.map(\.id))
+            for msg in tail where !kept.contains(msg.id) {
+                MessageDB.shared.deleteRow(id: msg.id)
             }
         }
-        threads = loaded
-        hasOlderInDB = hasMore
+        // A live row that landed before anyone opened this chat is already in
+        // the dictionary; it is normally inside `tail` too (append writes
+        // through), so this only catches one that fell outside the window.
+        //
+        // ⚠ Merged BY TIME, not by arrival. `append` does not load the window
+        // first, so a drain can fill a chat nobody has opened with more than
+        // `initialWindowSize` rows; `tail` is then the newest hundred and the
+        // leftovers here are the OLDEST rows, not the newest. Tacked on the end
+        // they left the window out of order, and everything downstream reads it
+        // as ordered: `window.first` stopped being the oldest row, so `loadOlder`
+        // asked the database for rows the window already held and prepended
+        // them a second time (duplicate ids in a `ForEach`), and the long-press
+        // preview drew its `suffix(50)` — the oldest fifty — as the recent ones.
+        if let live = threads[thread], !live.isEmpty {
+            let known = Set(window.map(\.id))
+            let missing = live.filter { !known.contains($0.id) }
+            if !missing.isEmpty {
+                window.append(contentsOf: missing)
+                window.sort { $0.sentAt < $1.sentAt }
+            }
+        }
+        threads[thread] = window
+        hasOlderInDB[thread] = window.first.map {
+            MessageDB.shared.hasOlder(thread: thread, before: $0.sentAt)
+        } ?? false
+        loadedThreads.insert(thread)
     }
 
     /// Pull the next page of older messages for `thread` from CoreData
@@ -60,6 +136,7 @@ final class MessageStore: ObservableObject {
     /// loaded; 0 means we hit the start of history.
     @discardableResult
     func loadOlder(for thread: ThreadID) -> Int {
+        ensureLoaded(thread)
         guard let current = threads[thread], let oldest = current.first else { return 0 }
         let older = MessageDB.shared.fetchOlder(
             thread: thread,
@@ -70,38 +147,112 @@ final class MessageStore: ObservableObject {
             hasOlderInDB[thread] = false
             return 0
         }
-        var merged = older
+        // Rows the window already holds are dropped rather than prepended a
+        // second time: a duplicated id here is a duplicated `RenderUnit.id` in
+        // the chat's `ForEach`, which is undefined behaviour in SwiftUI rather
+        // than a cosmetic repeat. `fetchOlder` is exclusive on `sentAt`, so
+        // with an ordered window this filter takes nothing.
+        let held = Set(current.map(\.id))
+        var merged = older.filter { !held.contains($0.id) }
+        guard !merged.isEmpty else {
+            hasOlderInDB[thread] = MessageDB.shared.hasOlder(thread: thread, before: oldest.sentAt)
+            return 0
+        }
+        let added = merged.count
         merged.append(contentsOf: current)
         threads[thread] = merged
         let newOldest = merged.first?.sentAt ?? oldest.sentAt
         hasOlderInDB[thread] = MessageDB.shared.hasOlder(thread: thread, before: newOldest)
-        return older.count
+        return added
     }
 
+    /// Drop what is held and read it back. Used after a restore from backup
+    /// and after a panic-PIN unlock, both of which change what is on disk
+    /// under the windows in memory.
+    ///
+    /// Only the windows that are open come back. It used to be every thread in
+    /// the database, which is what made the panic-PIN unlock TAP stall: the
+    /// whole rehydrate ran before `lockState` flipped.
+    ///
+    /// ⚠ Every caller of this either changed which SQLite file is underneath
+    /// (account switch, decoy) or restored into the current one, and every one
+    /// of the store-swapping callers drops the windows FIRST
+    /// (`resetInMemory` / `clearInMemory`). Reloading a thread id read from
+    /// one account's store against another's is how a switch would end up
+    /// holding empty windows keyed by the previous account's peers.
     func reloadFromDB() {
-        rehydrate()
+        let wanted = loadedThreads
+        loadedThreads.removeAll()
+        threads = [:]
+        hasOlderInDB = [:]
+        for t in wanted { loadWindow(t) }
         sweepExpired()
+        sweepExpiredInDB()
     }
 
+    /// Panic-PIN lock. The whole interface behind the lock is torn down with
+    /// it (`RCQApp` swaps `ContactListView` for `PINLockView`), so nothing is
+    /// waiting for these windows: the chat is built again, and asks again,
+    /// after the unlock.
     func clearInMemory() {
+        loadedThreads.removeAll()
         threads = [:]
+        hasOlderInDB = [:]
         fadingOutIDs = []
     }
 
     private func startSweepTimer() {
         sweepTimer?.invalidate()
         sweepTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.sweepExpired() }
+            Task { @MainActor in
+                guard let self else { return }
+                self.sweepExpired()
+                // Plain `+=`: the counter is reset by every sweep and so never
+                // climbs past the interval, and a wrapping add here is what
+                // silently disabled the sweep (see the declaration).
+                self.ticksSinceDBSweep += 1
+                if self.ticksSinceDBSweep >= Self.dbSweepEveryTicks {
+                    self.sweepExpiredInDB()
+                }
+            }
         }
     }
 
-    /// Drop messages whose `sentAt + ttlSeconds` has passed.
+    /// The other half of `sweepExpired`, for the threads that are not in
+    /// memory. Windows are loaded on demand now, so the in-memory pass only
+    /// ever sees chats the user has opened; without this, a disappearing
+    /// message in an unopened chat would outlive its deadline on disk and be
+    /// there waiting the day that chat is opened.
+    private func sweepExpiredInDB() {
+        ticksSinceDBSweep = 0
+        let removed = MessageDB.shared.deleteExpired()
+        guard !removed.isEmpty else { return }
+        // A window may hold a row the DB pass just deleted (the two agree on
+        // the deadline, but the timer between them is not zero).
+        for (thread, ids) in removed {
+            guard var msgs = threads[thread] else { continue }
+            let drop = Set(ids)
+            let kept = msgs.filter { !drop.contains($0.id) }
+            guard kept.count != msgs.count else { continue }
+            msgs = kept
+            withAnimation(.easeInOut(duration: 0.25)) {
+                threads[thread] = msgs
+            }
+        }
+    }
+
+    /// Drop messages whose deadline has passed.
+    ///
+    /// The deadline counts from `Message.ttlAnchor`: the sender's own compose
+    /// time when the envelope carried one, and `sentAt` when it did not. Rows
+    /// written before the wire carried a sender timestamp have no anchor and
+    /// keep the deadline they have always had.
     func sweepExpired() {
         let now = Date()
         for (thread, msgs) in threads {
             let kept = msgs.filter { msg in
-                guard let ttl = msg.ttlSeconds, ttl > 0 else { return true }
-                return msg.sentAt.addingTimeInterval(TimeInterval(ttl)) >= now
+                guard let deadline = msg.expiresAt else { return true }
+                return deadline >= now
             }
             if kept.count != msgs.count {
                 let keptIDs = Set(kept.map(\.id))
@@ -141,6 +292,7 @@ final class MessageStore: ObservableObject {
     }
 
     func updateState(messageID: UUID, thread: ThreadID, state: DeliveryState) {
+        ensureLoaded(thread)
         guard var t = threads[thread],
               let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
         t[idx].deliveryState = state
@@ -150,6 +302,7 @@ final class MessageStore: ObservableObject {
 
     /// No-op if missing, not a text bubble, or tombstoned.
     func applyEdit(messageID: UUID, thread: ThreadID, newText: String, editedAt: Date) {
+        ensureLoaded(thread)
         guard var t = threads[thread],
               let idx = t.firstIndex(where: { $0.id == messageID })
         else { return }
@@ -166,6 +319,7 @@ final class MessageStore: ObservableObject {
             thumbnailB64: m.thumbnailB64,
             durationSec: m.durationSec,
             ttlSeconds: m.ttlSeconds,
+            senderSentAt: m.senderSentAt,
             forwardedFromName: m.forwardedFromName,
             replyToID: m.replyToID,
             replyToSnippet: m.replyToSnippet,
@@ -183,6 +337,7 @@ final class MessageStore: ObservableObject {
     /// processed thumbnail (and the real durationSec) lands a few
     /// seconds later when compression is done.
     func updateVideoMeta(messageID: UUID, thread: ThreadID, thumbnailB64: String, durationSec: Double) {
+        ensureLoaded(thread)
         guard var t = threads[thread],
               let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
         t[idx].thumbnailB64 = thumbnailB64
@@ -193,6 +348,7 @@ final class MessageStore: ObservableObject {
 
     /// Patch in the server media id once the upload finishes.
     func updateMediaID(messageID: UUID, thread: ThreadID, mediaID: String) {
+        ensureLoaded(thread)
         guard var t = threads[thread],
               let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
         // In-place mutation preserves every field automatically — the
@@ -214,6 +370,7 @@ final class MessageStore: ObservableObject {
     /// the row was report #415 — the message came back after a restart, unread,
     /// and in its pre-edit wording, because edits are never carboned.
     func deleteLocal(messageID: UUID, thread: ThreadID) {
+        ensureLoaded(thread)
         let exists = threads[thread]?.contains(where: { $0.id == messageID }) ?? false
         guard exists else {
             MessageDB.shared.markDeletedLocally(id: messageID)
@@ -231,6 +388,7 @@ final class MessageStore: ObservableObject {
     }
 
     func markRead(messageIDs: [UUID], thread: ThreadID) {
+        ensureLoaded(thread)
         guard var t = threads[thread] else { return }
         let idSet = Set(messageIDs)
         var changed = false
@@ -248,6 +406,7 @@ final class MessageStore: ObservableObject {
     /// open when the message landed — and a delivery receipt for the same id
     /// must not walk the bubble back a state.
     func markDelivered(messageIDs: [UUID], thread: ThreadID) {
+        ensureLoaded(thread)
         guard var t = threads[thread] else { return }
         let idSet = Set(messageIDs)
         var changed = false
@@ -272,6 +431,7 @@ final class MessageStore: ObservableObject {
     /// coming in again, for a reaction he had already looked at.
     @discardableResult
     func applyReaction(targetID: UUID, thread: ThreadID, uin: Int, asset: String?) -> Bool {
+        ensureLoaded(thread)
         guard var t = threads[thread] else { return false }
         guard let idx = t.firstIndex(where: { $0.id == targetID }) else { return false }
         var reactions = t[idx].reactions
@@ -301,23 +461,31 @@ final class MessageStore: ObservableObject {
     /// already on the bubble is not news.
     @discardableResult
     func applyReactionAnywhere(targetID: UUID, uin: Int, asset: String?) -> ThreadID? {
-        for (thread, msgs) in threads where msgs.contains(where: { $0.id == targetID }) {
-            return applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset)
-                ? thread
-                : nil
+        // Which chat the reacted message lives in is asked of the STORE, not
+        // of the windows in memory. Scanning memory was right while launch
+        // rehydrated every thread; with windows read on demand it would lose
+        // the reaction for any chat not opened yet this session.
+        if let thread = MessageDB.shared.threadOf(id: targetID) {
+            ensureLoaded(thread)
+            if threads[thread]?.contains(where: { $0.id == targetID }) == true {
+                return applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset)
+                    ? thread
+                    : nil
+            }
         }
-        // Not in memory: only the tail of each thread is held there, so a
-        // reaction to an older message used to vanish here — not drawn, and not
-        // stored either, so it never appeared when the chat was scrolled up.
-        // The row is in the database; put it there and let the next load of
-        // that window pick it up. No thread is returned: the indicator points
-        // at a message the user cannot be scrolled to yet.
+        // Known to the database but older than the window we keep, or unknown
+        // entirely. A reaction to an older message used to vanish here — not
+        // drawn, and not stored either, so it never appeared when the chat was
+        // scrolled up. The row is in the database; put it there and let the
+        // next load of that window pick it up. No thread is returned: the
+        // indicator points at a message the user cannot be scrolled to yet.
         MessageDB.shared.mergeReaction(id: targetID, uin: uin, asset: asset)
         return nil
     }
 
     /// Apply a deleteForEveryone tombstone. Row stays as a placeholder.
     func tombstone(messageID: UUID, thread: ThreadID) {
+        ensureLoaded(thread)
         guard var t = threads[thread] else { return }
         guard let idx = t.firstIndex(where: { $0.id == messageID }) else { return }
         let m = t[idx]
@@ -327,7 +495,8 @@ final class MessageStore: ObservableObject {
             mediaID: nil, sentAt: m.sentAt,
             deliveryState: m.deliveryState, receivedWhileAway: m.receivedWhileAway,
             deletedForEveryone: true,
-            ttlSeconds: m.ttlSeconds
+            ttlSeconds: m.ttlSeconds,
+            senderSentAt: m.senderSentAt
         )
         withAnimation(.easeInOut(duration: 0.3)) {
             t[idx] = tomb
@@ -338,11 +507,15 @@ final class MessageStore: ObservableObject {
 
     func clearThread(_ thread: ThreadID) {
         threads[thread] = nil
+        hasOlderInDB[thread] = nil
+        loadedThreads.remove(thread)
         MessageDB.shared.deleteThread(thread)
     }
 
     func clearAll() {
         threads = [:]
+        hasOlderInDB = [:]
+        loadedThreads.removeAll()
         MessageDB.shared.deleteAll()
     }
 
@@ -352,5 +525,7 @@ final class MessageStore: ObservableObject {
     /// resumes the conversation. Use [clearAll] only for a true burn/migrate.
     func resetInMemory() {
         threads = [:]
+        hasOlderInDB = [:]
+        loadedThreads.removeAll()
     }
 }

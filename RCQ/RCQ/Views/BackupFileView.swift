@@ -95,7 +95,18 @@ struct BackupFileView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
+                    // The "restoring only ADDS" paragraph is a ROW of this
+                    // section, not its header: as a header it sat above the
+                    // card with the section gap plus the header gap between it
+                    // and the button it describes, which read as two unrelated
+                    // things. Inside the card the sentence and the button it
+                    // qualifies are one block.
                     Section {
+                        Text("backup.restore.desc".localized)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .listRowSeparator(.hidden)
+
                         Button {
                             gated(.restore)
                         } label: {
@@ -103,10 +114,6 @@ struct BackupFileView: View {
                                 .foregroundColor(Theme.Color.accent)
                         }
                         .disabled(busy != nil)
-                    } header: {
-                        Text("backup.restore.desc".localized)
-                            .textCase(nil)
-                            .foregroundColor(Theme.Color.textSecondary)
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 

@@ -201,6 +201,12 @@ enum BackupService {
             switch true {
             case name == "messages.ndjson":
                 let lines = bytes.split(separator: 0x0A, omittingEmptySubsequences: true)
+                // One transaction for the whole archive instead of an fsync
+                // per restored message. Nothing acknowledges these rows to
+                // anybody, so the only cost of a crash before `endBatch` is
+                // that the restore has to be run again.
+                MessageDB.shared.beginBatch()
+                defer { MessageDB.shared.endBatch() }
                 for (i, line) in lines.enumerated() {
                     if i % 200 == 0 { onProgress(Progress(stage: "messages", done: i, total: lines.count)) }
                     guard let record = try? decoder.decode(BackupRecordMapping.Record.self, from: Data(line)),
@@ -213,8 +219,7 @@ enum BackupService {
                     // excluded can still carry one. Its timer did not pause
                     // because it sat in a file, so anything already past its
                     // moment stays gone.
-                    if let ttl = msg.ttlSeconds,
-                       msg.sentAt.addingTimeInterval(TimeInterval(ttl)) <= Date() {
+                    if let deadline = msg.expiresAt, deadline <= Date() {
                         continue
                     }
                     if MessageDB.shared.insertIfAbsent(msg) { added += 1 } else { skipped += 1 }

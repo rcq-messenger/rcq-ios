@@ -3,7 +3,43 @@ import CallKit
 import Foundation
 import WebRTC
 
+/// The one place that puts WebRTC's audio session into manual mode.
+///
+/// This lived in `CallProvider.init`, and `RCQApp.init` touched
+/// `CallProvider.shared` at launch mostly so that these two lines would run
+/// before anything could start audio. Building a `CXProvider` to set two
+/// booleans is not worth doing before the first frame, so the flags moved here
+/// and every entry point that can start WebRTC audio calls this instead: the
+/// CallKit provider, the 1:1 peer-connection factory and the audio-room
+/// factory, plus both audio-session configurators.
+///
+/// Idempotent, callable from any thread, and cheap enough to call on every
+/// call setup: after the first time it is a lock and a boolean.
+enum CallAudio {
+    private static let lock = NSLock()
+    private static var prepared = false
+
+    static func prepareForWebRTC() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !prepared else { return }
+        prepared = true
+        // WebRTC manual audio mode; toggled by CallKit didActivate/didDeactivate
+        // and by WebRTCManager on the outgoing path, which owns the session
+        // itself because outgoing calls bypass CallKit.
+        let rtcSession = RTCAudioSession.sharedInstance()
+        rtcSession.useManualAudio = true
+        rtcSession.isAudioEnabled = false
+    }
+}
+
 /// CallKit bridge. Single CXProvider with imperative entry points for CallService + VoIPPush.
+///
+/// Built on first use. The VoIP push handler reaches it synchronously
+/// (`CallProvider.shared.reportIncoming…` inside `didReceiveIncomingPushWith`),
+/// which is what PushKit requires, and `static let` initialisation is
+/// synchronous, so a push that launches the process still reports its call
+/// before the delivery handler returns.
 final class CallProvider: NSObject, @unchecked Sendable {
     static let shared = CallProvider()
 
@@ -37,10 +73,7 @@ final class CallProvider: NSObject, @unchecked Sendable {
         provider = CXProvider(configuration: config)
         super.init()
         provider.setDelegate(self, queue: nil)
-        // WebRTC manual audio mode; toggled by didActivate/didDeactivate.
-        let rtcSession = RTCAudioSession.sharedInstance()
-        rtcSession.useManualAudio = true
-        rtcSession.isAudioEnabled = false
+        CallAudio.prepareForWebRTC()
         // Do NOT pre-configure the playAndRecord/voiceChat category at app
         // startup. iOS 26's CallKit treats a held voice-call audio session as an
         // already-active call and AUTO-ENDS a freshly reported incoming call

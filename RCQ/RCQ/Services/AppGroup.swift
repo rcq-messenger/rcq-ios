@@ -18,14 +18,21 @@ enum AppGroup {
     /// missing App Group entitlement is a build-time misconfiguration —
     /// crashing on first access surfaces the problem loudly instead of
     /// letting silently-degraded crypto ship.
-    static var containerURL: URL {
+    ///
+    /// Resolved once per process. `containerURL(forSecurityApplicationGroupIdentifier:)`
+    /// is a container lookup, not a string join, and this used to be a
+    /// computed property that a dozen stores called on their way to a
+    /// filename: MessageDB, BadgeCounter, RosterSnapshot, FavoritesStore,
+    /// CrossIslandStore, the alias store, the vault. The path cannot change
+    /// while the process lives, so caching it is free of semantics.
+    static let containerURL: URL = {
         guard let url = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: identifier
         ) else {
             fatalError("App Group \(identifier) not available — check entitlements")
         }
         return url
-    }
+    }()
 
     /// Shared dir for libsignal stores. Created on first access.
     static var signalStoreURL: URL {
@@ -60,10 +67,45 @@ enum AppGroup {
         containerURL.appendingPathComponent("active-account-id.txt")
     }
 
+    /// In-process memo of the file below. Outer nil = never read yet.
+    ///
+    /// ⚠ ONLY the main app memoises. The NSE compiles this file too, and iOS
+    /// keeps an extension process warm across consecutive pushes, so an
+    /// account switch made in the app while that process is alive has to be
+    /// visible to the next push: the extension keeps reading the file every
+    /// time, exactly as before. In the main app `AccountManager` is the sole
+    /// writer (via `writeActiveAccountID`) so the memo cannot go stale.
+    private static let memoisesActiveAccountID: Bool =
+        Bundle.main.bundleURL.pathExtension != "appex"
+    private static let activeAccountIDLock = NSLock()
+    private static var activeAccountIDMemo: UUID??
+
     /// Reads the active account ID from the App Group file. Returns
     /// nil if the file is missing, unreadable, or contains garbage.
-    /// Cheap to call repeatedly — the file is tiny.
+    ///
+    /// Called on every per-account Keychain hit through `KeychainStore.resolve`,
+    /// which is dozens of times during a boot, plus once in the initialiser of
+    /// most of the per-account stores. Each call was an open/read/close and a
+    /// UUID parse; in the main app it is now one of those per launch.
     static func readActiveAccountID() -> UUID? {
+        if memoisesActiveAccountID {
+            activeAccountIDLock.lock()
+            if let memo = activeAccountIDMemo {
+                activeAccountIDLock.unlock()
+                return memo
+            }
+            activeAccountIDLock.unlock()
+        }
+        let value = readActiveAccountIDFromDisk()
+        if memoisesActiveAccountID {
+            activeAccountIDLock.lock()
+            activeAccountIDMemo = .some(value)
+            activeAccountIDLock.unlock()
+        }
+        return value
+    }
+
+    private static func readActiveAccountIDFromDisk() -> UUID? {
         guard let data = try? Data(contentsOf: activeAccountIDFileURL),
               let raw = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -75,12 +117,24 @@ enum AppGroup {
     /// Atomically writes the active account ID to the App Group file.
     /// Called by AccountManager whenever active changes. Pass nil to
     /// clear (truly fresh install, no account exists).
+    ///
+    /// Skips the write when the file already holds this id: `AccountManager.init`
+    /// calls this on every launch through `mirrorActiveToLegacy`, and the value
+    /// changes about once in the life of an install. The read it does instead
+    /// is served by the memo above from the second caller onwards.
     static func writeActiveAccountID(_ id: UUID?) {
         let url = activeAccountIDFileURL
         if let id {
-            try? id.uuidString.data(using: .utf8)?.write(to: url, options: .atomic)
-        } else {
+            if readActiveAccountIDFromDisk() != id {
+                try? id.uuidString.data(using: .utf8)?.write(to: url, options: .atomic)
+            }
+        } else if FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.removeItem(at: url)
+        }
+        if memoisesActiveAccountID {
+            activeAccountIDLock.lock()
+            activeAccountIDMemo = .some(id)
+            activeAccountIDLock.unlock()
         }
     }
 

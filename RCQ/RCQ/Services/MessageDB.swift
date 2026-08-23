@@ -28,6 +28,11 @@ final class MessageRecord: NSManagedObject {
     @NSManaged var durationSec: Double
     /// `0` = no expiry (model layer converts to nil).
     @NSManaged var ttlSeconds: Int64
+    /// The sender's own compose time, off the envelope's `ts`. OPTIONAL, and
+    /// the nil is load-bearing: every row written before this attribute existed
+    /// reads back nil and keeps counting from `sentAt`, exactly as it did. See
+    /// the model note in `buildModel`.
+    @NSManaged var senderSentAt: Date?
     /// Empty string for first-hand messages ("" → nil on read).
     @NSManaged var forwardedFromName: String?
     @NSManaged var replyToID: UUID?
@@ -75,6 +80,45 @@ final class MessageDB {
     private var container: NSPersistentContainer
     private var ctx: NSManagedObjectContext { container.viewContext }
 
+    // MARK: - write batching
+    //
+    // Every mutator used to end in its own `ctx.save()`, and a save on a
+    // `FileProtectionType.complete` SQLite file is an fsync. Draining a
+    // backlog of N envelopes therefore cost N fsyncs, serially, on the main
+    // actor. `beginBatch` / `endBatch` fold a page of writes into ONE.
+    //
+    // Correctness rests on one rule the callers must keep: the batch is
+    // flushed BEFORE the rows it holds are acknowledged to the island. A
+    // crash inside a batch loses only writes for rows that are still queued
+    // server-side and will be served again. `endBatch` is the flush, and
+    // `MessageService.drainQueueThenLog` calls it before it POSTs the ack.
+    private var batchDepth = 0
+    /// Rows inserted since the batch opened, by id.
+    ///
+    /// A fetch with `fetchLimit` set is served from the STORE and then merged
+    /// with pending changes, and Apple only promises the merge can hand back
+    /// MORE than the limit, never that a pending-only match survives it. Every
+    /// `find(id:)` in this file carries `fetchLimit = 1`, and dropping it would
+    /// hand back the table scan the indexes just removed. So the rows still in
+    /// flight are looked up here instead: this is what makes a delivery
+    /// receipt, an edit or a reaction land on a message that arrived two rows
+    /// earlier in the same batch.
+    private var batchInserted: [UUID: MessageRecord] = [:]
+
+    /// Open a write batch. Re-entrant; the outermost `endBatch` flushes.
+    func beginBatch() {
+        batchDepth += 1
+    }
+
+    /// Close a write batch, flushing on the way out of the outermost one.
+    func endBatch() {
+        guard batchDepth > 0 else { return }
+        batchDepth -= 1
+        guard batchDepth == 0 else { return }
+        batchInserted.removeAll()
+        flush()
+    }
+
     private init() {
         container = MessageDB.makeContainer(decoy: false)
     }
@@ -83,6 +127,12 @@ final class MessageDB {
         self.dataKey = dataKey
         if decoy != decoyMode {
             decoyMode = decoy
+            // The context these belong to is about to be replaced. Neither
+            // caller can reach here mid-batch today (a drain never holds one
+            // across a suspension point, and both of these run between
+            // drains), but a stale depth would suppress every save that
+            // follows and stale rows would name a dead context.
+            abandonBatch()
             container = MessageDB.makeContainer(decoy: decoy)
         }
     }
@@ -95,7 +145,16 @@ final class MessageDB {
     /// container is dropped; its file stays on disk untouched
     /// because per-account files are isolated.
     func reload() {
+        abandonBatch()
         container = MessageDB.makeContainer(decoy: decoyMode)
+    }
+
+    /// Forget an open batch without saving it. Only for the two moments the
+    /// container itself is swapped: the pending rows belong to the context
+    /// that is going away.
+    private func abandonBatch() {
+        batchDepth = 0
+        batchInserted.removeAll()
     }
 
     // MARK: - store files
@@ -171,7 +230,15 @@ final class MessageDB {
         }
     }
 
-    private static let model: NSManagedObjectModel = buildModel()
+    private static let model: NSManagedObjectModel = buildModel(indexed: true)
+
+    /// The schema as it stood before the fetch indexes. Materialised ONLY when
+    /// the indexed model cannot open an existing store (a `static let` is lazy),
+    /// because two live models both claiming `MessageRecord` make CoreData log
+    /// about it. That log is the price of never nuking a user's history over an
+    /// index: without this fallback the load failure below deletes the SQLite
+    /// file, and adding an index is not a reason to lose every message.
+    private static let rescueModel: NSManagedObjectModel = buildModel(indexed: false)
 
     /// The ONE model instance. A second `NSManagedObjectModel` built from the
     /// same description would make CoreData complain that two entities claim
@@ -184,17 +251,18 @@ final class MessageDB {
     /// WebSocket write during that window would land in the decoy store.
     static func decoyStoreURL() -> URL { storeURL(decoy: true) }
 
-    private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
+    /// Open a container on `storeURL` with `model`. Returns nil when the store
+    /// would not load, leaving the file untouched for the next attempt.
+    private static func openContainer(
+        model: NSManagedObjectModel, storeURL: URL
+    ) -> NSPersistentContainer? {
         let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
-
-        let storeURL = MessageDB.storeURL(decoy: decoy)
         let desc = NSPersistentStoreDescription(url: storeURL)
         desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
         desc.shouldAddStoreAsynchronously = false
         desc.shouldMigrateStoreAutomatically = true
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
-
         var loadFailed = false
         container.loadPersistentStores { _, err in
             if let err {
@@ -202,14 +270,38 @@ final class MessageDB {
                 loadFailed = true
             }
         }
-        // If lightweight migration choked (mismatched model vs. on-disk
-        // schema after a recent attribute add), every subsequent save
-        // would crash — the store is wedged but the container thinks
-        // it's loaded. Nuke the SQLite + retry once so the user lands
-        // in a working empty-history state instead of a hard crash loop.
-        // History loss is the price; the alternative is "uninstall the
+        return loadFailed ? nil : container
+    }
+
+    private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
+        let storeURL = MessageDB.storeURL(decoy: decoy)
+
+        // Ordinary path: the indexed schema. An existing store from before the
+        // indexes migrates in place (adding a fetch index is a CREATE INDEX,
+        // which lightweight migration infers).
+        if let container = openContainer(model: model, storeURL: storeURL) {
+            container.viewContext.automaticallyMergesChangesFromParent = true
+            return container
+        }
+
+        // The indexed schema could not open this file. Before anything is
+        // deleted, try the schema that matches what is already on disk: an
+        // account that cannot get its indexes keeps every message it has, and
+        // pays only the scan the indexes were meant to remove.
+        if let container = openContainer(model: rescueModel, storeURL: storeURL) {
+            print("[MessageDB] index migration refused; running on the pre-index schema")
+            container.viewContext.automaticallyMergesChangesFromParent = true
+            return container
+        }
+
+        // Neither schema could open it. If lightweight migration choked
+        // (mismatched model vs. on-disk schema after a recent attribute add),
+        // every subsequent save would crash: the store is wedged but the
+        // container thinks it's loaded. Nuke the SQLite + retry once so the
+        // user lands in a working empty-history state instead of a hard crash
+        // loop. History loss is the price; the alternative is "uninstall the
         // app" which is strictly worse for testers.
-        if loadFailed {
+        do {
             let dir = storeURL.deletingLastPathComponent()
             let base = storeURL.lastPathComponent
             // SQLite also writes -shm and -wal sidecars; ditch all three
@@ -230,9 +322,16 @@ final class MessageDB {
             if decoy {
                 DecoySeedStore.destroy()
             }
-            container.loadPersistentStores { _, err in
-                if let err { print("[MessageDB] reset still failed: \(err)") }
-            }
+        }
+        let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
+        let desc = NSPersistentStoreDescription(url: storeURL)
+        desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
+        desc.shouldAddStoreAsynchronously = false
+        desc.shouldMigrateStoreAutomatically = true
+        desc.shouldInferMappingModelAutomatically = true
+        container.persistentStoreDescriptions = [desc]
+        container.loadPersistentStores { _, err in
+            if let err { print("[MessageDB] reset still failed: \(err)") }
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
         return container
@@ -276,7 +375,9 @@ final class MessageDB {
 
     // MARK: - schema
 
-    private static func buildModel() -> NSManagedObjectModel {
+    /// `indexed: false` rebuilds the schema exactly as it stood before the
+    /// fetch indexes below existed. It is the rescue model: see `makeContainer`.
+    private static func buildModel(indexed: Bool) -> NSManagedObjectModel {
         func attr(
             _ name: String,
             _ type: NSAttributeType,
@@ -300,7 +401,7 @@ final class MessageDB {
         let entity = NSEntityDescription()
         entity.name = "MessageRecord"
         entity.managedObjectClassName = NSStringFromClass(MessageRecord.self)
-        entity.properties = [
+        let properties: [NSAttributeDescription] = [
             attr("id",                 .UUIDAttributeType),
             attr("threadKind",         .stringAttributeType),
             attr("threadKey",          .integer64AttributeType),
@@ -328,6 +429,22 @@ final class MessageDB {
             attr("thumbnailB64",       .stringAttributeType, optional: true),
             attr("durationSec",        .doubleAttributeType),
             attr("ttlSeconds",         .integer64AttributeType),
+            // Sender-supplied compose time for a disappearing row. OPTIONAL
+            // rather than a defaulted Date, and that is the whole migration:
+            // an optional attribute needs no default, existing rows get NULL,
+            // and NULL is a real state here, "nobody told us when this was
+            // written", which the model layer turns back into "count from
+            // sentAt". A non-optional column with a sentinel default would
+            // have to invent a date for a hundred thousand old rows and every
+            // reader would then have to un-invent it.
+            //
+            // ⚠ Nothing rewrites the rows already on disk, deliberately. The
+            // original ttl was never stored next to them, so a correction pass
+            // could only guess: guess low and a message the sender was promised
+            // would live an hour vanishes under the reader; guess high and one
+            // the sender was promised was gone comes back. Old rows keep the
+            // deadline they already had.
+            attr("senderSentAt",       .dateAttributeType, optional: true),
             attr("forwardedFromName",  .stringAttributeType, optional: true),
             attr("replyToID",          .UUIDAttributeType, optional: true),
             attr("replyToSnippet",     .stringAttributeType, optional: true),
@@ -345,6 +462,30 @@ final class MessageDB {
             attr("pollID",             .integer64AttributeType, defaultValue: 0),
             attr("isSpoiler",          .booleanAttributeType, defaultValue: false),
         ]
+        entity.properties = properties
+        if indexed {
+            // The table had no index of any kind. `find(id:)` is one row
+            // lookup per ingested envelope, per read receipt and per delivery
+            // receipt, and each one was a full scan of every message the
+            // account has ever stored: the cost of draining a backlog grew
+            // with the square of the history behind it. The thread index
+            // serves `fetchRecent` / `fetchOlder` / `hasOlder`, which sort by
+            // `sentAt` inside one thread.
+            func index(_ name: String, _ columns: [String]) -> NSFetchIndexDescription? {
+                var elements: [NSFetchIndexElementDescription] = []
+                for column in columns {
+                    guard let property = properties.first(where: { $0.name == column }) else { return nil }
+                    elements.append(
+                        NSFetchIndexElementDescription(property: property, collationType: .binary)
+                    )
+                }
+                return NSFetchIndexDescription(name: name, elements: elements)
+            }
+            entity.indexes = [
+                index("byID", ["id"]),
+                index("byThreadSentAt", ["threadKind", "threadKey", "sentAt"]),
+            ].compactMap { $0 }
+        }
         let model = NSManagedObjectModel()
         model.entities = [entity]
         return model
@@ -364,7 +505,7 @@ final class MessageDB {
     }
 
     /// All distinct (kind, key) thread identifiers present in storage.
-    /// Used by `MessageStore.rehydrate` to know which threads need a
+    /// Used by `MessageStore.ensureAllLoaded` to know which threads need a
     /// tail window loaded.
     func fetchThreadIDs() -> [ThreadID] {
         let req = NSFetchRequest<NSDictionary>(entityName: "MessageRecord")
@@ -467,6 +608,7 @@ final class MessageDB {
         if find(id: msg.id) != nil { return }
         let row = MessageRecord(context: ctx)
         apply(msg, to: row)
+        if batchDepth > 0 { batchInserted[msg.id] = row }
         save()
     }
 
@@ -479,6 +621,7 @@ final class MessageDB {
         if find(id: msg.id) != nil { return false }
         let row = MessageRecord(context: ctx)
         apply(msg, to: row)
+        if batchDepth > 0 { batchInserted[msg.id] = row }
         save()
         return true
     }
@@ -568,6 +711,10 @@ final class MessageDB {
     }
 
     func deleteThread(_ thread: ThreadID) {
+        // `NSBatchDeleteRequest` runs against the store and cannot see rows
+        // still pending in the context, so a batch left open by a drain would
+        // re-save them right after the delete. Land them first.
+        flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         req.predicate = NSPredicate(
             format: "threadKind == %@ AND threadKey == %lld",
@@ -579,6 +726,7 @@ final class MessageDB {
     }
 
     func deleteAll() {
+        flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         let delete = NSBatchDeleteRequest(fetchRequest: req)
         _ = try? ctx.execute(delete)
@@ -607,14 +755,77 @@ final class MessageDB {
 
     // MARK: - helpers
 
+    /// Land whatever a still-open batch holds, so a store-level batch delete
+    /// cannot be undone by a later flush of rows it never saw.
+    private func flushForBatchDelete() {
+        guard batchDepth > 0 else { return }
+        batchInserted.removeAll()
+        flush()
+    }
+
+    /// Which thread a message id belongs to, asked of the STORE.
+    ///
+    /// `MessageStore` used to hold a window of every thread at once, so a
+    /// reaction could be routed by scanning memory. It no longer does, and a
+    /// reaction to a chat the user has not opened this launch has to be
+    /// located here or it is lost.
+    func threadOf(id: UUID) -> ThreadID? {
+        guard let row = find(id: id) else { return nil }
+        return ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey))
+    }
+
+    /// Hard-delete every disappearing row whose deadline has passed, in every
+    /// thread, opened this launch or not.
+    ///
+    /// `MessageStore.sweepExpired` walks the windows it holds in memory, which
+    /// was every thread back when launch rehydrated all of them. With windows
+    /// loaded on demand, an unopened thread's expired rows would sit on disk
+    /// until the day the user opened that chat, which is not what the sender
+    /// was promised. Same deadline rule as the in-memory sweep: count from
+    /// `senderSentAt` when the envelope carried one, from `sentAt` when it did
+    /// not, and drop once the deadline is behind `now`.
+    ///
+    /// Returns the ids removed, per thread, so a window holding any of them
+    /// can drop them without a second pass.
+    @discardableResult
+    func deleteExpired(now: Date = Date()) -> [ThreadID: [UUID]] {
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        // Only rows that carry a timer are candidates, and they are a small
+        // minority that shrinks as they expire.
+        req.predicate = NSPredicate(format: "ttlSeconds > 0")
+        guard let rows = try? ctx.fetch(req), !rows.isEmpty else { return [:] }
+        var removed: [ThreadID: [UUID]] = [:]
+        for row in rows {
+            let anchor = row.senderSentAt ?? row.sentAt
+            let deadline = anchor.addingTimeInterval(TimeInterval(row.ttlSeconds))
+            guard deadline < now else { continue }
+            let thread = ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey))
+            removed[thread, default: []].append(row.id)
+            ctx.delete(row)
+        }
+        if !removed.isEmpty { save() }
+        return removed
+    }
+
     private func find(id: UUID) -> MessageRecord? {
+        // Rows written earlier in an open batch are not in the store yet.
+        if let pending = batchInserted[id] {
+            if !pending.isDeleted { return pending }
+            batchInserted[id] = nil
+        }
         let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
         req.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         req.fetchLimit = 1
         return (try? ctx.fetch(req))?.first
     }
 
+    /// Deferred while a batch is open. See `beginBatch`.
     private func save() {
+        guard batchDepth == 0 else { return }
+        flush()
+    }
+
+    private func flush() {
         guard ctx.hasChanges else { return }
         do { try ctx.save() } catch { print("[MessageDB] save failed: \(error)") }
     }
@@ -643,6 +854,7 @@ final class MessageDB {
         row.thumbnailB64 = sealField(msg.thumbnailB64, key: key)
         row.durationSec = msg.durationSec
         row.ttlSeconds = Int64(msg.ttlSeconds ?? 0)
+        row.senderSentAt = msg.senderSentAt
         row.forwardedFromName = sealField(msg.forwardedFromName, key: key)
         row.replyToID = msg.replyToID
         row.replyToSnippet = sealField(msg.replyToSnippet, key: key)
@@ -679,6 +891,7 @@ final class MessageDB {
             thumbnailB64: decField(row.thumbnailB64),
             durationSec: row.durationSec,
             ttlSeconds: row.ttlSeconds > 0 ? Int(row.ttlSeconds) : nil,
+            senderSentAt: row.senderSentAt,
             forwardedFromName: (fwd?.isEmpty == false) ? fwd : nil,
             replyToID: row.replyToID,
             replyToSnippet: (replySnippet?.isEmpty == false) ? replySnippet : nil,

@@ -2,6 +2,228 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+// MARK: - Settings search (founder item 28)
+
+/// Every row Settings search can reach, across all three settings screens.
+///
+/// ⚠ This enum is the contract, not a convenience. A new setting means a new
+/// case here plus an entry in the owning screen's `searchEntries`, and the
+/// DEBUG check in `SettingsSearchIndex` trips the moment those two disagree.
+/// That is the whole reason the index is written by hand next to the rows
+/// instead of being scraped out of the view tree: a scraper silently loses a
+/// row that renders inside a condition, and nobody finds out until a user
+/// cannot find their setting. Android's index is the same shape.
+enum SettingsRow: String, CaseIterable, Hashable {
+    // Settings (root)
+    case theme, textSize, appIcon, chatBackground, homeBackground, animatedAvatars
+    case sounds, language
+    case privacyScreen, networkScreen, notificationsScreen, blockedUsers
+    case historyFile, historyClear
+    case uinShop, myUINs, islandRules
+    case recoveryPhrase, linkedDevices, backupIsland, burnAccount
+    case about, bugBounty, myReports
+    // Privacy pane
+    case profileVisibility, profileCard, lastSeen, relayCalls, strangers
+    case genderVisibility, groupInvites, callPolicy, readReceipts
+    case howItWorks, panicPIN, migrate, hallOfFame
+    // Network pane
+    case accounts, stealth, onion, localProxy, customServer, diagnostics, sharedRelays
+    // Notifications
+    case contactRequests, mutedSenders
+}
+
+/// One searchable row: what it is called on screen, where it lives, and how to
+/// get there.
+struct SettingsSearchEntry: Identifiable, Hashable {
+    /// Which screen holds the row. The root screen scrolls to it; the others
+    /// are sheets, opened with the row handed through as the highlight.
+    enum Destination: Hashable { case settings, privacy, network, notifications }
+
+    let row: SettingsRow
+    /// Localization key of the row's VISIBLE label. Search matches what the
+    /// user actually reads, so a retitled row stays findable for free.
+    let titleKey: String
+    /// Localization key of the section header the row sits under, used as the
+    /// breadcrumb under each result.
+    let sectionKey: String
+    let destination: Destination
+
+    var id: SettingsRow { row }
+
+    var title: String { titleKey.localized }
+    var section: String { sectionKey.localized }
+
+    /// Comma-separated synonyms, so "пин" reaches a row labelled "PIN-код" and
+    /// "wallpaper" reaches "Фон чата". Derived from the case name rather than
+    /// stored, so an entry cannot be added without its alias slot existing.
+    var aliasKey: String { "settings.search.alias.\(row.rawValue)" }
+
+    /// Empty when the locale ships no alias line. `.localized` hands back the
+    /// KEY itself for a missing entry, and matching against that would let
+    /// "alias" or "settings" hit every row at once.
+    var aliases: String {
+        let value = aliasKey.localized
+        return value == aliasKey ? "" : value
+    }
+}
+
+enum SettingsSearchIndex {
+    /// Built from the three screens' own lists, each declared beside the rows
+    /// it describes.
+    static let all: [SettingsSearchEntry] =
+        SettingsView.searchEntries
+        + PrivacySettingsView.searchEntries
+        + NotificationsSettingsView.searchEntries
+
+    /// Case- and diacritic-insensitive; "ё" folds onto "е" so a query typed
+    /// either way lands.
+    private static func fold(_ s: String) -> String {
+        s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Every whitespace-separated token has to appear somewhere in the row's
+    /// label or its aliases, so "фон чата" narrows instead of widening.
+    static func matches(_ query: String) -> [SettingsSearchEntry] {
+        let tokens = fold(query).split(separator: " ").map(String.init)
+        guard !tokens.isEmpty else { return [] }
+        let hits = all.filter { entry in
+            let hay = fold(entry.title) + " \u{1F}" + fold(entry.aliases)
+            return tokens.allSatisfy { hay.contains($0) }
+        }
+        // A label that starts with what was typed is what the user meant;
+        // everything else keeps the screen order, which is where they would
+        // have scrolled to find it.
+        let head = fold(tokens[0])
+        return hits.sorted { a, b in
+            let sa = fold(a.title).hasPrefix(head)
+            let sb = fold(b.title).hasPrefix(head)
+            return sa == sb ? false : sa
+        }
+    }
+
+    #if DEBUG
+    /// Fails the moment a row exists that search cannot reach. Called from the
+    /// Settings screen so it runs on any debug build that opens it.
+    static func assertComplete() {
+        let indexed = Set(all.map(\.row))
+        let missing = SettingsRow.allCases.filter { !indexed.contains($0) }
+        assert(missing.isEmpty, "Settings search index misses: \(missing.map(\.rawValue))")
+    }
+    #endif
+}
+
+extension View {
+    /// Marks a row as a search destination: it becomes the scroll anchor for
+    /// its `SettingsRow`, and wears a brief accent wash while search is
+    /// pointing at it.
+    ///
+    /// `listRowBackground` on the row overrides the one the Section sets, so
+    /// the normal state has to repaint `bgSecondary` itself.
+    func settingsSearchRow(_ row: SettingsRow, highlight: SettingsRow?) -> some View {
+        self
+            .id(row)
+            .listRowBackground(
+                (highlight == row ? Theme.Color.accent.opacity(0.22) : Theme.Color.bgSecondary)
+                    .animation(.easeInOut(duration: 0.25), value: highlight)
+            )
+    }
+}
+
+/// Search over every settings row, opened from the magnifier in the Settings
+/// title bar. Picking a result closes this sheet and hands the row back; the
+/// caller does the navigating once this is off screen.
+struct SettingsSearchSheet: View {
+    let onPick: (SettingsSearchEntry) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @FocusState private var focused: Bool
+
+    private var results: [SettingsSearchEntry] { SettingsSearchIndex.matches(query) }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    field
+                    if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                        placeholder("settings.search.empty.idle".localized)
+                    } else if results.isEmpty {
+                        placeholder("search.empty.no_match".localized)
+                    } else {
+                        List(results) { entry in
+                            Button {
+                                onPick(entry)
+                                dismiss()
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.title)
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text(entry.section)
+                                        .font(.caption2)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                            }
+                            .listRowBackground(Theme.Color.bgSecondary)
+                        }
+                        .scrollContentBackground(.hidden)
+                        .listStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("settings.search.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.cancel".localized) { dismiss() }
+                }
+            }
+        }
+        .onAppear { focused = true }
+    }
+
+    private var field: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(Theme.Color.textSecondary)
+            TextField("settings.search.placeholder".localized, text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($focused)
+                .foregroundColor(Theme.Color.textPrimary)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.Color.bgSecondary)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+
+    private func placeholder(_ text: String) -> some View {
+        VStack {
+            Spacer()
+            Text(text)
+                .font(.footnote)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var theme = ThemeManager.shared
@@ -60,6 +282,17 @@ struct SettingsView: View {
     @State private var showBackupIsland = false
     @State private var showBackupFile = false
     @State private var uinCopied: Bool = false
+    /// Settings search (item 28). `pendingSearchPick` is held back until the
+    /// search sheet is really gone: routing straight from the result tap puts
+    /// a dismiss and a present into one transaction on the same host and UIKit
+    /// drops one of them, the same trap `LinkedDevicesView`'s QR scanner hit.
+    @State private var showSearch = false
+    @State private var pendingSearchPick: SettingsSearchEntry?
+    /// The row search jumped to, tinted for a moment so the eye lands on it.
+    @State private var highlightedRow: SettingsRow?
+    /// Handed to the sub-screens when the picked row lives inside one of them.
+    @State private var privacyHighlight: SettingsRow?
+    @State private var notificationsHighlight: SettingsRow?
     @StateObject private var language = LanguageManager.shared
     @ObservedObject private var panicPIN = PanicPINService.shared
     @EnvironmentObject private var appState: AppState
@@ -68,229 +301,32 @@ struct SettingsView: View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                Form {
-                    Section {
-                        identityHeader
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section("settings.appearance".localized) {
-                        Picker("settings.appearance.theme".localized, selection: $theme.theme) {
-                            ForEach(AppTheme.allCases) { t in
-                                Text(t.label).tag(t)
-                            }
-                        }
-                        // #3 accessibility: in-app text size (scales the whole
-                        // app via Dynamic Type; "System" follows the OS setting).
-                        Picker("settings.textsize".localized, selection: $theme.textSize) {
-                            ForEach(AppTextSize.allCases) { s in
-                                Text(s.label).tag(s)
-                            }
-                        }
-                        if AppIconManager.shared.supportsAlternateIcons {
-                            NavigationLink {
-                                AppIconView()
-                            } label: {
-                                HStack {
-                                    Text("settings.app_icon".localized)
-                                    Spacer()
-                                    Text(AppIconManager.shared.currentOption.displayName)
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                }
-                            }
-                        }
-                        NavigationLink {
-                            ChatBackgroundPicker()
-                        } label: {
-                            Text("settings.chat_bg".localized)
-                        }
-                        NavigationLink {
-                            ChatBackgroundPicker(home: true)
-                        } label: {
-                            Text("settings.home_bg".localized)
-                        }
-                        Toggle(isOn: $theme.animateAvatars) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("settings.animate_avatars".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text("settings.animate_avatars.footer".localized)
-                                    .font(.caption)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section("settings.sound".localized) {
-                        Button {
-                            showSoundSheet = true
-                        } label: {
-                            HStack {
-                                Text("settings.sound.row".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Text(sound.isEnabled
-                                     ? "settings.sound.row.on".localized
-                                     : "settings.sound.row.off".localized)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-
-                    Section {
-                        // Menu (not Picker) so per-row .disabled greys out unfinished languages.
-                        Menu {
-                            ForEach(AppLanguage.available) { lang in
-                                Button {
-                                    language.set(lang)
-                                } label: {
-                                    HStack {
-                                        Text(lang.nativeName)
-                                        if lang == language.current {
-                                            Spacer()
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                                .disabled(!lang.isAvailable)
-                            }
-                        } label: {
-                            HStack {
-                                Text("settings.language".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Text(language.current.nativeName)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    } header: {
-                        Text("settings.language".localized)
-                    } footer: {
-                        Text("settings.language.footer".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section {
-                        Button {
-                            showPrivacy = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "lock.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.privacy".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button {
-                            showNetwork = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "network").foregroundColor(Theme.Color.accent)
-                                Text("settings.network".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button {
-                            showNotifications = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "bell.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.notifications".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        // Apple UGC guidance 1.2 requires a centralised blocked-users surface.
-                        Button {
-                            showBlockedUsers = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "hand.raised.fill").foregroundColor(.red)
-                                Text("settings.blocked_users".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                let count = ContactService.shared.contacts.filter { $0.blocked }.count
-                                if count > 0 {
-                                    Text(verbatim: "\(count)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    } footer: {
-                        Text("settings.privacy.footer.short".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    historySection
-
-                    // Self-host backends running rcq-server-ref report
-                    // uin_shop=false via /server/info and the row hides
-                    // entirely — operators handle UIN allocation out of
-                    // band (Telegram channel, BTCPay, manual assignment)
-                    // because the in-app Apple IAP transaction is bound
-                    // to our developer account regardless of which
-                    // backend the user is on. See
-                    // project_rcq_monetization_model for the design.
-                    // My numbers has its own condition: it shows whenever
-                    // this account holds anything, shop or no shop. An
-                    // operator who closes the shop must not strand people on
-                    // the wrong number, and a self-hoster can hand a member a
-                    // second one by hand (POST /admin/uin/grant). Islands too
-                    // old to answer /uin/mine leave heldCount at zero and the
-                    // row stays hidden.
-                    // `serverCapabilities` is whatever the REAL session's boot
-                    // fetched — a decoy never calls /server/info — so the shop
-                    // row would advertise a storefront for an account that has
-                    // no island. `heldUINCount` is forced to 0 above.
-                    if (appState.serverCapabilities.uinShop && !panicPIN.isDecoy) || heldUINCount > 0 {
+                ScrollViewReader { proxy in
+                    Form {
                         Section {
-                            if appState.serverCapabilities.uinShop {
-                                Button {
-                                    showUINShop = true
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "number.square.fill")
-                                            .foregroundColor(Theme.Color.accent)
-                                        Text("settings.uin_shop".localized)
-                                            .foregroundColor(Theme.Color.textPrimary)
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption2)
-                                            .foregroundColor(Theme.Color.textSecondary)
-                                    }
-                                }
-                            }
+                            identityHeader
+                        }
+                        .listRowBackground(Theme.Color.bgSecondary)
+
+                        appearanceSection
+                        soundSection
+                        languageSection
+                        screensSection
+                        historySection
+                        uinSection
+                        islandSection
+                        accountSection
+
+                        // Web-chat link hidden for App Store submission. Flip #if false → true when web is ready.
+                        #if false
+                        Section {
                             Button {
-                                showMyUINs = true
+                                showLinkWeb = true
                             } label: {
                                 HStack {
-                                    Image(systemName: "tray.full.fill")
+                                    Image(systemName: "laptopcomputer.and.iphone")
                                         .foregroundColor(Theme.Color.accent)
-                                    Text("my_uins.title".localized)
-                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text("settings.link_web".localized).foregroundColor(Theme.Color.textPrimary)
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.caption2)
@@ -298,141 +334,22 @@ struct SettingsView: View {
                                 }
                             }
                         } footer: {
-                            // The footer describes the SHOP; without one it
-                            // would be advertising a storefront this island
-                            // does not have.
-                            Text(appState.serverCapabilities.uinShop
-                                 ? "settings.uin_shop.footer".localized
-                                 : "my_uins.settings.footer".localized)
+                            Text("settings.link_web.footer".localized)
                         }
                         .listRowBackground(Theme.Color.bgSecondary)
-                    }
+                        #endif
 
-                    // The island this account lives on, in its own words. Both
-                    // fields come from `/server/info`, both are typed by the
-                    // operator in the admin panel, and until now the only place
-                    // either of them appeared was the confirm before joining
-                    // SOMEBODY ELSE'S island — so an operator could name their
-                    // island and write its rules and never see them on their own.
-                    Section {
-                        HStack {
-                            Image(systemName: "server.rack").foregroundColor(Theme.Color.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(appState.serverName.isEmpty ? islandHost : appState.serverName)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                // The host repeats under a name and nowhere
-                                // else: two lines saying the same host is one
-                                // line of noise.
-                                if !appState.serverName.isEmpty {
-                                    Text(islandHost)
-                                        .font(.caption)
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                }
-                            }
-                        }
-                        if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Button {
-                                showIslandRules = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "text.book.closed.fill").foregroundColor(Theme.Color.accent)
-                                    Text("settings.island.rules".localized)
-                                        .foregroundColor(Theme.Color.textPrimary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption2)
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                }
-                            }
-                        }
-                    } header: {
-                        Text("settings.island".localized)
+                        aboutAndBugBountySection
                     }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    Section {
-                        Button {
-                            showRecovery = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "key.fill").foregroundColor(Theme.Color.accent)
-                                Text("settings.account.recovery".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button {
-                            showLinkedDevices = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "laptopcomputer.and.iphone").foregroundColor(Theme.Color.accent)
-                                Text("linkeddevices.title".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button {
-                            showBackupIsland = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "externaldrive.badge.icloud").foregroundColor(Theme.Color.accent)
-                                Text("multihome.title".localized)
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                        Button(role: .destructive) {
-                            confirmBurn = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "flame")
-                                Text(burning ? "settings.account.burning".localized : "settings.account.burn".localized)
-                                Spacer()
-                                if burning { ProgressView().scaleEffect(0.7) }
-                            }
-                        }
-                        .disabled(burning)
-                    } header: {
-                        Text("settings.account".localized)
-                    } footer: {
-                        Text("settings.account.footer".localized)
+                    .scrollContentBackground(.hidden)
+                    // The scroll proxy only exists inside the reader, so the
+                    // jump is driven off the highlight rather than done in
+                    // `routeSearchPick` where the pick is handled.
+                    .onChange(of: highlightedRow) { row in
+                        guard let row else { return }
+                        withAnimation { proxy.scrollTo(row, anchor: .center) }
                     }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    // Web-chat link hidden for App Store submission. Flip #if false → true when web is ready.
-                    #if false
-                    Section {
-                        Button {
-                            showLinkWeb = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "laptopcomputer.and.iphone")
-                                    .foregroundColor(Theme.Color.accent)
-                                Text("settings.link_web".localized).foregroundColor(Theme.Color.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.Color.textSecondary)
-                            }
-                        }
-                    } footer: {
-                        Text("settings.link_web.footer".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-                    #endif
-
-                    aboutAndBugBountySection
                 }
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("settings.title".localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -440,17 +357,38 @@ struct SettingsView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                 }
+                // Item 28: the magnifier took this slot from the share-my-link
+                // button (founder's call). Search is what people reach for in
+                // a list this long; the contact link still travels by QR.
                 ToolbarItem(placement: .topBarTrailing) {
-                    shareContactLinkButton
+                    Button {
+                        showSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(Theme.Color.accent)
+                    }
+                    .accessibilityLabel("settings.search.title".localized)
                 }
+            }
+            .sheet(isPresented: $showSearch, onDismiss: routeSearchPick) {
+                SettingsSearchSheet { entry in pendingSearchPick = entry }
             }
             .sheet(isPresented: $showAbout) { AboutSheet() }
             .fullScreenCover(isPresented: $showUINShop) { UINShopView() }
-            .sheet(isPresented: $showMyUINs) { MyUINsView() }
+            // Refreshed on dismiss: releasing a number inside the sheet
+            // changes the count this screen prints, and without this the row
+            // kept the pre-release figure until Settings was reopened.
+            .sheet(isPresented: $showMyUINs, onDismiss: { Task { await refreshHeldUINCount() } }) {
+                MyUINsView()
+            }
             .task {
-                // Reads the REAL account's number collection off the island.
-                guard !panicPIN.isDecoy else { heldUINCount = 0; return }
-                heldUINCount = (await AppState.shared.myUINs())?.owned.count ?? 0
+                #if DEBUG
+                SettingsSearchIndex.assertComplete()
+                #endif
+                // Everything "visibility after leaving" left behind on this
+                // device when the feature was removed.
+                PresenceRemovalCleanup.runOnce()
+                await refreshHeldUINCount()
             }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
@@ -459,9 +397,15 @@ struct SettingsView: View {
                     .presentationDetents([.height(360), .large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showPrivacy) { PrivacySettingsView(pane: .privacy) }
-            .sheet(isPresented: $showNetwork) { PrivacySettingsView(pane: .network) }
-            .sheet(isPresented: $showNotifications) { NotificationsSettingsView() }
+            .sheet(isPresented: $showPrivacy, onDismiss: { privacyHighlight = nil }) {
+                PrivacySettingsView(pane: .privacy, highlight: privacyHighlight)
+            }
+            .sheet(isPresented: $showNetwork, onDismiss: { privacyHighlight = nil }) {
+                PrivacySettingsView(pane: .network, highlight: privacyHighlight)
+            }
+            .sheet(isPresented: $showNotifications, onDismiss: { notificationsHighlight = nil }) {
+                NotificationsSettingsView(highlight: notificationsHighlight)
+            }
             .sheet(isPresented: $showMyReports) { MyReportsView() }
             .alert("settings.account.burn_failed".localized, isPresented: $burnFailed) {
                 Button("common.ok".localized, role: .cancel) {}
@@ -520,17 +464,414 @@ struct SettingsView: View {
         .preferredColorScheme(theme.theme.colorScheme)
     }
 
-    @ViewBuilder
-    private var shareContactLinkButton: some View {
-        if let uin = auth.ownUIN, let url = URL(string: "https://rcq.app/u/\(uin)") {
-            ShareLink(
-                item: url,
-                subject: Text(auth.nickname.isEmpty ? "RCQ" : auth.nickname),
-                message: Text(String(format: "settings.share.message".localized, auth.nickname.isEmpty ? "—" : auth.nickname, uin)),
-            ) {
-                Image(systemName: "square.and.arrow.up")
-                    .foregroundColor(Theme.Color.accent)
+    /// Runs once the search sheet is really off screen (see
+    /// `pendingSearchPick`). A row on this screen scrolls into view and lights
+    /// up for a moment; a row that lives inside one of the sub-screens opens
+    /// that screen with the highlight handed through.
+    private func routeSearchPick() {
+        guard let entry = pendingSearchPick else { return }
+        pendingSearchPick = nil
+        switch entry.destination {
+        case .settings:
+            // Cleared first so picking the SAME row twice still changes the
+            // value, and the scroll in `onChange` fires again.
+            highlightedRow = nil
+            DispatchQueue.main.async {
+                highlightedRow = entry.row
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                    if highlightedRow == entry.row {
+                        withAnimation { highlightedRow = nil }
+                    }
+                }
             }
+        case .privacy:
+            privacyHighlight = entry.row
+            showPrivacy = true
+        case .network:
+            privacyHighlight = entry.row
+            showNetwork = true
+        case .notifications:
+            notificationsHighlight = entry.row
+            showNotifications = true
+        }
+    }
+
+    // MARK: - sections
+    //
+    // Every Section below used to sit inline in `body`. The comments on
+    // `historySection` and `aboutAndBugBountySection` were already saying the
+    // Form was at the Swift type-checker's ceiling before item 28 hung a
+    // search anchor off each row, so the rest followed them out.
+
+    @ViewBuilder
+    private var appearanceSection: some View {
+        Section("settings.appearance".localized) {
+            Picker("settings.appearance.theme".localized, selection: $theme.theme) {
+                ForEach(AppTheme.allCases) { t in
+                    Text(t.label).tag(t)
+                }
+            }
+            .settingsSearchRow(.theme, highlight: highlightedRow)
+            // #3 accessibility: in-app text size (scales the whole
+            // app via Dynamic Type; "System" follows the OS setting).
+            Picker("settings.textsize".localized, selection: $theme.textSize) {
+                ForEach(AppTextSize.allCases) { s in
+                    Text(s.label).tag(s)
+                }
+            }
+            .settingsSearchRow(.textSize, highlight: highlightedRow)
+            if AppIconManager.shared.supportsAlternateIcons {
+                NavigationLink {
+                    AppIconView()
+                } label: {
+                    HStack {
+                        Text("settings.app_icon".localized)
+                        Spacer()
+                        Text(AppIconManager.shared.currentOption.displayName)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+                .settingsSearchRow(.appIcon, highlight: highlightedRow)
+            }
+            NavigationLink {
+                ChatBackgroundPicker()
+            } label: {
+                Text("settings.chat_bg".localized)
+            }
+            .settingsSearchRow(.chatBackground, highlight: highlightedRow)
+            NavigationLink {
+                ChatBackgroundPicker(home: true)
+            } label: {
+                Text("settings.home_bg".localized)
+            }
+            .settingsSearchRow(.homeBackground, highlight: highlightedRow)
+            Toggle(isOn: $theme.animateAvatars) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("settings.animate_avatars".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("settings.animate_avatars.footer".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.animatedAvatars, highlight: highlightedRow)
+        }
+    }
+
+    @ViewBuilder
+    private var soundSection: some View {
+        Section("settings.sound".localized) {
+            Button {
+                showSoundSheet = true
+            } label: {
+                HStack {
+                    Text("settings.sound.row".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(sound.isEnabled
+                         ? "settings.sound.row.on".localized
+                         : "settings.sound.row.off".localized)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.sounds, highlight: highlightedRow)
+        }
+    }
+
+    @ViewBuilder
+    private var languageSection: some View {
+        Section {
+            // Menu (not Picker) so per-row .disabled greys out unfinished languages.
+            Menu {
+                ForEach(AppLanguage.available) { lang in
+                    Button {
+                        language.set(lang)
+                    } label: {
+                        HStack {
+                            Text(lang.nativeName)
+                            if lang == language.current {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(!lang.isAvailable)
+                }
+            } label: {
+                HStack {
+                    Text("settings.language".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(language.current.nativeName)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.language, highlight: highlightedRow)
+        } header: {
+            Text("settings.language".localized)
+        } footer: {
+            Text("settings.language.footer".localized)
+        }
+    }
+
+    /// The four doors out of Settings: the two privacy panes, notifications
+    /// and the blocked list.
+    @ViewBuilder
+    private var screensSection: some View {
+        Section {
+            Button {
+                showPrivacy = true
+            } label: {
+                HStack {
+                    Image(systemName: "lock.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.privacy".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.privacyScreen, highlight: highlightedRow)
+            Button {
+                showNetwork = true
+            } label: {
+                HStack {
+                    Image(systemName: "network").foregroundColor(Theme.Color.accent)
+                    Text("settings.network".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.networkScreen, highlight: highlightedRow)
+            Button {
+                showNotifications = true
+            } label: {
+                HStack {
+                    Image(systemName: "bell.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.notifications".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.notificationsScreen, highlight: highlightedRow)
+            // Apple UGC guidance 1.2 requires a centralised blocked-users surface.
+            Button {
+                showBlockedUsers = true
+            } label: {
+                HStack {
+                    Image(systemName: "hand.raised.fill").foregroundColor(.red)
+                    Text("settings.blocked_users".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    let count = ContactService.shared.contacts.filter { $0.blocked }.count
+                    if count > 0 {
+                        Text(verbatim: "\(count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.blockedUsers, highlight: highlightedRow)
+        } footer: {
+            Text("settings.privacy.footer.short".localized)
+        }
+    }
+
+    /// How many numbers this account holds, off the island.
+    ///
+    /// A decoy session is forced to zero rather than asked: it has no island
+    /// to ask, and a number count is exactly the kind of detail a decoy must
+    /// not be able to hint at.
+    private func refreshHeldUINCount() async {
+        guard !panicPIN.isDecoy else { heldUINCount = 0; return }
+        heldUINCount = (await AppState.shared.myUINs())?.owned.count ?? 0
+    }
+
+    /// Self-host backends running rcq-server-ref report uin_shop=false via
+    /// /server/info and the row hides entirely: operators handle UIN
+    /// allocation out of band (Telegram channel, BTCPay, manual assignment)
+    /// because the in-app Apple IAP transaction is bound to our developer
+    /// account regardless of which backend the user is on. See
+    /// project_rcq_monetization_model for the design.
+    ///
+    /// My numbers has its own condition: it shows whenever this account holds
+    /// anything, shop or no shop. An operator who closes the shop must not
+    /// strand people on the wrong number, and a self-hoster can hand a member
+    /// a second one by hand (POST /admin/uin/grant). Islands too old to answer
+    /// /uin/mine leave heldCount at zero and the row stays hidden.
+    ///
+    /// `serverCapabilities` is whatever the REAL session's boot fetched (a
+    /// decoy never calls /server/info), so the shop row would advertise a
+    /// storefront for an account that has no island. `heldUINCount` is forced
+    /// to 0 there.
+    @ViewBuilder
+    private var uinSection: some View {
+        if (appState.serverCapabilities.uinShop && !panicPIN.isDecoy) || heldUINCount > 0 {
+            Section {
+                if appState.serverCapabilities.uinShop {
+                    Button {
+                        showUINShop = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "number.square.fill")
+                                .foregroundColor(Theme.Color.accent)
+                            Text("settings.uin_shop".localized)
+                                .foregroundColor(Theme.Color.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Color.textSecondary)
+                        }
+                    }
+                    .settingsSearchRow(.uinShop, highlight: highlightedRow)
+                }
+                Button {
+                    showMyUINs = true
+                } label: {
+                    HStack {
+                        Image(systemName: "tray.full.fill")
+                            .foregroundColor(Theme.Color.accent)
+                        Text("my_uins.title".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+                .settingsSearchRow(.myUINs, highlight: highlightedRow)
+            } footer: {
+                // The footer describes the SHOP; without one it would be
+                // advertising a storefront this island does not have.
+                Text(appState.serverCapabilities.uinShop
+                     ? "settings.uin_shop.footer".localized
+                     : "my_uins.settings.footer".localized)
+            }
+        }
+    }
+
+    /// The island this account lives on, in its own words. Both fields come
+    /// from `/server/info`, both are typed by the operator in the admin panel,
+    /// and until this row existed the only place either of them appeared was
+    /// the confirm before joining SOMEBODY ELSE'S island, so an operator could
+    /// name their island and write its rules and never see them on their own.
+    @ViewBuilder
+    private var islandSection: some View {
+        Section {
+            HStack {
+                Image(systemName: "server.rack").foregroundColor(Theme.Color.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(appState.serverName.isEmpty ? islandHost : appState.serverName)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    // The host repeats under a name and nowhere else: two
+                    // lines saying the same host is one line of noise.
+                    if !appState.serverName.isEmpty {
+                        Text(islandHost)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+            }
+            if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    showIslandRules = true
+                } label: {
+                    HStack {
+                        Image(systemName: "text.book.closed.fill").foregroundColor(Theme.Color.accent)
+                        Text("settings.island.rules".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+                .settingsSearchRow(.islandRules, highlight: highlightedRow)
+            }
+        } header: {
+            Text("settings.island".localized)
+        }
+        .listRowBackground(Theme.Color.bgSecondary)
+    }
+
+    @ViewBuilder
+    private var accountSection: some View {
+        Section {
+            Button {
+                showRecovery = true
+            } label: {
+                HStack {
+                    Image(systemName: "key.fill").foregroundColor(Theme.Color.accent)
+                    Text("settings.account.recovery".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.recoveryPhrase, highlight: highlightedRow)
+            Button {
+                showLinkedDevices = true
+            } label: {
+                HStack {
+                    Image(systemName: "laptopcomputer.and.iphone").foregroundColor(Theme.Color.accent)
+                    Text("linkeddevices.title".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.linkedDevices, highlight: highlightedRow)
+            Button {
+                showBackupIsland = true
+            } label: {
+                HStack {
+                    Image(systemName: "externaldrive.badge.icloud").foregroundColor(Theme.Color.accent)
+                    Text("multihome.title".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.backupIsland, highlight: highlightedRow)
+            Button(role: .destructive) {
+                confirmBurn = true
+            } label: {
+                HStack {
+                    Image(systemName: "flame")
+                    Text(burning ? "settings.account.burning".localized : "settings.account.burn".localized)
+                    Spacer()
+                    if burning { ProgressView().scaleEffect(0.7) }
+                }
+            }
+            .disabled(burning)
+            .settingsSearchRow(.burnAccount, highlight: highlightedRow)
+        } header: {
+            Text("settings.account".localized)
+        } footer: {
+            Text("settings.account.footer".localized)
         }
     }
 
@@ -552,6 +893,7 @@ struct SettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.historyFile, highlight: highlightedRow)
             Button(role: .destructive) {
                 confirmClearHistory = true
             } label: {
@@ -560,8 +902,8 @@ struct SettingsView: View {
                     Text("settings.history.clear".localized)
                 }
             }
+            .settingsSearchRow(.historyClear, highlight: highlightedRow)
         }
-        .listRowBackground(Theme.Color.bgSecondary)
     }
 
     /// Extracted to keep `body` under the Swift type-checker's
@@ -586,6 +928,7 @@ struct SettingsView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             }
+            .settingsSearchRow(.about, highlight: highlightedRow)
             // An island that runs no report desk gets neither entry: a form the
             // island answers 403 and a screen that stays empty are worse than an
             // absent menu row. Flag comes from /server/info and defaults
@@ -603,6 +946,7 @@ struct SettingsView: View {
                             .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
+                .settingsSearchRow(.bugBounty, highlight: highlightedRow)
                 // Directly under the form that files a report: this is where the
                 // person who just filed one looks for the answer. It used to sit
                 // up next to Notifications, which is where the answer NOTIFICATION
@@ -620,10 +964,67 @@ struct SettingsView: View {
                             .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
+                .settingsSearchRow(.myReports, highlight: highlightedRow)
             }
         }
         .listRowBackground(Theme.Color.bgSecondary)
     }
+
+    // MARK: - search index
+    //
+    // ⚠ Every row above is here, and every row added above belongs here. The
+    // DEBUG check in `SettingsSearchIndex` is what catches a row that forgot.
+    // Order is screen order, so results that tie fall out top-down.
+    static let searchEntries: [SettingsSearchEntry] = [
+        .init(row: .theme, titleKey: "settings.appearance.theme",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .textSize, titleKey: "settings.textsize",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .appIcon, titleKey: "settings.app_icon",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .chatBackground, titleKey: "settings.chat_bg",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .homeBackground, titleKey: "settings.home_bg",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .animatedAvatars, titleKey: "settings.animate_avatars",
+              sectionKey: "settings.appearance", destination: .settings),
+        .init(row: .sounds, titleKey: "settings.sound.row",
+              sectionKey: "settings.sound", destination: .settings),
+        .init(row: .language, titleKey: "settings.language",
+              sectionKey: "settings.language", destination: .settings),
+        .init(row: .privacyScreen, titleKey: "settings.privacy",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .networkScreen, titleKey: "settings.network",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .notificationsScreen, titleKey: "settings.notifications",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .blockedUsers, titleKey: "settings.blocked_users",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .historyFile, titleKey: "settings.history.file",
+              sectionKey: "settings.history", destination: .settings),
+        .init(row: .historyClear, titleKey: "settings.history.clear",
+              sectionKey: "settings.history", destination: .settings),
+        .init(row: .uinShop, titleKey: "settings.uin_shop",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .myUINs, titleKey: "my_uins.title",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .islandRules, titleKey: "settings.island.rules",
+              sectionKey: "settings.island", destination: .settings),
+        .init(row: .recoveryPhrase, titleKey: "settings.account.recovery",
+              sectionKey: "settings.account", destination: .settings),
+        .init(row: .linkedDevices, titleKey: "linkeddevices.title",
+              sectionKey: "settings.account", destination: .settings),
+        .init(row: .backupIsland, titleKey: "multihome.title",
+              sectionKey: "settings.account", destination: .settings),
+        .init(row: .burnAccount, titleKey: "settings.account.burn",
+              sectionKey: "settings.account", destination: .settings),
+        .init(row: .about, titleKey: "settings.account.about",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .bugBounty, titleKey: "settings.account.bug_bounty",
+              sectionKey: "settings.title", destination: .settings),
+        .init(row: .myReports, titleKey: "settings.my_reports",
+              sectionKey: "settings.title", destination: .settings),
+    ]
 
     /// Read my own picture back from the island. `/users/me` answers with the
     /// owner-self view, which always carries it.

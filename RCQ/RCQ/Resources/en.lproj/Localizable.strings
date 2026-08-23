@@ -290,6 +290,7 @@
 "bug_bounty.submit.cta" = "Send";
 "bug_bounty.submit.sending" = "Sending…";
 "bug_bounty.submit.sent" = "Sent";
+"bug_bounty.submit.sent_number" = "Sent · #%d";
 "bug_bounty.disclosure" = "Security vulnerabilities with potential data leak or E2EE bypass — email legal@rcq.app with [SECURITY] in the subject, not here.";
 "bug_bounty.alert.title" = "Bug Report";
 "bug_bounty.shake.toggle" = "Shake to report";
@@ -301,17 +302,12 @@
 "bug_bounty.attach.cta" = "Add";
 "bug_bounty.attach.paste" = "Paste";
 
-"chat.attach.poll" = "Poll";
 "chat.attach.share_group" = "Invite";
-"chat.attach.share_connection" = "Connection";
 "relay.share.title" = "Connection method";
 "relay.share.invalid" = "Unsupported connection";
 "relay.share.sent_note" = "You shared a way to connect";
 "relay.share.added" = "Added to your connections";
 "relay.share.add" = "Add";
-"relay.share.pick.title" = "Share a connection";
-"relay.share.pick.body" = "Hand this contact a relay so they can get through when their own connections are blocked. They tap Add to use it.";
-"relay.share.group.warn" = "Every group member will see this relay. Only share scarce domestic relays in groups you trust.";
 "relay.import.title" = "Add a relay";
 "relay.import.hint" = "rcq-relay://… or an access key";
 "relay.key.active" = "Access key entered";
@@ -356,26 +352,6 @@
 "paid_traffic.price_suffix" = "this file";
 "paid_traffic.enable" = "Enable paid traffic";
 "paid_traffic.cancel" = "Cancel";
-"poll.compose.title" = "New poll";
-"poll.compose.question_header" = "QUESTION";
-"poll.compose.question_placeholder" = "What's the question?";
-"poll.compose.options_header" = "OPTIONS";
-"poll.compose.option_placeholder" = "Option %d";
-"poll.compose.add_option" = "Add option";
-"poll.compose.multi" = "Allow multiple answers";
-"poll.compose.anonymous" = "Anonymous votes";
-"poll.compose.flags_footer" = "Anonymous: the group can't see who voted for what. Multi: each member can pick several options.";
-"poll.compose.send" = "Send";
-"poll.header.single" = "Poll · single choice";
-"poll.header.multi" = "Poll · multiple choice";
-"poll.header.anonymous" = "anonymous";
-"poll.header.closed" = "closed";
-"poll.footer.total_votes" = "%d votes";
-"poll.row.more_voters" = "+%d more";
-"poll.footer.close" = "Close poll";
-"poll.error.parse" = "Couldn't read this poll.";
-"poll.error.vote" = "Couldn't save your vote.";
-"poll.error.close" = "Couldn't close.";
 
 "contact_list.ctx.report" = "Report";
 
@@ -396,7 +372,7 @@
 "settings.account.burn.tally" = "%d items, %d tokens, %d gems";
 
 "settings.link_web" = "Link Web";
-"settings.share.message" = "Add me on RCQ — %@ (%d)";
+"settings.share.message" = "Add me on RCQ: %@ (%d)";
 "settings.link_web.footer" = "Use chat.rcq.app on a desktop browser. Generates a one-shot code you paste into the site. Send-only for now — replies still arrive on iOS.";
 
 "link_web.title" = "Link Web";
@@ -467,11 +443,6 @@
 "outgoing.state.declined" = "Declined";
 "outgoing.cancel" = "Cancel";
 "outgoing.dismiss" = "Dismiss";
-"presence.countdown.h_unit" = "h";
-"presence.countdown.m_unit" = "m";
-"presence.countdown.lt1m" = "<1m";
-"presence.info.title" = "Stay visible after you leave";
-"presence.info.body" = "You keep showing as online for this long after you close the app. Change it in Settings, Privacy & Network.";
 
 // ── UIN marketplace ───────────────────────────────────────────────
 "sound.default" = "Default";
@@ -520,6 +491,7 @@
 "contact_list.pending_many" = "%d pending contact requests";
 "contact_list.members_one" = "%d member";
 "contact_list.members_many" = "%d members";
+"contact_list.members_compact" = "%@ members";
 "contact_list.ctx.open_chat" = "Open chat";
 "contact_list.ctx.send_message" = "Send Message";
 "contact_list.ctx.quick_preview" = "Quick Preview";
@@ -554,6 +526,11 @@
 "chat.pin.error.forbidden" = "You need the group info right. Ask the owner to grant it.";
 "chat.pin.error.rejected" = "That text was not accepted for the pin.";
 "chat.pin.error.generic" = "The pin did not go through. Check your connection and try again.";
+/* Room rules the group owner set (GroupPatchIn links_allowed / files_allowed /
+   slowmode_sec). Shown when the composer refuses a send the room forbids. */
+"chat.links_off.notice" = "Links are disabled in this group.";
+"chat.files_off.notice" = "Files are disabled in this group.";
+"chat.slowmode.wait" = "Slow mode: wait %d s";
 "chat.selection.delete" = "Delete (%d)";
 "chat.selection.forward" = "Forward (%d)";
 "chat.selection.cancel" = "Cancel";
@@ -741,7 +718,6 @@
 "chat.preview.market_item" = "Marketplace item";
 "chat.preview.uin_listing" = "UIN listing";
 "chat.preview.group_invite" = "Group invite";
-"chat.preview.poll" = "Poll";
 "chat.preview.premium_photo" = "🔒 Premium photo";
 "chat.preview.premium_video" = "🔒 Premium video";
 "chat.preview.generic" = "Message";
@@ -765,6 +741,8 @@
 "group.no_matches" = "No matches. Try the full UIN.";
 "group.title" = "Group";
 "group.section.members" = "Members (%d)";
+"group.section.members.compact" = "Members (%@)";
+"group.section.content_policy" = "What is allowed here";
 "group.section.notifications" = "Notifications";
 "group.notifications.mute" = "Mute notifications";
 "group.notifications.unmute" = "Unmute notifications";
@@ -801,6 +779,15 @@
 "group.settings.change_photo" = "Change photo";
 "group.settings.hide_members" = "Hide member list";
 "group.settings.hide_members.hint" = "Only you see who's in the group. Everyone else sees just the member count in Group Info.";
+"group.settings.no_links" = "Disable links";
+"group.settings.no_links.hint" = "Links in messages stay plain text and do not open.";
+"group.settings.no_files" = "Disable files";
+"group.settings.no_files.hint" = "Files cannot be sent or downloaded here.";
+"group.settings.slowmode" = "Slow mode";
+"group.settings.slowmode.hint" = "A pause between messages for each member.";
+"group.settings.slowmode.off" = "Off";
+"group.settings.slowmode.sec" = "%d s";
+"group.settings.slowmode.min" = "1 min";
 "group.members.hidden" = "The member list is hidden by the owner.";
 "group.avatar.remove.confirm" = "Remove the group photo?";
 "group.unavailable" = "Group unavailable.";
@@ -817,11 +804,34 @@
 "group.confirm.leave" = "Leave this group?";
 "group.role.owner" = "Owner";
 "group.role.admin" = "Admin";
+"group.role.moderator" = "Moderator";
+"group.member.promote" = "Make admin";
+"group.member.demote" = "Take rights away";
 "group.member.remove" = "Remove from group";
 "group.perm.title" = "Moderator rights";
 "group.perm.delete" = "Delete";
 "group.perm.members" = "Members";
 "group.perm.info" = "Info";
+"group.perm.grant_all" = "Full rights";
+"group.perm.revoke_all" = "Take away";
+"group.perm.hint" = "Delete lets them remove anyone's message, Members lets them remove people, Info lets them edit the name, picture and pinned message. None of that is ownership: the group stays yours until you hand it over below.";
+
+/* Founder item 23: handing the group itself to another member. */
+"group.transfer.title" = "Hand over ownership";
+"group.transfer.cta" = "Hand over";
+"group.transfer.working" = "Handing over…";
+"group.transfer.confirm" = "Hand this group over to %@? You stay in the group as an ordinary member, and you lose owner rights along with any moderator capabilities you hold. Only the new owner can hand it back.";
+"group.transfer.done.title" = "Ownership handed over";
+"group.transfer.done" = "%@ owns this group now. You are still a member: you can leave, or stay as one.";
+"group.transfer.stay" = "Stay";
+"group.transfer.err.owner_only" = "Only the owner can hand the group over.";
+"group.transfer.err.already_owner" = "They already own this group.";
+"group.transfer.err.not_a_member" = "They are not in this group any more.";
+"group.transfer.err.no_such_user" = "This island does not know them.";
+"group.transfer.err.target_suspended" = "That account is suspended.";
+"group.transfer.err.rate_limited_in" = "Too many attempts. Try again in %d s.";
+"group.transfer.err.rate_limited" = "Too many attempts. Try again later.";
+"group.transfer.err.failed" = "Could not hand the group over.";
 "group.member.remove.confirm" = "Remove %@ from the group?";
 "group.member.action.trade" = "Propose trade";
 "group.member.action.add" = "Add";
@@ -1045,12 +1055,10 @@
 "pool.section_share" = "%.0f%% of pulls";
 "pool.cap" = "cap %d";
 "pool.cap_remaining" = "%d / %d left";
-"settings.privacy.persistent_presence" = "Visibility after exit";
 "settings.privacy.relay_calls" = "Always relay calls";
 "settings.privacy.relay_calls.desc" = "Send call audio and video through our relay so the other side never learns your IP address. Turning this off can improve call quality and shows them your address.";
 "settings.privacy.strangers" = "Strangers go to requests";
 "settings.privacy.strangers.desc" = "Messages from people outside your contacts wait in Requests until you accept them. If you wrote to someone first, their reply comes through as usual.";
-"settings.privacy.persistent_presence.desc" = "Contacts see your status (Online / Away / DND) even when the app is closed.";
 "settings.privacy.hof_opt_in" = "Hall of Fame";
 "settings.privacy.hof_opt_in.desc" = "Allow being considered for the public Hall of Fame at rcq.app. Only your nickname and UIN, and only if approved. You can turn this off any time.";
 "settings.privacy.hof_add_image" = "Add image / GIF";
@@ -1058,13 +1066,6 @@
 "settings.privacy.hof_remove_image" = "Remove image";
 "settings.privacy.hof_image_too_large" = "Image is too large. Pick a smaller one (max ~256 KB).";
 "settings.privacy.hof_image_error" = "Could not upload the image. Try again.";
-"settings.privacy.presence_ttl" = "Duration";
-"settings.privacy.presence_ttl.forever" = "Forever";
-"settings.privacy.presence_ttl.30m" = "30 minutes";
-"settings.privacy.presence_ttl.1h" = "1 hour";
-"settings.privacy.presence_ttl.3h" = "3 hours";
-"settings.privacy.presence_ttl.8h" = "8 hours";
-"settings.privacy.presence_ttl.24h" = "24 hours";
 
 /* ── Radio Chat info sheet ─────────────────────────────────── */
 
@@ -1748,6 +1749,28 @@
 "myreports.status.dismissed" = "Declined";
 "myreports.status.duplicate" = "Duplicate";
 
+/* Founder item 26: the icon row on a report (copy / edit / remove) and the
+   number the operator quotes back. Removing is a HIDE server-side, so the copy
+   never says "delete". */
+"myreports.number" = "Report #%d";
+"myreports.number.short" = "#%d";
+"myreports.copy" = "Copy the report";
+"myreports.copy_answer" = "Copy the answer";
+"myreports.edit" = "Edit the report";
+"myreports.edit.placeholder" = "Your report";
+"myreports.edit.save" = "Save";
+"myreports.edit.error" = "Could not save the change. Try again.";
+"myreports.edit.answered" = "There is an answer already, so the report itself can no longer be changed. Write back instead.";
+"myreports.edit.unsupported" = "This island cannot change a report yet.";
+"myreports.edit.not_editable" = "A crash report is sent by the app itself, so its text cannot be rewritten.";
+"myreports.edit.too_often" = "Too many edits in one hour. Try again later.";
+"myreports.remove" = "Remove from my list";
+"myreports.remove.cta" = "Remove";
+"myreports.remove.confirm.title" = "Remove report %@ from your list?";
+"myreports.remove.confirm.body" = "It stops showing on this screen. Nothing is erased: the operators keep the report and the answer, and it still counts on the Hall of Fame.";
+"myreports.remove.refused" = "This one is still under review, so it stays on your list until there is a verdict.";
+"myreports.remove.error" = "Could not remove it. Try again.";
+
 /* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "My UINs";
 "my_uins.active" = "You answer as";
@@ -1763,6 +1786,23 @@
 "uin_shop.held.body" = "It is in your collection and you still answer as %@. Move onto it now, or later from My UINs.";
 "uin_shop.held.now" = "Move onto it";
 "uin_shop.held.later" = "Later";
+
+/* Giving a number back (server: DELETE /uin/mine/{uin}). Irreversible, never
+   the number in use, twenty an hour. */
+"my_uins.release" = "Release";
+"my_uins.release.cta" = "Release";
+"my_uins.release.confirm.title" = "Release %@?";
+"my_uins.release.confirm.body" = "The number goes back into the pool and somebody else may take it. This cannot be undone.";
+"my_uins.release.error.in_use" = "You cannot release the number you answer as. Switch to another one first.";
+"my_uins.release.error.unsupported" = "This island cannot release a number yet.";
+"my_uins.release.error.too_often" = "Too many releases in one hour. Try again later.";
+"my_uins.error.not_owned" = "This number is not in your collection any more.";
+"my_uins.footer.rules" = "One account can hold up to %d numbers. A released number goes back into the pool for anyone to take and cannot be brought back, and the number you answer as cannot be released.";
+"uin.error.suspended" = "The account is suspended, so its numbers cannot be changed.";
+"uin.error.too_many" = "You already hold as many numbers as one account can. Release one on My UINs first.";
+"uin_shop.error.generic" = "The server refused. Try again.";
+"uin_shop.info.cap.title" = "How many you can hold";
+"uin_shop.info.cap.body" = "One account can hold up to %1$d numbers, and you hold %2$d. You can give one back on My UINs, but not the one you answer as, and not undo it: a released number goes back into the pool for anyone to take.";
 
 /* Full network check (NetworkAudit) */
 "audit.run" = "Full network check";
@@ -1821,3 +1861,110 @@
 "how.q5" = "Can anyone tell who I am writing to?";
 "how.a5" = "Your island knows an envelope is addressed to someone, and does not know it came from you: your name is not on the outside of it.\n\nWhen RCQ relays are on, the way out is split between two relays. The first one sees you and does not know which island you are reaching; the second one reaches the island and does not know who you are. Putting the two halves together takes both of them, and they belong to different people in different countries.\n\nWhat nobody can hide: the fact that you use RCQ at all is visible to whoever runs your network, unless RCQ relays are on.";
 "how.more" = "More questions on rcq.app/faq →";
+
+/* ── Settings search (item 28) + profile-card privacy (item 22) ── */
+"settings.search.title" = "Search settings";
+"settings.search.placeholder" = "Theme, PIN, wallpaper…";
+"settings.search.empty.idle" = "Type to find a setting.";
+"settings.privacy.profile_card" = "Who can open my profile card";
+"settings.privacy.profile_card.desc" = "Your name in a member list, in a reactions list or over a photo opens your card. Anyone shut out here will not be able to open it; they will still be able to write to you.";
+"notifs.muted.empty" = "Nobody is muted.";
+
+/* Settings-search synonyms: comma-separated, never displayed, matched
+   alongside each row's visible label. Include the latin word next to the
+   local one so a user who knows the English term finds the row too.
+   Locales that ship no line here fall back to this English list, which is
+   why only en + ru carry them for now. */
+"settings.search.alias.theme" = "theme, dark, light, colours, colors, appearance, night mode";
+"settings.search.alias.textSize" = "text size, font, bigger text, dynamic type, accessibility";
+"settings.search.alias.appIcon" = "app icon, launcher icon, hide the icon, disguise";
+"settings.search.alias.chatBackground" = "wallpaper, background, chat background, picture behind the chat";
+"settings.search.alias.homeBackground" = "wallpaper, background, home screen, chat list background";
+"settings.search.alias.animatedAvatars" = "animated avatars, gif, avatar, moving pictures";
+"settings.search.alias.sounds" = "sound, sounds, ringtone, notification sound, chirp, silence";
+"settings.search.alias.language" = "language, locale, russian, english, translation";
+"settings.search.alias.privacyScreen" = "privacy, visibility, who can see me";
+"settings.search.alias.networkScreen" = "network, connection, proxy, relays, vpn, bypass, censorship";
+"settings.search.alias.notificationsScreen" = "notifications, push, alerts";
+"settings.search.alias.blockedUsers" = "blocked, block list, ignore, banned";
+"settings.search.alias.historyFile" = "backup, export, history file, save my chats, archive";
+"settings.search.alias.historyClear" = "clear history, delete messages, wipe chats";
+"settings.search.alias.uinShop" = "uin shop, buy a number, store, short number";
+"settings.search.alias.myUINs" = "my numbers, my uins, numbers i own";
+"settings.search.alias.islandRules" = "rules, house rules, island, terms, server rules";
+"settings.search.alias.recoveryPhrase" = "recovery phrase, seed, backup phrase, restore account, mnemonic";
+"settings.search.alias.linkedDevices" = "linked devices, sessions, web, desktop, key slots, revoke a device";
+"settings.search.alias.backupIsland" = "backup island, multihome, second island, failover, spare";
+"settings.search.alias.burnAccount" = "delete account, burn, remove account, erase";
+"settings.search.alias.about" = "about, version, build, licences, licenses";
+"settings.search.alias.bugBounty" = "report a bug, bug, bounty, feedback, support";
+"settings.search.alias.myReports" = "my reports, tickets, answers, support replies";
+"settings.search.alias.profileVisibility" = "profile, who can see my profile, details, city, age, about me";
+"settings.search.alias.profileCard" = "profile card, open my card, tap my name, member list, reactions list, sender name over a photo";
+"settings.search.alias.lastSeen" = "last seen, online status, when i was last online";
+"settings.search.alias.relayCalls" = "calls, relay calls, hide my ip, turn, call privacy";
+"settings.search.alias.strangers" = "strangers, requests, unknown senders, quarantine, spam";
+"settings.search.alias.genderVisibility" = "gender, sex, who can see my gender";
+"settings.search.alias.groupInvites" = "group invites, who can add me to groups, invites";
+"settings.search.alias.callPolicy" = "calls, who can call me, ring me";
+"settings.search.alias.readReceipts" = "read receipts, seen, ticks, blue ticks";
+"settings.search.alias.howItWorks" = "how it works, help, faq, explain";
+"settings.search.alias.panicPIN" = "pin, password, code, panic, duress, lock, security pin, decoy, app lock";
+"settings.search.alias.migrate" = "migrate, change my number, new uin, move account";
+"settings.search.alias.hallOfFame" = "hall of fame, wall, public wall, hof";
+"settings.search.alias.accounts" = "accounts, switch account, several accounts, profiles";
+"settings.search.alias.stealth" = "relays, bypass, censorship, proxy, blocked, dpi, stealth, vpn";
+"settings.search.alias.onion" = "onion, tor, routing, anonymity";
+"settings.search.alias.localProxy" = "local proxy, socks5, tor, i2p, my own proxy, port";
+"settings.search.alias.customServer" = "server, island, custom server, self-hosted, host, backend";
+"settings.search.alias.diagnostics" = "diagnostics, connection test, debug, troubleshoot";
+"settings.search.alias.sharedRelays" = "shared relays, bridges, relay key, import a relay, access key";
+"settings.search.alias.contactRequests" = "contact requests, friend requests, push";
+"settings.search.alias.mutedSenders" = "muted, mute, silenced senders, notifications off";
+
+"chat.poll.removed" = "Polls are no longer supported";
+
+/* Now-playing strip (item 9a) + tappable sender in the media viewer (item 9b). */
+"audio.strip.voice_message" = "Voice message";
+"audio.strip.play" = "Play";
+"audio.strip.pause" = "Pause";
+"audio.strip.close" = "Stop playback";
+"album.sender.open_profile" = "Open profile";
+
+
+/* Chat-list sections (founder item 1, 23.08). The list of sections and which
+   chat sits in which lives in the vault, so the same sections are on the
+   desktop and on the web. ⚠ The PIN FLAG syncs, the protection is LOCAL: the
+   copy must never say "protects", "locks" or "encrypts", because anyone
+   holding the account reads every section name and member uin out of the
+   island's blob. See docs/sections-design-2026-08-23.md §3. */
+"sections.add" = "Add chats";
+"sections.empty" = "Empty. Use + to move a chat here.";
+"sections.reorder.hint" = "Move the sections with the arrows.";
+"sections.reorder.done" = "Done";
+"sections.move_up" = "Move up";
+"sections.move_down" = "Move down";
+"sections.menu.reorder" = "Reorder sections";
+"sections.menu.new" = "New section";
+"sections.menu.rename" = "Rename";
+"sections.menu.delete" = "Delete section";
+"sections.menu.delete.confirm" = "Delete this section? The chats stay where they are and go back to their usual place.";
+"sections.menu.pin" = "Ask for a PIN";
+"sections.menu.pin.off" = "Stop asking for a PIN";
+"sections.menu.pin.note" = "Hides this section until you enter your PIN on this device. The chats themselves are not encrypted by it.";
+"sections.new.placeholder" = "Section name";
+"sections.new.save" = "Create";
+"sections.rename.save" = "Save";
+"sections.locked.title" = "Asks for a PIN";
+"sections.locked.nopin" = "Hidden on another device. This one has no PIN set.";
+"sections.locked.open_anyway" = "Open anyway";
+"sections.picker.title" = "Add to %@";
+"sections.picker.search" = "Search";
+"sections.picker.save" = "Save";
+"sections.picker.nobody" = "Nobody to add yet.";
+"sections.err.too_many_sections" = "That is as many sections as one account can hold.";
+"sections.err.section_full" = "This section is full.";
+"sections.err.too_many_members" = "Too many chats across your sections.";
+"sections.err.too_large" = "The section list is too large to save.";
+"sections.err.unreadable" = "Your sections were written by a newer version of RCQ.";
+"pin_verify.title.section" = "Unlock this section";

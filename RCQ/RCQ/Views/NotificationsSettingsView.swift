@@ -14,39 +14,89 @@ struct NotificationsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var prefs = NotificationPrefsService.shared
     @StateObject private var contacts = ContactService.shared
+    /// Row the Settings search sent us to (item 28).
+    var highlight: SettingsRow?
+    /// The highlight while it is still showing; dropped on a timer so the
+    /// wash fades instead of sitting on the row for the life of the sheet.
+    @State private var activeHighlight: SettingsRow?
+
+    // MARK: - search index
+    //
+    // ⚠ A row added below belongs here; the DEBUG check in
+    // `SettingsSearchIndex` is what catches one that forgot.
+    static let searchEntries: [SettingsSearchEntry] = [
+        .init(row: .contactRequests, titleKey: "notifs.contact_requests",
+              sectionKey: "settings.notifications", destination: .notifications),
+        .init(row: .mutedSenders, titleKey: "notifs.section.muted",
+              sectionKey: "settings.notifications", destination: .notifications),
+    ]
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
-                Form {
-                    Section {
-                        Toggle(isOn: bind(\.contactRequests, set: prefs.setContactRequests)) {
-                            Text("notifs.contact_requests".localized)
-                                .foregroundColor(Theme.Color.textPrimary)
-                        }
-                        .tint(Theme.Color.accent)
-                    } header: {
-                        Text("notifs.section.requests".localized)
-                    } footer: {
-                        Text("notifs.contact_requests.footer".localized)
-                    }
-                    .listRowBackground(Theme.Color.bgSecondary)
-
-                    if !prefs.prefs.mutedUINs.isEmpty {
+                ScrollViewReader { proxy in
+                    Form {
                         Section {
-                            ForEach(prefs.prefs.mutedUINs, id: \.self) { uin in
-                                mutedRow(uin: uin)
+                            Toggle(isOn: bind(\.contactRequests, set: prefs.setContactRequests)) {
+                                Text("notifs.contact_requests".localized)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                            }
+                            .tint(Theme.Color.accent)
+                            .settingsSearchRow(.contactRequests, highlight: activeHighlight)
+                        } header: {
+                            Text("notifs.section.requests".localized)
+                        } footer: {
+                            Text("notifs.contact_requests.footer".localized)
+                        }
+
+                        // The muted list is the row search lands on, so it
+                        // needs an anchor even when it is empty: a jump into
+                        // an absent section reads as search doing nothing.
+                        Section {
+                            if prefs.prefs.mutedUINs.isEmpty {
+                                Text("notifs.muted.empty".localized)
+                                    .font(.footnote)
+                                    .foregroundColor(Theme.Color.textSecondary)
+                                    .settingsSearchRow(.mutedSenders, highlight: activeHighlight)
+                            } else {
+                                ForEach(prefs.prefs.mutedUINs, id: \.self) { uin in
+                                    if uin == prefs.prefs.mutedUINs.first {
+                                        // The anchor rides the first entry:
+                                        // `.id` on a ForEach is not a row of
+                                        // its own, and a row background hung
+                                        // there paints every muted sender.
+                                        mutedRow(uin: uin)
+                                            .settingsSearchRow(.mutedSenders, highlight: activeHighlight)
+                                    } else {
+                                        mutedRow(uin: uin)
+                                            .listRowBackground(Theme.Color.bgSecondary)
+                                    }
+                                }
                             }
                         } header: {
                             Text("notifs.section.muted".localized)
                         } footer: {
                             Text("notifs.muted.footer".localized)
                         }
-                        .listRowBackground(Theme.Color.bgSecondary)
+                    }
+                    .scrollContentBackground(.hidden)
+                    // The sheet has to be on screen before a scroll means
+                    // anything, so the jump waits a beat rather than firing
+                    // into a list that has not laid out yet.
+                    .onAppear {
+                        guard let highlight else { return }
+                        activeHighlight = highlight
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            withAnimation { proxy.scrollTo(highlight, anchor: .center) }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+                            if activeHighlight == highlight {
+                                withAnimation { activeHighlight = nil }
+                            }
+                        }
                     }
                 }
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("notifs.title".localized)
             .navigationBarTitleDisplayMode(.inline)

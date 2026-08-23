@@ -112,15 +112,35 @@ struct PeerBundle {
 }
 
 /// Plaintext shipped inside the encrypted envelope. Server never sees it.
+///
+/// ── `ttl` and `ts` ────────────────────────────────────────────────────────
+/// `ttl` is the disappearing-message timer in whole SECONDS. `ts` is the
+/// SENDER's clock at the moment the message was composed, in whole epoch
+/// SECONDS, and it rides only beside a `ttl`. Same key and same units as the
+/// `call` / `contactreq` / `profile` envelopes, and the same pair the web
+/// writes (`web-chat/src/lib/crypto.ts`).
+///
+/// Without it a receiver can only start the countdown when the row lands on
+/// its own disk. A phone that drained the queue a week late then kept a
+/// "vanishes in 5 minutes" message for five minutes MORE, a week after its
+/// author was told it was gone. This client already anchored on the island's
+/// deposit time rather than on receipt, which is closer but still not what the
+/// sender was promised, and it had nothing at all to hand the clients that
+/// anchor on receipt.
+///
+/// A bare timestamp on every envelope would be new metadata inside the
+/// ciphertext that buys nothing, so `ts` exists only where there is a
+/// countdown to anchor. Additive on the wire: a decoder that does not know the
+/// key ignores it, and an envelope without one falls back to today's anchor.
 enum Envelope: Codable, Hashable {
-    case text(id: UUID, text: String, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case text(id: UUID, text: String, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     /// `spoiler` = sent blurred, receiver taps to reveal (Android parity;
     /// wire key `"spoiler"`, omitted when false so old clients are unaffected).
-    case photo(id: UUID, mediaID: String, mediaKey: String, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false)
-    case video(id: UUID, mediaID: String, mediaKey: String, thumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false)
-    case voice(id: UUID, mediaID: String, mediaKey: String, durationSec: Double, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
-    case file(id: UUID, mediaID: String, mediaKey: String, fileName: String, mime: String, sizeBytes: Int, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
-    case location(id: UUID, lat: Double, lng: Double, caption: String?, ttl: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case photo(id: UUID, mediaID: String, mediaKey: String, caption: String?, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false)
+    case video(id: UUID, mediaID: String, mediaKey: String, thumbnailB64: String, durationSec: Double, caption: String?, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false)
+    case voice(id: UUID, mediaID: String, mediaKey: String, durationSec: Double, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case file(id: UUID, mediaID: String, mediaKey: String, fileName: String, mime: String, sizeBytes: Int, caption: String?, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
+    case location(id: UUID, lat: Double, lng: Double, caption: String?, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     case deleteForEveryone(targetID: UUID)
     case systemNotice(id: UUID, text: String)
     case readReceipt(targetIDs: [UUID])
@@ -294,25 +314,30 @@ enum Envelope: Codable, Hashable {
             // invented, so a round trip through this type cannot quietly turn
             // somebody else's envelope into ours.
             try c.encode(kind, forKey: .kind)
-        case .text(let id, let s, let ttl, let fwd, let reply):
+        case .text(let id, let s, let ttl, let ts, let fwd, let reply):
             try c.encode("text", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(s, forKey: .text)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            // Only beside a `ttl`, on every kind that can carry one. The seal
+            // points fill a nil `ts` in `withSendTimestamp`, so an envelope
+            // reaching the wire with a timer always has an anchor.
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .photo(let id, let mediaID, let key, let caption, let ttl, let fwd, let reply, let album, let spoiler):
+        case .photo(let id, let mediaID, let key, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
             try c.encode("photo", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
             try c.encode(key, forKey: .mediaKey)
             try c.encodeIfPresent(caption, forKey: .caption)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
             try c.encodeIfPresent(album, forKey: .albumID)
             if spoiler { try c.encode(true, forKey: .spoiler) }
-        case .video(let id, let mediaID, let key, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album, let spoiler):
+        case .video(let id, let mediaID, let key, let thumb, let dur, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
             try c.encode("video", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -321,20 +346,22 @@ enum Envelope: Codable, Hashable {
             try c.encode(dur, forKey: .durationSec)
             try c.encodeIfPresent(caption, forKey: .caption)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
             try c.encodeIfPresent(album, forKey: .albumID)
             if spoiler { try c.encode(true, forKey: .spoiler) }
-        case .voice(let id, let mediaID, let key, let dur, let ttl, let fwd, let reply):
+        case .voice(let id, let mediaID, let key, let dur, let ttl, let ts, let fwd, let reply):
             try c.encode("voice", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
             try c.encode(key, forKey: .mediaKey)
             try c.encode(dur, forKey: .durationSec)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .file(let id, let mediaID, let key, let fname, let mime, let size, let caption, let ttl, let fwd, let reply):
+        case .file(let id, let mediaID, let key, let fname, let mime, let size, let caption, let ttl, let ts, let fwd, let reply):
             try c.encode("file", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(mediaID, forKey: .mediaID)
@@ -344,15 +371,17 @@ enum Envelope: Codable, Hashable {
             try c.encode(size, forKey: .sizeBytes)
             try c.encodeIfPresent(caption, forKey: .caption)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
-        case .location(let id, let lat, let lng, let caption, let ttl, let fwd, let reply):
+        case .location(let id, let lat, let lng, let caption, let ttl, let ts, let fwd, let reply):
             try c.encode("location", forKey: .kind)
             try c.encode(id, forKey: .id)
             try c.encode(lat, forKey: .lat)
             try c.encode(lng, forKey: .lng)
             try c.encodeIfPresent(caption, forKey: .caption)
             try c.encodeIfPresent(ttl, forKey: .ttl)
+            if ttl != nil { try c.encodeIfPresent(ts, forKey: .ts) }
             try c.encodeIfPresent(fwd, forKey: .forwardedFromName)
             try c.encodeIfPresent(reply, forKey: .replyTo)
         case .deleteForEveryone(let target):
@@ -471,6 +500,7 @@ enum Envelope: Codable, Hashable {
                 id: try c.decode(UUID.self, forKey: .id),
                 text: try c.decode(String.self, forKey: .text),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
             )
@@ -481,6 +511,7 @@ enum Envelope: Codable, Hashable {
                 mediaKey: try c.decode(String.self, forKey: .mediaKey),
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
                 albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID),
@@ -495,6 +526,7 @@ enum Envelope: Codable, Hashable {
                 durationSec: try c.decode(Double.self, forKey: .durationSec),
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo),
                 albumID: try c.decodeIfPresent(UUID.self, forKey: .albumID),
@@ -507,6 +539,7 @@ enum Envelope: Codable, Hashable {
                 mediaKey: try c.decode(String.self, forKey: .mediaKey),
                 durationSec: try c.decode(Double.self, forKey: .durationSec),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
             )
@@ -520,6 +553,7 @@ enum Envelope: Codable, Hashable {
                 sizeBytes: try c.decode(Int.self, forKey: .sizeBytes),
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
             )
@@ -530,6 +564,7 @@ enum Envelope: Codable, Hashable {
                 lng: try c.decode(Double.self, forKey: .lng),
                 caption: try c.decodeIfPresent(String.self, forKey: .caption),
                 ttl: try c.decodeIfPresent(Int.self, forKey: .ttl),
+                ts: try c.decodeIfPresent(Int.self, forKey: .ts),
                 forwardedFromName: try c.decodeIfPresent(String.self, forKey: .forwardedFromName),
                 replyTo: try c.decodeIfPresent(ReplyContext.self, forKey: .replyTo)
             )
@@ -670,6 +705,55 @@ enum Envelope: Codable, Hashable {
         case .skdm: return "skdm"
         case .sknack: return "sknack"
         case .relayShare: return "relay_share"
+        }
+    }
+
+    /// Stamp the sender's clock onto an outgoing envelope that carries a `ttl`.
+    ///
+    /// Applied at the three seal points (v=1, v=2, group sender-key), which is
+    /// every path a plaintext envelope takes to the wire, so no send site can
+    /// forget the anchor and none has to remember it. Deliberately NOT done
+    /// inside `encode(to:)`: `PushDecryptCache` re-encodes an already-received
+    /// envelope to store it, and a clock read in the encoder would overwrite a
+    /// peer's timestamp with our own.
+    ///
+    /// Only ever FILLS a nil. `resend` knows the compose time of a message that
+    /// failed hours ago and passes it explicitly; a retry must not hand the peer
+    /// a lifetime the sender's own copy will not get.
+    ///
+    /// A carbon has no timer of its own but wraps the envelope that does, so it
+    /// recurses. Everything else is returned untouched.
+    func withSendTimestamp(at now: Date = Date()) -> Envelope {
+        let stamp = Int(now.timeIntervalSince1970)
+        switch self {
+        case .text(let id, let s, let ttl, let ts, let fwd, let reply):
+            guard ttl != nil, ts == nil else { return self }
+            return .text(id: id, text: s, ttl: ttl, ts: stamp, forwardedFromName: fwd, replyTo: reply)
+        case .photo(let id, let mediaID, let key, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
+            guard ttl != nil, ts == nil else { return self }
+            return .photo(id: id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, ts: stamp,
+                          forwardedFromName: fwd, replyTo: reply, albumID: album, spoiler: spoiler)
+        case .video(let id, let mediaID, let key, let thumb, let dur, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
+            guard ttl != nil, ts == nil else { return self }
+            return .video(id: id, mediaID: mediaID, mediaKey: key, thumbnailB64: thumb, durationSec: dur,
+                          caption: caption, ttl: ttl, ts: stamp, forwardedFromName: fwd, replyTo: reply,
+                          albumID: album, spoiler: spoiler)
+        case .voice(let id, let mediaID, let key, let dur, let ttl, let ts, let fwd, let reply):
+            guard ttl != nil, ts == nil else { return self }
+            return .voice(id: id, mediaID: mediaID, mediaKey: key, durationSec: dur, ttl: ttl, ts: stamp,
+                          forwardedFromName: fwd, replyTo: reply)
+        case .file(let id, let mediaID, let key, let fname, let mime, let size, let caption, let ttl, let ts, let fwd, let reply):
+            guard ttl != nil, ts == nil else { return self }
+            return .file(id: id, mediaID: mediaID, mediaKey: key, fileName: fname, mime: mime, sizeBytes: size,
+                         caption: caption, ttl: ttl, ts: stamp, forwardedFromName: fwd, replyTo: reply)
+        case .location(let id, let lat, let lng, let caption, let ttl, let ts, let fwd, let reply):
+            guard ttl != nil, ts == nil else { return self }
+            return .location(id: id, lat: lat, lng: lng, caption: caption, ttl: ttl, ts: stamp,
+                             forwardedFromName: fwd, replyTo: reply)
+        case .carbon(let to, let gid, let env):
+            return .carbon(to: to, gid: gid, env: env.withSendTimestamp(at: now))
+        default:
+            return self
         }
     }
 }
@@ -816,7 +900,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             outputByteCount: 32
         )
 
-        let envelopeJSON = try JSONEncoder().encode(envelope)
+        let envelopeJSON = try JSONEncoder().encode(envelope.withSendTimestamp())
         let toSign = ephemeralPubBytes + envelopeJSON
         let signature = try signingPriv.signature(for: toSign)
 
@@ -861,7 +945,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
     // MARK: - sender keys (group encrypt-once)
 
     func sealGmsg(envelope: Envelope, gid: Int, kid: String, epoch: Int, index: Int, mk: Data) throws -> String {
-        let envBytes = try JSONEncoder().encode(envelope)
+        let envBytes = try JSONEncoder().encode(envelope.withSendTimestamp())
         let aad = SenderKeys.gmsgAAD(gid: gid, kid: kid, epoch: epoch, index: index)
         let sig = try signingPriv.signature(for: aad + envBytes)
         let plaintext = try JSONSerialization.data(withJSONObject: [
@@ -940,7 +1024,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         let recipientAddr = try ProtocolAddress(name: String(recipient.uin), deviceId: deviceId)
         let localAddr = try stores.localAddress()
 
-        let envelopeJSON = try JSONEncoder().encode(envelope)
+        let envelopeJSON = try JSONEncoder().encode(envelope.withSendTimestamp())
         let cipher = try signalEncrypt(
             message: envelopeJSON,
             for: recipientAddr,

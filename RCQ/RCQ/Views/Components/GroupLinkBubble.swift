@@ -314,13 +314,57 @@ struct PinnedGroupChip: View {
         }
         .buttonStyle(.plain)
         .task(id: groupID) {
-            if preview == nil {
-                if let foreignHost {
-                    preview = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
-                } else {
-                    preview = await GroupService.shared.fetchPreview(groupID: groupID)
-                }
+            guard preview == nil else { return }
+            // Painted from the cache first, so a banner the user expands for the
+            // second time is already filled in (16). Without it every expansion
+            // was a fresh `@State` on a fresh view, which meant a fresh network
+            // round trip: the rows drew as bare "#1234" placeholders and then
+            // visibly re-loaded, every single time the pin was opened.
+            if let cached = PinnedGroupPreviewCache.get(host: foreignHost, groupID: groupID) {
+                preview = cached
+                return
             }
+            let fetched: GroupService.GroupPreview?
+            if let foreignHost {
+                fetched = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
+            } else {
+                fetched = await GroupService.shared.fetchPreview(groupID: groupID)
+            }
+            if let fetched {
+                PinnedGroupPreviewCache.put(fetched, host: foreignHost, groupID: groupID)
+            }
+            preview = fetched
         }
+    }
+}
+
+/// Group cards inside a pinned announcement, remembered for the life of the
+/// process (16).
+///
+/// A pin can carry several group links and the banner is rebuilt on every
+/// expand / collapse, on every reopen of the chat, and again inside the
+/// expansion sheet. Each rebuild handed `PinnedGroupChip` a nil `@State` and it
+/// went back to `/groups/{id}/preview`, so the same three cards flickered
+/// through their placeholder state over and over for content that changes about
+/// as often as a group is renamed.
+///
+/// ⚠ Memory only, on purpose. A name and a member count are cheap to re-fetch
+/// once per launch and there is no invalidation story worth writing for them;
+/// what is NOT acceptable is refetching them four times a minute. Keyed by host
+/// as well as id because a foreign group's id is only unique on its own island.
+@MainActor
+enum PinnedGroupPreviewCache {
+    private static var entries: [String: GroupService.GroupPreview] = [:]
+
+    private static func key(host: String?, groupID: Int) -> String {
+        "\(host?.lowercased() ?? "")#\(groupID)"
+    }
+
+    static func get(host: String?, groupID: Int) -> GroupService.GroupPreview? {
+        entries[key(host: host, groupID: groupID)]
+    }
+
+    static func put(_ preview: GroupService.GroupPreview, host: String?, groupID: Int) {
+        entries[key(host: host, groupID: groupID)] = preview
     }
 }

@@ -29,56 +29,13 @@ extension MessageService {
         }
     }
 
-    /// Broadcast a previously-created group poll to all members. The
-    /// caller has already hit `POST /groups/{id}/polls` and got back
-    /// `pollID`; this just packages the question + options into an
-    /// `Envelope.poll` and runs the standard group fan-out so every
-    /// member's chat surfaces a fresh `PollBubble`.
-    func sendPoll(
-        envelopeID: UUID,
-        pollID: Int,
-        question: String,
-        options: [String],
-        singleChoice: Bool,
-        anonymous: Bool,
-        to group: RCQGroup
-    ) async throws {
-        // Local optimistic insert — mirror the JSON payload the
-        // ingest path produces on the receiving side so the
-        // sender's own bubble looks identical to peers'.
-        let payload = PollPayload(
-            question: question,
-            options: options,
-            singleChoice: singleChoice,
-            anonymous: anonymous
-        )
-        let encoded = (try? JSONEncoder().encode(payload))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? question
-        let local = Message(
-            id: envelopeID,
-            thread: .group(id: group.id),
-            senderUIN: ownUIN,
-            isFromMe: true,
-            kind: .poll,
-            text: encoded,
-            pollID: pollID
-        )
-        MessageStore.shared.append(local)
-        Task { [weak self] in
-            try? await self?.sendGroupEnvelope(
-                .poll(
-                    id: envelopeID,
-                    pollID: pollID,
-                    question: question,
-                    options: options,
-                    singleChoice: singleChoice,
-                    anonymous: anonymous
-                ),
-                to: group,
-                localID: envelopeID
-            )
-        }
-    }
+    // `sendPoll` lived here. Polls are removed (14a): the ballots were never
+    // end-to-end encrypted (the island kept `voter_uin` and `option_index` in
+    // the clear, including for a poll marked anonymous) and the creator column
+    // beside the envelope UUID named the author of an otherwise sealed message.
+    // The island now answers 410 feature_removed and advertises `polls` false.
+    // `Envelope.poll` stays decodable on the RECEIVE side only - see the `.poll`
+    // case in `MessageService.ingest`.
 
     func sendPhoto(_ image: UIImage, to group: RCQGroup, caption: String? = nil, replyTo: ReplyContext? = nil, albumID: UUID? = nil, spoiler: Bool = false) async throws {
         let ttl = ChatSettingsStore.shared.ttl(for: .group(id: group.id))

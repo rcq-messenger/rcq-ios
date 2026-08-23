@@ -39,6 +39,12 @@ struct SearchOverlay: View {
             .ignoresSafeArea(edges: .bottom)
         }
         .onAppear {
+            // Message search reads the in-memory windows, and those are read
+            // from CoreData on demand now rather than all of them at launch.
+            // This is the one reader that genuinely wants every thread, so it
+            // pays for them here, when the user asks to search, instead of
+            // making every cold start pay for a search that may never happen.
+            MessageStore.shared.ensureAllLoaded()
             // Pop the keyboard on the next runloop tick so the
             // overlay's transition is finished before we ask for
             // first responder — avoids the rare "TextField
@@ -212,12 +218,7 @@ struct SearchOverlay: View {
                         Text(group.name)
                             .font(Theme.Font.nickname)
                             .foregroundColor(Theme.Color.textPrimary)
-                        Text(String(
-                            format: (group.memberCount == 1
-                                ? "contact_list.members_one"
-                                : "contact_list.members_many").localized,
-                            group.memberCount
-                        ))
+                        Text(MemberCountLabel.text(group.memberCount))
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }

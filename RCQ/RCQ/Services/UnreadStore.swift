@@ -56,6 +56,29 @@ final class UnreadStore {
         persist()
     }
 
+    /// A whole page of bumps, one write.
+    ///
+    /// `persist()` rewrites the entire dictionary into UserDefaults, so a
+    /// queue drain of N messages used to hand cfprefsd N copies of it. The
+    /// counters are the same either way; only the number of writes changes.
+    func incrementPeers(_ deltas: [Int: Int]) {
+        var changed = false
+        for (uin, delta) in deltas where delta > 0 {
+            counts[Self.peerKey(uin), default: 0] += delta
+            changed = true
+        }
+        if changed { persist() }
+    }
+
+    func incrementGroups(_ deltas: [Int: Int]) {
+        var changed = false
+        for (id, delta) in deltas where delta > 0 {
+            counts[Self.groupKey(id), default: 0] += delta
+            changed = true
+        }
+        if changed { persist() }
+    }
+
     func clearPeer(_ uin: Int) {
         guard counts.removeValue(forKey: Self.peerKey(uin)) != nil else { return }
         persist()

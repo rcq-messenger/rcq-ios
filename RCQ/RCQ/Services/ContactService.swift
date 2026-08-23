@@ -413,11 +413,23 @@ final class ContactService: ObservableObject {
             BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
             BadgeCounter.syncIcon()
             RemovedContactsStore.shared.add(uin)
+            // The only pruning the sections slot ever gets: an explicit local
+            // removal. Never because a chat failed to render.
+            SectionsVault.forgetSectionMember(Sections.peerKey(uin, host: host))
             return
         }
-        let _: EmptyResponse = try await APIClient.shared.request(
-            "DELETE", "/contacts/\(uin)"
-        )
+        do {
+            let _: EmptyResponse = try await APIClient.shared.request(
+                "DELETE", "/contacts/\(uin)"
+            )
+        } catch APIError.http(404, _) {
+            // No row on the island: another device removed them a moment
+            // ago, or the pair lives only in the vault. Either way the
+            // relationship is already gone and the LOCAL half below still
+            // has to happen -- throwing here left the person in the list on
+            // this phone, with the silent-drop record never written, and a
+            // second tap answered 404 again.
+        }
         contacts.removeAll { $0.uin == uin }
         UnreadStore.shared.clearPeer(uin)
         // Drop any badge increment NSE may have pushed under this
@@ -429,6 +441,12 @@ final class ContactService: ObservableObject {
         // from this UIN — record it locally so MessageService and the
         // NSE silently filter them out.
         RemovedContactsStore.shared.add(uin)
+        // ⚠ Deferred, and it happens whether or not this contact was actually
+        // filed. The island cannot read the slot, but it can read its own
+        // request log: a DELETE followed within a moment by a put on this
+        // account's second, rarely-written slot would say "that uin was in one
+        // of their sections". See the note on `forgetSectionMember`.
+        SectionsVault.forgetSectionMember(Sections.peerKey(uin))
     }
 
     /// Drop a UIN from the local cache only — used when the peer side
@@ -507,6 +525,31 @@ final class ContactService: ObservableObject {
             os_log("incrementUnread: unknown UIN %d — count persisted, awaiting contact refresh",
                    log: Self.log, type: .info, uin)
         }
+    }
+
+    /// A page of unread bumps, applied in one pass.
+    ///
+    /// `incrementUnread` publishes `contacts` on every call, and the chat list
+    /// recomputes its online / offline / archived partition from that array on
+    /// every body, so a drain of N messages used to re-sort the whole roster N
+    /// times. One assignment, one publish, one re-sort. Persisted first for
+    /// the same reason as the single-message path: the count has to survive a
+    /// sender who is not in the roster yet.
+    func applyUnreadDeltas(_ deltas: [Int: Int]) {
+        guard !deltas.isEmpty else { return }
+        UnreadStore.shared.incrementPeers(deltas)
+        var list = contacts
+        var changed = false
+        for (uin, delta) in deltas where delta > 0 {
+            if let idx = list.firstIndex(where: { $0.uin == uin }) {
+                list[idx].unread += delta
+                changed = true
+            } else {
+                os_log("incrementUnread: unknown UIN %d — count persisted, awaiting contact refresh",
+                       log: Self.log, type: .info, uin)
+            }
+        }
+        if changed { contacts = list }
     }
 
     func clearUnread(for uin: Int) {

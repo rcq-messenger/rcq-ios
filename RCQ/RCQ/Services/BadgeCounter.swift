@@ -52,6 +52,22 @@ enum BadgeCounter {
         return dict.values.reduce(0, +)
     }
 
+    /// A page of bumps in one read-modify-write of the shared file.
+    ///
+    /// `increment` loads, decodes, encodes and atomically rewrites the JSON on
+    /// every call, which is a whole file round trip per message while a drain
+    /// walks a backlog. The per-thread totals come out identical.
+    @discardableResult
+    static func increment(deltas: [String: Int]) -> Int {
+        guard !deltas.isEmpty else { return total() }
+        var dict = load()
+        for (key, delta) in deltas where delta != 0 {
+            dict[key, default: 0] += delta
+        }
+        save(dict)
+        return dict.values.reduce(0, +)
+    }
+
     /// Zero out a single thread (chat just got opened). Returns the new total.
     @discardableResult
     static func reset(threadKey: String) -> Int {

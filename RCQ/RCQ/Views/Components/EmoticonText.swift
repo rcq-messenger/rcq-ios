@@ -22,6 +22,12 @@ struct EmoticonText: View {
     /// When it resolves, the `#<uin>` token renders as the clickable nick (tap
     /// opens the profile via [onMentionTap]); else it stays plain digits.
     var uinNick: ((Int) -> String?)? = nil
+    /// Turn URLs in the body into tappable links. False in a group whose owner
+    /// switched links off for everyone but the moderators (`links_allowed`,
+    /// SPEC group room rules): the text still reads exactly as it was written,
+    /// it just is not a tap away from leaving the app. Web does the same with
+    /// `link={{ enabled: linksAllowed }}` (Chat.tsx).
+    var linksEnabled: Bool = true
 
     var body: some View {
         // VStack of per-line FlowLayouts so user newlines drive real breaks.
@@ -35,7 +41,7 @@ struct EmoticonText: View {
                     // FlowLayout below placed each word and each space as its own
                     // child, so a wrap left a leading space at the start of the
                     // next line and broke lines unevenly (the "странные переносы").
-                    Text(Self.linkify(plain))
+                    Text(linksEnabled ? Self.linkify(plain) : AttributedString(plain))
                         .font(font)
                         .foregroundColor(color)
                         .lineSpacing(lineSpacing)
@@ -65,7 +71,7 @@ struct EmoticonText: View {
     private func renderRun(_ run: Run) -> some View {
         switch run {
         case .text(let s):
-            Text(Self.linkify(s)).font(font).foregroundColor(color)
+            Text(linksEnabled ? Self.linkify(s) : AttributedString(s)).font(font).foregroundColor(color)
         case .emoticon(let asset, let code):
             if let img = GIFImage.cachedImage(for: asset) {
                 // Preserve native aspect ratio; square frames squash wide glyphs.

@@ -63,9 +63,21 @@ struct Message: Identifiable, Hashable, Codable {
     /// Base64 JPEG thumbnail for video messages, inline in the envelope.
     var thumbnailB64: String?
     var durationSec: Double
-    /// Disappearing-message TTL. Nil = no expiry. `MessageStore` sweeper
-    /// drops rows where `sentAt + ttlSeconds < now`.
+    /// Disappearing-message TTL. Nil = no expiry. The `MessageStore` sweeper
+    /// drops rows once `expiresAt` has passed.
     var ttlSeconds: Int?
+    /// The SENDER's own clock at compose time, off the envelope's `ts`, after
+    /// the sanity rails in `ChatSettingsStore.senderSentAt`. Nil for our own
+    /// outgoing rows (where `sentAt` already IS the compose time), for a peer
+    /// running a build that predates the field, for a rejected claim, and for
+    /// every row that was already on disk when this shipped.
+    ///
+    /// It exists because `sentAt` on an inbound row is the island's deposit
+    /// time, not the author's: close on a live socket, a week wrong on a queue
+    /// drained after a week offline. Only the countdown reads it. Ordering,
+    /// grouping and the printed time still come from `sentAt`, which is the one
+    /// timestamp on this row that a hostile sender cannot move.
+    var senderSentAt: Date?
     /// Original author's display name for forwarded messages. Nickname-only
     /// per spec — forwarding can't double as a contact-discovery vector.
     var forwardedFromName: String?
@@ -97,9 +109,11 @@ struct Message: Identifiable, Hashable, Codable {
     /// drops in without both.
     var latitude: Double?
     var longitude: Double?
-    /// Server-side poll id for `.poll` messages. Drives the
-    /// vote/close round-trips. The actual question + options live
-    /// in `text` as JSON (PollPayload). Nil for other kinds.
+    /// Server-side poll id for `.poll` messages. Dead since polls were removed
+    /// (14a): nothing writes it any more and nothing reads it. Kept because the
+    /// CoreData column behind it (`MessageDB.pollID`) has to stay for stores
+    /// that already have rows in it, and because dropping the property would
+    /// only move the same nil somewhere else.
     var pollID: Int?
     /// Sender marked this photo/video a spoiler: renders blurred until
     /// the viewer taps to reveal (reveal is per-session, not persisted).
@@ -121,6 +135,7 @@ struct Message: Identifiable, Hashable, Codable {
         thumbnailB64: String? = nil,
         durationSec: Double = 0,
         ttlSeconds: Int? = nil,
+        senderSentAt: Date? = nil,
         forwardedFromName: String? = nil,
         replyToID: UUID? = nil,
         replyToSnippet: String? = nil,
@@ -150,6 +165,7 @@ struct Message: Identifiable, Hashable, Codable {
         self.thumbnailB64 = thumbnailB64
         self.durationSec = durationSec
         self.ttlSeconds = ttlSeconds
+        self.senderSentAt = senderSentAt
         self.forwardedFromName = forwardedFromName
         self.replyToID = replyToID
         self.replyToSnippet = replyToSnippet
@@ -163,5 +179,16 @@ struct Message: Identifiable, Hashable, Codable {
         self.longitude = longitude
         self.pollID = pollID
         self.isSpoiler = isSpoiler
+    }
+
+    /// Instant the disappearing countdown runs from: what the sender said when
+    /// we have a usable claim, otherwise the local timestamp, which is what
+    /// this client counted from before the wire carried one.
+    var ttlAnchor: Date { senderSentAt ?? sentAt }
+
+    /// Absolute deadline for a disappearing row; nil when it never expires.
+    var expiresAt: Date? {
+        guard let ttl = ttlSeconds, ttl > 0 else { return nil }
+        return ttlAnchor.addingTimeInterval(TimeInterval(ttl))
     }
 }

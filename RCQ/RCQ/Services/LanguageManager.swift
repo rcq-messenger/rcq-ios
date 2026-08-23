@@ -64,11 +64,22 @@ final class LanguageManager: ObservableObject {
     /// is rock-solid.
     private func mirrorToAppGroup() {
         let code = current.rawValue
-        try? code.data(using: .utf8)?.write(
-            to: AppGroup.languageFileURL, options: .atomic
-        )
+        // Written from `init`, so this ran on every cold start even though the
+        // value changes about once in the life of an install. An atomic write
+        // into the shared container is a temp file plus a rename; a read is
+        // not. Same for the cfprefsd side.
+        let onDisk = (try? Data(contentsOf: AppGroup.languageFileURL))
+            .flatMap { String(data: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if onDisk != code {
+            try? code.data(using: .utf8)?.write(
+                to: AppGroup.languageFileURL, options: .atomic
+            )
+        }
         let shared = UserDefaults(suiteName: AppGroup.identifier)
-        shared?.set(code, forKey: Self.defaultsKey)
+        if shared?.string(forKey: Self.defaultsKey) != code {
+            shared?.set(code, forKey: Self.defaultsKey)
+        }
     }
 
     /// Resolved bundle for the active language. Falls back to main
@@ -84,7 +95,12 @@ final class LanguageManager: ObservableObject {
     /// Sets `AppleLanguages` so UIKit + bundle.localizedString reads pick
     /// up the right language on next launch.
     private func applyToBundleSearchPath() {
-        UserDefaults.standard.set([current.rawValue], forKey: "AppleLanguages")
+        // Also `init`-driven, and writing `AppleLanguages` is not a cheap
+        // defaults write: it is the key UIKit re-reads. Skip when it already
+        // says what we are about to say.
+        let want = [current.rawValue]
+        guard UserDefaults.standard.stringArray(forKey: "AppleLanguages") != want else { return }
+        UserDefaults.standard.set(want, forKey: "AppleLanguages")
     }
 }
 

@@ -25,6 +25,16 @@ struct ContactListView: View {
     // an empty decoy namespace on entry, so this is the second line — but it is
     // the one that keeps a section honest if a rebind is ever missed.
     @ObservedObject private var panicPIN = PanicPINService.shared
+    /// The home wallpaper decides how every surface on this screen paints
+    /// itself, so the screen has to know when it changes. It changes when
+    /// somebody picks a wallpaper and at no other time.
+    @ObservedObject private var homeBackground = ChatBackgroundStore.shared
+    /// The user's own chat-list sections (founder item 1 of 23.08, built to
+    /// `docs/sections-design-2026-08-23.md`). The tree comes from the vault, so
+    /// the same sections, in the same order, are on the desktop and on the web.
+    @ObservedObject private var sectionsStore = SectionsStore.shared
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var collapsedCrossIsland = false
 
     @State private var showAddContact = false
@@ -65,16 +75,41 @@ struct ContactListView: View {
     @State private var showSearch = false
     @State private var collapsedGroups = false
     @State private var previewTarget: ChatTarget?
-    /// `"peer:<uin>"` / `"group:<id>"` — drives the press-down scale on the active row.
-    @State private var pressedRowID: String?
+    // The press-down scale used to be a `@State` HERE, holding the id of the
+    // row under the finger. `onLongPressGesture(pressing:)` fires on touch
+    // DOWN, including the touch-down that becomes a scroll, and again when
+    // the press cancels, so simply putting a finger on the list rewrote root
+    // state and re-ran this whole body. It now lives inside `PressableRow`,
+    // where a press is nobody's business but the row's.
     @State private var showNews = false
     @State private var showOutgoing = false
     @State private var showDiagnostics = false
-    @State private var showPresenceInfo = false
     @State private var collapsedFavorites = false
     @State private var collapsedArchive = true
-    @State private var archiveUnlocked = false
-    @State private var showArchivePINGate = false
+    /// Collapse state for the user's OWN sections. The built-ins keep the flags
+    /// they already had, defaults and all (Archive folded, Offline folded
+    /// except under duress).
+    @State private var collapsedSections: Set<String> = []
+    /// Sections whose PIN has been answered, for THIS appearance of the screen.
+    /// Never persisted, never in the collapse set: it resets when the section
+    /// is collapsed, when the app goes to the background, and on every cold
+    /// start. A gate that survives those is not a gate.
+    @State private var unlockedSections: Set<String> = []
+    /// The section the PIN sheet is asking for right now.
+    @State private var pinGateSection: String?
+    /// Sections whose "this device has no PIN" notice the user has opened. A
+    /// gated section renders COLLAPSED even where the flag cannot be honoured;
+    /// the notice is what one tap on the header reveals, not what it opens on.
+    @State private var noticeSections: Set<String> = []
+    @State private var reorderingSections = false
+    @State private var pickerSection: String?
+    @State private var renameSectionID: String?
+    @State private var renameSectionText = ""
+    @State private var showNewSection = false
+    @State private var newSectionText = ""
+    @State private var deleteSectionID: String?
+    @State private var pinConfirmSection: String?
+    @State private var sectionsErrorText: String?
     @State private var path = NavigationPath()
     @State private var deepLinkAddUIN: Int? = nil
     /// Island host from the contact link's `?h=` (spec §5); nil = same island.
@@ -109,13 +144,145 @@ struct ContactListView: View {
         }
     }
 
+    /// Everything the sections feature presents: the PIN gate, the picker, and
+    /// the four small dialogs behind the header menu.
+    @ViewBuilder
+    private func sectionSurfaces<V: View>(_ content: V) -> some View {
+        content
+            .sheet(item: Binding(
+                get: { pinGateSection.map(SectionID.init) },
+                set: { pinGateSection = $0?.id }
+            )) { wrap in
+                PINVerifySheet(title: (wrap.id == Sections.sysArchive
+                                       ? "pin_verify.title.archive"
+                                       : "pin_verify.title.section").localized) {
+                    unlockedSections.insert(wrap.id)
+                    setCollapsed(wrap.id, false)
+                }
+            }
+            .sheet(item: Binding(
+                get: { pickerSection.map(SectionID.init) },
+                set: { pickerSection = $0?.id }
+            )) { wrap in
+                SectionPickerSheet(
+                    sectionID: wrap.id,
+                    title: sectionTitle(wrap.id),
+                    contacts: vm.contacts,
+                    crossIsland: ciStore.contactsSnapshot,
+                    groups: groups.groups,
+                    onError: { sectionsErrorText = $0 }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .alert("sections.menu.new".localized, isPresented: $showNewSection) {
+                TextField("sections.new.placeholder".localized, text: $newSectionText)
+                Button("common.cancel".localized, role: .cancel) { newSectionText = "" }
+                Button("sections.new.save".localized) { commitNewSection() }
+            }
+            .alert("sections.menu.rename".localized, isPresented: Binding(
+                get: { renameSectionID != nil },
+                set: { if !$0 { renameSectionID = nil } }
+            )) {
+                TextField("sections.new.placeholder".localized, text: $renameSectionText)
+                Button("common.cancel".localized, role: .cancel) { renameSectionID = nil }
+                Button("sections.rename.save".localized) { commitRenameSection() }
+            }
+            // The one sentence the design fixes for all three clients, shown
+            // before the flag goes on rather than buried in a menu subtitle: it
+            // says what the flag does and, just as importantly, what it does
+            // NOT do. Never "protects", never "locks".
+            .alert("sections.menu.pin".localized, isPresented: Binding(
+                get: { pinConfirmSection != nil },
+                set: { if !$0 { pinConfirmSection = nil } }
+            )) {
+                Button("common.cancel".localized, role: .cancel) { pinConfirmSection = nil }
+                Button("sections.menu.pin".localized) { commitPinOn() }
+            } message: {
+                Text("sections.menu.pin.note".localized)
+            }
+            .confirmationDialog(
+                "sections.menu.delete".localized,
+                isPresented: Binding(
+                    get: { deleteSectionID != nil },
+                    set: { if !$0 { deleteSectionID = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("sections.menu.delete".localized, role: .destructive) { commitDeleteSection() }
+                Button("common.cancel".localized, role: .cancel) { deleteSectionID = nil }
+            } message: {
+                Text("sections.menu.delete.confirm".localized)
+            }
+            .alert("common.error".localized, isPresented: Binding(
+                get: { sectionsErrorText != nil },
+                set: { if !$0 { sectionsErrorText = nil } }
+            )) {
+                Button("common.ok".localized) { sectionsErrorText = nil }
+            } message: {
+                Text(sectionsErrorText ?? "")
+            }
+            // A gate that survives the app going away is not a gate.
+            .onChange(of: scenePhase) { phase in
+                if phase != .active {
+                    unlockedSections.removeAll()
+                    noticeSections.removeAll()
+                }
+            }
+    }
+
+    /// How every surface on this screen paints itself.
+    ///
+    /// Flat when there is no home wallpaper, so nothing changes for the people
+    /// who never set one. Translucent over a blur when there is, so the
+    /// wallpaper reads through the chat list instead of being a strip of colour
+    /// visible only in the gaps.
+    ///
+    /// The third case is the one that needs a reason. A built-in wallpaper is
+    /// authored per theme (`Theme.Wallpaper`), so it can never fight the
+    /// colours the rows are drawn in. A picture out of the gallery can, and
+    /// there is no way to author around it: a white beach photo under the dark
+    /// theme would push a translucent row light enough to take the ground out
+    /// from under light text. So for CUSTOM images only, and only when the
+    /// measured tone disagrees with the active theme, the tint goes back to
+    /// nearly opaque and the theme reasserts itself. This is deliberately the
+    /// small version of Android's `needsLightChrome`: the surface moves, not
+    /// every token on the screen.
+    /// The rule itself lives in `WallpaperSurface.mode`, reached through the
+    /// store, and this screen and ChatView both ask the same question of it.
+    /// It used to be written out again right here, which is how the chat and
+    /// the chat list came to be two copies of one decision: the same picture
+    /// set in both slots has to be read the same way in both, and a rule with
+    /// two homes drifts the first time only one of them is corrected.
+    private var wallpaperSurfaceMode: WallpaperSurface {
+        homeBackground.surface(home: true, isLightTheme: colorScheme == .light)
+    }
+
+    /// Section-header band. Keeps its historical 0.7 wash when it is sitting on
+    /// the theme background; over a wallpaper the surface modifier owns the
+    /// transparency, and doubling the two would sink the header below its rows.
+    private var sectionHeaderColor: Color {
+        wallpaperSurfaceMode == .none
+            ? Theme.Color.bgSecondary.opacity(0.7)
+            : Theme.Color.bgSecondary
+    }
+
+    /// ⚠ Split in two on purpose. The chain on the stack below is long enough
+    /// that adding the section sheets to it put the type checker over its
+    /// budget ("unable to type-check this expression in reasonable time"), so
+    /// the sections' own surfaces are applied in one wrapper rather than
+    /// appended to the same chain.
     private var navigationStackBody: some View {
+        sectionSurfaces(navigationStackCore)
+    }
+
+    private var navigationStackCore: some View {
         NavigationStack(path: $path) {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 // Optional home wallpaper (separate from the chat one). Behind
                 // the list; no-op on the default. (Android parity.)
-                ChatBackgroundView(home: true).ignoresSafeArea()
+                HomeWallpaperView().ignoresSafeArea()
                 list
                 if showSearch {
                     SearchOverlay(
@@ -151,13 +318,6 @@ struct ContactListView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomBar
             }
-            // CallMinimizedBar sits above the topBar inset so it
-            // claims the very top row when a minimized call is
-            // active. Has to live inside the NavigationStack root
-            // (rather than on RCQApp's RootView) because SwiftUI
-            // does not pass parent insets through to push'd
-            // destinations — see ChatView for the matching call.
-            .callMinimizedBarInset()
             .navigationDestination(for: Contact.self) { contact in
                 ChatView(target: .peer(contact))
             }
@@ -189,12 +349,6 @@ struct ContactListView: View {
             .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(isPresented: $showAddAccount) { AddAccountSheet() }
             .sheet(isPresented: $showManageAccounts) { ManageAccountsSheet() }
-            .sheet(isPresented: $showArchivePINGate) {
-                PINVerifySheet(title: "pin_verify.title.archive".localized) {
-                    archiveUnlocked = true
-                    collapsedArchive = false
-                }
-            }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRandom) { RandomChatView() }
             .fullScreenCover(isPresented: $showRadio) { RadioDiscoveryView() }
@@ -259,7 +413,11 @@ struct ContactListView: View {
                 async let g: Void = groups.refresh(joinInFlight: true)
                 async let a: Void = audioRooms.refresh()
                 async let n: Void = news.refresh()
-                _ = await (c, g, a, n)
+                // Arriving at the list before the socket is up: the sweep
+                // carries its own fifteen-second floor, so walking back and
+                // forth between the list and a chat is not a request each time.
+                async let v: Void = VaultSync.sweep()
+                _ = await (c, g, a, n, v)
                 if appState.pendingOpenPending {
                     showPending = true
                     appState.pendingOpenPending = false
@@ -279,6 +437,9 @@ struct ContactListView: View {
                     tryOpenPendingGroup()
                 }
             }
+            // Keyed on the facts themselves, so this runs once when they land
+            // and never again while the user scrolls.
+            .task(id: accountCardKey) { recordActiveAccountCard() }
             .sheet(isPresented: $showNews) {
                 NewsSheet()
             }
@@ -286,11 +447,6 @@ struct ContactListView: View {
                 OutgoingRequestsView()
             }
             .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
-            .alert("presence.info.title".localized, isPresented: $showPresenceInfo) {
-                Button("common.ok".localized, role: .cancel) {}
-            } message: {
-                Text("presence.info.body".localized)
-            }
             .sheet(item: Binding(
                 get: { appState.pendingJoinGroupID.map(JoinGroupTrigger.init) },
                 set: { newValue in appState.pendingJoinGroupID = newValue?.id }
@@ -385,6 +541,21 @@ struct ContactListView: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        // The persistent strips - minimized call, minimized audio room,
+        // now-playing audio - hosted ONCE for the whole navigation stack.
+        //
+        // ⚠ On the STACK, not on its root content. `safeAreaInset` reserves
+        // space on the view it is applied to, and a pushed destination is not
+        // inside the root's content: applied one level in, the strip was drawn
+        // by the chat list and by ChatView and by nobody else, so pushing
+        // Group Info or a profile dropped the audio the user is listening to
+        // off the screen. Applied HERE it insets the whole stack, navigation
+        // bar and all, and every destination pushed into it inherits that for
+        // free - which is the entire point of a strip that survives leaving
+        // the chat. Screens that are their own presentation root (a
+        // fullScreenCover / sheet starts a fresh safe area) still host it
+        // themselves; see ChatView's random-chat path.
+        .callMinimizedBarInset()
     }
 
     private func tryOpenPendingGroup() {
@@ -432,22 +603,12 @@ struct ContactListView: View {
 
     @ViewBuilder
     private func contactRowItem(for contact: Contact) -> some View {
-        ContactRow(contact: contact)
-        .contentShape(Rectangle())
-        .scaleEffect(pressedRowID == "peer:\(contact.uin)" ? 0.96 : 1.0)
-        .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-        .onTapGesture { path.append(contact) }
-        .onLongPressGesture(
-            minimumDuration: 0.18,
-            pressing: { isPressing in
-                if isPressing {
-                    pressedRowID = "peer:\(contact.uin)"
-                } else if pressedRowID == "peer:\(contact.uin)" {
-                    pressedRowID = nil
-                }
-            },
-            perform: { openPreview(.peer(contact)) }
-        )
+        PressableRow(
+            onTap: { path.append(contact) },
+            onLongPress: { openPreview(.peer(contact)) }
+        ) {
+            ContactRow(contact: contact, surface: wallpaperSurfaceMode)
+        }
         .transition(.asymmetric(
             insertion: .move(edge: .leading).combined(with: .opacity),
             removal: .opacity
@@ -528,24 +689,35 @@ struct ContactListView: View {
                     }
                 }
             } label: {
-                Image(systemName: "server.rack")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        Circle().fill(Theme.Color.bgSecondary.opacity(0.6))
-                    )
+                // Was a bare `server.rack` glyph: the same picture whichever
+                // island you were on, which made the one control that says
+                // WHERE YOU ARE say nothing at all. It carries the island's
+                // own face and initial now, off the cache: no fetch, and a
+                // cold start on a plane still knows which island it is on.
+                IslandAvatarView(
+                    name: accountTitle(for: accountManager.active),
+                    host: accountManager.active?.displayHost ?? "",
+                    size: 28
+                )
             }
         } else {
             EmptyView()
         }
     }
 
-    /// Human-readable label for an account row in the switcher
-    /// menu. Prefers an explicit `displayLabel` set on the account,
-    /// then a catalogue entry name matching the URL, finally falls
-    /// back to the bare host.
-    private func accountTitle(for account: Account) -> String {
+    /// Human-readable label for an account row in the switcher menu.
+    ///
+    /// The island's own name (what its operator typed into the admin panel and
+    /// `/server/info` serves) leads, read from the per-account cache so an
+    /// account we are not currently on still has one. Then the explicit local
+    /// `displayLabel`, then a catalogue entry matching the URL, and finally the
+    /// bare host, which is all we honestly know about an island that has never
+    /// answered.
+    private func accountTitle(for account: Account?) -> String {
+        guard let account else { return "" }
+        if let cached = AccountCardCache.card(for: account.id)?.islandName, !cached.isEmpty {
+            return cached
+        }
         if let label = account.displayLabel, !label.isEmpty {
             return label
         }
@@ -555,25 +727,42 @@ struct ContactListView: View {
         return account.displayHost
     }
 
+    /// Everything the switcher shows about the ACTIVE account, written whenever
+    /// one of those facts changes and never on a plain render.
+    ///
+    /// Same shape as the desktop's per-account snapshot
+    /// (`web-chat/src/lib/contacts-cache.ts`): each account persists its own
+    /// card while it is the live one, and the switcher then draws every row out
+    /// of those cards without asking any island anything. The island name comes
+    /// from `/server/info`, which only the active account is in a position to
+    /// call, so this is the only moment it can be recorded.
+    private var accountCardKey: String {
+        [
+            accountManager.activeAccountID?.uuidString ?? "",
+            appState.serverName,
+            auth.nickname,
+            String(auth.ownUIN ?? 0),
+        ].joined(separator: "|")
+    }
+
+    private func recordActiveAccountCard() {
+        // Nothing about a decoy session is written to disk, here as everywhere.
+        guard !panicPIN.isDecoy, let account = accountManager.active else { return }
+        AccountCardCache.record(
+            AccountCard(
+                islandName: appState.serverName.trimmingCharacters(in: .whitespacesAndNewlines),
+                host: account.displayHost,
+                uin: auth.ownUIN,
+                nickname: auth.nickname
+            ),
+            for: account.id
+        )
+    }
+
     private var identityPrincipal: some View {
         // Trailing Color.clear pads against the leading icon to centre nick/UIN in the nav bar.
         HStack(spacing: 8) {
-            // Stay-online countdown, left of the status icon: how long until
-            // presence drops back to offline after leaving (set in Privacy).
-            // Tapping it explains what it is; an invisible copy on the trailing
-            // side keeps it from shifting the centred nick/UIN.
             Menu {
-                // "Stay visible after you leave" countdown, moved here from the
-                // header into the status menu. A native iOS menu can't free-
-                // position a chip, so it sits as the top section; tapping it
-                // opens the explainer.
-                if let expiry = PresenceWindow.expiry(uin: auth.ownUIN), expiry > Date() {
-                    Section("presence.info.title".localized) {
-                        Button { showPresenceInfo = true } label: {
-                            Label(PresenceCountdownChip.label(expiry.timeIntervalSinceNow), systemImage: "clock")
-                        }
-                    }
-                }
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
                         Label(status.label, image: assetName(for: status)).tag(status)
@@ -640,6 +829,19 @@ struct ContactListView: View {
                             .foregroundColor(Theme.Color.textMono)
                     }
                 }
+                // The nav bar's own background is a thin material, so a
+                // wallpaper scrolls under it and takes the header with it: the
+                // UIN is `textMono`, the palest label on the screen, and on a
+                // light wallpaper it went to nothing. Over a wallpaper the
+                // name and the number get a ground of their own, the same
+                // contrast pill the chat's day divider already uses for
+                // exactly this reason. Nothing changes without a wallpaper.
+                .padding(.horizontal, wallpaperSurfaceMode == .none ? 0 : 8)
+                .padding(.vertical, wallpaperSurfaceMode == .none ? 0 : 2)
+                .wallpaperChromePill(
+                    Theme.Color.bgPrimary, wallpaperSurfaceMode,
+                    in: Capsule(style: .continuous)
+                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -767,6 +969,13 @@ struct ContactListView: View {
                         .offset(x: 6, y: -4)
                 }
             }
+            // The three dots are a bare `textPrimary` glyph with nothing behind
+            // them, which is precisely the element Android's #554 was reported
+            // about ("три точки справа чёрные"). Over a wallpaper they get the
+            // same ground the name and UIN just got; without one, nothing here
+            // changes at all.
+            .padding(wallpaperSurfaceMode == .none ? 0 : 6)
+            .wallpaperChromePill(Theme.Color.bgPrimary, wallpaperSurfaceMode, in: Circle())
         }
     }
 
@@ -780,26 +989,27 @@ struct ContactListView: View {
                 if vm.hasLoadedOnce && vm.contacts.isEmpty && groups.groups.isEmpty && vm.pendingCount + visibleCIRequests == 0 {
                     emptyState
                 }
-                favoritesSection
-                audioRoomsSection
-                groupsSection
-                section(
-                    title: "contact_list.section.online".localized,
-                    count: vm.online.count,
-                    collapsed: vm.collapsedOnline,
-                    rows: vm.online,
-                    toggle: { vm.collapsedOnline.toggle() }
-                )
-                section(
-                    title: "contact_list.section.offline".localized,
-                    count: vm.offline.count,
-                    collapsed: vm.collapsedOffline,
-                    rows: vm.offline,
-                    unreadBadge: vm.offlineUnreadContacts,
-                    toggle: { vm.collapsedOffline.toggle() }
-                )
-                crossIslandSection
-                archiveSection
+                if reorderingSections {
+                    reorderBar
+                }
+                // ⚠ ONE pass over the groups and one over the cross-island
+                // rows, here, for every section below. The CONTACTS are
+                // bucketed in the view model off the roster's own change and
+                // never on a body: this screen re-runs its body constantly
+                // (fifteen observed objects feed it), and taking the roster
+                // walk out of it is exactly what today's work was.
+                let buckets = homeBuckets()
+                let rendered = renderedSections(buckets)
+                // Audio rooms are NOT a chat section (out of scope for v1) and
+                // they do not move: they keep their place above the band that
+                // starts at Other islands, whatever the user does to the order
+                // around them.
+                let audioAnchor = rendered.first { $0.order >= (Sections.defaultOrder[Sections.sysCI] ?? 0) }?.id
+                ForEach(rendered) { rec in
+                    if rec.id == audioAnchor { audioRoomsSection }
+                    sectionView(rec, buckets)
+                }
+                if audioAnchor == nil { audioRoomsSection }
                 Spacer().frame(height: 8)
             }
         }
@@ -811,139 +1021,620 @@ struct ContactListView: View {
         }
     }
 
-    @ViewBuilder
-    private var favoritesSection: some View {
-        let favGroups = groups.groups.filter { favorites.contains(group: $0.id) }
-        // Suppress a self-contact (our own UIN on our own island) from
-        // Favorites — an account can momentarily surface itself as a contact,
-        // and starring a chat-with-myself row shouldn't be possible.
-        let myUIN = AuthService.shared.ownUIN
-        let favContacts = vm.contacts.filter {
-            favorites.contains(peer: $0.uin)
-                && !($0.uin == myUIN && Multihome.isOwnHost($0.host))
+    // MARK: - Sections
+    //
+    // Every band in this list, the six built-in ones and the user's own, comes
+    // out of ONE ordered array. That is how the ORDER of the built-ins syncs
+    // even though their membership stays derived: the slot holds a record per
+    // section, `o` ascending with ties by id, and every device sorts the same
+    // way. Membership of a user section is stored; membership of a built-in
+    // never is.
+
+    /// One band the list is going to draw.
+    private struct SectionRow: Identifiable {
+        let id: String
+        let order: Int
+        let isUser: Bool
+        let title: String
+    }
+
+    /// The group and cross-island buckets, built in one pass each.
+    private struct HomeBuckets {
+        var favGroups: [RCQGroup] = []
+        var normalGroups: [RCQGroup] = []
+        var archivedGroups: [RCQGroup] = []
+        var filedGroups: [String: [RCQGroup]] = [:]
+        var crossLoose: [Contact] = []
+        var filedCross: [String: [Contact]] = [:]
+    }
+
+    /// Bucket the groups and the cross-island peers.
+    ///
+    /// Contacts are NOT here: the view model already partitioned them off the
+    /// roster's own change (`ContactListViewModel.repartition`), which is the
+    /// one place that is allowed to walk the roster.
+    ///
+    /// ⚠ The member key carries the HOST, and a foreign group is keyed by
+    /// (remoteId, host) rather than by its local id, which is a negative alias
+    /// allocated in first-sight order and means nothing on another device.
+    private func homeBuckets() -> HomeBuckets {
+        var out = HomeBuckets()
+        let filed = vm.sectionIndex
+        for group in groups.groups {
+            if archive.contains(group: group.id) {
+                // Render precedence: archive > user section > derived.
+                out.archivedGroups.append(group)
+                continue
+            }
+            if let sid = Sections.key(forGroup: group).flatMap({ filed[$0] }) {
+                // A group placed in a user section leaves the Groups section,
+                // for the same reason a contact leaves Online.
+                out.filedGroups[sid, default: []].append(group)
+                continue
+            }
+            if favorites.contains(group: group.id) { out.favGroups.append(group) }
+            out.normalGroups.append(group)
         }
-            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
-        let total = favGroups.count + favContacts.count
-        if total > 0 {
-            VStack(spacing: 0) {
-                Button { collapsedFavorites.toggle() } label: {
-                    HStack(spacing: 6) {
-                        CollapseChevron(collapsed: collapsedFavorites)
-                        Text("contact_list.section.favorites".localized.uppercased())
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Text("(\(total))")
-                            .font(.system(size: 11))
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Theme.Color.bgSecondary.opacity(0.7))
+        for sid in Array(out.filedGroups.keys) {
+            // Inside a user section: unread first, then favourite, then name.
+            out.filedGroups[sid] = out.filedGroups[sid]?.sorted { a, b in
+                let ua = (groups.unread[a.id] ?? 0) > 0
+                let ub = (groups.unread[b.id] ?? 0) > 0
+                if ua != ub { return ua }
+                let fa = favorites.contains(group: a.id)
+                let fb = favorites.contains(group: b.id)
+                if fa != fb { return fa }
+                return a.name.lowercased() < b.name.lowercased()
+            }
+        }
+        // Every row here is a real person on a real island, read STRAIGHT out
+        // of CrossIslandStore — `ContactService.clearForDecoy()` never saw it.
+        // A duress session shows only what was seeded, so this bucket is empty
+        // there.
+        guard !panicPIN.isDecoy else { return out }
+        let unread = UnreadStore.shared.allPeerCounts
+        // Anything filed under one of our own island's names is not a foreign
+        // peer, it is a roster row that got misclassified while the app was
+        // running over the CF front (see Multihome.isOwnHost).
+        let rows = ContactListViewModel.sortedByNickname(
+            ciStore.contactsSnapshot
+                .filter { !Multihome.isOwnHost($0.host) }
+                .map { c -> Contact in
+                    var c = c
+                    c.unread = unread[c.uin] ?? 0
+                    return c
                 }
-                if !collapsedFavorites {
-                    // `fav-` prefix isolates press cues from the duplicate row in online/offline/groups.
-                    ForEach(favGroups) { group in
-                        GroupRow(group: group)
-                            .contentShape(Rectangle())
-                            .onTapGesture { path.append(group) }
-                            .scaleEffect(pressedRowID == "fav-group:\(group.id)" ? 0.96 : 1.0)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-                            .onLongPressGesture(
-                                minimumDuration: 0.18,
-                                pressing: { isPressing in
-                                    if isPressing {
-                                        pressedRowID = "fav-group:\(group.id)"
-                                    } else if pressedRowID == "fav-group:\(group.id)" {
-                                        pressedRowID = nil
-                                    }
-                                },
-                                perform: { openPreview(.group(group)) }
-                            )
-                    }
-                    ForEach(favContacts) { contact in
-                        ContactRow(contact: contact)
-                            .contentShape(Rectangle())
-                            .onTapGesture { path.append(contact) }
-                            .scaleEffect(pressedRowID == "fav-peer:\(contact.uin)" ? 0.96 : 1.0)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-                            .onLongPressGesture(
-                                minimumDuration: 0.18,
-                                pressing: { isPressing in
-                                    if isPressing {
-                                        pressedRowID = "fav-peer:\(contact.uin)"
-                                    } else if pressedRowID == "fav-peer:\(contact.uin)" {
-                                        pressedRowID = nil
-                                    }
-                                },
-                                perform: { openPreview(.peer(contact)) }
-                            )
-                    }
+        )
+        for contact in rows {
+            if let sid = filed[Sections.peerKey(contact.uin, host: contact.host)] {
+                out.filedCross[sid, default: []].append(contact)
+            } else {
+                out.crossLoose.append(contact)
+            }
+        }
+        return out
+    }
+
+    /// Which sections render, in which order.
+    ///
+    /// `o` ascending, ties by id: one total order every device agrees on. The
+    /// built-ins are records in the same array as the user's own sections (that
+    /// is how their order syncs), so this is one list, not two.
+    private func renderedSections(_ b: HomeBuckets) -> [SectionRow] {
+        // ⚠⚠ `!= false`, not `== true`. An island that has not answered yet
+        // keeps the cached filing: a chat can only BE filed if the island had a
+        // vault when it was filed, and reading "unknown" as "no vault" draws
+        // the members of a PIN-gated section, by name and with their unread
+        // badges, in Online / Offline / Other islands while the section's own
+        // header disappears.
+        let showUser = appState.vaultCapability != false
+        var out: [SectionRow] = []
+        for rec in Sections.orderedSections(sectionsStore.tree) {
+            let id = Sections.id(rec)
+            let order = Sections.orderOf(rec)
+            if Sections.str(rec, "k") == "u" {
+                guard showUser else { continue }
+                out.append(SectionRow(id: id, order: order, isUser: true, title: Sections.str(rec, "n") ?? ""))
+                continue
+            }
+            // A section behind a PIN keeps its header whether or not it holds
+            // anything: a header that appears only when there is something
+            // inside announces exactly what the user asked to hide.
+            let pinned = sectionPinned(id)
+            switch id {
+            case Sections.sysSaved:
+                // Saved Messages is a menu entry here and a section on Android.
+                // Its record rides along untouched: dropping it would delete
+                // that client's ordering.
+                continue
+            case Sections.sysFav:
+                if !pinned && b.favGroups.isEmpty && vm.favoriteContacts.isEmpty { continue }
+            case Sections.sysCI:
+                if !pinned && b.crossLoose.isEmpty { continue }
+            case Sections.sysArchive:
+                if !pinned && b.archivedGroups.isEmpty && vm.archivedContacts.isEmpty { continue }
+            case Sections.sysGroups, Sections.sysOnline, Sections.sysOffline:
+                break
+            default:
+                // A built-in id from a newer client: keep the record, draw
+                // nothing.
+                continue
+            }
+            out.append(SectionRow(id: id, order: order, isUser: false, title: builtinTitle(id)))
+        }
+        return out
+    }
+
+    private func builtinTitle(_ id: String) -> String {
+        switch id {
+        case Sections.sysFav: return "contact_list.section.favorites".localized
+        case Sections.sysCI: return "contact_list.section.cross_island".localized
+        case Sections.sysGroups: return "contact_list.section.groups".localized
+        case Sections.sysOnline: return "contact_list.section.online".localized
+        case Sections.sysOffline: return "contact_list.section.offline".localized
+        case Sections.sysArchive: return "contact_list.section.archive".localized
+        default: return ""
+        }
+    }
+
+    private func sectionTitle(_ id: String) -> String {
+        if let rec = Sections.recordFor(sectionsStore.tree, id), Sections.str(rec, "k") == "u" {
+            return Sections.str(rec, "n") ?? ""
+        }
+        return builtinTitle(id)
+    }
+
+    @ViewBuilder
+    private func sectionView(_ rec: SectionRow, _ b: HomeBuckets) -> some View {
+        switch rec.id {
+        case Sections.sysFav:
+            sectionShell(rec, count: b.favGroups.count + vm.favoriteContacts.count) {
+                ForEach(b.favGroups) { groupRowItem(for: $0) }
+                ForEach(vm.favoriteContacts) { contactRowItem(for: $0) }
+            }
+        case Sections.sysCI:
+            sectionShell(
+                rec,
+                count: b.crossLoose.count,
+                unreadBadge: b.crossLoose.reduce(0) { $0 + ($1.unread > 0 ? 1 : 0) }
+            ) {
+                ForEach(b.crossLoose) { contactRowItem(for: $0) }
+            }
+        case Sections.sysGroups:
+            sectionShell(rec, count: b.normalGroups.count, plusAction: { showCreateGroup = true }) {
+                if b.normalGroups.isEmpty {
+                    createFirstGroupRow
+                } else {
+                    ForEach(b.normalGroups) { groupRowItem(for: $0) }
                 }
+            }
+        case Sections.sysOnline:
+            sectionShell(rec, count: vm.online.count) {
+                ForEach(vm.online) { contactRowItem(for: $0) }
+            }
+        case Sections.sysOffline:
+            sectionShell(rec, count: vm.offline.count, unreadBadge: vm.offlineUnreadContacts) {
+                ForEach(vm.offline) { contactRowItem(for: $0) }
+            }
+        case Sections.sysArchive:
+            sectionShell(rec, count: b.archivedGroups.count + vm.archivedContacts.count) {
+                ForEach(b.archivedGroups) { groupRowItem(for: $0) }
+                ForEach(vm.archivedContacts) { contactRowItem(for: $0) }
+            }
+        default:
+            userSection(rec, b)
+        }
+    }
+
+    @ViewBuilder
+    private func userSection(_ rec: SectionRow, _ b: HomeBuckets) -> some View {
+        let cs = vm.filedContacts[rec.id] ?? []
+        let gs = b.filedGroups[rec.id] ?? []
+        let cis = b.filedCross[rec.id] ?? []
+        let total = cs.count + gs.count + cis.count
+        sectionShell(
+            rec,
+            count: total,
+            unreadBadge: (cs + cis).reduce(0) { $0 + ($1.unread > 0 ? 1 : 0) },
+            plusAction: { pickerSection = rec.id }
+        ) {
+            if total == 0 {
+                // An empty user section still renders, header and plus and all:
+                // the user made it on purpose. This differs from Archive and
+                // Favorites, which hide when empty.
+                Text("sections.empty".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Metrics.rowHPad)
+                    .padding(.vertical, 10)
+                    .wallpaperSurface(Theme.Color.bgPrimary, wallpaperSurfaceMode)
+            } else {
+                ForEach(gs) { groupRowItem(for: $0) }
+                ForEach(cs) { contactRowItem(for: $0) }
+                ForEach(cis) { contactRowItem(for: $0) }
             }
         }
     }
 
-    private var groupsSection: some View {
-        let visibleGroups = groups.groups.filter { !archive.contains(group: $0.id) }
-        return VStack(spacing: 0) {
-            Button { collapsedGroups.toggle() } label: {
-                HStack(spacing: 6) {
-                    CollapseChevron(collapsed: collapsedGroups)
-                    Text("contact_list.section.groups".localized.uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.Color.textSecondary)
-                    Text("(\(visibleGroups.count))")
+    /// The header, the gate and the rows of any section, built-in or not.
+    @ViewBuilder
+    private func sectionShell<Rows: View>(
+        _ rec: SectionRow,
+        count: Int,
+        unreadBadge: Int = 0,
+        plusAction: (() -> Void)? = nil,
+        @ViewBuilder rows: () -> Rows
+    ) -> some View {
+        let pinned = sectionPinned(rec.id)
+        let locked = pinned && !unlockedSections.contains(rec.id)
+        // A device with no PIN configured cannot honour the flag another device
+        // set. It shows the key glyph and, on expand, one line and a way past.
+        let noticeOpen = locked && !panicPIN.isConfigured && noticeSections.contains(rec.id)
+        let collapsed = locked || isCollapsed(rec.id)
+        VStack(spacing: 0) {
+            sectionHeader(
+                rec, count: count, unreadBadge: unreadBadge, plusAction: plusAction,
+                pinned: pinned, locked: locked, collapsed: collapsed && !noticeOpen
+            )
+            if noticeOpen {
+                lockedWithoutPINRow(rec)
+            } else if !collapsed {
+                rows()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionHeader(
+        _ rec: SectionRow, count: Int, unreadBadge: Int,
+        plusAction: (() -> Void)?, pinned: Bool, locked: Bool, collapsed: Bool
+    ) -> some View {
+        let header = Button {
+            if locked && panicPIN.isConfigured {
+                pinGateSection = rec.id
+            } else if locked {
+                // No PIN on this device: the header opens the notice, never the
+                // rows.
+                if noticeSections.contains(rec.id) {
+                    noticeSections.remove(rec.id)
+                } else {
+                    noticeSections.insert(rec.id)
+                }
+            } else {
+                let next = !isCollapsed(rec.id)
+                setCollapsed(rec.id, next)
+                // Collapsing a section the user got past the PIN for puts the
+                // gate back.
+                if next { unlockedSections.remove(rec.id) }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                CollapseChevron(collapsed: collapsed)
+                Text(rec.title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .lineLimit(1)
+                // ⚠ While locked, NO member count and NO unread badge. Either
+                // one is a leak of exactly what the user hid.
+                if !locked {
+                    Text("(\(count))")
                         .font(.system(size: 11))
                         .foregroundColor(Theme.Color.textSecondary)
-                    Spacer()
-                    Button {
-                        showCreateGroup = true
-                    } label: {
+                }
+                Spacer()
+                if reorderingSections {
+                    reorderControls(for: rec)
+                }
+                if pinned {
+                    // The same key glyph Archive has always used. Never a
+                    // padlock and never a shield: the flag hides a row, it
+                    // encrypts nothing.
+                    Image(systemName: "key.fill")
+                        .foregroundColor(Theme.Color.accent)
+                        .font(.system(size: 13))
+                        .accessibilityLabel("sections.locked.title".localized)
+                }
+                if let plusAction, !locked {
+                    Button(action: plusAction) {
                         Image(systemName: "plus.circle.fill")
                             .foregroundColor(Theme.Color.accent)
                             .font(.system(size: 14))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("sections.add".localized)
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Theme.Color.bgSecondary.opacity(0.7))
-            }
-            if !collapsedGroups {
-                if visibleGroups.isEmpty {
-                    Button { showCreateGroup = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(Theme.Color.accent)
-                            Text("contact_list.create_first_group".localized)
-                                .font(.caption)
-                                .foregroundColor(Theme.Color.textPrimary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Metrics.rowHPad)
-                        .padding(.vertical, 10)
-                        .background(Theme.Color.bgPrimary)
+                if unreadBadge > 0 && !locked {
+                    HStack(spacing: 4) {
+                        Image(systemName: "envelope.badge.fill")
+                            .font(.system(size: 9))
+                        Text("\(unreadBadge)")
+                            .font(.system(size: 10, weight: .bold))
                     }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.Color.statusBusy))
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .wallpaperSurface(sectionHeaderColor, wallpaperSurfaceMode)
+        }
+        // ⚠⚠ NO MENU ON A LOCKED SECTION, and that is the gate itself rather
+        // than a nicety. The menu carries "stop asking for a PIN" and "delete
+        // section", and neither of them asks for the PIN: on a locked header
+        // they turn the gate off in two taps, with no verify call, no failure
+        // counter and no cooldown, and then sync `p:0` (or the tombstone) to
+        // every other device, where the section stops being gated too. The
+        // whole point of the side-effect-free verify keeping the lockout
+        // accounting is defeated without a single guess. Unlock first.
+        //
+        // ⚠ And nothing at all without a vault: an island that does not run one
+        // has no menu, no sections and no local-only fallback, because a
+        // fallback would create state that syncs badly the day it upgrades.
+        if locked || appState.vaultCapability != true || panicPIN.isDecoy {
+            header
+        } else {
+            header.contextMenu { sectionMenu(rec) }
+        }
+    }
+
+    /// The section is gated behind the app PIN on THIS device.
+    ///
+    /// ⚠ Under duress nothing is gated. The gate verifies the REAL PIN, so
+    /// asking for it in a decoy session rejects the coercer's decoy PIN as
+    /// "wrong" and announces that a second PIN exists. This is what
+    /// `archiveLocked` already did, kept.
+    private func sectionPinned(_ id: String) -> Bool {
+        if panicPIN.isDecoy { return false }
+        if let flag = Sections.pinFlag(sectionsStore.tree, id) { return flag }
+        // The slot has no opinion yet. Archive is the one section this client
+        // has gated whenever a PIN was configured since long before the flag
+        // existed, so it keeps doing that; `SectionsVault.sync` writes the
+        // opinion out as a real `p:1` on the first read of the slot, which is
+        // what carries it to the other clients.
+        return id == Sections.sysArchive && panicPIN.isConfigured
+    }
+
+    private func isCollapsed(_ id: String) -> Bool {
+        switch id {
+        case Sections.sysFav: return collapsedFavorites
+        case Sections.sysCI: return collapsedCrossIsland
+        case Sections.sysGroups: return collapsedGroups
+        case Sections.sysOnline: return vm.collapsedOnline
+        case Sections.sysOffline: return vm.collapsedOffline
+        case Sections.sysArchive: return collapsedArchive
+        default: return collapsedSections.contains(id)
+        }
+    }
+
+    private func setCollapsed(_ id: String, _ value: Bool) {
+        switch id {
+        case Sections.sysFav: collapsedFavorites = value
+        case Sections.sysCI: collapsedCrossIsland = value
+        case Sections.sysGroups: collapsedGroups = value
+        case Sections.sysOnline: vm.collapsedOnline = value
+        case Sections.sysOffline: vm.collapsedOffline = value
+        case Sections.sysArchive: collapsedArchive = value
+        default:
+            if value { collapsedSections.insert(id) } else { collapsedSections.remove(id) }
+        }
+    }
+
+    /// One line and a way past, for a section another device gated while this
+    /// one has no PIN to check against. Honest: a speed bump that says so.
+    @ViewBuilder
+    private func lockedWithoutPINRow(_ rec: SectionRow) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("sections.locked.nopin".localized)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("sections.locked.open_anyway".localized) {
+                noticeSections.remove(rec.id)
+                unlockedSections.insert(rec.id)
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Theme.Color.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.Metrics.rowHPad)
+        .padding(.vertical, 10)
+        .wallpaperSurface(Theme.Color.bgPrimary, wallpaperSurfaceMode)
+    }
+
+    // MARK: - The section menu
+
+    @ViewBuilder
+    private func sectionMenu(_ rec: SectionRow) -> some View {
+        Button {
+            reorderingSections.toggle()
+        } label: {
+            Label("sections.menu.reorder".localized, systemImage: "arrow.up.arrow.down")
+        }
+        Button {
+            newSectionText = ""
+            showNewSection = true
+        } label: {
+            Label("sections.menu.new".localized, systemImage: "folder.badge.plus")
+        }
+        // A device with no PIN configured cannot honour the flag, so it does
+        // not offer to set one.
+        if panicPIN.isConfigured {
+            Button {
+                if sectionPinned(rec.id) {
+                    applySections { Sections.setPinned($0, rec.id, on: false) }
                 } else {
-                    ForEach(visibleGroups) { group in
-                        GroupRow(group: group)
-                            .contentShape(Rectangle())
-                            .onTapGesture { path.append(group) }
-                            .scaleEffect(pressedRowID == "group:\(group.id)" ? 0.96 : 1.0)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-                            .onLongPressGesture(
-                                minimumDuration: 0.18,
-                                pressing: { isPressing in
-                                    // No haptic on press-down — fires on every taps/scroll-start.
-                                    if isPressing {
-                                        pressedRowID = "group:\(group.id)"
-                                    } else if pressedRowID == "group:\(group.id)" {
-                                        pressedRowID = nil
-                                    }
-                                },
-                                perform: { openPreview(.group(group)) }
-                            )
-                    }
+                    pinConfirmSection = rec.id
                 }
+            } label: {
+                Label(
+                    (sectionPinned(rec.id) ? "sections.menu.pin.off" : "sections.menu.pin").localized,
+                    systemImage: "key"
+                )
             }
+        }
+        if rec.isUser {
+            Button {
+                renameSectionText = rec.title
+                renameSectionID = rec.id
+            } label: {
+                Label("sections.menu.rename".localized, systemImage: "pencil")
+            }
+            Divider()
+            Button(role: .destructive) {
+                deleteSectionID = rec.id
+            } label: {
+                Label("sections.menu.delete".localized, systemImage: "trash")
+            }
+            .tint(.red)
+        }
+    }
+
+    /// Reorder is a MODE with arrows rather than a drag, deliberately. The
+    /// headers live inside a `LazyVStack` that materialises and drops rows as
+    /// the list scrolls, and a drag gesture on a lazy header fights the scroll
+    /// view for the same touch; the web ships the same arrows next to its drag
+    /// for the same reason. One write per move, debounced and coalesced.
+    @ViewBuilder
+    private func reorderControls(for rec: SectionRow) -> some View {
+        HStack(spacing: 2) {
+            Button { moveSection(rec.id, by: -1) } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 26, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("sections.move_up".localized)
+            Button { moveSection(rec.id, by: 1) } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 26, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("sections.move_down".localized)
+        }
+        .foregroundColor(Theme.Color.accent)
+    }
+
+    private var reorderBar: some View {
+        HStack(spacing: 8) {
+            Text("sections.reorder.hint".localized)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+            Spacer()
+            Button("sections.reorder.done".localized) { reorderingSections = false }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Theme.Color.accent)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .wallpaperSurface(Theme.Color.bgSecondary, wallpaperSurfaceMode)
+    }
+
+    // MARK: - Section edits
+
+    /// Every local edit goes through here: it patches the cached tree, repaints
+    /// at the speed of the tap, and pushes to the island behind the paint.
+    /// `deferred` coalesces a burst (moving sections about) into one put.
+    private func applySections(deferred: Bool = false, _ edit: (SectionsTree) throws -> SectionsTree) {
+        do {
+            _ = try SectionsVault.mutate(edit, deferred: deferred)
+        } catch let e as SectionsError {
+            sectionsErrorText = "sections.err.\(e.code)".localized
+        } catch {
+            sectionsErrorText = "common.error".localized
+        }
+    }
+
+    private func commitNewSection() {
+        let name = newSectionText
+        newSectionText = ""
+        guard !Sections.clampName(name).isEmpty else { return }
+        applySections { try Sections.createSection($0, name: name) }
+    }
+
+    private func commitRenameSection() {
+        guard let id = renameSectionID else { return }
+        let name = renameSectionText
+        renameSectionID = nil
+        guard !Sections.clampName(name).isEmpty else { return }
+        applySections { Sections.renameSection($0, id, name: name) }
+    }
+
+    private func commitPinOn() {
+        guard let id = pinConfirmSection else { return }
+        pinConfirmSection = nil
+        applySections { Sections.setPinned($0, id, on: true) }
+    }
+
+    /// Deleting a section does not touch the chats: they fall back into their
+    /// derived sections on the next render.
+    private func commitDeleteSection() {
+        guard let id = deleteSectionID else { return }
+        deleteSectionID = nil
+        collapsedSections.remove(id)
+        unlockedSections.remove(id)
+        applySections { Sections.deleteSection($0, id) }
+    }
+
+    private func moveSection(_ id: String, by delta: Int) {
+        let rendered = renderedSections(homeBuckets())
+        guard let at = rendered.firstIndex(where: { $0.id == id }) else { return }
+        let target = at + delta
+        guard target >= 0 && target < rendered.count else { return }
+        place(id, nextTo: rendered[target].id, after: delta > 0)
+    }
+
+    /// `o` moves in steps of 1024 and a move takes the midpoint between the new
+    /// neighbours. When they are less than 2 apart there is no room left, so
+    /// every section is renormalised to `index * 1024`: a normal
+    /// last-writer-wins write, rare, and it converges.
+    private func place(_ id: String, nextTo anchor: String, after: Bool) {
+        let rest = Sections.orderedSections(sectionsStore.tree).filter { Sections.id($0) != id }
+        guard let ai = rest.firstIndex(where: { Sections.id($0) == anchor }) else { return }
+        let at = after ? ai + 1 : ai
+        let step = Sections.orderStep
+        let before = at > 0 ? rest[at - 1] : nil
+        let next = at < rest.count ? rest[at] : nil
+        let lo = before.map { Sections.orderOf($0) } ?? (next.map { Sections.orderOf($0) - 2 * step } ?? 0)
+        let hi = next.map { Sections.orderOf($0) } ?? (before.map { Sections.orderOf($0) + 2 * step } ?? step)
+        if hi - lo < 2 {
+            var ids = rest.map { Sections.id($0) }
+            ids.insert(id, at: at)
+            var orders: [String: Int] = [:]
+            for (i, sid) in ids.enumerated() { orders[sid] = i * step }
+            applySections(deferred: true) { Sections.setOrder($0, orders) }
+            return
+        }
+        applySections(deferred: true) { Sections.setOrder($0, [id: (lo + hi) / 2]) }
+    }
+
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func groupRowItem(for group: RCQGroup) -> some View {
+        PressableRow(
+            onTap: { path.append(group) },
+            onLongPress: { openPreview(.group(group)) }
+        ) {
+            GroupRow(group: group, surface: wallpaperSurfaceMode)
+        }
+    }
+
+    private var createFirstGroupRow: some View {
+        Button { showCreateGroup = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .foregroundColor(Theme.Color.accent)
+                Text("contact_list.create_first_group".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Metrics.rowHPad)
+            .padding(.vertical, 10)
+            .wallpaperSurface(Theme.Color.bgPrimary, wallpaperSurfaceMode)
         }
     }
 
@@ -968,7 +1659,7 @@ struct ContactListView: View {
                     }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Theme.Color.bgSecondary.opacity(0.7))
+                .wallpaperSurface(sectionHeaderColor, wallpaperSurfaceMode)
             }
             if !collapsedAudioRooms {
                 if audioRooms.rooms.isEmpty {
@@ -983,11 +1674,11 @@ struct ContactListView: View {
                         }
                         .padding(.horizontal, Theme.Metrics.rowHPad)
                         .padding(.vertical, 10)
-                        .background(Theme.Color.bgPrimary)
+                        .wallpaperSurface(Theme.Color.bgPrimary, wallpaperSurfaceMode)
                     }
                 } else {
                     ForEach(audioRooms.rooms) { room in
-                        AudioRoomRow(room: room)
+                        AudioRoomRow(room: room, surface: wallpaperSurfaceMode)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 audioRooms.enter(room: room)
@@ -1037,95 +1728,6 @@ struct ContactListView: View {
         .animation(.easeOut(duration: 0.22), value: audioRooms.rooms.count)
     }
 
-    /// Archived contacts + groups, hidden in a collapsed disclosure at
-    /// the bottom of the list. Hidden entirely when nothing's archived
-    /// so the chrome doesn't take up space.
-    private var archiveLocked: Bool {
-        // The archive gate verifies the REAL PIN, so under duress it would
-        // reject the coercer's PIN as "wrong" — announcing a second PIN. There
-        // is nothing behind it to protect here anyway: the archive section is
-        // built from the seeded roster, whose uins are synthetic.
-        if PanicPINService.shared.isDecoy { return false }
-        return PanicPINService.shared.isConfigured && !archiveUnlocked
-    }
-
-    @ViewBuilder
-    private var archiveSection: some View {
-        let archivedGroups = groups.groups.filter { archive.contains(group: $0.id) }
-        let archivedContacts = vm.archivedContacts
-        let total = archivedGroups.count + archivedContacts.count
-        if total > 0 {
-            VStack(spacing: 0) {
-                Button {
-                    if archiveLocked {
-                        showArchivePINGate = true
-                    } else {
-                        collapsedArchive.toggle()
-                        if collapsedArchive && PanicPINService.shared.isConfigured {
-                            archiveUnlocked = false
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        CollapseChevron(collapsed: collapsedArchive || archiveLocked)
-                        Text("contact_list.section.archive".localized.uppercased())
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Text("(\(total))")
-                            .font(.system(size: 11))
-                            .foregroundColor(Theme.Color.textSecondary)
-                        Spacer()
-                        if archiveLocked {
-                            Image(systemName: "key.fill")
-                                .foregroundColor(Theme.Color.accent)
-                                .font(.system(size: 13))
-                        }
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Theme.Color.bgSecondary.opacity(0.7))
-                }
-                if !collapsedArchive && !archiveLocked {
-                    ForEach(archivedGroups) { group in
-                        GroupRow(group: group)
-                            .contentShape(Rectangle())
-                            .onTapGesture { path.append(group) }
-                            .scaleEffect(pressedRowID == "arch-group:\(group.id)" ? 0.96 : 1.0)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-                            .onLongPressGesture(
-                                minimumDuration: 0.18,
-                                pressing: { isPressing in
-                                    if isPressing {
-                                        pressedRowID = "arch-group:\(group.id)"
-                                    } else if pressedRowID == "arch-group:\(group.id)" {
-                                        pressedRowID = nil
-                                    }
-                                },
-                                perform: { openPreview(.group(group)) }
-                            )
-                    }
-                    ForEach(archivedContacts) { contact in
-                        ContactRow(contact: contact)
-                            .contentShape(Rectangle())
-                            .onTapGesture { path.append(contact) }
-                            .scaleEffect(pressedRowID == "arch-peer:\(contact.uin)" ? 0.96 : 1.0)
-                            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressedRowID)
-                            .onLongPressGesture(
-                                minimumDuration: 0.18,
-                                pressing: { isPressing in
-                                    if isPressing {
-                                        pressedRowID = "arch-peer:\(contact.uin)"
-                                    } else if pressedRowID == "arch-peer:\(contact.uin)" {
-                                        pressedRowID = nil
-                                    }
-                                },
-                                perform: { openPreview(.peer(contact)) }
-                            )
-                    }
-                }
-            }
-        }
-    }
-
     /// Big-blank fallback shown to fresh accounts whose contact AND
     /// group lists are both empty. Without it the new user lands on
     /// a screen full of "(0)" section headers and a floating capsule
@@ -1159,51 +1761,10 @@ struct ContactListView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
-    }
-
-    /// "Other islands" — cross-island contacts, straight from CrossIslandStore
-    /// (the merged roster drops them on a uin collision with a local contact).
-    /// Rows pass the full Contact (host set) into navigation, so the chat
-    /// routes cross-island even when a same-uin local contact exists.
-    @ViewBuilder
-    private var crossIslandSection: some View {
-        // Every row here is a real person on a real island, read STRAIGHT out
-        // of CrossIslandStore — `ContactService.clearForDecoy()` never saw it.
-        // A duress session shows only what was seeded, so this section does not
-        // exist there at all.
-        if panicPIN.isDecoy {
-            EmptyView()
-        } else {
-            crossIslandRows
-        }
-    }
-
-    @ViewBuilder
-    private var crossIslandRows: some View {
-        let unread = UnreadStore.shared.allPeerCounts
-        // Anything filed under one of our own island's names is not a foreign
-        // peer, it is a roster row that got misclassified while the app was
-        // running over the CF front (see Multihome.isOwnHost). CrossIslandStore
-        // prunes those on bind; this guard keeps the section honest for a
-        // session that is already running when the transport flips back.
-        let rows = ciStore.contactsSnapshot
-            .filter { !Multihome.isOwnHost($0.host) }
-            .map { c -> Contact in
-                var c = c
-                c.unread = unread[c.uin] ?? 0
-                return c
-            }
-            .sorted { $0.nickname.lowercased() < $1.nickname.lowercased() }
-        if !rows.isEmpty {
-            section(
-                title: "contact_list.section.cross_island".localized,
-                count: rows.count,
-                collapsed: collapsedCrossIsland,
-                rows: rows,
-                unreadBadge: rows.filter { $0.unread > 0 }.count,
-                toggle: { collapsedCrossIsland.toggle() }
-            )
-        }
+        // The one block on this screen with no fill of its own. Without a
+        // wallpaper this paints the colour it was already standing on, so it
+        // looks identical; with one it stops being loose text on a photograph.
+        .wallpaperSurface(Theme.Color.bgPrimary, wallpaperSurfaceMode)
     }
 
     /// Held cross-island requests count towards the pending banner — but never
@@ -1232,48 +1793,7 @@ struct ContactListView: View {
                     .font(.system(size: 11)).foregroundColor(Theme.Color.textSecondary)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Theme.Color.bgSecondary)
-        }
-    }
-
-    private func section(
-        title: String, count: Int, collapsed: Bool, rows: [Contact],
-        unreadBadge: Int = 0, toggle: @escaping () -> Void
-    ) -> some View {
-        VStack(spacing: 0) {
-            Button(action: toggle) {
-                HStack(spacing: 6) {
-                    CollapseChevron(collapsed: collapsed)
-                    // Caller already passes a localized string; we
-                    // only uppercase here for the section-header
-                    // typography.
-                    Text(title.uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.Color.textSecondary)
-                    Text("(\(count))")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.Color.textSecondary)
-                    Spacer()
-                    if unreadBadge > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "envelope.badge.fill")
-                                .font(.system(size: 9))
-                            Text("\(unreadBadge)")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Theme.Color.statusBusy))
-                    }
-                }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Theme.Color.bgSecondary.opacity(0.7))
-            }
-            if !collapsed {
-                ForEach(rows) { contact in
-                    contactRowItem(for: contact)
-                }
-            }
+            .wallpaperSurface(Theme.Color.bgSecondary, wallpaperSurfaceMode)
         }
     }
 
@@ -1558,10 +2078,22 @@ struct ContactListView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        // The capsule floats directly on the wallpaper, so it frosts with
+        // everything else rather than staying the one flat slab on screen.
+        // Built by hand rather than through `wallpaperSurface` because the
+        // shadow has to be cast by the CAPSULE: taken on the composited view
+        // it would trace the icons and labels as well.
         .background(
-            Capsule(style: .continuous)
-                .fill(Theme.Color.bgSecondary)
-                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+            Group {
+                if wallpaperSurfaceMode == .none {
+                    Capsule(style: .continuous).fill(Theme.Color.bgSecondary)
+                } else {
+                    Capsule(style: .continuous)
+                        .fill(Theme.Color.bgSecondary.opacity(wallpaperSurfaceMode.tint))
+                        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+                }
+            }
+            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
         )
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
@@ -1608,6 +2140,12 @@ struct ContactListView: View {
 /// under the UIN, just as it did in the legacy client.
 private struct ContactRow: View {
     let contact: Contact
+    /// How this row paints its own ground. Flat by default; over a home
+    /// wallpaper the row becomes a translucent frosted band so the wallpaper
+    /// is visible THROUGH the list rather than only in the gaps between
+    /// sections, which is what "the section containers stay a flat theme
+    /// colour" was describing.
+    var surface: WallpaperSurface = .none
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
     @ObservedObject private var mentionInbox = MentionInboxStore.shared
@@ -1720,7 +2258,7 @@ private struct ContactRow: View {
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)
-        .background(Theme.Color.bgPrimary)
+        .wallpaperSurface(Theme.Color.bgPrimary, surface)
     }
 
     @ViewBuilder
@@ -1761,10 +2299,13 @@ private extension DateFormatter {
 
 /// Identifiable wrapper so the deep-link UIN drives a `.sheet(item:)` presentation.
 private struct DeepLinkUIN: Identifiable, Hashable { let uin: Int; var id: Int { uin } }
+/// Same, for the section a sheet is about.
+private struct SectionID: Identifiable, Hashable { let id: String }
 private struct JoinGroupTrigger: Identifiable, Hashable { let id: Int }
 
 private struct GroupRow: View {
     let group: RCQGroup
+    var surface: WallpaperSurface = .none
     @StateObject private var groups = GroupService.shared
     @ObservedObject private var sound = SoundService.shared
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
@@ -1824,12 +2365,8 @@ private struct GroupRow: View {
                             .foregroundColor(Theme.Color.textSecondary)
                     }
                 }
-                Text(String(
-                    format: (group.memberCount == 1
-                        ? "contact_list.members_one"
-                        : "contact_list.members_many").localized,
-                    group.memberCount
-                ) + (group.host.map { " · \($0)" } ?? ""))
+                Text(Self.memberLabel(group.memberCount)
+                    + (group.host.map { " · \($0)" } ?? ""))
                     .font(.caption).foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
             }
@@ -1851,7 +2388,20 @@ private struct GroupRow: View {
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)
-        .background(Theme.Color.bgPrimary)
+        .wallpaperSurface(Theme.Color.bgPrimary, surface)
+    }
+
+    /// "12 members" up to 999, then the compact form: "1K members",
+    /// "2.1K members". A five-figure room printed in full wrapped this row on a
+    /// narrow phone, and the thresholds are the web's to the character
+    /// (`Int.compactCount`), so one room never reads two different sizes on two
+    /// clients.
+    ///
+    /// The rule itself lives in `MemberCountLabel` now, because the chat
+    /// header, the search results and the forward picker print the same count
+    /// and have to print it the same way.
+    private static func memberLabel(_ count: Int) -> String {
+        MemberCountLabel.text(count)
     }
 }
 
@@ -1861,6 +2411,7 @@ private struct GroupRow: View {
 /// can delete.
 private struct AudioRoomRow: View {
     let room: AudioRoom
+    var surface: WallpaperSurface = .none
     @StateObject private var audio = AudioRoomService.shared
     /// Flips the copy glyph to a tick for a moment, the way Settings does it
     /// for the UIN. Without it the button gave a haptic and looked untouched.
@@ -1940,7 +2491,7 @@ private struct AudioRoomRow: View {
         }
         .padding(.horizontal, Theme.Metrics.rowHPad)
         .padding(.vertical, Theme.Metrics.rowVPad)
-        .background(Theme.Color.bgPrimary)
+        .wallpaperSurface(Theme.Color.bgPrimary, surface)
     }
 }
 
@@ -1968,69 +2519,172 @@ private struct StealthHeaderBadge: View {
     }
 }
 
-/// Local anchor for the presence "stay online for N hours" countdown shown
-/// in the contact-list header. Set when the user enables/changes the window
-/// in Privacy settings, re-anchored on every change, cleared when off. Keyed
-/// by UIN so each account on the device tracks its own window.
-enum PresenceWindow {
-    private static func key(_ uin: Int?) -> String { "rcq.presenceWindow.\(uin ?? 0)" }
+/// Press feedback that belongs to the ROW.
+///
+/// `onLongPressGesture(pressing:)` fires on touch DOWN, including the
+/// touch-down that turns out to be a scroll, and again when the press is
+/// cancelled. While the pressed row's id lived in a `@State` on
+/// `ContactListView`, that meant putting a finger anywhere on the list rewrote
+/// root state and re-ran the whole screen's body, twice per scroll, before a
+/// single pixel had moved. A row's own press is nobody else's business, which
+/// is the rule Telegram's list follows and the reason its list does not
+/// stutter under a finger.
+///
+/// The id-prefix bookkeeping ("fav-peer:", "arch-group:") went with it: a row
+/// that owns its state cannot be confused with its duplicate in another
+/// section.
+private struct PressableRow<Content: View>: View {
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+    @ViewBuilder let content: () -> Content
 
-    static func anchor(ttlMinutes: Int, uin: Int?) {
-        let expiry = Date().addingTimeInterval(Double(ttlMinutes) * 60)
-        UserDefaults.standard.set(expiry.timeIntervalSince1970, forKey: key(uin))
-    }
+    @State private var pressed = false
 
-    static func clear(uin: Int?) {
-        UserDefaults.standard.removeObject(forKey: key(uin))
-    }
-
-    static func expiry(uin: Int?) -> Date? {
-        let t = UserDefaults.standard.double(forKey: key(uin))
-        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    var body: some View {
+        content()
+            .contentShape(Rectangle())
+            .scaleEffect(pressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.18, dampingFraction: 0.86), value: pressed)
+            .onTapGesture(perform: onTap)
+            .onLongPressGesture(
+                minimumDuration: 0.18,
+                // No haptic on press-down: it fires on every tap and every
+                // scroll start.
+                pressing: { pressed = $0 },
+                perform: onLongPress
+            )
     }
 }
 
-/// Compact "stay visible" countdown chip (clock + "Xh Ym") that sits left of
-/// the header status icon. Ticks via TimelineView; hidden when the window is
-/// off or has elapsed.
-private struct PresenceCountdownChip: View {
-    let uin: Int?
-    /// Rendered transparent + non-interactive as a width mirror on the trailing
-    /// side, so the leading chip never shifts the centred nick/UIN.
-    var invisible: Bool = false
-    var onTap: (() -> Void)? = nil
+/// The home wallpaper, painted from the PER-THEME preset table.
+///
+/// Deliberately not `ChatBackgroundView(home: true)`: that one paints the flat
+/// `ChatBackgrounds` list, whose colours are authored once and therefore
+/// contradict the active theme half the time. See `Theme.Wallpaper`. The
+/// custom-image branch is the same behaviour to the byte.
+private struct HomeWallpaperView: View {
+    @ObservedObject private var bg = ChatBackgroundStore.shared
+    @State private var custom: UIImage?
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 15)) { context in
-            if let expiry = PresenceWindow.expiry(uin: uin), expiry > context.date {
-                HStack(spacing: 3) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Theme.Color.accent)
-                    Text(Self.label(expiry.timeIntervalSince(context.date)))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Theme.Color.textSecondary)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Theme.Color.bgSecondary))
-                .contentShape(Capsule())
-                .opacity(invisible ? 0 : 1)
-                .allowsHitTesting(!invisible)
-                .onTapGesture { onTap?() }
+        let selection = bg.homeSelection
+        Group {
+            if let colors = Theme.Wallpaper.colors(forSelection: selection) {
+                LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+            } else if selection == "custom", let custom {
+                Image(uiImage: custom).resizable().scaledToFill()
             }
         }
+        .task(id: "\(selection)#\(bg.homeCustomStamp)") {
+            custom = selection == "custom"
+                ? UIImage(contentsOfFile: ChatBackgroundStore.imageURL(home: true).path)
+                : nil
+        }
+    }
+}
+
+/// What the account switcher knows about ONE account without asking anybody.
+///
+/// The island's name is served by `/server/info`, and only the account that is
+/// currently active can call it, and every other row in the switcher is an
+/// island this process is not talking to. Cached, that stops mattering: each
+/// account writes its own card while it is live, and the switcher draws all of
+/// them from disk. Same division the desktop makes
+/// (`web-chat/src/lib/contacts-cache.ts`: "there is nothing to fetch").
+struct AccountCard: Codable {
+    /// What the island calls itself. Empty when it has never answered or its
+    /// operator left the field blank; callers fall back to the host.
+    var islandName: String
+    var host: String
+    var uin: Int?
+    var nickname: String
+}
+
+/// Per-account, survives a cold start, written only when a fact changes.
+///
+/// UserDefaults rather than the sealed roster files: an island's public name
+/// and the host you already typed to reach it are not secrets, and the switcher
+/// has to be able to draw a row for an account whose panic-PIN data key is not
+/// unlocked in this process. Nothing here is written in a decoy session.
+enum AccountCardCache {
+    private static let prefix = "rcq.accountCard.v1."
+
+    private static func key(_ id: UUID) -> String { prefix + id.uuidString }
+
+    static func card(for id: UUID) -> AccountCard? {
+        guard let data = UserDefaults.standard.data(forKey: key(id)) else { return nil }
+        return try? JSONDecoder().decode(AccountCard.self, from: data)
     }
 
-    static func label(_ secs: TimeInterval) -> String {
-        let totalMin = Int(secs / 60)
-        let h = totalMin / 60, m = totalMin % 60
-        let hU = "presence.countdown.h_unit".localized
-        let mU = "presence.countdown.m_unit".localized
-        if h > 0 && m > 0 { return "\(h)\(hU) \(m)\(mU)" }
-        if h > 0 { return "\(h)\(hU)" }
-        if totalMin > 0 { return "\(m)\(mU)" }
-        return "presence.countdown.lt1m".localized
+    static func record(_ fresh: AccountCard, for id: UUID) {
+        // A half-known card (the boot has the host but `/server/info` has not
+        // landed yet) must not overwrite a full one from the last run, or the
+        // switcher would lose the island's name for a second on every launch.
+        if fresh.islandName.isEmpty, let existing = card(for: id), !existing.islandName.isEmpty {
+            var merged = fresh
+            merged.islandName = existing.islandName
+            write(merged, for: id)
+            return
+        }
+        write(fresh, for: id)
+    }
+
+    private static func write(_ card: AccountCard, for id: UUID) {
+        guard let data = try? JSONEncoder().encode(card) else { return }
+        UserDefaults.standard.set(data, forKey: key(id))
+    }
+
+    /// Dropped along with the rest of an account's local state.
+    static func forget(_ id: UUID) {
+        UserDefaults.standard.removeObject(forKey: key(id))
+    }
+}
+
+/// An island's face: its initial on a colour derived from its host.
+///
+/// Islands have no avatar on the wire (`/server/info` serves a name and a
+/// welcome text and nothing else), so this is generated rather than fetched,
+/// which also means it is free and always available. Rounded square, not a
+/// circle: a person is a circle and a group is a circle, and an island is
+/// neither.
+struct IslandAvatarView: View {
+    let name: String
+    let host: String
+    var size: CGFloat = 28
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .fill(Self.tint(for: host))
+            .frame(width: size, height: size)
+            .overlay(
+                Text(Self.initial(name: name, host: host))
+                    .font(.system(size: size * 0.46, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            )
+    }
+
+    private static func initial(name: String, host: String) -> String {
+        let source = name.isEmpty ? host : name
+        // First LETTER, not first character: a name that opens with an emoji or
+        // a bracket would otherwise draw a tile with punctuation on it.
+        guard let ch = source.first(where: { $0.isLetter || $0.isNumber }) else { return "#" }
+        return String(ch).uppercased()
+    }
+
+    /// ⚠ FNV-1a over the host, never `hashValue`: Swift's hashing is seeded per
+    /// process, so an island would change colour on every launch.
+    private static func tint(for host: String) -> Color {
+        var hash: UInt32 = 2_166_136_261
+        for byte in host.lowercased().utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        // Spread over the wheel, but kept off full saturation so the tile reads
+        // as chrome rather than as an alert.
+        return Color(
+            hue: Double(hash % 360) / 360,
+            saturation: 0.46,
+            brightness: 0.62
+        )
     }
 }
 

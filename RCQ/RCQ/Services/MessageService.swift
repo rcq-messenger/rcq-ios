@@ -66,11 +66,16 @@ final class MessageService {
             )
         }()
         let ttl = message.ttlSeconds
+        // The countdown the peer runs must start where OUR copy's starts. A
+        // retry hours after the failed send would otherwise stamp itself at
+        // seal time and hand the peer a fresh lifetime this device's own row
+        // will not get. `sentAt` on an outgoing row IS the compose time.
+        let composedTS = Int(message.sentAt.timeIntervalSince1970)
 
         let envelope: Envelope? = {
             switch message.kind {
             case .text:
-                return .text(id: message.id, text: message.text, ttl: ttl, replyTo: reply)
+                return .text(id: message.id, text: message.text, ttl: ttl, ts: composedTS, replyTo: reply)
             case .photo, .video, .file, .voice:
                 guard let combined = message.mediaID,
                       let pipe = combined.firstIndex(of: "|") else { return nil }
@@ -79,13 +84,13 @@ final class MessageService {
                 let caption: String? = message.text.isEmpty ? nil : message.text
                 switch message.kind {
                 case .photo:
-                    return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
+                    return .photo(id: message.id, mediaID: mediaID, mediaKey: key, caption: caption, ttl: ttl, ts: composedTS, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
                 case .video:
-                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec, caption: caption, ttl: ttl, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
+                    return .video(id: message.id, mediaID: mediaID, mediaKey: key, thumbnailB64: message.thumbnailB64 ?? "", durationSec: message.durationSec, caption: caption, ttl: ttl, ts: composedTS, replyTo: reply, albumID: message.albumID, spoiler: message.isSpoiler)
                 case .file:
-                    return .file(id: message.id, mediaID: mediaID, mediaKey: key, fileName: message.fileName ?? "file", mime: message.fileMime ?? "application/octet-stream", sizeBytes: message.fileSizeBytes ?? 0, caption: caption, ttl: ttl, replyTo: reply)
+                    return .file(id: message.id, mediaID: mediaID, mediaKey: key, fileName: message.fileName ?? "file", mime: message.fileMime ?? "application/octet-stream", sizeBytes: message.fileSizeBytes ?? 0, caption: caption, ttl: ttl, ts: composedTS, replyTo: reply)
                 case .voice:
-                    return .voice(id: message.id, mediaID: mediaID, mediaKey: key, durationSec: message.durationSec, ttl: ttl, replyTo: reply)
+                    return .voice(id: message.id, mediaID: mediaID, mediaKey: key, durationSec: message.durationSec, ttl: ttl, ts: composedTS, replyTo: reply)
                 default: return nil
                 }
             default:
@@ -602,6 +607,7 @@ final class MessageService {
                 thumbnailB64: msg.thumbnailB64,
                 durationSec: msg.durationSec,
                 ttlSeconds: msg.ttlSeconds,
+                senderSentAt: msg.senderSentAt,
                 forwardedFromName: msg.forwardedFromName,
                 replyToID: msg.replyToID,
                 replyToSnippet: msg.replyToSnippet,
@@ -788,54 +794,66 @@ final class MessageService {
     ) -> Bool {
         let me = senderUIN
         switch inner {
-        case .text(let id, let text, let ttl, let fwd, let reply):
+        case .text(let id, let text, let ttl, let ts, let fwd, let reply):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .text, text: text, sentAt: serverTime, deliveryState: .delivered,
-                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                receivedWhileAway: false, ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
             ))
-        case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let fwd, let reply, let album, let spoiler):
+        case .photo(let id, let mediaID, let mediaKey, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .photo, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
-                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                receivedWhileAway: false, ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
                 albumID: album, isSpoiler: spoiler
             ))
-        case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let fwd, let reply, let album, let spoiler):
+        case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let ttl, let ts, let fwd, let reply, let album, let spoiler):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .video, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
                 receivedWhileAway: false, thumbnailB64: thumb, durationSec: dur,
-                ttlSeconds: ttl, forwardedFromName: fwd,
+                ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
                 albumID: album, isSpoiler: spoiler
             ))
-        case .voice(let id, let mediaID, let mediaKey, let dur, let ttl, let fwd, let reply):
+        case .voice(let id, let mediaID, let mediaKey, let dur, let ttl, let ts, let fwd, let reply):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .voice, text: "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
-                receivedWhileAway: false, durationSec: dur, ttlSeconds: ttl, forwardedFromName: fwd,
+                receivedWhileAway: false, durationSec: dur, ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName
             ))
-        case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let ttl, let fwd, let reply):
+        case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let ttl, let ts, let fwd, let reply):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .file, text: caption ?? "", mediaID: mediaID + "|" + mediaKey,
                 sentAt: serverTime, deliveryState: .delivered,
-                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                receivedWhileAway: false, ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
                 fileName: fname, fileMime: mime, fileSizeBytes: size
             ))
-        case .location(let id, let lat, let lng, let caption, let ttl, let fwd, let reply):
+        case .location(let id, let lat, let lng, let caption, let ttl, let ts, let fwd, let reply):
             return MessageStore.shared.append(Message(
                 id: id, thread: thread, senderUIN: me, isFromMe: isFromMe,
                 kind: .location, text: caption ?? "", sentAt: serverTime, deliveryState: .delivered,
-                receivedWhileAway: false, ttlSeconds: ttl, forwardedFromName: fwd,
+                receivedWhileAway: false, ttlSeconds: ttl,
+                senderSentAt: Self.inboundAnchor(envTTL: ttl, ts: ts, receipt: serverTime),
+                forwardedFromName: fwd,
                 replyToID: reply?.id, replyToSnippet: reply?.snippet, replyToAuthorName: reply?.authorName,
                 latitude: lat, longitude: lng
             ))
@@ -1568,12 +1586,27 @@ final class MessageService {
         return reply.authorName
     }
 
+    /// Where an inbound disappearing row starts counting from, or nil to keep
+    /// counting from the local timestamp the way this client always has.
+    ///
+    /// `receipt` is what the row's `sentAt` will be: the island's deposit time
+    /// for a queued envelope, this instant for anything handed over live.
+    ///
+    /// ⚠ A `ts` that arrives WITHOUT a `ttl` is ignored. The timer in force is
+    /// then the reader's own thread setting, and the sender does not get to
+    /// move the start of a clock the reader set for themselves. It also mirrors
+    /// the send side, which never writes one without the other.
+    nonisolated static func inboundAnchor(envTTL: Int?, ts: Int?, receipt: Date) -> Date? {
+        guard envTTL != nil else { return nil }
+        return ChatSettingsStore.senderSentAt(ts: ts, receipt: receipt)
+    }
+
     static func messageID(in envelope: Envelope) -> UUID? {
         switch envelope {
-        case .text(let id, _, _, _, _): return id
-        case .photo(let id, _, _, _, _, _, _, _, _): return id
-        case .video(let id, _, _, _, _, _, _, _, _, _, _): return id
-        case .voice(let id, _, _, _, _, _, _): return id
+        case .text(let id, _, _, _, _, _): return id
+        case .photo(let id, _, _, _, _, _, _, _, _, _): return id
+        case .video(let id, _, _, _, _, _, _, _, _, _, _, _): return id
+        case .voice(let id, _, _, _, _, _, _, _): return id
         case .systemNotice(let id, _): return id
         case .poll(let id, _, _, _, _, _): return id
         case .relayShare(let id, _, _): return id
@@ -1604,11 +1637,11 @@ final class MessageService {
     /// A short plaintext preview of a quarantined cross-island request message.
     static func requestPreview(for env: Envelope) -> String {
         switch env {
-        case .text(_, let text, _, _, _): return text
-        case .photo(_, _, _, let caption, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "📷"
-        case .video(_, _, _, _, _, let caption, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "🎬"
+        case .text(_, let text, _, _, _, _): return text
+        case .photo(_, _, _, let caption, _, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "📷"
+        case .video(_, _, _, _, _, let caption, _, _, _, _, _, _): return caption?.isEmpty == false ? caption! : "🎬"
         case .voice: return "🎤"
-        case .file(_, _, _, let fname, _, _, _, _, _, _): return "📎 \(fname)"
+        case .file(_, _, _, let fname, _, _, _, _, _, _, _): return "📎 \(fname)"
         case .location: return "📍"
         default: return ""
         }
@@ -1925,7 +1958,7 @@ final class MessageService {
                let peer = RandomChatService.shared.activePeer,
                decrypted.senderUIN == peer.uin {
                 switch decrypted.envelope {
-                case .text(let id, let text, _, _, let reply):
+                case .text(let id, let text, _, _, _, let reply):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1940,7 +1973,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, let reply, let album, let spoiler):
+                case .photo(let id, let mediaID, let mediaKey, let caption, _, _, _, let reply, let album, let spoiler):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1958,7 +1991,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, let reply, let album, let spoiler):
+                case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, _, _, _, let reply, let album, let spoiler):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1978,7 +2011,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .voice(let id, let mediaID, let mediaKey, let dur, _, _, let reply):
+                case .voice(let id, let mediaID, let mediaKey, let dur, _, _, _, let reply):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -1995,7 +2028,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, _, _, let reply):
+                case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, _, _, _, let reply):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -2014,7 +2047,7 @@ final class MessageService {
                     )
                     RandomChatService.shared.append(m)
                     SoundService.shared.play(.messageIncoming)
-                case .location(let id, let lat, let lng, let caption, _, _, let reply):
+                case .location(let id, let lat, let lng, let caption, _, _, _, let reply):
                     let m = Message(
                         id: id,
                         thread: .peer(uin: peer.uin),
@@ -2123,7 +2156,7 @@ final class MessageService {
             let localTTL = ChatSettingsStore.shared.ttl(for: thread)
             var inserted = false
             switch decrypted.envelope {
-            case .text(let id, let text, let envTTL, let fwd, let reply):
+            case .text(let id, let text, let envTTL, let ts, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2134,6 +2167,7 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
@@ -2148,7 +2182,7 @@ final class MessageService {
                    bodyMentionsMe(text) {
                     MentionInboxStore.shared.mark(thread)
                 }
-            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let fwd, let reply, let album, let spoiler):
+            case .photo(let id, let mediaID, let mediaKey, let caption, let envTTL, let ts, let fwd, let reply, let album, let spoiler):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2160,6 +2194,7 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
@@ -2167,7 +2202,7 @@ final class MessageService {
                     albumID: album,
                     isSpoiler: spoiler
                 ))
-            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let fwd, let reply, let album, let spoiler):
+            case .video(let id, let mediaID, let mediaKey, let thumb, let dur, let caption, let envTTL, let ts, let fwd, let reply, let album, let spoiler):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2181,6 +2216,7 @@ final class MessageService {
                     thumbnailB64: thumb,
                     durationSec: dur,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
@@ -2188,7 +2224,7 @@ final class MessageService {
                     albumID: album,
                     isSpoiler: spoiler
                 ))
-            case .voice(let id, let mediaID, let mediaKey, let dur, let envTTL, let fwd, let reply):
+            case .voice(let id, let mediaID, let mediaKey, let dur, let envTTL, let ts, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2201,12 +2237,13 @@ final class MessageService {
                     receivedWhileAway: ws.offline,
                     durationSec: dur,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
                     replyToAuthorName: reply?.authorName
                 ))
-            case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let envTTL, let fwd, let reply):
+            case .file(let id, let mediaID, let mediaKey, let fname, let mime, let size, let caption, let envTTL, let ts, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2218,6 +2255,7 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
@@ -2226,7 +2264,7 @@ final class MessageService {
                     fileMime: mime,
                     fileSizeBytes: size
                 ))
-            case .location(let id, let lat, let lng, let caption, let envTTL, let fwd, let reply):
+            case .location(let id, let lat, let lng, let caption, let envTTL, let ts, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
@@ -2237,6 +2275,7 @@ final class MessageService {
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline,
                     ttlSeconds: envTTL ?? localTTL,
+                    senderSentAt: Self.inboundAnchor(envTTL: envTTL, ts: ts, receipt: ws.serverTime),
                     forwardedFromName: fwd,
                     replyToID: reply?.id,
                     replyToSnippet: reply?.snippet,
@@ -2256,6 +2295,10 @@ final class MessageService {
                 // ignores a foreign delete and keeps the message — nothing
                 // breaks, it just stays there. 1:1 deletes remain author-only.
                 let deleter = decrypted.senderUIN
+                // The window is read on demand; a retraction can land in a
+                // chat nobody has opened this session, and the authorisation
+                // check below needs the target row.
+                MessageStore.shared.ensureLoaded(thread)
                 let target = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
                 var authorized = target?.senderUIN == deleter
                 if !authorized, case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
@@ -2328,41 +2371,49 @@ final class MessageService {
                     sentAt: ws.serverTime,
                     deliveryState: .delivered
                 ))
-            case .poll(let id, let pollID, let question, let options, let singleChoice, let anonymous):
-                // Bubble keeps the question + options + flags as a
-                // small JSON blob inside `text` — the renderer parses
-                // it via `PollPayload.decode`. Server-side vote
-                // tallies fetched on demand via /polls/{pollID}.
-                let payload = PollPayload(
-                    question: question,
-                    options: options,
-                    singleChoice: singleChoice,
-                    anonymous: anonymous
-                )
-                let encoded = (try? JSONEncoder().encode(payload))
-                    .flatMap { String(data: $0, encoding: .utf8) } ?? question
+            case .poll(let id, _, _, _, _, _):
+                // Polls are removed (14a) and the island now answers 410
+                // feature_removed, so there is no tally to fetch and no ballot
+                // to cast. A peer on an old build still sends them, though, and
+                // a removed feature has to ANSWER rather than vanish: the row is
+                // still filed, still in the right place in the thread, and
+                // `MessageRow` draws it as "no longer supported".
+                //
+                // Nothing off the wire is kept. The question and the options
+                // used to be re-encoded into `text` as JSON for the bubble to
+                // parse; nothing parses it any more, and storing the body of a
+                // feature we just took away would only be a thing to leak.
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
                     isFromMe: decrypted.senderUIN == ownUIN,
-                    kind: .poll, text: encoded,
+                    kind: .poll, text: "",
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
-                    receivedWhileAway: ws.offline,
-                    pollID: pollID
+                    receivedWhileAway: ws.offline
                 ))
             case .relayShare(let id, let relay, _):
                 // In-chat bridge sharing: a contact handed us a relay to augment
                 // our transport pool. Store the rcq-relay:// token in `text`;
-                // ChatView renders it as an Add card. Drop malformed shares.
-                guard let r = ContactRelayStore.relayFromWire(relay) else { return nil }
+                // ChatView renders it as an Add card.
+                //
+                // ⚠ A descriptor THIS build cannot parse (a transport added
+                // after it shipped, a vless row with no uuid) still gets a row,
+                // with an empty token: `RelayShareBubble` draws it as
+                // "relay.share.invalid". Returning nil here instead used to
+                // mean the offline drain read it as "do not ACK", so the island
+                // handed the same row back on every reconnect until the queue
+                // TTL, while the user was told nothing and lost a relay they
+                // were handed.
+                let token = ContactRelayStore.relayFromWire(relay)
+                    .map { ContactRelayStore.relayToToken($0) } ?? ""
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
                     isFromMe: decrypted.senderUIN == ownUIN,
-                    kind: .relay, text: ContactRelayStore.relayToToken(r),
+                    kind: .relay, text: token,
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
                     receivedWhileAway: ws.offline
@@ -2441,12 +2492,21 @@ final class MessageService {
             // tick cannot stand for all of them.
             if inserted, case .peer(let peerUIN) = thread, peerUIN != ownUIN,
                decrypted.senderUIN != ownUIN,
-               let contact = ContactService.shared.contacts.first(where: { $0.uin == peerUIN }),
                let insertedID = MessageStore.shared.messages(for: thread).last?.id {
-                Task { [weak self] in
-                    try? await self?.sendEnvelope(
-                        .deliveredReceipt(targetIDs: [insertedID]), to: contact, localID: nil
-                    )
+                if drainBatch != nil {
+                    // Inside a drain page: collect, and confirm the whole page
+                    // to each peer in ONE envelope when it ends. A backlog of
+                    // fifty messages used to be fifty seals and fifty POSTs,
+                    // fired from inside the loop that was already holding the
+                    // main actor. `.deliveredReceipt` has always carried a
+                    // list; nothing on the wire changes.
+                    drainBatch?.receipts[peerUIN, default: []].append(insertedID)
+                } else if let contact = ContactService.shared.contacts.first(where: { $0.uin == peerUIN }) {
+                    Task { [weak self] in
+                        try? await self?.sendEnvelope(
+                            .deliveredReceipt(targetIDs: [insertedID]), to: contact, localID: nil
+                        )
+                    }
                 }
             }
             os_log(
@@ -2527,14 +2587,100 @@ final class MessageService {
     /// `ingest`: the drain would be waiting on itself.
     private var drainTail: Task<Void, Never>?
 
-    private func serialisedDrain(_ body: @escaping @MainActor () async -> Void) async {
-        let previous = drainTail
-        let task = Task { @MainActor in
-            await previous?.value
-            await body()
+    /// How many rows one uninterrupted stretch of a drain handles before it
+    /// hands the main actor back. Small enough that a chunk is a frame's worth
+    /// of work rather than a freeze, large enough that the per-chunk costs
+    /// (one fsync, one publish of the roster, one write of the icon file) stay
+    /// amortised over real work.
+    private static let drainChunkSize = 25
+
+    /// What a page of a drain owes the rest of the app, held until the page
+    /// ends instead of being paid per row.
+    ///
+    /// Every one of these was a full round trip of its own: `incrementUnread`
+    /// republishes the whole roster (and the chat list re-partitions it in
+    /// `body`), `BadgeCounter.increment` rewrites a JSON file in the App Group,
+    /// `syncIcon` reads it back, and the delivered receipt was one sealed
+    /// envelope and one POST **per message**. Paid once per page they are the
+    /// same numbers on screen and one round trip each.
+    private struct DrainBatch {
+        /// Message ids to confirm receipt of, per peer.
+        var receipts: [Int: [UUID]] = [:]
+        var peerUnread: [Int: Int] = [:]
+        var groupUnread: [Int: Int] = [:]
+        /// App-icon slots, keyed the way `BadgeCounter` keys them.
+        var badge: [String: Int] = [:]
+    }
+
+    /// Non-nil only while a drain page is being walked. `ingest` and
+    /// `noteDrainedContent` read it to decide between accumulating and acting;
+    /// the live socket path never sees one, so live delivery is unchanged.
+    ///
+    /// Protected by the main actor: `MessageService` is `@MainActor`, every
+    /// writer of this property is a synchronous stretch between suspension
+    /// points, and `serialisedDrain` guarantees only one drain walks a page at
+    /// a time.
+    private var drainBatch: DrainBatch?
+
+    /// Returns true when THIS caller opened the page. A caller that did not
+    /// must neither flush nor discard it: the scope that opened it will.
+    private func beginDrainBatch() -> Bool {
+        guard drainBatch == nil else { return false }
+        drainBatch = DrainBatch()
+        return true
+    }
+
+    /// Throw the chunk's bookkeeping away without applying it. Only for a
+    /// chunk that never reached disk (the fetch itself threw): a chunk that
+    /// did is flushed before the drain yields, precisely because a discard
+    /// after `MessageDB.endBatch` is unrecoverable. Redelivery does not undo
+    /// it — `insertIfAbsent` recognises the row, `isNewContent` comes back
+    /// false, and the unread bump the discard dropped is never made again.
+    private func discardDrainBatch(_ owns: Bool) {
+        guard owns else { return }
+        drainBatch = nil
+    }
+
+    /// Apply everything the page accumulated, in one pass each.
+    private func flushDrainBatch(_ owns: Bool) {
+        guard owns, let batch = drainBatch else { return }
+        drainBatch = nil
+        ContactService.shared.applyUnreadDeltas(batch.peerUnread)
+        GroupService.shared.applyUnreadDeltas(batch.groupUnread)
+        if !batch.badge.isEmpty {
+            BadgeCounter.increment(deltas: batch.badge)
+            BadgeCounter.syncIcon()
         }
-        drainTail = task
-        await task.value
+        for (peerUIN, ids) in batch.receipts {
+            guard !ids.isEmpty,
+                  let contact = ContactService.shared.contacts.first(where: { $0.uin == peerUIN })
+            else { continue }
+            Task { [weak self] in
+                try? await self?.sendEnvelope(
+                    .deliveredReceipt(targetIDs: ids), to: contact, localID: nil
+                )
+            }
+        }
+    }
+
+    /// Run `body` as the next link of the one drain chain, and hand back what
+    /// it returned.
+    ///
+    /// This is what makes `drainBatch` safe: exactly one drain walks a page at
+    /// a time. Not private, because a drain does not have to live in this type
+    /// — the room logs on a visited island and on a backup home are walked by
+    /// `CrossIslandGroups`, against the same single batch slot, and used to run
+    /// beside the queue drain from `Multihome`'s poll loop.
+    func serialisedDrain<T: Sendable>(_ body: @escaping @MainActor () async -> T) async -> T {
+        let previous = drainTail
+        let work = Task { @MainActor () -> T in
+            await previous?.value
+            return await body()
+        }
+        // The tail is what the NEXT link waits on, and it has to be Void to
+        // chain links that return different things.
+        drainTail = Task { @MainActor in _ = await work.value }
+        return await work.value
     }
 
     /// Drain this island's mailbox: the legacy queue, then (Stage 5) the
@@ -2570,6 +2716,7 @@ final class MessageService {
             let seq: Int?
         }
         let myDeviceId = SignalProtocolStores.shared.localDeviceId
+        var ownsBatch = false
         do {
             // `ack=1` opts into the server-side ACK protocol: rows are
             // returned without being deleted, and the client is expected
@@ -2591,76 +2738,127 @@ final class MessageService {
             // can collide; we split by group_id.
             var ackedDirectIDs: [Int] = []
             var ackedGroupIDs: [Int] = []
-            for r in rows {
-                // Sealed for a sibling install of ours — an island that
-                // predates per-device queues hands the account's whole
-                // backlog to whoever asks. Nothing here can open it, and
-                // leaving it queued means asking for it forever.
-                if let to = r.to_device_id, to != myDeviceId {
-                    if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
-                    continue
-                }
-                let env = WebSocketService.EnvelopePacket(
-                    type: r.envelope_type,
-                    payload: r.payload,
-                    serverTime: r.received_at,
-                    offline: true,
-                    groupID: r.group_id,
-                    toDeviceID: r.to_device_id
-                )
-                var decryptError: Error?
-                guard let outcome = ingest(envelope: env, decryptError: &decryptError) else {
-                    // ingest returned nil — decryption / validation /
-                    // persistence failure. Do NOT ACK; server keeps the
-                    // row and redelivers on the next /messages/queue
-                    // fetch. Better to over-deliver a message we'll
-                    // dedupe by inner-envelope UUID than lose it.
-                    //
-                    // Except on a SECONDARY device, for the one failure that
-                    // cannot come out differently later: an unaddressed 1:1
-                    // row libsignal says we have no session or no matching
-                    // identity for is a copy a pre-fan-out sender sealed to
-                    // the account's primary install, and no amount of
-                    // redelivery makes it readable here. A row that failed
-                    // for any other reason — including one we cannot classify
-                    // — stays queued, because the next drain may well open it.
-                    if let decryptError, Self.isUnreadableHere(decryptError),
-                       r.to_device_id == nil, r.group_id == nil, myDeviceId != 1 {
-                        ackedDirectIDs.append(r.id)
+            // Which account this drain belongs to. Checked again after every
+            // pause below: the loop is no longer atomic on the main actor, and
+            // a switch mid-drain must not credit these rows, these counters or
+            // this ACK to whoever is signed in now.
+            //
+            // ⚠ The account id, not `ownUIN`, is what answers that question.
+            // `AccountManager.setActive` rebinds the id BEFORE the reboot
+            // repoints MessageDB at the next account's SQLite file, while
+            // `MessageService.configure(ownUIN:)` is not reached until well
+            // inside the following `boot()` — so for the whole of that window
+            // `ownUIN` still reads as the outgoing account and waves the drain
+            // straight into the incoming account's store. (Two accounts on two
+            // islands can also carry the same uin, which `ownUIN` cannot tell
+            // apart at all.) Kept alongside it rather than instead of it: uin 0
+            // means "no identity yet" and is worth catching too.
+            let account = ownUIN
+            let accountID = AccountManager.shared.activeAccountID
+            var cursor = 0
+            while cursor < rows.count {
+                let chunkEnd = min(cursor + Self.drainChunkSize, rows.count)
+                // Per CHUNK, not per page: what the chunk owes the rest of the
+                // app is paid as soon as its rows are on disk (below), because
+                // anything still owed when the drain is interrupted can never
+                // be paid later. See `discardDrainBatch`.
+                ownsBatch = beginDrainBatch()
+                // One SQLite transaction, and one fsync, for the whole chunk.
+                // Opened and closed inside the synchronous stretch: a batch is
+                // never left open across a suspension point, so nothing that
+                // lands from the socket while this drain waits can be acked to
+                // the island while it is still only in a context.
+                MessageDB.shared.beginBatch()
+                for r in rows[cursor..<chunkEnd] {
+                    // Sealed for a sibling install of ours — an island that
+                    // predates per-device queues hands the account's whole
+                    // backlog to whoever asks. Nothing here can open it, and
+                    // leaving it queued means asking for it forever.
+                    if let to = r.to_device_id, to != myDeviceId {
+                        if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
+                        continue
                     }
-                    continue
-                }
-                // Non-nil outcome means the envelope is now in MessageDB
-                // (either freshly stored or recognised as a duplicate of
-                // something we already had). Safe to ACK in both cases.
-                if r.group_id == nil {
-                    ackedDirectIDs.append(r.id)
-                } else {
-                    ackedGroupIDs.append(r.id)
-                }
-                // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
-                guard outcome.isNewContent else { continue }
-                let viewing = MessageBannerService.shared.isViewing(outcome.thread)
-                // BadgeCounter (the app-icon counter) was already bumped
-                // by the NSE for any message the user got a push for.
-                // We only need to bump it here for envelopes that landed
-                // strictly via WebSocket / offline queue without a push.
-                let bumpIcon = !viewing && !outcome.wasInNSECache
-                switch outcome.thread {
-                case .peer(let uin):
-                    if !ContactService.shared.contacts.contains(where: { $0.uin == uin }) {
+                    let env = WebSocketService.EnvelopePacket(
+                        type: r.envelope_type,
+                        payload: r.payload,
+                        serverTime: r.received_at,
+                        offline: true,
+                        groupID: r.group_id,
+                        toDeviceID: r.to_device_id
+                    )
+                    var decryptError: Error?
+                    guard let outcome = ingest(envelope: env, decryptError: &decryptError) else {
+                        // ingest returned nil — decryption / validation /
+                        // persistence failure. Do NOT ACK; server keeps the
+                        // row and redelivers on the next /messages/queue
+                        // fetch. Better to over-deliver a message we'll
+                        // dedupe by inner-envelope UUID than lose it.
+                        //
+                        // Except on a SECONDARY device, for the one failure that
+                        // cannot come out differently later: an unaddressed 1:1
+                        // row libsignal says we have no session or no matching
+                        // identity for is a copy a pre-fan-out sender sealed to
+                        // the account's primary install, and no amount of
+                        // redelivery makes it readable here. A row that failed
+                        // for any other reason — including one we cannot classify
+                        // — stays queued, because the next drain may well open it.
+                        if let decryptError, Self.isUnreadableHere(decryptError),
+                           r.to_device_id == nil, r.group_id == nil, myDeviceId != 1 {
+                            ackedDirectIDs.append(r.id)
+                        }
+                        continue
+                    }
+                    // Non-nil outcome means the envelope is now in MessageDB
+                    // (either freshly stored or recognised as a duplicate of
+                    // something we already had). Safe to ACK in both cases.
+                    if r.group_id == nil {
+                        ackedDirectIDs.append(r.id)
+                    } else {
+                        ackedGroupIDs.append(r.id)
+                    }
+                    // HTTP queue drain races with WS flush — isNewContent dedups badge bumps.
+                    guard outcome.isNewContent else { continue }
+                    if case .peer(let uin) = outcome.thread,
+                       !ContactService.shared.contacts.contains(where: { $0.uin == uin }) {
                         sawUnknownPeer = true
                     }
-                    if !viewing { ContactService.shared.incrementUnread(for: uin) }
-                    if bumpIcon {
-                        BadgeCounter.increment(threadKey: BadgeCounter.threadKey(peerUIN: uin))
-                    }
-                case .group(let id):
-                    if !viewing { GroupService.shared.incrementUnread(id) }
-                    if bumpIcon {
-                        BadgeCounter.increment(threadKey: BadgeCounter.threadKey(groupID: id))
-                    }
+                    // Unread + app-icon bookkeeping, accumulated for the page
+                    // rather than applied per row. See `noteDrainedContent`.
+                    noteDrainedContent(outcome)
                 }
+                MessageDB.shared.endBatch()
+                // The counters and the receipts for the rows that just went to
+                // disk, before anything can interrupt the walk. Batched over
+                // the chunk (one roster publish, one icon write, one receipt
+                // envelope per peer) rather than over the whole page: a page's
+                // worth of bookkeeping held across a suspension point is a
+                // page's worth of unread counts lost the moment the drain has
+                // to give up, and redelivery cannot bring them back.
+                flushDrainBatch(ownsBatch)
+                ownsBatch = false
+                cursor = chunkEnd
+                guard cursor < rows.count else { break }
+                // Hand the main actor back so the interface can draw a frame
+                // between chunks. This is the whole point: the loop used to
+                // run to the end without a single suspension point, which is
+                // exactly as long as the chat list was frozen for.
+                await Task.yield()
+                // Back on the main actor, but not necessarily in the same
+                // world. An account switch rebinds the token and reopens
+                // MessageDB on another file; the decoy swaps the store out
+                // from under us; a panic-PIN lock drops the data key while
+                // leaving the REAL store in place, so every field written from
+                // here on would go to disk in plaintext (`sealField` with a nil
+                // key is a passthrough) into the very file the PIN exists to
+                // seal. Either way these rows belong to a session that no
+                // longer exists: stop, and leave the rest queued for the drain
+                // that follows. Everything already on disk has been accounted
+                // for above; nothing is left to discard.
+                guard ownUIN == account,
+                      AccountManager.shared.activeAccountID == accountID,
+                      !PanicPINService.shared.isLocked,
+                      !PanicPINService.shared.isDecoy
+                else { return }
             }
             // Send the ACK. Best-effort: if it fails (network blip,
             // server hiccup, app backgrounded mid-call), the server
@@ -2704,7 +2902,12 @@ final class MessageService {
             if sawUnknownPeer {
                 await ContactService.shared.refresh()
             }
-        } catch { }
+        } catch {
+            // The only throwing call is the fetch, above the loop, so today
+            // there is no open chunk here; this keeps one from outliving the
+            // drain if that ever stops being true.
+            discardDrainBatch(ownsBatch)
+        }
         // Stage 5: rooms on an island that keeps a log per room are drained
         // from it, next to the queue above rather than instead of it. Both
         // are read on every drain: the queue still carries 1:1 rows and the
@@ -2832,7 +3035,10 @@ final class MessageService {
             for (gid, cursor) in out.cursors {
                 if let id = Int(gid) { groupLogAcked[id] = max(groupLogAcked[id] ?? 0, cursor) }
             }
-            let got = ingestGroupLogRows(out.rows, drain: drain)
+            let got = await ingestGroupLogRows(out.rows, drain: drain)
+            // The walk above can now be interrupted by an account switch, and
+            // the marks and acks below are per account.
+            guard ownUIN == account else { return }
             blockedRooms.formUnion(got.blocked)
             let advancing = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
             if !advancing.isEmpty {
@@ -2883,38 +3089,73 @@ final class MessageService {
     /// `localGid` maps the island's room id to the id the rest of the app
     /// files the thread under (a foreign room lives under a negative alias);
     /// the returned acks are keyed by the ISLAND's id, the one it acks by.
-    func ingestGroupLogRows(_ rows: [GroupLogRow], drain: Int, localGid: (Int) -> Int = { $0 }) -> GroupLogIngest {
+    ///
+    /// Walked in chunks with the main actor handed back between them, and with
+    /// one SQLite transaction and one round of counter bookkeeping per chunk:
+    /// a log page is up to five hundred rows, and running all of them without
+    /// a suspension point is the same freeze the legacy queue drain used to
+    /// be. An account switch (or the decoy store swapping in) mid-walk ends
+    /// the page and reports NOTHING handled, so the caller acks nothing under
+    /// a session these rows do not belong to.
+    func ingestGroupLogRows(_ rows: [GroupLogRow], drain: Int, localGid: (Int) -> Int = { $0 }) async -> GroupLogIngest {
         var result = GroupLogIngest()
         var seen: [Int: Int] = [:]   // island gid -> local gid, for the stall bookkeeping
-        for r in rows {
-            let gid = localGid(r.gid)
-            seen[r.gid] = gid
-            let env = WebSocketService.EnvelopePacket(
-                type: r.envelope_type, payload: r.payload, serverTime: r.received_at,
-                offline: true, groupID: gid
-            )
-            var decryptError: Error?
-            let outcome = ingest(envelope: env, decryptError: &decryptError)
-            var handled = outcome != nil || decryptError == nil
-            if !handled, r.envelope_type == "gmsg",
-               case .keyMissing(let kid, let epoch, let index)? = decryptError as? GmsgOpenError {
-                GroupSenderKeyStore.shared.holdGmsg(ownUin: ownUIN, .init(
-                    gid: gid, kid: kid, epoch: epoch, index: index, payload: r.payload, serverTime: r.received_at
-                ))
-                handled = true
+        // See the queue drain: the account ID is the token that moves when the
+        // account does, `ownUIN` lags it by most of a boot.
+        let account = ownUIN
+        let accountID = AccountManager.shared.activeAccountID
+        var cursor = 0
+        while cursor < rows.count {
+            let chunkEnd = min(cursor + Self.drainChunkSize, rows.count)
+            // Per chunk, flushed as soon as the chunk is on disk. See the
+            // queue drain and `discardDrainBatch`.
+            let ownsBatch = beginDrainBatch()
+            MessageDB.shared.beginBatch()
+            for r in rows[cursor..<chunkEnd] {
+                let gid = localGid(r.gid)
+                seen[r.gid] = gid
+                let env = WebSocketService.EnvelopePacket(
+                    type: r.envelope_type, payload: r.payload, serverTime: r.received_at,
+                    offline: true, groupID: gid
+                )
+                var decryptError: Error?
+                let outcome = ingest(envelope: env, decryptError: &decryptError)
+                var handled = outcome != nil || decryptError == nil
+                if !handled, r.envelope_type == "gmsg",
+                   case .keyMissing(let kid, let epoch, let index)? = decryptError as? GmsgOpenError {
+                    GroupSenderKeyStore.shared.holdGmsg(ownUin: ownUIN, .init(
+                        gid: gid, kid: kid, epoch: epoch, index: index, payload: r.payload, serverTime: r.received_at
+                    ))
+                    handled = true
+                }
+                if !handled, !result.blocked.contains(r.gid), let error = decryptError {
+                    // The row in front of this room's cursor. Later failures in
+                    // the same room are behind it and get their own turn once
+                    // the cursor reaches them.
+                    handled = strikeGroupLogRow(localGid: gid, seq: r.seq, error: error, drain: drain)
+                }
+                if handled, !result.blocked.contains(r.gid) {
+                    result.upto[r.gid] = max(result.upto[r.gid] ?? 0, r.seq)
+                } else if !handled {
+                    result.blocked.insert(r.gid)
+                }
+                if let outcome, outcome.isNewContent { noteDrainedContent(outcome) }
             }
-            if !handled, !result.blocked.contains(r.gid), let error = decryptError {
-                // The row in front of this room's cursor. Later failures in
-                // the same room are behind it and get their own turn once
-                // the cursor reaches them.
-                handled = strikeGroupLogRow(localGid: gid, seq: r.seq, error: error, drain: drain)
-            }
-            if handled, !result.blocked.contains(r.gid) {
-                result.upto[r.gid] = max(result.upto[r.gid] ?? 0, r.seq)
-            } else if !handled {
-                result.blocked.insert(r.gid)
-            }
-            if let outcome, outcome.isNewContent { noteDrainedContent(outcome) }
+            MessageDB.shared.endBatch()
+            flushDrainBatch(ownsBatch)
+            cursor = chunkEnd
+            guard cursor < rows.count else { break }
+            await Task.yield()
+            // The account switched, the decoy store came up, or the panic PIN
+            // locked and took the data key with it (leaving the real store in
+            // place, so every further write would land in plaintext). Give the
+            // page up; the island still holds its cursor, so the drain that
+            // follows re-reads from here.
+            guard ownUIN == account,
+                  AccountManager.shared.activeAccountID == accountID,
+                  !PanicPINService.shared.isLocked,
+                  !PanicPINService.shared.isDecoy
+            else { return GroupLogIngest() }
         }
         // A room whose page went through whole has nothing in front of its
         // cursor any more: whatever was counted against it opened, or the
@@ -2959,15 +3200,30 @@ final class MessageService {
     private func noteDrainedContent(_ outcome: IngestOutcome) {
         let viewing = MessageBannerService.shared.isViewing(outcome.thread)
         guard !viewing else { return }
+        // BadgeCounter (the app-icon counter) was already bumped by the NSE
+        // for any message the user got a push for. Only envelopes that landed
+        // strictly via socket or queue, with no push, are counted here.
+        let bumpIcon = !outcome.wasInNSECache
+        if drainBatch != nil {
+            switch outcome.thread {
+            case .peer(let uin):
+                drainBatch?.peerUnread[uin, default: 0] += 1
+                if bumpIcon { drainBatch?.badge[BadgeCounter.threadKey(peerUIN: uin), default: 0] += 1 }
+            case .group(let id):
+                drainBatch?.groupUnread[id, default: 0] += 1
+                if bumpIcon { drainBatch?.badge[BadgeCounter.threadKey(groupID: id), default: 0] += 1 }
+            }
+            return
+        }
         switch outcome.thread {
         case .peer(let uin):
             ContactService.shared.incrementUnread(for: uin)
-            if !outcome.wasInNSECache {
+            if bumpIcon {
                 BadgeCounter.increment(threadKey: BadgeCounter.threadKey(peerUIN: uin))
             }
         case .group(let id):
             GroupService.shared.incrementUnread(id)
-            if !outcome.wasInNSECache {
+            if bumpIcon {
                 BadgeCounter.increment(threadKey: BadgeCounter.threadKey(groupID: id))
             }
         }

@@ -548,6 +548,33 @@ actor APIClient {
         return data
     }
 
+    /// `downloadBlob` for a blob nobody should hold: the body is written to
+    /// `destination` as it arrives and never exists as a `Data`.
+    ///
+    /// Routed through `IslandHTTP` rather than `session` for two reasons that
+    /// both matter here: it carries the circumvention proxy when one is up, and
+    /// its transfer session has a resource ceiling measured in minutes. The API
+    /// session's ceiling is 30 s, which is a correct answer for a chat request
+    /// and a guaranteed failure for a video.
+    func downloadBlob(_ path: String, to destination: URL) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "GET"
+        if let serverToken {
+            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        }
+        let (tmp, resp) = try await IslandHTTP.download(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            try? FileManager.default.removeItem(at: tmp)
+            throw APIError.http(-1, nil)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            try? FileManager.default.removeItem(at: tmp)
+            throw APIError.http(http.statusCode, nil)
+        }
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: tmp, to: destination)
+    }
+
     func multipartUpload<T: Decodable>(
         path: String,
         formFields: [String: String],

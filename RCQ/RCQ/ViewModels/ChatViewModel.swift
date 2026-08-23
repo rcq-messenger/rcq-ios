@@ -162,6 +162,8 @@ final class ChatViewModel: ObservableObject {
                 .assign(to: &$messages)
         default:
             let thread = target.thread
+            // Windows are read on demand. Opening a chat is the demand.
+            MessageStore.shared.ensureLoaded(thread)
             self.messages = MessageStore.shared.threads[thread] ?? []
             MessageStore.shared.$threads
                 .map { $0[thread] ?? [] }
@@ -1014,11 +1016,10 @@ final class ChatViewModel: ObservableObject {
         case .file:  raw = "📎 \(message.fileName ?? "File")"
         case .location: raw = "📍 Location"
         case .poll:
-            // `.poll` stores the full PollPayload as JSON in `text`
-            // — the reply strip rendered the raw braces / option
-            // labels until we pulled out the question here.
-            let q = PollPayload.decode(from: message.text)?.question ?? "Poll"
-            raw = "📊 \(q)"
+            // Polls are gone (14a). Old rows still carry the payload JSON in
+            // `text`, so this branch has to stay: falling through to the default
+            // would print raw braces into a reply strip.
+            raw = "📊 \("chat.poll.removed".localized)"
         default:     raw = message.text.isEmpty ? "Message" : message.text
         }
         if raw.count <= 80 { return raw }

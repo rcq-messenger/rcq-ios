@@ -14,6 +14,14 @@ import UIKit
 /// Document + Location + Premium.
 struct AttachmentPickerSheet: View {
     let isRandom: Bool
+    /// This room's `files_allowed` rule as it applies to THIS viewer (the
+    /// owner, an admin and any member with a granted cap stay exempt). False
+    /// removes the Document chip outright rather than leaving a dead button:
+    /// the send would be refused anyway, and a disabled control that never
+    /// explains itself is worse than an entry that is simply not there. The
+    /// send path guards too, for a menu that was already open when the owner
+    /// flipped the switch. Web: `filesAllowed` in Chat.tsx.
+    var filesAllowed: Bool = true
     /// Sender called this when the user finishes picking media. Caller
     /// dismisses the sheet and routes selected media into the send
     /// pipeline. Empty array on cancel.
@@ -22,17 +30,16 @@ struct AttachmentPickerSheet: View {
     let onCamera: () -> Void
     let onDocument: () -> Void
     let onLocation: () -> Void
-    /// Create a group poll. Only surfaced inside group chats; the
-    /// caller passes a non-nil closure when `vm.target` is `.group`.
-    /// Nil means "hide the action entirely" (1:1 + random).
-    var onPoll: (() -> Void)? = nil
     /// Share a group invite to this chat. Non-nil only when the
     /// caller is a group OWNER (so others' membership stays a
     /// privacy choice); nil hides the action.
     var onShareGroup: (() -> Void)? = nil
-    /// In-chat bridge sharing: hand the peer a relay from your pool. Non-nil
-    /// only in 1:1 chats; nil hides the action.
-    var onShareConnection: (() -> Void)? = nil
+    // Two chips used to live here: `onPoll` (create a group poll) and
+    // `onShareConnection` (hand the chat a relay out of your pool). Both
+    // features are cut - polls because the ballots were never end-to-end
+    // encrypted (14a), relay sharing as a product decision (14b). Removed
+    // rather than left as permanently-nil parameters, so the next reader does
+    // not go looking for the caller that passes them.
 
     @State private var assets: [PHAsset] = []
     @State private var authStatus: PHAuthorizationStatus = .notDetermined
@@ -72,17 +79,13 @@ struct AttachmentPickerSheet: View {
             HStack(spacing: 10) {
                 actionChip(icon: "camera", labelKey: "chat.attach.camera", action: onCamera)
                 if !isRandom {
-                    actionChip(icon: "doc.fill", labelKey: "chat.attach.document", action: onDocument)
+                    if filesAllowed {
+                        actionChip(icon: "doc.fill", labelKey: "chat.attach.document", action: onDocument)
+                    }
                     actionChip(icon: "mappin.and.ellipse", labelKey: "chat.attach.location", action: onLocation)
-                }
-                if let onPoll {
-                    actionChip(icon: "chart.bar.doc.horizontal", labelKey: "chat.attach.poll", action: onPoll)
                 }
                 if let onShareGroup {
                     actionChip(icon: "person.3.fill", labelKey: "chat.attach.share_group", action: onShareGroup)
-                }
-                if let onShareConnection {
-                    actionChip(icon: "shield.lefthalf.filled", labelKey: "chat.attach.share_connection", action: onShareConnection)
                 }
             }
         }

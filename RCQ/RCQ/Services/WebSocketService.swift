@@ -22,6 +22,15 @@ final class WebSocketService: ObservableObject {
         case contactResponse(requestID: Int, accepted: Bool, peerUIN: Int)
         case contactRemoved(peerUIN: Int)
         case groupChanged(group: RCQGroup)
+        /// The COMPACT `group_membership_changed`. Above a hundred members the
+        /// island drops the snapshot and sends the group id plus `owner_uin`
+        /// alone, because pushing a full roster per member is what once stalled
+        /// the whole cluster. Ownership rides along in that short form on
+        /// purpose (see `GroupService.applyOwnerLocally`), so this is NOT a
+        /// frame to skip: the client-enforced `delete` capability is decided
+        /// against the cached owner, and a big group that learned about a
+        /// handover only on its next boot went on honouring the former owner.
+        case groupOwnerChanged(groupID: Int, ownerUIN: Int)
         case groupDeleted(groupID: Int)
         case randomMatch(peer: RandomPeer)
         case randomEnd(pairID: String, reason: String)
@@ -178,6 +187,13 @@ final class WebSocketService: ObservableObject {
         guard which === task else { return }
         lastFrameAt = Date()
         linkUp = true
+        // ⚠ The vault's nudge is pub/sub with NO REPLAY: a slot another device
+        // wrote while this socket was down is never announced again. A
+        // reconnect is exactly the moment that gap closes, so one `GET /vault`
+        // (slot names and versions, no blobs) asks what moved. `sweep` carries
+        // its own fifteen-second floor, so a socket that keeps redialling does
+        // not turn into a request per redial.
+        Task { @MainActor in await VaultSync.sweep() }
     }
 
     /// One session per proxy shape, reused across dials.
@@ -589,7 +605,17 @@ final class WebSocketService: ObservableObject {
         case "group_created", "group_membership_changed":
             guard let groupDict = dict["group"] as? [String: Any],
                   let groupData = try? JSONSerialization.data(withJSONObject: groupDict),
-                  let group = decodeGroup(groupData) else { return }
+                  let group = decodeGroup(groupData) else {
+                // No snapshot: the compact form a big group gets. It carries
+                // the id and, since the handover endpoint shipped, the owner.
+                // Both keys or nothing: an older island sends the bare id (see
+                // the beta-group broadcast in auth.py) and there is nothing to
+                // apply from that.
+                if let gid = dict["group_id"] as? Int, let owner = dict["owner_uin"] as? Int {
+                    events.send(.groupOwnerChanged(groupID: gid, ownerUIN: owner))
+                }
+                return
+            }
             events.send(.groupChanged(group: group))
 
         case "group_deleted":
@@ -788,6 +814,26 @@ final class WebSocketService: ObservableObject {
         // it expired.
         case "device_linked", "device_revoked":
             Task { await SignalCryptoService.invalidateOwnDevices() }
+
+        // A vault slot of this account moved (SPEC §4.9). The slot name on the
+        // wire is 32 hex characters that mean nothing without the account's
+        // identity key, so the frame is matched by deriving both names locally.
+        // ⚠ Nothing on any client listened for this until 23.08: a contact list
+        // sealed by the desktop reached this phone on its next cold start and
+        // not before, and sections have to appear at the speed of the tap on
+        // the other device.
+        case "vault_changed":
+            guard let slot = dict["slot"] as? String else { return }
+            let slotVersion = dict["version"] as? Int ?? 0
+            Task { @MainActor in await VaultSync.handleVaultChanged(slot: slot, version: slotVersion) }
+
+        // `POST /auth/reissue` on another device rotated the account's
+        // identity, and the island emptied the vault in the same transaction.
+        // NOT a wipe: this install holds the RETIRED identity_priv, so its
+        // local caches are the only copy of the sections tree in existence
+        // until a device with the new identity publishes one.
+        case "vault_reset":
+            Task { @MainActor in VaultSync.handleVaultReset() }
 
         // Every event name here carries a sealed envelope in `payload`. The
         // server echoes back whatever `envelope_type` the sender declared, so

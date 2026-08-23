@@ -29,14 +29,10 @@ extension Message {
         case .file:         raw = "📎 \(fileName ?? "chat.preview.file".localized)"
         case .location:     raw = "📍 \("chat.preview.location".localized)"
         case .poll:
-            // `.poll` messages store the full PollPayload (question +
-            // options + flags) as JSON in `text`. Pull out the
-            // question for a humane preview — the JSON blob itself
-            // was previously rendering as raw braces / quotes in
-            // reply strips and chat-preview snippets.
-            let question = PollPayload.decode(from: text)?.question
-                ?? "chat.preview.poll".localized
-            raw = "📊 \(question)"
+            // Polls are gone (14a). Rows that predate the removal still hold the
+            // payload JSON in `text`, and this branch is what keeps that blob out
+            // of the chat list and the notification banner.
+            raw = "📊 \("chat.poll.removed".localized)"
         case .systemNotice:
             // A screenshot notice stores a control-char sentinel as its text so
             // the screenshotter's name can resolve at display time (see

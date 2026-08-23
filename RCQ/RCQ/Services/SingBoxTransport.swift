@@ -826,15 +826,33 @@ enum IslandHTTP {
         }
     }
 
+    /// A response straight to a file on disk, for a body too heavy to hold: the
+    /// bytes never pass through a `Data`.
+    ///
+    /// ⚠ The returned URL is URLSession's own temporary file and it is deleted
+    /// the moment this call's continuation unwinds, so the caller MUST move it
+    /// somewhere it owns before doing anything else with it.
+    ///
+    /// Always `transfer: true`: nothing asks for this shape unless the body is
+    /// large, and the API session's ceiling is sized for a chat request.
+    static func download(
+        for request: URLRequest,
+        allowTunnelFallback: Bool = true,
+    ) async throws -> (URL, URLResponse) {
+        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: true) {
+            try await $0.download(for: request)
+        }
+    }
+
     /// `allowTunnelFallback: false` for hosts that are not islands (the signed
     /// island catalogue on GitHub): route them through an already-running tunnel,
     /// but never turn one ON because a third party is unreachable.
-    private static func run(
+    private static func run<Body>(
         host: String?,
         allowTunnelFallback: Bool,
         transfer: Bool,
-        _ call: (URLSession) async throws -> (Data, URLResponse),
-    ) async throws -> (Data, URLResponse) {
+        _ call: (URLSession) async throws -> (Body, URLResponse),
+    ) async throws -> (Body, URLResponse) {
         // The second chokepoint (see `APIClient.rawRequest`). Everything
         // cross-island goes through here: guest registrations and mailbox
         // drains on visited islands, backup-island polls, §5e profile
