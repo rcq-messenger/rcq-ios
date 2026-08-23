@@ -7,8 +7,8 @@
    files inherit any missing key from this file via the
    `String.localized` extension's bundle fallback.
    Convention: ALL user-visible strings should route through
-   `"key".localized`. Hardcoded English literals are tech debt —
-   migrate them as you touch each view.
+   `"key".localized`. Hardcoded English literals are tech debt.
+   Migrate them as you touch each view.
 */
 /* ── Settings ─────────────────────────────────────────────── */
 "settings.title" = "Configurações";
@@ -421,7 +421,7 @@
 "uin_listing.share.toast.title" = "Compartilhar";
 "uin_listing.share.toast.sent" = "Enviado para a conversa.";
 "uin_listing.share.toast.error" = "Não foi possível enviar: %@";
-// ── User safety (Block / Report) — shared menu across UGC surfaces
+// ── User safety (Block / Report): shared menu across UGC surfaces
 "settings.blocked_users" = "Usuários bloqueados";
 "blocked_users.unblock" = "Desbloquear";
 "blocked_users.unblock.confirm.title" = "Desbloquear este usuário?";
@@ -509,7 +509,7 @@
 "chat.action.delete_for_everyone" = "Apagar para todos";
 "chat.action.react" = "Reagir";
 "chat.action.report_content" = "Denunciar conteúdo";
-/* Report with evidence — long-press on a media bubble */
+/* Report with evidence (long-press on a media bubble) */
 "report_evidence.title" = "Denunciar conteúdo";
 "report_evidence.heading" = "Denunciar este conteúdo";
 "report_evidence.body" = "Ao enviar esta denúncia, você autoriza os moderadores do RCQ a ver esta mídia descriptografada para análise. O arquivo vai para a nossa fila de moderação e é analisado em até 24 horas. Denúncias falsas podem gerar restrições na sua conta.";
@@ -845,9 +845,9 @@
 "contact.last_seen.hours" = "há %dh";
 "contact.last_seen.days" = "há %dd";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
-/* Pet names — slug-keyed */
-/* Voice packs — notification sounds */
-/* Pet lore — slug-keyed */
+/* Pet names, slug-keyed */
+/* Voice packs (notification sounds) */
+/* Pet lore, slug-keyed */
 /* ── Add contact / search ─────────────────────────────────── */
 "add.title" = "Encontrar";
 "add.search.placeholder" = "UIN, apelido, nome do grupo…";
@@ -1301,7 +1301,7 @@
 "pet_hunt.spec.daily_yield" = "Fichas / dia";
 "pet_hunt.spec.daily_gems" = "Gemas / dia";
 "pet_hunt.spec.hourly_rate" = "Fichas / hora";
-/* Pet Hunt — info sheet */
+/* Pet Hunt: info sheet */
 "pet_hunt.info.title" = "Como funciona";
 "pet_hunt.info.passive.title" = "Ganho passivo";
 "pet_hunt.info.passive.body" = "Seu bichinho equipado ganha fichas 24 horas por dia. Raridade maior, nível maior e pureza maior aumentam a taxa. A reserva enche em 24 horas: resgate todo dia ou você perde o que passar disso.";
@@ -1309,7 +1309,7 @@
 "pet_hunt.info.zones.body" = "Três caçadas por dia deixam você arriscar seu bichinho por prêmios maiores. A Floresta é segura, a Montanha é arriscada, a Caverna é hardcore. Bichinhos mais fortes acertam mais vezes E sobrevivem mais vezes ao fracasso.";
 "pet_hunt.info.death.title" = "Morte permanente";
 "pet_hunt.info.death.body" = "Se seu bichinho falha numa caçada e se fere no nível 0, ele morre para sempre. Desastres na Montanha e na Caverna podem matar qualquer bichinho, não importa o nível. Tempere seus bichinhos antes de mandar para as zonas difíceis.";
-/* Pet Hunt — zone picker */
+/* Pet Hunt: zone picker */
 "pet_hunt.zone_picker.title" = "Escolher caçada";
 "pet_hunt.zone_picker.intro" = "Prêmio maior, risco maior. A qualidade do seu bichinho muda os números de verdade.";
 "pet_hunt.zone.forest" = "Floresta";
@@ -1321,14 +1321,14 @@
 "pet_hunt.zone.cave" = "Caverna";
 "pet_hunt.zone.cave.reward" = "Fichas 20–50 × atributos + gemas 2–7";
 "pet_hunt.zone.cave.risk" = "Hardcore: ferimentos frequentes, risco real de morte";
-/* Pet Hunt — result */
+/* Pet Hunt: result */
 "pet_hunt.result.success" = "Caçada bem-sucedida";
 "pet_hunt.result.success.body" = "Seu bichinho voltou da %@ sem um arranhão.";
 "pet_hunt.result.wound" = "Ferido";
 "pet_hunt.result.wound.body" = "Seu bichinho se machucou e perdeu um nível. Agora está no nível %d.";
 "pet_hunt.result.death" = "Não voltou";
 "pet_hunt.result.death.body" = "Seu bichinho caiu. Ele vai ser lembrado no Memorial.";
-/* Pet Hunt — memorial */
+/* Pet Hunt: memorial */
 "pet_hunt.memorial.title" = "Memorial";
 "pet_hunt.memorial.empty.title" = "Ninguém caiu ainda";
 "pet_hunt.memorial.empty.body" = "Os bichinhos que morrem nas caçadas vão ser lembrados aqui.";
@@ -1450,7 +1450,7 @@
 "panic_pin.remove_all.confirm.title" = "Desligar o PIN?";
 "panic_pin.remove_all.confirm.body" = "O app não vai mais trancar, e seu histórico de mensagens volta a ficar sem criptografia neste dispositivo.";
 "panic_pin.remove_all.confirm.action" = "Desligar";
-/* Panic-PIN — Face ID add-on */
+/* Panic-PIN: Face ID add-on */
 "panic_pin.biometric.reason" = "Desbloquear o RCQ";
 "panic_pin.lock.use_biometric" = "Desbloquear com Face ID";
 "panic_pin.biometric.section" = "Face ID";
@@ -1469,7 +1469,7 @@
 "panic_pin.error.biometric_conflict" = "O Face ID e o PIN de apagamento não podem ficar ligados ao mesmo tempo.";
 "panic_pin.error.biometric_failed" = "Não foi possível ligar o Face ID. Tente de novo.";
 "panic_pin.lock.locked_out" = "Tentativas demais";
-/* Panic-PIN — decoy mode */
+/* Panic-PIN: decoy mode */
 "panic_pin.decoy.section" = "PIN de fachada";
 "panic_pin.decoy.footer" = "Um segundo PIN opcional. Digitá-lo na tela de bloqueio abre uma conta de fachada separada, que funciona offline: seus contatos e conversas de verdade ficam criptografados e fora de alcance. Use se você pode ser obrigado a desbloquear e mostrar o app. Encha ela com algumas conversas reais mas inofensivas copiadas dos seus chats: os números e as datas são reescritos na cópia, e uma conta vazia parece montada.";
 "panic_pin.decoy.footer.biometric" = "Desligue o Face ID para definir um PIN de fachada. Os dois não funcionam juntos: um desbloqueio facial não consegue abrir a fachada.";
@@ -1488,7 +1488,7 @@
 "panic_pin.wipe.server.toggle" = "Apagar também a conta no servidor";
 "panic_pin.wipe.server.footer" = "Desligado por padrão. Ligado, o PIN de apagamento também pede ao servidor para excluir a própria conta: o número deixa de existir e ninguém consegue escrever para ele. Desligado, só este dispositivo é limpo: a conta continua viva e você pode entrar nela de outro aparelho.";
 "panic_pin.wipe.footer.server_where" = "Se o PIN de apagamento também exclui a conta no servidor é escolhido na hora de configurar o PIN. Fica desligado a menos que você ligue, e não dá para mostrar aqui: a opção é selada com o próprio PIN de apagamento, então só digitando ele dá para ler.";
-/* Voice recording — lock + preview */
+/* Voice recording: lock + preview */
 "chat.voice.locked" = "Travado";
 "chat.voice.cancel_armed" = "Solte para cancelar";
 "chat.voice.cancel_hint" = "Cancelar";
@@ -1496,7 +1496,7 @@
 "chat.voice.lock_hint" = "Travar";
 "chat.voice.lock_armed" = "Solte para travar";
 "chat.voice.swipe_hints" = "← cancelar   ↑ travar";
-/* Onboarding — reworked pages (anonymity / mesh / security PIN) */
+/* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANÔNIMO";
 "onboard.anon.title" = "Sem telefone, sem e-mail";
 "onboard.anon.body" = "Sua identidade é um UIN numérico, nada além disso. A conta não está ligada a você. Apague ela e recomece quando quiser.";
@@ -1536,7 +1536,7 @@
 "add_account.adding" = "Registrando no servidor…";
 "add_account.error" = "Não foi possível registrar. Verifique a URL e sua rede.";
 "add_account.limit" = "Você chegou ao limite de %d contas por dispositivo. Remova uma em Gerenciar contas e tente de novo.";
-/* Server picker — final onboarding page */
+/* Server picker: final onboarding page */
 "onboard.server.pill.prefix" = "servidor:";
 "onboard.server.pill.change" = "mudar";
 "onboard.server.picker.title" = "Escolha um servidor";
@@ -1620,7 +1620,7 @@
 "myreports.remove.confirm.body" = "Ele para de aparecer nesta tela. Nada é apagado: os operadores mantêm o relato e a resposta, e ele continua contando no hall da fama.";
 "myreports.remove.refused" = "Este ainda está em análise, então ele fica na sua lista até haver um veredito.";
 "myreports.remove.error" = "Não foi possível remover. Tente de novo.";
-/* My numbers — the UIN vault (server: GET /uin/mine, POST /uin/activate). */
+/* My numbers: the UIN vault (server: GET /uin/mine, POST /uin/activate). */
 "my_uins.title" = "Meus UINs";
 "my_uins.active" = "Você responde como";
 "my_uins.active.sub" = "É por este número que as pessoas te alcançam.";

@@ -177,8 +177,11 @@ struct MyReportsView: View {
             // exact complaint in #417. The reply IS the status change; the
             // server's own `status` only moves when an admin resolves the
             // ticket, which is a different thing.
-            let turns = report.thread ?? []
-            let answered = !(report.reply ?? "").isEmpty || turns.contains { $0.from_admin }
+            // One conversation, built once and used for both the label and the
+            // blocks below. See `timeline(_:)`: the operator's answer arrives in
+            // two places and neither may hide the other.
+            let turns = Self.timeline(report)
+            let answered = turns.contains { $0.from_admin }
             let tagged = Self.splitTag(report.reason ?? "")
             // Rewriting is for a report nobody has read out yet. Once an
             // operator has answered, changing the words underneath the answer
@@ -201,28 +204,18 @@ struct MyReportsView: View {
                 Text(tagged.body).font(.subheadline).foregroundColor(Theme.Color.textPrimary)
             }
 
-            // The exchange, oldest first. `thread` is what a current island
-            // sends; an older one sends only the single `reply`, and that is the
-            // fallback below — the screen must not go blank against an island
-            // that has not updated. The answer is the whole reason this screen
-            // exists, so it gets its own block rather than a line of small print.
-            if !turns.isEmpty {
-                ForEach(turns) { turn in
-                    turnBlock(
-                        label: turn.from_admin ? "myreports.answer".localized : "myreports.you".localized,
-                        labelColor: turn.from_admin ? Theme.Color.accent : Theme.Color.textSecondary,
-                        body: turn.body ?? "",
-                        fromAdmin: turn.from_admin,
-                        copyKey: turn.from_admin ? "turn-\(turn.id)" : nil
-                    )
-                }
-            } else if let reply = report.reply, !reply.isEmpty {
+            // The exchange, oldest first, as ONE conversation: see
+            // `timeline(_:)`. The answer is the whole reason this screen exists,
+            // so it gets its own block rather than a line of small print.
+            ForEach(turns) { turn in
                 turnBlock(
-                    label: "myreports.answer".localized,
-                    labelColor: Theme.Color.accent,
-                    body: reply,
-                    fromAdmin: true,
-                    copyKey: "reply-\(report.id)"
+                    label: turn.from_admin ? "myreports.answer".localized : "myreports.you".localized,
+                    labelColor: turn.from_admin ? Theme.Color.accent : Theme.Color.textSecondary,
+                    body: turn.body ?? "",
+                    fromAdmin: turn.from_admin,
+                    // The synthetic answer carries id 0 and there is at most one
+                    // of it, so the copy key stays unique per card either way.
+                    copyKey: turn.from_admin ? "turn-\(report.id)-\(turn.id)" : nil
                 )
             }
 
@@ -509,6 +502,70 @@ struct MyReportsView: View {
             range: NSRange(location: 0, length: text.length)
         ) else { return ("", reason) }
         return (text.substring(with: match.range), text.substring(from: match.range.length))
+    }
+
+    // MARK: - The exchange
+
+    /// The report's whole exchange as ONE conversation, oldest first.
+    ///
+    /// ⚠⚠ THE ANSWER ARRIVES TWICE AND NEITHER COPY MAY BE DROPPED. `reply_text`
+    /// is the field every already-installed client reads, and since 16.08 an
+    /// operator's reply is ALSO written as an admin turn in `thread`. This
+    /// screen used to render the thread when it had anything in it and the
+    /// answer only otherwise, so on a report answered before 16.08 the
+    /// operator's words vanished the moment the reporter wrote back: the reply
+    /// lived only in `reply_text`, and the reporter's own line was enough to
+    /// make the thread non-empty. Two people reported that on Android as us
+    /// deleting an answer, which is the one thing this screen exists not to do.
+    ///
+    /// So: the thread as the island sent it, plus `reply` folded in as an
+    /// operator turn UNLESS an admin turn already carries the same text (on a
+    /// current island `reply_text` mirrors the last operator turn, and editing
+    /// that turn updates it, so equal text means the same answer and not a
+    /// second one).
+    ///
+    /// Where it goes: `replied_at`, before the first turn stamped later than it.
+    /// With no usable stamp it goes FIRST, because an unstamped answer can only
+    /// predate the thread it is missing from.
+    private static func timeline(_ report: MyReport) -> [ReportTurn] {
+        let thread = report.thread ?? []
+        let reply = (report.reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { return thread }
+        if thread.contains(where: {
+            $0.from_admin
+                && ($0.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == reply
+        }) { return thread }
+        // Not a row on the island: `reply_text` is a column, not a message.
+        // Turn ids are positive, so 0 cannot collide with a real one.
+        let answer = ReportTurn(
+            id: 0, from_admin: true, body: report.reply, created_at: report.replied_at
+        )
+        guard let at = instant(report.replied_at) else { return [answer] + thread }
+        guard let index = thread.firstIndex(where: {
+            guard let stamp = instant($0.created_at) else { return false }
+            return stamp > at
+        }) else { return thread + [answer] }
+        return Array(thread[..<index]) + [answer] + Array(thread[index...])
+    }
+
+    /// A server stamp to a date, or nil when it cannot be read. The flagship
+    /// sends an offset; an island on SQLite can send a naive stamp, and neither
+    /// may be allowed to reorder the exchange by throwing.
+    private static func instant(_ iso: String?) -> Date? {
+        guard let iso, !iso.isEmpty else { return nil }
+        let withFrac = ISO8601DateFormatter()
+        withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = withFrac.date(from: iso) ?? plain.date(from: iso) { return date }
+        let naive = DateFormatter()
+        naive.locale = Locale(identifier: "en_US_POSIX")
+        naive.timeZone = TimeZone(secondsFromGMT: 0)
+        for format in ["yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+            naive.dateFormat = format
+            if let date = naive.date(from: iso) { return date }
+        }
+        return nil
     }
 
     // MARK: - Actions

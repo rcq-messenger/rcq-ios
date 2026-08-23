@@ -8,13 +8,13 @@
 "push.trade_received.gift.body" = "sent you a gift";
 "push.trade_received.offer.body" = "sent you a trade offer";
 "push.uin_auction_outbid.title" = "UIN Auction";
-"push.uin_auction_outbid.body" = "You were outbid — check the auction.";
+"push.uin_auction_outbid.body" = "You were outbid. Check the auction.";
 /* Fallback body when the NSE can't decrypt a group push (localized so it's at
    least in the user's language, with the group name as the title). */
 "push.group_message.body" = "New message";
 /* Rendered instead of the sender + preview whenever the app is PIN-locked or in
    a duress (decoy) session. The NSE runs in its own process and cannot see the
-   lock state directly — it reads an App Group flag the app writes. Deliberately
+   lock state directly, so it reads an App Group flag the app writes. Deliberately
    says nothing about who wrote or what they wrote. */
 "push.quiet.title" = "RCQ";
 "push.quiet.body" = "New message";
