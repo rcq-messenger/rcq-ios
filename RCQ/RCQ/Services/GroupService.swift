@@ -45,6 +45,13 @@ final class GroupService: ObservableObject {
     /// list's `.task` and the boot's catch-up ask within the same frame).
     private var refreshInFlight: Task<Void, Never>?
     private var rosterEpoch = 0
+    /// The account the list belongs to; see ContactService.
+    private var rosterAccount: UUID?
+    /// True once a live `/groups` answer landed this session. Until then
+    /// there is nothing to write, and after it an EMPTY list is written like
+    /// any other: a user who left their last group must not find it back on
+    /// the next cold start.
+    private var groupsLoaded = false
 
     private var wantsFollowUp = false
 
@@ -65,7 +72,8 @@ final class GroupService: ObservableObject {
         }
         wantsFollowUp = false
         let epoch = rosterEpoch
-        let task = Task { @MainActor in await self.refreshNow(epoch: epoch) }
+        let account = AccountManager.shared.activeAccountID
+        let task = Task { @MainActor in await self.refreshNow(epoch: epoch, account: account) }
         refreshInFlight = task
         await task.value
         if refreshInFlight == task { refreshInFlight = nil }
@@ -78,12 +86,12 @@ final class GroupService: ObservableObject {
     /// rosters either (fetched per group on demand; the beta group's alone
     /// would be the size of the file).
     func saveSnapshot() {
+        guard groupsLoaded else { return }
         let own = groups.filter { $0.host == nil }.map { g -> RCQGroup in var l = g; l.members = []; return l }
-        guard !own.isEmpty || !groups.isEmpty else { return }
-        RosterSnapshot.save(own, as: .groups)
+        RosterSnapshot.save(own, as: .groups, accountID: rosterAccount)
     }
 
-    private func refreshNow(epoch: Int) async {
+    private func refreshNow(epoch: Int, account: UUID?) async {
         if PanicPINService.shared.isDecoy { return }
         do {
             // Without the roster: a chat-list row wants a name, a picture and a
@@ -123,8 +131,11 @@ final class GroupService: ObservableObject {
                 merged.members = cached
                 return merged
             }
-            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
+            guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
+                  !PanicPINService.shared.isLocked else { return }
             self.groups = own + foreign
+            self.rosterAccount = account
+            self.groupsLoaded = true
             saveSnapshot()
             // Mirror id → name into the App Group so the NSE can title a
             // group-message push with the group's name (not just the sender).
@@ -603,6 +614,8 @@ final class GroupService: ObservableObject {
     /// Local cache reset used by the burn flow.
     func wipe() {
         rosterEpoch += 1
+        rosterAccount = nil
+        groupsLoaded = false
         refreshInFlight = nil
         groups = []
         unread = [:]

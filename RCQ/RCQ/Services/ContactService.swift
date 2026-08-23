@@ -77,7 +77,7 @@ final class ContactService: ObservableObject {
     func saveSnapshot() {
         guard rosterLoaded else { return }
         let own = contacts.filter { $0.host == nil }
-        RosterSnapshot.save(Snapshot(contacts: own, pending: pendingRequests, outgoing: outgoingRequests), as: .contacts)
+        RosterSnapshot.save(Snapshot(contacts: own, pending: pendingRequests, outgoing: outgoingRequests), as: .contacts, accountID: rosterAccount)
     }
 
     /// True when the roster on screen came from disk and no live fetch has
@@ -113,6 +113,11 @@ final class ContactService: ObservableObject {
     /// Bumped by `wipe()`: a fetch that was in flight for the previous account
     /// finds a different epoch when it lands and drops its answer.
     private var rosterEpoch = 0
+    /// The account the roster on screen belongs to. Every write to disk is
+    /// bound to it, so an answer that lands after a switch cannot be filed
+    /// under the account that switched in (the switch flips the active id
+    /// before it wipes, so "whoever is active now" is the wrong question).
+    private var rosterAccount: UUID?
 
     /// Set by a caller that arrived while a fetch was in flight and carries
     /// new intent (a request just accepted, a socket event): the answer in
@@ -139,13 +144,14 @@ final class ContactService: ObservableObject {
         }
         wantsFollowUp = false
         let epoch = rosterEpoch
-        let task = Task { @MainActor in await self.refreshNow(epoch: epoch) }
+        let account = AccountManager.shared.activeAccountID
+        let task = Task { @MainActor in await self.refreshNow(epoch: epoch, account: account) }
         refreshInFlight = task
         await task.value
         if refreshInFlight == task { refreshInFlight = nil }
     }
 
-    private func refreshNow(epoch: Int) async {
+    private func refreshNow(epoch: Int, account: UUID?) async {
         if PanicPINService.shared.isDecoy { return }
         presenceTouchedDuringRefresh = [:]
         do {
@@ -158,7 +164,8 @@ final class ContactService: ObservableObject {
             // The account changed under this fetch: not our roster any more.
             // Locked in the meantime: the key is gone and nothing may be
             // published or written until the unlock refreshes again.
-            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
+            guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
+                  !PanicPINService.shared.isLocked else { return }
             // What the island served, before the local filters below: the
             // vault mirror folds THIS list, the same one the other clients
             // fold, so two devices never take turns rewriting the slot over a
@@ -196,7 +203,9 @@ final class ContactService: ObservableObject {
             self.hydratedFromSnapshot = false
             let pending = (try? await pendingFetch) ?? self.pendingRequests
             let outgoing = (try? await outgoingFetch) ?? self.outgoingRequests
-            guard epoch == rosterEpoch, !PanicPINService.shared.isLocked else { return }
+            guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
+                  !PanicPINService.shared.isLocked else { return }
+            self.rosterAccount = account
             self.pendingRequests = pending
             self.outgoingRequests = outgoing
             // What the next cold start paints before it asks anyone.
@@ -513,6 +522,7 @@ final class ContactService: ObservableObject {
     /// the Keychain rows do; a burn deletes it itself (`RosterSnapshot.delete`).
     func wipe() {
         rosterEpoch += 1
+        rosterAccount = nil
         refreshInFlight = nil
         contacts = []
         rosterLoaded = false
