@@ -267,11 +267,15 @@ struct IslandCardView: View {
                 }
             }
             if !entry.description.isEmpty {
+                // Capped. is2's blurb is a paragraph, and unbounded it ran
+                // straight through the page dots under the deck (founder,
+                // 24.08). Three lines say what kind of island it is; the rest
+                // is for the catalogue page, not for a card being swiped.
                 Text(entry.description)
                     .font(.caption)
                     .foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
                     .padding(.horizontal, 14)
             }
             Spacer(minLength: 0)
