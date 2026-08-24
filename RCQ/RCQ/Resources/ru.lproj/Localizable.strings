@@ -1919,3 +1919,8 @@
 "sections.err.too_large" = "Список секций слишком большой, он не сохранится.";
 "sections.err.unreadable" = "Секции записаны более новой версией RCQ.";
 "pin_verify.title.section" = "Открыть секцию";
+
+"island.use" = "Выбрать этот остров";
+"island.manual_entry" = "Ввести адрес вручную";
+"island.back_to_list" = "Вернуться к списку";
+"island.host_hint" = "адрес острова";

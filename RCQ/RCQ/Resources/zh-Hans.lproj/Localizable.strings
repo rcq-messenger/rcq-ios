@@ -1751,3 +1751,8 @@
 "sections.err.too_large" = "分区列表太大，无法保存。";
 "sections.err.unreadable" = "你的分区是由更新版本的 RCQ 写入的。";
 "pin_verify.title.section" = "打开该分区";
+
+"island.use" = "使用这个岛屿";
+"island.manual_entry" = "改为输入地址";
+"island.back_to_list" = "返回列表";
+"island.host_hint" = "岛屿地址";

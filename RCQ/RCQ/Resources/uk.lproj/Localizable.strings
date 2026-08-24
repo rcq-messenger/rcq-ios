@@ -1760,3 +1760,8 @@
 "sections.err.too_large" = "Список секцій завеликий, він не збережеться.";
 "sections.err.unreadable" = "Секції записані новішою версією RCQ.";
 "pin_verify.title.section" = "Відкрити секцію";
+
+"island.use" = "Обрати цей острів";
+"island.manual_entry" = "Ввести адресу вручну";
+"island.back_to_list" = "Повернутися до списку";
+"island.host_hint" = "адреса острова";

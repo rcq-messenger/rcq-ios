@@ -1968,3 +1968,8 @@
 "sections.err.too_large" = "The section list is too large to save.";
 "sections.err.unreadable" = "Your sections were written by a newer version of RCQ.";
 "pin_verify.title.section" = "Unlock this section";
+
+"island.use" = "Use this island";
+"island.manual_entry" = "Enter an address instead";
+"island.back_to_list" = "Back to the list";
+"island.host_hint" = "island host";
