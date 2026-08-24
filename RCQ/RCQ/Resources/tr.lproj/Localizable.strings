@@ -1760,3 +1760,8 @@
 "sections.err.too_large" = "Bölüm listesi kaydedilemeyecek kadar büyük.";
 "sections.err.unreadable" = "Bölümleriniz RCQ'nun daha yeni bir sürümüyle yazılmış.";
 "pin_verify.title.section" = "Bu bölümü aç";
+
+"island.use" = "Bu adayı kullan";
+"island.manual_entry" = "Adres gir";
+"island.back_to_list" = "Listeye dön";
+"island.host_hint" = "ada adresi";

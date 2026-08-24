@@ -15,22 +15,31 @@ struct ServerPickerSheet: View {
     @StateObject private var directory = ServerDirectoryService.shared
     @AppStorage("rcq.baseURL") private var customServer: String = ""
 
-    @State private var query: String = ""
+    /// Which card is up. Also what the Use button acts on: a swipe is the
+    /// selection, and asking for a second tap on the card to "select" it before
+    /// the button would be a step nobody expects here.
+    @State private var page: Int = 0
+    /// The typed path. A self-hoster's island, and any island an organisation
+    /// hands out privately, is never in the catalogue.
+    @State private var manualEntry: Bool = false
+    @State private var typedHost: String = ""
 
-    /// Returns the visible list after applying the search filter.
-    /// Search matches name, description, region and host — operator
-    /// contact deliberately not searchable, you shouldn't be looking
-    /// instances up by maintainer email.
-    private var filtered: [ServerEntry] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return directory.servers }
-        return directory.servers.filter { entry in
-            entry.name.lowercased().contains(q)
-                || entry.description.lowercased().contains(q)
-                || entry.region.lowercased().contains(q)
-                || entry.displayHost.lowercased().contains(q)
-        }
+    /// Writing the default URL as EMPTY keeps the "empty means default"
+    /// convention APIClient and CustomServerSheet already rely on.
+    private func choose(_ entry: ServerEntry) {
+        customServer = entry.url == ServerDirectoryService.defaultEntry.url ? "" : entry.url
+        dismiss()
     }
+
+    private func chooseTyped() {
+        var host = typedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else { return }
+        if !host.hasPrefix("http://") && !host.hasPrefix("https://") { host = "https://" + host }
+        while host.hasSuffix("/") { host.removeLast() }
+        customServer = host == ServerDirectoryService.defaultEntry.url ? "" : host
+        dismiss()
+    }
+
 
     private var currentURL: String {
         customServer.isEmpty ? ServerDirectoryService.defaultEntry.url : customServer
@@ -42,19 +51,39 @@ struct ServerPickerSheet: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 VStack(spacing: 0) {
                     headerBlock
-                    searchField
-                    ScrollView {
-                        VStack(spacing: 10) {
-                            ForEach(filtered) { entry in
-                                row(for: entry)
+                    if manualEntry || directory.servers.isEmpty {
+                        manualBlock
+                    } else {
+                        // Cards you swipe, not rows you scan. An island is a
+                        // place, and the catalogue is short enough that a list
+                        // of grey rows was hiding that rather than showing it.
+                        // Android draws the same thing card for card.
+                        TabView(selection: $page) {
+                            ForEach(Array(directory.servers.enumerated()), id: \.element.id) { index, entry in
+                                card(for: entry).tag(index)
                             }
-                            if filtered.isEmpty {
-                                emptyState
-                            }
-                            Spacer(minLength: 24)
                         }
+                        .tabViewStyle(.page(indexDisplayMode: .always))
+                        .indexViewStyle(.page(backgroundDisplayMode: .always))
+                        .frame(maxHeight: .infinity)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            choose(directory.servers[min(page, directory.servers.count - 1)])
+                        } label: {
+                            Text("island.use".localized)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Capsule().fill(Theme.Color.accent))
+                        }
+                        .buttonStyle(.plain)
                         .padding(.horizontal, 18)
-                        .padding(.top, 8)
+                        Button("island.manual_entry".localized) { manualEntry = true }
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.accent)
+                            .padding(.top, 12)
+                            .padding(.bottom, 18)
                     }
                 }
             }
@@ -92,125 +121,131 @@ struct ServerPickerSheet: View {
         .padding(.bottom, 10)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(Theme.Color.textSecondary)
-                .font(.system(size: 13, weight: .semibold))
-            TextField(
-                "onboard.server.picker.search".localized,
-                text: $query
-            )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled(true)
-            if !query.isEmpty {
-                Button {
-                    query = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Theme.Color.bgSecondary)
-        .cornerRadius(10)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 10)
-    }
 
-    private func row(for entry: ServerEntry) -> some View {
+    /// One island: its painting, its own logo on it, and what it says about
+    /// itself. The picture is decoration the project ships, so every island has
+    /// one; the logo is the operator's and may be absent, in which case the
+    /// lettered tile stands in, exactly as it does everywhere else.
+    private func card(for entry: ServerEntry) -> some View {
         let selected = entry.url == currentURL
-        return Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            // Writing the default URL as empty keeps the existing
-            // "empty means default" convention used by APIClient and
-            // CustomServerSheet — no need to normalise it elsewhere.
-            if entry.url == ServerDirectoryService.defaultEntry.url {
-                customServer = ""
-            } else {
-                customServer = entry.url
-            }
-            dismiss()
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(entry.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                    Spacer(minLength: 8)
-                    if !entry.region.isEmpty && entry.region != "—" {
-                        Text(entry.region)
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(0.8)
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                Capsule().fill(Theme.Color.bgPrimary)
-                            )
-                    }
-                    if selected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Theme.Color.accent)
-                    }
+        return VStack(spacing: 8) {
+            IslandArtView(host: entry.displayHost, name: entry.name)
+            Text(entry.name)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            HStack(spacing: 6) {
+                Text(entry.displayHost)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                if !entry.region.isEmpty && entry.region != "—" {
+                    Text("·").font(.caption).foregroundColor(Theme.Color.textSecondary.opacity(0.6))
+                    Text(entry.region).font(.caption).foregroundColor(Theme.Color.textSecondary)
                 }
-                if !entry.description.isEmpty {
-                    Text(entry.description)
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundColor(Theme.Color.textSecondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 6) {
-                    Text(entry.displayHost)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if !entry.operatorContact.isEmpty {
-                        Text("·")
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary.opacity(0.6))
-                        Text(entry.operatorContact)
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                        .foregroundColor(Theme.Color.accent)
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Theme.Color.bgSecondary)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(
-                        selected ? Theme.Color.accent : Color.clear,
-                        lineWidth: 1.5
-                    )
-            )
+            if !entry.description.isEmpty {
+                Text(entry.description)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+            }
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.Color.bgSecondary))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(selected ? Theme.Color.accent : Color.clear, lineWidth: 1.5)
+        )
+        .padding(.horizontal, 18)
+        .padding(.bottom, 34)   // clear of the page dots
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 22, weight: .light))
-                .foregroundColor(Theme.Color.textSecondary.opacity(0.5))
-            Text("onboard.server.picker.empty".localized)
-                .font(.callout)
-                .foregroundColor(Theme.Color.textSecondary)
+    /// Typing an address, and also what an unreachable catalogue falls back to:
+    /// a blocked network must never leave this sheet empty.
+    private var manualBlock: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "server.rack")
+                    .foregroundColor(Theme.Color.textSecondary)
+                TextField("island.host_hint".localized, text: $typedHost)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .keyboardType(.URL)
+                    .foregroundColor(Theme.Color.textPrimary)
+            }
+            .font(.callout)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Theme.Color.bgSecondary)
+            .cornerRadius(10)
+            Button {
+                chooseTyped()
+            } label: {
+                Text("island.use".localized)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Capsule().fill(Theme.Color.accent))
+            }
+            .buttonStyle(.plain)
+            .disabled(typedHost.trimmingCharacters(in: .whitespaces).isEmpty)
+            if !directory.servers.isEmpty {
+                Button("island.back_to_list".localized) { manualEntry = false }
+                    .font(.callout)
+                    .foregroundColor(Theme.Color.accent)
+            }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+    }
+
+}
+
+/// The island's painting with its own logo standing on it.
+///
+/// Seeded from the memory cache so a card that has been seen before opens on
+/// the picture rather than flashing an empty frame first, the same trick
+/// PersonAvatarView and IslandAvatarView already use.
+private struct IslandArtView: View {
+    let host: String
+    let name: String
+
+    @State private var image: UIImage?
+
+    init(host: String, name: String) {
+        self.host = host
+        self.name = name
+        _image = State(initialValue: IslandArtStore.shared.cached(host: host))
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(height: 150)
+            IslandAvatarView(name: name, host: host, size: 34)
+                .offset(y: 6)
+        }
+        .frame(height: 156)
+        .task(id: host) {
+            image = await IslandArtStore.shared.load(host: host)
+        }
     }
 }

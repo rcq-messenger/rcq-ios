@@ -1760,3 +1760,8 @@
 "sections.err.too_large" = "A lista de seções é grande demais para salvar.";
 "sections.err.unreadable" = "Suas seções foram escritas por uma versão mais nova do RCQ.";
 "pin_verify.title.section" = "Abrir esta seção";
+
+"island.use" = "Usar esta ilha";
+"island.manual_entry" = "Digitar um endereço";
+"island.back_to_list" = "Voltar à lista";
+"island.host_hint" = "endereço da ilha";
