@@ -157,13 +157,12 @@ struct ServerPickerSheet: View {
             }
             Spacer(minLength: 0)
         }
+        // No panel behind it. The island is a cut-out and the sheet already has
+        // a ground; a card under it turned a floating island into a sticker on
+        // a tile (founder, 24.08). Which island is chosen is said by the tick
+        // next to the host, which is where the eye already is.
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.Color.bgSecondary))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(selected ? Theme.Color.accent : Color.clear, lineWidth: 1.5)
-        )
         .padding(.horizontal, 18)
         .padding(.bottom, 34)   // clear of the page dots
     }
@@ -221,6 +220,11 @@ private struct IslandArtView: View {
     let name: String
 
     @State private var image: UIImage?
+    /// Flipped once on appear; the animation below turns that one change into a
+    /// slow drift that never settles. Four points either way over two and a
+    /// half seconds: enough to read as floating, not enough to be a thing that
+    /// moves while somebody is trying to read the name under it.
+    @State private var drifting = false
 
     init(host: String, name: String) {
         self.host = host
@@ -244,6 +248,9 @@ private struct IslandArtView: View {
                 .offset(y: 6)
         }
         .frame(height: 156)
+        .offset(y: drifting ? -4 : 4)
+        .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: drifting)
+        .onAppear { drifting = true }
         .task(id: host) {
             image = await IslandArtStore.shared.load(host: host)
         }
