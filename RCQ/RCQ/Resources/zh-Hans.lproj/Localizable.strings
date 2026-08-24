@@ -1756,3 +1756,5 @@
 "island.manual_entry" = "改为输入地址";
 "island.back_to_list" = "返回列表";
 "island.host_hint" = "岛屿地址";
+
+"add_account.enter_phrase" = "用助记词登录";

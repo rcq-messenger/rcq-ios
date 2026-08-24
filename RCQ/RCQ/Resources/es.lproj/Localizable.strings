@@ -1765,3 +1765,5 @@
 "island.manual_entry" = "Escribir una dirección";
 "island.back_to_list" = "Volver a la lista";
 "island.host_hint" = "dirección de la isla";
+
+"add_account.enter_phrase" = "Entrar con una frase";

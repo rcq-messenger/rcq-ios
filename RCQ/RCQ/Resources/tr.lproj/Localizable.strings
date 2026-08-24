@@ -1765,3 +1765,5 @@
 "island.manual_entry" = "Adres gir";
 "island.back_to_list" = "Listeye dön";
 "island.host_hint" = "ada adresi";
+
+"add_account.enter_phrase" = "Kurtarma ifadesiyle gir";

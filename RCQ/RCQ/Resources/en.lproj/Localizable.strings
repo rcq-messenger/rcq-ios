@@ -1973,3 +1973,5 @@
 "island.manual_entry" = "Enter an address instead";
 "island.back_to_list" = "Back to the list";
 "island.host_hint" = "island host";
+
+"add_account.enter_phrase" = "Sign in with a phrase";

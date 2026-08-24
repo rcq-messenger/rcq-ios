@@ -20,6 +20,9 @@ struct AddAccountSheet: View {
     @State private var query: String = ""
     /// Which card is up; the Use button acts on it.
     @State private var page: Int = 0
+    /// The typed-address door. A sheet rather than a section, so this screen
+    /// asks one question at a time.
+    @State private var showManual = false
     @State private var customURL: String = ""
     @State private var customToken: String = ""
     @State private var adding: Bool = false
@@ -91,18 +94,27 @@ struct AddAccountSheet: View {
                             .buttonStyle(.plain)
                             .padding(.horizontal, 18)
                         }
-                        ScrollView {
-                            VStack(spacing: 10) {
-                                if directory.servers.isEmpty {
-                                    emptyState
-                                }
-                                customURLBlock
-                                restoreBlock
-                                Spacer(minLength: 24)
-                            }
-                            .padding(.horizontal, 18)
-                            .padding(.top, 12)
+                        if directory.servers.isEmpty { emptyState }
+                        // Two doors, side by side, and neither of them unpacked
+                        // on this screen. The manual URL used to sit here as a
+                        // form with two fields and its own button, under a deck
+                        // of islands: three ways to add an account stacked
+                        // vertically, and the screen read as a pile (founder,
+                        // 24.08). Each is a sheet of its own now, opened by one
+                        // of a pair of equal buttons.
+                        HStack(spacing: 10) {
+                            secondaryAction(
+                                icon: "key.fill",
+                                title: "add_account.enter_phrase".localized,
+                            ) { showRestore = true }
+                            secondaryAction(
+                                icon: "keyboard",
+                                title: "island.manual_entry".localized,
+                            ) { showManual = true }
                         }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                        .padding(.bottom, 18)
                     } else {
                         loadingState
                     }
@@ -121,6 +133,26 @@ struct AddAccountSheet: View {
             }
             .sheet(isPresented: $showRestore) {
                 RestoreFromSeedView(onCompleted: { dismiss() })
+            }
+            .sheet(isPresented: $showManual) {
+                NavigationStack {
+                    ZStack {
+                        Theme.Color.bgPrimary.ignoresSafeArea()
+                        ScrollView {
+                            customURLBlock
+                                .padding(.horizontal, 18)
+                                .padding(.top, 8)
+                        }
+                    }
+                    .navigationTitle("island.manual_entry".localized)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button { showManual = false } label: { Image(systemName: "xmark") }
+                                .accessibilityLabel("common.cancel".localized)
+                        }
+                    }
+                }
             }
         }
     }
@@ -279,27 +311,28 @@ struct AddAccountSheet: View {
         }
     }
 
-    /// Restore an existing identity (e.g. moving an account to this device)
-    /// from its recovery phrase, alongside the catalogue/custom add paths.
-    private var restoreBlock: some View {
-        Button {
-            showRestore = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "key.fill")
-                Text("recovery.restore.title".localized)
-                    .fontWeight(.medium)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption2)
+    /// One of the two doors under the deck: a glyph over a word, both halves
+    /// the same size so neither reads as the main one.
+    private func secondaryAction(
+        icon: String,
+        title: String,
+        action: @escaping () -> Void,
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .medium))
+                Text(title)
+                    .font(.footnote.weight(.medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
             }
             .foregroundColor(Theme.Color.textSecondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary))
         }
         .buttonStyle(.plain)
-        .padding(.top, 8)
     }
 
     private var emptyState: some View {

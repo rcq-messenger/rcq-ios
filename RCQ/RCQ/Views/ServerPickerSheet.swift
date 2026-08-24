@@ -206,6 +206,14 @@ private struct IslandArtView: View {
                 }
             }
             .frame(height: 150)
+            // ⚠ The drift belongs on the PAINTING and nowhere else. It used to
+            // sit on this whole stack, which had two wrong effects at once: the
+            // logo bobbed with the island (it is a mark, it should sit still)
+            // and the picture, whose branch changes the moment the bytes
+            // arrive, blinked instead of moving, because the repeating
+            // animation caught that change too (founder, 24.08).
+            .offset(y: drifting ? -4 : 4)
+            .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: drifting)
             Group {
                 if let logo {
                     Image(uiImage: logo)
@@ -220,8 +228,6 @@ private struct IslandArtView: View {
             .offset(y: 6)
         }
         .frame(height: 156)
-        .offset(y: drifting ? -4 : 4)
-        .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: drifting)
         .onAppear { drifting = true }
         .task(id: host) {
             image = await IslandArtStore.shared.load(host: host)
