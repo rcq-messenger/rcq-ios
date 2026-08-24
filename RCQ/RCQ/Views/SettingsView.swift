@@ -145,8 +145,12 @@ struct SettingsSearchSheet: View {
         NavigationStack {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
+                // Field at the BOTTOM, results above it. With the field on
+                // top every match was a reach across the whole screen from the
+                // key just pressed, and the taller the phone the worse it got.
+                // Down here it rides the keyboard, which SwiftUI lifts it over,
+                // and the results end where the thumb already is.
                 VStack(spacing: 0) {
-                    field
                     if query.trimmingCharacters(in: .whitespaces).isEmpty {
                         placeholder("settings.search.empty.idle".localized)
                     } else if results.isEmpty {
@@ -170,6 +174,7 @@ struct SettingsSearchSheet: View {
                         .scrollContentBackground(.hidden)
                         .listStyle(.plain)
                     }
+                    field
                 }
             }
             .navigationTitle("settings.search.title".localized)
@@ -208,7 +213,7 @@ struct SettingsSearchSheet: View {
         .background(Theme.Color.bgSecondary)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.vertical, 10)
     }
 
     private func placeholder(_ text: String) -> some View {
