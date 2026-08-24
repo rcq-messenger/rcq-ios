@@ -249,21 +249,6 @@ extension View {
             background(color.opacity(mode.tint).background(.ultraThinMaterial))
         }
     }
-
-    /// The same for floating chrome that has no ground of its own until a
-    /// wallpaper puts one under it, such as the header's name/UIN pill. `.none` paints
-    /// NOTHING here, unlike the row version: without a wallpaper this chrome is
-    /// meant to sit bare on the nav bar, and giving it a fill would change how
-    /// the screen looks for everybody who never set one.
-    @ViewBuilder
-    func wallpaperChromePill<S: Shape>(_ color: SwiftUI.Color, _ mode: WallpaperSurface, in shape: S) -> some View {
-        switch mode {
-        case .none:
-            self
-        case .translucent, .reasserted:
-            background(shape.fill(color.opacity(mode.tint)).background(.ultraThinMaterial, in: shape))
-        }
-    }
 }
 
 extension SwiftUI.Color {

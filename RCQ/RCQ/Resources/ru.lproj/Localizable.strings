@@ -279,7 +279,7 @@
 "bug_bounty.submit.cta" = "Отправить";
 "bug_bounty.submit.sending" = "Отправляем…";
 "bug_bounty.submit.sent" = "Отправлено";
-"bug_bounty.submit.sent_number" = "Отправлено · №%d";
+"bug_bounty.submit.sent_number" = "Отправлено · #%d";
 "bug_bounty.disclosure" = "Уязвимости с потенциальным leak'ом данных или обходом E2EE: пиши на legal@rcq.app с пометкой [SECURITY], не сюда.";
 "bug_bounty.alert.title" = "Сообщение о баге";
 "bug_bounty.shake.toggle" = "Открывать встряхиванием";
@@ -1705,8 +1705,8 @@
 /* Пункт 26: ряд иконок на обращении (копировать / изменить / убрать) и номер,
    который называет оператор. Убрать это скрыть у себя, а не удалить, поэтому в
    текстах нигде нет слова «удалить». */
-"myreports.number" = "Обращение №%d";
-"myreports.number.short" = "№%d";
+"myreports.number" = "Обращение #%d";
+"myreports.number.short" = "#%d";
 "myreports.copy" = "Копировать обращение";
 "myreports.copy_answer" = "Копировать ответ";
 "myreports.edit" = "Изменить обращение";

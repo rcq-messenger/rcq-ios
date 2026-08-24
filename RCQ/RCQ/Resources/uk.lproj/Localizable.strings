@@ -281,7 +281,7 @@
 "bug_bounty.submit.cta" = "Надіслати";
 "bug_bounty.submit.sending" = "Надсилання…";
 "bug_bounty.submit.sent" = "Надіслано";
-"bug_bounty.submit.sent_number" = "Надіслано · №%d";
+"bug_bounty.submit.sent_number" = "Надіслано · #%d";
 "bug_bounty.disclosure" = "Уразливості безпеки з можливим витоком даних чи обходом наскрізного шифрування: пиши на legal@rcq.app з [SECURITY] у темі, не сюди.";
 "bug_bounty.alert.title" = "Звіт про помилку";
 "bug_bounty.shake.toggle" = "Струснути, щоб повідомити";
@@ -1602,8 +1602,8 @@
 "myreports.status.dismissed" = "Відхилено";
 "myreports.status.duplicate" = "Дублікат";
 
-"myreports.number" = "Звернення №%d";
-"myreports.number.short" = "№%d";
+"myreports.number" = "Звернення #%d";
+"myreports.number.short" = "#%d";
 "myreports.copy" = "Копіювати звернення";
 "myreports.copy_answer" = "Копіювати відповідь";
 "myreports.edit" = "Змінити звернення";

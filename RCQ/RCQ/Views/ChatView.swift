@@ -846,15 +846,6 @@ struct ChatView: View {
                 }
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
-            // ⚠ A modifier and not an inline `.background { }`. This closure is
-            // one link of the longest modifier chain in the app, and the whole
-            // chain type-checks as ONE expression: writing the ground out in
-            // place here puts the compiler over its limit and the file stops
-            // building ("unable to type-check this expression in reasonable
-            // time", reported on a line a few hundred further down, which is
-            // the part of this that costs an afternoon). One concrete generic
-            // call costs nothing.
-            .modifier(BottomBarGround(surface: wallpaperSurfaceMode))
         }
         .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice))
         .navigationBarTitleDisplayMode(.inline)
@@ -1285,7 +1276,6 @@ struct ChatView: View {
                         peerSubtitle(for: live)
                     }
                 }
-                .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
                 Color.clear.frame(width: 24, height: 1)
             }
             .contentShape(Rectangle())
@@ -1320,7 +1310,6 @@ struct ChatView: View {
                             .font(.system(size: 11))
                             .foregroundColor(Theme.Color.textSecondary)
                     }
-                    .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
                     // Mirror peer-header layout: a trailing 24pt clear
                     // spacer balances the leading avatar so the title
                     // text stays centred under the nav bar.
@@ -1337,7 +1326,6 @@ struct ChatView: View {
             Text("chat.random.stranger".localized)
                 .font(.system(.subheadline, weight: .semibold))
                 .foregroundColor(Theme.Color.textPrimary)
-                .modifier(HeaderPillOverWallpaper(surface: wallpaperSurfaceMode))
         }
     }
 
@@ -1587,16 +1575,6 @@ struct ChatView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
-        // The glyph stopped being a hairline token (see above), but all three
-        // lines still stand on bare wallpaper, and `textSecondary` on the light
-        // "Sunset" preset is about 2.9:1. On the home screen no label is left
-        // standing on the picture; this one gets the same treatment.
-        .padding(wallpaperSurfaceMode == .none ? 0 : 16)
-        .wallpaperChromePill(
-            Theme.Color.bgPrimary, wallpaperSurfaceMode,
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
-        .padding(.horizontal, wallpaperSurfaceMode == .none ? 0 : 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 120)
         .allowsHitTesting(false)
@@ -3565,57 +3543,6 @@ private struct BottomAnchoredScroll: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-/// The bottom bar's ground, over a wallpaper only.
-///
-/// The whole bar (typing line, random-chat strip, composer, emoji panel)
-/// stands ON the wallpaper: it lives in a `safeAreaInset`, and
-/// `ChatBackgroundView` ignores the safe area, so the picture is painted behind
-/// it. It had no ground of its own at all, which left the attach / mic / send
-/// glyphs (`textPrimary`, `accent`) and the typing line (`textSecondary`)
-/// standing on whatever the user picked. Nothing is painted without a
-/// wallpaper, so nothing moves for anybody who never set one.
-private struct BottomBarGround: ViewModifier {
-    let surface: WallpaperSurface
-
-    func body(content: Content) -> some View {
-        content.background {
-            if surface != .none {
-                Rectangle()
-                    .fill(Theme.Color.bgPrimary.opacity(surface.tint))
-                    .background(.ultraThinMaterial)
-                    // The ground runs to the screen edge instead of stopping at
-                    // the home indicator, which would leave a strip of
-                    // wallpaper under the composer.
-                    //
-                    // ⚠ `.container`, not the default `.all`: `.all` includes
-                    // the KEYBOARD region, and a ground that grows to follow
-                    // the keyboard is a layout loop with the very inset it is
-                    // the background of.
-                    .ignoresSafeArea(.container, edges: .bottom)
-            }
-        }
-    }
-}
-
-/// The nav bar's name + subtitle block, given a ground of its own when a
-/// wallpaper is set.
-///
-/// `.toolbarBackground(.visible, for: .navigationBar)` paints a MATERIAL, not a
-/// colour, so the wallpaper scrolls under the bar and tints it. The subtitle is
-/// `textMono`, the palest label the screen has, and on a light picture it goes
-/// to nothing. Same defect the founder reported on the main screen's UIN, same
-/// shape of fix, and nothing at all without a wallpaper.
-private struct HeaderPillOverWallpaper: ViewModifier {
-    let surface: WallpaperSurface
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, surface == .none ? 0 : 8)
-            .padding(.vertical, surface == .none ? 0 : 2)
-            .wallpaperChromePill(Theme.Color.bgPrimary, surface, in: Capsule(style: .continuous))
     }
 }
 
