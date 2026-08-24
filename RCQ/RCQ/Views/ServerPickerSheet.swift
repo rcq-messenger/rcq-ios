@@ -60,7 +60,7 @@ struct ServerPickerSheet: View {
                         // Android draws the same thing card for card.
                         TabView(selection: $page) {
                             ForEach(Array(directory.servers.enumerated()), id: \.element.id) { index, entry in
-                                card(for: entry).tag(index)
+                                IslandCardView(entry: entry, selected: entry.url == currentURL).tag(index)
                             }
                         }
                         .tabViewStyle(.page(indexDisplayMode: .always))
@@ -122,51 +122,6 @@ struct ServerPickerSheet: View {
     }
 
 
-    /// One island: its painting, its own logo on it, and what it says about
-    /// itself. The picture is decoration the project ships, so every island has
-    /// one; the logo is the operator's and may be absent, in which case the
-    /// lettered tile stands in, exactly as it does everywhere else.
-    private func card(for entry: ServerEntry) -> some View {
-        let selected = entry.url == currentURL
-        return VStack(spacing: 8) {
-            IslandArtView(host: entry.displayHost, name: entry.name)
-            Text(entry.name)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(Theme.Color.textPrimary)
-            HStack(spacing: 6) {
-                Text(entry.displayHost)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-                if !entry.region.isEmpty && entry.region != "—" {
-                    Text("·").font(.caption).foregroundColor(Theme.Color.textSecondary.opacity(0.6))
-                    Text(entry.region).font(.caption).foregroundColor(Theme.Color.textSecondary)
-                }
-                if selected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundColor(Theme.Color.accent)
-                }
-            }
-            if !entry.description.isEmpty {
-                Text(entry.description)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-            }
-            Spacer(minLength: 0)
-        }
-        // No panel behind it. The island is a cut-out and the sheet already has
-        // a ground; a card under it turned a floating island into a sticker on
-        // a tile (founder, 24.08). Which island is chosen is said by the tick
-        // next to the host, which is where the eye already is.
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 34)   // clear of the page dots
-    }
-
     /// Typing an address, and also what an unreachable catalogue falls back to:
     /// a blocked network must never leave this sheet empty.
     private var manualBlock: some View {
@@ -218,6 +173,10 @@ struct ServerPickerSheet: View {
 private struct IslandArtView: View {
     let host: String
     let name: String
+    /// The mirrored logo from the catalogue, when the island has one. Nil falls
+    /// back to the lettered tile, which is what an island whose operator never
+    /// set a logo gets everywhere else in the app.
+    var logoURL: String?
 
     @State private var image: UIImage?
     /// Flipped once on appear; the animation below turns that one change into a
@@ -226,9 +185,12 @@ private struct IslandArtView: View {
     /// moves while somebody is trying to read the name under it.
     @State private var drifting = false
 
-    init(host: String, name: String) {
+    @State private var logo: UIImage?
+
+    init(host: String, name: String, logoURL: String? = nil) {
         self.host = host
         self.name = name
+        self.logoURL = logoURL
         _image = State(initialValue: IslandArtStore.shared.cached(host: host))
     }
 
@@ -244,8 +206,18 @@ private struct IslandArtView: View {
                 }
             }
             .frame(height: 150)
-            IslandAvatarView(name: name, host: host, size: 34)
-                .offset(y: 6)
+            Group {
+                if let logo {
+                    Image(uiImage: logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 34, height: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 34 * 0.28, style: .continuous))
+                } else {
+                    IslandAvatarView(name: name, host: host, size: 34)
+                }
+            }
+            .offset(y: 6)
         }
         .frame(height: 156)
         .offset(y: drifting ? -4 : 4)
@@ -254,5 +226,52 @@ private struct IslandArtView: View {
         .task(id: host) {
             image = await IslandArtStore.shared.load(host: host)
         }
+        .task(id: logoURL ?? "") {
+            logo = await IslandArtStore.shared.logo(urlString: logoURL)
+        }
+    }
+}
+
+/// One island: its painting, its own logo on it, and what it says about itself.
+///
+/// Shared by the onboarding picker and the add-account sheet, because they are
+/// the same question asked twice and were drifting apart as two lists.
+struct IslandCardView: View {
+    let entry: ServerEntry
+    var selected: Bool = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            IslandArtView(host: entry.displayHost, name: entry.name, logoURL: entry.logo)
+            Text(entry.name)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(Theme.Color.textPrimary)
+            HStack(spacing: 6) {
+                Text(entry.displayHost)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                if !entry.region.isEmpty && entry.region != "—" {
+                    Text("·").font(.caption).foregroundColor(Theme.Color.textSecondary.opacity(0.6))
+                    Text(entry.region).font(.caption).foregroundColor(Theme.Color.textSecondary)
+                }
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.accent)
+                }
+            }
+            if !entry.description.isEmpty {
+                Text(entry.description)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
     }
 }
