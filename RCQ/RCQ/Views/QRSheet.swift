@@ -79,6 +79,12 @@ struct QRSheet: View {
             }
             .navigationTitle("qr.title".localized)
             .navigationBarTitleDisplayMode(.inline)
+            // Over the camera the bar carries no ground of its own, so the
+            // preview runs the full height of the sheet and the title and
+            // Close button sit on the picture. `.dark` keeps them white there
+            // whatever the app theme is; the code pane is untouched.
+            .toolbarBackground(mode == .scan ? .hidden : .automatic, for: .navigationBar)
+            .toolbarColorScheme(mode == .scan ? ColorScheme.dark : nil, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
@@ -258,14 +264,17 @@ struct QRSheet: View {
             .padding(.bottom, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Camera as a BACKGROUND: it fills to the sheet edges (the default
-        // sheet safe area would leave a visible bg strip under the preview)
-        // without dragging the controls above it into the unsafe area too.
+        // Camera as a BACKGROUND, edge to edge on all four sides including
+        // UNDER the nav bar: the bar is made transparent for this pane (see
+        // `body`), so its title and Close button float over the picture
+        // instead of standing on a slab that eats the top of the sheet. The
+        // controls in the VStack above stay inside the safe area.
         .background(
             QRScannerView { code in
                 Task { await handleScan(code) }
             }
-            .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
         )
     }
 
@@ -430,21 +439,35 @@ struct QRScannerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: ScannerVC, context: Context) {}
 
+    /// The preview layer IS this view's layer rather than a sublayer of it.
+    ///
+    /// ⚠ A sublayer has to be resized by hand on every layout pass, and CALayer
+    /// does not inherit autoresizing from its host: the layer kept whatever
+    /// frame it was given when the session was configured. The sheet grows from
+    /// the code detent to `.large` the moment the camera comes up, so the
+    /// picture was left as a band across the top with black under it. As the
+    /// view's own layer it cannot disagree with the bounds at all.
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var previewLayer: AVCaptureVideoPreviewLayer {
+            // Safe by construction: `layerClass` above is what UIKit builds.
+            layer as! AVCaptureVideoPreviewLayer  // swiftlint:disable:this force_cast
+        }
+    }
+
     final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
         private var didScan = false
         var onScan: ((String) -> Void)?
         private let session = AVCaptureSession()
-        private var preview: AVCaptureVideoPreviewLayer?
+
+        override func loadView() {
+            view = PreviewView()
+        }
 
         override func viewDidLoad() {
             super.viewDidLoad()
             view.backgroundColor = .black
             configureSession()
-        }
-
-        override func viewDidLayoutSubviews() {
-            super.viewDidLayoutSubviews()
-            preview?.frame = view.bounds
         }
 
         override func viewWillAppear(_ animated: Bool) {
@@ -475,11 +498,9 @@ struct QRScannerView: UIViewControllerRepresentable {
             output.setMetadataObjectsDelegate(self, queue: .main)
             output.metadataObjectTypes = [.qr]
 
-            let preview = AVCaptureVideoPreviewLayer(session: session)
-            preview.videoGravity = .resizeAspectFill
-            preview.frame = view.bounds
-            view.layer.addSublayer(preview)
-            self.preview = preview
+            guard let host = view as? PreviewView else { return }
+            host.previewLayer.session = session
+            host.previewLayer.videoGravity = .resizeAspectFill
         }
 
         func metadataOutput(
