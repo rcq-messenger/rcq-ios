@@ -20,6 +20,10 @@ struct ManageAccountsSheet: View {
 
     @State private var pendingDelete: Account?
     @State private var showRestore = false
+    /// Bumped when a card is refilled below, so the rows redraw. The cards live
+    /// in UserDefaults rather than in an observable object, and a row reads its
+    /// own on every pass.
+    @State private var cardRevision = 0
 
     /// ⚠⚠ Empty under duress, and this is the second lock, not the first: the
     /// row that opens this sheet is already hidden in a decoy session. A screen
@@ -57,6 +61,7 @@ struct ManageAccountsSheet: View {
             }
             .navigationTitle("manage_accounts.title".localized)
             .navigationBarTitleDisplayMode(.inline)
+            .task { await fillMissingIslandCards() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
@@ -142,8 +147,61 @@ struct ManageAccountsSheet: View {
         .padding(.bottom, 6)
     }
 
+    /// Ask each island whose row has no logo version for its `/server/info`.
+    ///
+    /// A card is written while its account is ACTIVE, so a row for an island
+    /// the person has not opened since the logo landed there draws the lettered
+    /// tile forever, which is what "the logo does not come through in the
+    /// account switcher" was. One small GET per such host fixes it without
+    /// switching accounts. An island with no logo at all answers an empty
+    /// version and is asked again next time this sheet opens, which is cheap
+    /// and rare enough to leave as it is.
+    ///
+    /// ⚠ `IslandHTTP`, never `URLSession.shared`. The hosts here are islands
+    /// the user holds an account on, and the shared session carries no proxy
+    /// configuration: on a censored network this would be the one request that
+    /// steps outside the tunnel the user deliberately engaged, handing that
+    /// island a real IP.
+    @MainActor
+    private func fillMissingIslandCards() async {
+        guard !PanicPINService.shared.isDecoy else { return }
+        for account in sortedAccounts {
+            let card = AccountCardCache.card(for: account.id)
+            guard (card?.islandLogoVersion ?? "").isEmpty else { continue }
+            let host = account.displayHost
+            guard !host.isEmpty, let url = URL(string: "https://\(host)/server/info") else { continue }
+            var req = URLRequest(url: url, timeoutInterval: 8)
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            guard let (data, resp) = try? await IslandHTTP.data(for: req),
+                  let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            let name = (obj["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let version = obj["logo_version"] as? String ?? ""
+            guard !name.isEmpty || !version.isEmpty else { continue }
+            // ⚠ The avatar rides along untouched. This card is complete enough
+            // to take the `record` fast path, which OVERWRITES, and the face
+            // was written by a different moment than this one.
+            AccountCardCache.record(
+                AccountCard(
+                    islandName: name.isEmpty ? (card?.islandName ?? "") : name,
+                    islandLogoVersion: version,
+                    avatarMediaID: card?.avatarMediaID ?? "",
+                    avatarMediaKey: card?.avatarMediaKey ?? "",
+                    host: host,
+                    uin: card?.uin,
+                    nickname: card?.nickname ?? ""
+                ),
+                for: account.id
+            )
+            cardRevision += 1
+        }
+    }
+
     private func row(for account: Account) -> some View {
         let isActive = account.id == accountManager.activeAccountID
+        // Read so the rows redraw when a card is refilled above.
+        _ = cardRevision
         let card = AccountCardCache.card(for: account.id)
         // The card's UIN is a cache; the Keychain is the record. Prefer the
         // record and let the card answer only when the Keychain slot is empty
@@ -158,12 +216,32 @@ struct ManageAccountsSheet: View {
             // island a row belongs to is the thing it is FOR. The version comes
             // off that account's OWN card, never the active one's: a row for an
             // account on another island keeps that island's picture.
-            IslandAvatarView(
-                name: label,
-                host: account.displayHost,
-                logoVersion: card?.islandLogoVersion ?? "",
-                size: 36
-            )
+            // The account's own face, with the island it lives on as a badge
+            // on the corner. This is a list of ACCOUNTS: the island was the
+            // whole picture here, so two accounts on the same island were two
+            // identical tiles, and the person had to read the number under
+            // them to tell their own apart.
+            ZStack(alignment: .bottomTrailing) {
+                PersonAvatarView(
+                    mediaID: (card?.avatarMediaID).flatMap { $0.isEmpty ? nil : $0 },
+                    keyBase64: (card?.avatarMediaKey).flatMap { $0.isEmpty ? nil : $0 },
+                    status: .offline,
+                    host: account.displayHost,
+                    size: 36,
+                    showStatus: false,
+                )
+                IslandAvatarView(
+                    name: label,
+                    host: account.displayHost,
+                    logoVersion: card?.islandLogoVersion ?? "",
+                    size: 16
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16 * 0.28, style: .continuous)
+                        .stroke(Theme.Color.bgPrimary, lineWidth: 1.5)
+                )
+                .offset(x: 3, y: 3)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(label)

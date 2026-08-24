@@ -790,6 +790,8 @@ struct ContactListView: View {
             AccountCard(
                 islandName: appState.serverName.trimmingCharacters(in: .whitespacesAndNewlines),
                 islandLogoVersion: appState.serverLogoVersion,
+                avatarMediaID: presence.ownAvatarID ?? "",
+                avatarMediaKey: presence.ownAvatarKey ?? "",
                 host: account.displayHost,
                 uin: auth.ownUIN,
                 nickname: auth.nickname
@@ -2635,6 +2637,12 @@ struct AccountCard: Codable {
     /// as "no logo" and draws the lettered tile: an upgrade shows the old
     /// switcher until the first `/server/info` of the new run lands.
     var islandLogoVersion: String = ""
+    /// The account's OWN avatar on that island, so the switcher can draw a face
+    /// per row instead of a letter. Written from presence while the account is
+    /// active, exactly like the island fields: a row for another island is one
+    /// this process is not talking to and cannot fetch anything for.
+    var avatarMediaID: String = ""
+    var avatarMediaKey: String = ""
     var host: String
     var uin: Int?
     var nickname: String
@@ -2671,6 +2679,12 @@ enum AccountCardCache {
             var merged = fresh
             merged.islandName = existing.islandName
             if merged.islandLogoVersion.isEmpty { merged.islandLogoVersion = existing.islandLogoVersion }
+            // Same reasoning for the face: on a card written before the reply
+            // landed, empty means "not read yet", not "the avatar was removed".
+            if merged.avatarMediaID.isEmpty {
+                merged.avatarMediaID = existing.avatarMediaID
+                merged.avatarMediaKey = existing.avatarMediaKey
+            }
             write(merged, for: id)
             return
         }
