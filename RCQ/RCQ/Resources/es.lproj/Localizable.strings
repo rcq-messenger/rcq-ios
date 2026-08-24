@@ -281,7 +281,7 @@
 "bug_bounty.submit.cta" = "Enviar";
 "bug_bounty.submit.sending" = "Enviando…";
 "bug_bounty.submit.sent" = "Enviado";
-"bug_bounty.submit.sent_number" = "Enviado · n.º %d";
+"bug_bounty.submit.sent_number" = "Enviado · #%d";
 "bug_bounty.disclosure" = "Los fallos de seguridad con posible fuga de datos o salto del cifrado de extremo a extremo van por correo a legal@rcq.app con [SECURITY] en el asunto, no por aquí.";
 "bug_bounty.alert.title" = "Informe de fallo";
 "bug_bounty.shake.toggle" = "Agitar para informar";
@@ -1602,8 +1602,8 @@
 "myreports.status.dismissed" = "Rechazado";
 "myreports.status.duplicate" = "Duplicado";
 
-"myreports.number" = "Reporte n.º %d";
-"myreports.number.short" = "n.º %d";
+"myreports.number" = "Reporte #%d";
+"myreports.number.short" = "#%d";
 "myreports.copy" = "Copiar el reporte";
 "myreports.copy_answer" = "Copiar la respuesta";
 "myreports.edit" = "Editar el reporte";

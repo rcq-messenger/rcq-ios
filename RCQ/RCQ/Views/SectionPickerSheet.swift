@@ -91,12 +91,18 @@ struct SectionPickerSheet: View {
             }
             .navigationTitle(String(format: "sections.picker.title".localized, title))
             .navigationBarTitleDisplayMode(.inline)
+            // Glyphs, not words. The title is a FORMAT ("Add to %@") that
+            // carries a section name of the user's own choosing, so two word
+            // buttons either squeeze it or truncate it. The labels stay on as
+            // accessibility text, which is what VoiceOver reads either way.
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("common.cancel".localized) { dismiss() }
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("common.cancel".localized)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("sections.picker.save".localized) { save() }
+                    Button { save() } label: { Image(systemName: "checkmark") }
+                        .accessibilityLabel("sections.picker.save".localized)
                 }
             }
         }

@@ -868,19 +868,6 @@ struct ContactListView: View {
                             .foregroundColor(Theme.Color.textMono)
                     }
                 }
-                // The nav bar's own background is a thin material, so a
-                // wallpaper scrolls under it and takes the header with it: the
-                // UIN is `textMono`, the palest label on the screen, and on a
-                // light wallpaper it went to nothing. Over a wallpaper the
-                // name and the number get a ground of their own, the same
-                // contrast pill the chat's day divider already uses for
-                // exactly this reason. Nothing changes without a wallpaper.
-                .padding(.horizontal, wallpaperSurfaceMode == .none ? 0 : 8)
-                .padding(.vertical, wallpaperSurfaceMode == .none ? 0 : 2)
-                .wallpaperChromePill(
-                    Theme.Color.bgPrimary, wallpaperSurfaceMode,
-                    in: Capsule(style: .continuous)
-                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1008,13 +995,6 @@ struct ContactListView: View {
                         .offset(x: 6, y: -4)
                 }
             }
-            // The three dots are a bare `textPrimary` glyph with nothing behind
-            // them, which is precisely the element Android's #554 was reported
-            // about ("три точки справа чёрные"). Over a wallpaper they get the
-            // same ground the name and UIN just got; without one, nothing here
-            // changes at all.
-            .padding(wallpaperSurfaceMode == .none ? 0 : 6)
-            .wallpaperChromePill(Theme.Color.bgPrimary, wallpaperSurfaceMode, in: Circle())
         }
     }
 
