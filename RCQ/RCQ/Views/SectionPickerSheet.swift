@@ -36,6 +36,16 @@ struct SectionPickerSheet: View {
         let title: String
         let subtitle: String
         let isGroup: Bool
+        /// What the row draws on the left. The sheet used to put a generic
+        /// person glyph next to every name, which is the one place in the app
+        /// where a contact appears without the face and the status dot the
+        /// roster gives them, and it made a list of people unreadable at a
+        /// glance. Carried on the candidate rather than looked up in the row:
+        /// the list is built once, off contacts we already hold.
+        let avatarID: String?
+        let avatarKey: String?
+        let status: UserStatus
+        let host: String?
         var id: String { key }
     }
 
@@ -58,10 +68,24 @@ struct SectionPickerSheet: View {
                                 }
                             } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: candidate.isGroup ? "person.3.fill" : "person.fill")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(Theme.Color.textSecondary)
-                                        .frame(width: 22)
+                                    if candidate.isGroup {
+                                        GroupAvatarView(
+                                            mediaID: candidate.avatarID,
+                                            keyBase64: candidate.avatarKey,
+                                            host: candidate.host,
+                                            size: 28,
+                                            glyphSize: 13,
+                                        )
+                                    } else {
+                                        PersonAvatarView(
+                                            mediaID: candidate.avatarID,
+                                            keyBase64: candidate.avatarKey,
+                                            status: candidate.status,
+                                            host: candidate.host,
+                                            size: 28,
+                                            crossIsland: candidate.host != nil,
+                                        )
+                                    }
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(candidate.title)
                                             .font(Theme.Font.nickname)
@@ -144,7 +168,11 @@ struct SectionPickerSheet: View {
                     for: contact.uin, fallback: contact.nickname, host: contact.host
                 ),
                 subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
-                isGroup: false
+                isGroup: false,
+                avatarID: contact.avatarMediaID,
+                avatarKey: contact.avatarMediaKey,
+                status: contact.status,
+                host: contact.host,
             ))
         }
         for contact in crossIsland where !Multihome.isOwnHost(contact.host) {
@@ -155,7 +183,11 @@ struct SectionPickerSheet: View {
                     for: contact.uin, fallback: contact.nickname, host: contact.host
                 ),
                 subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
-                isGroup: false
+                isGroup: false,
+                avatarID: contact.avatarMediaID,
+                avatarKey: contact.avatarMediaKey,
+                status: contact.status,
+                host: contact.host,
             ))
         }
         for group in groups {
@@ -164,7 +196,11 @@ struct SectionPickerSheet: View {
                 key: key,
                 title: group.name,
                 subtitle: group.host ?? "contact_list.section.groups".localized,
-                isGroup: true
+                isGroup: true,
+                avatarID: group.avatarMediaID,
+                avatarKey: group.avatarMediaKey,
+                status: .offline,
+                host: group.host,
             ))
         }
         return order.compactMap { byKey[$0] }
