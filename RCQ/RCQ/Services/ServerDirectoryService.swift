@@ -99,11 +99,28 @@ final class ServerDirectoryService: ObservableObject {
         logo: nil
     )
 
+
+    /// The catalogue with the flagship at the front.
+    ///
+    /// ⚠ The file's own order is whatever somebody last appended, so the
+    /// island every build points at was landing third in the deck and the
+    /// picker opened on a stranger's island (founder, 24.08). Android and the
+    /// console keep the same invariant, and so does the website's hero.
+    private static func flagshipFirst(_ list: [ServerEntry]) -> [ServerEntry] {
+        let flagshipURL = defaultEntry.url
+        guard let idx = list.firstIndex(where: { $0.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == flagshipURL })
+        else { return list }
+        var out = list
+        let flagship = out.remove(at: idx)
+        out.insert(flagship, at: 0)
+        return out
+    }
+
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.cacheKey),
            let cached = try? JSONDecoder().decode(ServerDirectory.self, from: data),
            !cached.servers.isEmpty {
-            self.servers = cached.servers
+            self.servers = Self.flagshipFirst(cached.servers)
         } else {
             self.servers = [Self.defaultEntry]
         }
@@ -149,7 +166,7 @@ final class ServerDirectoryService: ObservableObject {
                 lastFetchSucceeded = false
                 return
             }
-            self.servers = decoded.servers
+            self.servers = Self.flagshipFirst(decoded.servers)
             UserDefaults.standard.set(data, forKey: Self.cacheKey)
             let now = Date()
             UserDefaults.standard.set(now.timeIntervalSince1970, forKey: Self.cachedAtKey)

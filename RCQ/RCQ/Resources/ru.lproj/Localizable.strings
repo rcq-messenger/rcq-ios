@@ -1924,3 +1924,5 @@
 "island.manual_entry" = "Ввести адрес вручную";
 "island.back_to_list" = "Вернуться к списку";
 "island.host_hint" = "адрес острова";
+
+"add_account.enter_phrase" = "Войти по фразе";
