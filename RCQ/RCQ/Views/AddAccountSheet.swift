@@ -18,6 +18,8 @@ struct AddAccountSheet: View {
 
     @StateObject private var accountManager = AccountManager.shared
     @State private var query: String = ""
+    /// Which card is up; the Use button acts on it.
+    @State private var page: Int = 0
     @State private var customURL: String = ""
     @State private var customToken: String = ""
     @State private var adding: Bool = false
@@ -59,13 +61,39 @@ struct AddAccountSheet: View {
                 VStack(spacing: 0) {
                     headerBlock
                     if !adding {
-                        searchField
+                        // The same deck of islands the onboarding picker draws
+                        // (`IslandCardView`). This sheet is the same question
+                        // asked a second time -- which island -- and it was
+                        // answering it with a different screen, a search field
+                        // over grey rows, which is what the founder walked into
+                        // on 24.08 expecting the cards.
+                        if !directory.servers.isEmpty {
+                            TabView(selection: $page) {
+                                ForEach(Array(directory.servers.enumerated()), id: \.element.id) { index, entry in
+                                    IslandCardView(entry: entry).tag(index)
+                                }
+                            }
+                            .tabViewStyle(.page(indexDisplayMode: .always))
+                            .indexViewStyle(.page(backgroundDisplayMode: .always))
+                            .frame(height: 330)
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                let entry = directory.servers[min(page, directory.servers.count - 1)]
+                                Task { await performAdd(serverURL: entry.url) }
+                            } label: {
+                                Text("island.use".localized)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(Capsule().fill(Theme.Color.accent))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 18)
+                        }
                         ScrollView {
                             VStack(spacing: 10) {
-                                ForEach(filtered) { entry in
-                                    row(for: entry)
-                                }
-                                if filtered.isEmpty && customURL.isEmpty {
+                                if directory.servers.isEmpty {
                                     emptyState
                                 }
                                 customURLBlock
@@ -73,7 +101,7 @@ struct AddAccountSheet: View {
                                 Spacer(minLength: 24)
                             }
                             .padding(.horizontal, 18)
-                            .padding(.top, 8)
+                            .padding(.top, 12)
                         }
                     } else {
                         loadingState

@@ -19,6 +19,7 @@ final class IslandArtStore: ObservableObject {
 
     private let base = "https://rcq.app/islands/island-"
     private var memory: [Int: UIImage] = [:]
+    private var logos: [String: UIImage] = [:]
     private var missed: Set<Int> = []
 
     static func index(forHost host: String) -> Int {
@@ -66,6 +67,40 @@ final class IslandArtStore: ObservableObject {
             missed.insert(n)
             return nil
         }
+    }
+
+    /// An island's mirrored logo, cached beside the paintings and keyed on the
+    /// URL, so a replaced logo (a new file name from the catalogue) is a new
+    /// cache entry rather than a stale picture.
+    func logo(urlString: String?) async -> UIImage? {
+        guard let urlString, urlString.hasPrefix("https://"), let url = URL(string: urlString) else { return nil }
+        if let hit = logos[urlString] { return hit }
+        let file = Self.logoFileURL(urlString)
+        if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
+            logos[urlString] = img
+            return img
+        }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("image/*", forHTTPHeaderField: "Accept")
+        do {
+            let (data, resp) = try await IslandHTTP.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  data.count <= 256 * 1024, let img = UIImage(data: data)
+            else { return nil }
+            try? data.write(to: file, options: .atomic)
+            logos[urlString] = img
+            return img
+        } catch {
+            return nil
+        }
+    }
+
+    private static func logoFileURL(_ urlString: String) -> URL {
+        let name = urlString.replacingOccurrences(of: "[^A-Za-z0-9._-]", with: "_", options: .regularExpression)
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("island-art", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("logo-\(name.suffix(80))")
     }
 
     private static func fileURL(_ n: Int) -> URL {

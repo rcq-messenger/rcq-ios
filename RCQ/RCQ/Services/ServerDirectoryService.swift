@@ -11,6 +11,14 @@ struct ServerEntry: Codable, Identifiable, Hashable {
     let region: String
     let operatorContact: String
     let addedAt: String
+    /// The island's logo, MIRRORED ON THE SITE rather than read from the island
+    /// itself. An operator's logo lives at `<island>/server/logo`, and fetching
+    /// it from there would hand this device's address to every island in the
+    /// catalogue the moment the picker opened, including the ones somebody
+    /// scrolls past and never joins. The catalogue and the paintings already
+    /// come from rcq.app; one more file from that host says nothing new.
+    /// Absent for an island whose operator never set one, which is normal.
+    let logo: String?
 
     var id: String { url }
 
@@ -28,6 +36,7 @@ struct ServerEntry: Codable, Identifiable, Hashable {
         case region
         case operatorContact = "operator_contact"
         case addedAt = "added_at"
+        case logo
     }
 }
 
@@ -86,7 +95,8 @@ final class ServerDirectoryService: ObservableObject {
         description: "Default backend operated by the RCQ maintainer.",
         region: "EU",
         operatorContact: "hello@rcq.app",
-        addedAt: "2026-05-28"
+        addedAt: "2026-05-28",
+        logo: nil
     )
 
     init() {
@@ -172,7 +182,8 @@ final class ServerDirectoryService: ObservableObject {
             description: "",
             region: "—",
             operatorContact: "",
-            addedAt: ""
+            addedAt: "",
+            logo: nil
         )
     }
 }
