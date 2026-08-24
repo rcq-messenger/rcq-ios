@@ -79,6 +79,9 @@ struct AddAccountSheet: View {
                             .tabViewStyle(.page(indexDisplayMode: .always))
                             .indexViewStyle(.page(backgroundDisplayMode: .always))
                             .frame(maxHeight: .infinity)
+                            // The dots sat right on the button. They belong with the deck
+                            // they describe, not with the thing you press next.
+                            .padding(.bottom, 10)
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 let entry = directory.servers[min(page, directory.servers.count - 1)]
