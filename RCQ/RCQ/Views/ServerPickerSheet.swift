@@ -208,7 +208,7 @@ private struct IslandArtView: View {
                     Color.clear
                 }
             }
-            .frame(height: 150)
+            .frame(height: 190)
             // ⚠ The drift belongs on the PAINTING and nowhere else. It used to
             // sit on this whole stack, which had two wrong effects at once: the
             // logo bobbed with the island (it is a mark, it should sit still)
@@ -229,7 +229,7 @@ private struct IslandArtView: View {
             }
             .offset(y: 6)
         }
-        .frame(height: 156)
+        .frame(height: 196)
         // ⚠ withAnimation on the NEXT runloop tick, not `.animation(value:)` on
         // appear. A page of a TabView is built before it is on screen, and the
         // flag flipped in the same frame the view was first laid out: SwiftUI
@@ -265,10 +265,12 @@ struct IslandCardView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Equal air above and below: the deck used to hang off the top of
-            // its own space, so an island with a one-line blurb floated far
-            // from the dots and one with three lines nearly touched them.
-            Spacer(minLength: 0)
+            // A capped gap above and free slack below. Splitting the space
+            // evenly put the island low: the name, host and blurb under it
+            // carry most of the height, so an honestly-centred card reads as
+            // bottom-heavy. Sixteen points of air at the top and the rest
+            // underneath lands it where the eye expects (founder, 24.08).
+            Spacer(minLength: 0).frame(maxHeight: 16)
             IslandArtView(host: entry.displayHost, name: entry.name, logoURL: entry.logo)
             Text(entry.name)
                 .font(.system(size: 17, weight: .semibold))
