@@ -78,7 +78,7 @@ struct AddAccountSheet: View {
                             }
                             .tabViewStyle(.page(indexDisplayMode: .always))
                             .indexViewStyle(.page(backgroundDisplayMode: .always))
-                            .frame(height: 330)
+                            .frame(maxHeight: .infinity)
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 let entry = directory.servers[min(page, directory.servers.count - 1)]
@@ -95,26 +95,22 @@ struct AddAccountSheet: View {
                             .padding(.horizontal, 18)
                         }
                         if directory.servers.isEmpty { emptyState }
-                        // Two doors, side by side, and neither of them unpacked
-                        // on this screen. The manual URL used to sit here as a
-                        // form with two fields and its own button, under a deck
-                        // of islands: three ways to add an account stacked
-                        // vertically, and the screen read as a pile (founder,
-                        // 24.08). Each is a sheet of its own now, opened by one
-                        // of a pair of equal buttons.
-                        HStack(spacing: 10) {
-                            secondaryAction(
-                                icon: "key.fill",
-                                title: "add_account.enter_phrase".localized,
-                            ) { showRestore = true }
-                            secondaryAction(
-                                icon: "keyboard",
-                                title: "island.manual_entry".localized,
-                            ) { showManual = true }
-                        }
+                        // ⚠ ONE secondary under the primary, not a pair of
+                        // squares beside each other. The two-button row plus
+                        // the deck plus the dots left nothing any room: the
+                        // island's own description ran under the page dots and
+                        // the buttons sat on the home indicator (founder,
+                        // 24.08). Signing in with a phrase is a different
+                        // errand entirely, so it moves to the bar as a glyph,
+                        // and what stays down here is the other half of the
+                        // same question: this island, or one you type.
+                        secondaryAction(
+                            icon: "keyboard",
+                            title: "island.manual_entry".localized,
+                        ) { showManual = true }
                         .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                        .padding(.bottom, 18)
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
                     } else {
                         loadingState
                     }
@@ -126,6 +122,11 @@ struct AddAccountSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.close".localized) { dismiss() }
                         .disabled(adding)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { showRestore = true } label: { Image(systemName: "key.fill") }
+                        .disabled(adding)
+                        .accessibilityLabel("add_account.enter_phrase".localized)
                 }
             }
             .task {
@@ -319,17 +320,16 @@ struct AddAccountSheet: View {
         action: @escaping () -> Void,
     ) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                 Text(title)
-                    .font(.footnote.weight(.medium))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(1)
             }
             .foregroundColor(Theme.Color.textSecondary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 13)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary))
         }
         .buttonStyle(.plain)
