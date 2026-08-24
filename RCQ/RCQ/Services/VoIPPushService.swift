@@ -150,13 +150,16 @@ extension VoIPPushService: PKPushRegistryDelegate {
             return
         }
         // ⚠ A REAL PERSON'S NAME, FULL SCREEN, WITHOUT ANYONE TOUCHING THE
-        // PHONE. The payload carries the caller's nickname and PushKit hands it
-        // straight to CallKit, so an incoming call during a duress session
-        // announced a real contact over the decoy view — and answering it would
-        // have opened the real account's media path. Report-then-end on a blank
-        // handle is the documented escape hatch for the PushKit contract (iOS
-        // kills the app for not reporting), and it reads as a call that was
-        // cancelled before it rang.
+        // PHONE. The name reaches CallKit a few lines below, so an incoming
+        // call during a duress session announced a real contact over the
+        // decoy view, and answering it would have opened the real account's
+        // media path. (It used to arrive in the payload; since 2026-08-24 it
+        // is resolved from the local cache instead. That changes where the
+        // name comes from and nothing about this gate: a duress session must
+        // neither resolve nor ring for the real account either way.)
+        // Report-then-end on a blank handle is the documented escape hatch
+        // for the PushKit contract (iOS kills the app for not reporting), and
+        // it reads as a call that was cancelled before it rang.
         // `DuressGate` and not `PanicPINService.shared.isDecoy`: this delegate
         // method is `nonisolated` and must report to CallKit SYNCHRONOUSLY, so
         // it cannot hop to the main actor to ask.
@@ -168,7 +171,37 @@ extension VoIPPushService: PKPushRegistryDelegate {
             completion()
             return
         }
-        let nickname = (dict["nickname"] as? String) ?? "Stranger"
+        // ⚠ THE ISLAND NO LONGER SENDS THE NAME, SO THIS LOOKS IT UP. The
+        // payload used to carry `nickname`, which meant Apple saw the caller's
+        // NAME beside the callee's number on every call to a device that was
+        // offline. The island stopped sending it on 2026-08-24.
+        // `NicknameCache` is the same App Group map the notification extension
+        // already reads: a synchronous UserDefaults read, which is all this
+        // delegate can do (it must report to CallKit before it returns and
+        // cannot await), rewritten by the main app on every `/contacts`
+        // refresh.
+        //
+        // A `nickname` that IS present still wins, for one case: a self-hosted
+        // island still running an older build. This path is same-island by
+        // construction (a cross-island call arrives as `kind: sealed` above,
+        // with no identity at all), so a name in this payload can only come
+        // from the island that genuinely knows the caller. Android orders the
+        // same two sources the same way in `Push.showIncomingCall`.
+        //
+        // Last resort is the neutral localized handle, NOT "Stranger" and not
+        // the uin: this is the string Android shows for the same situation
+        // (`R.string.call_incoming`), and a bare number in CallKit's caller
+        // slot reads as a wrong-number call from somebody else. It fills
+        // itself in the moment `CallService` ingests the same offer over the
+        // socket, which is seconds later.
+        let suppliedName = (dict["nickname"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cachedName = NicknameCache.nickname(for: fromUIN)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let nickname = [suppliedName, cachedName]
+            .compactMap { $0 }
+            .first(where: { !$0.isEmpty })
+            ?? "call.incoming.unknown_caller".localized
         let media = CallMedia(rawValue: mediaStr) ?? .video
 
         // Sync report to CallKit — iOS measures this call and terminates if missed.
