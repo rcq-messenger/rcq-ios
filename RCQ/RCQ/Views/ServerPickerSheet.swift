@@ -66,6 +66,9 @@ struct ServerPickerSheet: View {
                         .tabViewStyle(.page(indexDisplayMode: .always))
                         .indexViewStyle(.page(backgroundDisplayMode: .always))
                         .frame(maxHeight: .infinity)
+                        // The dots sat right on the button. They belong with the deck
+                        // they describe, not with the thing you press next.
+                        .padding(.bottom, 10)
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             choose(directory.servers[min(page, directory.servers.count - 1)])
@@ -213,7 +216,6 @@ private struct IslandArtView: View {
             // arrive, blinked instead of moving, because the repeating
             // animation caught that change too (founder, 24.08).
             .offset(y: drifting ? -4 : 4)
-            .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: drifting)
             Group {
                 if let logo {
                     Image(uiImage: logo)
@@ -228,7 +230,22 @@ private struct IslandArtView: View {
             .offset(y: 6)
         }
         .frame(height: 156)
-        .onAppear { drifting = true }
+        // ⚠ withAnimation on the NEXT runloop tick, not `.animation(value:)` on
+        // appear. A page of a TabView is built before it is on screen, and the
+        // flag flipped in the same frame the view was first laid out: SwiftUI
+        // had no previous value to animate from, so the island simply sat there
+        // until something forced the sheet to rebuild (founder, 24.08: "not
+        // always floating, reopen and it starts"). Deferring by a tick gives it
+        // the two states it needs, and the guard keeps a rebuild from stacking
+        // a second repeating animation on the same view.
+        .onAppear {
+            guard !drifting else { return }
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                    drifting = true
+                }
+            }
+        }
         .task(id: host) {
             image = await IslandArtStore.shared.load(host: host)
         }
@@ -248,6 +265,10 @@ struct IslandCardView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // Equal air above and below: the deck used to hang off the top of
+            // its own space, so an island with a one-line blurb floated far
+            // from the dots and one with three lines nearly touched them.
+            Spacer(minLength: 0)
             IslandArtView(host: entry.displayHost, name: entry.name, logoURL: entry.logo)
             Text(entry.name)
                 .font(.system(size: 17, weight: .semibold))
