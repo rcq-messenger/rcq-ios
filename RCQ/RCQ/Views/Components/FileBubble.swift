@@ -64,9 +64,6 @@ struct FileBubble: View {
                                 .tracking(1.2)
                         }
                     }
-                    if isAudio {
-                        AudioFileProgressLine(messageID: message.id)
-                    }
                 }
                 Spacer(minLength: 4)
             }
@@ -264,7 +261,9 @@ struct FileBubble: View {
 /// `progress` twenty times a second, and observing it from `FileBubble`
 /// itself would re-render the whole bubble (name, size, icon tile,
 /// layout) on every tick for every audio file in the thread. Only this
-/// 22pt glyph and the hairline below it pay that cost.
+/// 22pt glyph pays that cost. The bubble draws no progress of its own:
+/// the floating capsule (`AudioPlayerBar`) is the one progress surface
+/// for audio documents (L2.2), and a second strip here duplicated it.
 private struct AudioFileGlyph: View {
     let messageID: UUID
     @StateObject private var player = VoicePlayer.shared
@@ -274,30 +273,6 @@ private struct AudioFileGlyph: View {
         Image(systemName: active && player.isPlaying ? "pause.fill" : "play.fill")
             .font(.system(size: 18, weight: .semibold))
             .foregroundColor(Theme.Color.accent)
-    }
-}
-
-/// Hairline under the size row, filled while this file is the one loaded
-/// into the player. Zero height when it is not, so a bubble that is not
-/// playing keeps exactly the layout it had before item 9a.
-private struct AudioFileProgressLine: View {
-    let messageID: UUID
-    @StateObject private var player = VoicePlayer.shared
-
-    var body: some View {
-        if player.playingMessageID == messageID {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.Color.divider)
-                    Capsule()
-                        .fill(Theme.Color.accent)
-                        .frame(width: geo.size.width * CGFloat(player.progress))
-                        .animation(.linear(duration: 0.05), value: player.progress)
-                }
-            }
-            .frame(height: 3)
-            .padding(.top, 2)
-        }
     }
 }
 

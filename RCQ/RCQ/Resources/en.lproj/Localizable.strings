@@ -1928,6 +1928,7 @@
 "audio.strip.play" = "Play";
 "audio.strip.pause" = "Pause";
 "audio.strip.close" = "Stop playback";
+"audio.strip.seek" = "Playback position";
 "album.sender.open_profile" = "Open profile";
 
 

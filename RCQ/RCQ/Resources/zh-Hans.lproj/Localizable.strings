@@ -1711,6 +1711,7 @@
 "audio.strip.play" = "播放";
 "audio.strip.pause" = "暂停";
 "audio.strip.close" = "停止播放";
+"audio.strip.seek" = "播放位置";
 "album.sender.open_profile" = "打开资料";
 
 

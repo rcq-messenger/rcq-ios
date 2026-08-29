@@ -1879,6 +1879,7 @@
 "audio.strip.play" = "Воспроизвести";
 "audio.strip.pause" = "Пауза";
 "audio.strip.close" = "Остановить воспроизведение";
+"audio.strip.seek" = "Позиция воспроизведения";
 "album.sender.open_profile" = "Открыть профиль";
 
 

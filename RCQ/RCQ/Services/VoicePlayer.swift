@@ -138,6 +138,18 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         if p.isPlaying { pause() } else { resume() }
     }
 
+    /// Jump to a fraction of the loaded clip. Drives the capsule's slider.
+    /// Works in every state - playing, paused, finished. The ticker only
+    /// runs during playback, so the published pair is pushed by hand here;
+    /// while playing the next tick simply agrees with what we wrote.
+    func seek(toFraction fraction: Double) {
+        guard let p = player else { return }
+        let clamped = min(max(0, fraction), 1)
+        p.currentTime = clamped * p.duration
+        elapsed = p.currentTime
+        progress = p.duration > 0 ? min(1.0, p.currentTime / p.duration) : 0
+    }
+
     func stop() {
         teardownPlayer()
         releaseSession()
@@ -247,18 +259,7 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
             url = typedURL
         }
 
-        // Audio session — `.playback` so the speaker stays loud even
-        // when the silent switch is on (matches every messenger). If
-        // the user had earphones plugged in or BT connected, iOS
-        // routes there automatically.
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-            sessionActive = true
-        } catch {
-            print("[VoicePlayer] session config failed: \(error)")
-        }
+        activatePlaybackSession()
 
         do {
             let p = try AVAudioPlayer(contentsOf: url)
@@ -292,9 +293,37 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private func resume() {
         guard let p = player else { return }
         guard !competingAudioActive else { return }
+        // The finished state hands the audio session back (a dead clip is no
+        // reason to keep ducking the system player), and `releaseSession()`
+        // restores `.ambient` for the chime contract. Normally only `load()`
+        // configures the session, so a play after that release must redo the
+        // setup or the replay comes out quiet and muted by the silent switch.
+        if !sessionActive { activatePlaybackSession() }
         if p.play() {
             isPlaying = true
+            // After a natural finish AVAudioPlayer rewinds to 0, so this play
+            // is a replay from the top: sync the published pair down from the
+            // pinned 1.0 / duration now instead of one ticker beat later. A
+            // play after an ordinary pause (or a scrub) syncs to itself.
+            elapsed = p.currentTime
+            progress = p.duration > 0 ? min(1.0, p.currentTime / p.duration) : 0
             startTicker()
+        }
+    }
+
+    /// Audio session setup - `.playback` so the speaker stays loud even
+    /// when the silent switch is on (matches every messenger). If the user
+    /// had earphones plugged in or BT connected, iOS routes there
+    /// automatically. Shared by `load()` and by `resume()` after the
+    /// finished state released the session.
+    private func activatePlaybackSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            try session.setActive(true)
+            sessionActive = true
+        } catch {
+            print("[VoicePlayer] session config failed: \(error)")
         }
     }
 
@@ -433,9 +462,32 @@ final class VoicePlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
+    /// Natural end of the clip (founder item L2.2): the panel does NOT close
+    /// itself any more. Playback parks in a finished pose - pause glyph,
+    /// progress pinned at the end - and the capsule stays up so the user can
+    /// replay or scrub back. Only the X button and the yields above tear it
+    /// down. The audio session IS handed back right away though: a clip that
+    /// already ended is no reason to keep holding `.playback`, which ducks
+    /// the system player and lets chimes ignore the silent switch. `resume()`
+    /// re-runs the session setup on the next play.
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
-            self?.stop()
+            guard let self else { return }
+            // A decode failure mid-clip is not a finish: keep the old
+            // teardown rather than pinning a lie at 100%.
+            guard flag else {
+                self.stop()
+                return
+            }
+            self.isPlaying = false
+            self.ticker?.invalidate()
+            self.ticker = nil
+            // Pin the pose by hand: AVAudioPlayer has already rewound
+            // currentTime to 0 by the time this fires, so reading the
+            // player here would snap the bar back to the start.
+            self.progress = 1.0
+            self.elapsed = self.duration
+            self.releaseSession()
         }
     }
 }

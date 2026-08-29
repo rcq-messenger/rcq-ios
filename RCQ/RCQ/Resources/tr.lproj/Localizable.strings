@@ -1720,6 +1720,7 @@
 "audio.strip.play" = "Oynat";
 "audio.strip.pause" = "Duraklat";
 "audio.strip.close" = "Oynatmayı durdur";
+"audio.strip.seek" = "Oynatma konumu";
 "album.sender.open_profile" = "Profili aç";
 
 
