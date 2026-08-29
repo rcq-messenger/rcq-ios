@@ -1926,3 +1926,6 @@
 "island.host_hint" = "адрес острова";
 
 "add_account.enter_phrase" = "Войти по фразе";
+
+"create_group.warn.cross_not_invited" = "Группа создана, но приглашение не дошло до: %@. Отправь им ссылку на группу сам.";
+"group.add.warn.link_undelivered" = "%@ в группе, но ссылка-приглашение не ушла. Отправь ссылку сам.";
