@@ -777,6 +777,8 @@
 "group.settings.name" = "Group name";
 "group.settings.photo" = "Group photo";
 "group.settings.change_photo" = "Change photo";
+"group.settings.catalog" = "Show in search";
+"group.settings.catalog.hint" = "The room's name and description are published so people can find it. Off: link only.";
 "group.settings.hide_members" = "Hide member list";
 "group.settings.hide_members.hint" = "Only you see who's in the group. Everyone else sees just the member count in Group Info.";
 "group.settings.no_links" = "Disable links";

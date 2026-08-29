@@ -742,6 +742,8 @@
 "group.settings.name" = "群组名称";
 "group.settings.photo" = "群组头像";
 "group.settings.change_photo" = "更换头像";
+"group.settings.catalog" = "在搜索中显示";
+"group.settings.catalog.hint" = "房间名称和简介会被发布,以便他人找到。关闭:仅限链接进入。";
 "group.settings.hide_members" = "隐藏成员列表";
 "group.settings.hide_members.hint" = "只有你能看到群里有谁。其他人在群组信息里只能看到成员数量。";
 "group.members.hidden" = "成员列表已被群主隐藏。";

@@ -754,6 +754,8 @@
 "group.settings.name" = "Название группы";
 "group.settings.photo" = "Фото группы";
 "group.settings.change_photo" = "Сменить фото";
+"group.settings.catalog" = "Показывать в поиске";
+"group.settings.catalog.hint" = "Имя и описание комнаты публикуются, чтобы её можно было найти. Выкл: только по ссылке.";
 "group.settings.hide_members" = "Скрыть список участников";
 "group.settings.hide_members.hint" = "Кто в группе видишь только ты. Остальные видят в инфо группы только количество участников.";
 "group.settings.no_links" = "Отключить ссылки";

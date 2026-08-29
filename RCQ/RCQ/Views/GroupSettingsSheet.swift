@@ -338,6 +338,21 @@ struct GroupSettingsSheet: View {
                 }
             }
             .tint(Theme.Color.accent)
+
+            Toggle(isOn: Binding(
+                get: { g.inCatalog },
+                set: { v in Task { try? await groups.setInCatalog(groupID: groupID, listed: v) } }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("group.settings.catalog".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Text("group.settings.catalog.hint".localized)
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Theme.Color.accent)
         } header: {
             Text("group.section.settings".localized)
         }
