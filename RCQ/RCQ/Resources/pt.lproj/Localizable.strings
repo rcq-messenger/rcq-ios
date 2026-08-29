@@ -1514,7 +1514,6 @@
 "manage_accounts.intro.title" = "Contas neste dispositivo";
 "manage_accounts.intro.body" = "A conta ativa não pode ser removida daqui: passe para outra primeiro. Remover do dispositivo não mexe na conta do lado do servidor; para isso, use Apagar a conta para sempre nas configurações de privacidade.";
 "manage_accounts.switch" = "Trocar";
-"manage_accounts.active_badge" = "ATIVA";
 "manage_accounts.delete" = "Remover";
 "manage_accounts.delete.confirm.title" = "Remover %@?";
 "manage_accounts.delete.confirm.body" = "Os dados locais (contatos, histórico, identidade) vão ser apagados deste dispositivo. A conta do lado do servidor continua viva e vai seguir acumulando as mensagens que chegarem, até o prazo da fila do servidor limpar tudo.";

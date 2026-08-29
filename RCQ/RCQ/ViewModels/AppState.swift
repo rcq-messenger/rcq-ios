@@ -14,6 +14,13 @@ final class AppState: ObservableObject {
     @Published var bootError: String? = nil
     @Published var isOffline: Bool = false
     @Published var bootStatus: BootStatus = .connecting
+    /// Honest 0..1 progress for the boot splash bar. Raised at the awaited
+    /// milestones of `doBoot` (never derived from time), reset only at
+    /// `boot()` entry inside the single-flight, and raise-only in between:
+    /// the chain has legitimate status regressions (.engagingStealth back to
+    /// .connecting on the de-tunnel fallback) and a bar that moves backwards
+    /// reads as a broken app. See `advanceBoot(to:)`.
+    @Published private(set) var bootProgress: Double = 0
 
     // boot() single-flight. AppState is @MainActor but boot() suspends at every
     // await, so concurrent boot() calls (account switch + the error-screen
@@ -32,10 +39,12 @@ final class AppState: ObservableObject {
     }
     /// Capabilities advertised by the active server via `/server/info`.
     /// Defaults to the permissive "legacy backend" set so pre-flag
-    /// servers (and the brief window between boot start and the fetch
-    /// landing) keep the same surfaces as before. Reset to
-    /// `.defaultLegacy` on every account switch and re-populated by
-    /// the next boot.
+    /// servers keep the same surfaces as before. The window between boot
+    /// start and the fetch landing is bridged by the per-account
+    /// `ServerCapabilitiesCache` (seeded in `doBoot` and on account
+    /// switch), so a surface the island's operator turned off no longer
+    /// flashes for one round-trip on every entry; `.defaultLegacy`
+    /// survives only for a never-seen account.
     @Published var serverCapabilities: ServerCapabilities = .defaultLegacy
     /// What this island calls itself and the house rules its operator typed,
     /// from the same `/server/info` reply. Empty until the boot fetch lands and
@@ -399,6 +408,13 @@ final class AppState: ObservableObject {
         guard let info = await ServerInfoService.fetch() else { return }
         serverInfoRead = true
         serverCapabilities = info.capabilities
+        // Remember the answer per account so the NEXT entry seeds from it
+        // instead of `.defaultLegacy` (whose permissive nearby=true flashed
+        // the Nearby bar button on islands that turned it off). The decoy
+        // guard lives in the cache itself.
+        if let id = AccountManager.shared.activeAccountID {
+            ServerCapabilitiesCache.record(info.capabilities, for: id)
+        }
         AccountManager.serverMaxAccounts = info.capabilities.maxAccountsPerDevice
         serverName = info.name
         serverWelcome = info.welcome ?? ""
@@ -562,6 +578,9 @@ final class AppState: ObservableObject {
         if booting { return }
         booting = true
         bootChainDone = false
+        // Fresh boot, fresh bar. Inside the single-flight on purpose: a
+        // concurrent boot() dropped above must not zero a live bar mid-run.
+        bootProgress = 0
         defer {
             booting = false
             bootChainDone = true
@@ -593,6 +612,13 @@ final class AppState: ObservableObject {
         return contacts || groups
     }
 
+    /// Raise-only setter for `bootProgress`: milestone bumps ride the awaited
+    /// completions in `doBoot`, never the status values (those regress), and
+    /// the watchdog can race the tail of the chain.
+    private func advanceBoot(to value: Double) {
+        if value > bootProgress { bootProgress = value }
+    }
+
     /// Wait for a boot chain in flight to reach its end. For the paths that
     /// replace the account under the app (switch, burn, migration).
     func settleBoot() async {
@@ -616,8 +642,20 @@ final class AppState: ObservableObject {
         if PanicPINService.shared.isDecoy {
             isOffline = false
             MessageService.shared.configure(ownUIN: AuthService.shared.ownUIN ?? 0)
+            advanceBoot(to: 1.0)
             booted = true
             return
+        }
+
+        // Last-known capabilities before the network answers, or the chat
+        // list's first frame draws `.defaultLegacy` surfaces the island's
+        // operator turned off (the Nearby bar button flashed on every entry).
+        // Only a never-seen account keeps the legacy defaults. Deliberately
+        // NOT flipping `serverInfoRead`: everything three-state
+        // (`vaultCapability` above all) still waits for the live reply.
+        if !serverInfoRead, let id = AccountManager.shared.activeAccountID,
+           let cached = ServerCapabilitiesCache.capabilities(for: id) {
+            serverCapabilities = cached
         }
 
         // (relay-list + broker refresh moved BELOW the transport-engage block so a
@@ -633,6 +671,7 @@ final class AppState: ObservableObject {
         // the token.
         networkReady = false
         await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
+        advanceBoot(to: 0.05)
 
         // Offline-first path. If we already have a local identity AND no
         // network is available, skip every server-touching call and let
@@ -666,6 +705,9 @@ final class AppState: ObservableObject {
         // "connecting" until the socket is up, which is the honest state.
         if let uin = cachedUIN, cachedToken != nil, hydrateRosterFromDisk() {
             MessageService.shared.configure(ownUIN: uin)
+            // The splash is gone from here; snap the bar's last frame full so
+            // the raise-only helper mutes the rest of the chain's bumps.
+            advanceBoot(to: 1.0)
             booted = true
         }
 
@@ -676,6 +718,7 @@ final class AppState: ObservableObject {
             // second never comes, and "online" would be a lie.
             ContactService.shared.markAllOffline()
             MessageService.shared.configure(ownUIN: uin)
+            advanceBoot(to: 1.0)
             booted = true
             return
         }
@@ -696,6 +739,9 @@ final class AppState: ObservableObject {
             guard let self else { return }
             await MainActor.run {
                 guard !self.bootChainDone else { return }
+                // The view swap makes the bar moot either way; keep its last
+                // frame honest instead of freezing mid-run.
+                self.advanceBoot(to: 1.0)
                 if cachedUIN != nil && cachedToken != nil {
                     // Only claim offline if the socket has not already proved
                     // otherwise. The boot chain overrunning fifteen seconds is
@@ -721,6 +767,10 @@ final class AppState: ObservableObject {
         defer { watchdog.cancel() }
 
         do {
+            // Entering the transport/reachability stage. The two long stages
+            // (tunnel engage, identity check) sit between the sparse bumps
+            // here; the splash creeps the DISPLAYED value between them.
+            advanceBoot(to: 0.15)
             // First-launch registration over a censored network: bring the
             // embedded transport up BEFORE the first /auth/register if the
             // direct path is blocked, so a brand-new user doesn't have to
@@ -810,6 +860,7 @@ final class AppState: ObservableObject {
                     isOffline = true
                     ContactService.shared.markAllOffline()
                     MessageService.shared.configure(ownUIN: uin)
+                    advanceBoot(to: 1.0)
                     booted = true
                     scheduleTransportRetry()
                 } else {
@@ -817,6 +868,7 @@ final class AppState: ObservableObject {
                 }
                 return
             }
+            advanceBoot(to: 0.40)
             // Pull the fresh signed-config + broker bridges NOW (not at the top of
             // doBoot) so a BLOCKED user — whose direct fetch to the mirrors/broker
             // would fail — pulls them THROUGH the now-engaged tunnel (both stores
@@ -829,6 +881,7 @@ final class AppState: ObservableObject {
             BrokerRelayStore.shared.reportReachabilityInBackground()
             print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
+            advanceBoot(to: 0.60)
             guard let uin = AuthService.shared.ownUIN,
                   let bootToken = KeychainStore.string(KeychainStore.Keys.token) else {
                 throw NSError(domain: "boot", code: 1)
@@ -845,6 +898,7 @@ final class AppState: ObservableObject {
             let token = await claimInstallTokenIfNeeded(bootToken) ?? bootToken
             // From here a fetch can succeed: token set, base resolved.
             networkReady = true
+            advanceBoot(to: 0.70)
 
             // Capability fetch. Failure is non-fatal: we keep the
             // permissive defaultLegacy set, which matches every
@@ -855,12 +909,16 @@ final class AppState: ObservableObject {
             // surface stays. A miss here is retried by the first online
             // sync or socket open; see `refreshServerInfo`.
             await refreshServerInfo()
+            advanceBoot(to: 0.75)
 
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(
                 uin: uin, token: token, baseURL: baseURL,
                 serverToken: AccountManager.shared.active?.serverToken
             )
+            // Dial issued, not awaited: `booted` keys on the roster fetch, and
+            // the header's dot owns the link truth from here.
+            advanceBoot(to: 0.80)
 
             // Only what the first screen genuinely cannot be drawn without.
             // Contacts because the list IS the first screen; presence because
@@ -874,8 +932,10 @@ final class AppState: ObservableObject {
                 await syncOwnPresenceFromServer(uin: uin)
             }
             await ContactService.shared.refresh(joinInFlight: true)
+            advanceBoot(to: 0.95)
 
             print("[boot] complete — booted")
+            advanceBoot(to: 1.0)
             booted = true
 
             // Everything else finishes behind the interface.
@@ -914,6 +974,7 @@ final class AppState: ObservableObject {
                 isOffline = true
                 if !networkReady { ContactService.shared.markAllOffline() }
                 MessageService.shared.configure(ownUIN: uin)
+                advanceBoot(to: 1.0)
                 booted = true
             } else {
                 bootError = error.localizedDescription
@@ -1719,13 +1780,15 @@ final class AppState: ObservableObject {
         // the brief window where AuthService is being torn down.
         await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
 
-        // Reset to defaultLegacy so the new account's boot fetch
-        // populates the actual capabilities of the destination server,
-        // not the stale outgoing one. Without this, switching from
-        // api.rcq.app (uinShop=true) to a self-host account would
-        // briefly show the UIN-shop row in Settings until the new
-        // /server/info reply lands.
-        serverCapabilities = .defaultLegacy
+        // Reset to the DESTINATION account's last-known capabilities (the
+        // active account is already the new one here) so the switch shows
+        // neither the stale outgoing island's surfaces nor `.defaultLegacy`
+        // ones the new island turned off (uinShop, nearby) while the new
+        // /server/info reply is in the air. `.defaultLegacy` only for an
+        // account this device has never read an answer for; the boot fetch
+        // still overwrites either way.
+        serverCapabilities = AccountManager.shared.activeAccountID
+            .flatMap { ServerCapabilitiesCache.capabilities(for: $0) } ?? .defaultLegacy
         serverInfoRead = false
         // Same reason: the outgoing island's name and rules must not sit in
         // Settings while the incoming one's reply is still in the air.
@@ -2086,7 +2149,11 @@ final class AppState: ObservableObject {
 /// exceptions are `hallOfFame` and `envelopeClass` (default FALSE), and
 /// `uinShop`, which is a hard decode: an answer without it fails the whole
 /// decode and the caller keeps the capability set it already had.
-struct ServerCapabilities: Decodable, Equatable {
+// Codable, not just Decodable: `ServerCapabilitiesCache` persists the last
+// decoded answer per account. The synthesized encode uses the same
+// CodingKeys, so a cached blob round-trips through the custom decoder like
+// a wire reply would.
+struct ServerCapabilities: Codable, Equatable {
     var uinShop: Bool
     var hallOfFame: Bool
     // Operator-toggleable optional features (admin console → Features). Each
@@ -2209,6 +2276,47 @@ struct ServerCapabilities: Decodable, Equatable {
         groupLog = try c.decodeIfPresent(Bool.self, forKey: .groupLog) ?? false
         // Absent means "predates the vault": see the field comment.
         vault = try c.decodeIfPresent(Bool.self, forKey: .vault) ?? false
+    }
+}
+
+/// Last-known `/server/info` capabilities per account, UserDefaults under the
+/// account's UUID exactly like `AccountCardCache` (nothing here is a secret:
+/// which surfaces an island advertises is served to anyone who can reach it).
+/// Written on every successful `refreshServerInfo`, read to seed
+/// `serverCapabilities` at boot and on account switch, so a feature the
+/// operator disabled does not flash for the length of one round-trip on
+/// every entry.
+///
+/// ⚠ Decoy-guarded on BOTH sides, mirroring `AccountCardCache`'s write rule:
+/// a decoy session must not write (nothing about it touches disk) and must
+/// not READ the real account's entry either, or the duress view would draw
+/// the real island's feature set. Reads answer nil there, which lands the
+/// caller on `.defaultLegacy`, the same face every fresh account shows.
+///
+/// ⚠ This cache feeds `serverCapabilities` ONLY. It never flips
+/// `serverInfoRead`, so the three-state `vaultCapability` (nil until the
+/// island answers THIS session) keeps waiting for the live reply.
+@MainActor
+enum ServerCapabilitiesCache {
+    private static let prefix = "rcq.serverCaps.v1."
+
+    private static func key(_ id: UUID) -> String { prefix + id.uuidString }
+
+    static func capabilities(for id: UUID) -> ServerCapabilities? {
+        guard !PanicPINService.shared.isDecoy,
+              let data = UserDefaults.standard.data(forKey: key(id)) else { return nil }
+        return try? JSONDecoder().decode(ServerCapabilities.self, from: data)
+    }
+
+    static func record(_ caps: ServerCapabilities, for id: UUID) {
+        guard !PanicPINService.shared.isDecoy,
+              let data = try? JSONEncoder().encode(caps) else { return }
+        UserDefaults.standard.set(data, forKey: key(id))
+    }
+
+    /// Dropped along with the rest of an account's local state.
+    static func forget(_ id: UUID) {
+        UserDefaults.standard.removeObject(forKey: key(id))
     }
 }
 

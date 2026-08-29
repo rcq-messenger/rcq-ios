@@ -157,7 +157,9 @@ struct ContactListView: View {
                     // to the collapse store here is how a gate stops being a
                     // gate: the next cold start would read it back and the
                     // section would stand open with the PIN never asked.
-                    unlockedSections.insert(wrap.id)
+                    withAnimation(Self.foldAnimation) {
+                        _ = unlockedSections.insert(wrap.id)
+                    }
                 }
             }
             .sheet(item: Binding(
@@ -1317,22 +1319,33 @@ struct ContactListView: View {
     ) -> some View {
         let header = Button {
             if locked && panicPIN.isConfigured {
+                // The sheet animates its own presentation; wrapping this one
+                // would put the state flip in a fold transaction for nothing.
                 pinGateSection = rec.id
             } else if locked {
                 // No PIN on this device: the header opens the notice, never the
                 // rows.
-                if noticeSections.contains(rec.id) {
-                    noticeSections.remove(rec.id)
-                } else {
-                    noticeSections.insert(rec.id)
+                withAnimation(Self.foldAnimation) {
+                    if noticeSections.contains(rec.id) {
+                        noticeSections.remove(rec.id)
+                    } else {
+                        noticeSections.insert(rec.id)
+                    }
                 }
             } else if pinned {
                 // Unlocked and open: the tap puts the gate back. Nothing is
                 // written -- the unlocked set is view memory and the fold state
                 // of a gated section is not stored.
-                unlockedSections.remove(rec.id)
+                withAnimation(Self.foldAnimation) {
+                    // Discarded on purpose: a bare remove would become the
+                    // closure's return value and withAnimation would infer
+                    // Result == String?, clashing with the Void branches.
+                    _ = unlockedSections.remove(rec.id)
+                }
             } else {
-                setCollapsed(rec.id, !isCollapsed(rec.id))
+                withAnimation(Self.foldAnimation) {
+                    setCollapsed(rec.id, !isCollapsed(rec.id))
+                }
             }
         } label: {
             HStack(spacing: 6) {
@@ -1437,6 +1450,15 @@ struct ContactListView: View {
         }
     }
 
+    /// One curve for every fold: header taps, the PIN gate opening and
+    /// re-locking, the no-PIN notice rows and the audio-rooms strip. The
+    /// rows' .transition (contactRowItem) only animates when the toggle
+    /// mutation runs inside a transaction, so every toggle SITE wraps in
+    /// withAnimation with this. Deliberately NOT an ambient .animation on
+    /// the LazyVStack: that would also animate scroll-driven lazy
+    /// realization and every unrelated layout change.
+    static let foldAnimation = Animation.easeInOut(duration: 0.22)
+
     private func isCollapsed(_ id: String) -> Bool {
         collapseStore.isCollapsed(id, default: defaultCollapsed(id))
     }
@@ -1458,8 +1480,10 @@ struct ContactListView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("sections.locked.open_anyway".localized) {
-                noticeSections.remove(rec.id)
-                unlockedSections.insert(rec.id)
+                withAnimation(Self.foldAnimation) {
+                    noticeSections.remove(rec.id)
+                    unlockedSections.insert(rec.id)
+                }
             }
             .font(.system(size: 13, weight: .semibold))
             .foregroundColor(Theme.Color.accent)
@@ -1673,7 +1697,9 @@ struct ContactListView: View {
         let collapsedAudioRooms = isCollapsed(SectionCollapseStore.audioRoomsID)
         return VStack(spacing: 0) {
             Button {
-                setCollapsed(SectionCollapseStore.audioRoomsID, !collapsedAudioRooms)
+                withAnimation(Self.foldAnimation) {
+                    setCollapsed(SectionCollapseStore.audioRoomsID, !collapsedAudioRooms)
+                }
             } label: {
                 HStack(spacing: 6) {
                     CollapseChevron(collapsed: collapsedAudioRooms)
