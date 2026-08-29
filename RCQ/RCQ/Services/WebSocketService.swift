@@ -614,6 +614,16 @@ final class WebSocketService: ObservableObject {
             // it drops out of our pending list (the row is gone server-side).
             Task { @MainActor in await ContactService.shared.refresh() }
 
+        case "news_posted":
+            // The operator published a post (A4). The frame is a doorbell,
+            // nothing more: refresh() re-reads /news, which is the one place
+            // that derives latestID and the unread count together, so the
+            // ellipsis dot lights the moment the post lands instead of on
+            // the next screen appear. Deliberately NOT an Event enum case:
+            // AppState's consumer switch is exhaustive and this concerns
+            // only the news service.
+            Task { @MainActor in await NewsService.shared.refresh() }
+
         case "group_created", "group_membership_changed":
             guard let groupDict = dict["group"] as? [String: Any],
                   let groupData = try? JSONSerialization.data(withJSONObject: groupDict),

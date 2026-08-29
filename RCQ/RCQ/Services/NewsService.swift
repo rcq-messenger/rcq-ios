@@ -8,10 +8,10 @@ import Foundation
 /// updated whenever the user opens the news sheet. The published
 /// `hasUnread` flag drives the red dot on the 3-dot menu.
 ///
-/// We don't push-notify news (yet) — the badge fires on the next
-/// `refresh()` which `ContactListView.task` calls on appear, plus
-/// scenePhase → .active. That feels alive without burning APNS
-/// budget on broadcasts.
+/// News never rides APNS. The badge fires on `refresh()`, which runs on
+/// ContactListView's appear AND live on the socket's `news_posted` frame
+/// (WebSocketService), so a post lands the moment it is published without
+/// burning push budget on broadcasts.
 @MainActor
 final class NewsService: ObservableObject {
     static let shared = NewsService()

@@ -39,6 +39,11 @@ struct NewsSheet: View {
                 await svc.refresh()
                 svc.markAllSeen()
             }
+            // A post published WHILE the sheet is open (news_posted refresh):
+            // the reader is looking straight at it, so it is seen; without
+            // this the dot re-lights behind the open sheet and survives
+            // until the next open.
+            .onChange(of: svc.latestID) { _ in svc.markAllSeen() }
             .fullScreenCover(item: $galleryTarget) { target in
                 NewsGalleryView(
                     attachments: target.attachments,
@@ -289,9 +294,17 @@ private struct NewsPostCard: View {
             Color.clear
                 .overlay {
                     AsyncImage(url: url) { image in
+                        // Fit, not fill: the slot is a fixed landscape window
+                        // (deliberately, so async media cannot grow LazyVStack
+                        // rows on a second layout pass) and fill center-cropped
+                        // a portrait screenshot down to a horizontal strip
+                        // (founder, the news crop complaint). Fit letterboxes
+                        // instead, exactly like the video branch above, so the
+                        // whole frame is visible and the two media kinds stop
+                        // disagreeing; the gallery still shows it full-screen.
                         image
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
                     } placeholder: {
                         Rectangle().fill(Theme.Color.divider)
                     }
