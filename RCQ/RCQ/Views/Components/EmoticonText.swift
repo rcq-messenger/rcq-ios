@@ -29,7 +29,33 @@ struct EmoticonText: View {
     /// `link={{ enabled: linksAllowed }}` (Chat.tsx).
     var linksEnabled: Bool = true
 
+    /// A message that IS one emoticon and nothing else. Rendered big, like a
+    /// sticker: Android 0.152 set the precedent (28 -> 48) and testers liked
+    /// it; web mirrors it. Only in full-size contexts - previews and quotes
+    /// pass a smaller emoticonSize and keep their compact scale.
+    private var soloEmoticon: (asset: String, code: String)? {
+        guard emoticonSize >= 26 else { return nil }
+        let all = lines
+        guard all.count == 1, all[0].count == 1,
+              case .emoticon(let asset, let code) = all[0][0] else { return nil }
+        return (asset, code)
+    }
+
+    private static let soloSize: CGFloat = 48
+
     var body: some View {
+        if let solo = soloEmoticon, let img = GIFImage.cachedImage(for: solo.asset) {
+            let aspect: CGFloat = (img.size.width > 0 && img.size.height > 0)
+                ? img.size.width / img.size.height : 1
+            GIFImage(name: solo.asset)
+                .frame(width: Self.soloSize * aspect, height: Self.soloSize)
+                .accessibilityLabel(solo.code)
+        } else {
+            textBody
+        }
+    }
+
+    private var textBody: some View {
         // VStack of per-line FlowLayouts so user newlines drive real breaks.
         VStack(alignment: .leading, spacing: lineSpacing) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, lineRuns in
