@@ -188,6 +188,13 @@ enum Envelope: Codable, Hashable {
     /// dedups its own carbon by the inner message's id. Defined identically on
     /// iOS/Android/web.
     indirect case carbon(to: Int?, gid: Int?, env: Envelope)
+    /// Cross-device read marker (megalist A2). Rides INSIDE a `carbon` to my
+    /// own uin: the thread is the carbon's own to/gid, `at` is the wall clock
+    /// of the read in ms. My other devices drop that thread's badge, minus
+    /// whatever arrived after `at`. The island never sees this kind (it is
+    /// inside the sealed blob) and the carbon ships under an ephemeral outer
+    /// type, so nothing new is learned and nothing pushes.
+    case readMark(at: Int64)
     /// Cross-island call signaling (wire kind "call", spec §5d). Same-island
     /// calls ride the WS as plaintext call_* events; across islands there is
     /// no shared socket, so the SAME signal payload is wrapped here, v=1-sealed
@@ -425,6 +432,9 @@ enum Envelope: Codable, Hashable {
         case .screenshotTaken(let id):
             try c.encode("shot", forKey: .kind)
             try c.encode(id, forKey: .id)
+        case .readMark(let at):
+            try c.encode("readmark", forKey: .kind)
+            try c.encode(at, forKey: .at)
         case .carbon(let to, let gid, let env):
             try c.encode("carbon", forKey: .kind)
             try c.encodeIfPresent(to, forKey: .to)
@@ -606,6 +616,8 @@ enum Envelope: Codable, Hashable {
             self = .secureScreen(on: try c.decode(Bool.self, forKey: .on))
         case "shot":
             self = .screenshotTaken(id: try c.decode(UUID.self, forKey: .id))
+        case "readmark":
+            self = .readMark(at: try c.decode(Int64.self, forKey: .at))
         case "carbon":
             self = .carbon(
                 to: try c.decodeIfPresent(Int.self, forKey: .to),
@@ -698,6 +710,7 @@ enum Envelope: Codable, Hashable {
         case .secureScreen: return "secscreen"
         case .screenshotTaken: return "shot"
         case .carbon: return "carbon"
+        case .readMark: return "readmark"
         case .callSignal: return "call"
         case .contactRequest: return "contactreq"
         case .profile: return "profile"

@@ -464,7 +464,7 @@ class NotificationService: UNNotificationServiceExtension {
             }
         case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest,
-             .profile,
+             .profile, .readMark,
              // A kind this build cannot read. The generic body is exactly right
              // for it: we know an envelope arrived and nothing more.
              .unknown:
@@ -646,7 +646,7 @@ class NotificationService: UNNotificationServiceExtension {
             return true
         case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
-             .contactRequest, .profile:
+             .contactRequest, .profile, .readMark:
             return false
         // A kind this build does not know. Not user-visible on purpose: raising
         // a banner for an envelope we cannot read would announce a message that
@@ -693,6 +693,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .secureScreen:     return "secscreen"
         case .screenshotTaken:  return "shot"
         case .carbon:           return "carbon"
+        case .readMark:         return "readmark"
         case .callSignal:       return "call"
         case .contactRequest:   return "contactreq"
         case .profile:          return "profile"

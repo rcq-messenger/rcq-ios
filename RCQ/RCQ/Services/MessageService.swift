@@ -782,6 +782,62 @@ final class MessageService {
         } catch { }
     }
 
+    /// Tell my OTHER devices that I read a thread (megalist A2). The marker
+    /// rides inside the same self-carbon a sent message uses, so the island
+    /// sees the sealed self-addressed blob it has always seen. The outer type
+    /// is "read", which the island already files as EPHEMERAL: it reaches my
+    /// other devices live and through their queues but never pushes a banner
+    /// to my own sleeping phone, and "read" is a token the island reads on
+    /// every peer receipt anyway. Nothing new is learned, which was the
+    /// condition this feature had to meet.
+    ///
+    /// Never for Saved Messages (I am the peer there). Best effort: a lost
+    /// marker only means the other device clears its badge when it is next
+    /// opened, exactly as it did before.
+    func sendReadMarker(toPeer: Int?, toGroup: Int?) async {
+        let me = ownUIN
+        if let p = toPeer, p == me { return }
+        guard toPeer != nil || toGroup != nil else { return }
+        guard let mine = try? crypto.bootstrapIdentity() else { return }
+        let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
+        let at = Int64(Date().timeIntervalSince1970 * 1000)
+        let carbon: Envelope = .carbon(to: toPeer, gid: toGroup, env: .readMark(at: at))
+        guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        do {
+            let _: Out = try await APIClient.shared.request(
+                "POST", "/messages/sealed",
+                body: Body(to_uin: me, envelope_type: "read", cls: rcqMessageClass("read"), payload: blob),
+                authenticated: false,
+                retries: 1
+            )
+        } catch { }
+    }
+
+    /// Another device of this account read `thread` up to `at` (A2). Recount
+    /// rather than clear: a message that landed AFTER that moment is still
+    /// unread here, so a marker crossing paths with a fresh message cannot
+    /// swallow it, and the badge only ever shrinks - an out-of-order marker
+    /// can never un-read a thread.
+    private func applyRemoteRead(thread: ThreadID, at: Int64) {
+        let cutoff = Date(timeIntervalSince1970: Double(at) / 1000)
+        let rows = MessageStore.shared.messages(for: thread)
+        let after = rows.filter { !$0.isFromMe && $0.sentAt > cutoff }.count
+        switch thread {
+        case .peer(let uin):
+            let current = UnreadStore.shared.unread(forPeer: uin)
+            guard current > 0, after < current else { return }
+            if after == 0 { ContactService.shared.clearUnread(for: uin) }
+            else { UnreadStore.shared.setPeer(uin, after) }
+        case .group(let id):
+            let current = UnreadStore.shared.unread(forGroup: id)
+            guard current > 0, after < current else { return }
+            if after == 0 { GroupService.shared.clearUnread(id) }
+            else { UnreadStore.shared.setGroup(id, after) }
+        }
+    }
+
     /// Files one CONTENT envelope (text/photo/video/voice/file/location) into
     /// `thread` outside the normal ingest switch. Two callers: a multi-device
     /// carbon (senderUIN = me, isFromMe true) and the stranger-quarantine
@@ -1779,6 +1835,10 @@ final class MessageService {
                     )
                 case .deleteForEveryone(let targetID):
                     MessageStore.shared.deleteLocal(messageID: targetID, thread: dest)
+                case .readMark(let at):
+                    // I read this thread on another device (A2): drop the
+                    // badge here too, minus whatever landed after that moment.
+                    applyRemoteRead(thread: dest, at: at)
                 default:
                     appendContentMessage(
                         inner: inner, thread: dest, senderUIN: ownUIN, isFromMe: true, serverTime: ws.serverTime
@@ -2446,6 +2506,11 @@ final class MessageService {
             case .carbon:
                 // Intercepted before this switch (filed into its destination
                 // thread). Unreachable here; present only for exhaustiveness.
+                break
+            case .readMark:
+                // A2 marker: only ever arrives WRAPPED in a carbon, which is
+                // intercepted above. A bare one is not something any client
+                // sends, so it files nothing.
                 break
             case .callSignal:
                 // §5d: intercepted before this switch (routed to CallService).

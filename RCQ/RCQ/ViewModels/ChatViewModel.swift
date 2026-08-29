@@ -775,6 +775,21 @@ final class ChatViewModel: ObservableObject {
             return
         }
         Task { await MessageService.shared.markRead(messages: messages, in: target) }
+        // A2: my other devices drop this thread's badge too. Only worth a
+        // packet when there WAS something unread here; opening an
+        // already-read chat says nothing, so it sends nothing.
+        switch target {
+        case .peer(let contact):
+            if openUnreadCount > 0 {
+                Task { await MessageService.shared.sendReadMarker(toPeer: contact.uin, toGroup: nil) }
+            }
+        case .group(let group):
+            if openUnreadCount > 0 {
+                Task { await MessageService.shared.sendReadMarker(toPeer: nil, toGroup: group.id) }
+            }
+        case .randomPeer:
+            break
+        }
     }
 
     /// Leaving the chat: if the reader is at the bottom, everything the thread
