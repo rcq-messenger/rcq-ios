@@ -2652,12 +2652,18 @@ final class MessageService {
     /// `ingest`: the drain would be waiting on itself.
     private var drainTail: Task<Void, Never>?
 
-    /// How many rows one uninterrupted stretch of a drain handles before it
-    /// hands the main actor back. Small enough that a chunk is a frame's worth
-    /// of work rather than a freeze, large enough that the per-chunk costs
-    /// (one fsync, one publish of the roster, one write of the icon file) stay
-    /// amortised over real work.
-    private static let drainChunkSize = 25
+    /// One uninterrupted stretch of a drain is bounded by a CLOCK, not a row
+    /// count (D3). A fixed 25 rows was "a frame's worth of work" only for the
+    /// envelopes it was measured on: a chunk of sender-keys rows with cold
+    /// sessions runs several times longer, and a page of them froze the chat
+    /// list on entry exactly the way the unchunked drain used to. The chunk
+    /// now ends when the clock says the frame is spent. The floor keeps the
+    /// per-chunk costs (one fsync, one roster publish, one icon write)
+    /// amortised over real work when every row is expensive; the ceiling
+    /// keeps a chunk of trivial rows from holding a transaction open long.
+    private static let drainChunkMaxRows = 25
+    private static let drainChunkMinRows = 4
+    private static let drainChunkBudgetNs: UInt64 = 12_000_000
 
     /// What a page of a drain owes the rest of the app, held until the page
     /// ends instead of being paid per row.
@@ -2822,7 +2828,6 @@ final class MessageService {
             let accountID = AccountManager.shared.activeAccountID
             var cursor = 0
             while cursor < rows.count {
-                let chunkEnd = min(cursor + Self.drainChunkSize, rows.count)
                 // Per CHUNK, not per page: what the chunk owes the rest of the
                 // app is paid as soon as its rows are on disk (below), because
                 // anything still owed when the drain is interrupted can never
@@ -2834,7 +2839,23 @@ final class MessageService {
                 // lands from the socket while this drain waits can be acked to
                 // the island while it is still only in a context.
                 MessageDB.shared.beginBatch()
-                for r in rows[cursor..<chunkEnd] {
+                // The cursor moves at the TOP of the iteration, so every
+                // `continue` below has already paid it; the clock decides at
+                // the bottom whether the chunk goes on. See drainChunkBudgetNs.
+                let chunkT0 = DispatchTime.now().uptimeNanoseconds
+                var chunkRows = 0
+                while cursor < rows.count, chunkRows < Self.drainChunkMaxRows {
+                    let r = rows[cursor]
+                    cursor += 1
+                    chunkRows += 1
+                    defer {
+                        if chunkRows >= Self.drainChunkMinRows,
+                           DispatchTime.now().uptimeNanoseconds - chunkT0 > Self.drainChunkBudgetNs {
+                            // Budget spent: fall out of the row loop at the
+                            // bottom of this iteration.
+                            chunkRows = Self.drainChunkMaxRows
+                        }
+                    }
                     // Sealed for a sibling install of ours — an island that
                     // predates per-device queues hands the account's whole
                     // backlog to whoever asks. Nothing here can open it, and
@@ -2901,7 +2922,6 @@ final class MessageService {
                 // to give up, and redelivery cannot bring them back.
                 flushDrainBatch(ownsBatch)
                 ownsBatch = false
-                cursor = chunkEnd
                 guard cursor < rows.count else { break }
                 // Hand the main actor back so the interface can draw a frame
                 // between chunks. This is the whole point: the loop used to
@@ -3171,12 +3191,24 @@ final class MessageService {
         let accountID = AccountManager.shared.activeAccountID
         var cursor = 0
         while cursor < rows.count {
-            let chunkEnd = min(cursor + Self.drainChunkSize, rows.count)
             // Per chunk, flushed as soon as the chunk is on disk. See the
-            // queue drain and `discardDrainBatch`.
+            // queue drain and `discardDrainBatch`. Clock-bounded like the
+            // queue drain (D3): the cursor moves at the top so `continue`
+            // is safe, the clock decides at the bottom.
             let ownsBatch = beginDrainBatch()
             MessageDB.shared.beginBatch()
-            for r in rows[cursor..<chunkEnd] {
+            let chunkT0 = DispatchTime.now().uptimeNanoseconds
+            var chunkRows = 0
+            while cursor < rows.count, chunkRows < Self.drainChunkMaxRows {
+                let r = rows[cursor]
+                cursor += 1
+                chunkRows += 1
+                defer {
+                    if chunkRows >= Self.drainChunkMinRows,
+                       DispatchTime.now().uptimeNanoseconds - chunkT0 > Self.drainChunkBudgetNs {
+                        chunkRows = Self.drainChunkMaxRows
+                    }
+                }
                 let gid = localGid(r.gid)
                 seen[r.gid] = gid
                 let env = WebSocketService.EnvelopePacket(
@@ -3208,7 +3240,6 @@ final class MessageService {
             }
             MessageDB.shared.endBatch()
             flushDrainBatch(ownsBatch)
-            cursor = chunkEnd
             guard cursor < rows.count else { break }
             await Task.yield()
             // The account switched, the decoy store came up, or the panic PIN
