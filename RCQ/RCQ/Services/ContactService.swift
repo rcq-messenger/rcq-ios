@@ -243,8 +243,61 @@ final class ContactService: ObservableObject {
             // every launch, #8. Re-adds now clear the filter explicitly in
             // sendAddRequest() and respond(accept:), and deleted-but-lingering
             // contacts are filtered out of `list` above.)
+            Task { await self.purgeCrossIslandShadows() }
         } catch {
             // Keep current cached state on failure.
+        }
+    }
+
+    /// Drop cross-island rows that are really OUR OWN island's people.
+    ///
+    /// `CrossIslandStore.pruneOwnIsland()` already removes rows filed under a
+    /// host `Multihome.isOwnHost` recognises TODAY — but a row written while
+    /// the app rode an old front name it no longer knows survives that prune
+    /// forever. Such a shadow stays invisible for as long as the person is in
+    /// the roster (the merge filters cross rows that collide with a roster
+    /// uin) and SURFACES at the exact moment they remove us: the roster row
+    /// goes, the filter stops matching, and a ghost appears — no avatar (the
+    /// card fetch aims at a host that is not really an island) and offering
+    /// "add" (megalist A1, sTall in the founder's list).
+    ///
+    /// The test is IDENTITY, not host lists: ask our island for the uins we
+    /// hold as "foreign", and any row whose pinned identity key matches the
+    /// local account with the same uin is the same person — the roster owns
+    /// them, the copy goes. A genuine namesake on another island keeps its
+    /// row (different key), and a uin our island does not know keeps its row
+    /// too (nothing proves anything). Once per session, best-effort.
+    private static var shadowSweepDone: UUID??
+    private func purgeCrossIslandShadows() async {
+        guard !PanicPINService.shared.isDecoy else { return }
+        let account = AccountManager.shared.activeAccountID
+        if case .some(let done) = Self.shadowSweepDone, done == account { return }
+        let rows = CrossIslandStore.shared.all()
+        guard !rows.isEmpty else { Self.shadowSweepDone = .some(account); return }
+        struct LookupIn: Encodable { let uins: [Int] }
+        struct LookupRow: Decodable { let uin: Int; let identityKey: String
+            enum CodingKeys: String, CodingKey { case uin, identityKey = "identity_key" } }
+        struct LookupOut: Decodable { let users: [LookupRow] }
+        do {
+            let out: LookupOut = try await APIClient.shared.request(
+                "POST", "/users/lookup",
+                body: LookupIn(uins: Array(Set(rows.map(\.uin))).sorted())
+            )
+            let localKey = Dictionary(uniqueKeysWithValues: out.users.map { ($0.uin, $0.identityKey) })
+            for row in rows {
+                guard let host = row.host else { continue }
+                if localKey[row.uin] == row.identityKey {
+                    CrossIslandStore.shared.remove(uin: row.uin, host: host)
+                }
+            }
+            Self.shadowSweepDone = .some(account)
+            // Re-merge so a ghost that was on screen leaves without a restart.
+            let stillCross = CrossIslandStore.shared.all()
+            contacts = contacts.filter { entry in
+                entry.host == nil || stillCross.contains { $0.uin == entry.uin && $0.host == entry.host }
+            }
+        } catch {
+            // An older island without /users/lookup, or no network: next session.
         }
     }
 
