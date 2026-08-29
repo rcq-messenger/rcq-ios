@@ -751,6 +751,8 @@
 "group.settings.name" = "Grup adı";
 "group.settings.photo" = "Grup görseli";
 "group.settings.change_photo" = "Görseli değiştir";
+"group.settings.catalog" = "Aramada göster";
+"group.settings.catalog.hint" = "Odanın adı ve açıklaması bulunabilmesi için yayımlanır. Kapalı: yalnızca bağlantıyla.";
 "group.settings.hide_members" = "Üye listesini gizle";
 "group.settings.hide_members.hint" = "Grupta kimin olduğunu yalnızca sen görürsün. Herkes Grup bilgisinde yalnızca üye sayısını görür.";
 "group.members.hidden" = "Üye listesini grup sahibi gizledi.";

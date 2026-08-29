@@ -680,6 +680,14 @@ final class GroupService: ObservableObject {
         try await patchGroup(groupID, Body(members_hidden: hidden))
     }
 
+    /// Voluntary catalog (stage 6): publish or unlist the room's name and
+    /// description. Admin-or-owner on the island (the "info" capability),
+    /// same gate as renaming - it is the same information.
+    func setInCatalog(groupID: Int, listed: Bool) async throws {
+        struct Body: Encodable { let in_catalog: Bool }
+        try await patchGroup(groupID, Body(in_catalog: listed))
+    }
+
     /// Owner-only: may links in this room be opened. Client-honored, because the
     /// island cannot see inside a sealed envelope, so it publishes the rule
     /// and every client renders links as plain text while it is off.

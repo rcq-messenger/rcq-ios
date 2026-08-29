@@ -28,6 +28,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// everyone but the owner. Display-only — `members` still
     /// arrives (needed for per-recipient group encryption).
     var membersHidden: Bool = false
+    /// Voluntary catalog (stage 6): true only when the owner listed the room;
+    /// island search matches catalog rows only. Off = link-only discovery.
+    var inCatalog: Bool = false
     /// Pinned plaintext announcement, owner/admin-editable. Nil when
     /// unset. Rendered as a sticky banner above the chat message list
     /// so new joiners (who can't see encrypted history) at least see
@@ -62,6 +65,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case postPolicy = "post_policy"
         case isClosed = "is_closed"
         case membersHidden = "members_hidden"
+        case inCatalog = "in_catalog"
         case pinnedText = "pinned_text"
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
@@ -81,6 +85,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.postPolicy = (try? c.decodeIfPresent(String.self, forKey: .postPolicy)) ?? "all"
         self.isClosed = (try? c.decodeIfPresent(Bool.self, forKey: .isClosed)) ?? false
         self.membersHidden = (try? c.decodeIfPresent(Bool.self, forKey: .membersHidden)) ?? false
+        self.inCatalog = (try? c.decodeIfPresent(Bool.self, forKey: .inCatalog)) ?? false
         self.pinnedText = try? c.decodeIfPresent(String.self, forKey: .pinnedText)
         self.pinnedAt = try? c.decodeIfPresent(Date.self, forKey: .pinnedAt)
         self.pinnedBy = try? c.decodeIfPresent(Int.self, forKey: .pinnedBy)

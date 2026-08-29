@@ -751,6 +751,8 @@
 "group.settings.name" = "Nombre del grupo";
 "group.settings.photo" = "Foto del grupo";
 "group.settings.change_photo" = "Cambiar la foto";
+"group.settings.catalog" = "Mostrar en la búsqueda";
+"group.settings.catalog.hint" = "El nombre y la descripción se publican para que la sala se pueda encontrar. No: solo por enlace.";
 "group.settings.hide_members" = "Esconder la lista de miembros";
 "group.settings.hide_members.hint" = "Solo tú ves quién está en el grupo. Los demás ven únicamente cuántos miembros hay en la información del grupo.";
 "group.members.hidden" = "El propietario esconde la lista de miembros.";

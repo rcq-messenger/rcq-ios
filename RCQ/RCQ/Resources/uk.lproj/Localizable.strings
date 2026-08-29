@@ -751,6 +751,8 @@
 "group.settings.name" = "Назва групи";
 "group.settings.photo" = "Фото групи";
 "group.settings.change_photo" = "Змінити фото";
+"group.settings.catalog" = "Показувати в пошуку";
+"group.settings.catalog.hint" = "Назва та опис кімнати публікуються, щоб її можна було знайти. Вимк: лише за посиланням.";
 "group.settings.hide_members" = "Приховати список учасників";
 "group.settings.hide_members.hint" = "Хто в групі, бачиш лише ти. Решта бачить в інформації про групу тільки кількість учасників.";
 "group.members.hidden" = "Власник приховав список учасників.";
