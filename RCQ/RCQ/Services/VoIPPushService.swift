@@ -72,7 +72,12 @@ extension VoIPPushService: PKPushRegistryDelegate {
         let hex = pushCredentials.token.map { String(format: "%02x", $0) }.joined()
         Task { @MainActor [weak self] in
             self?.voipToken = hex
-            await self?.submitTokenIfNeeded()
+            // force for the same reason as the APNs twin (NotificationService
+            // .handle(apnsToken:)): PushKit fires this once per launch, the
+            // server upsert is idempotent, and a server-side row loss (dead-
+            // token prune, wipe) otherwise stays unhealed for the whole sent-
+            // cache window while calls silently stop ringing this device.
+            await self?.submitTokenIfNeeded(force: true)
         }
     }
 

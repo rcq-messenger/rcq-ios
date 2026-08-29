@@ -37,10 +37,22 @@ final class NotificationService: ObservableObject {
     }
 
     /// Server upserts on (uin, token). No-op when UIN unknown.
+    ///
+    /// ⚠ force, not cache-gated. Apple fires this once per launch, so this is
+    /// one idempotent POST per launch — and it is the only submit that is
+    /// GUARANTEED to hold a token. The boot-order refresh in AppState races
+    /// this callback: when it runs first, `deviceToken` is still nil and its
+    /// force is silently wasted; the callback then hit the sent-cache with
+    /// force=false and skipped. Meanwhile the server prunes a token row the
+    /// moment APNs calls it dead on both hosts, and a row can also be lost to
+    /// a wipe — after which THIS device had no row and no plan to ever send
+    /// one again inside the 12h cache window. That is precisely "пуши вообще
+    /// перестали работать" (megalist P0-2): the founder's account had zero
+    /// device_tokens rows while the app believed it was registered.
     func handle(apnsToken raw: Data) {
         let hex = raw.map { String(format: "%02x", $0) }.joined()
         deviceToken = hex
-        Task { await self.submitTokenIfNeeded(force: false) }
+        Task { await self.submitTokenIfNeeded(force: true) }
     }
 
     func handle(apnsRegistrationError: Error) {
