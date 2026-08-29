@@ -1296,8 +1296,15 @@ private struct AddGroupMemberView: View {
     private func addCrossIsland(_ c: Contact) async {
         addError = nil
         do {
-            try await GroupService.shared.addCrossIslandMember(group: group, contact: c)
-            dismiss()
+            let linkDelivered = try await GroupService.shared.addCrossIslandMember(group: group, contact: c)
+            if linkDelivered {
+                dismiss()
+            } else {
+                // On the roster, but the invite link never left this device.
+                // §5c has no other channel, so staying open with the warning
+                // beats a silent success the invitee will never see (A3).
+                addError = String(format: "group.add.warn.link_undelivered".localized, c.nickname)
+            }
         } catch {
             addError = String(format: "group.add.error.generic".localized, error.localizedDescription)
         }

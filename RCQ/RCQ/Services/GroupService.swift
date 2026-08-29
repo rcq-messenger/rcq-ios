@@ -335,13 +335,20 @@ final class GroupService: ObservableObject {
     /// short-circuits on "already a member" BEFORE the closed-group gate, so
     /// this works for CLOSED groups too. Foreign groups (alias id) keep the
     /// §5c management limit — owner-add there routes to the own island.
-    func addCrossIslandMember(group: RCQGroup, contact: Contact) async throws {
+    /// Returns whether the INVITE LINK actually reached the contact. The link
+    /// is the only channel the invitee learns about the group through (§5c:
+    /// the island never notifies them), so a swallowed send here was half of
+    /// megalist A3 — the inviter saw success while the invitee saw nothing.
+    /// The member IS on the roster either way; a false return means "tell the
+    /// user to hand over the link themselves".
+    @discardableResult
+    func addCrossIslandMember(group: RCQGroup, contact: Contact) async throws -> Bool {
         guard let contactHost = contact.host else { throw CrossIslandAddError.notCrossIsland }
         let groupHost = group.host ?? Multihome.ownHost()
         // Contact already lives on the group's island → a normal same-island add.
         if contactHost.lowercased() == groupHost.lowercased() {
             try await addMember(groupID: group.id, uin: contact.uin)
-            return
+            return true
         }
         let nick = contact.nickname.isEmpty ? "user-\(contact.uin)" : contact.nickname
         var resolved = await CrossIslandGroups.resolveUinForKey(host: groupHost, signingKeyB64: contact.signingKey)
@@ -357,7 +364,12 @@ final class GroupService: ObservableObject {
         // Notify the contact via a cross-island 1:1 — the link renders as a join
         // card on their side; tapping it completes the loop.
         let link = "https://rcq.app/g/\(group.id)@\(groupHost)"
-        try? await MessageService.shared.send(text: link, to: contact)
+        do {
+            try await MessageService.shared.send(text: link, to: contact)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func removeMember(groupID: Int, uin: Int) async throws {

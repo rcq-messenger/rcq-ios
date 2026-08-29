@@ -1767,3 +1767,6 @@
 "island.host_hint" = "dirección de la isla";
 
 "add_account.enter_phrase" = "Entrar con una frase";
+
+"create_group.warn.cross_not_invited" = "Grupo creado, pero la invitación no llegó a: %@. Envíales el enlace del grupo tú mismo.";
+"group.add.warn.link_undelivered" = "%@ está en el grupo, pero el enlace de invitación no salió. Envía el enlace tú mismo.";

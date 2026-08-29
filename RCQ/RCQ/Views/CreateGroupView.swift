@@ -78,10 +78,16 @@ struct CreateGroupView: View {
 
     private func row(_ contact: Contact) -> some View {
         HStack(spacing: 10) {
-            StatusIcon(status: contact.status, size: 24)
+            StatusIcon(status: contact.status, size: 24, crossIsland: contact.host != nil)
             VStack(alignment: .leading, spacing: 1) {
                 Text(contact.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                Text(verbatim: "#\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                // The island is part of who this is — the picker hiding it is
+                // how foreign uins ended up in `member_uins` unmarked (A3).
+                if let h = contact.host {
+                    Text(verbatim: "#\(contact.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                } else {
+                    Text(verbatim: "#\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                }
             }
             Spacer()
             Image(systemName: selected.contains(contact.uin) ? "checkmark.circle.fill" : "circle")
@@ -93,13 +99,38 @@ struct CreateGroupView: View {
     private func create() async {
         creating = true
         defer { creating = false }
+        // ⚠ Split by island, the port of the Android fix of 18.08 that never
+        // reached this screen (megalist A3). A cross-island contact's uin
+        // means nothing to OUR island: sent raw it either 400s the whole
+        // create ("unknown user in member list") or — worse, on a uin
+        // collision — quietly seeds a STRANGER from our island into the room
+        // while the person picked never learns anything. Locals ride the
+        // create; foreigners go through the §5c add (resolve/register their
+        // keys on this island + the invite link) one by one after it.
+        let picked = contacts.contacts.filter { selected.contains($0.uin) }
+        let locals = picked.filter { $0.host == nil }.map(\.uin)
+        let foreign = picked.filter { $0.host != nil }
         do {
             let g = try await GroupService.shared.create(
                 name: name.trimmingCharacters(in: .whitespaces),
-                memberUINs: Array(selected)
+                memberUINs: locals
             )
+            var notInvited: [String] = []
+            for c in foreign {
+                let delivered = (try? await GroupService.shared.addCrossIslandMember(group: g, contact: c)) ?? false
+                if !delivered { notInvited.append(c.nickname.isEmpty ? "#\(c.uin)" : c.nickname) }
+            }
             onCreated(g)
-            dismiss()
+            if notInvited.isEmpty {
+                dismiss()
+            } else {
+                // The group exists and locals are in; saying so beats a silent
+                // half-success (A3: every client used to swallow this).
+                self.error = String(
+                    format: "create_group.warn.cross_not_invited".localized,
+                    notInvited.joined(separator: ", ")
+                )
+            }
         } catch {
             self.error = Self.friendlyCreateError(error)
         }

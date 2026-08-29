@@ -1758,3 +1758,6 @@
 "island.host_hint" = "岛屿地址";
 
 "add_account.enter_phrase" = "用助记词登录";
+
+"create_group.warn.cross_not_invited" = "群组已创建，但邀请未送达：%@。请自行把群组链接发给他们。";
+"group.add.warn.link_undelivered" = "%@ 已入群，但邀请链接未发出。请自行发送链接。";

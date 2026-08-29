@@ -1767,3 +1767,6 @@
 "island.host_hint" = "ada adresi";
 
 "add_account.enter_phrase" = "Kurtarma ifadesiyle gir";
+
+"create_group.warn.cross_not_invited" = "Grup oluşturuldu ama davet şu kişilere ulaşmadı: %@. Grup bağlantısını kendin gönder.";
+"group.add.warn.link_undelivered" = "%@ grupta ama davet bağlantısı gitmedi. Bağlantıyı kendin gönder.";

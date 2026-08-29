@@ -1975,3 +1975,6 @@
 "island.host_hint" = "island host";
 
 "add_account.enter_phrase" = "Sign in with a phrase";
+
+"create_group.warn.cross_not_invited" = "Group created, but the invite did not reach: %@. Send them the group link yourself.";
+"group.add.warn.link_undelivered" = "%@ was added, but the invite link did not go out. Send them the group link yourself.";
