@@ -49,9 +49,9 @@ struct GroupJoinSheet: View {
         }
     }
 
-    /// Local cache snapshot so we can render the real avatar (the
-    /// preview endpoint doesn't include avatar fields — privacy).
-    /// Falls back to a generic glyph when the caller isn't a member.
+    /// Local cache snapshot so a room I am ALREADY in renders its real
+    /// avatar: the preview serves the avatar pair to members only (stage 6),
+    /// and my own roster has it anyway. Strangers get the generic glyph.
     private var cachedGroup: RCQGroup? {
         groups.groups.first(where: { $0.id == groupID })
     }
@@ -150,15 +150,15 @@ struct GroupJoinSheet: View {
     @ViewBuilder
     private func content(_ p: GroupService.GroupPreview) -> some View {
         VStack(spacing: 18) {
-            // Avatar from the preview payload (server now ships
-            // `avatar_media_id` + `avatar_media_key` to non-members
-            // for share-card rendering). `GroupAvatarView` falls
-            // back to the generic glyph for groups without an
-            // uploaded avatar.
+            // The island serves the avatar pair to MEMBERS only now (the key
+            // is the blob's cleartext AES key and /media has no auth, so the
+            // pair is the picture - stage 6). A link to a room I am in still
+            // shows its picture via my own roster; a stranger's link shows
+            // the generic glyph, which is the point.
             ZStack(alignment: .bottomTrailing) {
                 GroupAvatarView(
-                    mediaID: p.avatarMediaID,
-                    keyBase64: p.avatarMediaKey,
+                    mediaID: p.avatarMediaID ?? (cachedForeignGroup ?? cachedGroup)?.avatarMediaID,
+                    keyBase64: p.avatarMediaKey ?? (cachedForeignGroup ?? cachedGroup)?.avatarMediaKey,
                     size: 67,
                 )
                 .frame(width: 67, height: 67)
