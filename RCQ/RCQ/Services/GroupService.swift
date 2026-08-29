@@ -577,13 +577,16 @@ final class GroupService: ObservableObject {
     }
 
     /// The pin slot the server actually has: `GroupPatchIn.pinned_text` is a
-    /// 500-character field over a VARCHAR(500) column, and anything longer is
-    /// rejected with 422 BEFORE the row is written. Nothing on the wire tells
-    /// the user that, so a long message pinned from the chat used to leave the
-    /// PREVIOUS pin standing while the optimistic swap made it look replaced,
-    /// until the next poll put the old text back ("не заменяет ранее
-    /// закреплённое"). Clients do the cutting.
-    static let pinnedTextLimit = 500
+    /// The island's pin slot, and anything longer is rejected with 422
+    /// BEFORE the row is written. Nothing on the wire tells the user that,
+    /// so a long message pinned from the chat used to leave the PREVIOUS pin
+    /// standing while the optimistic swap made it look replaced, until the
+    /// next poll put the old text back ("не заменяет ранее закреплённое").
+    /// Clients do the cutting. 500 until 29.08, when the founder raised the
+    /// server column to 4096 (megalist A6); an old island still on 500 keeps
+    /// refusing longer pins with the same visible rollback, which is the
+    /// price of not probing every island's limit.
+    static let pinnedTextLimit = 4096
 
     /// Longest prefix of `text` that fits `budget` unicode scalars. Scalars
     /// because that is the unit the server counts; whole characters because
