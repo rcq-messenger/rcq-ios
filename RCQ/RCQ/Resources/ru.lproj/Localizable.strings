@@ -1604,7 +1604,6 @@
 "manage_accounts.intro.title" = "Аккаунты на этом устройстве";
 "manage_accounts.intro.body" = "Активный аккаунт удалить отсюда нельзя, сначала переключись на другой. Удаление с устройства не трогает аккаунт на сервере, для этого используй Burn account в настройках приватности.";
 "manage_accounts.switch" = "Перейти";
-"manage_accounts.active_badge" = "АКТИВНЫЙ";
 "manage_accounts.delete" = "Удалить";
 "manage_accounts.delete.confirm.title" = "Удалить %@?";
 "manage_accounts.delete.confirm.body" = "Локальные данные (контакты, история, identity) будут удалены с этого устройства. Аккаунт на сервере останется и будет копить входящие сообщения, пока их не очистит TTL.";

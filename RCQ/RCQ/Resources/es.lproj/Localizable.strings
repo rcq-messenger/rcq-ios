@@ -1514,7 +1514,6 @@
 "manage_accounts.intro.title" = "Cuentas en este dispositivo";
 "manage_accounts.intro.body" = "La cuenta activa no se puede quitar desde aquí: cambia antes a otra. Quitarla del dispositivo no toca la cuenta del servidor; para eso usa Destruir la cuenta en los ajustes de privacidad.";
 "manage_accounts.switch" = "Cambiar";
-"manage_accounts.active_badge" = "ACTIVA";
 "manage_accounts.delete" = "Quitar";
 "manage_accounts.delete.confirm.title" = "¿Quitar %@?";
 "manage_accounts.delete.confirm.body" = "Los datos locales (contactos, historial, identidad) se borrarán de este dispositivo. La cuenta del servidor sigue viva y seguirá guardando los mensajes entrantes hasta que caduquen en la cola del servidor.";

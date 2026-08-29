@@ -210,8 +210,9 @@ final class AuthService: ObservableObject {
     }
 
     /// Outcome of asking the active island to re-mint a session token for the
-    /// locally-held identity keys.
-    private enum RecoverOutcome {
+    /// locally-held identity keys. Internal (not private) because the socket's
+    /// 4401 probe acts on the same trichotomy mid-session.
+    enum RecoverOutcome {
         case recovered(Multihome.Credentials)
         case identityUnknown
         case transient
@@ -224,8 +225,9 @@ final class AuthService: ObservableObject {
     /// is `transient` (never grounds for wiping). A recover that lands on a
     /// DIFFERENT uin (the legacy-slot fallback handing us another account's
     /// key) is also `transient`: proving THAT key exists says nothing about
-    /// THIS account.
-    private func recoverOwnSession(expectedUIN: Int) async -> RecoverOutcome {
+    /// THIS account. Reached from the boot-time 401/404 branch above and from
+    /// WebSocketService's throttled 4401 probe mid-session.
+    func recoverOwnSession(expectedUIN: Int) async -> RecoverOutcome {
         guard let host = APIClient.shared.baseURL.host,
               let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else {
@@ -244,8 +246,9 @@ final class AuthService: ObservableObject {
     /// Last-resort escape hatch: before the wipe + fresh-register self-heal
     /// destroys an identity, keep its key material under a single global
     /// Keychain slot (latest wipe only) so support can still rescue a user
-    /// whose account turns out not to have been gone after all.
-    private func stashWipedIdentityBackup(uin: Int) {
+    /// whose account turns out not to have been gone after all. Internal so
+    /// the socket's 4401 probe stashes the same way before its burn path.
+    func stashWipedIdentityBackup(uin: Int) {
         var dict: [String: String] = [
             "uin": String(uin),
             "ts": String(Int(Date().timeIntervalSince1970)),

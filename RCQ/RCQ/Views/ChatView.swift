@@ -847,7 +847,7 @@ struct ChatView: View {
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
         }
-        .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice))
+        .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice, vm: vm))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
@@ -2448,9 +2448,6 @@ struct ChatView: View {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.Color.accent)
-                Text("chat.pin.title".localized)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
                 Text(pinnedAttributed(pinnedDisplayText(text), linkable: false))
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
@@ -2474,6 +2471,9 @@ struct ChatView: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // The visible "Pinned" word was dropped (the icon says it), but
+        // VoiceOver derived the button's name from that Text; keep the name.
+        .accessibilityLabel("chat.pin.title".localized)
     }
 
     /// Full banner with title, multi-line text, and a chevron-up
@@ -2487,9 +2487,6 @@ struct ChatView: View {
                 .foregroundColor(Theme.Color.accent)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 8) {
-                Text("chat.pin.title".localized)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Theme.Color.accent)
                 // Cap the expanded pin's height and scroll inside it — a pin with
                 // many group links used to grow unbounded, pushing the chat down
                 // and hiding rows past ~13 with no way to scroll (#5).
@@ -3902,6 +3899,10 @@ private enum SlowmodeClock {
 private struct ChatRoomChrome: ViewModifier {
     let target: ChatTarget
     @Binding var notice: String?
+    // Plain reference on purpose: nothing here renders from the VM, the
+    // scenePhase hook below only needs someone to call.
+    let vm: ChatViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         stripInset(content)
@@ -3912,6 +3913,15 @@ private struct ChatRoomChrome: ViewModifier {
                 set: { if !$0 { notice = nil } }
             )) {
                 Button("common.ok".localized, role: .cancel) {}
+            }
+            // Backgrounding from INSIDE an open chat never fires onDisappear,
+            // so the leave-path watermark write was skipped and a suspend or
+            // a kill forgot "read to the end": the next open drew the unread
+            // line above messages already read. The phase leaving .active is
+            // the only leave signal that path gets. This modifier only exists
+            // while ChatView is mounted, so firing here IS "chat open".
+            .onChange(of: scenePhase) { phase in
+                if phase != .active { vm.noteLeavingChat() }
             }
     }
 

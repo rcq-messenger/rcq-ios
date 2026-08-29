@@ -205,6 +205,17 @@ final class ChatViewModel: ObservableObject {
                 // view of the same data in step with it.
                 self.rebuildUnitIndex(grouped)
                 self.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
+                // A message landing while the reader SITS at the bottom is
+                // seen the instant it renders, but the sentinel stays
+                // realized (no fresh onAppear), so noteAtBottom never re-runs
+                // and the watermark went stale; backgrounding or a kill from
+                // inside the chat then reopened with the divider above rows
+                // the reader watched arrive. Advance it here. `newest` comes
+                // from the EMITTED array: @Published fires in willSet, so
+                // self.messages still holds the previous value at this point.
+                if self.isAtBottom, !self.readPosSuspended, let newest = msgs.last?.sentAt {
+                    self.noteSeenToEnd(newest: newest)
+                }
             }
             .store(in: &cancellables)
 
@@ -362,9 +373,12 @@ final class ChatViewModel: ObservableObject {
     /// Record that everything currently in the thread has been seen. Called
     /// when the thread is marked seen and whenever the reader sits at the
     /// bottom, which is the only place where "read to the end" is true.
-    func noteSeenToEnd() {
+    /// `newest` overrides the read-back for callers holding a fresher array
+    /// than `messages` (the $messages sink runs during willSet, so reading
+    /// the property there would stamp the PREVIOUS last message).
+    func noteSeenToEnd(newest explicitNewest: Date? = nil) {
         guard let key = Self.seenUpToKey(for: target) else { return }
-        let newest = messages.last?.sentAt ?? Date()
+        let newest = explicitNewest ?? messages.last?.sentAt ?? Date()
         let stored = UserDefaults.standard.double(forKey: key)
         // Never move the mark backwards: a stale row appended out of order
         // must not un-read the thread.
@@ -513,6 +527,14 @@ final class ChatViewModel: ObservableObject {
     /// signal (ChatView reports it). At the bottom there is nothing to
     /// resume: "resume at the newest" is just opening normally.
     private var isAtBottom = false
+    /// When `isAtBottom` last flipped true -> false. Whether the parent's
+    /// onDisappear runs before or after the rows' own is not contractual
+    /// (see endReadPosTracking): sentinel-first teardown delivers
+    /// noteAtBottom(false) while readPosSuspended is still false, flipping
+    /// isAtBottom before noteLeavingChat gets to read it, and a thread read
+    /// to its end reopened "unread". This stamp lets noteLeavingChat treat a
+    /// flip that just happened as still-at-bottom.
+    private var leftBottomAt: Date?
     /// Saves stay off until ChatView's settle loop has landed the open
     /// position - rows realize during the programmatic jumps too, and
     /// persisting one of THOSE would turn the next open into a lottery.
@@ -574,16 +596,22 @@ final class ChatViewModel: ObservableObject {
         // teardown report must not lift the suspension (see rowDerealized).
         if atBottom { readPosSuspended = false }
         guard !readPosSuspended else { return }
+        if !atBottom, isAtBottom { leftBottomAt = Date() }
         isAtBottom = atBottom
+        if atBottom {
+            // Sitting at the bottom is the one moment "read to the end" is
+            // literally true, so it is where the unread watermark is written.
+            // NOT gated on readPosArmed: that gate exists for the read-pos
+            // clear below, and borrowing it here made the watermark miss any
+            // visit whose sentinel never re-realized after arming, which is
+            // why the divider survived reads "randomly". noteSeenToEnd's own
+            // monotonic guard already swallows a bogus pre-arm write.
+            noteSeenToEnd()
+        }
         // ⚠ Armed only. During the open the list's first layout can realize
         // the bottom sentinel BEFORE ChatView's .task snapshots the restore
         // target - an ungated clear here raced it and wiped the very spot
         // this feature exists to land on.
-        if atBottom, readPosArmed {
-            // Sitting at the bottom is the one moment "read to the end" is
-            // literally true, so it is where the unread watermark is written.
-            noteSeenToEnd()
-        }
         if atBottom, readPosArmed, let key = Self.readPosKey(for: target) {
             UserDefaults.standard.removeObject(forKey: key)
             // Read to the end: nothing to protect any more, so a later
@@ -752,8 +780,18 @@ final class ChatViewModel: ObservableObject {
     /// Leaving the chat: if the reader is at the bottom, everything the thread
     /// holds has been seen. Called from ChatView's disappear so a thread read
     /// to the end does not open at an "unread" it no longer has.
+    ///
+    /// "At the bottom" includes having been there within the last second.
+    /// Parent-first teardown keeps isAtBottom intact (readPosSuspended is set
+    /// before the sentinel reports out), but the reverse order is just as
+    /// legal (see endReadPosTracking) and there noteAtBottom(false) has
+    /// already flipped the flag; only leftBottomAt still remembers where the
+    /// reader was. One second is teardown-scale, not reading-scale: the worst
+    /// mislabel is a reader who scrolled off the bottom and popped the chat
+    /// within a second, marking messages they were looking at moments ago.
     func noteLeavingChat() {
-        if isAtBottom { noteSeenToEnd() }
+        let justLeftBottom = leftBottomAt.map { Date().timeIntervalSince($0) < 1.0 } ?? false
+        if isAtBottom || justLeftBottom { noteSeenToEnd() }
     }
 
     func toggleReaction(_ asset: String, on message: Message) {

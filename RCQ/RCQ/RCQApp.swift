@@ -560,6 +560,27 @@ private struct BootSplash: View {
     @State private var pulse: Bool = false
     @ObservedObject private var appState = AppState.shared
 
+    // Display state for the progress bar. `milestone` mirrors the last
+    // published `bootProgress`; `base` is where the DISPLAYED value stood when
+    // it changed, so the bar glides to the new milestone instead of
+    // teleporting; between milestones the display creeps toward (next
+    // milestone - 0.02) so a long stage (tunnel engage can sit 3-15s, the
+    // identity check and the roster fetch are whole round trips) does not
+    // look frozen. Display only: the honest value stays in AppState.
+    @State private var milestone: Double = 0
+    @State private var base: Double = 0
+    @State private var milestoneAt: Date = Date()
+
+    /// The ladder `doBoot` advances through; the creep aims just short of the
+    /// next rung. Sorted ascending, matched to AppState's `advanceBoot` calls.
+    private static let milestones: [Double] = [0.05, 0.15, 0.40, 0.60, 0.70, 0.75, 0.80, 0.95, 1.0]
+    /// Glide-to-milestone time on a published change.
+    private static let jumpSeconds: Double = 0.3
+    /// Linear creep time from a milestone to just short of the next.
+    private static let creepSeconds: Double = 15.0
+    private static let barWidth: CGFloat = 180
+    private static let barHeight: CGFloat = 6
+
     private var statusKey: String {
         switch appState.bootStatus {
         case .connecting:      return "boot.connecting"
@@ -576,6 +597,22 @@ private struct BootSplash: View {
         }
     }
 
+    /// What the bar shows at `date`: a short glide from `base` to `milestone`,
+    /// then a slow linear creep toward the next rung minus 0.02. A pure
+    /// function of time so TimelineView renders the interpolated percent too;
+    /// a `withAnimation` on the fill width alone would leave the label
+    /// snapping between milestones.
+    private func displayedFraction(at date: Date) -> Double {
+        let t = date.timeIntervalSince(milestoneAt)
+        if t < Self.jumpSeconds {
+            return base + (milestone - base) * max(0, t / Self.jumpSeconds)
+        }
+        let next = Self.milestones.first { $0 > milestone + 0.001 } ?? milestone
+        let ceiling = max(milestone, next - 0.02)
+        let creep = min(1, (t - Self.jumpSeconds) / Self.creepSeconds)
+        return milestone + (ceiling - milestone) * creep
+    }
+
     var body: some View {
         ZStack {
             Theme.Color.bgPrimary.ignoresSafeArea()
@@ -586,6 +623,27 @@ private struct BootSplash: View {
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .foregroundColor(Theme.Color.textPrimary)
                     .tracking(4)
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { ctx in
+                    let fraction = displayedFraction(at: ctx.date)
+                    VStack(spacing: 8) {
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.Color.bgSecondary)
+                            Capsule()
+                                .fill(LinearGradient(
+                                    colors: [Theme.Color.accentPressed, Theme.Color.accent],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ))
+                                .frame(width: max(Self.barHeight, Self.barWidth * fraction))
+                        }
+                        .frame(width: Self.barWidth, height: Self.barHeight)
+                        // Bare number + percent sign on purpose: no
+                        // Localizable key, in any of the seven locales.
+                        Text("\(Int((fraction * 100).rounded()))%")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
                 HStack(spacing: 6) {
                     if let glyph = statusGlyph {
                         Image(systemName: glyph)
@@ -605,9 +663,19 @@ private struct BootSplash: View {
             }
         }
         .onAppear {
+            milestone = appState.bootProgress
+            base = appState.bootProgress
+            milestoneAt = Date()
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
                 pulse = true
             }
+        }
+        .onChange(of: appState.bootProgress) { newValue in
+            // Glide from wherever the display currently is; a value BELOW it
+            // is a fresh boot's reset and glides down the same way.
+            base = displayedFraction(at: Date())
+            milestone = newValue
+            milestoneAt = Date()
         }
     }
 }

@@ -541,7 +541,19 @@ final class WebSocketService: ObservableObject {
                     // two installs share a device id — each redial evicts the
                     // other, forever. Wait a while, with jitter so two evicted
                     // peers do not come back in step.
-                    self.handleDisconnect(superseded: issuedTask.closeCode.rawValue == 4000)
+                    //
+                    // 4401 = the island refused the token outright. FORWARD
+                    // PARITY, like Android/web/CLI built theirs: today the
+                    // backend closes 4401 BEFORE accept() and the refused
+                    // handshake surfaces here as a plain receive failure with
+                    // closeCode .invalid, so the code never arrives (backend
+                    // ws.py:380-393 says so in as many words; fixing it needs
+                    // accept-then-close there AND this read here). The normal
+                    // backoff continues either way: a transient mis-refusal
+                    // must cost nothing.
+                    let code = issuedTask.closeCode.rawValue
+                    if code == 4401 { self.probeAuthRejection() }
+                    self.handleDisconnect(superseded: code == 4000)
                 case .success(let msg):
                     self.handle(msg)
                     self.receiveLoop()
@@ -931,5 +943,64 @@ final class WebSocketService: ObservableObject {
         }
         pendingReconnect = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    // MARK: - 4401 auth-rejected probe (forward parity, the #655 shape)
+
+    /// Wall clock of the last 4401 recover probe. The socket keeps its normal
+    /// backoff after a 4401, so every redial would otherwise probe again; one
+    /// per 10 minutes, like Android's BURN_PROBE_THROTTLE_MS.
+    private var lastAuthProbeAt: Date = .distantPast
+    private static let authProbeInterval: TimeInterval = 600
+
+    /// The island closed the socket with 4401: `lastToken` no longer
+    /// authenticates. Only a probe can tell the two causes apart: a rotated
+    /// server secret (identity fine, a fresh token fixes it) versus a burn
+    /// from another device (the account is gone, and a client that shrugs
+    /// 4401 off and redials forever keeps sending sealed messages from an
+    /// erased account, Android's #655). Mirrors Session.onSocketAuthRejected;
+    /// web and the CLI just stop redialling. Never blocks the backoff.
+    private func probeAuthRejection() {
+        // Never from a decoy session: the recover handshake signs with the
+        // REAL account's Ed25519 key, and .identityUnknown below burns local
+        // state; a coerced session must trigger neither. A decoy boot never
+        // connects this socket at all; defense in depth, same as Android's
+        // duress-view guard.
+        guard !PanicPINService.shared.isDecoy else { return }
+        guard Date().timeIntervalSince(lastAuthProbeAt) >= Self.authProbeInterval else { return }
+        guard let expectedUIN = lastUIN else { return }
+        // Stamped before the await so redials inside the window skip cleanly
+        // and two probes can never overlap.
+        lastAuthProbeAt = Date()
+        Task { @MainActor in
+            switch await AuthService.shared.recoverOwnSession(expectedUIN: expectedUIN) {
+            case .recovered(let creds):
+                // Same persist as the boot-time recover branch: per-account
+                // Keychain slots (setString auto-routes), the HTTP layer, then
+                // redial with the fresh token instead of waiting out the
+                // backoff (connect() cancels the pending attempt itself).
+                KeychainStore.setString(KeychainStore.Keys.uin, String(creds.uin))
+                KeychainStore.setString(KeychainStore.Keys.token, creds.token)
+                await APIClient.shared.setToken(creds.token)
+                if self.shouldStayConnected, let base = self.lastBaseURL {
+                    self.connect(uin: creds.uin, token: creds.token, baseURL: base, serverToken: self.lastServerToken)
+                }
+            case .identityUnknown:
+                // A real island completed the challenge handshake and then
+                // answered "identity unknown": the account is gone (burned
+                // elsewhere, or a server DB wipe). Same ending as the
+                // boot-time branch, through the existing mid-session route:
+                // stash the keys for support rescue first, then .accountBurned
+                // wipes local state and re-boots (its server DELETE is
+                // best-effort and expected to fail here).
+                AuthService.shared.stashWipedIdentityBackup(uin: expectedUIN)
+                self.events.send(.accountBurned)
+            case .transient:
+                // Could not prove anything (endpoint missing, network error,
+                // the key resolved to a different uin). Keep redialling on
+                // the normal backoff; never destroy what we cannot re-mint.
+                break
+            }
+        }
     }
 }

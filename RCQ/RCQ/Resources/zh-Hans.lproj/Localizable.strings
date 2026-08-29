@@ -1505,7 +1505,6 @@
 "manage_accounts.intro.title" = "此设备上的账号";
 "manage_accounts.intro.body" = "当前使用的账号不能从这里移除，先切换到另一个。从设备移除不会影响服务器上的账号，要处理那个请用隐私设置里的“销毁账号”。";
 "manage_accounts.switch" = "切换";
-"manage_accounts.active_badge" = "使用中";
 "manage_accounts.delete" = "移除";
 "manage_accounts.delete.confirm.title" = "移除 %@？";
 "manage_accounts.delete.confirm.body" = "本地数据（联系人、聊天记录、身份密钥）会从此设备上抹除。服务器上的账号仍然存在，并会继续为你排队收到的消息，直到服务器的队列 TTL 把它们清掉。";

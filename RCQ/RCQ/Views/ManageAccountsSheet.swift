@@ -16,6 +16,7 @@ import SwiftUI
 /// flow in Privacy & Network.
 struct ManageAccountsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var accountManager = AccountManager.shared
 
     @State private var pendingDelete: Account?
@@ -230,15 +231,15 @@ struct ManageAccountsSheet: View {
                     size: 36,
                     showStatus: false,
                 )
+                // No cutout ring around the badge: most island logos are
+                // transparent PNGs (the flagship's is a bare red mark), so a
+                // bgPrimary stroke here drew a near-black empty box floating
+                // on the row card in dark mode (L2.34).
                 IslandAvatarView(
                     name: label,
                     host: account.displayHost,
                     logoVersion: card?.islandLogoVersion ?? "",
                     size: 16
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16 * 0.28, style: .continuous)
-                        .stroke(Theme.Color.bgPrimary, lineWidth: 1.5)
                 )
                 .offset(x: 3, y: 3)
             }
@@ -247,17 +248,6 @@ struct ManageAccountsSheet: View {
                     Text(label)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
-                    if isActive {
-                        Text("manage_accounts.active_badge".localized)
-                            .font(.system(size: 9, weight: .bold))
-                            .tracking(0.8)
-                            .foregroundColor(Theme.Color.accent)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Theme.Color.accent.opacity(0.15))
-                            )
-                    }
                 }
                 Text(account.displayHost)
                     .font(.system(.caption, design: .monospaced))
@@ -283,9 +273,11 @@ struct ManageAccountsSheet: View {
                 }
             }
             Spacer(minLength: 8)
-            // No checkmark on the active row: it sat in the slot where every
-            // other row keeps an ACTION, so it read as a control that does
-            // nothing, and it repeated the ACTIVE badge two lines above (#409).
+            // The active row's slot holds a STATE mark where every other row
+            // holds actions. An earlier accent checkmark here read as a
+            // control that does nothing and doubled the ACTIVE badge (#409);
+            // the badge is gone now, so a deliberately grey, non-tappable
+            // check plus the lighter card carry the state instead.
             if !isActive {
                 Button {
                     // Switching lived only in the account pill on the home
@@ -318,12 +310,26 @@ struct ManageAccountsSheet: View {
                         )
                 }
                 .buttonStyle(.plain)
+            } else {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(.footnote, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    // Same vertical padding as the Switch capsule, so the mark
+                    // sits on the buttons' line across rows.
+                    .padding(.vertical, 7)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary)
+            // The active row is a LIGHTER card, but only in dark: bgElevated
+            // light is pure white, the same as the sheet's bgPrimary ground,
+            // so a "lighter" active card there would melt into the sheet.
+            // Light keeps bgSecondary and lets the checkmark carry the state.
+            RoundedRectangle(cornerRadius: 12).fill(
+                isActive && colorScheme == .dark
+                    ? Theme.Color.bgElevated : Theme.Color.bgSecondary
+            )
         )
     }
 

@@ -1514,7 +1514,6 @@
 "manage_accounts.intro.title" = "Bu cihazdaki hesaplar";
 "manage_accounts.intro.body" = "Etkin hesap buradan kaldırılamaz, önce başka birine geç. Cihazdan kaldırmak sunucudaki hesaba dokunmaz; onun için Gizlilik ayarlarındaki Hesabı yak'ı kullan.";
 "manage_accounts.switch" = "Geç";
-"manage_accounts.active_badge" = "ETKİN";
 "manage_accounts.delete" = "Kaldır";
 "manage_accounts.delete.confirm.title" = "%@ kaldırılsın mı?";
 "manage_accounts.delete.confirm.body" = "Yerel veriler (kişiler, geçmiş, kimlik) bu cihazdan silinir. Sunucudaki hesap yaşamayı sürdürür ve sunucunun kuyruk süresi dolup temizleyene kadar gelen mesajları biriktirir.";
