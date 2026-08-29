@@ -79,6 +79,24 @@ final class UnreadStore {
         if changed { persist() }
     }
 
+    /// Set a thread's counter to an exact value (A2 cross-device read: the
+    /// other device read up to a moment, and what arrived after it is still
+    /// unread here). Zero removes the entry, the same shape `clearPeer` and
+    /// `clearGroup` leave behind, so nothing downstream sees a lingering 0.
+    func setPeer(_ uin: Int, _ value: Int) {
+        if value <= 0 { clearPeer(uin); return }
+        guard counts[Self.peerKey(uin)] != value else { return }
+        counts[Self.peerKey(uin)] = value
+        persist()
+    }
+
+    func setGroup(_ id: Int, _ value: Int) {
+        if value <= 0 { clearGroup(id); return }
+        guard counts[Self.groupKey(id)] != value else { return }
+        counts[Self.groupKey(id)] = value
+        persist()
+    }
+
     func clearPeer(_ uin: Int) {
         guard counts.removeValue(forKey: Self.peerKey(uin)) != nil else { return }
         persist()
