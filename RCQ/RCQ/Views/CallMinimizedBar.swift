@@ -34,8 +34,13 @@ struct CallMinimizedBar: View {
 }
 
 extension View {
-    /// Reserve top safe-area for the persistent strips - minimized call,
-    /// minimized audio room, now-playing audio.
+    /// Host the persistent audio surfaces. The minimized-call and
+    /// minimized-audio-room strips reserve top safe-area (they NEED to
+    /// displace the content: a live call must never be covered). The
+    /// now-playing audio capsule is a floating overlay instead (L2.2): an
+    /// inset reserves space, which both parked the old strip above the
+    /// header and slid the whole stack down on mount, so the capsule
+    /// reserves nothing and floats over the messages below the bar.
     ///
     /// ⚠ APPLY THIS TO THE `NavigationStack` ITSELF, not to the view inside it.
     /// The old rule written here said it had to go on every screen because
@@ -48,29 +53,60 @@ extension View {
     /// disappear the moment the user opened Group Info.
     ///
     /// A `.sheet` or `.fullScreenCover` still starts a fresh safe area that no
-    /// ancestor inset reaches, so a modal that wants the strip applies it to
+    /// ancestor inset reaches, so a modal that wants the strips applies it to
     /// its own stack (one line covers everything pushed inside it).
-    func callMinimizedBarInset() -> some View {
-        modifier(CallMinimizedBarInset())
+    ///
+    /// - Parameter wrapsNavigationStack: true (the default, the primary host
+    ///   in ContactListView) when the modified view IS a `NavigationStack`.
+    ///   The stack's own safe area is only the status bar - the navigation
+    ///   bar is a descendant the overlay knows nothing about - so the capsule
+    ///   must clear the bar's height by hand. Pass false when the modified
+    ///   view already lives INSIDE a stack (random chat), where the top safe
+    ///   area includes the bar and padding again would drop the capsule
+    ///   mid-screen.
+    func callMinimizedBarInset(wrapsNavigationStack: Bool = true) -> some View {
+        modifier(CallMinimizedBarInset(wrapsNavigationStack: wrapsNavigationStack))
     }
 }
 
 private struct CallMinimizedBarInset: ViewModifier {
+    let wrapsNavigationStack: Bool
     @StateObject private var calls = CallService.shared
     @StateObject private var rooms = AudioRoomService.shared
-    /// ⚠ `AudioPlayerBarPresence`, NOT `VoicePlayer`. The inset's animation
-    /// has to fire on the same change that mounts the strip, but observing
-    /// the player itself would re-evaluate this whole inset (and re-measure
-    /// the safe area) twenty times a second for the length of a song, on
-    /// every screen that applies the modifier.
+    /// ⚠ `AudioPlayerBarPresence`, NOT `VoicePlayer`. The mount animation
+    /// has to fire on the same change that shows the capsule, but observing
+    /// the player itself would re-evaluate this whole modifier (and
+    /// re-measure the safe-area inset) twenty times a second for the length
+    /// of a song, on every screen that applies it.
     @StateObject private var audio = AudioPlayerBarPresence.shared
 
     private var roomBarVisible: Bool {
         rooms.activeRoomID != nil && rooms.isMinimized
     }
 
+    /// Every screen in the app keeps `.inline` titles, so the portrait
+    /// navigation bar is the stable system 44pt. No API exposes a descendant
+    /// bar's height to an ancestor overlay; if a non-inline screen (or a
+    /// landscape-only layout, where the bar is shorter) ever matters, this
+    /// constant is the first suspect.
+    private var audioCapsuleTopPadding: CGFloat {
+        (wrapsNavigationStack ? 44 : 0) + 6
+    }
+
     func body(content: Content) -> some View {
         content
+            // The capsule is an OVERLAY on the same content the inset wraps,
+            // NOT a member of the inset below: an overlay reserves no space,
+            // so showing it never shifts the layout, and the top padding
+            // lands it under the header, over the scroll content. It never
+            // renders alongside the call / room strips - `VoicePlayer`
+            // refuses to play while either is up - so the top slot is free.
+            .overlay(alignment: .top) {
+                AudioPlayerBar()
+                    .padding(.horizontal, 10)
+                    .padding(.top, audioCapsuleTopPadding)
+                    .animation(.easeInOut(duration: 0.22), value: audio.isVisible)
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
                     CallMinimizedBar()
@@ -83,14 +119,8 @@ private struct CallMinimizedBarInset: ViewModifier {
                             .padding(.horizontal, 8)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    // Last in the stack (closest to the content) so a live
-                    // call always keeps the top slot. `VoicePlayer` refuses to
-                    // play while a call or a room is up, so in practice this
-                    // never renders alongside either.
-                    AudioPlayerBar()
                 }
                 .animation(.easeInOut(duration: 0.28), value: roomBarVisible)
-                .animation(.easeInOut(duration: 0.22), value: audio.isVisible)
             }
     }
 }

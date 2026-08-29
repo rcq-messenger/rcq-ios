@@ -6,9 +6,9 @@ import SwiftUI
 ///
 /// It exists because `VoicePlayer` republishes `elapsed` and `progress`
 /// twenty times a second. A host that observed the player directly just to
-/// animate its inset would re-evaluate its whole safe-area content, and
-/// re-measure the inset, on every one of those ticks, on every screen, for
-/// the entire length of a song.
+/// animate the capsule's mount would re-evaluate its whole body - safe-area
+/// bars, overlay and all - on every one of those ticks, on every screen,
+/// for the entire length of a song.
 @MainActor
 final class AudioPlayerBarPresence: ObservableObject {
     static let shared = AudioPlayerBarPresence()
@@ -30,103 +30,114 @@ final class AudioPlayerBarPresence: ObservableObject {
     }
 }
 
-/// App-wide now-playing strip (founder item 9a). Listening to a voice
-/// message or an audio file must not hand the screen over to a built-in
-/// player: the sound gets a thin strip pinned above the content instead,
-/// so the chat stays readable and playback survives leaving it.
+/// App-wide now-playing capsule (founder items 9a + L2.2). Listening to a
+/// voice message or an audio file must not hand the screen over to a
+/// built-in player: the sound gets a compact floating capsule instead -
+/// play/pause, a draggable progress slider, elapsed/total, X - so the chat
+/// stays readable and playback survives leaving it.
 ///
-/// It is hosted by `callMinimizedBarInset()` rather than by a screen, for
-/// the same reason the minimized-call bar is: `safeAreaInset` does not
-/// pass through a `navigationDestination`, so each top-level screen
-/// reserves the space itself and the strip is simply drawn there by
-/// whichever one is on screen. The audio does not belong to any of them -
-/// `VoicePlayer` owns it for the whole process.
+/// It is hosted by `callMinimizedBarInset()` rather than by a screen, and
+/// as an OVERLAY pinned under the navigation bar rather than as an inset:
+/// an overlay reserves no layout space, so mounting it neither covers the
+/// header nor slides the content down - it floats over the messages. The
+/// audio does not belong to any screen; `VoicePlayer` owns it for the
+/// whole process.
 ///
-/// Shown exactly while `VoicePlayer.nowPlaying` is non-nil, which means it
-/// stays up through a pause and goes away on its own when the clip ends
-/// (`audioPlayerDidFinishPlaying` → `stop()`).
+/// Shown exactly while `VoicePlayer.nowPlaying` is non-nil. The clip
+/// running to its end does NOT close it: `audioPlayerDidFinishPlaying`
+/// parks the player in a finished pose (progress pinned at the end) and
+/// the capsule stays up for a replay or a scrub back. Only the X button,
+/// or a call / room / session yield inside `VoicePlayer`, takes it down.
 struct AudioPlayerBar: View {
     @StateObject private var player = VoicePlayer.shared
+    /// AlbumViewer's scrub pattern: while the finger is down the slider and
+    /// the elapsed label follow this local value, so the 20Hz ticker cannot
+    /// fight the drag; the real seek commits once, on release.
+    @State private var scrubbing = false
+    @State private var scrubValue: Double = 0
 
     var body: some View {
-        if let entry = player.nowPlaying {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(systemName: entry.kind == .voiceMessage ? "waveform" : "music.note")
-                        .font(.system(size: 13, weight: .semibold))
+        if player.nowPlaying != nil {
+            HStack(spacing: 2) {
+                Button {
+                    player.togglePlayPause()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(Theme.Color.accent)
-                        .frame(width: 18)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(
+                    (player.isPlaying ? "audio.strip.pause" : "audio.strip.play").localized
+                ))
 
-                    // `maxWidth: .infinity` rather than a trailing `Spacer`:
-                    // an HStack splits slack between a Spacer and a
-                    // truncatable Text, so the filename lost ~80pt to empty
-                    // space and showed an ellipsis it did not need.
-                    Text(entry.title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 6)
+                Slider(
+                    value: Binding(
+                        get: { scrubbing ? scrubValue : player.progress },
+                        set: { scrubValue = $0 }
+                    ),
+                    in: 0...1,
+                    onEditingChanged: { editing in
+                        if editing {
+                            // Seed with the live position so the thumb
+                            // does not jump on the first touch.
+                            scrubValue = player.progress
+                            scrubbing = true
+                        } else {
+                            player.seek(toFraction: scrubValue)
+                            scrubbing = false
+                        }
+                    }
+                )
+                .tint(Theme.Color.accent)
+                .accessibilityLabel(Text("audio.strip.seek".localized))
 
-                    Text(timeLabel)
-                        .font(.system(size: 11, design: .monospaced))
+                Text(timeLabel)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .monospacedDigit()
+                    .layoutPriority(1)
+                    .padding(.leading, 8)
+
+                Button {
+                    player.stop()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Theme.Color.textSecondary)
-                        .monospacedDigit()
-
-                    Button {
-                        player.togglePlayPause()
-                    } label: {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(Theme.Color.accent)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(
-                        (player.isPlaying ? "audio.strip.pause" : "audio.strip.play").localized
-                    ))
-
-                    Button {
-                        player.stop()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("audio.strip.close".localized))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
-                .padding(.leading, 12)
-                .padding(.trailing, 4)
-                .padding(.vertical, 4)
-
-                // Progress reads as a hairline under the row rather than a
-                // second widget: the strip is a status line, not a player.
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(Theme.Color.divider)
-                        Rectangle()
-                            .fill(Theme.Color.accent)
-                            .frame(width: geo.size.width * CGFloat(player.progress))
-                            .animation(.linear(duration: 0.05), value: player.progress)
-                    }
-                }
-                .frame(height: 2)
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("audio.strip.close".localized))
             }
-            .background(Theme.Color.bgSecondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            // Opaque fill for the same reason the collapsed pin strip is
+            // opaque: the capsule floats directly over live message rows,
+            // and bubbles ghosting through a translucent one read as dirt
+            // while the list scrolls.
+            .background(
+                Capsule()
+                    .fill(Theme.Color.bgSecondary)
+                    .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 2)
+            )
+            .overlay(
+                Capsule().strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5)
+            )
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
     private var timeLabel: String {
         let total = player.duration
-        guard total > 0 else { return Self.clock(player.elapsed) }
-        return "\(Self.clock(player.elapsed)) / \(Self.clock(total))"
+        // While scrubbing the label previews the drag target, not the
+        // position the player is still sitting at.
+        let shown = scrubbing ? scrubValue * total : player.elapsed
+        guard total > 0 else { return Self.clock(shown) }
+        return "\(Self.clock(shown)) / \(Self.clock(total))"
     }
 
     private static func clock(_ seconds: TimeInterval) -> String {

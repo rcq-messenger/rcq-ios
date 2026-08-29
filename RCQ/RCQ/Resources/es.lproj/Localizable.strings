@@ -1720,6 +1720,7 @@
 "audio.strip.play" = "Reproducir";
 "audio.strip.pause" = "Pausar";
 "audio.strip.close" = "Detener la reproducción";
+"audio.strip.seek" = "Posición de reproducción";
 "album.sender.open_profile" = "Abrir perfil";
 
 

@@ -3925,14 +3925,22 @@ private struct ChatRoomChrome: ViewModifier {
             }
     }
 
-    /// The persistent strips - minimized call, minimized audio room,
-    /// now-playing audio - are hosted ONCE by the navigation stack in
-    /// ContactListView, and every screen pushed into that stack inherits the
-    /// inset. Random chat is the exception: there ChatView is presented in its
-    /// own `fullScreenCover`, which starts a fresh safe area the stack's inset
-    /// never reaches, so that path reserves the space itself.
+    /// The persistent surfaces - minimized call and room strips, floating
+    /// now-playing capsule - are hosted ONCE by the navigation stack in
+    /// ContactListView, and every screen pushed into that stack inherits
+    /// them. Random chat is the exception: there ChatView is presented in
+    /// its own `fullScreenCover`, which starts a fresh safe area the stack's
+    /// host never reaches, so that path hosts them itself. It passes
+    /// `wrapsNavigationStack: false` because this content sits INSIDE
+    /// RandomChatView's stack: its top safe area already contains the
+    /// navigation bar, so the capsule overlay needs no manual bar-height
+    /// clearance.
     @ViewBuilder
     private func stripInset(_ content: Content) -> some View {
-        if case .randomPeer = target { content.callMinimizedBarInset() } else { content }
+        if case .randomPeer = target {
+            content.callMinimizedBarInset(wrapsNavigationStack: false)
+        } else {
+            content
+        }
     }
 }
