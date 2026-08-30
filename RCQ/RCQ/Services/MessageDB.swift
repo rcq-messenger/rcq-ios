@@ -147,15 +147,28 @@ final class MessageDB {
     /// nothing. Racing the first touch is safe in both directions: a prewarm
     /// that finishes late finds `instanceExists` and discards its container,
     /// a first touch that comes early just pays the old synchronous price.
+    /// One build in flight, ever: three callers race this (the t=0 detached
+    /// start, the boot's await, the lock screen's task), and two concurrent
+    /// opens of one SQLite file would just queue on its lock.
+    private static var prewarmTask: Task<Void, Never>?
+
     nonisolated static func prewarm() async {
-        let already = await MainActor.run { instanceExists || prewarmedReal != nil }
-        if already { return }
-        let built = await Task.detached(priority: .userInitiated) {
-            makeContainer(decoy: false)
-        }.value
-        await MainActor.run {
-            if !instanceExists && prewarmedReal == nil { prewarmedReal = built }
+        let task = await MainActor.run { () -> Task<Void, Never>? in
+            if instanceExists || prewarmedReal != nil { return nil }
+            if let running = prewarmTask { return running }
+            let t = Task<Void, Never> {
+                let built = await Task.detached(priority: .userInitiated) {
+                    makeContainer(decoy: false)
+                }.value
+                await MainActor.run {
+                    prewarmTask = nil
+                    if !instanceExists && prewarmedReal == nil { prewarmedReal = built }
+                }
+            }
+            prewarmTask = t
+            return t
         }
+        await task?.value
     }
 
     func configure(decoy: Bool, dataKey: SymmetricKey?) {
