@@ -153,17 +153,20 @@ struct ReactionsBar: View {
     @ViewBuilder
     private func chip(_ entry: (asset: String, count: Int, mine: Bool)) -> some View {
         HStack(spacing: 3) {
+            // 22pt, up from 14 (#821): at 14 a good kolobok and a bad one
+            // were the same brown smudge - a reaction has to be readable at
+            // a glance. Width follows the (non-square) picture.
             if GIFImage.cachedImage(for: entry.asset) != nil {
                 GIFImage(name: entry.asset)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 22, height: 22)
             } else {
-                Text(":)").font(.caption2).foregroundColor(Theme.Color.textPrimary)
+                Text(":)").font(.footnote).foregroundColor(Theme.Color.textPrimary)
             }
             // A lone reactor needs no "1" — show the number only once it grows
             // past one (founder feedback; Android parity).
             if entry.count > 1 {
                 Text("\(entry.count)")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Theme.Color.textPrimary)
             }
         }
