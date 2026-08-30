@@ -152,6 +152,10 @@ struct PINLockView: View {
             triedBiometric = true
             await tryBiometric()
         }
+        // While the person types, the history container opens on a background
+        // thread, so the unlock tap finds it ready instead of freezing the
+        // filled dots on a synchronous SQLite open (see MessageDB.prewarm).
+        .task { await MessageDB.prewarm() }
     }
 
     private func countdown(to deadline: Date) -> String {

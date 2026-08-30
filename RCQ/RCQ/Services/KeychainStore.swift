@@ -142,12 +142,21 @@ enum KeychainStore {
     /// migrated), this is a no-op. Order-safe: subsequent reads via
     /// `string(_:)` etc resolve to the prefixed slot directly.
     static func migrateLegacyKeysToAccount(_ accountID: UUID) {
+        // One completed pass deletes every legacy entry, so later launches
+        // have nothing to move - but the probe alone was one
+        // SecItemCopyMatching per key, on the launch path, every launch. The
+        // flag lives in defaults, not the keychain, on purpose: a reinstall
+        // clears defaults while the keychain survives, which re-runs the
+        // pass exactly when legacy entries could exist again.
+        let doneFlag = "rcq.keychain.legacyMigrated.\(accountID.uuidString)"
+        if UserDefaults.standard.bool(forKey: doneFlag) { return }
         for key in perAccountKeys {
             guard let legacy = rawData(key) else { continue }
             let prefixed = "acct.\(accountID.uuidString).\(key)"
             rawSet(prefixed, legacy)
             rawDelete(key)
         }
+        UserDefaults.standard.set(true, forKey: doneFlag)
     }
 
     /// Wipe every per-account Keychain entry belonging to a given

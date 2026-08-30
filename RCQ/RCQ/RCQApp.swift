@@ -383,6 +383,10 @@ struct RootView: View {
             // `SoundService.init`, which `ContactListView` triggers, i.e. on the
             // main thread immediately before the first painted list.
             SoundService.shared.prewarm()
+            // Same idea for the history store: without a PIN nothing else
+            // opens it ahead of the first message, and the open belongs on a
+            // background thread either way. No-op once the singleton exists.
+            await MessageDB.prewarm()
         }
         .onChange(of: scenePhase) { newPhase in
             handleScenePhase(newPhase)
