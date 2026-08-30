@@ -278,6 +278,21 @@ struct RCQApp: App {
         // existing UIN + baseURL; fresh installs start with an empty
         // roster that the onboarding flow populates.
         _ = AccountManager.shared
+        // The history container starts opening NOW, on a detached thread, so
+        // it is ready before anything on the main actor first-touches
+        // `MessageDB.shared`. The race this closes is not theoretical: with
+        // no PIN, the first touch is whatever envelope the socket delivers
+        // first (~2s in), and losing the race put the synchronous SQLite
+        // open - plus, once per schema change, the whole index migration
+        // over the full history - on the main actor, which on a large
+        // account was the founder's hard 3-5s freeze right after entry.
+        // The `.task` prewarms on RootView/PINLockView stay as backstops;
+        // this one simply starts seconds earlier.
+        Task.detached(priority: .userInitiated) { await MessageDB.prewarm() }
+        // The stall gauge: any main-thread freeze over half a second becomes
+        // a log line with a duration, on every install, so the next "фризит"
+        // report arrives with a number instead of a feeling.
+        MainThreadWatchdog.start()
         // Eager-touch so PushKit + LanguageManager (App Group mirror) are
         // initialised before any push reaches the NSE.
         //

@@ -1511,13 +1511,37 @@ final class MessageService {
         }
     }
 
-    private static var lastSknack: [String: Date] = [:]
+    /// Per-kid ask ledger: attempts + last ask. The flat ten-minute window
+    /// turned a DEAD kid (owner deleted their account; nobody alive can
+    /// answer) into a forever machine - one 24/7 install re-asked a
+    /// 971-member room every window, 366 whole-room fan-outs in 12h,
+    /// measured on prod 30.08. The window doubles per unanswered ask and
+    /// past the ladder the kid is written off for a week; an SKDM that
+    /// finally lands clears its record. The island additionally budgets
+    /// sknack at 10/hour, so an old build in this loop degrades to silence.
+    private static var sknackLedger: [String: (n: Int, at: Date)] = [:]
+    private static let sknackLadder: [TimeInterval] = [600, 1800, 7200, 21600, 86400]
+
+    private func sknackAllowed(_ kid: String) -> Bool {
+        let now = Date()
+        guard let rec = Self.sknackLedger[kid] else {
+            Self.sknackLedger[kid] = (1, now)
+            return true
+        }
+        let wait = rec.n >= Self.sknackLadder.count ? 7 * 86400 : Self.sknackLadder[rec.n - 1]
+        if now.timeIntervalSince(rec.at) < wait { return false }
+        Self.sknackLedger[kid] = (min(rec.n + 1, Self.sknackLadder.count + 1), now)
+        return true
+    }
+
+    func sknackAnswered(_ kid: String) {
+        Self.sknackLedger[kid] = nil
+    }
 
     /// Fire one recovery request for an unknown kid to the group's capable
-    /// members (we don't know whose kid it is). Debounced per kid.
+    /// members (we don't know whose kid it is). Ladder-debounced per kid.
     private func sendSknack(gid: Int, kid: String) {
-        if let prev = Self.lastSknack[kid], Date().timeIntervalSince(prev) < 600 { return }
-        Self.lastSknack[kid] = Date()
+        guard sknackAllowed(kid) else { return }
         struct Entry: Encodable { let to_uin: Int; let payload: String }
         struct Body: Encodable { let group_id: Int; let envelope_type: String; let cls: Int; let payloads: [Entry] }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
@@ -1862,6 +1886,7 @@ final class MessageService {
                 if let sk = decrypted.senderSigningKey,
                    GroupSenderKeyStore.shared.acceptSkdm(ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck) {
                     // The key the held broadcasts were waiting for.
+                    sknackAnswered(kid)
                     replayHeldGmsg(kid: kid)
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)

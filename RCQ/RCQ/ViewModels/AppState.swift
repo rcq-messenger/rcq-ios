@@ -869,6 +869,15 @@ final class AppState: ObservableObject {
                 return
             }
             advanceBoot(to: 0.40)
+            // The history container must be READY before anything downstream
+            // can first-touch `MessageDB.shared` - the socket's first envelope
+            // does exactly that ~2s in, and a first touch that races the
+            // t=0 prewarm does not skip the cost, it BLOCKS on the same
+            // SQLite lock the migrating background open holds (the founder's
+            // hard post-entry freeze on a no-PIN device, 30.08). Awaiting
+            // here keeps the UI alive through the one slow case (first
+            // launch after a schema change) and is a no-op ever after.
+            await MessageDB.prewarm()
             // Pull the fresh signed-config + broker bridges NOW (not at the top of
             // doBoot) so a BLOCKED user — whose direct fetch to the mirrors/broker
             // would fail — pulls them THROUGH the now-engaged tunnel (both stores

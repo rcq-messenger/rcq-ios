@@ -153,7 +153,7 @@
 "linkeddevices.connected" = "Conectado %@";
 "linkeddevices.slots.title" = "Chaves de dispositivos";
 "linkeddevices.slots.hint" = "Cada instalação desta conta com suas próprias chaves de criptografia. Um login pela frase de recuperação aparece aqui.";
-"linkeddevices.slots.primary" = "Dispositivo principal";
+"linkeddevices.slots.primary" = "Primeiro dispositivo";
 "linkeddevices.slots.unnamed" = "Sem nome";
 "linkeddevices.slots.this" = "este dispositivo";
 "linkeddevices.slots.revoke" = "Revogar";
