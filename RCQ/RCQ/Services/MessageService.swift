@@ -2731,6 +2731,42 @@ final class MessageService {
         }
     }
 
+    /// A failure no redelivery can ever fix, on ANY device. The founder's
+    /// 31.08 log showed the cost of hoarding these: dozens of rows failing
+    /// with missingSignedPreKey(1) / missingPreKey / "decryption failed" /
+    /// an OLD client's `read` without `targetIDs` were refetched, re-parsed
+    /// and re-failed on EVERY app open, for up to 30 days, and the drain
+    /// re-chewing them was a visible part of "тянет все данные каждый раз".
+    ///
+    /// What qualifies, and why it is safe to bury each:
+    /// - a prekey/signed-prekey the envelope was sealed for no longer
+    ///   exists locally: the ratchet cannot regress, redelivery replays the
+    ///   exact same bytes into the exact same wall;
+    /// - libsignal `invalidMessage` (a Whisper/PreKey message that does not
+    ///   decrypt): out-of-order delivery is already covered by the message
+    ///   key cache, so what remains is a copy for keys we will never hold;
+    /// - `DecodingError`: the DECRYPT SUCCEEDED and the inner payload is a
+    ///   schema this build cannot parse - the bytes will parse the same way
+    ///   tomorrow.
+    /// Held gmsg (keyMissing) never reaches this: the drain parks those for
+    /// replay before the generic failure path.
+    private static func isPermanentlyUnreadable(_ error: Error) -> Bool {
+        if error is DecodingError { return true }
+        if let storeError = error as? SignalProtocolStoreError {
+            switch storeError {
+            case .missingPreKey, .missingSignedPreKey, .missingKyberPreKey:
+                return true
+            case .noLocalIdentity:
+                // Transient by design: the store is closed while PIN-locked.
+                return false
+            }
+        }
+        if let signalError = error as? SignalError, case .invalidMessage = signalError {
+            return true
+        }
+        return false
+    }
+
     // MARK: - one drain at a time
 
     /// The tail of the chain of drains of this island's mailbox. Every drain
@@ -2982,6 +3018,10 @@ final class MessageService {
                         if let decryptError, Self.isUnreadableHere(decryptError),
                            r.to_device_id == nil, r.group_id == nil, myDeviceId != 1 {
                             ackedDirectIDs.append(r.id)
+                        } else if let decryptError, Self.isPermanentlyUnreadable(decryptError) {
+                            // Bury what no redelivery can fix (see the
+                            // classifier) instead of re-chewing it every open.
+                            if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
                         }
                         continue
                     }
