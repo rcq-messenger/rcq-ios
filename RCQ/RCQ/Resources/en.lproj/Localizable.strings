@@ -785,6 +785,8 @@
 "group.settings.no_links.hint" = "Links in messages stay plain text and do not open.";
 "group.settings.no_files" = "Disable files";
 "group.settings.no_files.hint" = "Files cannot be sent or downloaded here.";
+"group.settings.age_gate" = "Account age floor";
+"group.settings.age_gate.hint" = "Accounts younger than the floor can read but not post. Blunts spam from throwaway accounts.";
 "group.settings.slowmode" = "Slow mode";
 "group.settings.slowmode.hint" = "A pause between messages for each member.";
 "group.settings.slowmode.off" = "Off";

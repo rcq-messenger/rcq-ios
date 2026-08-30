@@ -689,6 +689,8 @@
 "group.settings.no_links.hint" = "Os links das mensagens ficam como texto e não abrem.";
 "group.settings.no_files" = "Desativar arquivos";
 "group.settings.no_files.hint" = "Aqui não dá para enviar nem baixar arquivos.";
+"group.settings.age_gate" = "Idade mínima da conta";
+"group.settings.age_gate.hint" = "Contas mais novas que o limite podem ler, mas não publicar.";
 "group.settings.slowmode" = "Modo lento";
 "group.settings.slowmode.hint" = "Uma pausa entre mensagens para cada membro.";
 "group.settings.slowmode.off" = "Não";

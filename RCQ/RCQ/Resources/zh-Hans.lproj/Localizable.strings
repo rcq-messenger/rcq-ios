@@ -680,6 +680,8 @@
 "group.settings.no_links.hint" = "消息里的链接只显示为纯文本，无法打开。";
 "group.settings.no_files" = "关闭文件";
 "group.settings.no_files.hint" = "这里不能发送或下载文件。";
+"group.settings.age_gate" = "账号最低注册时长";
+"group.settings.age_gate.hint" = "低于门槛的账号可以阅读但不能发言。";
 "group.settings.slowmode" = "慢速模式";
 "group.settings.slowmode.hint" = "每位成员两条消息之间的间隔。";
 "group.settings.slowmode.off" = "关闭";

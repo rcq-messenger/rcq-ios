@@ -34,27 +34,35 @@ final class GroupService: ObservableObject {
         var linksAllowed: Bool = true
         var filesAllowed: Bool = true
         var slowmodeSec: Int = 0
+        /// Anti-spam age floor, hours (0 = off): an account younger than
+        /// this reads but cannot post. Owner-set; the island enforces it.
+        var minAccountAgeHours: Int = 0
 
         /// The steps the island accepts (`_SLOWMODE_STEPS` in `groups.py`).
         /// A fixed menu rather than a free integer so every client draws the
         /// same picker and a room reads the same on all of them.
         static let slowmodeSteps = [0, 5, 10, 30, 60]
+        /// Same story for the age floor (`_AGE_GATE_STEPS`): off, 1h, 6h,
+        /// 24h, 3 days, a week, 30 days.
+        static let ageGateSteps = [0, 1, 6, 24, 72, 168, 720]
 
         enum CodingKeys: String, CodingKey {
             case linksAllowed = "links_allowed"
             case filesAllowed = "files_allowed"
             case slowmodeSec = "slowmode_sec"
+            case minAccountAgeHours = "min_account_age_hours"
         }
 
         init() {}
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            // An older island sends none of the three. "Everything allowed,
-            // no slowmode" is exactly how such a room behaves.
+            // An older island sends none of these. "Everything allowed,
+            // no slowmode, no age floor" is exactly how such a room behaves.
             self.linksAllowed = (try? c.decodeIfPresent(Bool.self, forKey: .linksAllowed)) ?? true
             self.filesAllowed = (try? c.decodeIfPresent(Bool.self, forKey: .filesAllowed)) ?? true
             self.slowmodeSec = (try? c.decodeIfPresent(Int.self, forKey: .slowmodeSec)) ?? 0
+            self.minAccountAgeHours = (try? c.decodeIfPresent(Int.self, forKey: .minAccountAgeHours)) ?? 0
         }
     }
 
@@ -743,6 +751,15 @@ final class GroupService: ObservableObject {
         struct Body: Encodable { let slowmode_sec: Int }
         guard RoomRules.slowmodeSteps.contains(seconds) else { return }
         try await patchGroup(groupID, Body(slowmode_sec: seconds))
+    }
+
+    /// Owner-only: the anti-spam age floor (#803). Only
+    /// `RoomRules.ageGateSteps` are accepted; the island enforces the rule
+    /// itself for authenticated senders, owner and admins exempt.
+    func setAgeGate(groupID: Int, hours: Int) async throws {
+        struct Body: Encodable { let min_account_age_hours: Int }
+        guard RoomRules.ageGateSteps.contains(hours) else { return }
+        try await patchGroup(groupID, Body(min_account_age_hours: hours))
     }
 
     /// Admin / owner — swap the uploaded avatar. Pass `nil` for both

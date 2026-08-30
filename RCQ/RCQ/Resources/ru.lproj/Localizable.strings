@@ -762,6 +762,8 @@
 "group.settings.no_links.hint" = "Ссылки в сообщениях остаются простым текстом и не открываются.";
 "group.settings.no_files" = "Отключить файлы";
 "group.settings.no_files.hint" = "Файлы нельзя отправить или скачать в этой группе.";
+"group.settings.age_gate" = "Порог возраста аккаунта";
+"group.settings.age_gate.hint" = "Аккаунты моложе порога читают, но не пишут. Затрудняет спам с одноразовых аккаунтов.";
 "group.settings.slowmode" = "Медленный режим";
 "group.settings.slowmode.hint" = "Пауза между сообщениями для каждого участника.";
 "group.settings.slowmode.off" = "Выкл";
