@@ -39,7 +39,9 @@ import os.log
 @MainActor
 enum RosterSnapshot {
     private static let log = OSLog(subsystem: "app.rcq.client", category: "RosterSnapshot")
-    nonisolated(unsafe) private static let sealedMagic = Data("RCQS1".utf8)
+    // `Data` is Sendable, so a `let` needs no unsafe opt-out to be read from
+    // the detached decode (30.08). Kept nonisolated so it still is.
+    nonisolated private static let sealedMagic = Data("RCQS1".utf8)
 
     enum Kind: String { case contacts, groups, rooms }
 
