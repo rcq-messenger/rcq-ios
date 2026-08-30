@@ -129,7 +129,14 @@ final class GroupService: ObservableObject {
     @discardableResult
     func hydrateFromSnapshot() -> Bool {
         if PanicPINService.shared.isDecoy { return false }
-        guard let list = RosterSnapshot.load(.groups, as: [RCQGroup].self), !list.isEmpty else { return false }
+        return applySnapshot(RosterSnapshot.load(.groups, as: [RCQGroup].self))
+    }
+
+    /// The main-actor half of hydration; the decode happened wherever the
+    /// caller ran it (doBoot: a detached task - `RosterSnapshot.loadOffMain`).
+    @discardableResult
+    func applySnapshot(_ list: [RCQGroup]?) -> Bool {
+        guard let list, !list.isEmpty else { return false }
         groups = list
         unread = UnreadStore.shared.allGroupCounts
         return true

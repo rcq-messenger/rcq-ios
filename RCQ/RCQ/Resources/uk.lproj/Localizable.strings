@@ -153,7 +153,7 @@
 "linkeddevices.connected" = "Підключено %@";
 "linkeddevices.slots.title" = "Ключі пристроїв";
 "linkeddevices.slots.hint" = "Кожна інсталяція цього акаунта зі своїми ключами шифрування. Вхід за фразою відновлення з'являється тут.";
-"linkeddevices.slots.primary" = "Перший пристрій";
+"linkeddevices.slots.primary" = "Спільний слот ключів";
 "linkeddevices.slots.unnamed" = "Без назви";
 "linkeddevices.slots.this" = "цей пристрій";
 "linkeddevices.slots.revoke" = "Відкликати";

@@ -2731,6 +2731,15 @@ final class MessageService {
         }
     }
 
+    /// Envelope types whose value is the MOMENT, not the payload: losing one
+    /// costs nothing a user could point at, so an undecryptable copy is
+    /// buried rather than redelivered for 30 days.
+    private static let ephemeralControlTypes: Set<String> = ["visit", "read", "sknack", "secscreen", "bounce"]
+
+    private static func isEphemeralControlType(_ t: String) -> Bool {
+        ephemeralControlTypes.contains(t)
+    }
+
     /// A failure no redelivery can ever fix, on ANY device. The founder's
     /// 31.08 log showed the cost of hoarding these: dozens of rows failing
     /// with missingSignedPreKey(1) / missingPreKey / "decryption failed" /
@@ -3021,6 +3030,14 @@ final class MessageService {
                         } else if let decryptError, Self.isPermanentlyUnreadable(decryptError) {
                             // Bury what no redelivery can fix (see the
                             // classifier) instead of re-chewing it every open.
+                            if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
+                        } else if Self.isEphemeralControlType(r.envelope_type) {
+                            // An undecryptable CONTROL envelope is dead weight
+                            // whatever the error: a visit ping, a read marker
+                            // or a recovery ask from days ago carries nothing
+                            // a user could miss, and hoarding six of them was
+                            // six re-decrypt failures on every single open
+                            // (the founder's 31.08 log, type=sknack rows).
                             if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
                         }
                         continue
