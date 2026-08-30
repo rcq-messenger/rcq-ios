@@ -316,9 +316,35 @@ struct ContactListView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     contactListMenu
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                bottomBar
+                // Founder 30.08: the SYSTEM bottom bar instead of the
+                // hand-built floating capsule - native material, native
+                // safe-area behaviour, and on iOS 26 the system's own glass.
+                // The four doors are actions, not tabs, so this stays a
+                // toolbar rather than becoming a TabView that would lie
+                // about the app's structure.
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button { showAddContact = true } label: {
+                        Image(systemName: "person.badge.plus")
+                    }
+                    .accessibilityLabel("contact_list.bar.add".localized)
+                    Spacer()
+                    Button { showQR = true } label: {
+                        Image(systemName: "qrcode.viewfinder")
+                    }
+                    .accessibilityLabel("contact_list.bar.qr".localized)
+                    if appState.serverCapabilities.nearby {
+                        Spacer()
+                        Button { showNearby = true } label: {
+                            Image(systemName: "location.viewfinder")
+                        }
+                        .accessibilityLabel("contact_list.bar.nearby".localized)
+                    }
+                    Spacer()
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("contact_list.bar.settings".localized)
+                }
             }
             .navigationDestination(for: Contact.self) { contact in
                 ChatView(target: .peer(contact))
@@ -2119,61 +2145,6 @@ struct ContactListView: View {
         .tint(.red)
     }
 
-    /// IX-style floating capsule. Icons evenly distributed inside a
-    /// pill-shape backdrop floating above the screen bottom, not
-    /// edge-to-edge. Slight shadow lifts it off the chat list.
-    ///
-    /// Stranger Mode used to sit here between QR and Nearby. It is a side
-    /// feature an operator can switch off, so it moved into the overflow menu
-    /// (`contactListMenu`) where the other optional destinations live.
-    private var bottomBar: some View {
-        HStack(spacing: 0) {
-            barButton(icon: "person.badge.plus", label: "contact_list.bar.add".localized) { showAddContact = true }
-            barButton(icon: "qrcode.viewfinder", label: "contact_list.bar.qr".localized) { showQR = true }
-            // Operator can hide Nearby via the admin console (Features).
-            if appState.serverCapabilities.nearby {
-                barButton(icon: "location.viewfinder", label: "contact_list.bar.nearby".localized) { showNearby = true }
-            }
-            barButton(icon: "gearshape", label: "contact_list.bar.settings".localized) { showSettings = true }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        // The capsule floats directly on the wallpaper, so it frosts with
-        // everything else rather than staying the one flat slab on screen.
-        // Built by hand rather than through `wallpaperSurface` because the
-        // shadow has to be cast by the CAPSULE: taken on the composited view
-        // it would trace the icons and labels as well.
-        .background(
-            Group {
-                if wallpaperSurfaceMode == .none {
-                    Capsule(style: .continuous).fill(Theme.Color.bgSecondary)
-                } else {
-                    Capsule(style: .continuous)
-                        .fill(Theme.Color.bgSecondary.opacity(wallpaperSurfaceMode.tint))
-                        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-                }
-            }
-            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
-        )
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
-    }
-
-    private func barButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                Text(label)
-                    .font(.system(size: 9, weight: .medium))
-            }
-            .foregroundColor(Theme.Color.textPrimary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 42)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 
     private func assetName(for status: UserStatus) -> String {
         switch status {
