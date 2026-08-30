@@ -41,6 +41,7 @@ struct GroupSettingsSheet: View {
     @State private var noLinks = false
     @State private var noFiles = false
     @State private var slowmode = 0
+    @State private var ageGate = 0
 
     private var currentGroup: RCQGroup? { groups.find(groupID) }
 
@@ -404,6 +405,26 @@ struct GroupSettingsSheet: View {
                 .labelsHidden()
             }
             .padding(.vertical, 2)
+
+            // Anti-spam age floor (#803): accounts younger than the step
+            // read but cannot post; the island enforces it.
+            VStack(alignment: .leading, spacing: 8) {
+                settingLabel("group.settings.age_gate", hint: "group.settings.age_gate.hint")
+                Picker(
+                    "group.settings.age_gate".localized,
+                    selection: Binding(
+                        get: { ageGate },
+                        set: { v in applyAgeGate(v) }
+                    )
+                ) {
+                    ForEach(GroupService.RoomRules.ageGateSteps, id: \.self) { step in
+                        Text(Self.ageGateLabel(step)).tag(step)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, 2)
         } header: {
             Text("group.section.content_policy".localized)
         }
@@ -416,6 +437,13 @@ struct GroupSettingsSheet: View {
         if seconds <= 0 { return "group.settings.slowmode.off".localized }
         if seconds < 60 { return String(format: "group.settings.slowmode.sec".localized, seconds) }
         return "group.settings.slowmode.min".localized
+    }
+
+    /// Fixed menu (`_AGE_GATE_STEPS`), unit-neutral like the Android row.
+    private static func ageGateLabel(_ hours: Int) -> String {
+        if hours <= 0 { return "group.settings.slowmode.off".localized }
+        if hours < 24 { return "\(hours)h" }
+        return "\(hours / 24)d"
     }
 
     private func settingLabel(_ title: String, hint: String) -> some View {
@@ -438,6 +466,7 @@ struct GroupSettingsSheet: View {
         noLinks = !r.linksAllowed
         noFiles = !r.filesAllowed
         slowmode = r.slowmodeSec
+        ageGate = r.minAccountAgeHours
     }
 
     /// One shape for all three: move the control now, PATCH, and on a refusal
@@ -463,6 +492,19 @@ struct GroupSettingsSheet: View {
             do { try await groups.setFilesAllowed(groupID: groupID, allowed: !off) }
             catch {
                 noFiles = previous
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func applyAgeGate(_ hours: Int) {
+        let previous = ageGate
+        guard GroupService.RoomRules.ageGateSteps.contains(hours) else { return }
+        ageGate = hours
+        Task {
+            do { try await groups.setAgeGate(groupID: groupID, hours: hours) }
+            catch {
+                ageGate = previous
                 self.error = error.localizedDescription
             }
         }
