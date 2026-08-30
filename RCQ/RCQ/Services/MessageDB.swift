@@ -120,7 +120,42 @@ final class MessageDB {
     }
 
     private init() {
-        container = MessageDB.makeContainer(decoy: false)
+        MessageDB.instanceExists = true
+        if let ready = MessageDB.prewarmedReal {
+            MessageDB.prewarmedReal = nil
+            container = ready
+        } else {
+            container = MessageDB.makeContainer(decoy: false)
+        }
+    }
+
+    /// Set in `init` so `prewarm` can tell "not yet built" from "built": once
+    /// the singleton exists, a late prewarm result must be dropped, not parked.
+    private static var instanceExists = false
+    /// A container built ahead of time, waiting for the singleton's first
+    /// touch. Only ever the REAL store: a decoy session rebuilds through
+    /// `configure` exactly as before.
+    private static var prewarmedReal: NSPersistentContainer?
+
+    /// Build the real-history container OFF the main thread, ahead of the
+    /// first `shared` touch. The first touch used to be INSIDE the PIN-unlock
+    /// handler: a synchronous SQLite open plus WAL replay (plus, once, the
+    /// index migration) of the whole history file, on the main actor, while
+    /// the last PIN dot sat filled and the screen sat frozen. The store file
+    /// is guarded by device-level file protection and the app PIN gates only
+    /// `dataKey`, so opening early while the lock screen is up reveals
+    /// nothing. Racing the first touch is safe in both directions: a prewarm
+    /// that finishes late finds `instanceExists` and discards its container,
+    /// a first touch that comes early just pays the old synchronous price.
+    nonisolated static func prewarm() async {
+        let already = await MainActor.run { instanceExists || prewarmedReal != nil }
+        if already { return }
+        let built = await Task.detached(priority: .userInitiated) {
+            makeContainer(decoy: false)
+        }.value
+        await MainActor.run {
+            if !instanceExists && prewarmedReal == nil { prewarmedReal = built }
+        }
     }
 
     func configure(decoy: Bool, dataKey: SymmetricKey?) {
@@ -159,7 +194,7 @@ final class MessageDB {
 
     // MARK: - store files
 
-    private static func storeURL(decoy: Bool) -> URL {
+    nonisolated private static func storeURL(decoy: Bool) -> URL {
         let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
 
@@ -230,7 +265,10 @@ final class MessageDB {
         }
     }
 
-    private static let model: NSManagedObjectModel = buildModel(indexed: true)
+    // `nonisolated(unsafe)` on the model pair: `prewarm` builds the container
+    // on a detached task, and a `static let` is already made thread-safe by the
+    // runtime's one-time initialisation; after that both are read-only.
+    nonisolated(unsafe) private static let model: NSManagedObjectModel = buildModel(indexed: true)
 
     /// The schema as it stood before the fetch indexes. Materialised ONLY when
     /// the indexed model cannot open an existing store (a `static let` is lazy),
@@ -238,22 +276,22 @@ final class MessageDB {
     /// about it. That log is the price of never nuking a user's history over an
     /// index: without this fallback the load failure below deletes the SQLite
     /// file, and adding an index is not a reason to lose every message.
-    private static let rescueModel: NSManagedObjectModel = buildModel(indexed: false)
+    nonisolated(unsafe) private static let rescueModel: NSManagedObjectModel = buildModel(indexed: false)
 
     /// The ONE model instance. A second `NSManagedObjectModel` built from the
     /// same description would make CoreData complain that two entities claim
     /// `MessageRecord`, so any other container (the decoy seeder) reuses this.
-    static var sharedModel: NSManagedObjectModel { model }
+    nonisolated static var sharedModel: NSManagedObjectModel { model }
 
     /// File the decoy history lives in. Exposed so the seeder can open its OWN
     /// container on it: `MessageDB.shared` is a singleton whose
     /// `configure(decoy:)` flips the container globally, and any inbound
     /// WebSocket write during that window would land in the decoy store.
-    static func decoyStoreURL() -> URL { storeURL(decoy: true) }
+    nonisolated static func decoyStoreURL() -> URL { storeURL(decoy: true) }
 
     /// Open a container on `storeURL` with `model`. Returns nil when the store
     /// would not load, leaving the file untouched for the next attempt.
-    private static func openContainer(
+    nonisolated private static func openContainer(
         model: NSManagedObjectModel, storeURL: URL
     ) -> NSPersistentContainer? {
         let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
@@ -273,7 +311,7 @@ final class MessageDB {
         return loadFailed ? nil : container
     }
 
-    private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
+    nonisolated private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
         let storeURL = MessageDB.storeURL(decoy: decoy)
 
         // Ordinary path: the indexed schema. An existing store from before the
@@ -377,7 +415,7 @@ final class MessageDB {
 
     /// `indexed: false` rebuilds the schema exactly as it stood before the
     /// fetch indexes below existed. It is the rescue model: see `makeContainer`.
-    private static func buildModel(indexed: Bool) -> NSManagedObjectModel {
+    nonisolated private static func buildModel(indexed: Bool) -> NSManagedObjectModel {
         func attr(
             _ name: String,
             _ type: NSAttributeType,
@@ -484,6 +522,15 @@ final class MessageDB {
             entity.indexes = [
                 index("byID", ["id"]),
                 index("byThreadSentAt", ["threadKind", "threadKey", "sentAt"]),
+                // `deleteExpired` runs at every unlock and every sweep tick
+                // with `ttlSeconds > 0`. Without this, that predicate walked
+                // every page of the table — and the rows carry inline
+                // thumbnail base64, so the pages are fat and the walk was a
+                // visible freeze on the PIN screen (the 30.08 "фризит пару
+                // секунд после входа"). Timers are a small minority of rows;
+                // the index turns the sweep into a seek that usually finds
+                // nothing.
+                index("byTTL", ["ttlSeconds"]),
             ].compactMap { $0 }
         }
         let model = NSManagedObjectModel()

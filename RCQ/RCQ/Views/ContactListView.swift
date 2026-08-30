@@ -2607,9 +2607,27 @@ private struct HomeWallpaperView: View {
             }
         }
         .task(id: "\(selection)#\(bg.homeCustomStamp)") {
-            custom = selection == "custom"
-                ? UIImage(contentsOfFile: ChatBackgroundStore.imageURL(home: true).path)
-                : nil
+            guard selection == "custom" else { custom = nil; return }
+            // Read, decode AND rasterise off the main actor: a `.task`
+            // inherits the view's actor, and a 12MP gallery photo used to be
+            // lazily decoded during the home screen's first frame - part of
+            // the after-unlock freeze for anyone with a custom wallpaper.
+            // The renderer pass forces the decode down to screen size, so
+            // the main thread receives finished pixels, not a JPEG promise.
+            let path = ChatBackgroundStore.imageURL(home: true).path
+            let screen = await MainActor.run { UIScreen.main.bounds.size }
+            custom = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+                guard let raw = UIImage(contentsOfFile: path) else { return nil }
+                let scale = max(screen.width / max(raw.size.width, 1),
+                                screen.height / max(raw.size.height, 1))
+                guard scale < 1 else { return raw.preparingForDisplay() ?? raw }
+                let size = CGSize(width: raw.size.width * scale, height: raw.size.height * scale)
+                let format = UIGraphicsImageRendererFormat()
+                format.opaque = true
+                return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    raw.draw(in: CGRect(origin: .zero, size: size))
+                }
+            }.value
         }
     }
 }

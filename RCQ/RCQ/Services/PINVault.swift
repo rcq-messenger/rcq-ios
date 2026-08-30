@@ -64,8 +64,17 @@ enum PINVault {
         let slotKey: SymmetricKey
     }
 
+    /// Cached: `RootView.body` asks on EVERY evaluation (socket flips, call
+    /// state, scene phase all re-run it), and the uncached answer was a
+    /// synchronous vault-file read each time. The two mutation points below
+    /// (`writeVault`, `destroy`) keep it honest; nothing else touches the file.
+    nonisolated(unsafe) private static var configuredCache: Bool?
+
     static var isConfigured: Bool {
-        readVault() != nil
+        if let cached = configuredCache { return cached }
+        let answer = readVault() != nil
+        configuredCache = answer
+        return answer
     }
 
     static func vaultSalt() -> Data? {
@@ -153,6 +162,7 @@ enum PINVault {
         raw.append(v.salt)
         for s in v.slots { raw.append(s) }
         try raw.write(to: fileURL, options: [.atomic, .completeFileProtection])
+        configuredCache = true
     }
 
     // MARK: - high-level operations
@@ -228,6 +238,7 @@ enum PINVault {
     /// nothing and re-encrypted new rows under a key no PIN could ever derive.
     /// Deleting the file without deleting that item is not a reset.
     static func destroy() {
+        configuredCache = false
         try? FileManager.default.removeItem(at: fileURL)
         KeychainStore.delete(KeychainStore.Keys.pinPepper)
         KeychainStore.delete(KeychainStore.Keys.pinAttempts)

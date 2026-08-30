@@ -187,7 +187,16 @@ final class MessageStore: ObservableObject {
         hasOlderInDB = [:]
         for t in wanted { loadWindow(t) }
         sweepExpired()
-        sweepExpiredInDB()
+        // NOT inline: this used to run inside the PIN-unlock handler, before
+        // `lockState` flipped, and it walks the store (see `deleteExpired`).
+        // The unlock frame owes the user a painted chat list first; a timer
+        // that fires 1.5s late is still hours ahead of the 5-minute sweep
+        // tick, and the in-memory `sweepExpired` above already hides any
+        // loaded row past its deadline.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            self?.sweepExpiredInDB()
+        }
     }
 
     /// Panic-PIN lock. The whole interface behind the lock is torn down with

@@ -37,7 +37,29 @@ final class WebRTCManager: NSObject, ObservableObject {
     ///
     /// `lazy` is sound here because the class is `@MainActor`: there is no
     /// second thread that could race the initialiser.
-    private lazy var factory: RTCPeerConnectionFactory = {
+    private var factoryStorage: RTCPeerConnectionFactory?
+    private var factory: RTCPeerConnectionFactory {
+        if let f = factoryStorage { return f }
+        let f = Self.buildFactory()
+        factoryStorage = f
+        return f
+    }
+
+    /// Build the factory OFF the main actor and park it. The build is a
+    /// 150-500ms contiguous chunk on a phone (BoringSSL tables, VideoToolbox
+    /// codec enumeration, the audio device module), and its first trigger is
+    /// not a call at all: `refreshTurnIfNeeded` probes the relay path right
+    /// as the chat list paints its first frame after boot. Every step in
+    /// `buildFactory` is thread-safe by its own contract (see
+    /// `CallAudio.prepareForWebRTC`), the actor hop serialises the handoff,
+    /// and a caller that beats the prewarm just pays the old inline price.
+    func prewarmFactory() async {
+        guard factoryStorage == nil else { return }
+        let built = await Task.detached(priority: .utility) { Self.buildFactory() }.value
+        if factoryStorage == nil { factoryStorage = built }
+    }
+
+    nonisolated private static func buildFactory() -> RTCPeerConnectionFactory {
         CallAudio.prepareForWebRTC()
         RTCInitializeSSL()
         let encoderFactory = RTCDefaultVideoEncoderFactory()
@@ -64,7 +86,7 @@ final class WebRTCManager: NSObject, ObservableObject {
         options.ignoreLoopbackNetworkAdapter = false
         built.setOptions(options)
         return built
-    }()
+    }
     private var peerConnection: RTCPeerConnection?
     private var localAudioTrack: RTCAudioTrack?
     private var videoCapturer: RTCCameraVideoCapturer?
@@ -527,6 +549,9 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// have something to report before anybody has called. Android parity:
     /// `CallController.prewarmRelayPath`.
     func prewarmRelayPath() async {
+        // Factory first: `refreshTurnIfNeeded` ends in `probeRelay`, which
+        // needs one, and this path runs right as the first chat list paints.
+        await prewarmFactory()
         await refreshTurnIfNeeded()
     }
 
