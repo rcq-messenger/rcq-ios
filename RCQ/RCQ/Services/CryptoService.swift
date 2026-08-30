@@ -195,6 +195,10 @@ enum Envelope: Codable, Hashable {
     /// inside the sealed blob) and the carbon ships under an ephemeral outer
     /// type, so nothing new is learned and nothing pushes.
     case readMark(at: Int64)
+    /// Room state key hand-off (stage 6 phase 2, wire "gskey", outer "skdm").
+    case gsKey(gid: Int, ver: Int64, key: String)
+    /// Room state key ask-back (wire "gsknack", outer "sknack").
+    case gsKnack(gid: Int)
     /// Cross-island call signaling (wire kind "call", spec §5d). Same-island
     /// calls ride the WS as plaintext call_* events; across islands there is
     /// no shared socket, so the SAME signal payload is wrapped here, v=1-sealed
@@ -286,7 +290,7 @@ enum Envelope: Codable, Hashable {
     }
 
     private enum K: String, CodingKey {
-        case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price
+        case kind, id, text, mediaID, mediaKey, caption, targetID, targetIDs, asset, thumbnailB64, durationSec, at, ttl, price, ver, key
         case on
         case to, gid, env
         case sig, cid, ts, data
@@ -435,6 +439,14 @@ enum Envelope: Codable, Hashable {
         case .readMark(let at):
             try c.encode("readmark", forKey: .kind)
             try c.encode(at, forKey: .at)
+        case .gsKey(let gid, let ver, let key):
+            try c.encode("gskey", forKey: .kind)
+            try c.encode(gid, forKey: .gid)
+            try c.encode(ver, forKey: .ver)
+            try c.encode(key, forKey: .key)
+        case .gsKnack(let gid):
+            try c.encode("gsknack", forKey: .kind)
+            try c.encode(gid, forKey: .gid)
         case .carbon(let to, let gid, let env):
             try c.encode("carbon", forKey: .kind)
             try c.encodeIfPresent(to, forKey: .to)
@@ -618,6 +630,14 @@ enum Envelope: Codable, Hashable {
             self = .screenshotTaken(id: try c.decode(UUID.self, forKey: .id))
         case "readmark":
             self = .readMark(at: try c.decode(Int64.self, forKey: .at))
+        case "gskey":
+            self = .gsKey(
+                gid: try c.decode(Int.self, forKey: .gid),
+                ver: try c.decode(Int64.self, forKey: .ver),
+                key: try c.decode(String.self, forKey: .key)
+            )
+        case "gsknack":
+            self = .gsKnack(gid: try c.decode(Int.self, forKey: .gid))
         case "carbon":
             self = .carbon(
                 to: try c.decodeIfPresent(Int.self, forKey: .to),
@@ -711,6 +731,8 @@ enum Envelope: Codable, Hashable {
         case .screenshotTaken: return "shot"
         case .carbon: return "carbon"
         case .readMark: return "readmark"
+        case .gsKey: return "gskey"
+        case .gsKnack: return "gsknack"
         case .callSignal: return "call"
         case .contactRequest: return "contactreq"
         case .profile: return "profile"

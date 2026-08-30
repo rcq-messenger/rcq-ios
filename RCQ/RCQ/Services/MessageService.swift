@@ -838,6 +838,36 @@ final class MessageService {
         }
     }
 
+    /// Ask a member (the owner, in practice) for a room's state key.
+    func sendRoomKeyAsk(gid: Int, to member: RCQGroupMember) async {
+        let bundle = PeerBundle(uin: member.uin, identityKey: member.identityKey, signingKey: member.signingKey)
+        guard let blob = try? crypto.encrypt(envelope: .gsKnack(gid: gid), for: bundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        _ = try? await APIClient.shared.request(
+            "POST", "/messages/sealed",
+            body: Body(to_uin: member.uin, envelope_type: "sknack", cls: rcqMessageClass("sknack"), payload: blob),
+            authenticated: false,
+            retries: 1
+        ) as Out
+    }
+
+    /// Answer a room-key ask (stage 6 phase 2): seal our gskey 1:1 to the
+    /// asker under the skdm outer type - critical class, same as the web.
+    private func answerRoomKeyAsk(gid: Int, held: (ver: Int64, key: String), asker: RCQGroupMember) async {
+        let bundle = PeerBundle(uin: asker.uin, identityKey: asker.identityKey, signingKey: asker.signingKey)
+        let env: Envelope = .gsKey(gid: gid, ver: held.ver, key: held.key)
+        guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        _ = try? await APIClient.shared.request(
+            "POST", "/messages/sealed",
+            body: Body(to_uin: asker.uin, envelope_type: "skdm", cls: rcqMessageClass("skdm"), payload: blob),
+            authenticated: false,
+            retries: 1
+        ) as Out
+    }
+
     /// Files one CONTENT envelope (text/photo/video/voice/file/location) into
     /// `thread` outside the normal ingest switch. Two callers: a multi-device
     /// carbon (senderUIN = me, isFromMe true) and the stranger-quarantine
@@ -1793,6 +1823,31 @@ final class MessageService {
                 Task { await SignalCryptoService.noteInboundDevice(forPeerUIN: from, deviceId: dev) }
             }
 
+            // Room state key hand-off / ask-back (stage 6 phase 2): the same
+            // outer types as the sender-key plumbing, split by inner kind.
+            if case .gsKey(let gid, let ver, let key) = decrypted.envelope {
+                // Roster gate: only a fellow member's key is worth holding.
+                let g = GroupService.shared.groups.first(where: { $0.id == gid })
+                let fromMember = g?.members.contains(where: { $0.uin == decrypted.senderUIN }) ?? false
+                if fromMember || decrypted.senderUIN == ownUIN {
+                    if RoomKeyStore.shared.put(gid, ver: ver, keyB64: key, replaceEqual: true) {
+                        Task { await GroupService.shared.refresh() }
+                    }
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+            if case .gsKnack(let gid) = decrypted.envelope {
+                if let g = GroupService.shared.groups.first(where: { $0.id == gid }),
+                   let asker = g.members.first(where: { $0.uin == decrypted.senderUIN }),
+                   !asker.identityKey.isEmpty,
+                   let held = RoomKeyStore.shared.key(gid) {
+                    Task { [weak self] in
+                        await self?.answerRoomKeyAsk(gid: gid, held: held, asker: asker)
+                    }
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+
             // Sender-keys distribution / recovery (never rendered). SKDM binds
             // the chain to its authenticated sender; SKNACK asks the kid owner to
             // re-distribute. Both ride the per-member sealed path.
@@ -2511,6 +2566,10 @@ final class MessageService {
                 // A2 marker: only ever arrives WRAPPED in a carbon, which is
                 // intercepted above. A bare one is not something any client
                 // sends, so it files nothing.
+                break
+            case .gsKey, .gsKnack:
+                // Stage 6 phase 2: intercepted before this switch (the room
+                // key branch). Present only for exhaustiveness.
                 break
             case .callSignal:
                 // §5d: intercepted before this switch (routed to CallService).

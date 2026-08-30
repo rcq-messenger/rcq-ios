@@ -102,6 +102,20 @@ final class GroupService: ObservableObject {
         unread[groupID] = 0
     }
 
+    /// One gsknack per room per six hours when its sealed blob exists and our
+    /// key (if any) does not open it (stage 6 phase 2). The reply lands as a
+    /// gskey on the ordinary sealed path.
+    private var askedRoomKeyAt: [Int: Date] = [:]
+
+    private func maybeAskRoomKey(_ g: RCQGroup) {
+        guard let blob = g.stateBlob else { return }
+        if let held = RoomKeyStore.shared.key(g.id), GroupStateSeal.open(blob, keyB64: held.key) != nil { return }
+        if let last = askedRoomKeyAt[g.id], Date().timeIntervalSince(last) < 6 * 3600 { return }
+        askedRoomKeyAt[g.id] = Date()
+        guard let owner = g.members.first(where: { $0.uin == g.ownerUIN }), !owner.identityKey.isEmpty else { return }
+        Task { await MessageService.shared.sendRoomKeyAsk(gid: g.id, to: owner) }
+    }
+
     /// Paint the group list from disk before the network is asked (see
     /// `RosterSnapshot`). Called from `AppState.doBoot`, never from `init`.
     @discardableResult
@@ -206,7 +220,14 @@ final class GroupService: ObservableObject {
             }
             guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
                   !PanicPINService.shared.isLocked else { return }
-            self.groups = own + foreign
+            // Stage 6 phase 2: rooms we hold the key for render their SEALED
+            // identity; everyone else gets the columns unchanged. A blob we
+            // cannot open earns one throttled ask toward the owner.
+            self.groups = (own + foreign).map { g in
+                let overlaid = GroupStateSeal.overlay(g, keyB64: RoomKeyStore.shared.key(g.id)?.key)
+                self.maybeAskRoomKey(g)
+                return overlaid
+            }
             for row in rows { self.roomRules[row.group.id] = row.rules }
             self.rosterAccount = account
             self.groupsLoaded = true

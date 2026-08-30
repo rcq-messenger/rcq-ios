@@ -31,6 +31,10 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// Voluntary catalog (stage 6): true only when the owner listed the room;
     /// island search matches catalog rows only. Off = link-only discovery.
     var inCatalog: Bool = false
+    /// Sealed room identity (stage 6 phase 2): the opaque blob + its version.
+    /// A client holding the room key overlays it (GroupStateSeal.overlay).
+    var stateBlob: String? = nil
+    var stateVer: Int64 = 0
     /// Pinned plaintext announcement, owner/admin-editable. Nil when
     /// unset. Rendered as a sticky banner above the chat message list
     /// so new joiners (who can't see encrypted history) at least see
@@ -66,6 +70,8 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case isClosed = "is_closed"
         case membersHidden = "members_hidden"
         case inCatalog = "in_catalog"
+        case stateBlob = "state_blob"
+        case stateVer = "state_ver"
         case pinnedText = "pinned_text"
         case pinnedAt = "pinned_at"
         case pinnedBy = "pinned_by"
@@ -86,6 +92,8 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.isClosed = (try? c.decodeIfPresent(Bool.self, forKey: .isClosed)) ?? false
         self.membersHidden = (try? c.decodeIfPresent(Bool.self, forKey: .membersHidden)) ?? false
         self.inCatalog = (try? c.decodeIfPresent(Bool.self, forKey: .inCatalog)) ?? false
+        self.stateBlob = try? c.decodeIfPresent(String.self, forKey: .stateBlob)
+        self.stateVer = (try? c.decodeIfPresent(Int64.self, forKey: .stateVer)) ?? 0
         self.pinnedText = try? c.decodeIfPresent(String.self, forKey: .pinnedText)
         self.pinnedAt = try? c.decodeIfPresent(Date.self, forKey: .pinnedAt)
         self.pinnedBy = try? c.decodeIfPresent(Int.self, forKey: .pinnedBy)
