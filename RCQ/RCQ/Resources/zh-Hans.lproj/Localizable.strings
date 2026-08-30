@@ -144,7 +144,7 @@
 "linkeddevices.connected" = "已连接 %@";
 "linkeddevices.slots.title" = "设备密钥";
 "linkeddevices.slots.hint" = "此账号每个持有自己加密密钥的安装。用恢复短语登录的会话也会出现在这里。";
-"linkeddevices.slots.primary" = "首个设备";
+"linkeddevices.slots.primary" = "共享密钥槽";
 "linkeddevices.slots.unnamed" = "未命名";
 "linkeddevices.slots.this" = "本设备";
 "linkeddevices.slots.revoke" = "撤销";

@@ -39,11 +39,11 @@ import os.log
 @MainActor
 enum RosterSnapshot {
     private static let log = OSLog(subsystem: "app.rcq.client", category: "RosterSnapshot")
-    private static let sealedMagic = Data("RCQS1".utf8)
+    nonisolated(unsafe) private static let sealedMagic = Data("RCQS1".utf8)
 
     enum Kind: String { case contacts, groups, rooms }
 
-    private static func url(_ kind: Kind, accountID: UUID) -> URL? {
+    nonisolated private static func url(_ kind: Kind, accountID: UUID) -> URL? {
         guard let base = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         ) else { return nil }
@@ -83,7 +83,20 @@ enum RosterSnapshot {
 
     static func load<T: Decodable>(_ kind: Kind, as type: T.Type) -> T? {
         if PanicPINService.shared.isDecoy { return nil }
-        guard let id = AppGroup.readActiveAccountID(), let url = url(kind, accountID: id),
+        return loadOffMain(kind, as: type, dataKey: dataKey, accountID: AppGroup.readActiveAccountID())
+    }
+
+    /// The load with every main-actor fact passed IN, so the file read, the
+    /// AES open and the JSON decode - the actual milliseconds - can run on a
+    /// detached task. The founder's 31.08 stall photo showed
+    /// `hydrateFromSnapshot` holding the main thread ~4s on a large roster
+    /// (decode plus first-use Swift metadata churn); the boot now gathers
+    /// decoy/key/account on the main actor in microseconds and does the rest
+    /// off it. Callers are responsible for the decoy check.
+    nonisolated static func loadOffMain<T: Decodable>(
+        _ kind: Kind, as type: T.Type, dataKey: SymmetricKey?, accountID: UUID?
+    ) -> T? {
+        guard let id = accountID, let url = url(kind, accountID: id),
               var data = try? Data(contentsOf: url) else { return nil }
         if data.starts(with: sealedMagic) {
             // Sealed under a PIN that is not unlocked in this process (no key),

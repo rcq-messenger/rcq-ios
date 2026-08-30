@@ -153,7 +153,7 @@
 "linkeddevices.connected" = "Bağlandı %@";
 "linkeddevices.slots.title" = "Cihaz anahtarları";
 "linkeddevices.slots.hint" = "Bu hesabın kendi şifreleme anahtarlarına sahip her kurulumu. Kurtarma ifadesiyle yapılan giriş burada görünür.";
-"linkeddevices.slots.primary" = "İlk cihaz";
+"linkeddevices.slots.primary" = "Ortak anahtar yuvası";
 "linkeddevices.slots.unnamed" = "Adsız";
 "linkeddevices.slots.this" = "bu cihaz";
 "linkeddevices.slots.revoke" = "İptal et";

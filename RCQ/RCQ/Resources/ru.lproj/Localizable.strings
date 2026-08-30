@@ -142,7 +142,7 @@
 "linkeddevices.hint" = "Браузеры, подключённые к вашему аккаунту. Чтобы подключить, откройте chat.rcq.app, выберите «Connect phone» и отсканируйте код камерой.";
 "linkeddevices.slots.title" = "Ключи устройств";
 "linkeddevices.slots.hint" = "Каждая установка этого аккаунта со своими ключами шифрования. Вход по фразе восстановления появляется здесь.";
-"linkeddevices.slots.primary" = "Первое устройство";
+"linkeddevices.slots.primary" = "Общий слот ключей";
 "linkeddevices.slots.unnamed" = "Без имени";
 "linkeddevices.slots.this" = "это устройство";
 "linkeddevices.slots.revoke" = "Отозвать";

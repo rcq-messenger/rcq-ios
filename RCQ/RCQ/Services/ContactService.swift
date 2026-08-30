@@ -36,7 +36,7 @@ final class ContactService: ObservableObject {
     private init() {}
 
     /// What `RosterSnapshot` keeps for this service.
-    private struct Snapshot: Codable {
+    struct Snapshot: Codable {
         var contacts: [Contact]
         var pending: [PendingRequest]
         var outgoing: [OutgoingRequest]
@@ -56,7 +56,15 @@ final class ContactService: ObservableObject {
     @discardableResult
     func hydrateFromSnapshot() -> Bool {
         if PanicPINService.shared.isDecoy { return false }
-        guard let snap = RosterSnapshot.load(.contacts, as: Snapshot.self) else { return false }
+        return applySnapshot(RosterSnapshot.load(.contacts, as: Snapshot.self))
+    }
+
+    /// The main-actor half of hydration: the caller decoded `snap` wherever
+    /// it liked (doBoot does it on a detached task - see
+    /// `RosterSnapshot.loadOffMain`), this applies it.
+    @discardableResult
+    func applySnapshot(_ snap: Snapshot?) -> Bool {
+        guard let snap else { return false }
         var list = snap.contacts
         let persisted = UnreadStore.shared.allPeerCounts
         for i in list.indices {

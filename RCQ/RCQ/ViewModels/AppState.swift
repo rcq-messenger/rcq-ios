@@ -605,9 +605,19 @@ final class AppState: ObservableObject {
 
     /// Paint the chat list from the last roster on disk (see
     /// `RosterSnapshot`). True when there was one worth showing.
-    private func hydrateRosterFromDisk() -> Bool {
-        let contacts = ContactService.shared.hydrateFromSnapshot()
-        let groups = GroupService.shared.hydrateFromSnapshot()
+    private func hydrateRosterFromDisk() async -> Bool {
+        // The main-actor facts in microseconds; the file reads, the AES and
+        // the JSON decode - the founder's photographed ~4s stall on a large
+        // roster - on a detached task. Rooms stay inline: that list is tiny.
+        guard !PanicPINService.shared.isDecoy else { return false }
+        let key = PanicPINService.shared.dataKey
+        let acct = AppGroup.readActiveAccountID()
+        let (contactSnap, groupList) = await Task.detached(priority: .userInitiated) {
+            (RosterSnapshot.loadOffMain(.contacts, as: ContactService.Snapshot.self, dataKey: key, accountID: acct),
+             RosterSnapshot.loadOffMain(.groups, as: [RCQGroup].self, dataKey: key, accountID: acct))
+        }.value
+        let contacts = ContactService.shared.applySnapshot(contactSnap)
+        let groups = GroupService.shared.applySnapshot(groupList)
         AudioRoomService.shared.hydrateFromSnapshot()
         return contacts || groups
     }
@@ -703,7 +713,7 @@ final class AppState: ObservableObject {
         // twelve serial round trips, and the fifteen-second watchdog then
         // surrendered to an empty list. The header's orange dot says
         // "connecting" until the socket is up, which is the honest state.
-        if let uin = cachedUIN, cachedToken != nil, hydrateRosterFromDisk() {
+        if let uin = cachedUIN, cachedToken != nil, await hydrateRosterFromDisk() {
             MessageService.shared.configure(ownUIN: uin)
             // The splash is gone from here; snap the bar's last frame full so
             // the raise-only helper mutes the rest of the chain's bumps.

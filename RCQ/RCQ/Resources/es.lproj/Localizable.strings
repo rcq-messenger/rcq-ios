@@ -153,7 +153,7 @@
 "linkeddevices.connected" = "Conectado %@";
 "linkeddevices.slots.title" = "Claves de dispositivos";
 "linkeddevices.slots.hint" = "Cada instalación de esta cuenta con sus propias claves de cifrado. Un inicio de sesión con la frase de recuperación aparece aquí.";
-"linkeddevices.slots.primary" = "Primer dispositivo";
+"linkeddevices.slots.primary" = "Ranura de claves compartida";
 "linkeddevices.slots.unnamed" = "Sin nombre";
 "linkeddevices.slots.this" = "este dispositivo";
 "linkeddevices.slots.revoke" = "Revocar";

@@ -151,7 +151,7 @@
 "linkeddevices.hint" = "Browsers connected to your account. To connect one, open chat.rcq.app, choose Connect phone, and scan the code with your camera.";
 "linkeddevices.slots.title" = "Device keys";
 "linkeddevices.slots.hint" = "Every install of this account holding its own encryption keys. A recovery-phrase login shows up here.";
-"linkeddevices.slots.primary" = "First device";
+"linkeddevices.slots.primary" = "Shared key slot";
 "linkeddevices.slots.unnamed" = "Unnamed";
 "linkeddevices.slots.this" = "this device";
 "linkeddevices.slots.revoke" = "Revoke";
