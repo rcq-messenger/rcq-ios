@@ -343,6 +343,16 @@ final class GroupService: ObservableObject {
         )
         roomRules[groupID] = row.rules
         upsert(row.group)
+        // Stage 6 phase 2: the inviter hands the new member the room state
+        // key at the moment of adding (design doc, road 3). Best-effort -
+        // a missed hand-off is one gsknack away.
+        if let held = RoomKeyStore.shared.key(groupID),
+           let member = row.group.members.first(where: { $0.uin == uin }),
+           !member.identityKey.isEmpty {
+            Task {
+                await MessageService.shared.sendRoomKey(gid: groupID, held: held, to: member)
+            }
+        }
     }
 
     enum CrossIslandAddError: Error { case notCrossIsland, unreachable }
