@@ -147,7 +147,11 @@ struct PINLockView: View {
             .padding(.horizontal, 40)
         }
         .onReceive(ticker) { now = $0 }
-        .task {
+        // Keyed on the flag: `biometricEnabled` starts FALSE and is flipped
+        // by a detached probe a beat after launch (LAContext off the main
+        // thread - see PanicPINService.init), so a plain .task would run
+        // once, see false, and never auto-prompt Face ID again.
+        .task(id: biometricOn) {
             guard biometricOn, !triedBiometric else { return }
             triedBiometric = true
             await tryBiometric()

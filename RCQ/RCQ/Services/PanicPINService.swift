@@ -116,7 +116,12 @@ final class PanicPINService: ObservableObject {
     }
     private static let lockTimeoutKey = "rcq.pin.lock_timeout"
 
-    var biometricAvailable: Bool { BiometricUnlock.isAvailable }
+    /// Cached, refreshed off-main: the naive computed getter built a fresh
+    /// LAContext per read, and `LAContext.init` performs a SYNCHRONOUS XPC
+    /// to the biometry daemon - the watchdog photographed it holding the
+    /// main thread for 1.6s in the simulator and ~5s on the founder's
+    /// phone, at every single launch, PIN or no PIN (see init).
+    @Published private(set) var biometricAvailable = false
 
     var isConfigured: Bool { PINVault.isConfigured }
     var isDecoy: Bool { mode == .decoy }
@@ -139,7 +144,24 @@ final class PanicPINService: ObservableObject {
 
     private init() {
         lockState = PINVault.isConfigured ? .locked : .unlocked
-        biometricEnabled = BiometricUnlock.isEnabled
+        // ⚠ NOT BiometricUnlock.isEnabled here. That getter builds an
+        // LAContext, and LAContext's init does a synchronous XPC to the
+        // biometry daemon; this singleton is constructed on the main thread
+        // at process start, so the XPC's worst case WAS the launch freeze
+        // (5.6s on the founder's device, stack-captured 31.08). Start
+        // pessimistic and let the detached probe below flip the flags a
+        // beat later - the only visible cost is the Face ID button on the
+        // lock screen arriving a frame after the digits.
+        biometricEnabled = false
+        Task.detached(priority: .userInitiated) {
+            let enabled = BiometricUnlock.isEnabled
+            let available = BiometricUnlock.isAvailable
+            await MainActor.run {
+                let s = PanicPINService.shared
+                s.biometricEnabled = enabled
+                s.biometricAvailable = available
+            }
+        }
         let until = PINVault.loadAttemptState().lockoutUntil
         lockoutUntil = (until ?? .distantPast) > Date() ? until : nil
         // Default 30s = the old hardcoded grace; absent key → 30.
