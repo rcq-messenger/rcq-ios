@@ -852,6 +852,13 @@ final class MessageService {
         ) as Out
     }
 
+    /// Hand a room key to one member, sealed 1:1 under the skdm outer type -
+    /// critical class, same as the web. Serves both the gsknack answer and
+    /// the add-member hand-off.
+    func sendRoomKey(gid: Int, held: (ver: Int64, key: String), to asker: RCQGroupMember) async {
+        await answerRoomKeyAsk(gid: gid, held: held, asker: asker)
+    }
+
     /// Answer a room-key ask (stage 6 phase 2): seal our gskey 1:1 to the
     /// asker under the skdm outer type - critical class, same as the web.
     private func answerRoomKeyAsk(gid: Int, held: (ver: Int64, key: String), asker: RCQGroupMember) async {
