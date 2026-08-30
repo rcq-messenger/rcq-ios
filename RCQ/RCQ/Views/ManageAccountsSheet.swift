@@ -300,7 +300,11 @@ struct ManageAccountsSheet: View {
                 Button {
                     pendingDelete = account
                 } label: {
-                    Text("manage_accounts.delete".localized)
+                    // Founder 30.08: the word made the row read like two
+                    // competing actions; a trash glyph says the same thing
+                    // in a quarter of the width. The confirm dialog still
+                    // spells the consequences out in words.
+                    Image(systemName: "trash")
                         .font(.system(.footnote, weight: .semibold))
                         .foregroundColor(.red.opacity(0.85))
                         .padding(.horizontal, 12)
@@ -308,6 +312,7 @@ struct ManageAccountsSheet: View {
                         .background(
                             Capsule().fill(Color.red.opacity(0.10))
                         )
+                        .accessibilityLabel("manage_accounts.delete".localized)
                 }
                 .buttonStyle(.plain)
             } else {

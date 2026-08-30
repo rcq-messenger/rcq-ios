@@ -1512,7 +1512,7 @@
 "contact_list.add_account" = "Новий сервер";
 "contact_list.manage_accounts" = "Керувати акаунтами";
 "manage_accounts.title" = "Акаунти";
-"manage_accounts.add_by_phrase" = "Додати акаунт фразою відновлення";
+"manage_accounts.add_by_phrase" = "Додати за фразою";
 "manage_accounts.intro.title" = "Акаунти на цьому пристрої";
 "manage_accounts.intro.body" = "Активний акаунт звідси прибрати не можна. Спершу перемкнися на інший. Видалення з пристрою не чіпає акаунт на сервері; для цього є «Спалити акаунт» у налаштуваннях приватності.";
 "manage_accounts.switch" = "Перемкнутися";

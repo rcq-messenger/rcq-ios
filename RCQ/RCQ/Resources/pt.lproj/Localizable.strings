@@ -1512,7 +1512,7 @@
 "contact_list.add_account" = "Servidor novo";
 "contact_list.manage_accounts" = "Gerenciar contas";
 "manage_accounts.title" = "Contas";
-"manage_accounts.add_by_phrase" = "Adicionar conta por frase de recuperação";
+"manage_accounts.add_by_phrase" = "Adicionar por frase";
 "manage_accounts.intro.title" = "Contas neste dispositivo";
 "manage_accounts.intro.body" = "A conta ativa não pode ser removida daqui: passe para outra primeiro. Remover do dispositivo não mexe na conta do lado do servidor; para isso, use Apagar a conta para sempre nas configurações de privacidade.";
 "manage_accounts.switch" = "Trocar";

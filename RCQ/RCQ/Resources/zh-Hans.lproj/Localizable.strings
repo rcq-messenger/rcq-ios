@@ -1503,7 +1503,7 @@
 "contact_list.add_account" = "新服务器";
 "contact_list.manage_accounts" = "管理账号";
 "manage_accounts.title" = "账号";
-"manage_accounts.add_by_phrase" = "用恢复短语添加账号";
+"manage_accounts.add_by_phrase" = "通过恢复短语添加";
 "manage_accounts.intro.title" = "此设备上的账号";
 "manage_accounts.intro.body" = "当前使用的账号不能从这里移除，先切换到另一个。从设备移除不会影响服务器上的账号，要处理那个请用隐私设置里的“销毁账号”。";
 "manage_accounts.switch" = "切换";

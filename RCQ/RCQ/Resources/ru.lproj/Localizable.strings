@@ -1602,7 +1602,7 @@
 "contact_list.add_account" = "Новый сервер";
 "contact_list.manage_accounts" = "Управление аккаунтами";
 "manage_accounts.title" = "Аккаунты";
-"manage_accounts.add_by_phrase" = "Добавить аккаунт по фразе восстановления";
+"manage_accounts.add_by_phrase" = "Добавить по фразе";
 "manage_accounts.intro.title" = "Аккаунты на этом устройстве";
 "manage_accounts.intro.body" = "Активный аккаунт удалить отсюда нельзя, сначала переключись на другой. Удаление с устройства не трогает аккаунт на сервере, для этого используй Burn account в настройках приватности.";
 "manage_accounts.switch" = "Перейти";

@@ -1649,7 +1649,7 @@
 "contact_list.add_account" = "New server";
 "contact_list.manage_accounts" = "Manage accounts";
 "manage_accounts.title" = "Accounts";
-"manage_accounts.add_by_phrase" = "Add account by recovery phrase";
+"manage_accounts.add_by_phrase" = "Add by phrase";
 "manage_accounts.intro.title" = "Accounts on this device";
 "manage_accounts.intro.body" = "The active account can't be removed from here. Switch to another one first. Removing from the device doesn't touch the server-side account; use Burn account in Privacy settings for that.";
 "manage_accounts.switch" = "Switch";

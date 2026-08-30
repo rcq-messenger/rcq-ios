@@ -1512,7 +1512,7 @@
 "contact_list.add_account" = "Yeni sunucu";
 "contact_list.manage_accounts" = "Hesapları yönet";
 "manage_accounts.title" = "Hesaplar";
-"manage_accounts.add_by_phrase" = "Kurtarma ifadesiyle hesap ekle";
+"manage_accounts.add_by_phrase" = "İfadeyle ekle";
 "manage_accounts.intro.title" = "Bu cihazdaki hesaplar";
 "manage_accounts.intro.body" = "Etkin hesap buradan kaldırılamaz, önce başka birine geç. Cihazdan kaldırmak sunucudaki hesaba dokunmaz; onun için Gizlilik ayarlarındaki Hesabı yak'ı kullan.";
 "manage_accounts.switch" = "Geç";
