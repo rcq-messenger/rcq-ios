@@ -76,6 +76,22 @@ final class CrossIslandStore: ObservableObject {
         contactsSnapshot = Array(cache.values)
     }
 
+    /// Forget every cross-island contact of the active account (burn only).
+    ///
+    /// A burn mints a fresh identity under the SAME account UUID, so the key
+    /// these rows live under does not change and nothing else clears them:
+    /// the burned identity's foreign contacts came back attached to the new
+    /// one, which is the opposite of what "erase this account" promises. A
+    /// switch must NOT call this, `bind` is that path: the rows belong to an
+    /// account the user still has.
+    func wipe() {
+        defaults.removeObject(forKey: accountKey)
+        defaults.removeObject(forKey: profileTSKey)
+        cache = [:]
+        profileTS = [:]
+        contactsSnapshot = []
+    }
+
     /// Drop entries filed under one of OUR OWN island's names.
     ///
     /// They should never have been written, but were: while the app was

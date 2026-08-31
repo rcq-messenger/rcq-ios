@@ -1387,6 +1387,18 @@ final class AppState: ObservableObject {
         // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
         RosterSnapshot.deleteActive()
         GroupService.shared.wipe()
+        // A burn mints a fresh identity under the SAME account UUID, so every
+        // per-account key below still resolves to the same slot afterwards and
+        // nothing else empties it. The burned identity's foreign contacts, the
+        // strangers holding sealed payloads for it and the islands it had
+        // visited all came back attached to the new identity, which is exactly
+        // what a burn says it undoes (founder, 30.08). The switch path rebinds
+        // these instead; only a burn erases them.
+        Multihome.stopPolling()
+        CrossIslandStore.shared.wipe()
+        CrossIslandRequestsStore.shared.wipe()
+        StrangerQuarantine.shared.wipe()
+        VisitedIslandsStore.shared.wipe()
         PushDecryptCache.wipe()
         SilenceProbe.shared.reset()
         // Same reason as the probe: the device lists key on bare peer uins.
@@ -1822,6 +1834,13 @@ final class AppState: ObservableObject {
 
         ContactService.shared.wipe()
         GroupService.shared.wipe()
+        // Kill the backup-home poll BEFORE the stores below are repointed. It
+        // is a detached 30s loop that nothing used to stop, so it outlived
+        // every switch: a pass suspended in its own fetch resumed after these
+        // rebinds and filed the outgoing account's rows, cross-island contact
+        // requests included, under the incoming account (founder, 30.08). The
+        // next drain starts it again for whoever is signed in then.
+        Multihome.stopPolling()
         // Re-point cross-island contacts at the NEW account (per-account store);
         // boot()'s ContactService.refresh then merges the right ones in. Without
         // this, a cross-island contact added on one local account bled into the

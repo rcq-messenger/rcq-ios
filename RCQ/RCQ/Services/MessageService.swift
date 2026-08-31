@@ -2968,6 +2968,33 @@ final class MessageService {
         let myDeviceId = SignalProtocolStores.shared.localDeviceId
         var ownsBatch = false
         do {
+            // Which account this drain belongs to. Checked again after every
+            // pause below: the loop is no longer atomic on the main actor, and
+            // a switch mid-drain must not credit these rows, these counters or
+            // this ACK to whoever is signed in now.
+            //
+            // ⚠ Captured BEFORE the fetch, never after it. Read afterwards,
+            // both of these name whoever is signed in when the reply lands,
+            // so a page belonging to the outgoing account arrives already
+            // stamped with the incoming one and every check below compares it
+            // against itself and passes. That is not theory: `contactreq`
+            // rows walk straight into the account that never asked for them
+            // (founder, 30.08). The fetch is the longest pause in the whole
+            // function, which makes it the likeliest place to be switched
+            // under, not the safest.
+            //
+            // ⚠ The account id, not `ownUIN`, is what answers that question.
+            // `AccountManager.setActive` rebinds the id BEFORE the reboot
+            // repoints MessageDB at the next account's SQLite file, while
+            // `MessageService.configure(ownUIN:)` is not reached until well
+            // inside the following `boot()`, so for the whole of that window
+            // `ownUIN` still reads as the outgoing account and waves the drain
+            // straight into the incoming account's store. (Two accounts on two
+            // islands can also carry the same uin, which `ownUIN` cannot tell
+            // apart at all.) Kept alongside it rather than instead of it: uin 0
+            // means "no identity yet" and is worth catching too.
+            let account = ownUIN
+            let accountID = AccountManager.shared.activeAccountID
             // `ack=1` opts into the server-side ACK protocol: rows are
             // returned without being deleted, and the client is expected
             // to POST /messages/queue/ack with the IDs it has successfully
@@ -2981,6 +3008,16 @@ final class MessageService {
             let rows: [Row] = try await APIClient.shared.request(
                 "GET", "/messages/queue", query: ["ack": "1", "dev": String(myDeviceId)]
             )
+            // Back from the longest pause in the function. These rows were
+            // asked for by whoever was signed in above; if that is no longer
+            // who is signed in now, they belong to nobody here. Dropping them
+            // costs nothing: without an ACK the island holds them, and the
+            // account that owns them collects them on its own next drain.
+            guard ownUIN == account,
+                  AccountManager.shared.activeAccountID == accountID,
+                  !PanicPINService.shared.isLocked,
+                  !PanicPINService.shared.isDecoy
+            else { return }
             var sawUnknownPeer = false
             // Track which rows landed locally so we can ACK them. Two
             // arrays because OfflineMessage.id and OfflineGroupMessage.id
@@ -2988,23 +3025,6 @@ final class MessageService {
             // can collide; we split by group_id.
             var ackedDirectIDs: [Int] = []
             var ackedGroupIDs: [Int] = []
-            // Which account this drain belongs to. Checked again after every
-            // pause below: the loop is no longer atomic on the main actor, and
-            // a switch mid-drain must not credit these rows, these counters or
-            // this ACK to whoever is signed in now.
-            //
-            // ⚠ The account id, not `ownUIN`, is what answers that question.
-            // `AccountManager.setActive` rebinds the id BEFORE the reboot
-            // repoints MessageDB at the next account's SQLite file, while
-            // `MessageService.configure(ownUIN:)` is not reached until well
-            // inside the following `boot()` — so for the whole of that window
-            // `ownUIN` still reads as the outgoing account and waves the drain
-            // straight into the incoming account's store. (Two accounts on two
-            // islands can also carry the same uin, which `ownUIN` cannot tell
-            // apart at all.) Kept alongside it rather than instead of it: uin 0
-            // means "no identity yet" and is worth catching too.
-            let account = ownUIN
-            let accountID = AccountManager.shared.activeAccountID
             var cursor = 0
             while cursor < rows.count {
                 // Per CHUNK, not per page: what the chunk owes the rest of the
@@ -3113,7 +3133,14 @@ final class MessageService {
                 // to give up, and redelivery cannot bring them back.
                 flushDrainBatch(ownsBatch)
                 ownsBatch = false
-                guard cursor < rows.count else { break }
+                // No early `break` on the last chunk, deliberately. Skipping
+                // out here to save one `Task.yield()` also skipped the account
+                // check below, so a page that fitted in a single chunk was
+                // ingested and ACKed without ever being checked, and the ACK
+                // itself (a second network call, with the CURRENT token and
+                // base URL) went out on behalf of whoever was signed in by
+                // then. The empty final pass costs a frame; the check it
+                // carries is what stops the ACK crossing accounts.
                 // Hand the main actor back so the interface can draw a frame
                 // between chunks. This is the whole point: the loop used to
                 // run to the end without a single suspension point, which is
