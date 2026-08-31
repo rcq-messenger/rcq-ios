@@ -875,6 +875,24 @@ final class MessageService {
         ) as Out
     }
 
+    /// Hand my profile key to one asker. The twin of [answerRoomKeyAsk], and
+    /// the peer bundle comes from the roster because only a contact should be
+    /// asking - a stranger gets the lettered tile, which is the point.
+    private func answerProfileKeyAsk(to uin: Int, keyB64: String) async {
+        guard let c = ContactService.shared.contacts.first(where: { $0.uin == uin }),
+              !c.identityKey.isEmpty else { return }
+        let bundle = PeerBundle(uin: uin, identityKey: c.identityKey, signingKey: c.signingKey)
+        guard let blob = try? crypto.encrypt(envelope: .pkey(key: keyB64), for: bundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        _ = try? await APIClient.shared.request(
+            "POST", "/messages/sealed",
+            body: Body(to_uin: uin, envelope_type: "skdm", cls: rcqMessageClass("skdm"), payload: blob),
+            authenticated: false,
+            retries: 1
+        ) as Out
+    }
+
     /// Files one CONTENT envelope (text/photo/video/voice/file/location) into
     /// `thread` outside the normal ingest switch. Two callers: a multi-device
     /// carbon (senderUIN = me, isFromMe true) and the stranger-quarantine
@@ -1867,6 +1885,27 @@ final class MessageService {
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
+            // Profile key hand-off / ask-back. Same carriers as the room keys
+            // above, split by the inner kind.
+            if case .pkey(let key) = decrypted.envelope {
+                // Filed against the SEALED sender, never against anything the
+                // wire claimed - otherwise one account could publish a face as
+                // another. Refreshing the roster repaints the avatars.
+                if ProfileKeyStore.shared.put(decrypted.senderUIN, keyB64: key) {
+                    Task { await ContactService.shared.refresh() }
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+            if case .pkeyAsk = decrypted.envelope {
+                // Only the owner can answer this one, so there is no roster
+                // gate: whoever asked either gets my key or nothing.
+                if let mine = ProfileKeyStore.shared.mine {
+                    Task { [weak self] in
+                        await self?.answerProfileKeyAsk(to: decrypted.senderUIN, keyB64: mine)
+                    }
+                }
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
             if case .gsKnack(let gid) = decrypted.envelope {
                 if let g = GroupService.shared.groups.first(where: { $0.id == gid }),
                    let asker = g.members.first(where: { $0.uin == decrypted.senderUIN }),
@@ -2602,6 +2641,10 @@ final class MessageService {
             case .gsKey, .gsKnack:
                 // Stage 6 phase 2: intercepted before this switch (the room
                 // key branch). Present only for exhaustiveness.
+                break
+            case .pkey, .pkeyAsk:
+                // Profile keys: intercepted before this switch, same as the
+                // room keys above. Present only for exhaustiveness.
                 break
             case .callSignal:
                 // §5d: intercepted before this switch (routed to CallService).

@@ -1077,23 +1077,33 @@ struct SettingsView: View {
         }
         avatarBusy = true
         defer { avatarBusy = false }
+        // ⚠ The key is NOT in the body any more. It used to be, and the island
+        // stored it in users.avatar_media_key beside the uin and the nickname,
+        // so a seized island opened every face it held. The picture is sealed
+        // under my profile key, which goes to my contacts over E2E instead.
+        // Sending the id ALONE also clears whatever key the island still holds
+        // for me, which is what retires the old plaintext one.
         struct Body: Encodable {
             let avatar_media_id: String
-            let avatar_media_key: String
         }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else { return }
+            let pk = await ProfileKeyService.shared.ensureMine()
             let res: MediaService.UploadResult
             if AnimatedGIFView.isGIF(data) {
-                res = try await MediaService.shared.uploadGIF(data: data)
+                res = try await MediaService.shared.uploadGIF(data: data, under: pk)
             } else {
                 guard let img = UIImage(data: data) else { return }
-                res = try await MediaService.shared.uploadImage(img)
+                res = try await MediaService.shared.uploadImage(img, under: pk)
             }
             let _: UserProfile = try await APIClient.shared.request(
                 "PUT", "/users/me",
-                body: Body(avatar_media_id: res.mediaID, avatar_media_key: res.keyBase64),
+                body: Body(avatar_media_id: res.mediaID),
             )
+            // Hand the key to everyone entitled to it. Detached: the picture is
+            // already saved, and one unreachable contact must not cost the rest
+            // their copy - they ask with `pkeyask` later.
+            Task.detached { await ProfileKeyService.shared.fanOut(keyB64: res.keyBase64) }
             // Through the shared holder, so the main screen's header lights up
             // with the new picture instead of waiting for the next launch.
             PresenceService.shared.setOwnAvatar(id: res.mediaID, key: res.keyBase64)

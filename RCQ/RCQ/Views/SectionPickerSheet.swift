@@ -170,7 +170,7 @@ struct SectionPickerSheet: View {
                 subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
                 isGroup: false,
                 avatarID: contact.avatarMediaID,
-                avatarKey: contact.avatarMediaKey,
+                avatarKey: contact.avatarKeyResolved,
                 status: contact.status,
                 host: contact.host,
             ))
@@ -185,7 +185,7 @@ struct SectionPickerSheet: View {
                 subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
                 isGroup: false,
                 avatarID: contact.avatarMediaID,
-                avatarKey: contact.avatarMediaKey,
+                avatarKey: contact.avatarKeyResolved,
                 status: contact.status,
                 host: contact.host,
             ))

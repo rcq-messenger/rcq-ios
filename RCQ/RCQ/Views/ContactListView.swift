@@ -2201,7 +2201,7 @@ private struct ContactRow: View {
             ZStack(alignment: .topTrailing) {
                 PersonAvatarView(
                     mediaID: contact.avatarMediaID,
-                    keyBase64: contact.avatarMediaKey,
+                    keyBase64: contact.avatarKeyResolved,
                     status: contact.status,
                     host: contact.host,
                     size: 28,

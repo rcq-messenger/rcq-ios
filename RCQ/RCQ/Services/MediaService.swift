@@ -250,11 +250,23 @@ final class MediaService {
     }
 
     /// Compress, encrypt, and upload an image. Returns server media id + AES key for the envelope.
-    func uploadImage(_ image: UIImage, peerHost: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
+    /// `under` seals the blob with a key the CALLER owns instead of a fresh
+    /// one. Only the avatar path passes it (docs/profile-key-design.md): a
+    /// profile picture has to stay readable by every contact who already holds
+    /// the key, so changing the picture must NOT change the key - otherwise
+    /// each change costs a fan-out and blanks every contact's tile until it
+    /// lands. Everything else keeps minting per blob, which is right for
+    /// message media: those keys travel with the message.
+    func uploadImage(_ image: UIImage, peerHost: String? = nil, under: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
         guard let jpeg = ImageCompressor.compress(image, maxSide: 1200, quality: 0.8) else {
             throw Failure.compressionFailed
         }
-        let key = SymmetricKey(size: .bits256)
+        let key: SymmetricKey
+        if let under, let raw = Data(base64Encoded: under), raw.count == 32 {
+            key = SymmetricKey(data: raw)
+        } else {
+            key = SymmetricKey(size: .bits256)
+        }
         guard let sealed = try? AES.GCM.seal(jpeg, using: key),
               let combined = sealed.combined else {
             throw Failure.encryptionFailed
@@ -280,11 +292,17 @@ final class MediaService {
     /// `ImageCompressor.compress` (which JPEG-encodes and kills the
     /// animation). Receiver detects the GIF via magic-byte check on
     /// the decrypted blob and routes through `AnimatedGIFView`.
-    func uploadGIF(data: Data, peerHost: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
+    /// `under`: see [uploadImage]. An animated avatar needs the same treatment.
+    func uploadGIF(data: Data, peerHost: String? = nil, under: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
         if data.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: data.count)
         }
-        let key = SymmetricKey(size: .bits256)
+        let key: SymmetricKey
+        if let under, let raw = Data(base64Encoded: under), raw.count == 32 {
+            key = SymmetricKey(data: raw)
+        } else {
+            key = SymmetricKey(size: .bits256)
+        }
         guard let sealed = try? AES.GCM.seal(data, using: key),
               let combined = sealed.combined else {
             throw Failure.encryptionFailed
