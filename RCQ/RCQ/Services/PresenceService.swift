@@ -28,7 +28,24 @@ final class PresenceService: ObservableObject {
         // back to a blank header.
         guard !PanicPINService.shared.isDecoy else { return }
         let id = (id?.isEmpty ?? true) ? nil : id
-        let key = (key?.isEmpty ?? true) ? nil : key
+        // ⚠⚠ The key has to be RESOLVED, not taken. Under the profile-key model
+        // we PUT the media id ALONE and the island clears the key column it used
+        // to keep — that is the whole point, it must not hold the key to our
+        // face. So every /users/me after the first change carries a null key,
+        // and this used to store that null OVER a good one, from the seeded
+        // UserDefaults mirror the header reads on the first frame. The picture
+        // then vanished for its owner with nothing switched and nothing racing.
+        //
+        // The tail is worse than the blank header: CrossIslandSender decides
+        // `havePicture` from `ownAvatarKey`, and a profile envelope naming no
+        // picture reads on the far side as "I removed mine", so the next
+        // nickname edit DELETED our face for every cross-island contact.
+        //
+        // ProfileKeyStore.mine is the key this account published. Resolved
+        // here, in the one setter, rather than at each of the screens that draw
+        // a face — the same rule Contact.avatarKeyResolved follows for peers.
+        let resolved = (key?.isEmpty ?? true) ? ProfileKeyStore.shared.mine : key
+        let key = (resolved?.isEmpty ?? true) ? nil : resolved
         ownAvatarID = id
         ownAvatarKey = key
         UserDefaults.standard.set(id, forKey: "rcq.ownAvatarID")
