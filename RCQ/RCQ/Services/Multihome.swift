@@ -381,14 +381,34 @@ enum Multihome {
 
     private static var pollTask: Task<Void, Never>?
     private static var pollingFor: Int = 0
+    private static var pollingAccount: UUID?
+
+    /// Stop the backup poll. Called on every account switch and on burn: the
+    /// loop below is detached and survives both otherwise, and a pass left
+    /// mid-flight resumes holding the previous account's rows.
+    @MainActor
+    static func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+        pollingFor = 0
+        pollingAccount = nil
+    }
 
     /// Idempotently start the 30s backup poll. Deliberately independent of the
     /// primary socket: when the primary island is down, this loop IS the
-    /// delivery path. An account switch restarts the loop for the new uin.
+    /// delivery path. An account switch restarts the loop for the new account.
+    ///
+    /// ⚠ Keyed on the account id as well as the uin. Keyed on the uin alone,
+    /// two accounts holding the same number on two islands (which `recoverAccount`
+    /// allows on purpose) looked identical here, so the switch never retargeted
+    /// the loop and it went on polling the first account's homes forever.
+    @MainActor
     static func startPolling(ownUin: Int) {
-        if pollTask != nil && pollingFor == ownUin { return }
+        let account = AccountManager.shared.activeAccountID
+        if pollTask != nil && pollingFor == ownUin && pollingAccount == account { return }
         pollTask?.cancel()
         pollingFor = ownUin
+        pollingAccount = account
         pollTask = Task.detached(priority: .utility) {
             while !Task.isCancelled {
                 await drainBackupQueues(ownUin: ownUin)
@@ -419,6 +439,15 @@ enum Multihome {
             let cls: Int?
             let seq: Int?
         }
+        // Whose backup mailboxes these are. The poll loop that calls this is
+        // detached and long-lived, and `ownUin` alone cannot answer the
+        // question: two accounts can hold the same number on two islands, and
+        // `MultihomeStore.list` reads a global App Group key. Re-checked after
+        // every network await below, the same as the main drain: a pass caught
+        // mid-flight by a switch would otherwise decrypt the outgoing
+        // account's rows with the crypto object it still holds and file them,
+        // `contactreq` included, under the incoming one (founder, 30.08).
+        let accountID = AccountManager.shared.activeAccountID
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
             // ⚠ A phantom front home is OUR OWN island: draining it hits the
             // account's real queue through the front with an unnamed recover
@@ -436,6 +465,13 @@ enum Multihome {
                 rows = try? await getQueue(host: home.host, jwt: jwt)
             }
             guard let rows else { continue }
+            // Back from the fetch (and possibly a recover before it). These
+            // rows were asked for on behalf of the account above; if that is
+            // no longer the active one, they belong to nobody here.
+            guard AccountManager.shared.activeAccountID == accountID,
+                  !PanicPINService.shared.isLocked,
+                  !PanicPINService.shared.isDecoy
+            else { return }
             for r in rows {
                 // §5c: a group row in a BACKUP mailbox = that island also hosts
                 // a group we joined (same identity = same mailbox) — file it
@@ -466,6 +502,7 @@ enum Multihome {
             // same drain, same alias, with the token the queue read ended
             // up with. An island without the flag sees neither call.
             if await CrossIslandGroups.hostKeepsGroupLog(home.host) {
+                guard AccountManager.shared.activeAccountID == accountID else { return }
                 await CrossIslandGroups.drainGroupLog(host: home.host, jwt: jwt)
             }
         }

@@ -40,6 +40,18 @@ final class StrangerQuarantine {
         allowed = Set((defaults.array(forKey: allowedKey) as? [Int]) ?? [])
     }
 
+    /// Forget who the burned identity had let through (burn only).
+    ///
+    /// ⚠ The allowances go, the TOGGLE stays. They are not the same thing: the
+    /// allowance list names people the old identity trusted and has no meaning
+    /// under the new one, while the toggle is a standing privacy choice, and
+    /// clearing it would quietly turn the quarantine OFF for someone who had
+    /// switched it on and would never be told. Erase the data, keep the guard.
+    func wipe() {
+        defaults.removeObject(forKey: allowedKey)
+        allowed = []
+    }
+
     /// The Privacy toggle. Default OFF - `bool(forKey:)` reads false for a
     /// key that was never set, which is exactly the default we want.
     var enabled: Bool {

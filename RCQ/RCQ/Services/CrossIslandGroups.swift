@@ -294,6 +294,14 @@ enum CrossIslandGroups {
         // older host island still decodes, and read only for future ordering. The
         // guest mailbox is drained on the server's own fetch cursor, not on `seq`.
         struct Row: Decodable { let envelope_type: String; let payload: String; let group_id: Int?; let cls: Int?; let seq: Int? }
+        // Whose guest mailboxes these are. One pass here can span several
+        // islands and as many round trips, so it outlives an account switch
+        // easily, and `ingest` writes into whatever per-account store `bind`
+        // last installed rather than asking whose row it is holding. Without
+        // this, a §5f `contactreq` read from the outgoing account's guest
+        // mailbox files as a pending request under the incoming account
+        // (founder, 30.08). Same shape as the main drain in `MessageService`.
+        let accountID = AccountManager.shared.activeAccountID
         for v in VisitedIslandsStore.shared.list() {
             var jwt = v.jwt
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
@@ -302,6 +310,13 @@ enum CrossIslandGroups {
                 rows = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
             }
             guard let rows else { continue }
+            // Every fetch above is a suspension point. Checked here rather
+            // than at the top of the loop only: the switch is far likelier to
+            // land inside the network call than between two of them.
+            guard AccountManager.shared.activeAccountID == accountID,
+                  !PanicPINService.shared.isLocked,
+                  !PanicPINService.shared.isDecoy
+            else { return }
             for r in rows {
                 let gid = r.group_id.map { VisitedIslandsStore.shared.aliasFor(host: v.host, remoteId: $0) }
                 let packet = WebSocketService.EnvelopePacket(
@@ -315,6 +330,7 @@ enum CrossIslandGroups {
             // advertises `group_log` gets the fetch; the queue above stays
             // the whole receive path for every other one.
             if await hostKeepsGroupLog(v.host) {
+                guard AccountManager.shared.activeAccountID == accountID else { return }
                 await drainGroupLog(host: v.host, jwt: jwt)
             }
         }

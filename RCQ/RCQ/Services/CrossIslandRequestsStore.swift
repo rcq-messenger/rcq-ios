@@ -91,6 +91,20 @@ final class CrossIslandRequestsStore: ObservableObject {
         requestCount = cache.count
     }
 
+    /// Forget every held request and every block of the active account (burn
+    /// only). A burn mints a fresh identity under the SAME account UUID, so
+    /// these keys do not change and nothing else clears them: strangers who
+    /// wrote to the burned identity surfaced as pending requests to the new
+    /// one, holding their sealed payloads with them. A switch must NOT call
+    /// this, `bind` is that path.
+    func wipe() {
+        defaults.removeObject(forKey: key)
+        defaults.removeObject(forKey: blockedKey)
+        cache = [:]
+        blocked = []
+        requestCount = 0
+    }
+
     private func reqKey(_ uin: Int, _ host: String) -> String { "\(uin)@\(host.lowercased())" }
 
     func isBlocked(uin: Int, host: String) -> Bool { blocked.contains(reqKey(uin, host)) }
