@@ -2255,19 +2255,33 @@ private struct ContactRow: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                                 .lineLimit(1)
                         }
-                    } else if let m = contact.statusMessage, !m.isEmpty {
-                        Text("· \(m)")
-                            .font(.caption2.italic())
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .lineLimit(1)
-                    } else if contact.status == .offline,
-                              let last = contact.lastSeen {
-                        // Server already gates this by visibility — null
-                        // means hidden, online users get null too.
-                        Text("· \(String(format: "contact.last_seen".localized, Self.relativeLastSeen(last)))")
-                            .font(.caption2)
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .lineLimit(1)
+                    } else {
+                        // ⚠ Order matters, and it used to be the other way
+                        // round: a status message won outright, so an OFFLINE
+                        // contact who had one never showed when they were last
+                        // around. Measured on prod 31.08: of 1498 contact rows
+                        // genuinely offline, 455 (30%) carry a status message,
+                        // so for nearly a third of people the last seen was
+                        // invisible everywhere. A status message is text
+                        // somebody left behind; when they are not here, WHEN
+                        // they were here is the more useful half, so it goes
+                        // first and the message keeps whatever room is left.
+                        //
+                        // Server already gates the last seen by visibility -
+                        // null means hidden, and online users get null too.
+                        if contact.status == .offline, let last = contact.lastSeen {
+                            Text("· \(String(format: "contact.last_seen".localized, Self.relativeLastSeen(last)))")
+                                .font(.caption2)
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        if let m = contact.statusMessage, !m.isEmpty {
+                            Text("· \(m)")
+                                .font(.caption2.italic())
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
             }
