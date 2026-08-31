@@ -169,6 +169,17 @@ targets:
       # and crash reports for WebRTC frames come back as raw
       # addresses. Pulling the dSYM in here makes WebRTC traces
       # symbolicated like the rest of the app.
+      # ⚠ 2026-08-31: upstream release 147.0.0 ships ONE asset,
+      # WebRTC-M147.xcframework.zip, and there is no dSYM inside any
+      # slice of it and no separate dSYM asset. So this phase finds
+      # nothing and logs "[dSYM] WebRTC.framework.dSYM not found",
+      # which is expected, not a misconfiguration. Consequence:
+      # App Store Connect warns about a missing dSYM for
+      # WebRTC.framework and WebRTC crash frames come back as raw
+      # addresses. It does not block an upload. Verified against our
+      # own mirror, whose checksum is upstream's, so this is how the
+      # release is built and not something the mirror dropped. The
+      # phase stays because a later release may ship one again.
       - name: Copy WebRTC dSYM into archive
         runOnlyWhenInstalling: true
         # No declared inputs/outputs because the script's job is to
