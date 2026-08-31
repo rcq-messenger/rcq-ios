@@ -2300,22 +2300,29 @@ private struct ContactRow: View {
     /// Coarse "last seen" buckets — minutes / hours / days. Anything
     /// over a week falls back to a localised short date so the row
     /// doesn't read "9999h ago" for long-dormant contacts.
+    /// "Last seen" in WORDS, not numbers (founder, 31.08).
+    ///
+    /// ⚠ "was here 47 minutes ago" is an activity pattern: read it a few times
+    /// a day and you know when someone wakes up, commutes and sleeps. Nobody
+    /// needs that to decide whether to write - "recently" answers the same
+    /// question. The island already floors what it serves to the hour (A7), so
+    /// the minutes were never real; printing them dressed a floored hour up as
+    /// precision it does not have. Same buckets on every client.
     fileprivate static func relativeLastSeen(_ date: Date) -> String {
-        let secs = Int(-date.timeIntervalSinceNow)
-        if secs < 60 { return "contact.last_seen.just_now".localized }
-        let mins = secs / 60
-        if mins < 60 {
-            return String(format: "contact.last_seen.minutes".localized, mins)
+        if -date.timeIntervalSinceNow < 3600 { return "contact.last_seen.recently".localized }
+        // Calendar days, not 24-hour blocks: "yesterday" has to mean yesterday
+        // to a person, not "between 24 and 48 hours ago".
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "contact.last_seen.today".localized }
+        if cal.isDateInYesterday(date) { return "contact.last_seen.yesterday".localized }
+        let midnight = cal.startOfDay(for: Date())
+        if date >= cal.date(byAdding: .day, value: -6, to: midnight) ?? midnight {
+            return "contact.last_seen.this_week".localized
         }
-        let hours = mins / 60
-        if hours < 24 {
-            return String(format: "contact.last_seen.hours".localized, hours)
+        if date >= cal.date(byAdding: .day, value: -29, to: midnight) ?? midnight {
+            return "contact.last_seen.this_month".localized
         }
-        let days = hours / 24
-        if days < 7 {
-            return String(format: "contact.last_seen.days".localized, days)
-        }
-        return DateFormatter.lastSeenLong.string(from: date)
+        return "contact.last_seen.long_ago".localized
     }
 }
 
