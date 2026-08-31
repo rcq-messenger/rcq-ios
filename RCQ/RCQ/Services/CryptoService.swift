@@ -199,6 +199,17 @@ enum Envelope: Codable, Hashable {
     case gsKey(gid: Int, ver: Int64, key: String)
     /// Room state key ask-back (wire "gsknack", outer "sknack").
     case gsKnack(gid: Int)
+    /// Profile key hand-off (wire "pkey", outer "skdm"). The AES-256-GCM key
+    /// my avatar blob is sealed under, handed to ONE contact. The island used
+    /// to hold this itself, in `users.avatar_media_key` beside the uin and the
+    /// nickname, so a seized island opened every face it stored. Rides "skdm"
+    /// because that token already exists: a NEW outer type would itself
+    /// announce "this account just changed its picture".
+    /// See docs/profile-key-design.md.
+    case pkey(key: String)
+    /// Profile key ask-back (wire "pkeyask", outer "sknack"). Only the OWNER
+    /// can answer, unlike a room key where any member can.
+    case pkeyAsk
     /// Cross-island call signaling (wire kind "call", spec §5d). Same-island
     /// calls ride the WS as plaintext call_* events; across islands there is
     /// no shared socket, so the SAME signal payload is wrapped here, v=1-sealed
@@ -447,6 +458,11 @@ enum Envelope: Codable, Hashable {
         case .gsKnack(let gid):
             try c.encode("gsknack", forKey: .kind)
             try c.encode(gid, forKey: .gid)
+        case .pkey(let key):
+            try c.encode("pkey", forKey: .kind)
+            try c.encode(key, forKey: .key)
+        case .pkeyAsk:
+            try c.encode("pkeyask", forKey: .kind)
         case .carbon(let to, let gid, let env):
             try c.encode("carbon", forKey: .kind)
             try c.encodeIfPresent(to, forKey: .to)
@@ -638,6 +654,10 @@ enum Envelope: Codable, Hashable {
             )
         case "gsknack":
             self = .gsKnack(gid: try c.decode(Int.self, forKey: .gid))
+        case "pkey":
+            self = .pkey(key: try c.decode(String.self, forKey: .key))
+        case "pkeyask":
+            self = .pkeyAsk
         case "carbon":
             self = .carbon(
                 to: try c.decodeIfPresent(Int.self, forKey: .to),
@@ -733,6 +753,8 @@ enum Envelope: Codable, Hashable {
         case .readMark: return "readmark"
         case .gsKey: return "gskey"
         case .gsKnack: return "gsknack"
+        case .pkey: return "pkey"
+        case .pkeyAsk: return "pkeyask"
         case .callSignal: return "call"
         case .contactRequest: return "contactreq"
         case .profile: return "profile"

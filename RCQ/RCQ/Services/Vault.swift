@@ -30,6 +30,17 @@ enum Vault {
     /// and attaches no meaning to either.
     static let sections = "sections"
 
+    /// My profile key: the AES key my avatar blob is sealed under, mirrored so
+    /// a second install of this account reuses it instead of minting a rival
+    /// one (docs/profile-key-design.md).
+    ///
+    /// ⚠⚠ The literal must stay exactly "pkey". [slotId] hashes the NAME, and
+    /// the other clients derive the same 16 bytes from the same literal. A
+    /// different spelling does not fail - it succeeds against a slot nobody
+    /// else reads, so a phone and a browser on one account mint two keys and
+    /// half the contacts end up with one that opens nothing.
+    static let profileKey = "pkey"
+
     enum SealError: Error { case format, seal }
 
     private static let formatV1: UInt8 = 0x01

@@ -56,6 +56,21 @@ struct Contact: Identifiable, Hashable, Codable {
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
 
+    /// The key that actually opens this person's picture.
+    ///
+    /// The island no longer holds the key for a picture set under the
+    /// profile-key model (docs/profile-key-design.md), so `avatarMediaKey`
+    /// arrives nil and the real key is the one its owner sealed to us. Reading
+    /// it HERE means every screen that draws a face gets it without a copy of
+    /// the fallback each. Still nil for someone who never handed it over -
+    /// which draws the same lettered tile as "no picture at all", deliberately
+    /// indistinguishable so the tile never becomes an "am I entitled" oracle.
+    @MainActor
+    var avatarKeyResolved: String? {
+        if let k = avatarMediaKey, !k.isEmpty { return k }
+        return ProfileKeyStore.shared.key(for: uin)
+    }
+
     var id: Int { uin }
 
     enum CodingKeys: String, CodingKey {
