@@ -368,12 +368,18 @@ targets:
 packages:
   # Pre-built WebRTC.xcframework distributed by the stasel community fork.
   # Apple-signed Chromium-based libwebrtc — same media stack Signal/Discord
-  # use. Pin to a specific tag so future releases don't yank the binary
-  # checksum out from under us. Bumping later: pick a fresh release from
-  # https://github.com/stasel/WebRTC/releases and update the version below.
+  # use.
+  #
+  # ⚠⚠ Deliberately NOT `url: https://github.com/stasel/WebRTC`. Upstream's
+  # manifest points its binaryTarget at a GitHub RELEASE ASSET, which redirects
+  # to release-assets.githubusercontent.com — a host RU carriers throttle or
+  # drop. Every machine with a cold artifact cache (fresh clone, new
+  # contributor, anyone who cleaned DerivedData) then fails the build with a
+  # missing WebRTC.xcframework, and "resolve again" is a coin flip, not a fix.
+  # Vendor/WebRTCBinary is the same package with the same checksum, served from
+  # dl.rcq.app instead. Its header carries the bump recipe.
   WebRTC:
-    url: https://github.com/stasel/WebRTC
-    exactVersion: 147.0.0
+    path: Vendor/WebRTCBinary
   # signalapp/libsignal Swift bindings, vendored at v0.93.1 in
   # Vendor/libsignal/ (full upstream source plus a prebuilt
   # libsignal_ffi.xcframework so consumers don't need a Rust toolchain).
