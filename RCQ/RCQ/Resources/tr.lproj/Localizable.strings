@@ -844,10 +844,12 @@
 "about.contact.faq" = "SSS";
 "about.contact.github" = "Kaynak kod (iOS)";
 "contact.last_seen" = "son görülme %@";
-"contact.last_seen.just_now" = "az önce";
-"contact.last_seen.minutes" = "%d dk önce";
-"contact.last_seen.hours" = "%d sa önce";
-"contact.last_seen.days" = "%d gün önce";
+"contact.last_seen.recently" = "az önce";
+"contact.last_seen.today" = "bugün";
+"contact.last_seen.yesterday" = "dün";
+"contact.last_seen.this_week" = "bu hafta";
+"contact.last_seen.this_month" = "bu ay";
+"contact.last_seen.long_ago" = "uzun zaman önce";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 /* Pet names, slug-keyed */
 /* Voice packs (notification sounds) */

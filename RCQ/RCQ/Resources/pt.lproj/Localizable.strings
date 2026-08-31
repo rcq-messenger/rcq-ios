@@ -844,10 +844,12 @@
 "about.contact.faq" = "FAQ";
 "about.contact.github" = "Código-fonte (iOS)";
 "contact.last_seen" = "visto por último %@";
-"contact.last_seen.just_now" = "agora mesmo";
-"contact.last_seen.minutes" = "há %dm";
-"contact.last_seen.hours" = "há %dh";
-"contact.last_seen.days" = "há %dd";
+"contact.last_seen.recently" = "há pouco";
+"contact.last_seen.today" = "hoje";
+"contact.last_seen.yesterday" = "ontem";
+"contact.last_seen.this_week" = "esta semana";
+"contact.last_seen.this_month" = "este mês";
+"contact.last_seen.long_ago" = "há muito tempo";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 /* Pet names, slug-keyed */
 /* Voice packs (notification sounds) */

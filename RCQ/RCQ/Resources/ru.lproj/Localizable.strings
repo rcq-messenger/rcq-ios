@@ -890,10 +890,12 @@
 "about.contact.github" = "Исходный код (iOS)";
 
 "contact.last_seen" = "был в сети %@";
-"contact.last_seen.just_now" = "только что";
-"contact.last_seen.minutes" = "%d мин назад";
-"contact.last_seen.hours" = "%d ч назад";
-"contact.last_seen.days" = "%d дн назад";
+"contact.last_seen.recently" = "недавно";
+"contact.last_seen.today" = "сегодня";
+"contact.last_seen.yesterday" = "вчера";
+"contact.last_seen.this_week" = "на этой неделе";
+"contact.last_seen.this_month" = "в этом месяце";
+"contact.last_seen.long_ago" = "давно";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 

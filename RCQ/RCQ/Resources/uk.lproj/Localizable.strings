@@ -844,10 +844,12 @@
 "about.contact.faq" = "Питання і відповіді";
 "about.contact.github" = "Вихідний код (iOS)";
 "contact.last_seen" = "востаннє %@";
-"contact.last_seen.just_now" = "щойно";
-"contact.last_seen.minutes" = "%d хв тому";
-"contact.last_seen.hours" = "%d год тому";
-"contact.last_seen.days" = "%d дн тому";
+"contact.last_seen.recently" = "нещодавно";
+"contact.last_seen.today" = "сьогодні";
+"contact.last_seen.yesterday" = "вчора";
+"contact.last_seen.this_week" = "цього тижня";
+"contact.last_seen.this_month" = "цього місяця";
+"contact.last_seen.long_ago" = "давно";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 /* Pet names, slug-keyed */
 /* Voice packs (notification sounds) */

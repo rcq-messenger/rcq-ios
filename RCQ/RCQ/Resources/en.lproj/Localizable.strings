@@ -913,10 +913,12 @@
 "about.contact.github" = "Source code (iOS)";
 
 "contact.last_seen" = "last seen %@";
-"contact.last_seen.just_now" = "just now";
-"contact.last_seen.minutes" = "%dm ago";
-"contact.last_seen.hours" = "%dh ago";
-"contact.last_seen.days" = "%dd ago";
+"contact.last_seen.recently" = "recently";
+"contact.last_seen.today" = "today";
+"contact.last_seen.yesterday" = "yesterday";
+"contact.last_seen.this_week" = "this week";
+"contact.last_seen.this_month" = "this month";
+"contact.last_seen.long_ago" = "a long time ago";
 
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 

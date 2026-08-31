@@ -835,10 +835,12 @@
 "about.contact.faq" = "常见问题";
 "about.contact.github" = "源代码（iOS）";
 "contact.last_seen" = "最后上线 %@";
-"contact.last_seen.just_now" = "刚刚";
-"contact.last_seen.minutes" = "%d 分钟前";
-"contact.last_seen.hours" = "%d 小时前";
-"contact.last_seen.days" = "%d 天前";
+"contact.last_seen.recently" = "最近";
+"contact.last_seen.today" = "今天";
+"contact.last_seen.yesterday" = "昨天";
+"contact.last_seen.this_week" = "本周";
+"contact.last_seen.this_month" = "本月";
+"contact.last_seen.long_ago" = "很久以前";
 /* ── Item badges + lore (localized; see ItemDisplay/Item) ─── */
 /* Pet names, slug-keyed */
 /* Voice packs (notification sounds) */

@@ -1183,22 +1183,23 @@ struct ChatView: View {
     /// subtitle reads identically to the contacts list row that led
     /// the user here. Re-declared (not shared) because the contact
     /// helper is `fileprivate` to its file.
+    ///
+    /// ⚠ Keep the two in step. This copy still said "47m ago" for a build
+    /// where the list had already moved to words, which would have printed
+    /// raw keys the moment the numeric strings were dropped (caught 31.08).
     private static func relativeLastSeen(_ date: Date) -> String {
-        let secs = Int(-date.timeIntervalSinceNow)
-        if secs < 60 { return "contact.last_seen.just_now".localized }
-        let mins = secs / 60
-        if mins < 60 {
-            return String(format: "contact.last_seen.minutes".localized, mins)
+        if -date.timeIntervalSinceNow < 3600 { return "contact.last_seen.recently".localized }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) { return "contact.last_seen.today".localized }
+        if cal.isDateInYesterday(date) { return "contact.last_seen.yesterday".localized }
+        let midnight = cal.startOfDay(for: Date())
+        if date >= cal.date(byAdding: .day, value: -6, to: midnight) ?? midnight {
+            return "contact.last_seen.this_week".localized
         }
-        let hours = mins / 60
-        if hours < 24 {
-            return String(format: "contact.last_seen.hours".localized, hours)
+        if date >= cal.date(byAdding: .day, value: -29, to: midnight) ?? midnight {
+            return "contact.last_seen.this_month".localized
         }
-        let days = hours / 24
-        if days < 7 {
-            return String(format: "contact.last_seen.days".localized, days)
-        }
-        return chatHeaderLastSeenFmt.string(from: date)
+        return "contact.last_seen.long_ago".localized
     }
 
     /// Long-form fallback for >7-day-old timestamps. Local copy of
