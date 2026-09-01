@@ -1779,3 +1779,20 @@
 
 "create_group.warn.cross_not_invited" = "Grup oluşturuldu ama davet şu kişilere ulaşmadı: %@. Grup bağlantısını kendin gönder.";
 "group.add.warn.link_undelivered" = "%@ grupta ama davet bağlantısı gitmedi. Bağlantıyı kendin gönder.";
+
+/* `.rcq` tarayıcısı. */
+"contact_list.menu.sites" = "Siteler (.rcq)";
+"sites.back" = "Geri";
+"sites.address.placeholder" = "ad.rcq";
+"sites.reload" = "Yenile";
+"sites.catalogue" = "Adanızda";
+"sites.empty.title" = "Ağın içindeki sayfalar";
+"sites.empty.body" = "Bir adres yazın, örneğin blog.rcq. Sayfalar yalnızca metin ve resimdir: betik yok, dışarı bağlantı yok, dışarıdan hiçbir şey yüklenmez.";
+"sites.key_changed" = "Bu site geçen seferkinden farklı bir anahtarla imzalanmış.";
+"sites.key_changed.accept" = "Yeni anahtara güven";
+"sites.error.address" = "Adres şöyle görünür: ad.rcq veya ad.ada.rcq";
+"sites.error.missing" = "Böyle bir site yok ya da ada yanıt vermedi.";
+"sites.error.frozen" = "Ada bu siteyi dondurdu.";
+"sites.error.unsigned" = "Bu sitenin imzası tutmuyor. Hiçbir şey gösterilmedi.";
+"sites.error.tampered" = "Bir dosya, sahibinin imzaladığıyla uyuşmuyor. Hiçbir şey gösterilmedi.";
+"sites.error.offline" = "O adaya ulaşılamadı.";

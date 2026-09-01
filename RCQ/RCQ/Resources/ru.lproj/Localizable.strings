@@ -1938,3 +1938,20 @@
 
 "create_group.warn.cross_not_invited" = "Группа создана, но приглашение не дошло до: %@. Отправь им ссылку на группу сам.";
 "group.add.warn.link_undelivered" = "%@ в группе, но ссылка-приглашение не ушла. Отправь ссылку сам.";
+
+/* Браузер `.rcq`. */
+"contact_list.menu.sites" = "Сайты (.rcq)";
+"sites.back" = "Назад";
+"sites.address.placeholder" = "имя.rcq";
+"sites.reload" = "Обновить";
+"sites.catalogue" = "На вашем острове";
+"sites.empty.title" = "Страницы внутри сети";
+"sites.empty.body" = "Введите адрес, например blog.rcq. Страницы это только текст и картинки: без скриптов, без ссылок наружу, ничего не грузится извне.";
+"sites.key_changed" = "Сайт подписан другим ключом, чем в прошлый раз.";
+"sites.key_changed.accept" = "Доверять новому ключу";
+"sites.error.address" = "Адрес выглядит так: имя.rcq или имя.остров.rcq";
+"sites.error.missing" = "Такого сайта нет, или остров не ответил.";
+"sites.error.frozen" = "Остров заморозил этот сайт.";
+"sites.error.unsigned" = "Подпись сайта не сходится. Ничего не показано.";
+"sites.error.tampered" = "Файл не совпадает с тем, что подписал владелец. Ничего не показано.";
+"sites.error.offline" = "Не удалось достучаться до острова.";

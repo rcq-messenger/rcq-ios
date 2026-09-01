@@ -87,4 +87,26 @@ enum SigningKeys {
         guard let sig = Data(base64Encoded: signatureB64) else { return false }
         return verify(role, message: message, signature: sig)
     }
+
+    /// Ed25519 under a key the CALLER hands in, for a payload that names its
+    /// own signer. Used by `.rcq` site manifests (`SiteManifest`).
+    ///
+    /// ⚠⚠ Deliberately NOT a `Role`, and it must never become one. A Role is a
+    /// key this BUILD accepts, compiled in for the reason the comment at the top
+    /// of this file gives: so a stolen key can be retired by signing with its
+    /// successor instead of by shipping a release. A site's key is the opposite
+    /// kind of thing — it arrives inside the payload, anybody with an island
+    /// account can mint one, and there are as many of them as there are sites.
+    /// Adding one to the accepted set would let whoever published a site sign
+    /// relay config and the island list, which is the whole fleet.
+    ///
+    /// What this function proves is only that ONE key signed these bytes. What
+    /// binds that key to a site is the trust-on-first-use pin in `SitePins`, the
+    /// same rule as safety numbers — never this call on its own.
+    static func verify(publicKey: Data, message: Data, signature: Data) -> Bool {
+        guard let key = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKey) else {
+            return false
+        }
+        return key.isValidSignature(signature, for: message)
+    }
 }

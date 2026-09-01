@@ -1987,3 +1987,21 @@
 
 "create_group.warn.cross_not_invited" = "Group created, but the invite did not reach: %@. Send them the group link yourself.";
 "group.add.warn.link_undelivered" = "%@ was added, but the invite link did not go out. Send them the group link yourself.";
+
+/* The `.rcq` browser. Keys mirror the web's `sites.*` and Android's `sites_*`;
+   the six error spellings are `SiteError`'s raw values, so they must not drift. */
+"contact_list.menu.sites" = "Sites (.rcq)";
+"sites.back" = "Back";
+"sites.address.placeholder" = "name.rcq";
+"sites.reload" = "Reload";
+"sites.catalogue" = "On your island";
+"sites.empty.title" = "Pages inside the network";
+"sites.empty.body" = "Type an address, for example blog.rcq. Pages are text and pictures only: no scripts, no outward links, nothing loaded from outside.";
+"sites.key_changed" = "This site is signed by a different key than the last time you opened it.";
+"sites.key_changed.accept" = "Trust the new key";
+"sites.error.address" = "An address looks like name.rcq or name.island.rcq";
+"sites.error.missing" = "No such site, or the island did not answer.";
+"sites.error.frozen" = "The island has frozen this site.";
+"sites.error.unsigned" = "The signature on this site does not check out. Nothing was shown.";
+"sites.error.tampered" = "A file does not match what the owner signed. Nothing was shown.";
+"sites.error.offline" = "Could not reach that island.";

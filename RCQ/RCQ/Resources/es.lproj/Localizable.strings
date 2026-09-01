@@ -1779,3 +1779,20 @@
 
 "create_group.warn.cross_not_invited" = "Grupo creado, pero la invitación no llegó a: %@. Envíales el enlace del grupo tú mismo.";
 "group.add.warn.link_undelivered" = "%@ está en el grupo, pero el enlace de invitación no salió. Envía el enlace tú mismo.";
+
+/* El navegador `.rcq`. */
+"contact_list.menu.sites" = "Sitios (.rcq)";
+"sites.back" = "Atrás";
+"sites.address.placeholder" = "nombre.rcq";
+"sites.reload" = "Recargar";
+"sites.catalogue" = "En tu isla";
+"sites.empty.title" = "Páginas dentro de la red";
+"sites.empty.body" = "Escribe una dirección, por ejemplo blog.rcq. Las páginas son solo texto e imágenes: sin scripts, sin enlaces hacia fuera, nada cargado desde fuera.";
+"sites.key_changed" = "Este sitio está firmado con una clave distinta a la de la última vez.";
+"sites.key_changed.accept" = "Confiar en la nueva clave";
+"sites.error.address" = "Una dirección se ve así: nombre.rcq o nombre.isla.rcq";
+"sites.error.missing" = "No existe ese sitio, o la isla no respondió.";
+"sites.error.frozen" = "La isla ha congelado este sitio.";
+"sites.error.unsigned" = "La firma de este sitio no cuadra. No se mostró nada.";
+"sites.error.tampered" = "Un archivo no coincide con lo que firmó el propietario. No se mostró nada.";
+"sites.error.offline" = "No se pudo llegar a esa isla.";
