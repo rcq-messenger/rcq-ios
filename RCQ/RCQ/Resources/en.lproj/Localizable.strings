@@ -1807,6 +1807,7 @@
 "uin.error.suspended" = "The account is suspended, so its numbers cannot be changed.";
 "uin.error.too_many" = "You already hold as many numbers as one account can. Release one on My UINs first.";
 "uin_shop.error.generic" = "The server refused. Try again.";
+"uin_shop.error.reserved" = "Short and patterned numbers are not given out. Try another one.";
 "uin_shop.info.cap.title" = "How many you can hold";
 "uin_shop.info.cap.body" = "One account can hold up to %1$d numbers, and you hold %2$d. You can give one back on My UINs, but not the one you answer as, and not undo it: a released number goes back into the pool for anyone to take.";
 

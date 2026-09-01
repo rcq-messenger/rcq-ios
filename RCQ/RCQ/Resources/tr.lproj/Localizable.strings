@@ -1654,6 +1654,7 @@
 "uin.error.suspended" = "Hesap askıya alınmış, bu yüzden numaraları değiştirilemez.";
 "uin.error.too_many" = "Bir hesabın tutabileceği kadar numaranız zaten var. Önce UIN'lerim ekranında bir tanesini serbest bırakın.";
 "uin_shop.error.generic" = "Sunucu kabul etmedi. Tekrar deneyin.";
+"uin_shop.error.reserved" = "Kısa ve desenli numaralar dağıtılmıyor. Başka bir tane dene.";
 "uin_shop.info.cap.title" = "Kaç tane tutabilirsiniz";
 "uin_shop.info.cap.body" = "Bir hesap en fazla %1$d numara tutabilir, sizde şu anda %2$d tane var. UIN'lerim ekranında bir numarayı geri verebilirsiniz, yanıt verdiğiniz numara hariç, ve bu geri alınamaz: serbest bırakılan numara havuza döner ve onu herkes alabilir.";
 /* Full network check (NetworkAudit) */

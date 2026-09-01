@@ -1654,6 +1654,7 @@
 "uin.error.suspended" = "La cuenta está suspendida, así que sus números no se pueden cambiar.";
 "uin.error.too_many" = "Ya tienes tantos números como puede tener una cuenta. Libera uno en Mis UIN primero.";
 "uin_shop.error.generic" = "El servidor lo rechazó. Inténtalo de nuevo.";
+"uin_shop.error.reserved" = "Los números cortos y con patrón no se entregan. Prueba con otro.";
 "uin_shop.info.cap.title" = "Cuántos puedes tener";
 "uin_shop.info.cap.body" = "Una cuenta puede tener hasta %1$d números, y tú tienes %2$d. Puedes devolver uno en Mis UIN, salvo aquel con el que respondes, y no se puede deshacer: un número liberado vuelve al fondo común y cualquiera puede tomarlo.";
 /* Full network check (NetworkAudit) */
