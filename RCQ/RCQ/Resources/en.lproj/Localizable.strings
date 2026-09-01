@@ -1785,6 +1785,7 @@
 "my_uins.use" = "Switch";
 "my_uins.empty" = "Nothing here yet. Numbers you take without moving onto them show up here.";
 "my_uins.footer" = "While you answer as one number, the rest are simply reserved for you. Nobody else can take them.";
+"my_uins.closed" = "Collections are closed: an account keeps one number. The one you use is above; nothing else is held for you.";
 "my_uins.confirm.title" = "Answer as %@?";
 "my_uins.confirm.body" = "Contacts, groups, profile and history move onto it. Number %@ stays yours and stays on this screen, so you can move back whenever you like.";
 "my_uins.settings.footer" = "The numbers this account holds, and which one it answers as.";

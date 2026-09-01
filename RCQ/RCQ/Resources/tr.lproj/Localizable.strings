@@ -1634,6 +1634,7 @@
 "my_uins.use" = "Geç";
 "my_uins.empty" = "Henüz burada bir şey yok. Alıp üzerine geçmediğin numaralar burada görünür.";
 "my_uins.footer" = "Sen bir numarayla cevap verirken diğerleri senin için ayrılmış durur. Kimse alamaz.";
+"my_uins.closed" = "Koleksiyonlar kapandı: bir hesapta tek numara olur. Kullandığınız numara yukarıda, başka bir şey size ayrılmış değil.";
 "my_uins.confirm.title" = "%@ olarak cevap verilsin mi?";
 "my_uins.confirm.body" = "Kişiler, gruplar, profil ve geçmiş bu numaraya taşınır. %@ numarası senin kalır ve bu ekranda durur, istediğin zaman geri dönebilirsin.";
 "my_uins.settings.footer" = "Bu hesabın elindeki numaralar ve hangisiyle cevap verdiği.";

@@ -1634,6 +1634,7 @@
 "my_uins.use" = "Trocar";
 "my_uins.empty" = "Nada aqui ainda. Os números que você pega sem passar a usar aparecem aqui.";
 "my_uins.footer" = "Enquanto você responde por um número, os outros ficam simplesmente reservados para você. Ninguém mais pode pegar.";
+"my_uins.closed" = "As coleções estão fechadas: uma conta tem um número. O que você usa está acima, nada mais está reservado para você.";
 "my_uins.confirm.title" = "Responder como %@?";
 "my_uins.confirm.body" = "Contatos, grupos, perfil e histórico passam para ele. O número %@ continua seu e continua nesta tela, então dá para voltar quando quiser.";
 "my_uins.settings.footer" = "Os números que esta conta guarda, e por qual deles ela responde.";
