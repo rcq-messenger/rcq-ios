@@ -1770,3 +1770,20 @@
 
 "create_group.warn.cross_not_invited" = "群组已创建，但邀请未送达：%@。请自行把群组链接发给他们。";
 "group.add.warn.link_undelivered" = "%@ 已入群，但邀请链接未发出。请自行发送链接。";
+
+/* `.rcq` 浏览器。 */
+"contact_list.menu.sites" = "站点 (.rcq)";
+"sites.back" = "返回";
+"sites.address.placeholder" = "名称.rcq";
+"sites.reload" = "刷新";
+"sites.catalogue" = "你的岛屿上";
+"sites.empty.title" = "网络内部的页面";
+"sites.empty.body" = "输入一个地址，例如 blog.rcq。页面只有文字和图片：没有脚本，没有对外链接，不从外部加载任何内容。";
+"sites.key_changed" = "此站点的签名密钥与上次不同。";
+"sites.key_changed.accept" = "信任新密钥";
+"sites.error.address" = "地址格式为 名称.rcq 或 名称.岛屿.rcq";
+"sites.error.missing" = "没有这个站点，或岛屿未回应。";
+"sites.error.frozen" = "该岛屿已冻结此站点。";
+"sites.error.unsigned" = "该站点的签名不匹配，未显示任何内容。";
+"sites.error.tampered" = "某个文件与所有者签名的内容不符，未显示任何内容。";
+"sites.error.offline" = "无法连接到该岛屿。";

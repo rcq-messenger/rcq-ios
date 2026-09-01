@@ -75,6 +75,7 @@ struct ContactListView: View {
     @State private var showNearby = false
     @State private var showRandom = false
     @State private var showRadio = false
+    @State private var showSites = false
     @State private var showQR = false
     @State private var showSearch = false
     @State private var previewTarget: ChatTarget?
@@ -380,6 +381,9 @@ struct ContactListView: View {
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
             .fullScreenCover(isPresented: $showRandom) { RandomChatView() }
             .fullScreenCover(isPresented: $showRadio) { RadioDiscoveryView() }
+            // fullScreenCover, like Radio: the address bar is the chrome, and a
+            // sheet would put a grabber and an inch of the chat list above it.
+            .fullScreenCover(isPresented: $showSites) { SitesView() }
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
             .sheet(isPresented: $showCreateGroup) {
@@ -980,6 +984,14 @@ struct ContactListView: View {
                 showRadio = true
             } label: {
                 Label("contact_list.menu.radio".localized, systemImage: "antenna.radiowaves.left.and.right")
+            }
+            // The `.rcq` browser. Here rather than in the bottom bar for the
+            // same reason Stranger Mode is: it is a place you go sometimes, not
+            // one of the four you reach every day (Android home-menu parity).
+            Button {
+                showSites = true
+            } label: {
+                Label("contact_list.menu.sites".localized, systemImage: "globe")
             }
             // RCQ relays engage AUTOMATICALLY when a direct connection is
             // blocked, but auto-detect can be wrong ("connected" yet nothing
