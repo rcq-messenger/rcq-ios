@@ -1945,22 +1945,33 @@ struct ContactListView: View {
             title: "contact_list.ctx.view_info".localized,
             systemImage: "info.circle"
         ) { path.append(contact) })
-        out.append(ContextAction(
-            title: (favorites.contains(peer: contact.uin)
-                    ? "contact_list.ctx.remove_favorite"
-                    : "contact_list.ctx.add_favorite").localized,
-            systemImage: favorites.contains(peer: contact.uin) ? "star.slash" : "star"
-        ) { favorites.toggle(peer: contact.uin) })
+        // ⚠ Not for somebody the person has filed into a section of their own.
+        // A contact lives in exactly ONE bucket, and a user section outranks
+        // both favourites and archive, so these two did nothing visible while
+        // still claiming they had: "Add to favourites" left them exactly where
+        // they were, and archiving would have yanked them out of the section
+        // they were deliberately put in (founder, 01.09).
+        let filedInOwnSection = vm.sectionIndex[Sections.peerKey(contact.uin, host: contact.host)] != nil
+        if !filedInOwnSection {
+            out.append(ContextAction(
+                title: (favorites.contains(peer: contact.uin)
+                        ? "contact_list.ctx.remove_favorite"
+                        : "contact_list.ctx.add_favorite").localized,
+                systemImage: favorites.contains(peer: contact.uin) ? "star.slash" : "star"
+            ) { favorites.toggle(peer: contact.uin) })
+        }
         out.append(ContextAction(
             title: (muted ? "contact_list.ctx.unmute" : "contact_list.ctx.mute").localized,
             systemImage: muted ? "bell" : "bell.slash"
         ) { sound.toggleMute(thread: thread) })
-        out.append(ContextAction(
-            title: (archive.contains(peer: contact.uin)
-                    ? "contact_list.ctx.unarchive"
-                    : "contact_list.ctx.archive").localized,
-            systemImage: archive.contains(peer: contact.uin) ? "tray.and.arrow.up" : "archivebox"
-        ) { archive.toggle(peer: contact.uin) })
+        if !filedInOwnSection {
+            out.append(ContextAction(
+                title: (archive.contains(peer: contact.uin)
+                        ? "contact_list.ctx.unarchive"
+                        : "contact_list.ctx.archive").localized,
+                systemImage: archive.contains(peer: contact.uin) ? "tray.and.arrow.up" : "archivebox"
+            ) { archive.toggle(peer: contact.uin) })
+        }
         if PanicPINService.shared.isConfigured {
             out.append(ContextAction(
                 title: (LockedChatsStore.shared.contains(peer: contact.uin)
@@ -2256,29 +2267,23 @@ private struct ContactRow: View {
                                 .lineLimit(1)
                         }
                     } else {
-                        // ⚠ Order matters, and it used to be the other way
-                        // round: a status message won outright, so an OFFLINE
-                        // contact who had one never showed when they were last
-                        // around. Measured on prod 31.08: of 1498 contact rows
-                        // genuinely offline, 455 (30%) carry a status message,
-                        // so for nearly a third of people the last seen was
-                        // invisible everywhere. A status message is text
-                        // somebody left behind; when they are not here, WHEN
-                        // they were here is the more useful half, so it goes
-                        // first and the message keeps whatever room is left.
-                        //
-                        // Server already gates the last seen by visibility -
-                        // null means hidden, and online users get null too.
-                        if contact.status == .offline, let last = contact.lastSeen {
-                            Text("· \(String(format: "contact.last_seen".localized, Self.relativeLastSeen(last)))")
+                        // Two things worth saying and room for one, so they take
+                        // turns (founder). Before this a status message won
+                        // outright, which hid the last seen for about a third of
+                        // offline contacts; sharing the line was the next try and
+                        // it truncated. Server already gates the last seen by
+                        // visibility - null means hidden, online users get null.
+                        let seen: String? = (contact.status == .offline)
+                            ? contact.lastSeen.map { "· " + String(format: "contact.last_seen".localized, Self.relativeLastSeen($0)) }
+                            : nil
+                        let msg: String? = (contact.statusMessage?.isEmpty == false) ? "· " + contact.statusMessage! : nil
+                        if let seen, let msg {
+                            AltText(a: seen, b: msg)
                                 .font(.caption2)
                                 .foregroundColor(Theme.Color.textSecondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-                        if let m = contact.statusMessage, !m.isEmpty {
-                            Text("· \(m)")
-                                .font(.caption2.italic())
+                        } else if let one = seen ?? msg {
+                            Text(one)
+                                .font(msg != nil && seen == nil ? .caption2.italic() : .caption2)
                                 .foregroundColor(Theme.Color.textSecondary)
                                 .lineLimit(1)
                         }
