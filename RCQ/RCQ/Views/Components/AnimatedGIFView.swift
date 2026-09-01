@@ -21,12 +21,44 @@ struct AnimatedGIFView: View {
     /// chat, which is looked at deliberately, keeps moving.
     var animates: Bool = true
 
+    /// Frames, once they exist. Nil means "not decoded yet", which is not the
+    /// same as "not a GIF": the still fallback below covers both, so a bubble
+    /// is never empty while the decode runs.
+    @State private var decoded: FrameBundle?
+
     var body: some View {
-        if let bundle = Self.cachedFrames(for: data), !bundle.frames.isEmpty, !animates {
+        content
+            // ⚠⚠ The decode used to happen inside `body`, which means on the
+            // main thread, for every GIF the moment it appeared. Walking every
+            // frame of an animation through CGImageSourceCreateImageAtIndex is
+            // what Xcode's thread performance checker reports as "Performing
+            // I/O on the main thread can cause hangs", and a chat list of
+            // animated avatars pays it once per avatar, in one frame.
+            //
+            // Only a MISS goes off the main thread. The cache lookup below
+            // stays synchronous and stays in `body`, because that is what keeps
+            // a cell scrolled back into view from flickering through the still.
+            .task(id: data.hashValue) {
+                if decoded != nil || Self.cached(for: data) != nil { return }
+                let blob = data
+                let bundle = await Task.detached(priority: .userInitiated) {
+                    Self.decodeFrames(for: blob)
+                }.value
+                decoded = bundle
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        // `decoded` first, then the cache: the same view can be reused for
+        // another blob (list cell recycling), and `task(id:)` reruns for it
+        // while the old bundle is still in `decoded`.
+        let bundle = Self.cached(for: data) ?? decoded
+        if let bundle, !bundle.frames.isEmpty, !animates {
             Image(uiImage: bundle.frames[0])
                 .resizable()
                 .aspectRatio(contentMode: contentMode)
-        } else if let bundle = Self.cachedFrames(for: data), !bundle.frames.isEmpty {
+        } else if let bundle, !bundle.frames.isEmpty {
             TimelineView(.animation) { ctx in
                 let elapsed = ctx.date.timeIntervalSince1970
                 let phase = elapsed.truncatingRemainder(dividingBy: bundle.duration)
@@ -38,9 +70,9 @@ struct AnimatedGIFView: View {
                     .aspectRatio(contentMode: contentMode)
             }
         } else if let still = UIImage(data: data) {
-            // Single-frame fallback — non-animated payload or decoder
-            // refusal. Render whatever the data decodes to so we never
-            // ship an empty bubble.
+            // Single-frame fallback — non-animated payload, decoder refusal,
+            // or the frames not being decoded yet. Render whatever the data
+            // decodes to so we never ship an empty bubble.
             Image(uiImage: still)
                 .resizable()
                 .aspectRatio(contentMode: contentMode)
@@ -54,7 +86,11 @@ struct AnimatedGIFView: View {
     /// app come straight from `MediaService.loadImageWithData` which
     /// already caches by `mediaID:key`. Two different blobs colliding
     /// to the same hash just causes one decode miss.
-    final class FrameBundle {
+    /// `@unchecked Sendable`: the frames are decoded once, off the main thread,
+    /// and the bundle is immutable from the moment it exists. UIImage itself is
+    /// safe to read from any thread; what is not safe is mutating one, and
+    /// nothing here does.
+    final class FrameBundle: @unchecked Sendable {
         let frames: [UIImage]
         let duration: TimeInterval
         init(frames: [UIImage], duration: TimeInterval) {
@@ -65,7 +101,15 @@ struct AnimatedGIFView: View {
 
     private static let cache = NSCache<NSNumber, FrameBundle>()
 
-    static func cachedFrames(for data: Data) -> FrameBundle? {
+    /// Cache lookup only, no decode. Cheap enough to call from `body`.
+    static func cached(for data: Data) -> FrameBundle? {
+        cache.object(forKey: NSNumber(value: data.hashValue))
+    }
+
+    /// Decode every frame and cache the result. Never call this on the main
+    /// thread: see the note on `body`.
+    @discardableResult
+    static func decodeFrames(for data: Data) -> FrameBundle? {
         let key = NSNumber(value: data.hashValue)
         if let hit = cache.object(forKey: key) { return hit }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }

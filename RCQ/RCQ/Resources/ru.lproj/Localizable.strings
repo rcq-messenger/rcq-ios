@@ -515,6 +515,7 @@
 "chat.links_off.notice" = "Ссылки отключены в этой группе.";
 "chat.files_off.notice" = "Файлы отключены в этой группе.";
 "chat.slowmode.wait" = "Медленный режим: подождите %d с";
+"chat.age_gate.wait" = "В этой группе новички пишут не сразу. Вы сможете примерно через %d ч.";
 "chat.selection.delete" = "Удалить (%d)";
 "chat.selection.forward" = "Переслать (%d)";
 "chat.selection.cancel" = "Отмена";

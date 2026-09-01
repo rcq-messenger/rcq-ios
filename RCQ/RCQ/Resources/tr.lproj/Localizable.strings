@@ -497,6 +497,7 @@
 "chat.links_off.notice" = "Bu grupta bağlantılar kapalı.";
 "chat.files_off.notice" = "Bu grupta dosyalar kapalı.";
 "chat.slowmode.wait" = "Yavaş mod: %d sn bekleyin";
+"chat.age_gate.wait" = "Yeni gelenler burada hemen yazamaz. Yaklaşık %d saat sonra yazabilirsiniz.";
 "chat.selection.delete" = "Sil (%d)";
 "chat.selection.forward" = "İlet (%d)";
 "chat.selection.cancel" = "İptal";

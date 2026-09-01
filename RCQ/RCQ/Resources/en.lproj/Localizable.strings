@@ -531,6 +531,7 @@
 "chat.links_off.notice" = "Links are disabled in this group.";
 "chat.files_off.notice" = "Files are disabled in this group.";
 "chat.slowmode.wait" = "Slow mode: wait %d s";
+"chat.age_gate.wait" = "Newcomers cannot post here right away. You will be able to in about %d h.";
 "chat.selection.delete" = "Delete (%d)";
 "chat.selection.forward" = "Forward (%d)";
 "chat.selection.cancel" = "Cancel";

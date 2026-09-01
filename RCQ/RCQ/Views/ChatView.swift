@@ -848,6 +848,16 @@ struct ChatView: View {
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
         }
         .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice, vm: vm))
+        // ⚠⚠ ONE place speaks a refusal, for every send path. The composer's
+        // own gate above catches what this client can see coming (slow mode it
+        // is counting down itself, links, files); this catches what only the
+        // ISLAND knows - the newcomer waiting period, and slow mode after a
+        // relaunch, when our countdown is empty. Photo, voice, file, share and
+        // retry all go through the same detached send, so they get the sentence
+        // too instead of answering a room rule with a red bubble (#836).
+        .onReceive(SendRefusalStore.shared.$latest.compactMap { $0 }) { _ in
+            if let sentence = SendRefusalStore.shared.take() { roomRuleNotice = sentence }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
@@ -1162,22 +1172,51 @@ struct ChatView: View {
             // the layout box stable so the nickname above doesn't
             // jiggle on swap (a single Text re-render would shrink
             // / grow the line width during animation).
+            // ⚠⚠ The two halves must not fade AT THE SAME TIME. One
+            // `.animation` over the ZStack did exactly that: both sat at half
+            // opacity for the whole crossfade and the one drawn on top smeared
+            // over the one arriving, which reads as a lag in ONE direction.
+            // The outgoing half goes first, the incoming one waits for it. Same
+            // bug and same cure as the web header and as `AltText`.
             Text(verbatim: "#\(live.uin)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Theme.Color.textMono)
                 .opacity(showAlt ? 0 : 1)
+                .animation(.easeInOut(duration: Self.headerFade).delay(showAlt ? 0 : Self.headerFade),
+                           value: showAlt)
             if let ls = live.lastSeen {
                 Text(Self.relativeLastSeen(ls))
                     .font(.system(size: 11))
                     .foregroundColor(Theme.Color.textMono)
                     .opacity(showAlt ? 1 : 0)
                     .lineLimit(1)
+                    .animation(.easeInOut(duration: Self.headerFade).delay(showAlt ? Self.headerFade : 0),
+                               value: showAlt)
             }
         }
-        .animation(.easeInOut(duration: 0.4), value: showAlt)
-        .onAppear { startHeaderSwapTimer(eligible: hasLastSeen) }
-        .onDisappear { stopHeaderSwapTimer() }
+        // ⚠ `.task(id:)`, not `onAppear`. The old timer was a bare `Task {}`
+        // that nothing held and nothing cancelled - `Task.isCancelled` inside
+        // it never became true, and `stopHeaderSwapTimer` was a no-op with a
+        // comment claiming SwiftUI would tear it down. Every re-entry into a
+        // chat left another one running, all toggling the same flag. This one
+        // SwiftUI cancels when the view goes away, and restarts if the peer
+        // stops having a last seen to swap with.
+        .task(id: hasLastSeen) {
+            // Only tick when there is actually something to swap with: saves a
+            // wakeup every 7s on online / hidden-last-seen peers.
+            guard hasLastSeen else { return }
+            while !Task.isCancelled {
+                // 7s per side - the old 3s flipped too fast to read.
+                try? await Task.sleep(nanoseconds: 7_000_000_000)
+                if Task.isCancelled { return }
+                headerShowsLastSeen.toggle()
+            }
+        }
     }
+
+    /// Half of the header crossfade: the outgoing text takes this long to go,
+    /// then the incoming one takes the same to arrive.
+    private static let headerFade: Double = 0.2
 
     /// Mirrors `ContactListView.relativeLastSeen` so the chat-header
     /// subtitle reads identically to the contacts list row that led
@@ -1200,31 +1239,6 @@ struct ChatView: View {
         f.timeStyle = .none
         return f
     }()
-
-    private func startHeaderSwapTimer(eligible: Bool) {
-        // Only fire when there's actually something to swap with —
-        // saves a wakeup every 3s on online / hidden-last-seen peers.
-        guard eligible else { return }
-        // Drive the toggle from a detached Task instead of Foundation
-        // Timer so it lives inside the SwiftUI lifecycle and respects
-        // background suspend automatically.
-        Task { @MainActor in
-            while !Task.isCancelled {
-                // 7s per side — the old 3s flipped too fast to read.
-                try? await Task.sleep(nanoseconds: 7_000_000_000)
-                guard !Task.isCancelled else { break }
-                headerShowsLastSeen.toggle()
-            }
-        }
-    }
-
-    private func stopHeaderSwapTimer() {
-        // No-op for now: the Task self-cancels when the view
-        // disappears via SwiftUI's task-lifecycle, since the captured
-        // `self` triggers a cancellation chain on release. Kept as a
-        // named hook so future explicit-Task-handle bookkeeping has
-        // a single place to anchor onto.
-    }
 
     @ViewBuilder
     private var principalContent: some View {

@@ -497,6 +497,7 @@
 "chat.links_off.notice" = "Los enlaces están desactivados en este grupo.";
 "chat.files_off.notice" = "Los archivos están desactivados en este grupo.";
 "chat.slowmode.wait" = "Modo lento: espera %d s";
+"chat.age_gate.wait" = "Los recién llegados no pueden escribir aquí de inmediato. Podrás hacerlo en unas %d h.";
 "chat.selection.delete" = "Eliminar (%d)";
 "chat.selection.forward" = "Reenviar (%d)";
 "chat.selection.cancel" = "Cancelar";
