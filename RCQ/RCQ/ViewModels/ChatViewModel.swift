@@ -1054,7 +1054,12 @@ final class ChatViewModel: ObservableObject {
             replyTarget = nil
         }
         let snippet = Self.snippet(for: target)
-        let author = senderNickname(target.senderUIN)
+        // ⚠⚠ `wireNickname`, not `senderNickname`: this context ships INSIDE
+        // the sealed envelope, so the quote's author label reaches the very
+        // person it names. `senderNickname` applies MY alias for them, which is
+        // device-only by contract - handing it to them is the one leak worse
+        // than storing it (founder, 01.09).
+        let author = wireNickname(target.senderUIN)
         return ReplyContext(id: target.id, snippet: snippet, authorName: author)
     }
 
@@ -1490,6 +1495,22 @@ final class ChatViewModel: ObservableObject {
         // applied (see its subscription in init); the alias-only lookup is
         // for people who are in neither — e.g. someone who left the group.
         return nickByUIN[uin] ?? ContactAliasStore.shared.alias(for: uin) ?? String(uin)
+    }
+
+    /// The name this person CHOSE, for anything that leaves the device.
+    ///
+    /// Same sources as `senderNickname` in the same order, minus the alias
+    /// layer: the roster first (what they call themselves in this room), then
+    /// the contact row's nickname, then the bare number.
+    func wireNickname(_ uin: Int) -> String {
+        if case .randomPeer = target {
+            return uin == AuthService.shared.ownUIN
+                ? "chat.random.you".localized : "chat.random.stranger".localized
+        }
+        if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
+        if let m = groupMembers.first(where: { $0.uin == uin }) { return m.nickname }
+        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) { return c.nickname }
+        return String(uin)
     }
 
     /// The picture that belongs with `senderNickname(_:)`, read from the same
