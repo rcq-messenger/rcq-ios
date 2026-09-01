@@ -2323,20 +2323,7 @@ private struct ContactRow: View {
     /// the minutes were never real; printing them dressed a floored hour up as
     /// precision it does not have. Same buckets on every client.
     fileprivate static func relativeLastSeen(_ date: Date) -> String {
-        if -date.timeIntervalSinceNow < 3600 { return "contact.last_seen.recently".localized }
-        // Calendar days, not 24-hour blocks: "yesterday" has to mean yesterday
-        // to a person, not "between 24 and 48 hours ago".
-        let cal = Calendar.current
-        if cal.isDateInToday(date) { return "contact.last_seen.today".localized }
-        if cal.isDateInYesterday(date) { return "contact.last_seen.yesterday".localized }
-        let midnight = cal.startOfDay(for: Date())
-        if date >= cal.date(byAdding: .day, value: -6, to: midnight) ?? midnight {
-            return "contact.last_seen.this_week".localized
-        }
-        if date >= cal.date(byAdding: .day, value: -29, to: midnight) ?? midnight {
-            return "contact.last_seen.this_month".localized
-        }
-        return "contact.last_seen.long_ago".localized
+        LastSeenText.relative(date)
     }
 }
 

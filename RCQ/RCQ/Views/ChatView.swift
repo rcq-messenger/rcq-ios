@@ -1188,18 +1188,7 @@ struct ChatView: View {
     /// where the list had already moved to words, which would have printed
     /// raw keys the moment the numeric strings were dropped (caught 31.08).
     private static func relativeLastSeen(_ date: Date) -> String {
-        if -date.timeIntervalSinceNow < 3600 { return "contact.last_seen.recently".localized }
-        let cal = Calendar.current
-        if cal.isDateInToday(date) { return "contact.last_seen.today".localized }
-        if cal.isDateInYesterday(date) { return "contact.last_seen.yesterday".localized }
-        let midnight = cal.startOfDay(for: Date())
-        if date >= cal.date(byAdding: .day, value: -6, to: midnight) ?? midnight {
-            return "contact.last_seen.this_week".localized
-        }
-        if date >= cal.date(byAdding: .day, value: -29, to: midnight) ?? midnight {
-            return "contact.last_seen.this_month".localized
-        }
-        return "contact.last_seen.long_ago".localized
+        LastSeenText.relative(date)
     }
 
     /// Long-form fallback for >7-day-old timestamps. Local copy of
