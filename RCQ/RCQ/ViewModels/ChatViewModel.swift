@@ -1505,14 +1505,21 @@ final class ChatViewModel: ObservableObject {
             let p = PresenceService.shared
             return (p.ownAvatarID, p.ownAvatarKey, .online, nil)
         }
+        // ⚠ The CONTACT list first, because of the status. A group roster is a
+        // snapshot and its status field is as old as the fetch, so a roster
+        // held for an hour reports everybody offline - which is what the "who
+        // reacted" sheet showed. The contact list is kept live by presence
+        // events, so for anyone we actually know it is the better answer; the
+        // roster stays the fallback for the rest of the room, and the sheet
+        // asks for a fresh one as it opens.
+        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
+            return (c.avatarMediaID, c.avatarMediaKey, c.status, c.host)
+        }
         if case .group(let g) = target {
             let members = (GroupService.shared.find(g.id)?.members ?? g.members)
             if let m = members.first(where: { $0.uin == uin }) {
                 return (m.avatarMediaID, m.avatarMediaKey, m.status, g.host)
             }
-        }
-        if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) {
-            return (c.avatarMediaID, c.avatarMediaKey, c.status, c.host)
         }
         return (nil, nil, .offline, nil)
     }

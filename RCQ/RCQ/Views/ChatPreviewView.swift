@@ -19,12 +19,24 @@ struct ChatPreviewView: View {
     @State private var bottomVisible: Bool = true
 
     var body: some View {
-        ZStack(alignment: .top) {
-            messages
+        // ⚠ `safeAreaInset`, not a ZStack overlay. Overlaid, the pill floated on
+        // top of a list that still began at its own padding, so the newest
+        // message was drawn UNDERNEATH it and the taller the text size the more
+        // of it disappeared (founder, 01.09). An inset both places the pill and
+        // reserves its height in the scroll content, so the first bubble starts
+        // below it and later ones still scroll under it. No constant to keep in
+        // step with the pill's own padding, which is what an overlay would have
+        // needed.
+        Group {
             if compact {
-                floatingIdentity
-                    .padding(.top, 12)
-                    .frame(maxWidth: .infinity)
+                messages.safeAreaInset(edge: .top, spacing: 0) {
+                    floatingIdentity
+                        .padding(.top, 12)
+                        .padding(.bottom, 6)
+                        .frame(maxWidth: .infinity)
+                }
+            } else {
+                messages
             }
         }
         .modifier(PreviewFrame(compact: compact, maxHeight: maxHeight))

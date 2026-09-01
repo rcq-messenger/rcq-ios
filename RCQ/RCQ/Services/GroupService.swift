@@ -334,10 +334,17 @@ final class GroupService: ObservableObject {
     /// refreshed by nothing. Android fixed the same hole with the same rule
     /// (`Session.kt`, `rosterFetched`).
     @discardableResult
-    func ensureRoster(_ groupID: Int) async -> RCQGroup? {
+    /// [refresh] fetches even when a roster is already held.
+    ///
+    /// ⚠ A roster carries PRESENCE, and that field is as old as the fetch, so
+    /// one held for an hour reports a room full of offline people. Anything
+    /// that puts a status in front of somebody asks for it fresh; anything that
+    /// only needs keys or names does not, because the roster of a big room is
+    /// expensive (the beta room is 2200 people).
+    func ensureRoster(_ groupID: Int, refresh: Bool = false) async -> RCQGroup? {
         guard let cached = find(groupID) else { return nil }
         if cached.host != nil { return cached }
-        if !cached.members.isEmpty && rosterFetched.contains(groupID) { return cached }
+        if !refresh && !cached.members.isEmpty && rosterFetched.contains(groupID) { return cached }
         guard let full: GroupWithRules = try? await APIClient.shared.request(
             "GET", "/groups/\(groupID)"
         ) else { return cached }

@@ -1719,7 +1719,15 @@ struct ChatView: View {
                                 isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
                                 showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
-                                onShowReactors: { reactorsSheetMessage = msg },
+                                onShowReactors: {
+                                    reactorsSheetMessage = msg
+                                    // The roster we hold carries the presence of
+                                    // whenever it was fetched; ask for a fresh
+                                    // one as the sheet opens.
+                                    if case .group(let g) = vm.target, g.host == nil {
+                                        Task { _ = await GroupService.shared.ensureRoster(g.id, refresh: true) }
+                                    }
+                                },
                                 onLongPress: {
                                     if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
