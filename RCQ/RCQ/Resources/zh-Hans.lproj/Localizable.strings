@@ -488,6 +488,7 @@
 "chat.links_off.notice" = "该群组已禁用链接。";
 "chat.files_off.notice" = "该群组已禁用文件。";
 "chat.slowmode.wait" = "慢速模式：请等待 %d 秒";
+"chat.age_gate.wait" = "新成员不能立即在这里发言。大约 %d 小时后你就可以了。";
 "chat.selection.delete" = "删除（%d）";
 "chat.selection.forward" = "转发（%d）";
 "chat.selection.cancel" = "取消";

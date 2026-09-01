@@ -497,6 +497,7 @@
 "chat.links_off.notice" = "Посилання вимкнено в цій групі.";
 "chat.files_off.notice" = "Файли вимкнено в цій групі.";
 "chat.slowmode.wait" = "Повільний режим: зачекайте %d с";
+"chat.age_gate.wait" = "У цій групі новачки пишуть не одразу. Ви зможете приблизно через %d год.";
 "chat.selection.delete" = "Видалити (%d)";
 "chat.selection.forward" = "Переслати (%d)";
 "chat.selection.cancel" = "Скасувати";

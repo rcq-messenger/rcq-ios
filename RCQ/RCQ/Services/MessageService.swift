@@ -1181,6 +1181,9 @@ final class MessageService {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: .failed)
             }
+            // Only when nothing rescued it above: a copy that landed on another
+            // home is a delivered message, not a refusal to explain (#836).
+            SendRefusalStore.shared.note(error)
             throw error
         }
     }
@@ -1462,6 +1465,10 @@ final class MessageService {
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .group(id: group.id), state: .failed)
             }
+            // The room's own rules land here: the newcomer waiting period and
+            // slow mode are both refusals of THIS post, and until #836 they
+            // reached the person as a red bubble with no sentence attached.
+            SendRefusalStore.shared.note(error)
             throw error
         }
     }
@@ -1806,8 +1813,23 @@ final class MessageService {
             log: Self.log, type: .error, kind, decrypted.senderUIN
         )
         PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted)
+        wantedRequeue = true
         return nil
     }
+
+    /// Raised by `requeueHostlessControl` for the ingest that just ran, and by
+    /// nothing else. Cleared at the top of every `ingest`, read by the legacy
+    /// queue drain right after.
+    ///
+    /// ⚠ A nil answer from `ingest` covers two very different things: "opened
+    /// it and deliberately kept nothing" (a blocked sender, our own echo) and
+    /// "could not deal with it YET". Only the second may not be acked. The
+    /// drain used to treat every nil as the second, so a message from someone
+    /// the user blocked came back on every single drain until the queue TTL
+    /// expired it, thirty days later. `@MainActor` on this class is what makes
+    /// one flag enough: an ingest and the read that follows it cannot be
+    /// interleaved with another.
+    private var wantedRequeue = false
 
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
@@ -1824,6 +1846,7 @@ final class MessageService {
     /// `isUnreadableHere`.
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket, decryptError: inout Error?) -> IngestOutcome? {
+        wantedRequeue = false
         // A fan-out copy sealed for another install of this account. Live
         // delivery is not filtered server-side, so every socket of the
         // account sees every copy; only one of them can open this.
@@ -2279,7 +2302,16 @@ final class MessageService {
             // (no contact row) is just dropped silently. Runs before the 1:1 gate
             // so it covers group messages too.
             let senderContact = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
-            let isBlocked = BlockedContactsStore.shared.contains(decrypted.senderUIN) || (senderContact?.blocked ?? false)
+            // ⚠⚠ Never ourselves, in either gate. A carbon of a message sent
+            // from the user's other device arrives FROM the user's own uin, so
+            // a single stray entry — the user adding and then removing their
+            // own number, Saved Messages, a stale row from an older build —
+            // silently kills every own-message sync there is, with nothing on
+            // screen to explain it and no way back. Android had exactly this
+            // hole and it is the other half of #835.
+            let isSelf = decrypted.senderUIN == ownUIN
+            let isBlocked = !isSelf
+                && (BlockedContactsStore.shared.contains(decrypted.senderUIN) || (senderContact?.blocked ?? false))
             if isBlocked {
                 if let messageID = Self.messageID(in: decrypted.envelope), let contact = senderContact {
                     Task { try? await self.sendEnvelope(.bounce(targetID: messageID), to: contact, localID: nil) }
@@ -2289,7 +2321,7 @@ final class MessageService {
             // User removed this contact (ICQ-style mutual delete). Server
             // can't filter sealed messages by sender; we silently drop on
             // ingest so no banner, no sound, no chat-list reappearance.
-            if RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+            if !isSelf, RemovedContactsStore.shared.contains(decrypted.senderUIN) {
                 return nil
             }
             // Same-island opt-in stranger quarantine (Privacy -> strangers to
@@ -3087,7 +3119,18 @@ final class MessageService {
                         // redelivery makes it readable here. A row that failed
                         // for any other reason — including one we cannot classify
                         // — stays queued, because the next drain may well open it.
-                        if let decryptError, Self.isUnreadableHere(decryptError),
+                        if decryptError == nil, !wantedRequeue {
+                            // Opened fine, and we deliberately kept nothing: a
+                            // blocked or removed sender, a quarantined stranger,
+                            // our own echo. There is nothing a later drain would
+                            // do differently, so acking is not a loss — and NOT
+                            // acking meant the island handed the same row back on
+                            // every drain for the thirty days of the queue TTL.
+                            // `wantedRequeue` is the one deliberate drop that has
+                            // to stay: a cross-island control envelope still
+                            // waiting for its `from_host`.
+                            if r.group_id == nil { ackedDirectIDs.append(r.id) } else { ackedGroupIDs.append(r.id) }
+                        } else if let decryptError, Self.isUnreadableHere(decryptError),
                            r.to_device_id == nil, r.group_id == nil, myDeviceId != 1 {
                             ackedDirectIDs.append(r.id)
                         } else if let decryptError, Self.isPermanentlyUnreadable(decryptError) {
