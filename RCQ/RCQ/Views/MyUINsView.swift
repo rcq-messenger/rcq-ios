@@ -35,6 +35,13 @@ struct MyUINsView: View {
     /// rewrite the whole collection server-side.
     private var busy: Bool { switching != nil || releasing != nil }
 
+    /// The island stopped handing out second numbers and this account holds
+    /// none. Not a loading state: `data` has to be there for it to be true.
+    private var collectionsClosed: Bool {
+        guard let data else { return false }
+        return data.maxOwned <= 0 && data.owned.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
@@ -46,6 +53,19 @@ struct MyUINsView: View {
                         activeCard
 
                         Spacer().frame(height: 6)
+                        // A cap of zero means the island closed collections
+                        // (2026-09-01: one number per account, everywhere).
+                        // Then there is no shelf to draw and no count to draw
+                        // it with — "0 of 10" over an empty list reads as a
+                        // bug, and the honest version is one sentence.
+                        if collectionsClosed {
+                            Text("my_uins.closed".localized)
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 10)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
                         // "3 of 10" — the cap exists, so it belongs on screen
                         // before you hit it, not only in the refusal.
                         caption(
@@ -74,6 +94,7 @@ struct MyUINsView: View {
                                 heldRow(item)
                             }
                         }
+                        }
 
                         if let error {
                             Text(error)
@@ -83,6 +104,7 @@ struct MyUINsView: View {
                                 .padding(.top, 4)
                         }
 
+                        if !collectionsClosed {
                         Text("my_uins.footer".localized)
                             .font(.system(size: 11))
                             .foregroundColor(Theme.Color.textSecondary)
@@ -105,6 +127,7 @@ struct MyUINsView: View {
                         .padding(.top, 2)
                         .padding(.bottom, 16)
                         .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
