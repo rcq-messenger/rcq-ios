@@ -657,6 +657,9 @@ struct PendingRequestsView: View {
             if let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: "") {
                 MessageService.shared.releaseHeldStranger(held)
             }
+            // My other devices hold their own copy of this row (it arrives
+            // without a device id) and would offer to accept it again.
+            Task { await MessageService.shared.sendCIAck(uin: r.uin, host: "", act: "accept") }
             ciRequests = CrossIslandRequestsStore.shared.list()
             Task {
                 // The quarantine gate deliberately skipped the auto-surface;
@@ -696,6 +699,17 @@ struct PendingRequestsView: View {
                 ciBusy = nil
                 ciRequests = CrossIslandRequestsStore.shared.list()
             }
+            // ⚠ The card this device just pinned goes with the ack. Without it
+            // the other device would accept a second time and re-TOFU the peer,
+            // overwriting the very keys every cross-island message to them is
+            // encrypted under.
+            if ok, let c = CrossIslandStore.shared.all().first(where: { $0.uin == r.uin && $0.host == r.host }) {
+                await MessageService.shared.sendCIAck(
+                    uin: r.uin, host: r.host, act: "accept",
+                    card: CICard(nick: c.nickname, ik: c.identityKey, sk: c.signingKey,
+                                 sik: c.signalIdentityKey, gender: c.gender, status: c.statusMessage)
+                )
+            }
         }
     }
 
@@ -710,11 +724,13 @@ struct PendingRequestsView: View {
                 ciBusy = nil
                 ciRequests = CrossIslandRequestsStore.shared.list()
             }
+            await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "decline")
         }
     }
 
     private func blockCI(_ r: CrossIslandRequestsStore.Request) {
         CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
+        Task { await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "block") }
         // A same-island stranger (host "") also joins the native block list:
         // that is the set the ingest drop and the Blocked screen (with its
         // unblock affordance) read, and a blocked stranger with no contact

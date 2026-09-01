@@ -464,7 +464,7 @@ class NotificationService: UNNotificationServiceExtension {
             }
         case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .homeRecord, .skdm, .sknack, .contactRequest,
-             .profile, .readMark, .gsKey, .gsKnack, .pkey, .pkeyAsk,
+             .profile, .readMark, .gsKey, .gsKnack, .pkey, .pkeyAsk, .ciAck,
              // A kind this build cannot read. The generic body is exactly right
              // for it: we know an envelope arrived and nothing more.
              .unknown:
@@ -647,6 +647,10 @@ class NotificationService: UNNotificationServiceExtension {
         case .deleteForEveryone, .readReceipt, .deliveredReceipt, .reaction, .bounce, .visit, .edit,
              .secureScreen, .carbon, .callSignal, .homeRecord, .skdm, .sknack,
              .contactRequest, .profile, .readMark, .gsKey, .gsKnack,
+             // ⚠ SILENT on purpose: my own device telling me a cross-island
+             // request was answered is bookkeeping between my installs, not
+             // something a person said to me.
+             .ciAck,
              // ⚠ SILENT on purpose: a contact changing their picture must not
              // bump the badge or paint the app icon. Key distribution is
              // housekeeping, not something a person said.
@@ -698,6 +702,7 @@ class NotificationService: UNNotificationServiceExtension {
         case .screenshotTaken:  return "shot"
         case .carbon:           return "carbon"
         case .readMark:         return "readmark"
+        case .ciAck:            return "ciack"
         case .gsKey:            return "gskey"
         case .gsKnack:          return "gsknack"
         case .pkey:             return "pkey"

@@ -132,6 +132,19 @@ struct PeerBundle {
 /// ciphertext that buys nothing, so `ts` exists only where there is a
 /// countdown to anchor. Additive on the wire: a decoder that does not know the
 /// key ignores it, and an envelope without one falls back to today's anchor.
+/// The half of a peer's key card another device needs to hold the same
+/// cross-island contact without fetching anything of its own. Sent inside
+/// `Envelope.ciAck`; see that case for why it travels rather than being looked
+/// up again on each device.
+struct CICard: Codable, Hashable {
+    let nick: String?
+    let ik: String
+    let sk: String
+    let sik: String?
+    let gender: String?
+    let status: String?
+}
+
 enum Envelope: Codable, Hashable {
     case text(id: UUID, text: String, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     /// `spoiler` = sent blurred, receiver taps to reveal (Android parity;
@@ -195,6 +208,21 @@ enum Envelope: Codable, Hashable {
     /// inside the sealed blob) and the carbon ships under an ephemeral outer
     /// type, so nothing new is learned and nothing pushes.
     case readMark(at: Int64)
+    /// A cross-island request ANSWERED, told to my own other devices (wire
+    /// "ciack"). Rides INSIDE a `carbon` under the same ephemeral outer type
+    /// the read marker uses, so the island sees nothing it has not always seen.
+    ///
+    /// ⚠⚠ Why it exists: a cross-island request is per-INSTALL state. The
+    /// conveyor row carries no device id, so every device of the account keeps
+    /// its own copy, while accepting speaks only to the PEER. Accept on the
+    /// desktop and the phone still shows the request - and accepting it there
+    /// too is NOT idempotent: it re-fetches the key card and overwrites the
+    /// pinned keys, on the one class of peer whose every message is encrypted
+    /// to exactly those keys.
+    ///
+    /// `card` rides along on an accept so the other devices copy the TOFU the
+    /// accepting device did instead of each doing their own.
+    case ciAck(uin: Int, host: String, act: String, card: CICard?)
     /// Room state key hand-off (stage 6 phase 2, wire "gskey", outer "skdm").
     case gsKey(gid: Int, ver: Int64, key: String)
     /// Room state key ask-back (wire "gsknack", outer "sknack").
@@ -320,6 +348,7 @@ enum Envelope: Codable, Hashable {
         case sizeBytes = "size"
         case lat
         case lng
+        case uin, host, card
         case pollID = "poll"
         case question = "q"
         case options = "opts"
@@ -450,6 +479,12 @@ enum Envelope: Codable, Hashable {
         case .readMark(let at):
             try c.encode("readmark", forKey: .kind)
             try c.encode(at, forKey: .at)
+        case .ciAck(let uin, let host, let act, let card):
+            try c.encode("ciack", forKey: .kind)
+            try c.encode(uin, forKey: .uin)
+            try c.encode(host, forKey: .host)
+            try c.encode(act, forKey: .act)
+            if let card { try c.encode(card, forKey: .card) }
         case .gsKey(let gid, let ver, let key):
             try c.encode("gskey", forKey: .kind)
             try c.encode(gid, forKey: .gid)
@@ -646,6 +681,13 @@ enum Envelope: Codable, Hashable {
             self = .screenshotTaken(id: try c.decode(UUID.self, forKey: .id))
         case "readmark":
             self = .readMark(at: try c.decode(Int64.self, forKey: .at))
+        case "ciack":
+            self = .ciAck(
+                uin: try c.decode(Int.self, forKey: .uin),
+                host: try c.decode(String.self, forKey: .host),
+                act: try c.decode(String.self, forKey: .act),
+                card: try c.decodeIfPresent(CICard.self, forKey: .card)
+            )
         case "gskey":
             self = .gsKey(
                 gid: try c.decode(Int.self, forKey: .gid),
@@ -751,6 +793,7 @@ enum Envelope: Codable, Hashable {
         case .screenshotTaken: return "shot"
         case .carbon: return "carbon"
         case .readMark: return "readmark"
+        case .ciAck: return "ciack"
         case .gsKey: return "gskey"
         case .gsKnack: return "gsknack"
         case .pkey: return "pkey"

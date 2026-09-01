@@ -815,6 +815,80 @@ final class MessageService {
         } catch { }
     }
 
+    /// Tell my OWN other devices that a cross-island request was answered here,
+    /// and hand them the card this device pinned when it was an accept.
+    ///
+    /// Same carrier as the read marker above, for the same reason: the island
+    /// files `read` as ephemeral and has always seen it, so this teaches it
+    /// nothing. Best effort - a lost ack costs exactly what the bug costs
+    /// today, a request still sitting on the other device.
+    func sendCIAck(uin: Int, host: String, act: String, card: CICard? = nil) async {
+        let me = ownUIN
+        guard me != 0, uin > 0 else { return }
+        guard let mine = try? crypto.bootstrapIdentity() else { return }
+        let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
+        // ⚠⚠ Addressed to MYSELF, not to nobody. The answer belongs to no
+        // thread and the receive side takes it before the thread is resolved -
+        // but a client that predates `ciack` resolves the destination FIRST,
+        // and this very file drops a destination-less carbon with `return nil`,
+        // which means never acked: the island would hand the row back on every
+        // drain for the thirty days of the queue TTL. To myself it resolves to
+        // the self-thread, where an unknown inner kind files nothing.
+        let carbon: Envelope = .carbon(to: me, gid: nil, env: .ciAck(uin: uin, host: host, act: act, card: card))
+        guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
+        struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
+        struct Out: Decodable { let delivered: Bool; let queued: Bool }
+        do {
+            let _: Out = try await APIClient.shared.request(
+                "POST", "/messages/sealed",
+                body: Body(to_uin: me, envelope_type: "read", cls: rcqMessageClass("read"), payload: blob),
+                authenticated: false,
+                retries: 1
+            )
+        } catch { }
+    }
+
+    /// Apply an ack another of my devices sent - and the echo of my own, which
+    /// is why every branch here is idempotent.
+    ///
+    /// ⚠ Nothing is fetched. The card in the envelope is the one the accepting
+    /// device pinned, and copying it is the point: two devices each doing their
+    /// own TOFU on the same cross-island peer is how the keys they encrypt with
+    /// drift apart, silently, on the one peer class where the pinned key IS the
+    /// encryption key. A device that already holds the contact keeps what it
+    /// has.
+    func applyCIAck(uin: Int, host: String, act: String, card: CICard?) {
+        guard uin > 0 else { return }
+        switch act {
+        case "block":
+            CrossIslandRequestsStore.shared.block(uin: uin, host: host)
+            if host.isEmpty { BlockedContactsStore.shared.set(uin, blocked: true) }
+        case "decline":
+            CrossIslandRequestsStore.shared.clear(uin: uin, host: host)
+        case "accept":
+            if host.isEmpty {
+                StrangerQuarantine.shared.allow(uin)
+            } else if CrossIslandStore.shared.all().first(where: { $0.uin == uin && $0.host == host }) == nil,
+                      let card {
+                var c = Contact(
+                    uin: uin,
+                    nickname: (card.nick?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(uin)@\(host)",
+                    status: .offline, statusMessage: card.status, blocked: false,
+                    identityKey: card.ik, signingKey: card.sk,
+                    signalIdentityKey: card.sik, gender: card.gender, unread: 0, lastSeen: nil
+                )
+                c.host = host
+                CrossIslandStore.shared.save(c)
+            }
+            // Held payloads stay held here. Replaying a backlog into a chat
+            // list nobody is looking at is worse than the row going quiet, and
+            // the next message from an accepted contact flows normally.
+            CrossIslandRequestsStore.shared.clear(uin: uin, host: host)
+        default:
+            return
+        }
+    }
+
     /// Another device of this account read `thread` up to `at` (A2). Recount
     /// rather than clear: a message that landed AFTER that moment is still
     /// unread here, so a marker crossing paths with a fresh message cannot
@@ -1967,6 +2041,15 @@ final class MessageService {
             // queue acks it instead of redelivering forever.
             if case .carbon(let cTo, let cGid, let inner) = decrypted.envelope {
                 guard decrypted.senderUIN == ownUIN else { return nil }
+                // A cross-island request answered on another of my devices.
+                // Taken BEFORE the thread is resolved: it belongs to no thread
+                // (to and gid are both nil), so the guard below would drop it -
+                // and a dropped row is never acked, so the island would hand it
+                // back on every drain for the queue's whole TTL.
+                if case .ciAck(let aUin, let aHost, let aAct, let aCard) = inner {
+                    applyCIAck(uin: aUin, host: aHost, act: aAct, card: aCard)
+                    return IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
+                }
                 let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }
                 guard let dest else { return nil }
                 switch inner {
@@ -2669,6 +2752,10 @@ final class MessageService {
                 // A2 marker: only ever arrives WRAPPED in a carbon, which is
                 // intercepted above. A bare one is not something any client
                 // sends, so it files nothing.
+                break
+            case .ciAck:
+                // Same shape as the read marker: it rides inside a carbon and
+                // is taken there. A bare one files nothing.
                 break
             case .gsKey, .gsKnack:
                 // Stage 6 phase 2: intercepted before this switch (the room
