@@ -609,14 +609,20 @@ final class GroupService: ObservableObject {
     /// check. So a stale `ownerUIN` is a revoked owner whose deletes still land
     /// on every big group, until the next boot.
     ///
-    /// Only the number is written. The cached roster still carries the old
-    /// roles, and that is deliberately left to the next `/groups` fetch: the
-    /// event exists precisely because the roster of a room this size is too
-    /// expensive to move, and re-fetching one here would spend exactly what the
+    /// Only the number is written, and nothing is FETCHED here: the event
+    /// exists precisely because the roster of a room this size is too expensive
+    /// to move, and pulling one on every frame would spend exactly what the
     /// compact form saved. Nothing reads a stale role as a right, either -
     /// `RCQGroupMember.canDelete` asks for role "admin" or an explicit cap, and
     /// the ex-owner's row carries neither.
+    ///
+    /// ⚠ What IS recorded is that the cached roster is now out of date, which
+    /// is #836's first point: someone joining a big room reached the other
+    /// members only after a RESTART, because `ensureRoster` answers from cache
+    /// once it has fetched a room and nothing ever cleared that mark. Dropping
+    /// it costs one fetch, and only for whoever actually opens the member list.
     func applyOwnerLocally(groupID: Int, ownerUIN: Int) {
+        rosterFetched.remove(groupID)
         guard let idx = groups.firstIndex(where: { $0.id == groupID }),
               groups[idx].ownerUIN != ownerUIN else { return }
         groups[idx].ownerUIN = ownerUIN
