@@ -1645,6 +1645,7 @@
 "uin.error.suspended" = "账号已被冻结，无法更改它的号码。";
 "uin.error.too_many" = "你持有的号码已经达到一个账号的上限。请先在「我的 UIN」里释放一个。";
 "uin_shop.error.generic" = "服务器拒绝了请求，请重试。";
+"uin_shop.error.reserved" = "短号码和靓号不再发放。换一个试试。";
 "uin_shop.info.cap.title" = "最多可以持有多少个";
 "uin_shop.info.cap.body" = "一个账号最多可以持有 %1$d 个号码，你现在有 %2$d 个。可以在「我的 UIN」里交还一个，正在使用的那个除外，并且无法撤销：释放掉的号码会回到公共号池，任何人都可能拿走。";
 /* Full network check (NetworkAudit) */

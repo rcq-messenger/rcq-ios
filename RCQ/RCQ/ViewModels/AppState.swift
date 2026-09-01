@@ -1184,14 +1184,21 @@ final class AppState: ObservableObject {
         if raw.contains("uin_in_use") { return "my_uins.release.error.in_use".localized }
         if raw.contains("not_owned") { return "my_uins.error.not_owned".localized }
         if raw.contains("self_target") { return "uin_shop.status.self".localized }
+        // The island keeps short and patterned numbers as stock (2026-09-01),
+        // and closed collections in the same breath. Both refusals mean "this
+        // one is not on offer", which is a different sentence from "try again".
+        if raw.contains("reserved") { return "uin_shop.error.reserved".localized }
+        if raw.contains("collections_closed") { return "uin_shop.error.reserved".localized }
         return "uin_shop.error.generic".localized
     }
 
-    /// Take a UIN into the collection WITHOUT becoming it. The account keeps
-    /// answering as it does; moving onto the number is `activateUIN`.
+    /// Take a UIN and MOVE onto it.
     ///
-    /// Not a migration, so it does not go through `performMigration`: nothing
-    /// local changes except the collection.
+    /// ⚠⚠ It used to take the number into the collection without becoming it,
+    /// which is how 161 numbers ended up parked in 54 private hoards while the
+    /// short ones everyone else picks from ran out. Collections closed on
+    /// 2026-09-01 and the island refuses `switch: false` outright, so the only
+    /// take left is the one that changes who you answer as.
     func holdUIN(_ uin: Int) async -> MigrationResult {
         struct Body: Encodable {
             let uin: Int
@@ -1200,7 +1207,7 @@ final class AppState: ObservableObject {
         do {
             let _: PurchaseOut = try await APIClient.shared.request(
                 "POST", "/uin/purchase",
-                body: Body(uin: uin, switch: false)
+                body: Body(uin: uin, switch: true)
             )
             return .success(newUIN: uin)
         } catch APIError.http(409, let body) {
