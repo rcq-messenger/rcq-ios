@@ -43,6 +43,15 @@ struct UserInfoView: View {
                                     Text("profile.safety.changed".localized)
                                         .font(.footnote)
                                         .foregroundColor(Theme.Color.textPrimary)
+                                        // ⚠ A Button's label centres its text by
+                                        // default, and the frame alignment below
+                                        // does not reach INSIDE the Text: it places
+                                        // the whole block, while each wrapped line
+                                        // still centres itself. At a larger text
+                                        // size the warning wraps to three ragged
+                                        // lines (founder, 01.09). Say it here, on
+                                        // the Text, where line layout is decided.
+                                        .multilineTextAlignment(.leading)
                                         .fixedSize(horizontal: false, vertical: true)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -51,6 +60,7 @@ struct UserInfoView: View {
                                 .background(Theme.Color.bgSecondary)
                                 .cornerRadius(8)
                             }
+                            .buttonStyle(.plain)
                         }
                         section("profile.section.identity".localized) {
                             field("profile.field.nickname".localized, p.nickname, editable: isOwn) { draft?.nickname = $0 }
@@ -274,7 +284,7 @@ struct UserInfoView: View {
                     // Server filters lastSeen to nil when outside the
                     // target's privacy window. Only show when offline.
                     if p.status == .offline, let ts = p.lastSeen {
-                        Text(String(format: "profile.last_seen".localized, LastSeenFormatter.shared.relative(from: ts)))
+                        Text(String(format: "profile.last_seen".localized, LastSeenText.relative(ts)))
                             .font(.caption2)
                             .foregroundColor(Theme.Color.textSecondary)
                     }

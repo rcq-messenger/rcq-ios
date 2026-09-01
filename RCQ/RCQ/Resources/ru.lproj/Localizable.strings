@@ -889,7 +889,7 @@
 "about.contact.faq" = "FAQ";
 "about.contact.github" = "Исходный код (iOS)";
 
-"contact.last_seen" = "был в сети %@";
+"contact.last_seen" = "был %@";
 "contact.last_seen.recently" = "недавно";
 "contact.last_seen.today" = "сегодня";
 "contact.last_seen.yesterday" = "вчера";
@@ -964,7 +964,7 @@
 "profile.field.status_message" = "Статусное сообщение";
 "profile.field.custom_sound" = "Свой звук";
 "profile.field.profile_views" = "Просмотры профиля";
-"profile.last_seen" = "Был(а) в сети %@";
+"profile.last_seen" = "Был(а) %@";
 "profile.audience.last_7" = "· за 7 дней";
 "profile.cta.propose_trade" = "Предложить обмен";
 "profile.cta.add_contact" = "Добавить в контакты";

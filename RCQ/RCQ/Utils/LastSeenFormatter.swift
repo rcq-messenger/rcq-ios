@@ -1,67 +1,36 @@
 import Foundation
 
-/// Cheap relative-time renderer for the "Last seen X" UserInfoView
-/// subtitle. Resolves to coarse buckets ("just now", "5 minutes ago",
-/// "yesterday", "Mar 12") instead of an exact timestamp — that way
-/// the field doesn't double as a precise activity tracker for
-/// stalkers, even when visibility is set to `everyone`.
-final class LastSeenFormatter: @unchecked Sendable {
-    static let shared = LastSeenFormatter()
+/// "Last seen" in WORDS, and the only place that answers the question.
+///
+/// ⚠⚠ Why words. The island coarsens `last_seen` to the HOUR before it serves
+/// it (A7, `coarse_last_seen`), so printing "47 минут назад" hands the reader a
+/// precision the number does not have. Buckets say exactly as much as we know.
+///
+/// ⚠⚠ Why ONE copy. This started as a numeric formatter here plus two identical
+/// word-based copies pasted into ContactListView and ChatView. On 31.08 the two
+/// copies were updated and this one was missed, so the contact list and the
+/// chat header spoke in words while the PROFILE page kept printing a clock
+/// (founder, 01.09). Before that, in the same week, a change to one of the two
+/// copies left the other printing raw localization keys. Two misses in a row
+/// from the same shape, so there is now one function and the views call it.
+/// Do not paste a fourth.
+///
+/// Calendar days, not 24-hour blocks: "yesterday" has to mean yesterday to a
+/// person, not "between 24 and 48 hours ago".
+enum LastSeenText {
 
-    private let medium: DateFormatter
-
-    private init() {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        self.medium = f
-    }
-
-    /// Returns a coarse human label routed through the localization
-    /// table. Bucket boundaries:
-    ///   - <1 min  → "только что" / "just now"
-    ///   - <60 min → "N минут назад"
-    ///   - <24 h   → "N часов назад"
-    ///   - yesterday calendar-day → "вчера"
-    ///   - <7 days → "N дней назад"
-    ///   - older   → medium dateStyle (locale-aware via DateFormatter)
-    ///
-    /// Earlier version hard-coded English plurals — RU users saw
-    /// "1 hour ago" instead of "1 час назад". DateFormatter's
-    /// `medium` style already locales correctly; only the relative
-    /// strings needed routing through `.localized`.
-    func relative(from date: Date, now: Date = Date()) -> String {
-        let interval = now.timeIntervalSince(date)
-        if interval < 60 {
-            return "last_seen.just_now".localized
-        }
-        if interval < 60 * 60 {
-            let mins = Int(interval / 60)
-            return String(format: pluralKey(prefix: "last_seen.minute", n: mins).localized, mins)
-        }
-        if interval < 24 * 60 * 60 {
-            let hrs = Int(interval / 3600)
-            return String(format: pluralKey(prefix: "last_seen.hour", n: hrs).localized, hrs)
-        }
+    static func relative(_ date: Date, now: Date = Date()) -> String {
+        if now.timeIntervalSince(date) < 3600 { return "contact.last_seen.recently".localized }
         let cal = Calendar.current
-        if cal.isDateInYesterday(date) { return "last_seen.yesterday".localized }
-        if interval < 7 * 24 * 60 * 60 {
-            let days = Int(interval / 86_400)
-            return String(format: pluralKey(prefix: "last_seen.day", n: days).localized, days)
+        if cal.isDateInToday(date) { return "contact.last_seen.today".localized }
+        if cal.isDateInYesterday(date) { return "contact.last_seen.yesterday".localized }
+        let midnight = cal.startOfDay(for: now)
+        if date >= cal.date(byAdding: .day, value: -6, to: midnight) ?? midnight {
+            return "contact.last_seen.this_week".localized
         }
-        return medium.string(from: date)
-    }
-
-    /// Russian-grammar-aware plural picker. The standard CLDR rule
-    /// for ru: ONE for n%10==1 except teens (11), FEW for n%10 in
-    /// 2…4 except teens (12-14), MANY for everything else (0, 5-20,
-    /// 25, 30, etc.). English collapses to one/few since there are
-    /// only 2 plural forms; the EN strings table reuses keys.
-    private func pluralKey(prefix: String, n: Int) -> String {
-        let mod10 = n % 10
-        let mod100 = n % 100
-        if mod10 == 1 && mod100 != 11 { return prefix + "_one" }
-        if (2...4).contains(mod10) && !(12...14).contains(mod100) { return prefix + "_few" }
-        return prefix + "_many"
+        if date >= cal.date(byAdding: .day, value: -29, to: midnight) ?? midnight {
+            return "contact.last_seen.this_month".localized
+        }
+        return "contact.last_seen.long_ago".localized
     }
 }
