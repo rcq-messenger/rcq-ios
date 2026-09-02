@@ -174,7 +174,20 @@ struct GroupInfoView: View {
         .task {
             // The chat list is fetched without rosters, so this screen — the one
             // place that actually shows the members — asks for it on arrival.
-            await groups.ensureRoster(group.id)
+            //
+            // ⚠ And asks AGAIN, because a roster carries PRESENCE and presence
+            // is a snapshot of the moment it was fetched: a screen opened from
+            // the cache put whoever came online since at the bottom under
+            // "everyone else" (#859, founder 02.09). Rooms under 200 people
+            // only - the flagship's two thousand members are hundreds of
+            // kilobytes, and asking for those every minute is not worth a
+            // sorting order.
+            await groups.ensureRoster(group.id, refresh: true)
+            while !Task.isCancelled, (groups.find(group.id)?.members.count ?? 0) <= 200 {
+                try? await Task.sleep(nanoseconds: 45_000_000_000)
+                if Task.isCancelled { break }
+                await groups.ensureRoster(group.id, refresh: true)
+            }
         }
         .toolbar {
             if canEditChrome {
