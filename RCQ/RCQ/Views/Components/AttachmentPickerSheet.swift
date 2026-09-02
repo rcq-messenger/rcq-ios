@@ -16,10 +16,14 @@ struct AttachmentPickerSheet: View {
     let isRandom: Bool
     /// This room's `files_allowed` rule as it applies to THIS viewer (the
     /// owner, an admin and any member with a granted cap stay exempt). False
-    /// removes the Document chip outright rather than leaving a dead button:
-    /// the send would be refused anyway, and a disabled control that never
-    /// explains itself is worse than an entry that is simply not there. The
-    /// send path guards too, for a menu that was already open when the owner
+    /// removes every attachment entry - the media grid, the camera and the
+    /// Document chip - rather than leaving dead buttons: the send would be
+    /// refused anyway, and a disabled control that never explains itself is
+    /// worse than an entry that is simply not there. The rule is the same for
+    /// a photo or a video as for a document (founder, 2026-09-02, every
+    /// client); a voice note is a spoken message, not an attachment, and lives
+    /// on the mic the composer owns, which this sheet never touches. The send
+    /// path guards too, for a menu that was already open when the owner
     /// flipped the switch. Web: `filesAllowed` in Chat.tsx.
     var filesAllowed: Bool = true
     /// Sender called this when the user finishes picking media. Caller
@@ -66,7 +70,9 @@ struct AttachmentPickerSheet: View {
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        .task { await load() }
+        // No Photos prompt for a room that would refuse the pick: the grid is
+        // not drawn, so the permission it needs is never asked for.
+        .task { if filesAllowed { await load() } }
     }
 
     // MARK: - actions row
@@ -77,7 +83,9 @@ struct AttachmentPickerSheet: View {
         // and tap, narrow enough to fit 5+ across a 320pt screen.
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                actionChip(icon: "camera", labelKey: "chat.attach.camera", action: onCamera)
+                if filesAllowed {
+                    actionChip(icon: "camera", labelKey: "chat.attach.camera", action: onCamera)
+                }
                 if !isRandom {
                     if filesAllowed {
                         actionChip(icon: "doc.fill", labelKey: "chat.attach.document", action: onDocument)
@@ -114,15 +122,19 @@ struct AttachmentPickerSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        switch authStatus {
-        case .authorized, .limited:
-            grid
-        case .denied, .restricted:
-            denied
-        case .notDetermined:
-            ProgressView().tint(Theme.Color.accent)
-        @unknown default:
-            denied
+        if !filesAllowed {
+            filesOff
+        } else {
+            switch authStatus {
+            case .authorized, .limited:
+                grid
+            case .denied, .restricted:
+                denied
+            case .notDetermined:
+                ProgressView().tint(Theme.Color.accent)
+            @unknown default:
+                denied
+            }
         }
     }
 
@@ -163,6 +175,22 @@ struct AttachmentPickerSheet: View {
                     UIApplication.shared.open(url)
                 }
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// What stands where the grid would be in a files-off room: the sentence
+    /// the composer refuses with, so the sheet and the refusal agree.
+    private var filesOff: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 36))
+                .foregroundColor(Theme.Color.textSecondary)
+            Text("chat.files_off.notice".localized)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
