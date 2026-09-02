@@ -99,17 +99,30 @@ struct AnimatedGIFView: View {
         }
     }
 
-    private static let cache = NSCache<NSNumber, FrameBundle>()
+    /// ⚠ `nonisolated` for the same reason as the helpers below: `View`
+    /// conformance would put this on the main actor, and the decode that
+    /// reads it deliberately runs off it. `NSCache` is thread-safe by
+    /// contract, which is what makes the opt-out honest rather than a
+    /// silenced warning. `(unsafe)` because `NSCache` carries no `Sendable`
+    /// conformance to prove it with; the guarantee is Foundation's, in prose.
+    nonisolated(unsafe) private static let cache = NSCache<NSNumber, FrameBundle>()
 
     /// Cache lookup only, no decode. Cheap enough to call from `body`.
-    static func cached(for data: Data) -> FrameBundle? {
+    ///
+    /// ⚠ `nonisolated`, like the three helpers below it. Conforming to `View`
+    /// puts the whole type on the main actor, statics included, so the decode
+    /// this file exists to move OFF the main thread was being called back onto
+    /// it from `Task.detached` - a warning under Swift 5 and an error the day
+    /// the project moves to Swift 6. Nothing here touches the view: the input
+    /// is bytes, the store is an `NSCache`, which is thread-safe by contract.
+    nonisolated static func cached(for data: Data) -> FrameBundle? {
         cache.object(forKey: NSNumber(value: data.hashValue))
     }
 
     /// Decode every frame and cache the result. Never call this on the main
     /// thread: see the note on `body`.
     @discardableResult
-    static func decodeFrames(for data: Data) -> FrameBundle? {
+    nonisolated static func decodeFrames(for data: Data) -> FrameBundle? {
         let key = NSNumber(value: data.hashValue)
         if let hit = cache.object(forKey: key) { return hit }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
@@ -127,7 +140,7 @@ struct AnimatedGIFView: View {
         return bundle
     }
 
-    private static func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
+    nonisolated private static func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
         guard
             let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [String: Any],
             let gif = props[kCGImagePropertyGIFDictionary as String] as? [String: Any]
@@ -143,7 +156,7 @@ struct AnimatedGIFView: View {
     /// ASCII bytes "GIF8". Anything else (JPEG, PNG, WebP, MP4) won't
     /// match, so receivers can use this to decide whether to route a
     /// blob through `AnimatedGIFView` or the static `Image(uiImage:)`.
-    static func isGIF(_ data: Data) -> Bool {
+    nonisolated static func isGIF(_ data: Data) -> Bool {
         guard data.count >= 4 else { return false }
         return data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x38
     }
