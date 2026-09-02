@@ -183,7 +183,7 @@
 "settings.network.custom_server.intro.body" = "Añade una cuenta en cualquier backend RCQ compatible junto a la que ya tienes. El servidor es de código abierto, en github.com/rcq-messenger/rcq-server-ref: móntalo tú o usa el de un amigo.";
 "settings.network.custom_server.current.label" = "SERVIDOR ACTIVO";
 "settings.network.custom_server.input.label" = "URL DEL SERVIDOR NUEVO";
-"settings.network.custom_server.invalid" = "La URL tiene que empezar por http:// o https:// y llevar un nombre de host.";
+"settings.network.custom_server.invalid" = "No es una dirección de isla. Prueba island.example:8443, o una URL http:// o https:// completa.";
 "settings.network.custom_server.warning" = "Esto añade una cuenta nueva en el servidor que elijas. Tu cuenta actual (UIN, contactos, grupos e historial) se queda en este dispositivo: cambia entre tus cuentas desde el selector de cuentas.";
 "settings.network.custom_server.confirm.title" = "¿Añadir una cuenta en este servidor?";
 "settings.network.custom_server.confirm.body" = "Añade una cuenta nueva en el servidor elegido y cambia a ella. Tu cuenta actual se queda en este dispositivo y puedes volver cuando quieras.";
@@ -1537,7 +1537,7 @@
 "access_token.hint" = "Para una isla privada (cerrada), pega el token de acceso que te dieron.";
 "access_token.bad" = "Token de acceso no válido o caducado para esta isla.";
 "add_account.custom.cta" = "Añadir";
-"add_account.custom.invalid" = "La URL tiene que empezar por https:// y llevar un nombre de host.";
+"add_account.custom.invalid" = "No es una dirección de isla. Prueba island.example:8443, o una URL https:// completa.";
 "add_account.custom.token" = "Token de autenticación (opcional, para servidores ocultos)";
 "add_account.adding" = "Registrando en el servidor…";
 "add_account.error" = "No se pudo registrar. Revisa la URL y tu red.";

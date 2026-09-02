@@ -183,7 +183,7 @@
 "settings.network.custom_server.intro.body" = "Додай акаунт на будь-якому сумісному бекенді RCQ поруч з нинішнім. Сервер з відкритим кодом: github.com/rcq-messenger/rcq-server-ref. Розгорни свій або скористайся сервером друга.";
 "settings.network.custom_server.current.label" = "АКТИВНИЙ СЕРВЕР";
 "settings.network.custom_server.input.label" = "АДРЕСА НОВОГО СЕРВЕРА";
-"settings.network.custom_server.invalid" = "Адреса має починатися з http:// або https:// і містити хост.";
+"settings.network.custom_server.invalid" = "Це не адреса острова. Спробуйте island.example:8443 або повний URL з http:// чи https://.";
 "settings.network.custom_server.warning" = "Це додасть новий акаунт на обраному сервері. Твій нинішній акаунт (UIN, контакти, групи й історія) лишається на цьому пристрої. Перемикайся між акаунтами в перемикачі акаунтів.";
 "settings.network.custom_server.confirm.title" = "Додати акаунт на цьому сервері?";
 "settings.network.custom_server.confirm.body" = "Додає новий акаунт на обраному сервері і перемикається на нього. Твій нинішній акаунт лишається на цьому пристрої, повернутися можна будь-коли.";
@@ -1537,7 +1537,7 @@
 "access_token.hint" = "Для приватного (закритого) острова встав виданий тобі токен доступу.";
 "access_token.bad" = "Хибний або застарілий токен доступу для цього острова.";
 "add_account.custom.cta" = "Додати";
-"add_account.custom.invalid" = "Адреса має починатися з https:// і містити хост.";
+"add_account.custom.invalid" = "Це не адреса острова. Спробуйте island.example:8443 або повний URL з https://.";
 "add_account.custom.token" = "Токен авторизації (необов'язково, для прихованих серверів)";
 "add_account.adding" = "Реєструємо на сервері…";
 "add_account.error" = "Не вдалося зареєструвати. Перевір адресу і мережу.";

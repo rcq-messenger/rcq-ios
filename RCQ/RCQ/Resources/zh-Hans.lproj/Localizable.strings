@@ -174,7 +174,7 @@
 "settings.network.custom_server.intro.body" = "在当前账号之外，再在任意兼容的 RCQ 后端上添加一个账号。服务器代码开源，见 github.com/rcq-messenger/rcq-server-ref。可以自己搭建，也可以用朋友的实例。";
 "settings.network.custom_server.current.label" = "当前服务器";
 "settings.network.custom_server.input.label" = "新服务器 URL";
-"settings.network.custom_server.invalid" = "URL 必须以 http:// 或 https:// 开头，并且带有主机名。";
+"settings.network.custom_server.invalid" = "这不是岛屿地址。可以填 island.example:8443，或完整的 http:// 或 https:// 网址。";
 "settings.network.custom_server.warning" = "这会在所选服务器上添加一个新账号。你当前的账号（UIN、联系人、群组和聊天记录）留在这台设备上。在账号切换器里可以在几个账号之间切换。";
 "settings.network.custom_server.confirm.title" = "在这个服务器上添加账号？";
 "settings.network.custom_server.confirm.body" = "会在所选服务器上添加一个新账号并切换过去。你当前的账号留在这台设备上，随时可以切回来。";
@@ -1528,7 +1528,7 @@
 "access_token.hint" = "如果是私有（封闭）岛，请粘贴发给你的访问令牌。";
 "access_token.bad" = "这个岛的访问令牌无效或已过期。";
 "add_account.custom.cta" = "添加";
-"add_account.custom.invalid" = "URL 必须以 https:// 开头，并且带有主机名。";
+"add_account.custom.invalid" = "这不是岛屿地址。可以填 island.example:8443，或完整的 https:// 网址。";
 "add_account.custom.token" = "认证令牌（可选，用于隐藏的服务器）";
 "add_account.adding" = "正在服务器上注册…";
 "add_account.error" = "注册失败。请检查 URL 和网络。";
