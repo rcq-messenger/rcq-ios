@@ -1114,14 +1114,26 @@ struct SiteSanitizer {
     ///
     /// It is the second lock, not the first: a `WKWebView` may or may not honour
     /// a `<meta>` policy, which is why every removal above holds on its own.
+    ///
+    /// The viewport rides in behind it. `WKWebView` lays a document out at 980
+    /// points wide when nothing declares a viewport — the desktop-site
+    /// fallback Safari has always had — and the reader then gets a page in
+    /// miniature it has to pinch at (founder, 02.09). The author's own
+    /// `<meta name="viewport">` cannot save it: `name` and `content` are not
+    /// allowed attributes, so it left the walk as an empty `<meta>`, exactly
+    /// like a page-supplied policy would. Ours therefore always goes in.
+    /// ⚠ After the policy, not before: the corpus pins the policy as the first
+    /// child of `<head>`.
     static func installPolicy(_ root: SiteHTMLNode) {
         let meta = SiteHTMLNode(element: "meta")
         meta.attributes = [("http-equiv", "Content-Security-Policy"), ("content", policy)]
+        let viewport = SiteHTMLNode(element: "meta")
+        viewport.attributes = [("name", "viewport"), ("content", "width=device-width, initial-scale=1")]
         if let head = root.children.first(where: { $0.tag == "head" }) {
-            head.children.insert(meta, at: 0)
+            head.children.insert(contentsOf: [meta, viewport], at: 0)
         } else {
             let head = SiteHTMLNode(element: "head")
-            head.children = [meta]
+            head.children = [meta, viewport]
             root.children.insert(head, at: 0)
         }
     }
