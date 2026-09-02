@@ -1787,3 +1787,20 @@
 "sites.error.unsigned" = "该站点的签名不匹配，未显示任何内容。";
 "sites.error.tampered" = "某个文件与所有者签名的内容不符，未显示任何内容。";
 "sites.error.offline" = "无法连接到该岛屿。";
+
+/* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
+"island.trust.first_use" = "首次连接到 %1$@。它的指纹是 %2$@。在依赖这个岛之前，请与运营者公布的指纹核对。";
+"island.trust.changed" = "%@ 出示的证书与此设备信任的不同。可能有人正在拦截连接，也可能是运营者更换了证书。在信任之前，请将新指纹与运营者公布的指纹核对。";
+"island.trust.changed_typed" = "%@ 出示的指纹与您输入的不同。";
+"island.trust.on_file" = "已记录";
+"island.trust.presented" = "本次出示";
+"island.trust.entered" = "已输入";
+"island.trust.via_ca" = "证书颁发机构";
+"island.trust.accept" = "信任新指纹";
+"island.trust.later" = "暂不";
+"island.trust.settings.ca" = "通过证书颁发机构信任";
+"island.trust.settings.pinned" = "通过指纹信任";
+"island.trust.copy" = "复制带指纹的地址";
+"island.trust.browser_hint" = "没有证书颁发机构的岛只能在桌面和手机应用中打开，浏览器无法打开。";
+"island.trust.not_fingerprint" = "这不是指纹：# 之后应为 64 个十六进制字符。";
+"island.trust.ca_only" = "这个岛通过证书颁发机构信任，不需要指纹。";

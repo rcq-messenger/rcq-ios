@@ -24,6 +24,9 @@ struct CustomServerSheet: View {
     @State private var showConfirmReset = false
     @State private var switching = false
     @State private var validationError: String?
+    /// The typed address disagrees with what this device holds for that
+    /// island (design §3): the banner under the field, nothing dialled.
+    @State private var trustChange: IslandTrust.Change?
 
     private static let defaultServer = "https://api.rcq.app"
 
@@ -31,8 +34,14 @@ struct CustomServerSheet: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The address with its `#fingerprint` taken off first (design §3); a
+    /// fragment that is not a fingerprint makes the whole address invalid
+    /// rather than being dropped on the way to `URL`.
+    private var split: IslandTrust.Split { IslandTrust.splitAddress(trimmed) }
+
     private var isValidURL: Bool {
-        guard let url = URL(string: trimmed),
+        guard !split.badFragment,
+              let url = URL(string: split.address),
               let scheme = url.scheme?.lowercased(),
               ["http", "https"].contains(scheme),
               url.host?.isEmpty == false
@@ -155,9 +164,17 @@ struct CustomServerSheet: View {
                 .background(Theme.Color.bgSecondary)
                 .cornerRadius(10)
             if !trimmed.isEmpty && !isValidURL {
-                Text("settings.network.custom_server.invalid".localized)
+                Text((split.badFragment ? "island.trust.not_fingerprint" : "settings.network.custom_server.invalid").localized)
                     .font(.caption2)
                     .foregroundColor(.red.opacity(0.85))
+            }
+            if let trustChange {
+                IslandTrustChangedBanner(change: trustChange) {
+                    draft = trustChange.rewriting(trimmed)
+                    self.trustChange = nil
+                    Task { await applySwitch() }
+                }
+                .cornerRadius(10)
             }
             if let error = validationError {
                 Text(error)
@@ -207,8 +224,25 @@ struct CustomServerSheet: View {
         switching = true
         defer { switching = false }
         validationError = nil
+        trustChange = nil
         if AccountManager.shared.isAtAccountLimit {
             validationError = String(format: "add_account.limit".localized, AccountManager.maxAccounts)
+            return
+        }
+        // The trust door (design §3): a fingerprint is on file as typed before
+        // the register, a disagreeing one is the banner and nothing is dialled.
+        let address: String
+        switch IslandTrust.shared.admit(typed: trimmed) {
+        case .admitted(let a):
+            address = a
+        case .notAFingerprint:
+            validationError = "island.trust.not_fingerprint".localized
+            return
+        case .caOnlyHost:
+            validationError = "island.trust.ca_only".localized
+            return
+        case .changed(let change):
+            trustChange = change
             return
         }
         // Non-destructive: ADD a new account on the chosen server instead of
@@ -216,12 +250,17 @@ struct CustomServerSheet: View {
         // history, favorites) stays on this device and is switchable from the
         // account switcher. Mirrors AddAccountSheet's proven add path, which
         // also sets the new account active and rebuilds the UI against it.
-        let ok = await AppState.shared.addAccount(serverURL: trimmed)
+        let ok = await AppState.shared.addAccount(serverURL: address)
         if !ok || AppState.shared.bootError != nil {
             // Roll back a dangling account so we land back on the previous one.
             if let danglingID = AccountManager.shared.activeAccountID,
                AccountManager.shared.accounts.last?.id == danglingID {
                 AccountManager.shared.remove(danglingID)
+            }
+            // Refused by this device, not unreachable: the banner says so.
+            if let change = IslandTrust.shared.change(forAddress: address) {
+                trustChange = change
+                return
             }
             validationError = "add_account.error".localized
             return

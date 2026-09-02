@@ -2005,3 +2005,20 @@
 "sites.error.unsigned" = "The signature on this site does not check out. Nothing was shown.";
 "sites.error.tampered" = "A file does not match what the owner signed. Nothing was shown.";
 "sites.error.offline" = "Could not reach that island.";
+
+/* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
+"island.trust.first_use" = "First connection to %1$@. Its fingerprint is %2$@. Compare it with what the operator published before you rely on this island.";
+"island.trust.changed" = "%@ presented a different certificate than the one this device trusts. Someone may be intercepting the connection, or the operator replaced the certificate. Compare the new fingerprint with what the operator published before trusting it.";
+"island.trust.changed_typed" = "%@ presented a different fingerprint than the one you entered.";
+"island.trust.on_file" = "On file";
+"island.trust.presented" = "Presented now";
+"island.trust.entered" = "Entered";
+"island.trust.via_ca" = "a certificate authority";
+"island.trust.accept" = "Trust the new fingerprint";
+"island.trust.later" = "Not now";
+"island.trust.settings.ca" = "Trusted through a certificate authority";
+"island.trust.settings.pinned" = "Trusted by fingerprint";
+"island.trust.copy" = "Copy address with fingerprint";
+"island.trust.browser_hint" = "An island without a certificate authority opens in the desktop and phone apps, not in a browser.";
+"island.trust.not_fingerprint" = "That is not a fingerprint: 64 hexadecimal characters come after the #.";
+"island.trust.ca_only" = "This island is trusted through a certificate authority and takes no fingerprint.";

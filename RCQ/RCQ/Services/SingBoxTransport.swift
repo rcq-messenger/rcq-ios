@@ -759,6 +759,9 @@ enum IslandHTTP {
         var session: URLSession?
         /// Separate session for media: same proxy, far longer resource ceiling.
         var transferSession: URLSession?
+        /// The session for callers that are NOT dialling an island: same
+        /// proxy, no trust delegate.
+        var plainSession: URLSession?
         /// sing-box local port the cached sessions were built for; -1 = none yet.
         var port = -1
         /// Hosts whose direct route already failed, so the wasted direct attempt
@@ -775,24 +778,46 @@ enum IslandHTTP {
     /// stuck API call from hanging a chat bubble forever would fail a perfectly
     /// healthy 40 MB deposit over a slow relay, and `URLSession.shared` (which
     /// these calls used before) had no ceiling worth speaking of.
-    static func session(transfer: Bool = false) -> URLSession {
+    ///
+    /// `island: false` is for the callers that are NOT dialling an island (the
+    /// signed catalogue on GitHub; `allowTunnelFallback: false` below): the
+    /// same proxy, but no trust delegate, because the rule in `IslandTrust`
+    /// is for islands only. Through the delegate the catalogue host got a `ca`
+    /// record it has no business having, and a captive portal in front of it
+    /// would have raised the island banner for a host that is not one.
+    static func session(transfer: Bool = false, island: Bool = true) -> URLSession {
         let port = UserDefaults.standard.integer(forKey: "rcq.singbox.activePort")
         state.lock.lock()
         defer { state.lock.unlock() }
         if state.port != port {
             state.session = nil
             state.transferSession = nil
+            state.plainSession = nil
             state.port = port
         }
-        if let cached = transfer ? state.transferSession : state.session { return cached }
+        let cached = !island ? state.plainSession : (transfer ? state.transferSession : state.session)
+        if let cached { return cached }
         let cfg = URLSessionConfiguration.default
         cfg.waitsForConnectivity = false
         let slowProxy = SingBoxTransport.localProxyMode
         cfg.timeoutIntervalForRequest = slowProxy ? 30 : 20
         cfg.timeoutIntervalForResource = transfer ? (slowProxy ? 300 : 120) : (slowProxy ? 90 : 30)
         if let proxy = SingBoxTransport.proxyDictionary() { cfg.connectionProxyDictionary = proxy }
-        let built = URLSession(configuration: cfg)
-        if transfer { state.transferSession = built } else { state.session = built }
+        // Foreign islands are islands: the trust rule rides here too, so a
+        // deposit to a fingerprint island lands and a changed certificate on a
+        // visited island is refused, not shrugged at.
+        let built = URLSession(
+            configuration: cfg,
+            delegate: island ? IslandTrust.shared : nil,
+            delegateQueue: nil
+        )
+        if !island {
+            state.plainSession = built
+        } else if transfer {
+            state.transferSession = built
+        } else {
+            state.session = built
+        }
         return built
     }
 
@@ -801,7 +826,7 @@ enum IslandHTTP {
         allowTunnelFallback: Bool = true,
         transfer: Bool = false,
     ) async throws -> (Data, URLResponse) {
-        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
+        try await run(url: request.url, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
             try await $0.data(for: request)
         }
     }
@@ -811,7 +836,7 @@ enum IslandHTTP {
         allowTunnelFallback: Bool = true,
         transfer: Bool = false,
     ) async throws -> (Data, URLResponse) {
-        try await run(host: url.host, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
+        try await run(url: url, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
             try await $0.data(from: url)
         }
     }
@@ -821,7 +846,7 @@ enum IslandHTTP {
         from body: Data,
         allowTunnelFallback: Bool = true,
     ) async throws -> (Data, URLResponse) {
-        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: true) {
+        try await run(url: request.url, allowTunnelFallback: allowTunnelFallback, transfer: true) {
             try await $0.upload(for: request, from: body)
         }
     }
@@ -839,7 +864,7 @@ enum IslandHTTP {
         for request: URLRequest,
         allowTunnelFallback: Bool = true,
     ) async throws -> (URL, URLResponse) {
-        try await run(host: request.url?.host, allowTunnelFallback: allowTunnelFallback, transfer: true) {
+        try await run(url: request.url, allowTunnelFallback: allowTunnelFallback, transfer: true) {
             try await $0.download(for: request)
         }
     }
@@ -848,7 +873,7 @@ enum IslandHTTP {
     /// island catalogue on GitHub): route them through an already-running tunnel,
     /// but never turn one ON because a third party is unreachable.
     private static func run<Body>(
-        host: String?,
+        url: URL?,
         allowTunnelFallback: Bool,
         transfer: Bool,
         _ call: (URLSession) async throws -> (Body, URLResponse),
@@ -859,14 +884,18 @@ enum IslandHTTP {
         // broadcasts, media transfers, deposit tokens. All of it signs with or
         // addresses the REAL identity, so a duress session must not reach it.
         try DuressGate.check()
-        let key = host ?? ""
+        let key = url?.host ?? ""
         if allowTunnelFallback, isKnownBlocked(key),
            await SingBoxTransport.engageForBlockedDestination(key) {
-            return try await call(session(transfer: transfer))
+            return try await call(session(transfer: transfer, island: allowTunnelFallback))
         }
         do {
-            return try await call(session(transfer: transfer))
+            return try await call(session(transfer: transfer, island: allowTunnelFallback))
         } catch {
+            // A refused certificate is not a blocked route (§5.5): the island
+            // answered, and would refuse through every relay too. The tunnel
+            // is never engaged for it and the host is never marked blocked.
+            if let refused = IslandTrust.shared.refusal(for: error, url: url) { throw refused }
             // A cancelled request says nothing about the route: the caller gave
             // up (the `ring` probe in `CrossIslandSender` races its request
             // against a 5 s sleep and cancels the loser), and turning that into
@@ -882,7 +911,7 @@ enum IslandHTTP {
                   await SingBoxTransport.engageForBlockedDestination(key)
             else { throw error }
             markBlocked(key)
-            return try await call(session(transfer: transfer))
+            return try await call(session(transfer: transfer, island: allowTunnelFallback))
         }
     }
 

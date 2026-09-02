@@ -349,7 +349,12 @@ private struct NewsPostCard: View {
 
     @ViewBuilder
     private func attachmentView(_ att: NewsPost.Attachment, index: Int) -> some View {
-        let url = APIClient.shared.baseURL.appendingPathComponent("news/media/\(att.mediaID)")
+        // ⚠ Not `AsyncImage(url:)` / `AVPlayer(url:)` on the island URL. Both
+        // load through `URLSession.shared` or AVFoundation's own stack, which
+        // no delegate reaches, so on a fingerprint island every news image and
+        // video failed closed with no banner. The bytes come down through the
+        // island session into a scratch file, the way chat media does, and
+        // the views take the file (design §6).
         switch att.kind {
         case "video":
             // Color.clear overlay — clear has no intrinsic size, so the
@@ -357,14 +362,20 @@ private struct NewsPostCard: View {
             // advertise its native dimensions upward.
             Color.clear
                 .overlay {
-                    VideoPlayer(player: AVPlayer(url: url))
+                    NewsMediaFile(mediaID: att.mediaID, kind: att.kind) { state in
+                        if case .video(let file) = state {
+                            VideoPlayer(player: AVPlayer(url: file))
+                        } else {
+                            Rectangle().fill(Theme.Color.divider)
+                        }
+                    }
                 }
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10))
         default:
             Color.clear
                 .overlay {
-                    AsyncImage(url: url) { image in
+                    NewsMediaFile(mediaID: att.mediaID, kind: att.kind) { state in
                         // Fit, not fill: the slot is a fixed landscape window
                         // (deliberately, so async media cannot grow LazyVStack
                         // rows on a second layout pass) and fill center-cropped
@@ -373,11 +384,13 @@ private struct NewsPostCard: View {
                         // instead, exactly like the video branch above, so the
                         // whole frame is visible and the two media kinds stop
                         // disagreeing; the gallery still shows it full-screen.
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    } placeholder: {
-                        Rectangle().fill(Theme.Color.divider)
+                        if case .image(let image) = state {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            Rectangle().fill(Theme.Color.divider)
+                        }
                     }
                 }
                 .clipped()
@@ -486,14 +499,16 @@ private struct NewsGalleryView: View {
 
     @ViewBuilder
     private func page(for att: NewsPost.Attachment) -> some View {
-        let url = APIClient.shared.baseURL.appendingPathComponent("news/media/\(att.mediaID)")
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
+        // The same scratch file the feed already fetched (see
+        // `attachmentView`): one download per attachment, through the island
+        // session, never `AsyncImage`'s own.
+        NewsMediaFile(mediaID: att.mediaID, kind: att.kind) { state in
+            switch state {
+            case .image(let image):
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-            case .failure:
+            case .failed:
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundColor(.white.opacity(0.7))
@@ -506,6 +521,76 @@ private struct NewsGalleryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// One news attachment fetched to a scratch file and handed to the view as a
+/// decoded image or a playable file URL.
+///
+/// Through `APIClient.downloadBlob(_:to:)`, which is `IslandHTTP.download`
+/// with the island's masquerade header: the same road chat media takes
+/// (`MediaService.fetchBlob(to:)`), so the trust delegate sees the handshake
+/// and a closed island gets its header. `AsyncImage(url:)` and
+/// `AVPlayer(url:)` see neither.
+private struct NewsMediaFile<Content: View>: View {
+    let mediaID: String
+    let kind: String
+    @ViewBuilder let content: (NewsMedia.State) -> Content
+    @State private var state: NewsMedia.State = .loading
+
+    var body: some View {
+        content(state)
+            .task(id: mediaID) {
+                state = await NewsMedia.load(mediaID: mediaID, kind: kind)
+            }
+    }
+}
+
+@MainActor
+private enum NewsMedia {
+    enum State {
+        case loading
+        case failed
+        case image(UIImage)
+        case video(URL)
+    }
+
+    /// What is already decoded, and what is on its way, so the feed's carousel
+    /// and the full-screen gallery share one download per attachment instead
+    /// of racing each other for the same scratch path.
+    private static var loaded: [String: State] = [:]
+    private static var inFlight: [String: Task<State, Never>] = [:]
+
+    static func load(mediaID: String, kind: String) async -> State {
+        if let done = loaded[mediaID] { return done }
+        if let task = inFlight[mediaID] { return await task.value }
+        let task = Task<State, Never> { await fetch(mediaID: mediaID, kind: kind) }
+        inFlight[mediaID] = task
+        let result = await task.value
+        inFlight[mediaID] = nil
+        if case .failed = result {} else { loaded[mediaID] = result }
+        return result
+    }
+
+    private static func fetch(mediaID: String, kind: String) async -> State {
+        // The id is the island's word, so it becomes a file name only after
+        // everything that is not a name character is dropped.
+        let safe = mediaID.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        guard !safe.isEmpty else { return .failed }
+        let isVideo = kind == "video"
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rcq-news-\(safe).\(isVideo ? "mp4" : "img")")
+        if !FileManager.default.fileExists(atPath: file.path) {
+            do {
+                try await APIClient.shared.downloadBlob("/news/media/\(mediaID)", to: file)
+            } catch {
+                return .failed
+            }
+        }
+        if isVideo { return .video(file) }
+        let path = file.path
+        let image = await Task.detached(priority: .userInitiated) { UIImage(contentsOfFile: path) }.value
+        return image.map { .image($0) } ?? .failed
     }
 }
 

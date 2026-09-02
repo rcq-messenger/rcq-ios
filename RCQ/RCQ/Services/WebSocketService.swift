@@ -176,6 +176,18 @@ final class WebSocketService: ObservableObject {
         ) {
             Task { @MainActor in WebSocketService.shared.noteUpgraded(webSocketTask) }
         }
+
+        /// The socket is a connection to the island like any other, and the
+        /// session can carry one delegate: the trust decision is forwarded to
+        /// the one place that makes it (`IslandTrust`), so a fingerprint island
+        /// gets its socket and a changed certificate gets no socket at all.
+        func urlSession(
+            _ session: URLSession,
+            didReceive challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void,
+        ) {
+            IslandTrust.shared.urlSession(session, didReceive: challenge, completionHandler: completionHandler)
+        }
     }
 
     private let upgradeWatcher = UpgradeWatcher()
@@ -932,7 +944,13 @@ final class WebSocketService: ObservableObject {
         staleWatchdog?.invalidate()
         staleWatchdog = nil
         if shouldStayConnected {
-            if superseded {
+            if IslandTrust.shared.isRefused(url: lastBaseURL) {
+                // This device refused the island's certificate (§5.5): the
+                // socket stays down and the backoff stays quiet, or every
+                // redial would re-run the refused handshake and the fourth
+                // would raise the tunnel for an island that answered. The
+                // banner's button redials through `reconnectNow`.
+            } else if superseded {
                 scheduleSupersededReconnect()
             } else {
                 scheduleReconnect()

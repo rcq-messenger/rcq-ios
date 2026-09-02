@@ -490,6 +490,10 @@ final class AppState: ObservableObject {
 
     private func walkLadderIfStillDown() async {
         guard let down = socketDownSince, Date().timeIntervalSince(down) >= Self.offlineBeforeLadder else { return }
+        // The socket is down because this device refused the island's
+        // certificate, not because the route died: a ladder walk would pull
+        // relays and re-attempt the same refused handshake through each (§5.5).
+        if IslandTrust.shared.isRefused(url: URL(string: APIClient.activeDirectBase())) { return }
         if let last = lastLadderAt, Date().timeIntervalSince(last) < Self.ladderCooldown { return }
         lastLadderAt = Date()
         print("[route] offline \(Int(Date().timeIntervalSince(down)))s — walking the route ladder again")
@@ -527,14 +531,16 @@ final class AppState: ObservableObject {
         // de-tunnelled.
         if reach == .unreachable, SingBoxTransport.shared.isActive,
            !SingBoxTransport.localProxyMode, !SingBoxTransport.onionOptIn,
-           await APIClient.shared.probeDirectReachable() {
+           await APIClient.shared.probeDirectReachable() == .reachable {
             print("[route] tunnel unreachable, direct works — falling back to direct")
             SingBoxTransport.shared.stop()
             await APIClient.shared.useDirectSession()
             reach = await APIClient.shared.refreshActiveBase()
         }
 
-        if reach != .unreachable { isOffline = false }
+        // Refused is neither: the island answered, and the app is offline for
+        // it until the banner's button is pressed.
+        if reach == .primary || reach == .proxy { isOffline = false }
         return SingBoxTransport.shared.isActive != before
     }
 
@@ -548,6 +554,9 @@ final class AppState: ObservableObject {
                 if Task.isCancelled { return }
                 guard let self, self.isOffline else { return }
                 let reach = await APIClient.shared.refreshActiveBase()
+                // Refused is terminal for this loop too (§5.5): the chain does
+                // not change by waiting, and the banner's button restarts it.
+                if reach == .refused { return }
                 if reach != .unreachable {
                     self.isOffline = false
                     await self.runOnlineSync()
@@ -792,8 +801,11 @@ final class AppState: ObservableObject {
                !SingBoxTransport.shared.isActive,
                !SingBoxTransport.isEnabled,
                !UserDefaults.standard.bool(forKey: "rcq.singbox.autoDisabled") {
-                let directOK = await APIClient.shared.probeDirectReachable()
-                if !directOK {
+                let direct = await APIClient.shared.probeDirectReachable()
+                // Only an UNREACHABLE island earns the tunnel. A refused one
+                // answered perfectly well and would refuse through every relay
+                // too; its banner is the way forward (§5.5).
+                if direct == .unreachable {
                     bootStatus = .engagingStealth
                     do {
                         try await SingBoxTransport.shared.start()
@@ -820,7 +832,7 @@ final class AppState: ObservableObject {
             // even though a quick /health probe slipped through (the "reachable=true,
             // then Couldn't connect" bug). The flagship keeps its normal behavior.
             let activeBase = APIClient.activeDirectBase()
-            if activeBase != APIClient.prodBaseURL, await APIClient.shared.probeDirectReachable() {
+            if activeBase != APIClient.prodBaseURL, await APIClient.shared.probeDirectReachable() == .reachable {
                 print("[boot] custom island \(activeBase) reachable direct — API session DIRECT (bypassing relays)")
                 await APIClient.shared.useDirectSession()
             }
@@ -855,24 +867,36 @@ final class AppState: ObservableObject {
             // onion opt-in (keep the metadata-resistance they deliberately chose).
             if reach == .unreachable, SingBoxTransport.shared.isActive,
                !SingBoxTransport.localProxyMode, !SingBoxTransport.onionOptIn,
-               await APIClient.shared.probeDirectReachable() {
+               await APIClient.shared.probeDirectReachable() == .reachable {
                 print("[boot] tunnel unreachable, direct works — falling back to direct")
                 SingBoxTransport.shared.stop()
                 await APIClient.shared.useDirectSession()
                 reach = await APIClient.shared.refreshActiveBase()
                 bootStatus = .connecting
             }
-            if reach != .unreachable, SingBoxTransport.shared.isActive {
+            if reach == .primary || reach == .proxy, SingBoxTransport.shared.isActive {
                 bootStatus = .stealthActive
             }
-            if reach == .unreachable {
+            if reach == .unreachable || reach == .refused {
                 if let uin = cachedUIN, cachedToken != nil {
                     isOffline = true
                     ContactService.shared.markAllOffline()
                     MessageService.shared.configure(ownUIN: uin)
                     advanceBoot(to: 1.0)
                     booted = true
-                    scheduleTransportRetry()
+                    // A refused certificate is not retried (§5.5): the banner
+                    // on the main screen holds the only way forward, and its
+                    // button reconnects. Waiting would not change the chain.
+                    if reach == .unreachable { scheduleTransportRetry() }
+                } else if reach == .refused,
+                          let change = IslandTrust.shared.change(forAddress: APIClient.activeDirectBase()) {
+                    // No account yet, so no main screen to carry the banner:
+                    // the boot error says what the banner would have said, and
+                    // the form that started this add shows the banner itself.
+                    bootError = String(
+                        format: (change.typed ? "island.trust.changed_typed" : "island.trust.changed").localized,
+                        change.host
+                    )
                 } else {
                     bootError = "boot.error.unreachable".localized
                 }
@@ -1436,6 +1460,9 @@ final class AppState: ObservableObject {
         // says everything is erased, and the file names in there are one island
         // host per file, a private self-hosted one included.
         IslandLogoStore.shared.wipe()
+        // Same key, same reasoning: a pin is a statement about an island, not
+        // about the account, and the burn is the one place it is erased.
+        IslandTrust.shared.wipe()
         PresenceService.shared.status = .online
         PresenceService.shared.statusMessage = nil
         typingByUIN = [:]
@@ -1981,6 +2008,29 @@ final class AppState: ObservableObject {
         WebSocketService.shared.reconnectNow()
     }
 
+    /// The trust banner's button was pressed (§5.2): the island's certificate
+    /// is on file now, so the API sessions are rebuilt and the socket redialled
+    /// the way a route change rebuilds them, and a boot that ended on the
+    /// refusal runs again. The route itself is left alone: the island was
+    /// reachable all along, only refused.
+    func reconnectAfterTrustAccepted() async {
+        if APIClient.activeDirectBase() != APIClient.prodBaseURL,
+           await APIClient.shared.probeDirectReachable() == .reachable {
+            await APIClient.shared.useDirectSession()
+        } else {
+            await APIClient.shared.applyTransportProxy()
+        }
+        if booted {
+            if isOffline {
+                await runOnlineSync()
+            } else {
+                WebSocketService.shared.reconnectNow()
+            }
+        } else if bootError != nil {
+            await boot()
+        }
+    }
+
     private func handle(_ event: WebSocketService.Event) {
         switch event {
         case .opened:
@@ -2413,7 +2463,10 @@ enum ServerInfoService {
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
-            let (data, resp) = try await URLSession(configuration: .ephemeral).data(for: req)
+            // `IslandHTTP`, not a bare session: this is the first handshake
+            // with an island a person is about to join, so it rides the tunnel
+            // when one is up and meets the trust rule like every island call.
+            let (data, resp) = try await IslandHTTP.data(for: req)
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return try JSONDecoder().decode(ServerInfoResponse.self, from: data)
         } catch {

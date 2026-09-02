@@ -278,6 +278,13 @@ struct RCQApp: App {
         // existing UIN + baseURL; fresh installs start with an empty
         // roster that the onboarding flow populates.
         _ = AccountManager.shared
+        // The hosts the trust rule never pins (docs/island-fingerprint-design.md
+        // §1): the flagship and the fronts, on top of the `rcq.app` suffix rule
+        // inside IslandTrust. A closure read at each decision, so a signed
+        // config that moves the front takes effect without a relaunch.
+        IslandTrust.caOnlyHostsProvider = {
+            [APIClient.prodBaseURL, APIClient.builtInProxyURL, APIClient.proxyURL]
+        }
         // The history container starts opening NOW, on a detached thread, so
         // it is ready before anything on the main actor first-touches
         // `MessageDB.shared`. The race this closes is not theoretical: with
