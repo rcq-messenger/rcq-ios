@@ -1,7 +1,7 @@
 import AVKit
 import SwiftUI
 
-/// Broadcast news from the team — patch notes, announcements,
+/// Broadcast news from the island — patch notes, announcements,
 /// thoughts. Accessed from the 3-dot menu on the contacts screen.
 /// Sets `markAllSeen()` on appear so the red unread indicator
 /// clears once the user has at least surfaced the sheet.
@@ -13,6 +13,11 @@ import SwiftUI
 struct NewsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var svc = NewsService.shared
+    /// `/news` is asked of the active account's island, so the author line
+    /// names THAT island, drawn the way the switcher pill and the Settings row
+    /// draw it, and not a team a self-hoster's island has never heard of.
+    @StateObject private var appState = AppState.shared
+    @StateObject private var accountManager = AccountManager.shared
     /// Drives the full-screen gallery viewer. Holds the current
     /// post + index of the tapped image so swiping inside the
     /// viewer can page through the post's other attachments.
@@ -78,11 +83,15 @@ struct NewsSheet: View {
         // the row on a second layout pass.
         GeometryReader { geo in
             let cardWidth = max(0, geo.size.width - 32)
+            // Resolved once per feed, not once per card: it reads the account
+            // card off UserDefaults, and every post is from the same island.
+            let island = activeIsland
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(svc.items) { post in
                         NewsPostCard(
                             post: post,
+                            island: island,
                             cardWidth: cardWidth,
                             onTapImage: { idx in
                                 // Restrict the gallery to image-kind attachments —
@@ -106,6 +115,50 @@ struct NewsSheet: View {
                 .padding(.bottom, 24)
             }
         }
+    }
+
+    /// The live facts for the island we are ON, falling back to the account's
+    /// card so a cold start draws the right name and picture before
+    /// `/server/info` has answered, and to the bare host for an island that
+    /// never has. Same three-step fallback as the switcher pill.
+    private var activeIsland: NewsIsland {
+        let card = accountManager.activeAccountID.flatMap { AccountCardCache.card(for: $0) }
+        let live = appState.serverName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NewsIsland(
+            name: live.isEmpty ? (card?.islandName ?? "") : live,
+            host: accountManager.active?.displayHost ?? card?.host ?? "",
+            logoVersion: appState.serverLogoVersion.isEmpty
+                ? (card?.islandLogoVersion ?? "")
+                : appState.serverLogoVersion
+        )
+    }
+}
+
+/// Who a post is from: the island the feed was read from (founder, 2026-09-02:
+/// the island's own logo and name on every client, never "RCQ Team"; a
+/// self-hoster's news come from their own island under their own name).
+private struct NewsIsland: Equatable {
+    /// What the island calls itself. "" on an island whose operator left it
+    /// blank, and until the first `/server/info` of an island never recorded.
+    let name: String
+    let host: String
+    let logoVersion: String
+
+    /// The name, or the host, which is all we honestly know about an island
+    /// that has never said its name.
+    var title: String { name.isEmpty ? host : name }
+
+    /// The label the post was published under, kept only when it says
+    /// something the island's own name does not. The island's default label
+    /// was "RCQ Team" until 2026-09-02 and is its name from then on, and
+    /// either one repeated after the name is noise; anything else ("Support",
+    /// a person's name) is the operator telling the reader who wrote it.
+    func customAuthor(_ label: String) -> String? {
+        let author = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !author.isEmpty else { return nil }
+        let taken = ["rcq team", "rcq", name.lowercased(), host.lowercased()]
+        guard !taken.contains(author.lowercased()) else { return nil }
+        return author
     }
 }
 
@@ -211,6 +264,7 @@ private struct GalleryTarget: Identifiable, Hashable {
 /// via `APIClient.baseURL`.
 private struct NewsPostCard: View {
     let post: NewsPost
+    let island: NewsIsland
     /// Explicit width from the parent feed.
     let cardWidth: CGFloat
     /// Tapped attachment index in `post.attachments`.
@@ -221,15 +275,17 @@ private struct NewsPostCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28, height: 28)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                // The island's own face, not the app's logo: on a self-hosted
+                // island the post is the operator's, and the reader should
+                // see whose. The lettered tile covers an island with no logo.
+                IslandAvatarView(
+                    name: island.name,
+                    host: island.host,
+                    logoVersion: island.logoVersion,
+                    size: 28
+                )
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(post.authorLabel)
-                        .font(.callout.weight(.semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
+                    authorLine
                     Text(Self.dateFormatter.string(from: post.publishedAt))
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
@@ -248,6 +304,21 @@ private struct NewsPostCard: View {
         .frame(width: cardWidth, alignment: .leading)
         .background(Theme.Color.bgSecondary)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// The island leads, in the weight the author line always had; the label
+    /// the post was published under follows dimmed, and only when it adds a
+    /// name of its own. One `Text`, so a long pair wraps the way a sentence
+    /// does instead of truncating the half that carried the information.
+    private var authorLine: Text {
+        let name = Text(island.title)
+            .font(.callout.weight(.semibold))
+            .foregroundColor(Theme.Color.textPrimary)
+        guard let author = island.customAuthor(post.authorLabel) else { return name }
+        return name
+            + Text(verbatim: " · \(author)")
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
     }
 
     /// Horizontal media carousel. Pure SwiftUI HStack paging with

@@ -6,6 +6,10 @@ struct NewsPost: Codable, Hashable, Identifiable {
     let id: Int
     let body: String
     let attachments: [Attachment]
+    /// The label the post was published under. The island's default was
+    /// "RCQ Team" until 2026-09-02 and is the island's own name from then on;
+    /// the card names the island itself and shows this only when it adds a
+    /// name of its own.
     let authorLabel: String
     let publishedAt: Date
 
