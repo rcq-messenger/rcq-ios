@@ -39,15 +39,16 @@ struct ServerPickerSheet: View {
 
     /// Through the trust door first (design §3): a `#fingerprint` is on file
     /// as typed before the register that follows, a bad one is an address
-    /// error, one that disagrees with the record on file is the banner. Only
-    /// then is the address normalised, so the fragment cannot be dropped on
-    /// the way.
+    /// error, one that disagrees with the record on file is the banner. The
+    /// door hands back the normalised address, scheme and all, so the fragment
+    /// cannot be dropped on the way and this screen has no second normaliser
+    /// to drift from the one the store keys itself with.
     private func chooseTyped() {
         let raw = typedHost.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
         typedError = nil
         trustChange = nil
-        var host: String
+        let host: String
         switch IslandTrust.shared.admit(typed: raw) {
         case .notAFingerprint:
             typedError = "island.trust.not_fingerprint".localized
@@ -61,8 +62,6 @@ struct ServerPickerSheet: View {
         case .admitted(let address):
             host = address
         }
-        if !host.hasPrefix("http://") && !host.hasPrefix("https://") { host = "https://" + host }
-        while host.hasSuffix("/") { host.removeLast() }
         customServer = host == ServerDirectoryService.defaultEntry.url ? "" : host
         dismiss()
     }
@@ -181,7 +180,11 @@ struct ServerPickerSheet: View {
                     .background(Capsule().fill(Theme.Color.accent))
             }
             .buttonStyle(.plain)
-            .disabled(typedHost.trimmingCharacters(in: .whitespaces).isEmpty)
+            // An address with a host in it, judged by the same parser the door
+            // and the store use, so this screen cannot hand on something it
+            // could not key. A `#fragment` is not judged here: a bad one is
+            // the door's own error message, not a dead button.
+            .disabled(IslandTrust.dialAddress(typedHost) == nil)
             if let typedError {
                 Text(typedError)
                     .font(.caption)

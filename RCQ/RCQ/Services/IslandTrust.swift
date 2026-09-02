@@ -284,13 +284,46 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
     /// `is2.rcq.app`, `HTTPS://Island.Example:8443/x/`, `[::1]:8443#fp` → the
     /// endpoint, or nil when there is no host in it. The port defaults to 443
     /// whatever the scheme says: an island speaks TLS or it is not reached.
+    ///
+    /// ⚠ The host has to come out in the ASCII form the handshake will show.
+    /// `protectionSpace.host` is punycode, and `URLComponents.host` hands back
+    /// the Unicode spelling of an internationalised name (it even decodes a
+    /// punycode input back to it), so keying the store from that filed a typed
+    /// pin for `пример.рф` under `пример.рф:443` while every challenge looked
+    /// up `xn--e1afmkfd.xn--p1ai:443` and found nothing: the careful path of §3
+    /// silently became trust on first use, and a CA-valid certificate an
+    /// on-path attacker holds for the address was accepted without a word.
+    /// `URL.host` is already punycode and is the same parser the address forms
+    /// judge the address with, so the two cannot disagree about what parses.
     static func endpoint(fromAddress raw: String) -> Endpoint? {
         let s = splitAddress(raw).address
         guard !s.isEmpty else { return nil }
         let withScheme = s.contains("://") ? s : "https://\(s)"
+        if let url = URL(string: withScheme), let host = url.host, !host.isEmpty {
+            return endpoint(host: host, port: url.port ?? 443)
+        }
+        // `encodedHost`, never `host`: same reason, and it is what the older
+        // parser answers when `URL(string:)` refuses a non-ASCII address.
         guard let comps = URLComponents(string: withScheme),
-              let host = comps.host, !host.isEmpty else { return nil }
+              let host = comps.encodedHost ?? comps.host, !host.isEmpty else { return nil }
         return endpoint(host: host, port: comps.port ?? 443)
+    }
+
+    /// The address a form dials, from what was typed: the fragment off, the
+    /// scheme put back when there is none, the trailing slash gone. nil when
+    /// there is no host in it.
+    ///
+    /// ⚠ `host[:port]#fp` carries NO scheme: it is what `install.sh` prints
+    /// for the operator to hand out and what the Settings row copies (§3, §5.3),
+    /// so a form that demanded `https://` refused the exact string we hand out.
+    /// The parse is `endpoint(fromAddress:)`, so a form's verdict on an address
+    /// and the store key derived from it can never disagree.
+    static func dialAddress(_ raw: String) -> String? {
+        let s = splitAddress(raw).address
+        guard endpoint(fromAddress: s) != nil else { return nil }
+        var out = s.contains("://") ? s : "https://\(s)"
+        while out.hasSuffix("/") { out.removeLast() }
+        return out
     }
 
     /// The store key read back: `[::1]:8443` → `::1`, 8443.
@@ -486,7 +519,8 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
 
     /// The address forms' verdict on what was typed.
     enum Admission: Equatable {
-        /// The address without its fragment, ready to dial. When there was a
+        /// The address without its fragment and with the scheme put back
+        /// (`dialAddress`), ready to dial as it stands. When there was a
         /// fragment it is on file as `typed` now, so the first request has to
         /// MATCH and there is no trust on first use at all.
         case admitted(address: String)
@@ -509,16 +543,19 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
     func admit(typed raw: String) -> Admission {
         let split = Self.splitAddress(raw)
         if split.badFragment { return .notAFingerprint }
-        guard let fp = split.fingerprint else { return .admitted(address: split.address) }
-        // No host in it: the form's own address check says so, in its words.
-        guard let end = Self.endpoint(fromAddress: split.address) else { return .admitted(address: split.address) }
+        let dial = Self.dialAddress(split.address) ?? split.address
+        guard let fp = split.fingerprint else { return .admitted(address: dial) }
+        // No host in it: the form's own address check says so, in its words,
+        // and it cannot disagree with this one -- both parse through
+        // `endpoint(fromAddress:)`.
+        guard let end = Self.endpoint(fromAddress: split.address) else { return .admitted(address: dial) }
         if Self.isCAOnly(end.host, extra: Self.caOnlyHostsProvider()) { return .caOnlyHost }
         lock.lock()
         var records = read()
         if let rec = records[end.key] {
             if rec.mode == .pinned, rec.fp == fp {
                 lock.unlock()
-                return .admitted(address: split.address)
+                return .admitted(address: dial)
             }
             let change = Change(key: end.key, host: end.authority,
                                 old: rec.mode == .ca ? nil : rec.fp, new: fp,
@@ -538,7 +575,7 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
             revision &+= 1
             if changed != mirror { changed = mirror }
         }
-        return .admitted(address: split.address)
+        return .admitted(address: dial)
     }
 
     /// The banner's button: the new fingerprint becomes the one on file, as
