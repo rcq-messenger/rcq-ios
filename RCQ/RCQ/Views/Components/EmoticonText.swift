@@ -132,18 +132,31 @@ struct EmoticonText: View {
         try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     }()
 
+    /// A `.rcq` address in prose: bare (`e2ee.rcq`), or dressed as a URL the
+    /// detector passed over. Bounded on both sides so `chat.rcq` inside
+    /// `chat.rcq.app` is not a site and a full stop after the address is
+    /// still prose; an optional path rides along to the end of the word.
+    private static let siteRegex = try! NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9.\-/@:])(?:[A-Za-z][A-Za-z0-9+.\-]*://)?[A-Za-z0-9][A-Za-z0-9\-]*(?:\.[A-Za-z0-9][A-Za-z0-9\-]*)*(?::[0-9]{1,5})?\.rcq(?![A-Za-z0-9\-]|\.[A-Za-z0-9])(?:/(?:[A-Za-z0-9._~%/\-]*[A-Za-z0-9_~%/\-])?)?"#,
+        options: [.caseInsensitive]
+    )
+
     static func linkify(_ s: String) -> AttributedString {
         var attr = AttributedString(s)
+        guard !s.isEmpty else { return attr }
         // NSDataDetector is expensive and re-runs on every row body eval during
         // scroll. Only scan when a URL marker is present (https/http/www — how
         // links are actually shared in RCQ). Trade-off: a bare-domain like
         // "rcq.app" with no scheme won't auto-link, which is a fair price for
-        // smooth scrolling on long threads.
-        guard s.contains("://") || s.contains("www."), let detector = linkDetector, !s.isEmpty else { return attr }
-        let nsRange = NSRange(s.startIndex..<s.endIndex, in: s)
-        detector.enumerateMatches(in: s, options: [], range: nsRange) { match, _, _ in
-            guard let match, let url = match.url,
-                  let r = Range(match.range, in: s) else { return }
+        // smooth scrolling on long threads. The same kind of gate for site
+        // addresses: four bytes to look for, and a body without them has no
+        // site in it.
+        let urlish = s.contains("://") || s.contains("www.")
+        let siteish = s.range(of: ".rcq", options: .caseInsensitive) != nil
+        guard urlish || siteish else { return attr }
+
+        var taken: [Range<String.Index>] = []
+        func mark(_ r: Range<String.Index>, _ url: URL) {
             let lower = s.distance(from: s.startIndex, to: r.lowerBound)
             let upper = s.distance(from: s.startIndex, to: r.upperBound)
             let lo = attr.index(attr.startIndex, offsetByCharacters: lower)
@@ -151,6 +164,37 @@ struct EmoticonText: View {
             attr[lo..<hi].link = url
             attr[lo..<hi].foregroundColor = .blue
             attr[lo..<hi].underlineStyle = .single
+            taken.append(r)
+        }
+
+        let nsRange = NSRange(s.startIndex..<s.endIndex, in: s)
+        if urlish, let detector = linkDetector {
+            detector.enumerateMatches(in: s, options: [], range: nsRange) { match, _, _ in
+                guard let match, let url = match.url,
+                      let r = Range(match.range, in: s) else { return }
+                mark(r, url)
+            }
+        }
+        // The `.rcq` pass runs second and yields wherever the URL pass already
+        // marked something, and that is fine: a URL whose host ends in `.rcq`
+        // (`https://e2ee.rcq/en.html`, the founder sharing his own site) is
+        // sent to the reader at the TAP, by `AppState.isDeepLink`, so the
+        // detector's link is the right one for it. What this pass adds is the
+        // bare form, whose TLD no detector knows, as a `rcq://` link that
+        // takes the same door.
+        if siteish {
+            for m in siteRegex.matches(in: s, options: [], range: nsRange) {
+                guard let r = Range(m.range, in: s),
+                      !taken.contains(where: { $0.overlaps(r) }),
+                      let link = SiteAddressParser.link(from: String(s[r])) else { continue }
+                var spec = "rcq://" + link.address
+                if link.page != "index.html",
+                   let page = link.page.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                    spec += "/" + page
+                }
+                guard let url = URL(string: spec) else { continue }
+                mark(r, url)
+            }
         }
         return attr
     }

@@ -1796,6 +1796,11 @@
 "sites.error.unsigned" = "Bu sitenin imzası tutmuyor. Hiçbir şey gösterilmedi.";
 "sites.error.tampered" = "Bir dosya, sahibinin imzaladığıyla uyuşmuyor. Hiçbir şey gösterilmedi.";
 "sites.error.offline" = "O adaya ulaşılamadı.";
+"sites.pinned" = "Sabitlenenler";
+"sites.recents" = "Son açılanlar";
+"sites.recents.remove" = "Son açılanlardan kaldır";
+"sites.share" = "Adresi paylaş";
+"sites.share.sent" = "Adres gönderildi: %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "%1$@ adasına ilk bağlantı. Parmak izi: %2$@. Bu adaya güvenmeden önce operatörün yayınladığıyla karşılaştırın.";

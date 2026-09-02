@@ -1787,6 +1787,11 @@
 "sites.error.unsigned" = "该站点的签名不匹配，未显示任何内容。";
 "sites.error.tampered" = "某个文件与所有者签名的内容不符，未显示任何内容。";
 "sites.error.offline" = "无法连接到该岛屿。";
+"sites.pinned" = "置顶";
+"sites.recents" = "最近";
+"sites.recents.remove" = "从最近中移除";
+"sites.share" = "分享地址";
+"sites.share.sent" = "地址已发送给 %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "首次连接到 %1$@。它的指纹是 %2$@。在依赖这个岛之前，请与运营者公布的指纹核对。";

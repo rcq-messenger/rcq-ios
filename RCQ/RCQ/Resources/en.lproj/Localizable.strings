@@ -2005,6 +2005,11 @@
 "sites.error.unsigned" = "The signature on this site does not check out. Nothing was shown.";
 "sites.error.tampered" = "A file does not match what the owner signed. Nothing was shown.";
 "sites.error.offline" = "Could not reach that island.";
+"sites.pinned" = "Pinned";
+"sites.recents" = "Recent";
+"sites.recents.remove" = "Remove from recent";
+"sites.share" = "Share address";
+"sites.share.sent" = "Address sent to %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "First connection to %1$@. Its fingerprint is %2$@. Compare it with what the operator published before you rely on this island.";

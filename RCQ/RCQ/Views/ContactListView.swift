@@ -79,7 +79,9 @@ struct ContactListView: View {
     @State private var showNearby = false
     @State private var showRandom = false
     @State private var showRadio = false
-    @State private var showSites = false
+    /// The `.rcq` browser, and where it opens: the menu entry asks for the
+    /// start screen, a `.rcq` link tapped in a chat asks for its site.
+    @State private var sitesRequest: AppState.SiteOpenRequest?
     @State private var showQR = false
     @State private var showSearch = false
     @State private var previewTarget: ChatTarget?
@@ -387,7 +389,7 @@ struct ContactListView: View {
             .fullScreenCover(isPresented: $showRadio) { RadioDiscoveryView() }
             // fullScreenCover, like Radio: the address bar is the chrome, and a
             // sheet would put a grabber and an inch of the chat list above it.
-            .fullScreenCover(isPresented: $showSites) { SitesView() }
+            .fullScreenCover(item: $sitesRequest) { SitesView(initial: $0) }
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
             .sheet(isPresented: $showCreateGroup) {
@@ -554,6 +556,11 @@ struct ContactListView: View {
                 guard let uin = newValue else { return }
                 appState.pendingOpenUserProfile = nil
                 deepLinkProfileUIN = DeepLinkUIN(uin: uin)
+            }
+            .onChange(of: appState.pendingOpenSite) { newValue in
+                guard let request = newValue else { return }
+                appState.pendingOpenSite = nil
+                sitesRequest = request
             }
             .alert(
                 "stealth.tooltip.title".localized,
@@ -993,7 +1000,7 @@ struct ContactListView: View {
             // same reason Stranger Mode is: it is a place you go sometimes, not
             // one of the four you reach every day (Android home-menu parity).
             Button {
-                showSites = true
+                sitesRequest = AppState.SiteOpenRequest(address: nil, page: nil)
             } label: {
                 Label("contact_list.menu.sites".localized, systemImage: "globe")
             }

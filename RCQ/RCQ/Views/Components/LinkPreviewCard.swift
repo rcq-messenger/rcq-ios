@@ -232,7 +232,11 @@ enum LinkDetector {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         if let match = detector.firstMatch(in: text, options: [], range: range),
            let url = match.url,
-           url.scheme == "http" || url.scheme == "https" {
+           url.scheme == "http" || url.scheme == "https",
+           // A `.rcq` host is a site inside the network, not a page to
+           // preview: the fetch would hand the name to DNS, and `.rcq` never
+           // leaves the device as a name (see `SiteAddressParser`).
+           SiteAddressParser.link(from: url) == nil {
             return url
         }
         return nil

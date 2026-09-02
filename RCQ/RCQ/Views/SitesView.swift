@@ -20,25 +20,47 @@ import WebKit
 ///   journal of what its users read elsewhere.
 /// * Pages of one site are moved between out here, in our own chrome. With no
 ///   scripts inside there is nothing in a page that could navigate itself, and
-///   that is the point rather than a limitation.
+///   that is the point rather than a limitation. The one kind of link a page
+///   keeps is a door back into the network (`SiteReaderLinks`): a tap on it
+///   is cancelled in the web view and answered here.
 struct SitesView: View {
     @Environment(\.dismiss) private var dismiss
+
+    /// What to open on arrival: a `.rcq` link tapped in a chat lands here.
+    /// Nil, or an empty address, is the start screen.
+    var initial: AppState.SiteOpenRequest? = nil
 
     @State private var typed = ""
     @State private var addr: SiteAddress?
     @State private var page: SitesRepository.SitePage?
+    /// `page.html` with its in-network anchors made tappable, armed ONCE when
+    /// the page lands rather than on every redraw: it is a regex pass over a
+    /// document that can run to half a megabyte.
+    @State private var armed = ""
     @State private var failure: SiteError?
     @State private var loading = false
     @State private var editing = false
     @State private var catalogue: [SitesRepository.SiteListing] = []
+    @State private var recents: [SiteRecents.Entry] = []
     /// Which open is the current one. Back and every new open bump it, and a
     /// fetch that comes home to find it changed lands nowhere: the reader has
     /// already left the page it was for.
     @State private var turn = 0
-    /// site name → its verified mark, or nil once we know there is none. The
-    /// key is the NAME rather than the address, exactly as on the other two
-    /// clients: a catalogue row and the page it opens are one site.
+    /// `name@host` → its verified mark, or nil once we know there is none. The
+    /// pin key rather than the typed address, so a catalogue row and the page
+    /// it opens are one site, and `blog` here and `blog` on another island in
+    /// the recents are two.
     @State private var marks: [String: UIImage?] = [:]
+    /// The address being handed to a chat, while the picker is up.
+    @State private var shareTarget: ShareTarget?
+    /// "Address sent to X", for a moment after the picker closes: the message
+    /// itself lands in a chat the reader is not looking at.
+    @State private var sentNote: String?
+
+    private struct ShareTarget: Identifiable {
+        let id = UUID()
+        let address: String
+    }
 
     /// "My island" for a bare `name.rcq`, so somebody's first site is reachable
     /// before they know what an island is.
@@ -56,12 +78,28 @@ struct SitesView: View {
             VStack(spacing: 0) {
                 addressBar
                 progressHairline
+                sentBanner
                 pageStrip
                 keyChangedBanner
                 content
             }
         }
+        .sheet(item: $shareTarget) { target in
+            // The app's own picker, with the address as the payload: the
+            // person picks a chat or a contact and the address goes out as an
+            // ordinary text message (#852).
+            ForwardPickerSheet(
+                onPick: { destination in share(target.address, to: destination) },
+                onCancel: { shareTarget = nil }
+            )
+        }
         .task {
+            // The page first, so a link tapped in a chat is loading while the
+            // start screen underneath it is still being fetched.
+            if let initial, let address = initial.address {
+                open(address, path: initial.page ?? "index.html")
+            }
+            recents = SiteRecents.shared.all()
             let rows = await SitesRepository.shared.catalogue(host: ownHost)
             catalogue = rows
             // Marks are fetched after the list is drawn, and each is checked
@@ -70,7 +108,16 @@ struct SitesView: View {
             for row in rows {
                 guard let a = SiteAddressParser.parse("\(row.name).rcq", ownHost: ownHost) else { continue }
                 let mark = await SitesRepository.shared.mark(a)
-                marks[row.name] = mark.flatMap { UIImage(data: $0.bytes) }
+                marks[a.pinKey] = mark.flatMap { UIImage(data: $0.bytes) }
+            }
+            for entry in SiteRecents.shared.all() where marks[entry.key] == nil {
+                let a = SiteAddress(
+                    name: entry.name,
+                    host: entry.host,
+                    display: SiteAddressParser.display(name: entry.name, host: entry.host, ownHost: ownHost)
+                )
+                let mark = await SitesRepository.shared.mark(a)
+                marks[a.pinKey] = mark.flatMap { UIImage(data: $0.bytes) }
             }
         }
     }
@@ -84,21 +131,22 @@ struct SitesView: View {
     /// left-aligned and selected, and the keyboard's Go opens it.
     ///
     /// Centred on the CAPSULE, not on what the controls leave of it. The two
-    /// side groups are unequal - a chevron and a mark on the left, one reload
-    /// glyph on the right - and a field squeezed between them has its middle
-    /// some fifteen points right of the capsule's, which is where the founder
-    /// saw the domain sitting (02.09). So both sides get the same slot, as
-    /// wide as the wider group, and the field's centre is the capsule's in
-    /// every idle state: the catalogue's placeholder, a page's address, the
-    /// spinner while it reloads. Editing is left-aligned, and the slots shrink
-    /// to the chevron so the typed text starts beside it.
+    /// side groups are unequal - a chevron and a mark on the left, share and
+    /// reload on the right - and a field squeezed between them has its middle
+    /// off the capsule's, which is where the founder saw the domain sitting
+    /// (02.09). So both sides get the same slot, as wide as the wider group,
+    /// and the field's centre is the capsule's in every idle state: the
+    /// catalogue's placeholder, a page's address, the spinner while it reloads.
+    /// Editing is left-aligned, and the slots shrink to the chevron so the
+    /// typed text starts beside it.
     ///
     /// There is no Open button anywhere on this screen: that would be a second
     /// way to do what the Go key already does (founder, 01.09).
     private var addressBar: some View {
         let idle = page != nil && !editing
-        // The chevron, its gap and the mark; the glyph on the right is alone.
-        let slot: CGFloat = idle ? 28 + 8 + 18 : 28
+        // Two glyphs and their gap on the right; the chevron, its gap and the
+        // mark on the left are narrower and take the same width.
+        let slot: CGFloat = idle ? 28 + 8 + 28 : 28
         return HStack(spacing: 8) {
             HStack(spacing: 8) {
                 Button {
@@ -115,7 +163,7 @@ struct SitesView: View {
                 // it means the same thing: this is the site it says it is,
                 // checked against the owner's signature.
                 if let addr, idle {
-                    SiteMarkView(name: addr.name, image: marks[addr.name] ?? nil, size: 18)
+                    SiteMarkView(name: addr.name, image: marks[addr.pinKey] ?? nil, size: 18)
                 }
             }
             .frame(width: slot, alignment: .leading)
@@ -131,8 +179,20 @@ struct SitesView: View {
                 onGo: { open($0) }
             )
 
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 if let page, idle {
+                    // The address as text, into a chat: what a person who
+                    // wants to show somebody a page actually needs (#852).
+                    Button {
+                        if let addr { shareTarget = ShareTarget(address: addr.display) }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel("sites.share".localized)
+
                     if loading {
                         ProgressView()
                             .progressViewStyle(.circular)
@@ -176,10 +236,13 @@ struct SitesView: View {
         }
         turn += 1
         page = nil
+        armed = ""
         addr = nil
         failure = nil
         typed = ""
         loading = false
+        // The page just left is now the newest recent.
+        recents = SiteRecents.shared.all()
     }
 
     /// A hair of progress under the bar. The spinner in the capsule says
@@ -189,6 +252,18 @@ struct SitesView: View {
         Rectangle()
             .fill(loading ? Theme.Color.accent.opacity(0.7) : Color.clear)
             .frame(height: 2)
+    }
+
+    @ViewBuilder
+    private var sentBanner: some View {
+        if let sentNote {
+            Text(sentNote)
+                .font(.system(size: 12))
+                .foregroundColor(Theme.Color.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 6)
+                .background(Theme.Color.bgSecondary)
+        }
     }
 
     // MARK: - The other pages of this site
@@ -279,16 +354,55 @@ struct SitesView: View {
             // light one drew a bright island at the bottom of the screen
             // (founder, 02.09). The page's text still stops short of the
             // indicator, see `SiteWebView`.
-            LockedSiteWebView(html: page.html)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(.container, edges: .bottom)
+            LockedSiteWebView(html: armed) { target in
+                guard let addr else { return }
+                switch target {
+                case .page(let p):
+                    open(addr.display, path: p)
+                case .site(let link):
+                    // Parsed against the reader's own island, exactly as if
+                    // the address had been typed: the same rule as a link in
+                    // a chat.
+                    open(link.address, path: link.page)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea(.container, edges: .bottom)
         } else {
             emptyScreen
         }
     }
 
+    // MARK: - The start screen
+
+    /// One row of the start screen, whichever section it came from.
+    private struct SiteRow: Identifiable {
+        /// `name@host`, the identity the pins and the recents share.
+        let key: String
+        let name: String
+        /// What opens on a tap and what is handed to a chat by the share
+        /// glyph: `name.rcq` at home, `name.island.rcq` elsewhere.
+        let address: String
+        let title: String?
+        /// A recent, which the person can take off the list.
+        let removable: Bool
+
+        var id: String { key }
+    }
+
+    /// Pinned, then recent, then the rest of the catalogue (founder, 02.09,
+    /// all three clients). A site appears once, in the first section it
+    /// belongs to: the island's own front page is pinned, so opening it does
+    /// not also make it a recent, and a recent that is in the catalogue is
+    /// not listed twice under it.
     private var emptyScreen: some View {
-        ScrollView {
+        let pinned = catalogue.filter(\.featured).map(listingRow)
+        var shown = Set(pinned.map(\.key))
+        let recent = recents.filter { !shown.contains($0.key) }.map(recentRow)
+        shown.formUnion(recent.map(\.key))
+        let rest = catalogue.filter { !shown.contains("\($0.name)@\(ownHost)") }.map(listingRow)
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Text("sites.empty.title".localized)
                     .font(.system(size: 14, weight: .semibold))
@@ -298,39 +412,123 @@ struct SitesView: View {
                     .foregroundColor(Theme.Color.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if !catalogue.isEmpty {
-                    Text("sites.catalogue".localized.uppercased())
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Theme.Color.textSecondary)
-                        .padding(.top, 6)
-                    ForEach(catalogue, id: \.name) { row in
-                        Button {
-                            open("\(row.name).rcq")
-                        } label: {
-                            HStack(spacing: 10) {
-                                SiteMarkView(name: row.name, image: marks[row.name] ?? nil, size: 26)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(row.name).rcq")
-                                        .font(.system(size: 14, design: .monospaced))
-                                        .foregroundColor(Theme.Color.textPrimary)
-                                    if let title = row.title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
-                                        Text(title)
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Theme.Color.textSecondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .contentShape(Rectangle())
-                            .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                section("sites.pinned", pinned)
+                section("sites.recents", recent)
+                section("sites.catalogue", rest)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
+        }
+    }
+
+    private func listingRow(_ row: SitesRepository.SiteListing) -> SiteRow {
+        SiteRow(
+            key: "\(row.name)@\(ownHost)",
+            name: row.name,
+            address: "\(row.name).rcq",
+            title: row.title,
+            removable: false
+        )
+    }
+
+    private func recentRow(_ entry: SiteRecents.Entry) -> SiteRow {
+        SiteRow(
+            key: entry.key,
+            name: entry.name,
+            address: SiteAddressParser.display(name: entry.name, host: entry.host, ownHost: ownHost),
+            title: entry.title,
+            removable: true
+        )
+    }
+
+    @ViewBuilder
+    private func section(_ heading: String, _ rows: [SiteRow]) -> some View {
+        if !rows.isEmpty {
+            Text(heading.localized.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Theme.Color.textSecondary)
+                .padding(.top, 6)
+            ForEach(rows) { row in
+                if row.removable {
+                    siteRow(row).contextMenu {
+                        Button(role: .destructive) {
+                            SiteRecents.shared.remove(key: row.key)
+                            recents = SiteRecents.shared.all()
+                        } label: {
+                            Label("sites.recents.remove".localized, systemImage: "xmark")
+                        }
+                    }
+                } else {
+                    siteRow(row)
+                }
+            }
+        }
+    }
+
+    /// The share glyph is a SIBLING of the row's button, not a button inside
+    /// its label: a tap on it has to be its own and not also open the site.
+    private func siteRow(_ row: SiteRow) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                open(row.address)
+            } label: {
+                HStack(spacing: 10) {
+                    SiteMarkView(name: row.name, image: marks[row.key] ?? nil, size: 26)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(row.address)
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(1)
+                        if let title = row.title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text(title)
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                shareTarget = ShareTarget(address: row.address)
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("sites.share".localized)
+        }
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Sharing
+
+    /// The address goes out as an ordinary text message; the receiving
+    /// client's linkifier is what makes it a tap into their reader.
+    private func share(_ address: String, to destination: ForwardPickerSheet.Destination) {
+        shareTarget = nil
+        Task {
+            let name: String
+            do {
+                switch destination {
+                case .contact(let c):
+                    try await MessageService.shared.send(text: address, to: c)
+                    name = c.nickname
+                case .group(let g):
+                    try await MessageService.shared.send(text: address, to: g)
+                    name = g.name
+                }
+            } catch {
+                return
+            }
+            sentNote = String(format: "sites.share.sent".localized, name)
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            sentNote = nil
         }
     }
 
@@ -349,18 +547,27 @@ struct SitesView: View {
         }
         loading = true
         failure = nil
+        // The address goes into the bar now, not when the page lands: a link
+        // tapped in a chat arrives with an empty bar, and an island that does
+        // not answer would otherwise leave "Could not reach that island" under
+        // a placeholder, with no sign of which island.
+        typed = parsed.display
         Task {
             do {
                 let got = try await SitesRepository.shared.page(parsed, path: path, fresh: fresh)
                 guard mine == turn else { return }
+                armed = SiteReaderLinks.arm(got.html)
                 page = got
                 addr = parsed
                 typed = parsed.display
                 loading = false
+                // A page that opened is a site this device read; a page that
+                // failed is not.
+                SiteRecents.shared.touch(parsed, title: got.title)
                 // The mark of the site being read, fetched AFTER the page so a
                 // slow icon never holds the page up.
                 let mark = await SitesRepository.shared.mark(parsed, fresh: fresh)
-                marks[parsed.name] = mark.flatMap { UIImage(data: $0.bytes) }
+                marks[parsed.pinKey] = mark.flatMap { UIImage(data: $0.bytes) }
             } catch let e as SiteError {
                 guard mine == turn else { return }
                 page = nil
@@ -603,13 +810,18 @@ private final class SiteWebView: WKWebView {
 ///   whose scheme it cannot handle (`tel:`, `mailto:`, `itms-apps:`,
 ///   anything), it asks the system to open it, and the page has left the app.
 ///   `UIApplication.shared.open` appears nowhere in this file and must not.
+///   A tap on one of `SiteReaderLinks`' doors is cancelled like the rest; it
+///   is reported to the chrome FIRST, and the chrome does the opening.
 ///
 /// The document handed over here is already self-contained — verified,
 /// hash-checked, sanitised, with stylesheets and images inlined and every
-/// `href` stripped — so none of these should ever fire. That is exactly why
+/// `href` stripped, except the ones `SiteReaderLinks.arm` put back in a scheme
+/// nobody answers — so none of these should ever fire. That is exactly why
 /// they are cheap to keep.
 private struct LockedSiteWebView: UIViewRepresentable {
     let html: String
+    /// A tap on a door of ours: another page of this bundle, or another site.
+    let onTap: (SiteReaderLinks.Target) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -637,6 +849,7 @@ private struct LockedSiteWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
+        context.coordinator.onTap = onTap
         guard context.coordinator.painted != html else { return }
         context.coordinator.painted = html
         Task { @MainActor in
@@ -655,6 +868,7 @@ private struct LockedSiteWebView: UIViewRepresentable {
         var painted: String?
         /// Set immediately before our own `loadHTMLString` and cleared by it.
         var expectingInitialLoad = false
+        var onTap: ((SiteReaderLinks.Target) -> Void)?
 
         func webView(
             _ webView: WKWebView,
@@ -668,10 +882,22 @@ private struct LockedSiteWebView: UIViewRepresentable {
             // repetition of the line in `makeUIView`.
             preferences.allowsContentJavaScript = false
 
+            let url = navigationAction.request.url
+
+            // A door of ours, tapped by a finger: the chrome opens it and the
+            // web view stays where it is. Only a link activation counts, so a
+            // page that somehow raised the same URL by other means is refused
+            // like every other navigation below.
+            if navigationAction.navigationType == .linkActivated,
+               let url, let target = SiteReaderLinks.target(of: url) {
+                onTap?(target)
+                decisionHandler(.cancel, preferences)
+                return
+            }
+
             // Our own `loadHTMLString` and nothing else. A tapped link, a form,
             // a redirect, a `meta refresh` — all of them are a page trying to
             // go somewhere, and none of them may.
-            let url = navigationAction.request.url
             let isOurs = expectingInitialLoad
                 && navigationAction.navigationType == .other
                 && (url == nil || url?.absoluteString == "about:blank")

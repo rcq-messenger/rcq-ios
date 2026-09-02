@@ -12,8 +12,10 @@ import SwiftUI
 struct ForwardPickerSheet: View {
     /// What we're about to forward. Only used here for a short header
     /// preview ("Forward this message to…"). The actual forward
-    /// payload lives on the closure side.
-    let message: Message
+    /// payload lives on the closure side. Nil when the payload is not a
+    /// message at all: the `.rcq` browser hands a site address through
+    /// this same picker, and it goes out as a text message on pick.
+    var message: Message? = nil
     let onPick: (Destination) -> Void
     let onCancel: () -> Void
 

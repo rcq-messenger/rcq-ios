@@ -78,6 +78,18 @@ final class AppState: ObservableObject {
     /// `UserInfoView` for the UIN as a sheet.
     @Published var pendingOpenUserProfile: Int? = nil
 
+    /// A `.rcq` address tapped in a chat, or handed to the app as a URL: the
+    /// reader opens on it. ContactListView presents `SitesView` for it.
+    @Published var pendingOpenSite: SiteOpenRequest? = nil
+
+    /// Where the `.rcq` browser should open. `address` nil is the start screen
+    /// (the menu entry); `page` nil is the site's front page.
+    struct SiteOpenRequest: Identifiable, Equatable {
+        let id = UUID()
+        let address: String?
+        let page: String?
+    }
+
     /// Server-join request captured from an `rcq://server/<host>?invite=<code>`
     /// deep link (the QR an operator of an invite-only island shares). The root
     /// view presents a confirmation sheet that adds the account with the invite.
@@ -193,6 +205,9 @@ final class AppState: ObservableObject {
     /// The in-app browser uses this to keep deep links out of the web view.
     nonisolated static func isDeepLink(_ url: URL) -> Bool {
         if url.scheme == "rcq" { return true }
+        // A host that ends in `.rcq`, whatever the scheme: a site inside the
+        // network, never a page for the web view to resolve.
+        if SiteAddressParser.link(from: url) != nil { return true }
         guard url.scheme == "https" || url.scheme == "http",
               url.host == "rcq.app",
               url.pathComponents.count >= 3 else { return false }
@@ -200,6 +215,16 @@ final class AppState: ObservableObject {
     }
 
     func handle(deepLink url: URL) {
+        // A `.rcq` host, whatever the scheme: `https://e2ee.rcq/en.html` the
+        // way a person shares their own site, `rcq://e2ee.rcq` the way the
+        // linkifier marks a bare address. The reader, never a browser. Above
+        // the duress guard on purpose: a read is anonymous and acts for no
+        // account (see `SitesRepository`), and the browser's own menu entry
+        // is open in a decoy session anyway.
+        if let link = SiteAddressParser.link(from: url) {
+            pendingOpenSite = SiteOpenRequest(address: link.address, page: link.page)
+            return
+        }
         // ⚠ Every branch below acts FOR THE REAL ACCOUNT: `rcq://link` seals a
         // web session onto it (handing a browser the whole history), `rcq://add`
         // and `/u/<uin>` send a real contact request under the real uin,

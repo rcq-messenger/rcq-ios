@@ -1796,6 +1796,11 @@
 "sites.error.unsigned" = "A assinatura deste site não confere. Nada foi exibido.";
 "sites.error.tampered" = "Um arquivo não corresponde ao que o dono assinou. Nada foi exibido.";
 "sites.error.offline" = "Não foi possível alcançar essa ilha.";
+"sites.pinned" = "Fixados";
+"sites.recents" = "Recentes";
+"sites.recents.remove" = "Remover dos recentes";
+"sites.share" = "Compartilhar endereço";
+"sites.share.sent" = "Endereço enviado para %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "Primeira conexão a %1$@. Sua impressão digital é %2$@. Compare com a que o operador publicou antes de confiar nesta ilha.";

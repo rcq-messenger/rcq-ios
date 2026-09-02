@@ -1955,6 +1955,11 @@
 "sites.error.unsigned" = "Подпись сайта не сходится. Ничего не показано.";
 "sites.error.tampered" = "Файл не совпадает с тем, что подписал владелец. Ничего не показано.";
 "sites.error.offline" = "Не удалось достучаться до острова.";
+"sites.pinned" = "Закреплённые";
+"sites.recents" = "Недавние";
+"sites.recents.remove" = "Убрать из недавних";
+"sites.share" = "Поделиться адресом";
+"sites.share.sent" = "Адрес отправлен: %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "Первое подключение к %1$@. Отпечаток острова: %2$@. Сверьте его с тем, что опубликовал оператор, прежде чем полагаться на этот остров.";

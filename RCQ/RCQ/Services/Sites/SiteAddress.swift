@@ -57,6 +57,15 @@ struct SiteAddress: Equatable, Hashable {
     }
 }
 
+/// A site address and a page inside it, as written in a link: what
+/// `SiteAddressParser.link(from:)` makes of `https://e2ee.rcq/en.html`.
+struct SiteLink: Equatable {
+    /// The host part, lowercased, scheme stripped: `e2ee.rcq`.
+    let address: String
+    /// The path, or `index.html` when there was none.
+    let page: String
+}
+
 enum SiteAddressParser {
 
     /// `blog.is2.rcq` → { name: blog, host: is2.rcq.app }.
@@ -88,6 +97,65 @@ enum SiteAddressParser {
         if label == "is2" { return "is2.rcq.app" }
         if label == "here" || label == "my" { return ownHost }
         return label.contains(".") || label.contains(":") ? label : "\(label).rcq.app"
+    }
+
+    /// The address to show or hand out for a site known as `name@host`, from
+    /// the reader's own island: `blog.rcq` at home, `blog.is2.rcq` elsewhere.
+    /// The inverse of `islandHost(fromLabel:)`, so what it produces parses back
+    /// to the same pair: `api.rcq.app` goes out as `flagship`, an `x.rcq.app`
+    /// island as its label, any other host as itself. A recent recorded under
+    /// one account is drawn with this under another, which is why it takes the
+    /// host and not a remembered string.
+    static func display(name: String, host: String, ownHost: String) -> String {
+        if host == ownHost { return "\(name).rcq" }
+        var label = host
+        if host == "api.rcq.app" {
+            label = "flagship"
+        } else if host.hasSuffix(".rcq.app") {
+            let stem = String(host.dropLast(".rcq.app".count))
+            // ⚠ `here.rcq.app` would go out as `here`, which reads as "my
+            // island" on the way back in. A stem that is one of the reserved
+            // words stays a full host.
+            let reserved = ["flagship", "rcq", "here", "my"]
+            if !stem.isEmpty, !stem.contains("."), !stem.contains(":"), !reserved.contains(stem) {
+                label = stem
+            }
+        }
+        return "\(name).\(label).rcq"
+    }
+
+    /// A `.rcq` address the way it arrives in a chat or inside a page: bare,
+    /// or dressed as a URL with a scheme and a path. Whatever the scheme, a
+    /// host that ends in `.rcq` is a site address (founder, 02.09): the scheme
+    /// is dropped, the host is the address and the path is the page. Returns
+    /// nil for anything else, `https://chat.rcq.app/x` included. The address
+    /// still has to go through `parse` — this only decides that it IS one.
+    ///
+    /// The whole path, not its first segment: a bundle may keep a page at
+    /// `guide/intro.html`, and a link that named only `guide` would open
+    /// nothing. Query and fragment are dropped; the frame acts on neither.
+    static func link(from raw: String) -> SiteLink? {
+        var s = trim(raw)
+        if let scheme = s.range(of: "^[A-Za-z][A-Za-z0-9+.\\-]*://", options: .regularExpression) {
+            s.removeSubrange(scheme)
+        }
+        let end = s.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) ?? s.endIndex
+        let authority = String(s[..<end]).lowercased()
+        guard authority.hasSuffix(".rcq"), authority.count > 4 else { return nil }
+        var page = "index.html"
+        if end < s.endIndex, s[end] == "/" {
+            let rest = s[s.index(after: end)...]
+            let stop = rest.firstIndex(where: { $0 == "?" || $0 == "#" }) ?? rest.endIndex
+            var path = String(rest[..<stop])
+            while path.hasSuffix("/") { path.removeLast() }
+            if !path.isEmpty { page = path.removingPercentEncoding ?? path }
+        }
+        return SiteLink(address: authority, page: page)
+    }
+
+    /// `link(from:)` for a URL the system already parsed.
+    static func link(from url: URL) -> SiteLink? {
+        link(from: url.absoluteString)
     }
 
     /// `^[a-z0-9][a-z0-9-]{0,31}$`, hand-rolled rather than an
