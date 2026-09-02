@@ -56,15 +56,19 @@ struct AddAccountSheet: View {
     /// dropped silently is a pin the person believes they set and never did.
     private var customSplit: IslandTrust.Split { IslandTrust.splitAddress(customURLTrimmed) }
 
-    private var customURLValid: Bool {
-        guard !customSplit.badFragment,
-              let url = URL(string: customSplit.address),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https",
-              url.host?.isEmpty == false
-        else { return false }
-        return true
+    /// The address this sheet would dial, with the scheme put back when there
+    /// is none: `is2.rcq.app:8443#ab12…` is the form `install.sh` prints and
+    /// the Settings row copies (design §3), and demanding `https://` refused
+    /// the exact string we hand people. `IslandTrust.dialAddress` is the same
+    /// parse the trust door uses, so the two cannot disagree.
+    private var customDialAddress: String? {
+        guard !customSplit.badFragment, let a = IslandTrust.dialAddress(customURLTrimmed),
+              URL(string: a)?.scheme?.lowercased() == "https"
+        else { return nil }
+        return a
     }
+
+    private var customURLValid: Bool { customDialAddress != nil }
 
     var body: some View {
         NavigationStack {

@@ -39,15 +39,20 @@ struct CustomServerSheet: View {
     /// rather than being dropped on the way to `URL`.
     private var split: IslandTrust.Split { IslandTrust.splitAddress(trimmed) }
 
-    private var isValidURL: Bool {
-        guard !split.badFragment,
-              let url = URL(string: split.address),
-              let scheme = url.scheme?.lowercased(),
-              ["http", "https"].contains(scheme),
-              url.host?.isEmpty == false
-        else { return false }
-        return true
+    /// The address this sheet would dial, with the scheme put back when there
+    /// is none: `is2.rcq.app:8443#ab12…` is the form `install.sh` prints and
+    /// the Settings row copies (design §3), and demanding `https://` refused
+    /// the exact string we hand people. `IslandTrust.dialAddress` is the same
+    /// parse the trust door uses, so the two cannot disagree.
+    private var dialAddress: String? {
+        guard !split.badFragment, let a = IslandTrust.dialAddress(trimmed),
+              let scheme = URL(string: a)?.scheme?.lowercased(),
+              ["http", "https"].contains(scheme)
+        else { return nil }
+        return a
     }
+
+    private var isValidURL: Bool { dialAddress != nil }
 
     private var isDirty: Bool {
         trimmed != customServer

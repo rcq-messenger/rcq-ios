@@ -183,7 +183,7 @@
 "settings.network.custom_server.intro.body" = "Şimdiki hesabının yanına, uyumlu herhangi bir RCQ sunucusunda hesap ekle. Açık kaynak sunucu github.com/rcq-messenger/rcq-server-ref adresinde: kendin barındır ya da bir arkadaşınınkini kullan.";
 "settings.network.custom_server.current.label" = "ETKİN SUNUCU";
 "settings.network.custom_server.input.label" = "YENİ SUNUCU ADRESİ";
-"settings.network.custom_server.invalid" = "Adres http:// ya da https:// ile başlamalı ve bir alan adı içermeli.";
+"settings.network.custom_server.invalid" = "Bu bir ada adresi değil. island.example:8443 deneyin ya da tam bir http:// veya https:// adresi.";
 "settings.network.custom_server.warning" = "Bu, seçtiğin sunucuda yeni bir hesap açar. Şimdiki hesabın (UIN, kişiler, gruplar ve geçmiş) bu cihazda kalır; hesapların arasında hesap seçiciden geçebilirsin.";
 "settings.network.custom_server.confirm.title" = "Bu sunucuda hesap açılsın mı?";
 "settings.network.custom_server.confirm.body" = "Seçtiğin sunucuda yeni bir hesap açar ve ona geçer. Şimdiki hesabın bu cihazda kalır, istediğin zaman geri dönebilirsin.";
@@ -1537,7 +1537,7 @@
 "access_token.hint" = "Özel (kapalı) bir ada için sana verilen erişim anahtarını yapıştır.";
 "access_token.bad" = "Bu ada için geçersiz ya da süresi dolmuş erişim anahtarı.";
 "add_account.custom.cta" = "Ekle";
-"add_account.custom.invalid" = "Adres https:// ile başlamalı ve bir alan adı içermeli.";
+"add_account.custom.invalid" = "Bu bir ada adresi değil. island.example:8443 deneyin ya da tam bir https:// adresi.";
 "add_account.custom.token" = "Kimlik doğrulama anahtarı (isteğe bağlı, gizli sunucular için)";
 "add_account.adding" = "Sunucuya kaydediliyor…";
 "add_account.error" = "Kaydolunamadı. Adresi ve ağını kontrol et.";

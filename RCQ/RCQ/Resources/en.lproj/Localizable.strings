@@ -188,7 +188,7 @@
 "settings.network.custom_server.intro.body" = "Add an account on any compatible RCQ backend alongside your current one. Open source server at github.com/rcq-messenger/rcq-server-ref. Self-host or use a friend's instance.";
 "settings.network.custom_server.current.label" = "ACTIVE SERVER";
 "settings.network.custom_server.input.label" = "NEW SERVER URL";
-"settings.network.custom_server.invalid" = "URL must start with http:// or https:// and have a hostname.";
+"settings.network.custom_server.invalid" = "Not an island address. Try island.example:8443, or a full http:// or https:// URL.";
 "settings.network.custom_server.warning" = "This adds a new account on the chosen server. Your current account (UIN, contacts, groups and history) stays on this device. Switch between your accounts from the account switcher.";
 "settings.network.custom_server.confirm.title" = "Add an account on this server?";
 "settings.network.custom_server.confirm.body" = "Adds a new account on the chosen server and switches to it. Your current account stays on this device and you can switch back anytime.";
@@ -1674,7 +1674,7 @@
 "access_token.hint" = "For a private (closed) island, paste the access token you were given.";
 "access_token.bad" = "Invalid or expired access token for this island.";
 "add_account.custom.cta" = "Add";
-"add_account.custom.invalid" = "URL must start with https:// and have a hostname.";
+"add_account.custom.invalid" = "Not an island address. Try island.example:8443, or a full https:// URL.";
 "add_account.custom.token" = "Auth token (optional, for hidden servers)";
 "add_account.adding" = "Registering on the server…";
 "add_account.error" = "Couldn't register. Check the URL and your network.";
