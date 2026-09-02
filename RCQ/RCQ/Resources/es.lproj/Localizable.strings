@@ -1801,6 +1801,7 @@
 "island.trust.first_use" = "Primera conexión a %1$@. Su huella es %2$@. Compárala con la que publicó el operador antes de fiarte de esta isla.";
 "island.trust.changed" = "%@ presentó un certificado distinto del que confía este dispositivo. Puede que alguien esté interceptando la conexión, o que el operador haya cambiado el certificado. Compara la nueva huella con la que publicó el operador antes de confiar en ella.";
 "island.trust.changed_typed" = "%@ presentó una huella distinta de la que escribiste.";
+"island.trust.changed_entered" = "La huella escrita para %@ no coincide con la que este dispositivo ya conoce.";
 "island.trust.on_file" = "Guardada";
 "island.trust.presented" = "Presentada ahora";
 "island.trust.entered" = "Escrita";

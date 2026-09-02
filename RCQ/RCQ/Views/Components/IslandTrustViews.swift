@@ -20,12 +20,19 @@ struct IslandTrustChangedBanner: View {
     /// because the island stays refused and this is the only place that says so.
     @State private var folded = false
 
+    /// The sentence for a refusal. `entered` FIRST: that change came out of
+    /// `admit`, where nothing was dialled and no island presented anything, so
+    /// the two sentences below would accuse a host of an interception over a
+    /// value the person had just typed themselves. Then, of the two the
+    /// handshake raises, whether the value on file was typed or picked up.
+    private var headline: String {
+        if change.entered { return "island.trust.changed_entered" }
+        return change.typed ? "island.trust.changed_typed" : "island.trust.changed"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(String(
-                format: (change.typed ? "island.trust.changed_typed" : "island.trust.changed").localized,
-                change.host
-            ))
+            Text(String(format: headline.localized, change.host))
             .font(.system(size: 12))
             .foregroundColor(Theme.Color.textPrimary)
             .fixedSize(horizontal: false, vertical: true)

@@ -1792,6 +1792,7 @@
 "island.trust.first_use" = "首次连接到 %1$@。它的指纹是 %2$@。在依赖这个岛之前，请与运营者公布的指纹核对。";
 "island.trust.changed" = "%@ 出示的证书与此设备信任的不同。可能有人正在拦截连接，也可能是运营者更换了证书。在信任之前，请将新指纹与运营者公布的指纹核对。";
 "island.trust.changed_typed" = "%@ 出示的指纹与您输入的不同。";
+"island.trust.changed_entered" = "为 %@ 输入的指纹与本设备已信任的不一致。";
 "island.trust.on_file" = "已记录";
 "island.trust.presented" = "本次出示";
 "island.trust.entered" = "已输入";
