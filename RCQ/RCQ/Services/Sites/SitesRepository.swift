@@ -253,7 +253,12 @@ actor SitesRepository {
         // identity in one of these requests to leak into it.
         config.connectionProxyDictionary = proxy
 
-        let built = URLSession(configuration: config)
+        // A `.rcq` read is a connection to an island like any other, so the
+        // trust delegate rides here too: a fingerprint island serves its pages,
+        // and an island whose certificate changed serves nothing until the
+        // person decides. The delegate holds no identity, so the paragraph
+        // above still stands.
+        let built = URLSession(configuration: config, delegate: IslandTrust.shared, delegateQueue: nil)
         cachedSession = built
         cachedProxyPort = port
         return built

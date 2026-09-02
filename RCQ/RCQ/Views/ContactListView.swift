@@ -20,6 +20,10 @@ struct ContactListView: View {
     // banner — without it a cross-island request was invisible (no entry point).
     @ObservedObject private var ciRequests = CrossIslandRequestsStore.shared
     @ObservedObject private var socket = WebSocketService.shared
+    /// Islands refused for a changed certificate, and first uses not yet
+    /// noticed: the two trust banners at the top of the list draw from here
+    /// and nothing else in the app has to remember to check.
+    @ObservedObject private var islandTrust = IslandTrust.shared
     // Cross-island contacts render from the store directly: the merged
     // ContactService list drops them when a same-uin LOCAL contact exists.
     @ObservedObject private var ciStore = CrossIslandStore.shared
@@ -1043,6 +1047,19 @@ struct ContactListView: View {
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: []) {
+                // The trust banners (design §5.1, §5.2) live with the other
+                // top banners. Never in a decoy session: an island's name and
+                // a refusal on it say which island the real account lives on.
+                if !panicPIN.isDecoy {
+                    ForEach(islandTrust.changed.values.sorted { $0.key < $1.key }) { change in
+                        IslandTrustChangedBanner(change: change) {
+                            Task { await appState.reconnectAfterTrustAccepted() }
+                        }
+                    }
+                    ForEach(islandTrust.firstUses) { notice in
+                        IslandTrustFirstUseNotice(notice: notice)
+                    }
+                }
                 if vm.pendingCount + visibleCIRequests > 0 {
                     pendingBanner
                 }

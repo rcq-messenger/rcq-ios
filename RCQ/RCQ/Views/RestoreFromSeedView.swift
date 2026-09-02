@@ -21,6 +21,9 @@ struct RestoreFromSeedView: View {
     @State private var showServer = false
     @State private var restoring = false
     @State private var error: String?
+    /// The typed address disagrees with what this device holds for that
+    /// island (design §3): the banner under the form, nothing dialled.
+    @State private var trustChange: IslandTrust.Change?
 
     init(onCompleted: @escaping () -> Void = {}) {
         self.onCompleted = onCompleted
@@ -35,9 +38,14 @@ struct RestoreFromSeedView: View {
     // 24 words = a normal seed phrase; 48 = a legacy account's raw-key export.
     private var canRestore: Bool { (wordCount == 24 || wordCount == 48) && !restoring && serverURL != nil }
 
-    /// Normalized https URL, or nil when the field is malformed.
+    /// Normalized https URL, or nil when the field is malformed. The
+    /// `#fingerprint` comes off first (design §3) and is checked, not dropped:
+    /// a fragment that is not one makes the whole address invalid, so nothing
+    /// is dialled under a pin the person believes they set.
     private var serverURL: String? {
-        let t = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        let split = IslandTrust.splitAddress(server)
+        if split.badFragment { return nil }
+        let t = split.address
         if t.isEmpty { return "https://api.rcq.app" }
         let withScheme = (t.hasPrefix("http://") || t.hasPrefix("https://")) ? t : "https://\(t)"
         guard let url = URL(string: withScheme), url.host?.isEmpty == false else { return nil }
@@ -135,6 +143,15 @@ struct RestoreFromSeedView: View {
                     }
                 }
 
+                if let trustChange {
+                    IslandTrustChangedBanner(change: trustChange) {
+                        server = trustChange.rewriting(server)
+                        self.trustChange = nil
+                        Task { await restore() }
+                    }
+                    .cornerRadius(10)
+                }
+
                 if let error {
                     Text(error)
                         .font(.footnote)
@@ -171,7 +188,24 @@ struct RestoreFromSeedView: View {
 
     private func restore() async {
         guard let url = serverURL else {
-            error = "recovery.restore.error.server".localized
+            error = (IslandTrust.splitAddress(server).badFragment
+                ? "island.trust.not_fingerprint" : "recovery.restore.error.server").localized
+            return
+        }
+        // The trust door (design §3), on the raw field so the fragment reaches
+        // it: pinned as typed before the recover probes, or refused here.
+        trustChange = nil
+        switch IslandTrust.shared.admit(typed: server) {
+        case .admitted:
+            break
+        case .notAFingerprint:
+            error = "island.trust.not_fingerprint".localized
+            return
+        case .caOnlyHost:
+            error = "island.trust.ca_only".localized
+            return
+        case .changed(let change):
+            trustChange = change
             return
         }
         restoring = true
@@ -181,7 +215,13 @@ struct RestoreFromSeedView: View {
             phrase: words, serverURL: url, serverToken: token.isEmpty ? nil : token)
         restoring = false
         if let result {
-            error = result
+            // Refused by this device, not by the island: the banner with both
+            // fingerprints says so where "unreachable" would mislead.
+            if let change = IslandTrust.shared.change(forAddress: url) {
+                trustChange = change
+            } else {
+                error = result
+            }
             return
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

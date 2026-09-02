@@ -23,6 +23,12 @@ struct ServerPickerSheet: View {
     /// hands out privately, is never in the catalogue.
     @State private var manualEntry: Bool = false
     @State private var typedHost: String = ""
+    /// What the trust door said about the typed address (design §3): an
+    /// address error under the field, or the banner when the fingerprint
+    /// disagrees with what this device already holds. Nothing is written or
+    /// dialled in either case.
+    @State private var typedError: String?
+    @State private var trustChange: IslandTrust.Change?
 
     /// Writing the default URL as EMPTY keeps the "empty means default"
     /// convention APIClient and CustomServerSheet already rely on.
@@ -31,9 +37,30 @@ struct ServerPickerSheet: View {
         dismiss()
     }
 
+    /// Through the trust door first (design §3): a `#fingerprint` is on file
+    /// as typed before the register that follows, a bad one is an address
+    /// error, one that disagrees with the record on file is the banner. Only
+    /// then is the address normalised, so the fragment cannot be dropped on
+    /// the way.
     private func chooseTyped() {
-        var host = typedHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !host.isEmpty else { return }
+        let raw = typedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        typedError = nil
+        trustChange = nil
+        var host: String
+        switch IslandTrust.shared.admit(typed: raw) {
+        case .notAFingerprint:
+            typedError = "island.trust.not_fingerprint".localized
+            return
+        case .caOnlyHost:
+            typedError = "island.trust.ca_only".localized
+            return
+        case .changed(let change):
+            trustChange = change
+            return
+        case .admitted(let address):
+            host = address
+        }
         if !host.hasPrefix("http://") && !host.hasPrefix("https://") { host = "https://" + host }
         while host.hasSuffix("/") { host.removeLast() }
         customServer = host == ServerDirectoryService.defaultEntry.url ? "" : host
@@ -155,6 +182,20 @@ struct ServerPickerSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(typedHost.trimmingCharacters(in: .whitespaces).isEmpty)
+            if let typedError {
+                Text(typedError)
+                    .font(.caption)
+                    .foregroundColor(.red.opacity(0.85))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let trustChange {
+                IslandTrustChangedBanner(change: trustChange) {
+                    typedHost = trustChange.rewriting(typedHost)
+                    self.trustChange = nil
+                    chooseTyped()
+                }
+                .cornerRadius(10)
+            }
             if !directory.servers.isEmpty {
                 Button("island.back_to_list".localized) { manualEntry = false }
                     .font(.callout)

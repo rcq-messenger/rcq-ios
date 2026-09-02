@@ -127,7 +127,16 @@ enum Multihome {
     /// serve as the failover route when the primary island is unreachable.
     private static let peerCacheTTL: TimeInterval = 10 * 60
 
-    enum AddError: Error { case invalidHost, primaryIsland, alreadyAdded, noIsland, network(String) }
+    enum AddError: Error {
+        case invalidHost, primaryIsland, alreadyAdded, noIsland, network(String)
+        /// The typed address carried a `#fragment` that is not a fingerprint,
+        /// or one on a host the trust rule never pins (design §3): an address
+        /// error, nothing dialled.
+        case notAFingerprint, fingerprintOnCAHost
+        /// The typed fingerprint disagrees with what this device holds for that
+        /// island: the banner on the main screen, nothing dialled.
+        case trustRefused
+    }
 
     struct Credentials: Decodable { let uin: Int; let token: String }
 
@@ -169,13 +178,16 @@ enum Multihome {
         return names.contains(host)
     }
 
-    /// `is2.rcq.app`, `https://is2.rcq.app/x` → `is2.rcq.app`.
+    /// `is2.rcq.app`, `https://is2.rcq.app/x` → `is2.rcq.app`;
+    /// `island.example:8443#fp` → `island.example:8443`.
+    ///
+    /// ⚠ The fragment comes off FIRST, through `IslandTrust.splitAddress`:
+    /// `URL.host` drops one without a word, and a fingerprint dropped silently
+    /// is a pin the person believes they set and never did (design §3). The
+    /// port is kept, because an island on `:8443` is not the island on `:443`;
+    /// every caller builds `https://\(host)/...`, which takes the port as it is.
     static func normalizeHost(_ input: String) -> String? {
-        let t = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !t.isEmpty else { return nil }
-        let withScheme = t.contains("://") ? t : "https://\(t)"
-        guard let host = URL(string: withScheme)?.host, !host.isEmpty else { return nil }
-        return host
+        IslandTrust.endpoint(fromAddress: input)?.authority
     }
 
     /// Re-authenticate on `host` by proving possession of the Ed25519 signing
@@ -201,6 +213,16 @@ enum Multihome {
     /// Register (or recover) this identity on `hostInput` as a backup home,
     /// persist it, and return it. The caller republishes the home-island record.
     static func addBackupIsland(ownUin: Int, hostInput: String, nickname: String, auto: Bool = false) async throws -> MultihomeStore.Home {
+        // The door of design §3, before anything is dialled: a typed
+        // fingerprint is on file as `typed` from here on, so the first
+        // handshake has to match, and one that disagrees with the record on
+        // file dials nothing.
+        switch IslandTrust.shared.admit(typed: hostInput) {
+        case .admitted: break
+        case .notAFingerprint: throw AddError.notAFingerprint
+        case .caOnlyHost: throw AddError.fingerprintOnCAHost
+        case .changed: throw AddError.trustRefused
+        }
         guard let host = normalizeHost(hostInput) else { throw AddError.invalidHost }
         // isOwnHost, not == ownHost(): the Cloudflare front is the flagship by
         // another road, and "adding" it registers a second mailbox on the

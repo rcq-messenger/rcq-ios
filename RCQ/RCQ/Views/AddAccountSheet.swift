@@ -25,6 +25,9 @@ struct AddAccountSheet: View {
     @State private var showManual = false
     @State private var customURL: String = ""
     @State private var customToken: String = ""
+    /// The typed address disagrees with what this device holds for that
+    /// island (design §3): drawn as the banner under the field, nothing dialled.
+    @State private var trustChange: IslandTrust.Change?
     @State private var adding: Bool = false
     @State private var error: String?
     @State private var showRestore: Bool = false
@@ -48,8 +51,14 @@ struct AddAccountSheet: View {
         customToken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The address with its `#fingerprint` taken off first (design §3):
+    /// `URL.host` would drop the fragment without a word, and a fingerprint
+    /// dropped silently is a pin the person believes they set and never did.
+    private var customSplit: IslandTrust.Split { IslandTrust.splitAddress(customURLTrimmed) }
+
     private var customURLValid: Bool {
-        guard let url = URL(string: customURLTrimmed),
+        guard !customSplit.badFragment,
+              let url = URL(string: customSplit.address),
               let scheme = url.scheme?.lowercased(),
               scheme == "https",
               url.host?.isEmpty == false
@@ -271,12 +280,7 @@ struct AddAccountSheet: View {
                     .background(Theme.Color.bgSecondary)
                     .cornerRadius(10)
                 Button {
-                    Task {
-                        await performAdd(
-                            serverURL: customURLTrimmed,
-                            serverToken: customTokenTrimmed.isEmpty ? nil : customTokenTrimmed
-                        )
-                    }
+                    Task { await addCustom() }
                 } label: {
                     Text("add_account.custom.cta".localized)
                         .font(.callout.weight(.semibold))
@@ -303,15 +307,47 @@ struct AddAccountSheet: View {
                 .background(Theme.Color.bgSecondary)
                 .cornerRadius(8)
             if !customURLTrimmed.isEmpty && !customURLValid {
-                Text("add_account.custom.invalid".localized)
+                Text((customSplit.badFragment ? "island.trust.not_fingerprint" : "add_account.custom.invalid").localized)
                     .font(.caption2)
                     .foregroundColor(.red.opacity(0.85))
+            }
+            if let trustChange {
+                IslandTrustChangedBanner(change: trustChange) {
+                    // Chosen: the accepted value is on file now, the field is
+                    // rewritten to agree with it, and the add the person asked
+                    // for goes ahead against it.
+                    customURL = trustChange.rewriting(customURLTrimmed)
+                    self.trustChange = nil
+                    Task { await addCustom() }
+                }
+                .cornerRadius(10)
             }
             if let error {
                 Text(error)
                     .font(.caption2)
                     .foregroundColor(.red.opacity(0.85))
             }
+        }
+    }
+
+    /// The manual address goes through the trust door (design §3) before
+    /// anything is dialled: a fingerprint is pinned as typed, a bad one is an
+    /// address error, one that disagrees with the record on file is the banner.
+    private func addCustom() async {
+        error = nil
+        trustChange = nil
+        switch IslandTrust.shared.admit(typed: customURLTrimmed) {
+        case .notAFingerprint:
+            error = "island.trust.not_fingerprint".localized
+        case .caOnlyHost:
+            error = "island.trust.ca_only".localized
+        case .changed(let change):
+            trustChange = change
+        case .admitted(let address):
+            await performAdd(
+                serverURL: address,
+                serverToken: customTokenTrimmed.isEmpty ? nil : customTokenTrimmed
+            )
         }
     }
 
@@ -393,6 +429,13 @@ struct AddAccountSheet: View {
             if let danglingID = AccountManager.shared.activeAccountID,
                AccountManager.shared.accounts.last?.id == danglingID {
                 AccountManager.shared.remove(danglingID)
+            }
+            // The island answered and this device refused its certificate:
+            // that is the banner with both fingerprints, not "check your
+            // network".
+            if let change = IslandTrust.shared.change(forAddress: serverURL) {
+                trustChange = change
+                return
             }
             error = "add_account.error".localized
             return

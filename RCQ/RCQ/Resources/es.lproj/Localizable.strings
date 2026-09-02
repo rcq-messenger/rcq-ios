@@ -1796,3 +1796,20 @@
 "sites.error.unsigned" = "La firma de este sitio no cuadra. No se mostró nada.";
 "sites.error.tampered" = "Un archivo no coincide con lo que firmó el propietario. No se mostró nada.";
 "sites.error.offline" = "No se pudo llegar a esa isla.";
+
+/* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
+"island.trust.first_use" = "Primera conexión a %1$@. Su huella es %2$@. Compárala con la que publicó el operador antes de fiarte de esta isla.";
+"island.trust.changed" = "%@ presentó un certificado distinto del que confía este dispositivo. Puede que alguien esté interceptando la conexión, o que el operador haya cambiado el certificado. Compara la nueva huella con la que publicó el operador antes de confiar en ella.";
+"island.trust.changed_typed" = "%@ presentó una huella distinta de la que escribiste.";
+"island.trust.on_file" = "Guardada";
+"island.trust.presented" = "Presentada ahora";
+"island.trust.entered" = "Escrita";
+"island.trust.via_ca" = "una autoridad de certificación";
+"island.trust.accept" = "Confiar en la nueva huella";
+"island.trust.later" = "Ahora no";
+"island.trust.settings.ca" = "Confianza por autoridad de certificación";
+"island.trust.settings.pinned" = "Confianza por huella";
+"island.trust.copy" = "Copiar dirección con huella";
+"island.trust.browser_hint" = "Una isla sin autoridad de certificación se abre en las apps de escritorio y de teléfono, no en un navegador.";
+"island.trust.not_fingerprint" = "Eso no es una huella: después de # van 64 caracteres hexadecimales.";
+"island.trust.ca_only" = "Esta isla confía en una autoridad de certificación y no necesita huella.";

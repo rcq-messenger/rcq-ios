@@ -61,7 +61,13 @@ actor APIClient {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    enum BaseReachability { case primary, proxy, unreachable }
+    /// `refused` is the third state of the design's §5.5: the island answered
+    /// and this device refused its certificate (`IslandTrust`). Not a blocked
+    /// route, so the ladder in `AppState` neither engages the front or a relay
+    /// for it nor retries it; the banner's button is what moves it on.
+    enum BaseReachability { case primary, proxy, refused, unreachable }
+    /// One direct probe's answer, the same three states.
+    enum Reachability { case reachable, refused, unreachable }
 
     init() {
         let proxy = SingBoxTransport.proxyDictionary()
@@ -99,7 +105,13 @@ actor APIClient {
         // get 90s for the same i2p/Tor-slowness reason.
         cfg.timeoutIntervalForResource = slowProxy ? 90 : 30
         if let proxy { cfg.connectionProxyDictionary = proxy }
-        return URLSession(configuration: cfg)
+        // ⚠ Every session that reaches an island carries `IslandTrust` as its
+        // delegate, this one and the probe below included: a fingerprint
+        // island (no CA) is trusted by its pinned certificate there and nowhere
+        // else, and a changed certificate is refused before a byte of the
+        // request - the token in it - goes out. The flagship still validates
+        // through the CA exactly as before.
+        return URLSession(configuration: cfg, delegate: IslandTrust.shared, delegateQueue: nil)
     }
 
     private static func makeProbeSession(proxy: [String: Any]?) -> URLSession {
@@ -108,7 +120,7 @@ actor APIClient {
         cfg.timeoutIntervalForRequest = 6
         cfg.timeoutIntervalForResource = 8
         if let proxy { cfg.connectionProxyDictionary = proxy }
-        return URLSession(configuration: cfg)
+        return URLSession(configuration: cfg, delegate: IslandTrust.shared, delegateQueue: nil)
     }
 
     func applyTransportProxy() {
@@ -231,7 +243,11 @@ actor APIClient {
     @discardableResult
     func refreshActiveBase() async -> BaseReachability {
         if Self.hasManualProxy {
-            return await probe(Self.defaultBaseURL().absoluteString) ? .proxy : .unreachable
+            switch await probe(Self.defaultBaseURL().absoluteString) {
+            case .reachable: return .proxy
+            case .refused: return .refused
+            case .unreachable: return .unreachable
+            }
         }
         // A custom island (the user set rcq.baseURL to a non-flagship host):
         // probe THAT base directly. The api.rcq.app probe + the api.rcq.app-only
@@ -241,9 +257,13 @@ actor APIClient {
         // api.rcq.app is blocked but the custom server is reachable).
         let activeBase = Self.activeDirectBase()
         if activeBase != Self.prodBaseURL {
-            let ok = await probe(activeBase)
-            print("[APIClient] custom island \(activeBase) reachable=\(ok)")
-            return ok ? .primary : .unreachable
+            let reach = await probe(activeBase)
+            print("[APIClient] custom island \(activeBase) reachable=\(reach)")
+            switch reach {
+            case .reachable: return .primary
+            case .refused: return .refused
+            case .unreachable: return .unreachable
+            }
         }
         let key = "rcq.autoProxyActive"
 
@@ -259,14 +279,14 @@ actor APIClient {
         // slow relay path), and occasional tap-to-resend — all while direct
         // would have been instant. Probing prod first self-heals the moment
         // direct is reachable again; the proxy stays purely as a fallback.
-        if await probe(Self.prodBaseURL) {
+        if await probe(Self.prodBaseURL) == .reachable {
             if UserDefaults.standard.bool(forKey: key) {
                 UserDefaults.standard.set(false, forKey: key)
             }
             return .primary
         }
         // Direct genuinely unreachable — fall back to the front.
-        if await probe(Self.proxyURL) {
+        if await probe(Self.proxyURL) == .reachable {
             UserDefaults.standard.set(true, forKey: key)
             print("[APIClient] primary unreachable — switched to built-in proxy")
             return .proxy
@@ -274,16 +294,20 @@ actor APIClient {
         return .unreachable
     }
 
-    private func probe(_ base: String) async -> Bool {
-        guard let url = URL(string: base + "/health") else { return false }
+    private func probe(_ base: String) async -> Reachability {
+        guard let url = URL(string: base + "/health") else { return .unreachable }
         var req = URLRequest(url: url)
         req.timeoutInterval = 6
         req.cachePolicy = .reloadIgnoringLocalCacheData
         do {
             let (_, resp) = try await probeSession.data(for: req)
-            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            let ok = (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+            return ok ? .reachable : .unreachable
         } catch {
-            return false
+            // The island answered and the trust delegate cancelled the
+            // handshake: reachable, refused. Everything else is the route.
+            if IslandTrust.shared.refusal(for: error, url: url) != nil { return .refused }
+            return .unreachable
         }
     }
 
@@ -296,12 +320,16 @@ actor APIClient {
     /// conclude they need a VPN just to sign up (mirrors Android's
     /// ensureTransportForHost). 5s so a DPI'd network that hangs doesn't
     /// stall onboarding.
-    func probeDirectReachable() async -> Bool {
+    ///
+    /// Three answers, not two: `.refused` is an island that answered with a
+    /// certificate this device would not accept, and the caller must not
+    /// treat it as blocked (no tunnel, no retry; the banner decides).
+    func probeDirectReachable() async -> Reachability {
         // Probe the ACTIVE base (the custom island if one is selected), not a
         // hardcoded api.rcq.app — else a fresh account on a reachable custom
         // island needlessly engages the transport when only the flagship is blocked.
         let base = Self.activeDirectBase()
-        guard let url = URL(string: base + "/health") else { return false }
+        guard let url = URL(string: base + "/health") else { return .unreachable }
         var req = URLRequest(url: url)
         req.timeoutInterval = 5
         req.cachePolicy = .reloadIgnoringLocalCacheData
@@ -310,16 +338,23 @@ actor APIClient {
         cfg.waitsForConnectivity = false
         cfg.timeoutIntervalForRequest = 5
         cfg.timeoutIntervalForResource = 6
-        let direct = URLSession(configuration: cfg)
+        // The same trust delegate as the main sessions: this probe is the
+        // FIRST handshake a fresh install makes with a custom island, so it is
+        // where a typed fingerprint is checked and a first use is pinned.
+        let direct = URLSession(configuration: cfg, delegate: IslandTrust.shared, delegateQueue: nil)
         defer { direct.invalidateAndCancel() }
         do {
             let (_, resp) = try await direct.data(for: req)
             let ok = (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
             print("[APIClient] probeDirectReachable \(base) -> \(ok)")
-            return ok
+            return ok ? .reachable : .unreachable
         } catch {
+            if let refused = IslandTrust.shared.refusal(for: error, url: url) {
+                print("[APIClient] probeDirectReachable \(base) -> refused (\(refused.host))")
+                return .refused
+            }
             print("[APIClient] probeDirectReachable \(base) -> error \(error.localizedDescription)")
-            return false
+            return .unreachable
         }
     }
 
@@ -447,6 +482,13 @@ actor APIClient {
             } catch is CancellationError {
                 // Re-throw raw so callers can detect cancellation.
                 throw CancellationError()
+            } catch let error where IslandTrust.shared.refusal(for: error, url: req.url) != nil {
+                // ⚠ Before the `.cancelled` branch below: a challenge the
+                // trust delegate cancelled reaches here as that same code. A
+                // refused certificate is never retried, and it goes out as its
+                // own error so no caller mistakes it for an outage worth a
+                // relay (§5.5).
+                throw APIError.transport(IslandTrust.shared.refusal(for: error, url: req.url)!)
             } catch let urlError as URLError where urlError.code == .cancelled {
                 throw urlError
             } catch {

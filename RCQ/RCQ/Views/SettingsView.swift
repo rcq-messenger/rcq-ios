@@ -300,6 +300,10 @@ struct SettingsView: View {
     @State private var notificationsHighlight: SettingsRow?
     @StateObject private var language = LanguageManager.shared
     @ObservedObject private var panicPIN = PanicPINService.shared
+    /// The island row reads the pin store, and a handshake behind the screen
+    /// can change what is on file; `revision` is what redraws it.
+    @ObservedObject private var islandTrust = IslandTrust.shared
+    @State private var trustCopied: Bool = false
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -804,6 +808,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            islandTrustRow
             if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
                     showIslandRules = true
@@ -1215,6 +1220,60 @@ struct SettingsView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let base = (picked?.isEmpty == false) ? picked! : APIClient.prodBaseURL
         return URL(string: base)?.host ?? base
+    }
+
+    /// How this island is trusted (design §5.3): through a certificate
+    /// authority, or by a fingerprint this device holds, with the address to
+    /// hand to somebody so they can pin it before their first connection.
+    @ViewBuilder
+    private var islandTrustRow: some View {
+        if let status = islandTrustStatus {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: status.record.mode == .ca ? "checkmark.shield" : "lock.shield")
+                    .foregroundColor(Theme.Color.accent)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text((status.record.mode == .ca ? "island.trust.settings.ca" : "island.trust.settings.pinned").localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    if status.record.mode == .pinned, let fp = status.record.fp {
+                        Text(IslandTrust.displayFingerprint(fp))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(Theme.Color.textMono)
+                        Button {
+                            UIPasteboard.general.string = IslandTrust.shareAddress(status.endpoint, fingerprint: fp)
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            trustCopied = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                                if trustCopied { trustCopied = false }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: trustCopied ? "checkmark.circle.fill" : "doc.on.doc")
+                                Text("island.trust.copy".localized)
+                            }
+                            .font(.caption)
+                            .foregroundColor(trustCopied ? Theme.Color.accent : Theme.Color.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The store's record for the picked island, or the CA-only verdict for
+    /// the flagship and the fronts, which the rule never writes to the store.
+    /// Nil until this device has completed a handshake with a custom island.
+    private var islandTrustStatus: (endpoint: IslandTrust.Endpoint, record: IslandTrust.Record)? {
+        _ = islandTrust.revision
+        let picked = UserDefaults.standard.string(forKey: "rcq.baseURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = (picked?.isEmpty == false) ? picked! : APIClient.prodBaseURL
+        guard let end = IslandTrust.endpoint(fromAddress: base) else { return nil }
+        if IslandTrust.isCAOnly(end.host, extra: IslandTrust.caOnlyHostsProvider()) {
+            return (end, IslandTrust.Record(mode: .ca, since: 0, noticed: true))
+        }
+        return IslandTrust.shared.status(forAddress: base)
     }
 }
 
@@ -2050,6 +2109,16 @@ struct BackupIslandView: View {
                 let message: String
                 switch error {
                 case Multihome.AddError.invalidHost: message = "multihome.err.invalid".localized
+                case Multihome.AddError.notAFingerprint: message = "island.trust.not_fingerprint".localized
+                case Multihome.AddError.fingerprintOnCAHost: message = "island.trust.ca_only".localized
+                case Multihome.AddError.trustRefused:
+                    // The banner with the two fingerprints and the button is on
+                    // the main screen; this line says why nothing was dialled.
+                    let change = IslandTrust.shared.change(forAddress: host)
+                    message = String(
+                        format: (change?.typed == true ? "island.trust.changed_typed" : "island.trust.changed").localized,
+                        change?.host ?? host
+                    )
                 case Multihome.AddError.primaryIsland: message = "multihome.err.primary".localized
                 case Multihome.AddError.alreadyAdded: message = "multihome.err.already".localized
                 case Multihome.AddError.network(let detail):

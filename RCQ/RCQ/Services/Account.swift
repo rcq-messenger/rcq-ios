@@ -58,8 +58,15 @@ struct Account: Codable, Identifiable, Hashable {
 
     /// Convenience for use in pickers / lists when `displayLabel`
     /// isn't set. Always non-empty.
+    ///
+    /// ⚠ `host[:port]`, not `URL.host`: the switcher's card fill and the logo
+    /// fetch build `https://\(displayHost)/...` from this, and `URL.host`
+    /// drops the port, so an island on `:8443` was dialled on `:443`, the
+    /// connection failed, and `IslandHTTP` raised the tunnel for an island
+    /// that was answering fine (seen against the local fingerprint island).
+    /// The port only shows when it is not 443, the form `install.sh` prints.
     var displayHost: String {
-        URL(string: serverURL)?.host ?? serverURL
+        IslandTrust.endpoint(fromAddress: serverURL)?.authority ?? serverURL
     }
 
     init(
