@@ -97,7 +97,7 @@ struct BlockedUsersView: View {
                             Text(contact.nickname)
                                 .font(.system(.body, weight: .medium))
                                 .foregroundColor(Theme.Color.textPrimary)
-                            Text(verbatim: "#\(contact.uin)")
+                            Text(verbatim: "\(contact.uin)")
                                 .font(.system(.caption, design: .monospaced))
                                 .foregroundColor(Theme.Color.textSecondary)
                         }

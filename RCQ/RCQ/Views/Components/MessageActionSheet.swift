@@ -291,7 +291,7 @@ struct ReactionsWhoSheet: View {
             Text(nameFor(uin))
                 .foregroundColor(Theme.Color.textPrimary)
             Spacer()
-            Text(verbatim: "#\(uin)")
+            Text(verbatim: "\(uin)")
                 .font(.caption.monospaced())
                 .foregroundColor(Theme.Color.textMono)
             if openable {

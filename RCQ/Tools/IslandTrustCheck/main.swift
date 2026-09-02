@@ -81,7 +81,7 @@ check("the address a form dials carries the scheme, whether or not it was typed"
       && T.dialAddress("http://island.example") == "http://island.example"
       && T.dialAddress("[::1]:8443") == "https://[::1]:8443")
 check("and nothing to dial is nil, so a form can disable its button on it",
-      T.dialAddress("") == nil && T.dialAddress("#\(fpA)") == nil && T.dialAddress("https://") == nil)
+      T.dialAddress("") == nil && T.dialAddress("\(fpA)") == nil && T.dialAddress("https://") == nil)
 check("the share form is host[:port]#fp",
       T.shareAddress(T.Endpoint(host: "island.example", port: 8443), fingerprint: fpA) == "island.example:8443#\(fpA)"
       && T.shareAddress(T.Endpoint(host: "island.example", port: 443), fingerprint: fpA) == "island.example#\(fpA)")

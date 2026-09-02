@@ -68,7 +68,7 @@ struct OutgoingRequestsView: View {
                     .font(.system(.body, weight: .medium))
                     .foregroundColor(Theme.Color.textPrimary)
                 HStack(spacing: 8) {
-                    Text(verbatim: "#\(req.to_uin)")
+                    Text(verbatim: "\(req.to_uin)")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Theme.Color.textMono)
                     Text((declined ? "outgoing.state.declined" : "outgoing.state.pending").localized)

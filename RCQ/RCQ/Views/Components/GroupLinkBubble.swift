@@ -283,7 +283,7 @@ struct PinnedGroupChip: View {
                 )
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(preview?.name ?? (foreignHost != nil ? "group_join.island".localized : "#\(groupID)"))
+                    Text(preview?.name ?? (foreignHost != nil ? "group_join.island".localized : "\(groupID)"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)

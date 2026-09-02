@@ -167,7 +167,7 @@ struct SectionPickerSheet: View {
                 title: ContactAliasStore.shared.displayName(
                     for: contact.uin, fallback: contact.nickname, host: contact.host
                 ),
-                subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
+                subtitle: contact.host.map { "\(contact.uin) · \($0)" } ?? "\(contact.uin)",
                 isGroup: false,
                 avatarID: contact.avatarMediaID,
                 avatarKey: contact.avatarKeyResolved,
@@ -182,7 +182,7 @@ struct SectionPickerSheet: View {
                 title: ContactAliasStore.shared.displayName(
                     for: contact.uin, fallback: contact.nickname, host: contact.host
                 ),
-                subtitle: contact.host.map { "#\(contact.uin) · \($0)" } ?? "#\(contact.uin)",
+                subtitle: contact.host.map { "\(contact.uin) · \($0)" } ?? "\(contact.uin)",
                 isGroup: false,
                 avatarID: contact.avatarMediaID,
                 avatarKey: contact.avatarKeyResolved,

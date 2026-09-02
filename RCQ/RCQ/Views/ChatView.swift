@@ -419,7 +419,7 @@ struct ChatView: View {
                                 Text(m.nickname)
                                     .foregroundColor(Theme.Color.textPrimary)
                                 Spacer()
-                                Text(verbatim: "#\(m.uin)")
+                                Text(verbatim: "\(m.uin)")
                                     .font(.caption.monospacedDigit())
                                     .foregroundColor(Theme.Color.textMono)
                             }
@@ -1194,7 +1194,7 @@ struct ChatView: View {
             // over the one arriving, which reads as a lag in ONE direction.
             // The outgoing half goes first, the incoming one waits for it. Same
             // bug and same cure as the web header and as `AltText`.
-            Text(verbatim: "#\(live.uin)")
+            Text(verbatim: "\(live.uin)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Theme.Color.textMono)
                 .opacity(showAlt ? 0 : 1)

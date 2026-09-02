@@ -119,7 +119,7 @@ struct Contact: Identifiable, Hashable, Codable {
     static func blockedStub(uin: Int) -> Contact {
         Contact(
             uin: uin,
-            nickname: "#\(uin)",
+            nickname: "\(uin)",
             status: .offline,
             statusMessage: nil,
             blocked: true,

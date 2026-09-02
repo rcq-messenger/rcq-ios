@@ -124,7 +124,7 @@ class NotificationService: UNNotificationServiceExtension {
             // devices and pushes for the active account skip this —
             // no clutter for the common case.
             if let activeBeforeRoute, activeBeforeRoute != targetID {
-                content.subtitle = "#\(toUIN)"
+                content.subtitle = "\(toUIN)"
             }
             KeychainStore.setProcessOverrideAccountID(targetID)
             SignalProtocolDB.shared.reload(toAccountID: targetID)
@@ -351,7 +351,7 @@ class NotificationService: UNNotificationServiceExtension {
         _ content: UNMutableNotificationContent,
         senderUIN: Int
     ) -> UNNotificationContent? {
-        let name = content.title.isEmpty ? "#\(senderUIN)" : content.title
+        let name = content.title.isEmpty ? "\(senderUIN)" : content.title
         var image: INImage?
         if let data = AvatarThumbCache.data(for: senderUIN) {
             image = INImage(imageData: data)
@@ -387,7 +387,7 @@ class NotificationService: UNNotificationServiceExtension {
         // a recent value here in most cases. Falls back to a `#UIN`
         // tag when the sender isn't in our contacts (e.g. an open
         // random-chat session, or a contact added on another device).
-        let senderNick = NicknameCache.nickname(for: decrypted.senderUIN) ?? "#\(decrypted.senderUIN)"
+        let senderNick = NicknameCache.nickname(for: decrypted.senderUIN) ?? "\(decrypted.senderUIN)"
         content.title = senderNick
         // Group threading by sender so iOS stacks multiple messages
         // from the same UIN into a single notification group AND
@@ -671,7 +671,7 @@ class NotificationService: UNNotificationServiceExtension {
     /// catch block).
     private static func envelopeMentions(_ envelope: Envelope, uin: Int) -> Bool {
         guard uin > 0 else { return false }
-        let needle = "#\(uin)"
+        let needle = "\(uin)"
         switch envelope {
         case .text(_, let t, _, _, _, _):                   return t.contains(needle)
         case .photo(_, _, _, let c, _, _, _, _, _, _):      return (c ?? "").contains(needle)

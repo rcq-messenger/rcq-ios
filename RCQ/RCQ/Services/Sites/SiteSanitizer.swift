@@ -99,7 +99,19 @@ private struct SiteHTMLTokenizer {
     var i = 0
     var tokens: [SiteHTMLToken] = []
 
-    init(_ html: String) { src = Array(html) }
+    /// ⚠⚠ CRLF is normalised away before the document becomes Characters, and
+    /// that is not tidiness. In Swift `"\r\n"` is ONE Character - a grapheme
+    /// cluster - so it equals neither `"\r"` nor `"\n"`, and every whitespace
+    /// test in this parser said no to it. A tag whose attributes were split
+    /// across lines, which is every line a word processor exports, then had the
+    /// rest of the line swallowed into the previous attribute's unquoted value:
+    /// `<img width=623 height=623CRLFsrc="01.png">` lost its `src` and the
+    /// picture with it, on a page that rendered correctly in every other
+    /// client (founder, 02.09, `main.rcq`). Windows line endings are the norm
+    /// in exactly the pages this reader exists for.
+    init(_ html: String) {
+        src = Array(html.replacingOccurrences(of: "\r\n", with: "\n"))
+    }
 
     static func tokenize(_ html: String) -> [SiteHTMLToken] {
         var t = SiteHTMLTokenizer(html)
@@ -312,7 +324,10 @@ private struct SiteHTMLTokenizer {
     }
 
     static func isSpace(_ c: Character) -> Bool {
-        c == " " || c == "\t" || c == "\n" || c == "\r" || c == "\u{0C}"
+        // "\r\n" is here as its own case as well: the initialiser folds it
+        // away, and a caller that builds a parser some other way should still
+        // not be caught by the grapheme.
+        c == " " || c == "\t" || c == "\n" || c == "\r" || c == "\u{0C}" || c == "\r\n"
     }
 
     static func isLetter(_ c: Character) -> Bool {
@@ -583,6 +598,69 @@ enum SiteHTMLSerializer {
 /// `@import` with no semicolon runs to the next block. Expressions miss all
 /// four. On the web the frame's `default-src 'none'` catches what slips
 /// through; here nothing does.
+/// Text out of a bundle, read the way its author declared it.
+///
+/// ⚠ The first site anybody published on this network was a 2000s page in
+/// windows-1251, and that is not an accident: a format with no scripts and no
+/// tracking attracts exactly the people whose pages predate UTF-8. Decoded as
+/// UTF-8 their Russian came out as mojibake on iOS while the same page read
+/// correctly on the desktop, which already sniffed the label (founder, 02.09,
+/// `main.rcq`). The label is read out of the first kilobyte, the way a browser
+/// does it, and the whole `<meta charset>` / `<meta http-equiv>` argument is
+/// settled by one regular expression because a page cannot lie about its own
+/// bytes in a way that hurts anybody but itself.
+enum SiteText {
+
+    /// The labels worth carrying, mapped to what CoreFoundation calls them.
+    /// Anything not here falls back to UTF-8, which at least renders the ASCII.
+    private static let known: [String: CFStringEncodings] = [
+        "windows-1251": .windowsCyrillic, "cp1251": .windowsCyrillic,
+        "windows-1250": .windowsLatin2, "windows-1254": .windowsLatin5,
+        "koi8-r": .KOI8_R, "koi8-u": .KOI8_U,
+        "iso-8859-5": .isoLatinCyrillic, "iso-8859-2": .isoLatin2,
+        "iso-8859-7": .isoLatinGreek, "iso-8859-9": .isoLatin5,
+        "cp866": .dosRussian, "ibm866": .dosRussian,
+        "gb2312": .GB_18030_2000, "gbk": .GB_18030_2000, "gb18030": .GB_18030_2000,
+        "big5": .big5, "shift_jis": .shiftJIS, "sjis": .shiftJIS, "euc-jp": .EUC_JP,
+        "euc-kr": .EUC_KR, "windows-1256": .windowsArabic, "windows-1255": .windowsHebrew,
+    ]
+
+    static func decode(_ bytes: [UInt8]) -> String {
+        let data = Data(bytes)
+        let head = String(decoding: bytes.prefix(1024), as: UTF8.self)
+            .isEmpty ? "" : String(data: data.prefix(1024), encoding: .isoLatin1) ?? ""
+        if let label = charsetLabel(in: head) {
+            if label == "utf-8" || label == "utf8" {
+                return String(decoding: bytes, as: UTF8.self)
+            }
+            if label == "iso-8859-1" || label == "latin1" {
+                return String(data: data, encoding: .isoLatin1) ?? String(decoding: bytes, as: UTF8.self)
+            }
+            if label == "windows-1252" || label == "cp1252" {
+                return String(data: data, encoding: .windowsCP1252) ?? String(decoding: bytes, as: UTF8.self)
+            }
+            if let cf = known[label] {
+                let enc = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cf.rawValue)))
+                if let s = String(data: data, encoding: enc) { return s }
+            }
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    static func decode(_ data: Data) -> String { decode([UInt8](data)) }
+
+    private static func charsetLabel(in head: String) -> String? {
+        guard let r = head.range(of: "charset\\s*=\\s*[\"']?[A-Za-z0-9_-]+", options: [.regularExpression, .caseInsensitive]) else {
+            return nil
+        }
+        let piece = head[r]
+        guard let eq = piece.firstIndex(of: "=") else { return nil }
+        return piece[piece.index(after: eq)...]
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+            .lowercased()
+    }
+}
+
 enum SiteCSS {
     private enum Token {
         case atKeyword(raw: String, name: String)
@@ -1034,7 +1112,7 @@ struct SiteSanitizer {
             return nil
         }
         let style = SiteHTMLNode(element: "style")
-        style.children = [SiteHTMLNode(text: SiteCSS.clean(String(decoding: bytes, as: UTF8.self)))]
+        style.children = [SiteHTMLNode(text: SiteCSS.clean(SiteText.decode(bytes)))]
         return style
     }
 

@@ -188,7 +188,7 @@ struct QRSheet: View {
                         Text(auth.nickname.isEmpty ? "—" : auth.nickname)
                             .font(.title2.bold())
                             .foregroundColor(Theme.Color.textPrimary)
-                        Text(verbatim: "#\(uin)")
+                        Text(verbatim: "\(uin)")
                             .font(.title3.monospaced())
                             .foregroundColor(Theme.Color.textMono)
                     }
