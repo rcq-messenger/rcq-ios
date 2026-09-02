@@ -31,6 +31,10 @@ struct SitesView: View {
     @State private var loading = false
     @State private var editing = false
     @State private var catalogue: [SitesRepository.SiteListing] = []
+    /// Which open is the current one. Back and every new open bump it, and a
+    /// fetch that comes home to find it changed lands nowhere: the reader has
+    /// already left the page it was for.
+    @State private var turn = 0
     /// site name → its verified mark, or nil once we know there is none. The
     /// key is the NAME rather than the address, exactly as on the other two
     /// clients: a catalogue row and the page it opens are one site.
@@ -73,17 +77,18 @@ struct SitesView: View {
 
     // MARK: - The address bar
 
-    /// One capsule, the way a desktop browser does it: the address IS the
-    /// control. Idle it sits centred with the site's mark and a reload glyph;
-    /// editing it is an ordinary text field, left-aligned and selected, and the
-    /// keyboard's Go opens it.
+    /// One capsule across the row, the way a desktop browser does it: the
+    /// address IS the control, and the way back lives inside it, at the left
+    /// edge (founder, 02.09). Idle the address sits centred between the site's
+    /// mark and a reload glyph; editing it is an ordinary text field,
+    /// left-aligned and selected, and the keyboard's Go opens it.
     ///
     /// There is no Open button anywhere on this screen: that would be a second
     /// way to do what the Go key already does (founder, 01.09).
     private var addressBar: some View {
         HStack(spacing: 8) {
             Button {
-                dismiss()
+                back()
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .semibold))
@@ -92,52 +97,69 @@ struct SitesView: View {
             }
             .accessibilityLabel("sites.back".localized)
 
-            HStack(spacing: 8) {
-                // The mark stands in for the padlock a browser puts here, and
-                // it means the same thing: this is the site it says it is,
-                // checked against the owner's signature.
-                if let addr, page != nil, !editing {
-                    SiteMarkView(name: addr.name, image: marks[addr.name] ?? nil, size: 18)
-                }
-                SiteAddressField(
-                    text: $typed,
-                    placeholder: "sites.address.placeholder".localized,
-                    centred: !editing && page != nil,
-                    onEditingChanged: { now in
-                        editing = now
-                        if !now, let addr { typed = addr.display }
-                    },
-                    onGo: { open($0) }
-                )
-                if let page, !editing {
-                    if loading {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.6)
+            // The mark stands in for the padlock a browser puts here, and it
+            // means the same thing: this is the site it says it is, checked
+            // against the owner's signature.
+            if let addr, page != nil, !editing {
+                SiteMarkView(name: addr.name, image: marks[addr.name] ?? nil, size: 18)
+            }
+            SiteAddressField(
+                text: $typed,
+                placeholder: "sites.address.placeholder".localized,
+                centred: !editing && page != nil,
+                onEditingChanged: { now in
+                    editing = now
+                    if !now, let addr { typed = addr.display }
+                },
+                onGo: { open($0) }
+            )
+            if let page, !editing {
+                if loading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.6)
+                        .frame(width: 18, height: 18)
+                } else {
+                    // Reload, and it really reloads: a bundle is served with
+                    // a short cache, which is right for reading and wrong for
+                    // somebody who just republished.
+                    Button {
+                        if let addr { open(addr.display, path: page.path, fresh: true) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.Color.textSecondary)
                             .frame(width: 18, height: 18)
-                    } else {
-                        // Reload, and it really reloads: a bundle is served
-                        // with a short cache, which is right for reading and
-                        // wrong for somebody who just republished.
-                        Button {
-                            if let addr { open(addr.display, path: page.path, fresh: true) }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(Theme.Color.textSecondary)
-                                .frame(width: 18, height: 18)
-                        }
-                        .accessibilityLabel("sites.reload".localized)
                     }
+                    .accessibilityLabel("sites.reload".localized)
                 }
             }
-            .padding(.horizontal, 12)
-            .frame(height: 38)
-            .background(Theme.Color.bgSecondary)
-            .clipShape(Capsule())
         }
+        .padding(.leading, 6)
+        .padding(.trailing, 12)
+        .frame(height: 38)
+        .background(Theme.Color.bgSecondary)
+        .clipShape(Capsule())
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    /// The chevron leaves the PAGE before it leaves the browser: on a page,
+    /// or on an error for an address, it returns to the catalogue, and only
+    /// from the catalogue does it dismiss (founder, 02.09, all three clients).
+    /// A fetch still in flight for the page is disowned rather than allowed to
+    /// land on top of the catalogue.
+    private func back() {
+        guard page != nil || failure != nil || addr != nil else {
+            dismiss()
+            return
+        }
+        turn += 1
+        page = nil
+        addr = nil
+        failure = nil
+        typed = ""
+        loading = false
     }
 
     /// A hair of progress under the bar. The spinner in the capsule says
@@ -232,8 +254,14 @@ struct SitesView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(24)
         } else if let page {
+            // Under the home indicator too, so the strip down there is the
+            // page's own background and not our ground: a dark page over our
+            // light one drew a bright island at the bottom of the screen
+            // (founder, 02.09). The page's text still stops short of the
+            // indicator, see `SiteWebView`.
             LockedSiteWebView(html: page.html)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .bottom)
         } else {
             emptyScreen
         }
@@ -289,11 +317,14 @@ struct SitesView: View {
     // MARK: - Opening
 
     private func open(_ raw: String, path: String = "index.html", fresh: Bool = false) {
+        turn += 1
+        let mine = turn
         guard let parsed = SiteAddressParser.parse(raw, ownHost: ownHost) else {
             // Nothing has been sent anywhere: an address we cannot parse is an
             // address we must not guess at.
             failure = .address
             page = nil
+            loading = false
             return
         }
         loading = true
@@ -301,6 +332,7 @@ struct SitesView: View {
         Task {
             do {
                 let got = try await SitesRepository.shared.page(parsed, path: path, fresh: fresh)
+                guard mine == turn else { return }
                 page = got
                 addr = parsed
                 typed = parsed.display
@@ -310,10 +342,12 @@ struct SitesView: View {
                 let mark = await SitesRepository.shared.mark(parsed, fresh: fresh)
                 marks[parsed.name] = mark.flatMap { UIImage(data: $0.bytes) }
             } catch let e as SiteError {
+                guard mine == turn else { return }
                 page = nil
                 failure = e
                 loading = false
             } catch {
+                guard mine == turn else { return }
                 page = nil
                 failure = .offline
                 loading = false
@@ -510,6 +544,20 @@ private final class SiteBlockAllRules {
     }
 }
 
+/// The web view runs to the bottom of the screen so the strip under the home
+/// indicator is painted in the page's own colour; this is what keeps the page's
+/// last line from ending underneath the indicator. The inset is written by
+/// hand from the safe area rather than left to the scroll view, so the
+/// `.never` in `makeUIView` stays the one word it is and the only inset the
+/// page ever gets is the bottom one.
+private final class SiteWebView: WKWebView {
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        scrollView.contentInset.bottom = safeAreaInsets.bottom
+        scrollView.verticalScrollIndicatorInsets.bottom = safeAreaInsets.bottom
+    }
+}
+
 /// A `WKWebView` that can render and can do nothing else.
 ///
 /// ⚠⚠ Every line in `makeUIView` is load-bearing, and the order they are argued
@@ -556,7 +604,7 @@ private struct LockedSiteWebView: UIViewRepresentable {
         config.mediaTypesRequiringUserActionForPlayback = .all
         config.suppressesIncrementalRendering = false
 
-        let web = WKWebView(frame: .zero, configuration: config)
+        let web = SiteWebView(frame: .zero, configuration: config)
         web.navigationDelegate = context.coordinator
         web.uiDelegate = context.coordinator
         web.allowsLinkPreview = false
