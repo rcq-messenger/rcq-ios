@@ -680,7 +680,7 @@
 "group.settings.no_links" = "关闭链接";
 "group.settings.no_links.hint" = "消息里的链接只显示为纯文本，无法打开。";
 "group.settings.no_files" = "关闭文件";
-"group.settings.no_files.hint" = "这里不能发送或下载文件。";
+"group.settings.no_files.hint" = "此群里不能发送照片、视频和文件。语音消息不受影响。";
 "group.settings.age_gate" = "账号最低注册时长";
 "group.settings.age_gate.hint" = "低于门槛的账号可以阅读但不能发言。";
 "group.settings.slowmode" = "慢速模式";

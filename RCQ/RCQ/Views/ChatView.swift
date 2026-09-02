@@ -183,13 +183,18 @@ struct ChatView: View {
     /// It sits on the send paths and not inside the envelope builder on
     /// purpose: a retry of an old row, or a re-send of something already in the
     /// log, must never be eaten by a rule the room only just grew.
-    private func roomRulesBlockSend(text: String? = nil, isFile: Bool = false) -> Bool {
+    ///
+    /// `isAttachment` is a document, a photo, a video or a GIF: `files_allowed`
+    /// is one rule for every attachment on every client (founder, 2026-09-02).
+    /// A voice note is NOT one - it is a spoken message - so the mic path asks
+    /// with the default and stays open in a files-off room.
+    private func roomRulesBlockSend(text: String? = nil, isAttachment: Bool = false) -> Bool {
         let policy = roomPolicy
         if let text, !policy.linksAllowed, Self.carriesLink(text) {
             roomRuleNotice = "chat.links_off.notice".localized
             return true
         }
-        if isFile, !policy.filesAllowed {
+        if isAttachment, !policy.filesAllowed {
             roomRuleNotice = "chat.files_off.notice".localized
             return true
         }
@@ -208,6 +213,17 @@ struct ChatView: View {
         let sec = roomPolicy.slowmodeSec
         guard sec > 0, let gid = activeGroupID else { return }
         SlowmodeClock.until[gid] = Date().addingTimeInterval(TimeInterval(sec))
+    }
+
+    /// Refuse a picture at the door of the pending strip, not only at Send: a
+    /// paste, or a sheet that was already open when the owner flipped the
+    /// switch, hears the sentence as the picture arrives instead of after it
+    /// sat in the strip. Only the files rule is asked here, on purpose: slow
+    /// mode paces the SEND, and a pick made during the pause is not a send.
+    private func attachmentRefused() -> Bool {
+        if filesAllowed { return false }
+        roomRuleNotice = "chat.files_off.notice".localized
+        return true
     }
 
     /// Owner / info-moderator may pin a chat message into the group's single
@@ -1490,6 +1506,7 @@ struct ChatView: View {
                 // composer's pending-media queue and close the
                 // sheet, no `pendingAttachAction` middleman needed.
                 showAttachmentMenu = false
+                if !picks.isEmpty, attachmentRefused() { return }
                 Task { @MainActor in
                     for item in picks {
                         switch item {
@@ -2810,7 +2827,9 @@ struct ChatView: View {
                     onImagePaste: { image in
                         // Pasted screenshot / copied photo flows
                         // straight into the pending-media queue,
-                        // same path as a gallery pick.
+                        // same path as a gallery pick - and through
+                        // the same door: a files-off room says no here.
+                        if attachmentRefused() { return }
                         vm.queuePendingPhotos([image])
                     },
                     caretPlainLocation: composerCaretBinding,
@@ -3153,8 +3172,10 @@ struct ChatView: View {
             // The room's rules, on the SEND path rather than on the button:
             // a draft typed before the owner flipped the switch, and the
             // hardware-return key, both get here without passing a control.
-            // A caption rides with the media, so it is the same text test.
-            if roomRulesBlockSend(text: vm.input) { return }
+            // A caption rides with the media, so it is the same text test;
+            // the strip itself is an attachment, for a queue that predates
+            // the switch.
+            if roomRulesBlockSend(text: vm.input, isAttachment: !vm.pendingMedia.isEmpty) { return }
             armSlowmode()
             Task {
                 if !vm.pendingMedia.isEmpty {
@@ -3228,6 +3249,7 @@ struct ChatView: View {
                     limit: vm.pendingMediaSlotsLeft,
                     onDone: { items in
                         Task { @MainActor in
+                            if !items.isEmpty, attachmentRefused() { return }
                             for item in items {
                                 switch item {
                                 case .photo(let img):
@@ -3250,6 +3272,7 @@ struct ChatView: View {
                 ImperativePicker.captureFromCamera(mode: .both) { captured in
                     guard let captured else { return }
                     Task { @MainActor in
+                        if attachmentRefused() { return }
                         switch captured {
                         case .photo(let img):
                             vm.queuePendingPhotos([img])
@@ -3273,7 +3296,7 @@ struct ChatView: View {
                             // owner flipped the switch. Guarded anyway: the
                             // island refuses the deposit either way, and a
                             // sentence beats a red error off the wire.
-                            if roomRulesBlockSend(isFile: true) { return }
+                            if roomRulesBlockSend(isAttachment: true) { return }
                             armSlowmode()
                             if let err = await vm.sendFile(
                                 fileURL: picked.url,
@@ -3367,6 +3390,8 @@ struct ChatView: View {
                 pendingVoicePreview = nil
             },
             onSend: {
+                // Not an attachment on purpose: a voice note is a spoken
+                // message and stays allowed in a files-off room.
                 if roomRulesBlockSend() { return }
                 pendingVoicePreview = nil
                 armSlowmode()

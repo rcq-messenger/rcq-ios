@@ -689,7 +689,7 @@
 "group.settings.no_links" = "Bağlantıları kapat";
 "group.settings.no_links.hint" = "Mesajlardaki bağlantılar düz metin kalır ve açılmaz.";
 "group.settings.no_files" = "Dosyaları kapat";
-"group.settings.no_files.hint" = "Burada dosya gönderilemez ve indirilemez.";
+"group.settings.no_files.hint" = "Bu grupta fotoğraf, video ve dosya gönderilemez. Sesli mesajlar gönderilebilir.";
 "group.settings.age_gate" = "Hesap yaşı eşiği";
 "group.settings.age_gate.hint" = "Eşikten genç hesaplar okuyabilir ama yazamaz.";
 "group.settings.slowmode" = "Yavaş mod";

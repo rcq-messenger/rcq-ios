@@ -369,6 +369,10 @@ struct GroupSettingsSheet: View {
     /// ⚠ Both are client-honored: the island cannot see inside a sealed
     /// envelope, so it publishes the rule and every client obeys it. Slowmode
     /// is the one the island enforces itself.
+    ///
+    /// "Files" is every attachment - documents, photos and videos - on every
+    /// client (founder, 2026-09-02); a voice note is a spoken message and is
+    /// not covered, which is what the hint under the switch says.
     @ViewBuilder
     private func contentPolicySection() -> some View {
         Section {

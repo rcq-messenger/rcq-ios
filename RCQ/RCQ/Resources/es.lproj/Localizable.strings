@@ -689,7 +689,7 @@
 "group.settings.no_links" = "Desactivar enlaces";
 "group.settings.no_links.hint" = "Los enlaces de los mensajes quedan como texto y no se abren.";
 "group.settings.no_files" = "Desactivar archivos";
-"group.settings.no_files.hint" = "Aquí no se pueden enviar ni descargar archivos.";
+"group.settings.no_files.hint" = "Aquí no se pueden enviar fotos, vídeos ni archivos. Los mensajes de voz sí.";
 "group.settings.age_gate" = "Antigüedad mínima de cuenta";
 "group.settings.age_gate.hint" = "Las cuentas más nuevas que el umbral pueden leer pero no publicar.";
 "group.settings.slowmode" = "Modo lento";
