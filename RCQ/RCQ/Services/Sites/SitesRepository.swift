@@ -58,6 +58,10 @@ actor SitesRepository {
     struct SiteListing {
         let name: String
         let title: String?
+        /// The island put this site at the top of its catalogue (`home` on the
+        /// flagship). False when the island does not say: the field is newer
+        /// than some islands.
+        let featured: Bool
     }
 
     // MARK: - Entry points
@@ -160,7 +164,11 @@ actor SitesRepository {
         }
         return rows.compactMap { row in
             guard let name = row["name"] as? String else { return nil }
-            return SiteListing(name: name, title: row["title"] as? String)
+            return SiteListing(
+                name: name,
+                title: row["title"] as? String,
+                featured: row["featured"] as? Bool ?? false
+            )
         }
     }
 

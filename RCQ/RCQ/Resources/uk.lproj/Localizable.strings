@@ -1796,6 +1796,11 @@
 "sites.error.unsigned" = "Підпис сайту не сходиться. Нічого не показано.";
 "sites.error.tampered" = "Файл не збігається з тим, що підписав власник. Нічого не показано.";
 "sites.error.offline" = "Не вдалося дістатися острова.";
+"sites.pinned" = "Закріплені";
+"sites.recents" = "Нещодавні";
+"sites.recents.remove" = "Прибрати з нещодавніх";
+"sites.share" = "Поділитися адресою";
+"sites.share.sent" = "Адресу надіслано: %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "Перше підключення до %1$@. Відбиток острова: %2$@. Звірте його з тим, що опублікував оператор, перш ніж покладатися на цей острів.";

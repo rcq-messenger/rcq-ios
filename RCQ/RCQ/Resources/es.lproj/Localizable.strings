@@ -1796,6 +1796,11 @@
 "sites.error.unsigned" = "La firma de este sitio no cuadra. No se mostró nada.";
 "sites.error.tampered" = "Un archivo no coincide con lo que firmó el propietario. No se mostró nada.";
 "sites.error.offline" = "No se pudo llegar a esa isla.";
+"sites.pinned" = "Fijados";
+"sites.recents" = "Recientes";
+"sites.recents.remove" = "Quitar de recientes";
+"sites.share" = "Compartir dirección";
+"sites.share.sent" = "Dirección enviada a %@";
 
 /* An island trusted by its fingerprint (docs/island-fingerprint-design.md §5) */
 "island.trust.first_use" = "Primera conexión a %1$@. Su huella es %2$@. Compárala con la que publicó el operador antes de fiarte de esta isla.";
