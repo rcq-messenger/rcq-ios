@@ -135,7 +135,14 @@ enum SiteAddressParser {
     /// `guide/intro.html`, and a link that named only `guide` would open
     /// nothing. Query and fragment are dropped; the frame acts on neither.
     static func link(from raw: String) -> SiteLink? {
+        // ⚠ An address at the end of a sentence is still an address. A chat
+        // hands this whatever the linkifier matched, punctuation and all, and
+        // a `home.rcq.` that failed here fell through to the ordinary-URL path
+        // and opened Safari at a name that resolves nowhere - the one outcome
+        // this whole feature exists to avoid.
         var s = trim(raw)
+        while let last = s.last, ")]}>»\"'`,;:!?.".contains(last) { s.removeLast() }
+        while let first = s.first, "([{<«\"'`".contains(first) { s.removeFirst() }
         if let scheme = s.range(of: "^[A-Za-z][A-Za-z0-9+.\\-]*://", options: .regularExpression) {
             s.removeSubrange(scheme)
         }

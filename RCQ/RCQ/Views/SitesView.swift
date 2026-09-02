@@ -110,7 +110,13 @@ struct SitesView: View {
                 let mark = await SitesRepository.shared.mark(a)
                 marks[a.pinKey] = mark.flatMap { UIImage(data: $0.bytes) }
             }
-            for entry in SiteRecents.shared.all() where marks[entry.key] == nil {
+            // ⚠⚠ Marks are asked of THIS island only. A recent row on
+            // somebody else's island is drawn with its letter until it is
+            // opened: asking that island for the mark would tell it "this
+            // address still has me in its list" every time the reader merely
+            // opens the browser, and the promise here is that an island learns
+            // about a reader when the reader opens something on it.
+            for entry in SiteRecents.shared.all() where marks[entry.key] == nil && entry.host == ownHost {
                 let a = SiteAddress(
                     name: entry.name,
                     host: entry.host,
@@ -358,12 +364,29 @@ struct SitesView: View {
                 guard let addr else { return }
                 switch target {
                 case .page(let p):
+                    // A page, not any file the manifest signs. The sanitiser
+                    // marks every in-bundle link, and a page from the 2000s
+                    // links its full-size photographs that way; opening one
+                    // decoded its bytes as text and painted the rubble.
+                    guard Self.isPage(p) else { return }
                     open(addr.display, path: p)
                 case .site(let link):
-                    // Parsed against the reader's own island, exactly as if
-                    // the address had been typed: the same rule as a link in
-                    // a chat.
-                    open(link.address, path: link.page)
+                    // ⚠ A name with no island in it belongs to the island THIS
+                    // page came from, the way a bare name in a web page belongs
+                    // to the site's own zone. Resolved against the reader's
+                    // island instead, an author on the flagship writing
+                    // `e2ee.rcq` sent every reader on another island to whoever
+                    // holds that name over there.
+                    let page = Self.isPage(link.page) ? link.page : "index.html"
+                    if let bare = SiteAddressParser.parse(link.address, ownHost: addr.host),
+                       bare.host == addr.host {
+                        open(
+                            SiteAddressParser.display(name: bare.name, host: addr.host, ownHost: ownHost),
+                            path: page
+                        )
+                    } else {
+                        open(link.address, path: page)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -533,6 +556,15 @@ struct SitesView: View {
     }
 
     // MARK: - Opening
+
+    /// What may be opened as a page. The manifest signs pictures and
+    /// stylesheets too, and neither is a page: decoded as text and parsed as
+    /// HTML they paint a screen of rubble, with the bar claiming the site is
+    /// showing `photo.jpg`.
+    static func isPage(_ path: String) -> Bool {
+        let p = path.lowercased()
+        return p.hasSuffix(".html") || p.hasSuffix(".htm")
+    }
 
     private func open(_ raw: String, path: String = "index.html", fresh: Bool = false) {
         turn += 1
