@@ -83,60 +83,80 @@ struct SitesView: View {
     /// mark and a reload glyph; editing it is an ordinary text field,
     /// left-aligned and selected, and the keyboard's Go opens it.
     ///
+    /// Centred on the CAPSULE, not on what the controls leave of it. The two
+    /// side groups are unequal - a chevron and a mark on the left, one reload
+    /// glyph on the right - and a field squeezed between them has its middle
+    /// some fifteen points right of the capsule's, which is where the founder
+    /// saw the domain sitting (02.09). So both sides get the same slot, as
+    /// wide as the wider group, and the field's centre is the capsule's in
+    /// every idle state: the catalogue's placeholder, a page's address, the
+    /// spinner while it reloads. Editing is left-aligned, and the slots shrink
+    /// to the chevron so the typed text starts beside it.
+    ///
     /// There is no Open button anywhere on this screen: that would be a second
     /// way to do what the Go key already does (founder, 01.09).
     private var addressBar: some View {
-        HStack(spacing: 8) {
-            Button {
-                back()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(Theme.Color.accent)
-                    .frame(width: 28, height: 28)
-            }
-            .accessibilityLabel("sites.back".localized)
+        let idle = page != nil && !editing
+        // The chevron, its gap and the mark; the glyph on the right is alone.
+        let slot: CGFloat = idle ? 28 + 8 + 18 : 28
+        return HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button {
+                    back()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.Color.accent)
+                        .frame(width: 28, height: 28)
+                }
+                .accessibilityLabel("sites.back".localized)
 
-            // The mark stands in for the padlock a browser puts here, and it
-            // means the same thing: this is the site it says it is, checked
-            // against the owner's signature.
-            if let addr, page != nil, !editing {
-                SiteMarkView(name: addr.name, image: marks[addr.name] ?? nil, size: 18)
+                // The mark stands in for the padlock a browser puts here, and
+                // it means the same thing: this is the site it says it is,
+                // checked against the owner's signature.
+                if let addr, idle {
+                    SiteMarkView(name: addr.name, image: marks[addr.name] ?? nil, size: 18)
+                }
             }
+            .frame(width: slot, alignment: .leading)
+
             SiteAddressField(
                 text: $typed,
                 placeholder: "sites.address.placeholder".localized,
-                centred: !editing && page != nil,
+                centred: !editing,
                 onEditingChanged: { now in
                     editing = now
                     if !now, let addr { typed = addr.display }
                 },
                 onGo: { open($0) }
             )
-            if let page, !editing {
-                if loading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.6)
-                        .frame(width: 18, height: 18)
-                } else {
-                    // Reload, and it really reloads: a bundle is served with
-                    // a short cache, which is right for reading and wrong for
-                    // somebody who just republished.
-                    Button {
-                        if let addr { open(addr.display, path: page.path, fresh: true) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Theme.Color.textSecondary)
-                            .frame(width: 18, height: 18)
+
+            HStack(spacing: 0) {
+                if let page, idle {
+                    if loading {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.6)
+                            .frame(width: 28, height: 28)
+                    } else {
+                        // Reload, and it really reloads: a bundle is served
+                        // with a short cache, which is right for reading and
+                        // wrong for somebody who just republished.
+                        Button {
+                            if let addr { open(addr.display, path: page.path, fresh: true) }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .frame(width: 28, height: 28)
+                        }
+                        .accessibilityLabel("sites.reload".localized)
                     }
-                    .accessibilityLabel("sites.reload".localized)
                 }
             }
+            .frame(width: slot, alignment: .trailing)
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 12)
+        .padding(.horizontal, 6)
         .frame(height: 38)
         .background(Theme.Color.bgSecondary)
         .clipShape(Capsule())
