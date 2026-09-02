@@ -440,7 +440,9 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
     /// the rule. An ACCEPT is answered with the trust itself, never with
     /// `.performDefaultHandling`: that would skip `decide`, and with it the
     /// `ca` write a known island's downgrade protection is made of. A REFUSE
-    /// cancels the challenge, and the request with it, before a byte is sent.
+    /// cancels the challenge, and the request with it, before a byte is sent;
+    /// the one exception is the CA-only refusal, which is the platform's own
+    /// verdict and is handed back to it so the platform names the error.
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
@@ -464,8 +466,23 @@ final class IslandTrust: NSObject, URLSessionDelegate, ObservableObject {
         switch decide(host: space.host, port: space.port, leafDER: der, caValid: caValid) {
         case .accept, .acceptFirstUse:
             completionHandler(.useCredential, URLCredential(trust: trust))
-        case .refuseCAOnly, .refuseChanged:
+        case .refuseChanged:
             completionHandler(.cancelAuthenticationChallenge, nil)
+        case .refuseCAOnly:
+            // ⚠ Not cancelled, handed back to the platform. The flagship is
+            // never pinned, so this refusal is the flagship's own TLS failing
+            // and there is no record and no banner behind it, so nothing
+            // downstream could tell what a cancel meant. And the code
+            // matters: cancelling reports NSURLErrorCancelled, which
+            // `IslandHTTP.run` and `APIClient.rawRequest` read as "the caller
+            // gave up" and rethrow before the tunnel is engaged or the host
+            // marked blocked, so an intercepted flagship stopped raising the
+            // bypass that exists for exactly that. Default handling fails the
+            // same chain with the platform's own serverCertificateUntrusted,
+            // which the ladder has always understood. A refusal that IS ours
+            // (`refuseChanged`) still cancels: it has a record, and §5.5 wants
+            // it terminal.
+            completionHandler(.performDefaultHandling, nil)
         }
     }
 
