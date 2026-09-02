@@ -106,7 +106,7 @@ actor SitesRepository {
                 throw SiteError.tampered
             }
         })
-        let html = await sanitiser.inline(String(decoding: raw, as: UTF8.self))
+        let html = await sanitiser.inline(SiteText.decode(raw))
         if witness.sawTampering { throw SiteError.tampered }
 
         return SitePage(

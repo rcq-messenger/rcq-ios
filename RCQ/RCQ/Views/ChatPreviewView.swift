@@ -72,7 +72,7 @@ struct ChatPreviewView: View {
                         .font(.system(.subheadline, weight: .semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
-                    Text(verbatim: "#\(live.uin)")
+                    Text(verbatim: "\(live.uin)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(Theme.Color.textMono)
                 }

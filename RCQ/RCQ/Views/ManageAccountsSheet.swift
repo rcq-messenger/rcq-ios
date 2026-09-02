@@ -256,7 +256,7 @@ struct ManageAccountsSheet: View {
                     .truncationMode(.middle)
                 HStack(spacing: 6) {
                     if let uin {
-                        Text(verbatim: "#\(uin)")
+                        Text(verbatim: "\(uin)")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundColor(Theme.Color.textSecondary.opacity(0.7))
                     }

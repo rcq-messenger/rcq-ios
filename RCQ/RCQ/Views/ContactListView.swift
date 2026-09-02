@@ -908,7 +908,7 @@ struct ContactListView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color.orange)
                     } else {
-                        Text(verbatim: "#\(auth.ownUIN ?? 0)")
+                        Text(verbatim: "\(auth.ownUIN ?? 0)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
                     }
@@ -2286,7 +2286,7 @@ private struct ContactRow: View {
                     }
                 }
                 HStack(spacing: 4) {
-                    Text(verbatim: "#\(contact.uin)")
+                    Text(verbatim: "\(contact.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
                     if let h = contact.host {
@@ -2915,9 +2915,46 @@ final class IslandLogoStore {
 
     /// What we already hold, with no disk and no network. Read from a SwiftUI
     /// `init` to seed the first frame.
+    ///
+    /// ⚠ A version we do not know yet is not a reason to draw the lettered
+    /// tile. `logo_version` arrives with `/server/info`, so on a cold start,
+    /// and on every switch of accounts before that answer lands, the picture
+    /// was replaced by the tile and then swapped back a moment later - the
+    /// island's face on the home screen "sometimes there, sometimes not"
+    /// (founder, 02.09). The last picture this island served is the right
+    /// thing to show while we find out whether it changed.
     func cached(host: String, version: String) -> UIImage? {
-        guard !host.isEmpty, !version.isEmpty else { return nil }
-        return memory.object(forKey: key(host, version) as NSString)
+        guard !host.isEmpty else { return nil }
+        if !version.isEmpty, let hit = memory.object(forKey: key(host, version) as NSString) {
+            return hit
+        }
+        return lastKnown(host: host)
+    }
+
+    /// The newest logo this device has ever decoded for `host`, whatever
+    /// version it belonged to. Memory first; then the file the last successful
+    /// load wrote, which survives a restart.
+    private func lastKnown(host: String) -> UIImage? {
+        if let v = lastVersion.object(forKey: host as NSString) as String?,
+           let hit = memory.object(forKey: key(host, v) as NSString) {
+            return hit
+        }
+        guard let data = try? Data(contentsOf: latestFile(host)), let img = Self.decode(data) else {
+            return nil
+        }
+        return img
+    }
+
+    /// host → the version whose picture we hold, for [lastKnown].
+    nonisolated(unsafe) private let lastVersion = NSCache<NSString, NSString>()
+
+    /// One file per island holding the last logo it served, keyed by host
+    /// alone. Small (the same picture as the versioned copy) and worth its
+    /// bytes: it is what makes a cold start draw the island rather than a
+    /// letter.
+    private func latestFile(_ host: String) -> URL {
+        let safe = host.replacingOccurrences(of: "[^A-Za-z0-9_.-]", with: "_", options: .regularExpression)
+        return dir.appendingPathComponent("latest_\(safe)")
     }
 
     /// The island's logo, from memory, then disk, then the island. nil means
@@ -2925,13 +2962,18 @@ final class IslandLogoStore {
     /// caller: no logo, an island too old for the field, an island that did not
     /// answer, or bytes that did not decode. None of them is an error.
     func load(host: String, version: String) async -> UIImage? {
-        guard !host.isEmpty, !version.isEmpty else { return nil }
+        guard !host.isEmpty else { return nil }
+        // No version yet: `/server/info` has not answered. Show what this
+        // island served last rather than the tile; the `task` that fetches
+        // this view runs again with the real version when it arrives.
+        guard !version.isEmpty else { return lastKnown(host: host) }
         let k = key(host, version)
         if let hit = memory.object(forKey: k as NSString) { return hit }
         if missed.object(forKey: k as NSString) != nil { return nil }
         let path = file(host, version)
         if let data = try? Data(contentsOf: path), let img = Self.decode(data) {
             memory.setObject(img, forKey: k as NSString)
+            lastVersion.setObject(version as NSString, forKey: host as NSString)
             return img
         }
         // `?v=` so a changed logo is a changed URL: no cache in the chain, ours
@@ -2959,8 +3001,10 @@ final class IslandLogoStore {
                 return nil
             }
             try? data.write(to: path, options: .atomic)
+            try? data.write(to: latestFile(host), options: .atomic)
             trim()
             memory.setObject(img, forKey: k as NSString)
+            lastVersion.setObject(version as NSString, forKey: host as NSString)
             return img
         } catch {
             missed.setObject(1, forKey: k as NSString)

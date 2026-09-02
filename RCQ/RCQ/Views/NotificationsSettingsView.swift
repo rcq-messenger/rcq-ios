@@ -113,14 +113,14 @@ struct NotificationsSettingsView: View {
         // Pull the nickname from contacts if we have it; fall back
         // to a `#UIN` tag so muted-non-contacts still render
         // something readable.
-        let nickname = contacts.contacts.first(where: { $0.uin == uin })?.nickname ?? "#\(uin)"
+        let nickname = contacts.contacts.first(where: { $0.uin == uin })?.nickname ?? "\(uin)"
         return HStack(spacing: 10) {
             Image(systemName: "bell.slash.fill")
                 .foregroundColor(Theme.Color.textSecondary)
             VStack(alignment: .leading, spacing: 1) {
                 Text(nickname)
                     .foregroundColor(Theme.Color.textPrimary)
-                Text(verbatim: "#\(uin)")
+                Text(verbatim: "\(uin)")
                     .font(Theme.Font.monoSmall)
                     .foregroundColor(Theme.Color.textMono)
             }

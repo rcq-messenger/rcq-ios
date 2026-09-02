@@ -84,9 +84,9 @@ struct CreateGroupView: View {
                 // The island is part of who this is — the picker hiding it is
                 // how foreign uins ended up in `member_uins` unmarked (A3).
                 if let h = contact.host {
-                    Text(verbatim: "#\(contact.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "\(contact.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 } else {
-                    Text(verbatim: "#\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "\(contact.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
             }
             Spacer()
@@ -118,7 +118,7 @@ struct CreateGroupView: View {
             var notInvited: [String] = []
             for c in foreign {
                 let delivered = (try? await GroupService.shared.addCrossIslandMember(group: g, contact: c)) ?? false
-                if !delivered { notInvited.append(c.nickname.isEmpty ? "#\(c.uin)" : c.nickname) }
+                if !delivered { notInvited.append(c.nickname.isEmpty ? "\(c.uin)" : c.nickname) }
             }
             onCreated(g)
             if notInvited.isEmpty {

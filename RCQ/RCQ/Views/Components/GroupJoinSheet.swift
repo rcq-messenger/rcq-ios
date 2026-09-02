@@ -225,7 +225,7 @@ struct GroupJoinSheet: View {
                     Text("group_join.owner_label".localized)
                         .font(.caption2)
                         .foregroundColor(Theme.Color.textSecondary)
-                    Text(p.ownerNickname ?? "#\(p.ownerUIN)")
+                    Text(p.ownerNickname ?? "\(p.ownerUIN)")
                         .font(.callout.weight(.semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                 }

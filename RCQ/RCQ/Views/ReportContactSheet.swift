@@ -77,7 +77,7 @@ struct ReportContactSheet: View {
                     Text(targetNickname)
                         .font(.callout)
                         .foregroundColor(Theme.Color.textPrimary)
-                    Text(verbatim: "#\(targetUIN)")
+                    Text(verbatim: "\(targetUIN)")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(Theme.Color.textSecondary)
                 }

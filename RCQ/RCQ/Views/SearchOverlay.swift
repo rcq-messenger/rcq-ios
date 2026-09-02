@@ -191,7 +191,7 @@ struct SearchOverlay: View {
                         Text(ContactAliasStore.shared.displayName(for: contact.uin, fallback: contact.nickname))
                             .font(Theme.Font.nickname)
                             .foregroundColor(Theme.Color.textPrimary)
-                        Text(verbatim: "#\(contact.uin)")
+                        Text(verbatim: "\(contact.uin)")
                             .font(Theme.Font.monoSmall)
                             .foregroundColor(Theme.Color.textMono)
                     }

@@ -596,7 +596,7 @@ struct GroupInfoView: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                         }
                     }
-                    Text(verbatim: "#\(m.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "\(m.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
                 Spacer()
                 if let tag = roleTag(m) {
@@ -923,7 +923,7 @@ private struct MemberActionSheet: View {
                     Text(member.nickname)
                         .font(.title3.bold())
                         .foregroundColor(Theme.Color.textPrimary)
-                    Text(verbatim: "#\(member.uin)")
+                    Text(verbatim: "\(member.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
                 }
@@ -1298,9 +1298,9 @@ private struct AddGroupMemberView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(c.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
                     if let h = c.host {
-                        Text(verbatim: "#\(c.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                        Text(verbatim: "\(c.uin) · \(h)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                     } else {
-                        Text(verbatim: "#\(c.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                        Text(verbatim: "\(c.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                     }
                 }
                 Spacer()
@@ -1335,7 +1335,7 @@ private struct AddGroupMemberView: View {
                 StatusIcon(status: u.status, size: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(u.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
-                    Text(verbatim: "#\(u.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "\(u.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 }
                 Spacer()
                 Image(systemName: "plus.circle").foregroundColor(Theme.Color.accent)

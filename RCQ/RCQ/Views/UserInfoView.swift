@@ -264,7 +264,7 @@ struct UserInfoView: View {
                                 .foregroundColor(Theme.Color.textSecondary)
                         }
                     }
-                    Text(verbatim: "#\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
+                    Text(verbatim: "\(p.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
                     // Cross-island: show the island (presence doesn't cross islands).
                     if let h = crossIslandHost {
                         Text(verbatim: h).font(Theme.Font.mono).foregroundColor(Theme.Color.textSecondary)
@@ -431,7 +431,7 @@ struct UserInfoView: View {
         if PanicPINService.shared.isDecoy {
             let nick = isOwn
                 ? AuthService.shared.nickname
-                : (ContactService.shared.contacts.first { $0.uin == uin }?.nickname ?? "#\(uin)")
+                : (ContactService.shared.contacts.first { $0.uin == uin }?.nickname ?? "\(uin)")
             let dict: [String: Any] = [
                 "uin": uin, "nickname": nick, "status": "online", "interests": [],
                 "identity_key": "", "signing_key": "",
