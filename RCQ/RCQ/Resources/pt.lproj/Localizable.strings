@@ -1801,6 +1801,7 @@
 "island.trust.first_use" = "Primeira conexão a %1$@. Sua impressão digital é %2$@. Compare com a que o operador publicou antes de confiar nesta ilha.";
 "island.trust.changed" = "%@ apresentou um certificado diferente do que este dispositivo confia. Alguém pode estar interceptando a conexão, ou o operador trocou o certificado. Compare a nova impressão digital com a que o operador publicou antes de confiar nela.";
 "island.trust.changed_typed" = "%@ apresentou uma impressão digital diferente da que você digitou.";
+"island.trust.changed_entered" = "A impressão digital digitada para %@ não bate com a que este dispositivo já conhece.";
 "island.trust.on_file" = "Guardada";
 "island.trust.presented" = "Apresentada agora";
 "island.trust.entered" = "Digitada";

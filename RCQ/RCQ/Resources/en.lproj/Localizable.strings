@@ -2010,6 +2010,7 @@
 "island.trust.first_use" = "First connection to %1$@. Its fingerprint is %2$@. Compare it with what the operator published before you rely on this island.";
 "island.trust.changed" = "%@ presented a different certificate than the one this device trusts. Someone may be intercepting the connection, or the operator replaced the certificate. Compare the new fingerprint with what the operator published before trusting it.";
 "island.trust.changed_typed" = "%@ presented a different fingerprint than the one you entered.";
+"island.trust.changed_entered" = "The fingerprint entered for %@ differs from the one this device already trusts.";
 "island.trust.on_file" = "On file";
 "island.trust.presented" = "Presented now";
 "island.trust.entered" = "Entered";

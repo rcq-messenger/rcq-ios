@@ -1801,6 +1801,7 @@
 "island.trust.first_use" = "%1$@ adasına ilk bağlantı. Parmak izi: %2$@. Bu adaya güvenmeden önce operatörün yayınladığıyla karşılaştırın.";
 "island.trust.changed" = "%@, bu cihazın güvendiğinden farklı bir sertifika sundu. Biri bağlantıyı dinliyor olabilir ya da operatör sertifikayı değiştirmiş olabilir. Güvenmeden önce yeni parmak izini operatörün yayınladığıyla karşılaştırın.";
 "island.trust.changed_typed" = "%@, girdiğinizden farklı bir parmak izi sundu.";
+"island.trust.changed_entered" = "%@ için girilen parmak izi, bu cihazın zaten güvendiğiyle uyuşmuyor.";
 "island.trust.on_file" = "Kayıtlı";
 "island.trust.presented" = "Şimdi sunulan";
 "island.trust.entered" = "Girilen";
