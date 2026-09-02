@@ -66,6 +66,22 @@ check("http still means a TLS island on 443", e?.port == 443)
 check("no host is no endpoint", T.endpoint(fromAddress: "https://") == nil && T.endpoint(fromAddress: "") == nil)
 check("a key reads back", T.endpoint(fromKey: "[::1]:8443") == T.Endpoint(host: "::1", port: 8443)
       && T.endpoint(fromKey: "island.example:443")?.authority == "island.example")
+// ⚠ The key the address forms write and the key the handshake looks up have
+// to be the SAME string for an internationalised name. `protectionSpace.host`
+// is punycode; a store keyed from the Unicode spelling filed the typed pin
+// where nothing would ever read it, and the careful path became trust on first
+// use.
+check("an internationalised name is keyed in punycode, whichever way it was written",
+      T.endpoint(fromAddress: "https://\u{43f}\u{440}\u{438}\u{43c}\u{435}\u{440}.\u{440}\u{444}")?.key == "xn--e1afmkfd.xn--p1ai:443"
+      && T.endpoint(fromAddress: "xn--e1afmkfd.xn--p1ai")?.key == "xn--e1afmkfd.xn--p1ai:443"
+      && T.endpoint(fromAddress: "\u{43f}\u{440}\u{438}\u{43c}\u{435}\u{440}.\u{440}\u{444}:8443#\(fpA)")?.key == "xn--e1afmkfd.xn--p1ai:8443")
+check("the address a form dials carries the scheme, whether or not it was typed",
+      T.dialAddress("island.example:8443#\(fpA)") == "https://island.example:8443"
+      && T.dialAddress("HTTPS://Island.Example/") == "HTTPS://Island.Example"
+      && T.dialAddress("http://island.example") == "http://island.example"
+      && T.dialAddress("[::1]:8443") == "https://[::1]:8443")
+check("and nothing to dial is nil, so a form can disable its button on it",
+      T.dialAddress("") == nil && T.dialAddress("#\(fpA)") == nil && T.dialAddress("https://") == nil)
 check("the share form is host[:port]#fp",
       T.shareAddress(T.Endpoint(host: "island.example", port: 8443), fingerprint: fpA) == "island.example:8443#\(fpA)"
       && T.shareAddress(T.Endpoint(host: "island.example", port: 443), fingerprint: fpA) == "island.example#\(fpA)")
@@ -177,17 +193,24 @@ check("accepting writes the new pin as accepted and clears the banner",
 check("and the island connects again", trust.decide(host: "island.example", port: 443, leafDER: other, caValid: false) == .accept)
 
 print("the door:")
-check("a typed address pins before any connection",
-      trust.admit(typed: "[::1]:8443#\(fpB)") == .admitted(address: "[::1]:8443")
+check("a typed address pins before any connection, and comes back ready to dial",
+      trust.admit(typed: "[::1]:8443#\(fpB)") == .admitted(address: "https://[::1]:8443")
       && trust.record(forKey: "[::1]:8443") == T.Record(mode: .pinned, fp: fpB, source: .typed, since: trust.record(forKey: "[::1]:8443")!.since, noticed: true))
-check("a typed address without a fragment is handed back untouched",
-      trust.admit(typed: " https://island.example/ ") == .admitted(address: "https://island.example/"))
+check("a typed address without a fragment comes back normalised too",
+      trust.admit(typed: " https://island.example/ ") == .admitted(address: "https://island.example")
+      && trust.admit(typed: "island.example:8443") == .admitted(address: "https://island.example:8443"))
 check("a bad fragment is refused by the door", trust.admit(typed: "island.example#nope") == .notAFingerprint)
 check("a fragment on a CA-only host is an address error, nothing written",
       trust.admit(typed: "api.rcq.app#\(fpA)") == .caOnlyHost && trust.record(forKey: "api.rcq.app:443") == nil)
 check("a fragment equal to what is on file is a no-op",
-      trust.admit(typed: "[::1]:8443#\(fpB)") == .admitted(address: "[::1]:8443")
+      trust.admit(typed: "[::1]:8443#\(fpB)") == .admitted(address: "https://[::1]:8443")
       && trust.record(forKey: "[::1]:8443")?.source == .typed)
+check("the pin a typed internationalised address writes is the one the handshake reads",
+      trust.admit(typed: "\u{43f}\u{440}\u{438}\u{43c}\u{435}\u{440}.\u{440}\u{444}:8443#\(derFP)") == .admitted(address: "https://\u{43f}\u{440}\u{438}\u{43c}\u{435}\u{440}.\u{440}\u{444}:8443")
+      && trust.decide(host: "xn--e1afmkfd.xn--p1ai", port: 8443, leafDER: der, caValid: false) == .accept
+      && trust.decide(host: "xn--e1afmkfd.xn--p1ai", port: 8443, leafDER: other, caValid: true)
+         == .refuseChanged(old: derFP, new: otherFP, typed: true, ca: true))
+trust.forget(key: "xn--e1afmkfd.xn--p1ai:8443")
 let disagree = trust.admit(typed: "[::1]:8443#\(fpC)")
 check("a fragment against a record that disagrees is a change, and NOT written",
       disagree == .changed(T.Change(key: "[::1]:8443", host: "[::1]:8443", old: fpB, new: fpC, typed: true, ca: false, entered: true))
