@@ -415,14 +415,31 @@ struct GroupInfoView: View {
     /// member group doesn't make the info screen unscrollable. Hidden
     /// roster path doesn't reach here.
     private var membersSection: some View {
-        // Owner first, then admins, then everyone else. Swift's sort isn't
-        // stable, so tiebreak on the original index to keep server order
-        // within a rank.
-        func rank(_ r: String) -> Int { r == "owner" ? 0 : (r == "admin" ? 1 : 2) }
-        let ordered = currentGroup.members.enumerated().sorted { a, b in
-            let ra = rank(a.element.role), rb = rank(b.element.role)
-            return ra != rb ? ra < rb : a.offset < b.offset
-        }.map { $0.element }
+        // The owner, then the moderators (the admin role or any granted cap,
+        // the set the composer exempts from the room rules), then whoever the
+        // row's own dot shows as present (online, away, do-not-disturb), then
+        // the rest, by name case-insensitively inside a tier and by uin when
+        // two names agree so the roster never shuffles between openings
+        // (founder, 2026-09-02: the same order on every client).
+        func tier(_ m: RCQGroupMember) -> Int {
+            if m.uin == currentGroup.ownerUIN { return 0 }
+            if m.role == "admin" || !m.permissions.isEmpty { return 1 }
+            switch m.status {
+            case .online, .away, .dnd: return 2
+            case .invisible, .offline: return 3
+            }
+        }
+        let ordered = currentGroup.members
+            .map { (tier: tier($0), member: $0) }
+            .sorted { a, b in
+                if a.tier != b.tier { return a.tier < b.tier }
+                switch a.member.nickname.localizedCaseInsensitiveCompare(b.member.nickname) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return a.member.uin < b.member.uin
+                }
+            }
+            .map { $0.member }
         let q = memberSearch.trimmingCharacters(in: .whitespaces).lowercased()
         let searching = !q.isEmpty
         let filtered = searching
