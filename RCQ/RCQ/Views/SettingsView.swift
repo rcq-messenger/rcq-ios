@@ -730,11 +730,31 @@ struct SettingsView: View {
     /// decoy never calls /server/info), so the shop row would advertise a
     /// storefront for an account that has no island. `heldUINCount` is forced
     /// to 0 there.
+    /// ⚠⚠ AND ONLY ON THE FLAGSHIP, which is an APPLE rule and therefore a
+    /// CLIENT rule — the one place a host check belongs.
+    ///
+    /// Everywhere else the island decides what it sells and the client draws
+    /// what the quote says (the principle recorded in the web market). This is
+    /// the exception, and it is not about islands at all: Apple requires
+    /// digital goods to go through In-App Purchase, and IAP belongs to the
+    /// App Store account that ships the app. So a number can only ever be sold
+    /// on iPhone for the island that account is ours — no self-hosted island,
+    /// however it is configured, however honest its own till.
+    ///
+    /// Self-hosted islands still hand numbers out by arrangement, and that
+    /// path is untouched: `heldUINCount > 0` keeps "My numbers" visible so a
+    /// granted number can be seen and switched to.
+    private var shopAllowedHere: Bool {
+        appState.serverCapabilities.uinShop
+            && RcqFederation.isFlagship(Multihome.ownHost())
+            && !panicPIN.isDecoy
+    }
+
     @ViewBuilder
     private var uinSection: some View {
-        if (appState.serverCapabilities.uinShop && !panicPIN.isDecoy) || heldUINCount > 0 {
+        if shopAllowedHere || heldUINCount > 0 {
             Section {
-                if appState.serverCapabilities.uinShop {
+                if shopAllowedHere {
                     Button {
                         showUINShop = true
                     } label: {
