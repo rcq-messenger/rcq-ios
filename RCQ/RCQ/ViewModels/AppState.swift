@@ -1241,13 +1241,22 @@ final class AppState: ObservableObject {
         return "uin_shop.error.generic".localized
     }
 
-    /// Take a UIN and MOVE onto it.
+    /// Take a UIN INTO THE COLLECTION, without becoming it.
     ///
-    /// ⚠⚠ It used to take the number into the collection without becoming it,
-    /// which is how 161 numbers ended up parked in 54 private hoards while the
-    /// short ones everyone else picks from ran out. Collections closed on
-    /// 2026-09-01 and the island refuses `switch: false` outright, so the only
-    /// take left is the one that changes who you answer as.
+    /// ⚠⚠ `switch: false`, and this line has a price on it. It was flipped to
+    /// true on 2026-09-01, when collections were closed and the island refused
+    /// `switch: false` outright. Collections reopened on 03.09 and this client
+    /// was not changed, so "take" still meant "move onto it" - and moving gives
+    /// up the number you were answering as. That is how the founder lost #911:
+    /// he bought an ordinary seven-digit number and a three-digit one was back
+    /// on the public shelf a second later.
+    ///
+    /// ⚠ It also ejected him from his own account, and that is this view's half
+    /// of the fault: a switch is a MIGRATION, the island bumps the number's
+    /// epoch and every token minted for the old one dies - but `runPurchase`
+    /// only set `held` and carried on with a token that no longer existed.
+    /// Nothing here reboots the session, so nothing here may ask for a switch.
+    /// Becoming a number is `moveOnto` / `activateUIN`, which does.
     func holdUIN(_ uin: Int) async -> MigrationResult {
         struct Body: Encodable {
             let uin: Int
@@ -1256,7 +1265,7 @@ final class AppState: ObservableObject {
         do {
             let _: PurchaseOut = try await APIClient.shared.request(
                 "POST", "/uin/purchase",
-                body: Body(uin: uin, switch: true)
+                body: Body(uin: uin, switch: false)
             )
             return .success(newUIN: uin)
         } catch APIError.http(409, let body) {
