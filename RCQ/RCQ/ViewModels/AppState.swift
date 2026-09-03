@@ -2367,7 +2367,20 @@ struct ServerCapabilities: Codable, Equatable {
         self.vault = vault
     }
 
-    static let defaultLegacy = ServerCapabilities(uinShop: true, hallOfFame: true)
+    /// ⚠⚠ `uinShop: false`, and it is the ONE capability whose default is not
+    /// "preserve the old behaviour".
+    ///
+    /// Every other default here is permissive so an island too old to answer
+    /// `/server/info` keeps working as it did. This one is not, because the
+    /// thing it gates is a shop: an island that has not answered yet, or
+    /// cannot, or omits the field, must not have a storefront drawn for it on
+    /// a guess. Showing a shop that is not there costs a person a wasted trip;
+    /// hiding one that is there costs them one tap once the island answers.
+    ///
+    /// Android decodes with `false` (RcqApi.kt) and the web falls back to
+    /// `false` per field (server-info.ts). iOS was the only client that failed
+    /// OPEN here.
+    static let defaultLegacy = ServerCapabilities(uinShop: false, hallOfFame: true)
 
     private enum CodingKeys: String, CodingKey {
         case uinShop = "uin_shop"
