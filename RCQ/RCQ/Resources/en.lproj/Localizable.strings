@@ -1994,6 +1994,7 @@
 "sites.back" = "Back";
 "sites.address.placeholder" = "name.rcq";
 "sites.reload" = "Reload";
+"sites.by_owner" = "by #%@";
 "sites.catalogue" = "On your island";
 "sites.empty.title" = "Pages inside the network";
 "sites.empty.body" = "Type an address, for example blog.rcq. Pages are text and pictures only: no scripts, no outward links, nothing loaded from outside.";

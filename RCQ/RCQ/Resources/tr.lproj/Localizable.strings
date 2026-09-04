@@ -1785,6 +1785,7 @@
 "sites.back" = "Geri";
 "sites.address.placeholder" = "ad.rcq";
 "sites.reload" = "Yenile";
+"sites.by_owner" = "#%@ tarafından";
 "sites.catalogue" = "Adanızda";
 "sites.empty.title" = "Ağın içindeki sayfalar";
 "sites.empty.body" = "Bir adres yazın, örneğin blog.rcq. Sayfalar yalnızca metin ve resimdir: betik yok, dışarı bağlantı yok, dışarıdan hiçbir şey yüklenmez.";

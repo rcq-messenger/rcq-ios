@@ -409,6 +409,10 @@ struct SitesView: View {
         let title: String?
         /// A recent, which the person can take off the list.
         let removable: Bool
+        /// Whose site it is, when its author asked to be named. Nil means the
+        /// author did not ask, which is the default and not a missing value,
+        /// so the row simply carries no byline.
+        let ownerUIN: Int?
 
         var id: String { key }
     }
@@ -450,7 +454,8 @@ struct SitesView: View {
             name: row.name,
             address: "\(row.name).rcq",
             title: row.title,
-            removable: false
+            removable: false,
+            ownerUIN: row.ownerUIN
         )
     }
 
@@ -460,7 +465,11 @@ struct SitesView: View {
             name: entry.name,
             address: SiteAddressParser.display(name: entry.name, host: entry.host, ownHost: ownHost),
             title: entry.title,
-            removable: true
+            removable: true,
+            // A recent is what this device remembers about a page it opened,
+            // and it never carried a byline. The catalogue is where an author
+            // who asked to be named is named.
+            ownerUIN: nil
         )
     }
 
@@ -504,6 +513,16 @@ struct SitesView: View {
                             .lineLimit(1)
                         if let title = row.title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
                             Text(title)
+                                .font(.system(size: 11))
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                        }
+                        // Named only because the author asked to be. The island
+                        // leaves the field out otherwise, so there is nothing
+                        // here to fall back to and nothing that could read as
+                        // "by #" with no number after it.
+                        if let owner = row.ownerUIN {
+                            Text(String(format: "sites.by_owner".localized, String(owner)))
                                 .font(.system(size: 11))
                                 .foregroundColor(Theme.Color.textSecondary)
                                 .lineLimit(1)

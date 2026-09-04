@@ -1776,6 +1776,7 @@
 "sites.back" = "返回";
 "sites.address.placeholder" = "名称.rcq";
 "sites.reload" = "刷新";
+"sites.by_owner" = "作者 #%@";
 "sites.catalogue" = "你的岛屿上";
 "sites.empty.title" = "网络内部的页面";
 "sites.empty.body" = "输入一个地址，例如 blog.rcq。页面只有文字和图片：没有脚本，没有对外链接，不从外部加载任何内容。";
