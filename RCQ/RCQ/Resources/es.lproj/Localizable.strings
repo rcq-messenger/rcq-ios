@@ -1785,6 +1785,7 @@
 "sites.back" = "Atrás";
 "sites.address.placeholder" = "nombre.rcq";
 "sites.reload" = "Recargar";
+"sites.by_owner" = "de #%@";
 "sites.catalogue" = "En tu isla";
 "sites.empty.title" = "Páginas dentro de la red";
 "sites.empty.body" = "Escribe una dirección, por ejemplo blog.rcq. Las páginas son solo texto e imágenes: sin scripts, sin enlaces hacia fuera, nada cargado desde fuera.";

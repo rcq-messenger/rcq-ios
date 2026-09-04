@@ -62,6 +62,14 @@ actor SitesRepository {
         /// flagship). False when the island does not say: the field is newer
         /// than some islands.
         let featured: Bool
+        /// Whose site it is, when its author asked to be named.
+        ///
+        /// ⚠ Nil is the normal case and means "not said", never "unknown
+        /// person": the island omits the owner from the public catalogue
+        /// unless the author ticked `show_owner`, because publishing a page is
+        /// not a decision to publish who wrote it. So a row without it shows
+        /// no byline at all rather than an empty one.
+        let ownerUIN: Int?
     }
 
     // MARK: - Entry points
@@ -167,7 +175,8 @@ actor SitesRepository {
             return SiteListing(
                 name: name,
                 title: row["title"] as? String,
-                featured: row["featured"] as? Bool ?? false
+                featured: row["featured"] as? Bool ?? false,
+                ownerUIN: row["owner_uin"] as? Int
             )
         }
     }
