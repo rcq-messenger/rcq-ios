@@ -1296,12 +1296,15 @@ struct ChatView: View {
                     // My own name for them, when I gave one — the list already
                     // used it and the chat header did not, so a renamed contact
                     // read one way in the list and another inside the chat.
-                    Text(isSelf
-                         ? "contact_list.saved_messages".localized
-                         : aliasStore.displayName(for: live.uin, fallback: live.nickname))
-                        .font(.system(.subheadline, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(isSelf
+                             ? "contact_list.saved_messages".localized
+                             : aliasStore.displayName(for: live.uin, fallback: live.nickname))
+                            .font(.system(.subheadline, weight: .semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(1)
+                        if !isSelf { BadgeMark(kind: live.badge, size: 12) }
+                    }
                     if !isSelf {
                         // Alternate between UIN and "last seen X ago"
                         // every 7 seconds with an opacity crossfade.
@@ -1332,10 +1335,15 @@ struct ChatView: View {
                         glyphSize: 11,
                     )
                     VStack(spacing: 0) {
-                        Text(live.name)
-                            .font(.system(.subheadline, weight: .semibold))
-                            .foregroundColor(Theme.Color.textPrimary)
-                            .lineLimit(1)
+                        HStack(spacing: 5) {
+                            Text(live.name)
+                                .font(.system(.subheadline, weight: .semibold))
+                                .foregroundColor(Theme.Color.textPrimary)
+                                .lineLimit(1)
+                            // The island's mark on the room, in the header as
+                            // well as in the list (founder, 05.09).
+                            BadgeMark(kind: live.badge, size: 12)
+                        }
                         // Proportional, not monospaced: the rest of the app
                         // stopped using mono (see `Theme.Font.mono`) and a
                         // count is not a column that has to line up with
