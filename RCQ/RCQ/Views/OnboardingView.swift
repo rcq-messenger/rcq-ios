@@ -8,6 +8,9 @@ struct OnboardingView: View {
     @State private var showLanguagePicker = false
     @State private var showServerPicker = false
     @State private var showRestore = false
+    @State private var acceptedTerms = false
+    @State private var showLegal = false
+    @Environment(\.openURL) private var openURL
     @State private var entering: Bool = false
     @StateObject private var lang = LanguageManager.shared
     @AppStorage("rcq.baseURL") private var customServer: String = ""
@@ -333,10 +336,42 @@ struct OnboardingView: View {
                         .cornerRadius(8)
                 }
             }
+            // The last page asks for one thing before an account exists:
+            // agreement to the terms and the privacy policy, with both a tap
+            // away (founder, 05.09; App Store 5.1.1 wants the policy reachable
+            // in-app, 1.2 wants terms a person agreed to). Nothing is minted
+            // until the box is ticked.
+            if page == pages.count - 1 {
+                HStack(alignment: .top, spacing: 10) {
+                    Button { acceptedTerms.toggle() } label: {
+                        Image(systemName: acceptedTerms ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 22))
+                            .foregroundColor(acceptedTerms ? Theme.Color.accent : Theme.Color.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("onboard.terms.accept".localized)
+                    (Text("onboard.terms.accept".localized + " ")
+                     + Text("onboard.terms.terms".localized).foregroundColor(Theme.Color.accent).underline()
+                     + Text(" " + "onboard.terms.and".localized + " ")
+                     + Text("onboard.terms.privacy".localized).foregroundColor(Theme.Color.accent).underline())
+                        .font(.footnote)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onTapGesture { showLegal = true }
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 10)
+                .confirmationDialog("onboard.terms.read".localized, isPresented: $showLegal, titleVisibility: .visible) {
+                    Button("onboard.terms.terms".localized) { openURL(URL(string: "https://rcq.app/terms")!) }
+                    Button("onboard.terms.privacy".localized) { openURL(URL(string: "https://rcq.app/privacy")!) }
+                    Button("common.cancel".localized, role: .cancel) {}
+                }
+            }
             Button {
                 if page < pages.count - 1 {
                     withAnimation(.easeInOut(duration: 0.25)) { page += 1 }
                 } else {
+                    guard acceptedTerms else { return }
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     // Mint Account[0] in AccountManager BEFORE the
                     // boot pipeline runs. Without this, AuthService's
@@ -367,9 +402,10 @@ struct OnboardingView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Theme.Color.accent)
+                    .background(Theme.Color.accent.opacity(page == pages.count - 1 && !acceptedTerms ? 0.45 : 1))
                     .cornerRadius(8)
             }
+            .disabled(page == pages.count - 1 && !acceptedTerms)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)

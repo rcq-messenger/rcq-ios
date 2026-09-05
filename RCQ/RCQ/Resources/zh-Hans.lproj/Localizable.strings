@@ -1558,6 +1558,11 @@
 "boot.error.retry_now" = "立即重试";
 /* ── Account recovery (seed phrase) ───────────────────────────── */
 "settings.account.recovery" = "恢复短语";
+"onboard.terms.accept" = "我接受";
+"onboard.terms.terms" = "服务条款";
+"onboard.terms.and" = "和";
+"onboard.terms.privacy" = "隐私政策";
+"onboard.terms.read" = "阅读";
 "onboard.cta.restore" = "已经有账号了？用短语恢复";
 "recovery.title" = "恢复短语";
 "recovery.reveal" = "显示短语";

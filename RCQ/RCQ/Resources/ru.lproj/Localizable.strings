@@ -1660,6 +1660,11 @@
 
 /* ── Восстановление аккаунта (seed-фраза) ─────────────────────── */
 "settings.account.recovery" = "Фраза восстановления";
+"onboard.terms.accept" = "Принимаю";
+"onboard.terms.terms" = "Условия использования";
+"onboard.terms.and" = "и";
+"onboard.terms.privacy" = "Политику конфиденциальности";
+"onboard.terms.read" = "Прочитать";
 "onboard.cta.restore" = "Уже есть аккаунт? Восстановить по фразе";
 
 "recovery.title" = "Фраза восстановления";
