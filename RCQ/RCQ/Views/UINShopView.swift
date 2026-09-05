@@ -66,7 +66,15 @@ struct UINShopView: View {
     }
 
     private var isAvailable: Bool { displayedQuote?.available ?? false }
-    private var canBuy: Bool { isValidLength && isAvailable && !buying }
+    /// What the island says this number costs to take: "free", "purchase" or
+    /// "resale". Web and Android have keyed off it since the market opened;
+    /// this screen did not, and drew a price over a free grant.
+    private var acquire: String { displayedQuote?.acquire ?? "free" }
+    /// ⚠⚠ ONLY the free door. `/uin/purchase` grants a number and takes no
+    /// money, so a "Buy for $4.99" button over it charged nobody and told the
+    /// person otherwise. A number the island really sells, or that a person is
+    /// reselling, has a checkout we cannot open on iOS.
+    private var canBuy: Bool { isValidLength && isAvailable && acquire == "free" && !buying }
 
     var body: some View {
         NavigationStack {
@@ -378,6 +386,12 @@ struct UINShopView: View {
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .foregroundColor(Theme.Color.accent)
                 .monospacedDigit()
+        } else if isValidLength, displayedQuote != nil, acquire == "free" {
+            // Given away, so say so rather than printing the ladder over it.
+            Text("uin_shop.tier.free".localized)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundColor(isAvailable ? Theme.Color.accent : Theme.Color.textPrimary)
+                .animation(.easeInOut(duration: 0.22), value: isAvailable)
         } else if isValidLength, let cents = Self.priceCentsByLength[typedLength] {
             Text(priceDisplay(cents: cents))
                 .font(.system(size: 40, weight: .bold, design: .rounded))
@@ -464,11 +478,11 @@ struct UINShopView: View {
             .padding(.vertical, 17)
             .background(Theme.Color.accent)
             .clipShape(Capsule())
-        } else if canBuy, let cents = displayedQuote?.priceCents {
+        } else if canBuy {
             Button {
                 showConfirm = true
             } label: {
-                Text(String(format: "uin_shop.buy.cta".localized, priceDisplay(cents: cents)))
+                Text("uin_shop.take.cta".localized)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -489,16 +503,20 @@ struct UINShopView: View {
 
     // MARK: - Orchestration
 
+    /// ⚠ The priced wording is kept for the day iOS can actually take money,
+    /// but it is never reached while the only door this screen opens is the
+    /// free one: promising a charge and making none is the worse of the two
+    /// mistakes.
     private var confirmTitle: String {
-        guard let q = displayedQuote, q.available, let cents = q.priceCents else {
-            return "uin_shop.confirm.title".localized
+        guard let q = displayedQuote, acquire != "free", let cents = q.priceCents else {
+            return String(format: "uin_shop.confirm.title_free".localized, String(displayedQuote?.uin ?? 0))
         }
         return String(format: "uin_shop.confirm.title_priced".localized, String(q.uin), priceDisplay(cents: cents))
     }
 
     private var confirmCTA: String {
-        guard let q = displayedQuote, q.available, let cents = q.priceCents else {
-            return "uin_shop.confirm.cta".localized
+        guard let q = displayedQuote, acquire != "free", let cents = q.priceCents else {
+            return "uin_shop.take.confirm".localized
         }
         return String(format: "uin_shop.confirm.cta_priced".localized, priceDisplay(cents: cents))
     }

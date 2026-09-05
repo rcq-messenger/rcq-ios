@@ -254,6 +254,10 @@
 "uin_shop.info.migrate.title" = "拿一个号码不会改变你是谁";
 "uin_shop.info.migrate.body" = "号码会加入你名下的号码列表，你仍然像现在一样收发消息。切换到它是“我的 UIN”里的另一个操作，而且可以反悔：你离开的那个号码同样还是你的，别人占不走。不管怎样，联系人、群组、个人资料和聊天记录都会跟你一起过去。";
 "uin_shop.info.current" = "你当前的 UIN · %@";
+"uin_shop.take.cta" = "拿下这个号码";
+"uin_shop.take.confirm" = "拿下";
+"uin_shop.confirm.title_free" = "拿下号码 %@？";
+"uin_shop.tier.free" = "免费";
 "uin_shop.buy.cta" = "以 %@ 购买";
 "uin_shop.buy.processing" = "处理中…";
 "uin_shop.confirm.title" = "确认购买";

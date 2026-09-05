@@ -271,6 +271,10 @@
 "uin_shop.info.migrate.title" = "Taking a number does not change who you are";
 "uin_shop.info.migrate.body" = "The number joins your collection and you keep answering as you do now. Moving onto it is a separate step on My UINs, and it is reversible: the number you leave stays yours too, so nobody else can take it. Contacts, groups, profile and chat history come with you either way.";
 "uin_shop.info.current" = "Your current UIN · %@";
+"uin_shop.take.cta" = "Take this number";
+"uin_shop.take.confirm" = "Take it";
+"uin_shop.confirm.title_free" = "Take UIN %@?";
+"uin_shop.tier.free" = "free";
 "uin_shop.buy.cta" = "Buy for %@";
 "uin_shop.buy.processing" = "Processing…";
 "uin_shop.confirm.title" = "Confirm purchase";

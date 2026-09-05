@@ -263,6 +263,10 @@
 "uin_shop.info.migrate.title" = "Pegar um número não muda quem você é";
 "uin_shop.info.migrate.body" = "O número entra na sua coleção e você continua respondendo como agora. Passar a usá-lo é um passo separado, em Meus UINs, e dá para voltar atrás: o número que você deixa continua seu, então ninguém mais pode pegar. Contatos, grupos, perfil e histórico vão junto de qualquer jeito.";
 "uin_shop.info.current" = "Seu UIN de agora · %@";
+"uin_shop.take.cta" = "Ficar com este número";
+"uin_shop.take.confirm" = "Ficar";
+"uin_shop.confirm.title_free" = "Ficar com o UIN %@?";
+"uin_shop.tier.free" = "grátis";
 "uin_shop.buy.cta" = "Comprar por %@";
 "uin_shop.buy.processing" = "Processando…";
 "uin_shop.confirm.title" = "Confirmar compra";
