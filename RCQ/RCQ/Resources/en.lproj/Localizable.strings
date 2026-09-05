@@ -2048,7 +2048,11 @@
 "island.trust.ca_only" = "This island is trusted through a certificate authority and takes no fingerprint.";
 "badge.official" = "Official";
 "badge.tester" = "Tester";
-"badge.special" = "Special";
+"badge.special" = "Special contribution";
+"badge.desc.official" = "Official account, confirmed by the island: the RCQ team or a source it vouches for.";
+"badge.desc.tester" = "Tester. Took part in the alpha and beta of RCQ and helped find what was broken.";
+"badge.desc.special" = "Given for an outstanding contribution during the alpha and beta of RCQ.";
+"badge.desc.unknown" = "A mark given by this island.";
 "my_uins.unlist" = "Take off sale";
 "my_uins.listed" = "on sale, %@";
 "my_uins.unlist.error" = "Could not take it off sale";
