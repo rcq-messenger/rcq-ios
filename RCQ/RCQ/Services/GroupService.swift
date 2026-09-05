@@ -847,6 +847,7 @@ final class GroupService: ObservableObject {
             )
             return rows
         } catch {
+            NSLog("[RCQ] groups/discover failed: %@", String(describing: error))
             return []
         }
     }
