@@ -136,6 +136,10 @@ final class ChatViewModel: ObservableObject {
             .sink { [weak self] text in
                 guard let self else { return }
                 if case .randomPeer = self.target { return }
+                // The text of a message being EDITED is not a draft: saved as
+                // one, it came back as a plain composer text with no edit
+                // strip, one tap from a duplicate send.
+                if self.editingTarget != nil { return }
                 let key = Self.draftKey(for: self.target)
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     UserDefaults.standard.removeObject(forKey: key)
@@ -281,6 +285,19 @@ final class ChatViewModel: ObservableObject {
     func setInput(_ text: String) {
         input = text
         composerRevision += 1
+        // ⚠ Synchronously, not through the 250 ms debounce below. A send
+        // cleared the field and the person popped the chat inside the
+        // debounce window, and the draft writer then fired with the text
+        // that had just gone out, so it was back in the field next time.
+        // Programmatic writes are rare and cheap; the debounce stays for
+        // keystrokes.
+        if case .randomPeer = target { return }
+        let key = Self.draftKey(for: target)
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else if editingTarget == nil {
+            UserDefaults.standard.set(text, forKey: key)
+        }
     }
 
     /// Recompute the gated composer derivatives. Runs on every `input`

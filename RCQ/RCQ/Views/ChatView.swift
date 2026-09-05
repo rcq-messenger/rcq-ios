@@ -870,6 +870,10 @@ struct ChatView: View {
                         // chat content so the strip reads as a draft
                         // tray rather than a docked panel.
                         pendingMediaStrip
+                            // ⚠ Animated in and out: the strip stepped the bar
+                            // by 80pt in one frame on attach and again on send
+                            // (audit, 05.09).
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     mentionPicker
                     inputBar
@@ -880,6 +884,7 @@ struct ChatView: View {
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
             .animation(.easeOut(duration: 0.18), value: vm.isPeerTyping)
+            .animation(.easeOut(duration: 0.18), value: vm.pendingMedia.isEmpty)
         }
         .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice, vm: vm))
         // ⚠⚠ ONE place speaks a refusal, for every send path. The composer's
@@ -2000,6 +2005,12 @@ struct ChatView: View {
             // the newest bubble slid under the bar when either appeared and
             // a blank band opened when either left. Same rule, same curve.
             .onChange(of: vm.isPeerTyping) { _ in
+                guard !showScrollToBottom else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: vm.pendingMedia.isEmpty) { _ in
                 guard !showScrollToBottom else { return }
                 withAnimation(.easeOut(duration: 0.18)) {
                     proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
