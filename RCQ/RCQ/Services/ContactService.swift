@@ -121,6 +121,10 @@ final class ContactService: ObservableObject {
     /// Bumped by `wipe()`: a fetch that was in flight for the previous account
     /// finds a different epoch when it lands and drops its answer.
     private var rosterEpoch = 0
+    /// The island's validator for the roster and the bytes it came with, so a
+    /// refresh that finds nothing changed (304) still has rows to fold.
+    private var rosterETag: String?
+    private var rosterServedData: Data?
     /// The account the roster on screen belongs to. Every write to disk is
     /// bound to it, so an answer that lands after a switch cannot be filed
     /// under the account that switched in (the switch flips the active id
@@ -168,7 +172,22 @@ final class ContactService: ObservableObject {
             // request lists follow.
             async let pendingFetch: [PendingRequest] = APIClient.shared.request("GET", "/contacts/pending")
             async let outgoingFetch: [OutgoingRequest] = APIClient.shared.request("GET", "/contacts/outgoing")
-            var list: [Contact] = try await APIClient.shared.request("GET", "/contacts")
+            // Conditional read: the island answers 304 when the roster is
+            // byte-for-byte what it served last time, and the rows kept from
+            // that answer are folded again. Presence is in the island's hash,
+            // so a status that moved while this device was away still comes
+            // back as a full body.
+            let answer = try await APIClient.shared.conditionalGet("/contacts", etag: rosterETag)
+            var list: [Contact]
+            if let data = answer.data {
+                list = try await APIClient.shared.decodeJSON(data)
+                rosterServedData = data
+                rosterETag = answer.etag
+            } else if let kept = rosterServedData {
+                list = try await APIClient.shared.decodeJSON(kept)
+            } else {
+                list = try await APIClient.shared.request("GET", "/contacts")
+            }
             // The account changed under this fetch: not our roster any more.
             // Locked in the meantime: the key is gone and nothing may be
             // published or written until the unlock refreshes again.
@@ -639,6 +658,8 @@ final class ContactService: ObservableObject {
     /// the Keychain rows do; a burn deletes it itself (`RosterSnapshot.delete`).
     func wipe() {
         rosterEpoch += 1
+        rosterETag = nil
+        rosterServedData = nil
         rosterAccount = nil
         refreshInFlight = nil
         contacts = []
@@ -653,6 +674,8 @@ final class ContactService: ObservableObject {
 
     func clearForDecoy() {
         rosterEpoch += 1
+        rosterETag = nil
+        rosterServedData = nil
         refreshInFlight = nil
         contacts = []
         rosterLoaded = false
