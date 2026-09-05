@@ -63,6 +63,10 @@ final class AppState: ObservableObject {
     @Published var pendingAddHost: String? = nil
     @Published var pendingOpenChatUIN: Int? = nil
     @Published var pendingOpenGroupID: Int? = nil
+    /// Set once, by a FRESH registration in onboarding: the recovery phrase is
+    /// shown before anything else, so a reinstall does not silently end the
+    /// account (founder, 05.09). Restore never sets it; those people have it.
+    @Published var showPhraseNudge: Bool = false
     /// Drives the `GroupJoinSheet` when a user taps a shared-group
     /// card from chat. Same deep-link mechanism as the marketplace +
     /// UIN-share flows; cleared by the sheet when it dismisses.

@@ -391,6 +391,7 @@ struct OnboardingView: View {
                             ? "https://api.rcq.app"
                             : customServer
                         AccountManager.shared.add(serverURL: chosenURL)
+                    AppState.shared.showPhraseNudge = true
                         withAnimation(.easeInOut(duration: 0.5)) {
                             entering = true
                         }
