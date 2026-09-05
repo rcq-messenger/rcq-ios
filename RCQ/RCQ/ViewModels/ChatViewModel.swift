@@ -880,6 +880,7 @@ final class ChatViewModel: ObservableObject {
             return false
         }
         stopTypingSignal()
+        noteLocalSend()
         if let editing = editingTarget {
             // Optimistic: dismiss the edit composer + clear input NOW, send in
             // the background. MessageService.edit applies the local edit to the
@@ -994,6 +995,7 @@ final class ChatViewModel: ObservableObject {
     @discardableResult
     func sendPendingMediaWithCaption() async -> String? {
         stopTypingSignal()
+        noteLocalSend()
         guard !pendingMedia.isEmpty else { return nil }
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let queue = pendingMedia
@@ -1101,6 +1103,7 @@ final class ChatViewModel: ObservableObject {
 
     func sendVoice(fileURL: URL, durationSec: Double) async -> String? {
         stopTypingSignal()
+        noteLocalSend()
         let reply = consumeReplyContext()
         do {
             switch target {
@@ -1148,6 +1151,7 @@ final class ChatViewModel: ObservableObject {
     /// a generic upload failure.
     func sendFile(fileURL: URL, fileName: String, mime: String, sizeBytes: Int) async -> String? {
         stopTypingSignal()
+        noteLocalSend()
         let reply = consumeReplyContext()
         do {
             switch target {
@@ -1369,6 +1373,17 @@ final class ChatViewModel: ObservableObject {
             await forward(m, toGroup: group)
         }
     }
+
+    /// When THIS composer last sent something. The chat jumps to a new own
+    /// bubble only when it came from here: a carbon of a message typed on the
+    /// desktop is an incoming message as far as this screen is concerned,
+    /// and used to yank a person reading history down to the bottom.
+    private(set) var lastLocalSendAt: Date?
+    var sentFromHereJustNow: Bool {
+        guard let t = lastLocalSendAt else { return false }
+        return Date().timeIntervalSince(t) < 3
+    }
+    private func noteLocalSend() { lastLocalSendAt = Date() }
 
     /// A send ends the "typing" the peer is being shown. Without this the
     /// only `active:false` ever sent was the 4 s idle task, so the bubble
