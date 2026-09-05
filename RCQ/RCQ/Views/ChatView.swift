@@ -3149,6 +3149,7 @@ struct ChatView: View {
             onLongPress: {
                 if vm.isSelecting { return }
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                keyboardUpBeforeOverlay = isKeyboardVisible
                 UIApplication.shared.sendAction(
                     #selector(UIResponder.resignFirstResponder),
                     to: nil, from: nil, for: nil
