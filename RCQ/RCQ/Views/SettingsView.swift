@@ -829,20 +829,6 @@ struct SettingsView: View {
                 }
             }
             islandTrustRow
-            // ⚠ On the section, not inside the row: `islandTrustRow` draws
-            // nothing until a handshake has written a record, and a
-            // description that vanishes with the thing it describes explains
-            // nothing. The line above reports a decision nobody makes by hand,
-            // so on its own it is vocabulary rather than an answer
-            // (founder, 05.09).
-            Text("island.trust.settings.footer".localized)
-                .font(.caption)
-                .foregroundColor(Theme.Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                // It explains the row above it, so no line between the two:
-                // a separator there made it read as a row of its own
-                // (founder, 05.09).
-                .listRowSeparator(.hidden, edges: .top)
             if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
                     showIslandRules = true
@@ -1269,6 +1255,17 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text((status.record.mode == .ca ? "island.trust.settings.ca" : "island.trust.settings.pinned").localized)
                         .foregroundColor(Theme.Color.textPrimary)
+                    // What the line above means, as the row's own subtitle.
+                    // It was a row of the section first, and a row keeps its
+                    // insets whether or not a separator is drawn, so the
+                    // sentence floated a full row-gap below the thing it
+                    // explains (founder, 05.09). The row reports a decision
+                    // nobody makes by hand; without this sentence it is
+                    // vocabulary rather than an answer.
+                    Text("island.trust.settings.footer".localized)
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     if status.record.mode == .pinned, let fp = status.record.fp {
                         Text(IslandTrust.displayFingerprint(fp))
                             .font(.system(.caption, design: .monospaced))
