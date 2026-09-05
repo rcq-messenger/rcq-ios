@@ -70,16 +70,20 @@ struct ReportContactSheet: View {
                 .background(Theme.Color.statusBusy.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
-                Text("report.heading".localized)
+                // A site has no person behind it: the heading says "this
+                // page" and no "0" is printed where a number would go.
+                Text((context.hasPrefix("site:") ? "report.heading.site" : "report.heading").localized)
                     .font(.title3.weight(.semibold))
                     .foregroundColor(Theme.Color.textPrimary)
                 HStack(spacing: 4) {
                     Text(targetNickname)
                         .font(.callout)
                         .foregroundColor(Theme.Color.textPrimary)
-                    Text(verbatim: "\(targetUIN)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(Theme.Color.textSecondary)
+                    if targetUIN > 0 {
+                        Text(verbatim: "\(targetUIN)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
             }
         }

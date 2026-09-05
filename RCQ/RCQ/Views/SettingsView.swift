@@ -288,7 +288,10 @@ struct SettingsView: View {
     @State private var showBackupFile = false
     @State private var uinCopied: Bool = false
     /// The island's mark on this account, read with the own profile.
-    @State private var ownBadge: String? = nil
+    // Seeded from the last answer, like the avatar above: the seal used to
+    // appear only after /users/{uin}/info came back, and the founder watched
+    // it load every time Settings opened.
+    @State private var ownBadge: String? = UserDefaults.standard.string(forKey: "rcq.ownBadge")
     /// Settings search (item 28). `pendingSearchPick` is held back until the
     /// search sheet is really gone: routing straight from the result tap puts
     /// a dismiss and a present into one transaction on the same host and UIKit
@@ -1078,6 +1081,7 @@ struct SettingsView: View {
         guard let uin = auth.ownUIN else { return }
         guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
         ownBadge = p.badge
+        UserDefaults.standard.set(p.badge, forKey: "rcq.ownBadge")
         PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
         ownAvatarID = p.avatarMediaID
         ownAvatarKey = p.avatarMediaKey

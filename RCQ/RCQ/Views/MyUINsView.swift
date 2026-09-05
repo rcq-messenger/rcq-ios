@@ -304,7 +304,8 @@ struct MyUINsView: View {
         unlisting = uin
         defer { unlisting = nil }
         if await AppState.shared.unlistUIN(uin) {
-            data = await AppState.shared.myUINs()
+            // A transport blip on the re-read must not blank the collection.
+            if let fresh = await AppState.shared.myUINs() { data = fresh }
         } else {
             error = "my_uins.unlist.error".localized
         }

@@ -3248,7 +3248,7 @@ private struct DiscoverGroupsStrip: View {
                     .lineLimit(1)
                 BadgeMark(kind: room.badge, size: 12)
             }
-            Text(String(format: "contact_list.members_many".localized, room.memberCount))
+            Text(MemberCountLabel.text(room.memberCount))
                 .font(.system(size: 11))
                 .foregroundColor(Theme.Color.textSecondary)
             Button {

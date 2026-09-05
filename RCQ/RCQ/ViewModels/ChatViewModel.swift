@@ -859,6 +859,7 @@ final class ChatViewModel: ObservableObject {
     /// share-as-reply is a contrived flow; the composer's reply
     /// strip stays for the next manual message).
     func sendText(_ text: String) async {
+        noteLocalSend()
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
@@ -1138,6 +1139,7 @@ final class ChatViewModel: ObservableObject {
     /// inside the envelope (no encrypted blob path). Random-chat is
     /// gated upstream by the attach menu hiding the row entirely.
     func sendLocation(latitude: Double, longitude: Double) async -> String? {
+        noteLocalSend()
         let reply = consumeReplyContext()
         do {
             switch target {
