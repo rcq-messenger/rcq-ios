@@ -496,6 +496,9 @@ struct ChatView: View {
     /// A send just happened: the arrow holds its place briefly so a second
     /// tap lands on nothing rather than on the microphone.
     @State private var sendHold = false
+    /// The smiley was tapped while the keyboard was up: the panel opens in
+    /// keyboardWillHide, so the two SWAP instead of stacking.
+    @State private var emojiPanelAfterKeyboard = false
     // Per-conversation screen-secure: whether protection is currently armed
     // for this open chat, plus the live screenshot-detection observer token.
     @State private var screenSecured = false
@@ -2074,6 +2077,12 @@ struct ChatView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
                 isKeyboardVisible = false
+                if emojiPanelAfterKeyboard {
+                    emojiPanelAfterKeyboard = false
+                    // Same curve and length as the system keyboard's exit, so
+                    // the panel rises as the keyboard sinks.
+                    withAnimation(.easeOut(duration: 0.25)) { showEmojiPanel = true }
+                }
                 // Keyboard close: tight scrollTo loop for the full
                 // keyboard animation window. Wrapping a single
                 // `scrollTo` in `withAnimation(duration:)` looks
@@ -2927,8 +2936,25 @@ struct ChatView: View {
                 // compare this one to; the collapse after a send still glides.
                 .animation(composerHeight < lastComposerHeight ? .easeOut(duration: 0.18) : nil, value: composerHeight)
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showEmojiPanel.toggle()
+                    if showEmojiPanel {
+                        // The glyph says "keyboard": close the panel AND raise
+                        // the keyboard. It used to drop the panel and leave the
+                        // field cold, so the person tapped the field again.
+                        withAnimation(.easeInOut(duration: 0.18)) { showEmojiPanel = false }
+                        composerFocusToken &+= 1
+                    } else if isKeyboardVisible {
+                        // ⚠ Swap, not stack. Opening the panel over the open
+                        // keyboard pushed the bar up by another 250pt and the
+                        // list collapsed to a strip (audit, 05.09). Resign
+                        // first; keyboardWillHide opens the panel in the same
+                        // motion the keyboard leaves with.
+                        emojiPanelAfterKeyboard = true
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.18)) { showEmojiPanel = true }
                     }
                 } label: {
                     Image(systemName: showEmojiPanel ? "keyboard" : "face.smiling")
