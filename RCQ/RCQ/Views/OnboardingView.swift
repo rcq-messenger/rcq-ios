@@ -323,19 +323,7 @@ struct OnboardingView: View {
     }
 
     private var ctaRow: some View {
-        HStack(spacing: 10) {
-            if page > 0 {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) { page -= 1 }
-                } label: {
-                    Text("onboard.cta.back".localized)
-                        .font(.system(.body, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .frame(width: 90, height: 50)
-                        .background(Theme.Color.bgSecondary)
-                        .cornerRadius(8)
-                }
-            }
+        VStack(spacing: 12) {
             // The last page asks for one thing before an account exists:
             // agreement to the terms and the privacy policy, with both a tap
             // away (founder, 05.09; App Store 5.1.1 wants the policy reachable
@@ -367,48 +355,62 @@ struct OnboardingView: View {
                     Button("common.cancel".localized, role: .cancel) {}
                 }
             }
-            Button {
-                if page < pages.count - 1 {
-                    withAnimation(.easeInOut(duration: 0.25)) { page += 1 }
-                } else {
-                    guard acceptedTerms else { return }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    // Mint Account[0] in AccountManager BEFORE the
-                    // boot pipeline runs. Without this, AuthService's
-                    // first /auth/register writes Keychain under the
-                    // legacy unprefixed slot (because
-                    // AppGroup.readActiveAccountID returns nil with
-                    // an empty roster), and the account-switcher pill
-                    // in ContactListView stays hidden until the next
-                    // launch's legacy-migration mints Account[0]
-                    // retroactively. By calling add() here, the
-                    // active account is set up front: subsequent
-                    // KeychainStore.set writes land in the prefixed
-                    // slot directly, ContactListView renders with
-                    // accountManager.active non-nil, pill shows.
-                    let chosenURL = customServer.isEmpty
-                        ? "https://api.rcq.app"
-                        : customServer
-                    AccountManager.shared.add(serverURL: chosenURL)
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        entering = true
+            HStack(spacing: 10) {
+                if page > 0 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { page -= 1 }
+                    } label: {
+                        Text("onboard.cta.back".localized)
+                            .font(.system(.body, weight: .semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .frame(width: 90, height: 50)
+                            .background(Theme.Color.bgSecondary)
+                            .cornerRadius(8)
                     }
                 }
-            } label: {
-                Text((page < pages.count - 1
-                      ? "onboard.cta.next"
-                      : "onboard.cta.start").localized)
-                    .font(.system(.body, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Theme.Color.accent.opacity(page == pages.count - 1 && !acceptedTerms ? 0.45 : 1))
-                    .cornerRadius(8)
+                Button {
+                    if page < pages.count - 1 {
+                        withAnimation(.easeInOut(duration: 0.25)) { page += 1 }
+                    } else {
+                        guard acceptedTerms else { return }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        // Mint Account[0] in AccountManager BEFORE the
+                        // boot pipeline runs. Without this, AuthService's
+                        // first /auth/register writes Keychain under the
+                        // legacy unprefixed slot (because
+                        // AppGroup.readActiveAccountID returns nil with
+                        // an empty roster), and the account-switcher pill
+                        // in ContactListView stays hidden until the next
+                        // launch's legacy-migration mints Account[0]
+                        // retroactively. By calling add() here, the
+                        // active account is set up front: subsequent
+                        // KeychainStore.set writes land in the prefixed
+                        // slot directly, ContactListView renders with
+                        // accountManager.active non-nil, pill shows.
+                        let chosenURL = customServer.isEmpty
+                            ? "https://api.rcq.app"
+                            : customServer
+                        AccountManager.shared.add(serverURL: chosenURL)
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            entering = true
+                        }
+                    }
+                } label: {
+                    Text((page < pages.count - 1
+                          ? "onboard.cta.next"
+                          : "onboard.cta.start").localized)
+                        .font(.system(.body, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Theme.Color.accent.opacity(page == pages.count - 1 && !acceptedTerms ? 0.45 : 1))
+                        .cornerRadius(8)
+                }
+                .disabled(page == pages.count - 1 && !acceptedTerms)
             }
-            .disabled(page == pages.count - 1 && !acceptedTerms)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
     }
 }
 
