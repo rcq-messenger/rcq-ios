@@ -1112,19 +1112,19 @@
 "onboard.transition.tagline" = "EMPEZANDO";
 "onboard.welcome.kicker" = "RCQ";
 "onboard.welcome.title" = "Bienvenido";
-"onboard.welcome.body" = "Un mensajero de privacidad en serio, con cifrado de extremo a extremo real por defecto y los relays de RCQ integrados. Sin teléfono, sin correo, sin anuncios.";
+"onboard.welcome.body" = "Mensajería privada con cifrado de extremo a extremo activado por defecto. Sin número de teléfono, sin correo, sin anuncios.";
 "onboard.status.kicker" = "ESTADO";
 "onboard.status.title" = "Elige tu estado";
 "onboard.status.body" = "En línea, Ausente, No molestar, Invisible, Desconectado. Los cinco de siempre, y aquí significan algo. Toca el icono de tu estado para cambiarlo.";
 "onboard.federation.kicker" = "FEDERACIÓN";
-"onboard.federation.title" = "Sin un dueño único";
-"onboard.federation.body" = "RCQ no es el servidor de una empresa. Cada servidor es una isla independiente y cualquiera puede montar una. Tu cuenta vive en la isla que elijas, y te llevas tu número si te mudas.";
+"onboard.federation.title" = "Sin un único dueño";
+"onboard.federation.body" = "RCQ no es el servidor de una empresa. Cualquiera puede levantar una isla, tu cuenta vive en la que elijas y tu número se mueve contigo.";
 "onboard.relay.kicker" = "PRIVACIDAD";
-"onboard.relay.title" = "Relays de RCQ";
-"onboard.relay.body" = "El tráfico no va directo a la isla, sino por nuestros relays: la isla no ve tu dirección, y la red entre tú y la isla no ve que usas RCQ. La red de relays la lleva la comunidad, y el enrutado onion los encadena para que ningún relay te vea a ti y a tu isla a la vez. Donde RCQ está bloqueado, además es el único camino.";
+"onboard.relay.title" = "La isla no ve tu dirección";
+"onboard.relay.body" = "El tráfico pasa por relés de la comunidad: la isla nunca ve dónde estás y tu red nunca ve que usas RCQ. Donde RCQ está bloqueado, también es la entrada.";
 "onboard.chat.kicker" = "CHAT";
-"onboard.chat.title" = "Chat con remitente sellado";
-"onboard.chat.body" = "Cifrado de extremo a extremo en cada mensaje. El servidor no ve quién escribe a quién: la identidad de quien envía va sellada dentro del sobre, no en la cabecera.";
+"onboard.chat.title" = "El servidor no puede leer";
+"onboard.chat.body" = "Cada mensaje va cifrado de extremo a extremo y el remitente queda oculto dentro del sobre. El servidor no sabe quién escribe a quién.";
 "onboard.nearby.kicker" = "CERCA";
 "onboard.nearby.title" = "Encuentra gente de tu zona";
 "onboard.nearby.body" = "Mira quién está cerca ahora mismo, de forma anónima y sin exponer tu UIN salvo que quieras. Activa Cerca y empieza por ahí.";
@@ -1516,14 +1516,14 @@
 "chat.voice.swipe_hints" = "← cancelar   ↑ bloquear";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANÓNIMO";
-"onboard.anon.title" = "Sin teléfono, sin correo";
-"onboard.anon.body" = "Tu identidad es un UIN numérico, nada más. La cuenta no está atada a ti. Destrúyela y empieza de cero cuando quieras.";
-"onboard.mesh.kicker" = "MALLA SIN CONEXIÓN";
+"onboard.anon.title" = "Sin teléfono ni correo";
+"onboard.anon.body" = "Tu identidad es un número y nada más. No está ligado a ti, y puedes quemarlo y empezar de cero cuando quieras.";
+"onboard.mesh.kicker" = "SIN CONEXIÓN";
 "onboard.mesh.title" = "Chatea sin internet";
-"onboard.mesh.body" = "El chat por radio encuentra a la gente que tienes cerca por Bluetooth y Wi-Fi Direct. Los mensajes saltan de dispositivo a dispositivo: sin servidores y sin cobertura móvil.";
+"onboard.mesh.body" = "Cuando no hay red, Radio Chat encuentra a gente cerca por Bluetooth y Wi-Fi Direct y pasa los mensajes de dispositivo a dispositivo.";
 "onboard.pin.kicker" = "PIN DE SEGURIDAD";
-"onboard.pin.title" = "Bajo llave en tu dispositivo";
-"onboard.pin.body" = "Un PIN bloquea la app y cifra tu historial de mensajes en el dispositivo, con Face ID opcional y con PIN señuelo y PIN de borrado para cuando te obliguen a desbloquear.";
+"onboard.pin.title" = "Bloqueado en tu dispositivo";
+"onboard.pin.body" = "Un PIN bloquea la app y cifra tu historial en el dispositivo. Un PIN señuelo y un PIN de borrado para cuando alguien te obligue a desbloquear.";
 /* Account switcher + add account */
 "contact_list.add_account" = "Servidor nuevo";
 "contact_list.manage_accounts" = "Gestionar cuentas";

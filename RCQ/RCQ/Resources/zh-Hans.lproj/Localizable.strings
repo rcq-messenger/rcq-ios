@@ -1103,19 +1103,19 @@
 "onboard.transition.tagline" = "正在启动";
 "onboard.welcome.kicker" = "RCQ";
 "onboard.welcome.title" = "欢迎";
-"onboard.welcome.body" = "一款认真做隐私的通讯工具，默认开启真正的端到端加密，内置 RCQ 中继。不要手机号，不要邮箱，没有广告。";
+"onboard.welcome.body" = "默认端到端加密的私密通讯。无需手机号，无需邮箱，没有广告。";
 "onboard.status.kicker" = "状态";
 "onboard.status.title" = "选择你的状态";
 "onboard.status.body" = "在线、离开、勿扰、隐身、离线。经典的五种，而且是真的有用。点按状态图标即可切换。";
 "onboard.federation.kicker" = "联邦";
-"onboard.federation.title" = "没有单一所有者";
-"onboard.federation.body" = "RCQ 不是某一家公司的服务器。每台服务器都是独立的岛，任何人都可以自己搭一个。你的账号住在你选的岛上，搬家时号码不变。";
+"onboard.federation.title" = "没有唯一的所有者";
+"onboard.federation.body" = "RCQ 不是某家公司的服务器。任何人都可以架设岛屿，你的账号住在你选择的岛上，号码随你迁移。";
 "onboard.relay.kicker" = "隐私";
-"onboard.relay.title" = "RCQ 中继";
-"onboard.relay.body" = "流量不直接发往岛，而是先走我们的中继：岛看不到你的地址，你和岛之间的网络也看不出你在用 RCQ。中继网络由社区运营，洋葱路由把它们串成链路，任何一个中继都不会同时看到你和你的岛。在 RCQ 被封锁的地方，这也是唯一的通路。";
+"onboard.relay.title" = "岛屿看不到你的地址";
+"onboard.relay.body" = "流量经由社区中继：岛屿看不到你在哪里，你的网络也看不到你在使用 RCQ。在 RCQ 被封锁的地方，这也是进入的通道。";
 "onboard.chat.kicker" = "聊天";
-"onboard.chat.title" = "密封发送者聊天";
-"onboard.chat.body" = "每一条消息都端到端加密。服务器看不到谁在给谁写：发送者的身份密封在信封内部，而不在信头上。";
+"onboard.chat.title" = "服务器读不到内容";
+"onboard.chat.body" = "每条消息都是端到端加密，发送者藏在信封里。服务器不知道谁在给谁写信。";
 "onboard.nearby.kicker" = "附近";
 "onboard.nearby.title" = "找到你身边的人";
 "onboard.nearby.body" = "看看此刻就在附近的人：全程匿名，除非你自己愿意，否则不会暴露 UIN。打开附近，从那里开始。";
@@ -1507,14 +1507,14 @@
 "chat.voice.swipe_hints" = "← 取消   ↑ 锁定";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "匿名";
-"onboard.anon.title" = "不要手机号，不要邮箱";
-"onboard.anon.body" = "你的身份就是一个数字 UIN，除此之外什么都没有。账号和你本人没有任何关联。随时可以销毁它，从头再来。";
-"onboard.mesh.kicker" = "离线网状网络";
+"onboard.anon.title" = "无手机号，无邮箱";
+"onboard.anon.body" = "你的身份只是一个号码，别无其他。它不与你绑定，随时可以销毁重来。";
+"onboard.mesh.kicker" = "离线";
 "onboard.mesh.title" = "没有网络也能聊";
-"onboard.mesh.body" = "电台聊天通过蓝牙和 Wi-Fi Direct 找到你附近的人。消息在设备之间一跳一跳地传，不需要服务器，也不需要移动信号。";
+"onboard.mesh.body" = "没有网络时，无线电聊天通过蓝牙和 Wi-Fi Direct 找到附近的人，消息在设备之间接力传递。";
 "onboard.pin.kicker" = "安全 PIN";
 "onboard.pin.title" = "锁在你的设备上";
-"onboard.pin.body" = "PIN 会锁住应用，并在设备本地加密你的聊天记录，可以搭配 Face ID，还有应对被迫解锁的伪装 PIN 和擦除 PIN。";
+"onboard.pin.body" = "PIN 锁定应用并在设备上加密历史记录。备有伪装 PIN 和抹除 PIN，以防有人逼你解锁。";
 /* Account switcher + add account */
 "contact_list.add_account" = "新服务器";
 "contact_list.manage_accounts" = "管理账号";

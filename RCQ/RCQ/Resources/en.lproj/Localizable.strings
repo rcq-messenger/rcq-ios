@@ -1212,21 +1212,21 @@
 
 "onboard.welcome.kicker" = "RCQ";
 "onboard.welcome.title" = "Welcome";
-"onboard.welcome.body" = "A serious privacy messenger with real end-to-end encryption by default and RCQ relays built in. No phone, no email, no ads.";
+"onboard.welcome.body" = "Private messaging with end-to-end encryption on by default. No phone number, no email, no ads.";
 
 "onboard.status.kicker" = "STATUS";
 "onboard.status.title" = "Pick your status";
 "onboard.status.body" = "Online, Away, DND, Invisible, Offline. The classic five, and they actually mean something. Tap your status icon to switch.";
 "onboard.federation.kicker" = "FEDERATION";
 "onboard.federation.title" = "No single owner";
-"onboard.federation.body" = "RCQ isn't one company's server. Every server is an independent island, and anyone can run one. Your account lives on the island you pick, and you keep your number if you move.";
+"onboard.federation.body" = "RCQ is not one company's server. Anyone can run an island, your account lives on the one you choose, and your number moves with you.";
 "onboard.relay.kicker" = "PRIVACY";
-"onboard.relay.title" = "RCQ relays";
-"onboard.relay.body" = "Traffic goes through our relays instead of straight to the island: the island does not see your address, and the network between you and the island does not see that you are using RCQ. The relay network is community-run, and onion routing chains them so no single relay sees both you and your island. Where RCQ is blocked, this is also the only way through.";
+"onboard.relay.title" = "The island does not see your address";
+"onboard.relay.body" = "Traffic goes through community relays: the island never sees where you are, and your network never sees that you use RCQ. Where RCQ is blocked, this is also the way in.";
 
 "onboard.chat.kicker" = "CHAT";
-"onboard.chat.title" = "Sealed-sender chat";
-"onboard.chat.body" = "End-to-end encrypted on every message. The server doesn't see who's writing to whom: the sender's identity is sealed inside the envelope, not in the header.";
+"onboard.chat.title" = "The server cannot read along";
+"onboard.chat.body" = "Every message is encrypted end to end, and the sender is hidden inside the envelope. The server does not know who is writing to whom.";
 
 "onboard.nearby.kicker" = "NEARBY";
 "onboard.nearby.title" = "Find people in your area";
@@ -1653,13 +1653,13 @@
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
 "onboard.anon.kicker" = "ANONYMOUS";
 "onboard.anon.title" = "No phone, no email";
-"onboard.anon.body" = "Your identity is a numeric UIN, nothing else. The account isn't tied to you. Burn it and start over whenever you want.";
-"onboard.mesh.kicker" = "OFFLINE MESH";
+"onboard.anon.body" = "Your identity is a number and nothing else. It is not tied to you, and you can burn it and start over at any time.";
+"onboard.mesh.kicker" = "OFFLINE";
 "onboard.mesh.title" = "Chat with no internet";
-"onboard.mesh.body" = "Radio Chat finds people near you over Bluetooth and Wi-Fi Direct. Messages hop device to device: no servers, no cell signal needed.";
+"onboard.mesh.body" = "When there is no network, Radio Chat finds people nearby over Bluetooth and Wi-Fi Direct and passes messages device to device.";
 "onboard.pin.kicker" = "SECURITY PIN";
 "onboard.pin.title" = "Locked on your device";
-"onboard.pin.body" = "A PIN locks the app and encrypts your message history on-device, with optional Face ID, plus decoy and wipe PINs for when you're forced to unlock.";
+"onboard.pin.body" = "A PIN locks the app and encrypts your history on the device. A decoy PIN and a wipe PIN are there for the moment someone makes you unlock.";
 
 /* Account switcher + add account */
 "contact_list.add_account" = "New server";
