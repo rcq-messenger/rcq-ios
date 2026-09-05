@@ -382,6 +382,12 @@ struct ContactListView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
             .sheet(isPresented: $showPending) { PendingRequestsView() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            // The phrase, once, right after a fresh registration: only when the
+            // first refresh has landed, so the account (and its 24 words) exist.
+            .sheet(isPresented: Binding(
+                get: { appState.showPhraseNudge && vm.hasLoadedOnce },
+                set: { if !$0 { appState.showPhraseNudge = false } }
+            )) { RecoveryPhraseView() }
             .sheet(isPresented: $showAddAccount) { AddAccountSheet() }
             .sheet(isPresented: $showManageAccounts) { ManageAccountsSheet() }
             // fullScreenCover (vs .sheet) avoids inner PhotoPicker dismiss bubbling up and closing the chat.
