@@ -656,6 +656,8 @@
 "media.error.too_large" = "This file is %@ MB, over the %@ MB limit. Try a shorter clip or lower-resolution capture.";
 "media.bubble.failed" = "Failed";
 
+"contact_list.discover.title" = "Open groups";
+"contact_list.discover.join" = "Join";
 "contact_list.empty.title" = "No contacts yet";
 "contact_list.empty.body" = "Add a friend by their UIN or QR code to start a conversation. Stranger Mode works without contacts.";
 "contact_list.empty.cta" = "Add a contact";

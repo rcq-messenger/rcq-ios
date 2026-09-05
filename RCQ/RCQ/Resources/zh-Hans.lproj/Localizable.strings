@@ -603,6 +603,8 @@
 "media.error.deposit" = "无法把媒体投递到对方的岛。请重试。";
 "media.error.too_large" = "这个文件 %@ MB，超过了 %@ MB 的上限。请录得短一些，或降低拍摄分辨率。";
 "media.bubble.failed" = "发送失败";
+"contact_list.discover.title" = "公开群组";
+"contact_list.discover.join" = "加入";
 "contact_list.empty.title" = "还没有联系人";
 "contact_list.empty.body" = "通过 UIN 或 QR 码添加好友，开始聊天。随机聊天不需要联系人也能用。";
 "contact_list.empty.cta" = "添加联系人";

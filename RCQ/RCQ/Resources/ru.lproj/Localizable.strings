@@ -635,6 +635,8 @@
 "media.error.too_large" = "Файл %@ МБ, больше лимита %@ МБ. Сократите видео или возьмите ниже качество.";
 "media.bubble.failed" = "Не отправлено";
 
+"contact_list.discover.title" = "Открытые группы";
+"contact_list.discover.join" = "Вступить";
 "contact_list.empty.title" = "Пока никого нет";
 "contact_list.empty.body" = "Добавьте друга по UIN или QR-коду, чтобы начать переписку. Чат с незнакомцем работает и без контактов.";
 "contact_list.empty.cta" = "Добавить контакт";

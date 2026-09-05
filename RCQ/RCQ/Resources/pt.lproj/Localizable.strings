@@ -612,6 +612,8 @@
 "media.error.deposit" = "Não foi possível depositar a mídia na ilha de quem recebe. Tente de novo.";
 "media.error.too_large" = "Este arquivo tem %@ MB, acima do limite de %@ MB. Tente um trecho mais curto ou uma resolução menor.";
 "media.bubble.failed" = "Falhou";
+"contact_list.discover.title" = "Grupos abertos";
+"contact_list.discover.join" = "Entrar";
 "contact_list.empty.title" = "Nenhum contato ainda";
 "contact_list.empty.body" = "Adicione alguém pelo UIN ou pelo código QR para começar uma conversa. O bate-papo aleatório funciona sem contatos.";
 "contact_list.empty.cta" = "Adicionar um contato";
