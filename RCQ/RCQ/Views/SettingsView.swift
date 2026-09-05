@@ -839,6 +839,10 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundColor(Theme.Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                // It explains the row above it, so no line between the two:
+                // a separator there made it read as a row of its own
+                // (founder, 05.09).
+                .listRowSeparator(.hidden, edges: .top)
             if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
                     showIslandRules = true
