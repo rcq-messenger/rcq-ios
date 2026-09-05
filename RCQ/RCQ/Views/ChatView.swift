@@ -1835,7 +1835,18 @@ struct ChatView: View {
                             // Implicit (Combine receive(on:) would drop a withAnimation transaction).
                             // Row stays full height; layout collapse happens later via the LazyVStack count-watch.
                             .animation(.easeInOut(duration: 0.3), value: vm.fadingOutIDs.contains(msg.id))
-                            .transition(.opacity)
+                            // ⚠ Insertion eases OUT, and fast. With a plain
+                            // `.opacity` under the list's old ease-in-out the
+                            // bubble took its space at once (the list jumped)
+                            // and then sat invisible for the slow start of the
+                            // curve: filmed at 20 fps on 05.09 as jump, hole,
+                            // fade on every send. Removal keeps the soft fade.
+                            .transition(.asymmetric(
+                                insertion: msg.isFromMe
+                                    ? .move(edge: .bottom).combined(with: .opacity).animation(.easeOut(duration: 0.18))
+                                    : .opacity.animation(.easeOut(duration: 0.14)),
+                                removal: .opacity
+                            ))
                             .id(msg.id)
                             }
                         }
@@ -1882,7 +1893,10 @@ struct ChatView: View {
                 // Watching count would also fire when `loadOlder()`
                 // prepends a page of history, causing a stutter for
                 // every prepend.
-                .animation(.easeInOut(duration: 0.25), value: vm.messages.last?.id)
+                // ⚠ Same curve and length as the composer's collapse (0.18
+                // ease-out), so a send moves the list, the bubble and the
+                // field on ONE timeline instead of three.
+                .animation(.easeOut(duration: 0.18), value: vm.messages.last?.id)
             }
             // Initial-settle mask. While the open-position scrollTo in
             // `.task` lands (LazyVStack realizes rows as the viewport
@@ -1965,8 +1979,18 @@ struct ChatView: View {
             .onChange(of: composerHeight) { newH in
                 let prev = lastComposerHeight
                 lastComposerHeight = newH
-                guard newH < prev - 0.5 else { return }
+                guard abs(newH - prev) > 0.5 else { return }
                 guard !showScrollToBottom else { return }
+                if newH > prev {
+                    // ⚠ Growth too, not only the collapse. The bar grows by a
+                    // line while typing, the bottom inset grows with it in the
+                    // same pass, and the content offset stays where it was, so
+                    // the newest bubble slid under the bar (filmed 05.09).
+                    // Growth is not animated (see the field's frame), so one
+                    // re-anchor in the same pass is the whole correction.
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    return
+                }
                 Task { @MainActor in
                     // .easeOut(0.18) on the composer height + small slack.
                     let endDate = Date().addingTimeInterval(0.22)
@@ -2836,7 +2860,13 @@ struct ChatView: View {
                     focusRequest: composerFocusToken
                 )
                 .frame(maxWidth: .infinity, minHeight: composerHeight, maxHeight: composerHeight)
-                .animation(.easeOut(duration: 0.18), value: composerHeight)
+                // ⚠ Animated on the way DOWN only. The height comes from the
+                // text view's delegate, i.e. after UIKit has already laid the
+                // text out taller, so easing the capsule up behind it clipped
+                // the first line for the length of the curve (filmed 05.09).
+                // Growth is instant, the way it is in every messenger people
+                // compare this one to; the collapse after a send still glides.
+                .animation(composerHeight < lastComposerHeight ? .easeOut(duration: 0.18) : nil, value: composerHeight)
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         showEmojiPanel.toggle()
