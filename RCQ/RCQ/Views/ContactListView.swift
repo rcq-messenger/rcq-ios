@@ -3192,7 +3192,19 @@ private struct DiscoverGroupsStrip: View {
     @State private var loaded = false
 
     var body: some View {
-        Group {
+        // ⚠ The loader hangs off a zero-height view that is ALWAYS in the tree.
+        // On a `Group { if rooms.isEmpty }` there was nothing to appear, so
+        // `.task` never fired and the strip never asked: seen on the QA
+        // simulator as an empty home with the island answering fine.
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: 0)
+                .task { await load() }
+                .onChange(of: groups.groups.count) { _ in
+                    if rooms.isEmpty { Task { await load() } }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    if rooms.isEmpty { Task { await load() } }
+                }
             if !rooms.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("contact_list.discover.title".localized.uppercased())
@@ -3211,11 +3223,13 @@ private struct DiscoverGroupsStrip: View {
                 .padding(.bottom, 10)
             }
         }
-        .task {
-            guard !loaded else { return }
-            loaded = true
-            rooms = await groups.discover()
-        }
+    }
+
+    private func load() async {
+        if loaded && !rooms.isEmpty { return }
+        loaded = true
+        let got = await groups.discover()
+        if !got.isEmpty { rooms = got }
     }
 
     private func card(_ room: GroupService.Preview) -> some View {
