@@ -344,6 +344,9 @@ struct ChatView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                         vm.startEdit(copy)
                     }
+                    // Reply raises the keyboard; edit left it down and the
+                    // chip sat over an unfocused field.
+                    composerFocusToken &+= 1
                 }
             },
             onForward: {
@@ -487,6 +490,12 @@ struct ChatView: View {
     @State private var showEmojiPicker = false
     @State private var showInfo = false
     @State private var showAttachmentMenu = false
+    /// The keyboard was up when the paperclip was tapped, so it comes back
+    /// when the sheet goes (Telegram returns it; we left the field cold).
+    @State private var keyboardUpBeforeAttach = false
+    /// A send just happened: the arrow holds its place briefly so a second
+    /// tap lands on nothing rather than on the microphone.
+    @State private var sendHold = false
     // Per-conversation screen-secure: whether protection is currently armed
     // for this open chat, plus the live screenshot-detection observer token.
     @State private var screenSecured = false
@@ -828,6 +837,11 @@ struct ChatView: View {
                     TypingIndicator(label: "chat.typing".localized(
                         aliasStore.displayName(for: c.uin, fallback: c.nickname)
                     ))
+                    // ⚠ Animated in and out. Inserted bare, this line stepped
+                    // the whole bar up 22pt with no motion the moment the peer
+                    // started typing and dropped it again when they stopped,
+                    // the most frequent "the field twitches" in a 1:1 chat.
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 if case .randomPeer(let peer) = vm.target {
                     randomCTAStrip(peer: peer)
@@ -862,6 +876,7 @@ struct ChatView: View {
                 }
             }
             .animation(.easeOut(duration: 0.22), value: showEmojiPanel)
+            .animation(.easeOut(duration: 0.18), value: vm.isPeerTyping)
         }
         .modifier(ChatRoomChrome(target: vm.target, notice: $roomRuleNotice, vm: vm))
         // ⚠⚠ ONE place speaks a refusal, for every send path. The composer's
@@ -1906,7 +1921,11 @@ struct ChatView: View {
             .opacity(chatVisible ? 1 : 0)
             // No defaultScrollAnchor(.bottom) — it yanks mid-scroll when LazyVStack realizes rows,
             // and pins the empty-state to the input bar. Initial scroll is owned by the .task loop below.
-            .scrollDismissesKeyboard(.immediately)
+            // ⚠ Interactively, not immediately: a glance one message up while
+            // typing dropped the keyboard and the draft had to be tapped back
+            // into. Telegram and Messages let the keyboard follow a finger
+            // dragged down over it and otherwise leave it alone.
+            .scrollDismissesKeyboard(.interactively)
             .onTapGesture {
                 // Two-step iMessage-style: keyboard first, then emoji panel — otherwise stickers can't be picked.
                 if isKeyboardVisible {
@@ -1961,6 +1980,35 @@ struct ChatView: View {
             // ONLY when already at the bottom: a reader scrolled up into
             // history must stay where they are (founder report — opening the
             // emoji panel yanked the chat to the newest message).
+            // The typing line and the reply strip change the bottom inset
+            // exactly like the emoji panel does, and got none of its care:
+            // the newest bubble slid under the bar when either appeared and
+            // a blank band opened when either left. Same rule, same curve.
+            .onChange(of: vm.isPeerTyping) { _ in
+                guard !showScrollToBottom else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                }
+            }
+            .onChange(of: vm.replyTarget?.id) { id in
+                guard !showScrollToBottom else { return }
+                if id != nil {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    }
+                } else {
+                    // The strip leaves on a spring; track the moving edge the
+                    // way the composer collapse does.
+                    Task { @MainActor in
+                        let endDate = Date().addingTimeInterval(0.32)
+                        while Date() < endDate {
+                            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                            try? await Task.sleep(nanoseconds: 16_000_000)
+                        }
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    }
+                }
+            }
             .onChange(of: showEmojiPanel) { _ in
                 guard !showScrollToBottom else { return }
                 withAnimation(.easeOut(duration: 0.22)) {
@@ -2765,7 +2813,7 @@ struct ChatView: View {
         // Pending media on its own is a sendable message — show the
         // send button even when the caption is empty. composerNonEmpty is
         // the model's gated mirror of the input's trimmed-emptiness.
-        let showSend = vm.composerNonEmpty || !vm.pendingMedia.isEmpty
+        let showSend = vm.composerNonEmpty || !vm.pendingMedia.isEmpty || sendHold
         // Two voice-flow modes preempt the regular composer:
         // 1. previewPill   — finished clip awaiting send / discard.
         // 2. recordingPill — recording in progress; tap stop → preview.
@@ -2813,7 +2861,10 @@ struct ChatView: View {
     }
 
     private var attachButton: some View {
-        Button { showAttachmentMenu = true } label: {
+        Button {
+            keyboardUpBeforeAttach = isKeyboardVisible
+            showAttachmentMenu = true
+        } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(Theme.Color.textPrimary)
@@ -3211,14 +3262,22 @@ struct ChatView: View {
             // the strip itself is an attachment, for a queue that predates
             // the switch.
             if roomRulesBlockSend(text: vm.input, isAttachment: !vm.pendingMedia.isEmpty) { return }
-            armSlowmode()
+            // ⚠ The arrow stays where it is for a third of a second after a
+            // tap. It used to morph into the microphone under the finger,
+            // and a habitual second tap started a voice recording.
+            if sendHold { return }
+            sendHold = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sendHold = false }
             Task {
                 if !vm.pendingMedia.isEmpty {
+                    armSlowmode()
                     if let err = await vm.sendPendingMediaWithCaption() {
                         videoError = err
                     }
-                } else {
-                    await vm.send()
+                } else if await vm.send() {
+                    // Armed only for a message that went out: a tap on a
+                    // draft of newlines used to start the clock for nothing.
+                    armSlowmode()
                 }
             }
         } label: {
@@ -3277,6 +3336,12 @@ struct ChatView: View {
     private func handleAttachDismiss() {
         let action = pendingAttachAction
         pendingAttachAction = nil
+        if keyboardUpBeforeAttach {
+            keyboardUpBeforeAttach = false
+            // After the sheet's dismissal animation, so becomeFirstResponder
+            // is not fighting a presentation that is still on screen.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { composerFocusToken &+= 1 }
+        }
         DispatchQueue.main.async {
             switch action {
             case .media:
