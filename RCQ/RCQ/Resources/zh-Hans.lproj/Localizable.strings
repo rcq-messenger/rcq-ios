@@ -1830,7 +1830,11 @@
 "island.trust.ca_only" = "这个岛通过证书颁发机构信任，不需要指纹。";
 "badge.official" = "官方";
 "badge.tester" = "测试者";
-"badge.special" = "特别";
+"badge.special" = "特殊贡献";
+"badge.desc.official" = "官方账号，由岛屿确认：RCQ 团队或岛屿担保的来源。";
+"badge.desc.tester" = "测试者。参与了 RCQ 的 alpha 和 beta 测试，帮助发现问题。";
+"badge.desc.special" = "因在 RCQ alpha 和 beta 阶段的杰出贡献而授予。";
+"badge.desc.unknown" = "由本岛授予的标记。";
 "my_uins.unlist" = "下架";
 "my_uins.listed" = "在售，%@";
 "my_uins.unlist.error" = "无法下架";

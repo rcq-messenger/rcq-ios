@@ -1839,7 +1839,11 @@
 "island.trust.ca_only" = "Esta isla confía en una autoridad de certificación y no necesita huella.";
 "badge.official" = "Oficial";
 "badge.tester" = "Tester";
-"badge.special" = "Especial";
+"badge.special" = "Contribución especial";
+"badge.desc.official" = "Cuenta oficial, confirmada por la isla: el equipo de RCQ o una fuente que la isla avala.";
+"badge.desc.tester" = "Tester. Participó en la alfa y la beta de RCQ y ayudó a encontrar lo que fallaba.";
+"badge.desc.special" = "Se otorga por una contribución destacada durante la alfa y la beta de RCQ.";
+"badge.desc.unknown" = "Una marca otorgada por esta isla.";
 "my_uins.unlist" = "Retirar de la venta";
 "my_uins.listed" = "en venta, %@";
 "my_uins.unlist.error" = "No se pudo retirar de la venta";
