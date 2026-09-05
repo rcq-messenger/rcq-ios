@@ -197,6 +197,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
         case profileOpenable = "profile_openable"
+        case badge
     }
 
     init(from decoder: Decoder) throws {
@@ -215,6 +216,7 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
         self.profileOpenable = try? c.decodeIfPresent(Bool.self, forKey: .profileOpenable)
+        self.badge = try? c.decodeIfPresent(String.self, forKey: .badge)
     }
 }
 
