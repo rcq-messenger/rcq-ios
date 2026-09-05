@@ -158,6 +158,9 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     /// exposes the nickname on this row.
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
+    /// The island's badge on this member, as `GroupMemberOut.badge`. Absent
+    /// on older islands, which is the same as none.
+    var badge: String? = nil
     /// The island's per-viewer verdict on this member's profile card (founder
     /// item 22): may THIS client turn the name into a link? A member list is
     /// the first surface the setting names, and the roster row is the only

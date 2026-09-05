@@ -429,6 +429,11 @@ struct MessageRow: View, Equatable {
                 Text(senderNickname)
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
+                // The island's badge, to the right of the name, same mark as
+                // the roster and the header (founder, 05.09).
+                if let kind = member?.badge {
+                    BadgeMark(kind: kind, size: 11)
+                }
             }
         }
         .buttonStyle(.plain)
