@@ -1956,7 +1956,11 @@ struct ChatView: View {
                 // it (iMessage behaviour). Previously this hit the
                 // !showScrollToBottom guard below and a send while
                 // scrolled up left your message off-screen.
-                if vm.messages.last?.isFromMe == true {
+                // ⚠ "From me" is not "from here". A carbon of a message typed
+                // on another device, or a delete that exposes an older own
+                // message as last, is incoming for this screen and follows the
+                // incoming rule below (audit, 05.09).
+                if vm.messages.last?.isFromMe == true && vm.sentFromHereJustNow {
                     // Own send: the new bubble already animates in via the
                     // `.animation(value:)` above. Wrapping the scroll in its
                     // OWN `withAnimation` ran a SECOND 0.25s curve against the
