@@ -364,7 +364,15 @@ struct ChatView: View {
             isTranslated: vm.isTranslated(target),
             onDeleteForMe: { vm.deleteForMe(target) },
             onDeleteForEveryone: { Task { await vm.deleteForEveryone(target) } },
-            onDismiss: { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { actionTarget = nil } },
+            onDismiss: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { actionTarget = nil }
+                if keyboardUpBeforeOverlay {
+                    keyboardUpBeforeOverlay = false
+                    // After the overlay's own exit, so the field is not asked
+                    // to take focus under a view that is still leaving.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { composerFocusToken &+= 1 }
+                }
+            },
             onReport: reportCallback,
             onSelect: {
                 let copy = target
@@ -500,6 +508,10 @@ struct ChatView: View {
     /// bubble, so the field's collapse must track the bottom even though the
     /// arrow still says "not at the bottom" for a frame or two.
     @State private var pendingOwnSendScroll = false
+    /// The keyboard was up when a bubble's menu opened; it comes back when the
+    /// menu is dismissed without an action (reply and edit refocus on their
+    /// own). Peeking at a menu used to cost the keyboard every time.
+    @State private var keyboardUpBeforeOverlay = false
     /// The smiley was tapped while the keyboard was up: the panel opens in
     /// keyboardWillHide, so the two SWAP instead of stacking.
     @State private var emojiPanelAfterKeyboard = false
@@ -1797,6 +1809,7 @@ struct ChatView: View {
                                 onLongPress: {
                                     if vm.isSelecting { return }
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    keyboardUpBeforeOverlay = isKeyboardVisible
                                     UIApplication.shared.sendAction(
                                         #selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil
