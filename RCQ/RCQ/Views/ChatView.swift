@@ -2892,7 +2892,12 @@ struct ChatView: View {
         // height, which read as wrong at 4+ rows).
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.regularMaterial)
+                // ⚠ Thick, not regular. The bar floats over the conversation
+                // and with the regular material the glyphs of the bubble
+                // underneath read straight through the field: a decorated
+                // nickname showed up as stray marks beside the paperclip
+                // (filmed 05.09). The frost stays; the words behind it go.
+                .fill(.thickMaterial)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
