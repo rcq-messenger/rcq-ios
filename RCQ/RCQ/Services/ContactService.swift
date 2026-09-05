@@ -209,7 +209,16 @@ final class ContactService: ObservableObject {
             self.contacts = list + cross
             self.rosterLoaded = true
             self.hydratedFromSnapshot = false
-            let pending = (try? await pendingFetch) ?? self.pendingRequests
+            // #900: the block lives on this device (stage 4b), so the island still
+            // delivers a blocked person's request. It is declined here, quietly,
+            // before it can reach the list; declining is what the person would
+            // have done by hand, and the requester learns nothing new.
+            let fetched = (try? await pendingFetch) ?? self.pendingRequests
+            let pending = fetched.filter { req in
+                guard BlockedContactsStore.shared.contains(req.from_uin) else { return true }
+                Task { try? await self.respond(requestID: req.id, accept: false) }
+                return false
+            }
             let outgoing = (try? await outgoingFetch) ?? self.outgoingRequests
             guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
                   !PanicPINService.shared.isLocked else { return }
@@ -317,6 +326,10 @@ final class ContactService: ObservableObject {
     }
 
     func appendPendingRequest(_ req: PendingRequest) {
+        if BlockedContactsStore.shared.contains(req.from_uin) {
+            Task { try? await respond(requestID: req.id, accept: false) }
+            return
+        }
         if !pendingRequests.contains(where: { $0.id == req.id }) {
             pendingRequests.append(req)
         }
