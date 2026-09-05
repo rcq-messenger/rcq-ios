@@ -451,7 +451,11 @@ final class MessageStore: ObservableObject {
             reactions.removeValue(forKey: uin)
         }
         t[idx].reactions = reactions
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
+        // ⚠ No bounce. The under-damped spring overshot the row's height, and
+        // a reaction landing on a row ABOVE the viewport rocked everything the
+        // reader was looking at for no visible reason (audit, 05.09). The chip
+        // still animates in; the list does not wobble.
+        withAnimation(.easeOut(duration: 0.2)) {
             threads[thread] = t
         }
         MessageDB.shared.updateReactions(id: targetID, reactions: reactions)

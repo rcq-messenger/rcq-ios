@@ -116,7 +116,7 @@ final class MessageDB {
         batchDepth -= 1
         guard batchDepth == 0 else { return }
         batchInserted.removeAll()
-        flush()
+        flushNow()
     }
 
     private init() {
@@ -126,6 +126,15 @@ final class MessageDB {
             container = ready
         } else {
             container = MessageDB.makeContainer(decoy: false)
+        }
+        // The coalescing window (see `save`) must not outlive the foreground.
+        for raw in ["UIApplicationWillResignActiveNotification",
+                    "UIApplicationDidEnterBackgroundNotification",
+                    "UIApplicationWillTerminateNotification"] {
+            let name = Notification.Name(raw)
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.flushNow()
+            }
         }
     }
 
@@ -880,8 +889,33 @@ final class MessageDB {
     }
 
     /// Deferred while a batch is open. See `beginBatch`.
+    ///
+    /// ⚠ And coalesced otherwise. A save is an fsync on a file-protected
+    /// store, and every single mutator ended in one on the main actor: the
+    /// frame in which a sent bubble appeared was preceded by a disk sync, a
+    /// few ms normally and tens on a cold or nearly full disk, and again when
+    /// the tick landed (audit, 05.09). The write still lands within 40 ms,
+    /// and at once when the app leaves the foreground; a crash inside that
+    /// window loses only a row the island still holds and will serve again,
+    /// the same promise `beginBatch` already makes.
+    private var pendingFlush: DispatchWorkItem?
     private func save() {
         guard batchDepth == 0 else { return }
+        pendingFlush?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingFlush = nil
+            self.flush()
+        }
+        pendingFlush = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04, execute: work)
+    }
+
+    /// Everything pending, now. Leaving the foreground and terminating both
+    /// call this so the coalescing window never outlives the process.
+    func flushNow() {
+        pendingFlush?.cancel()
+        pendingFlush = nil
         flush()
     }
 

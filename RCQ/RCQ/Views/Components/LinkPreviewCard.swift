@@ -12,9 +12,32 @@ struct LinkPreviewCard: View {
     var maxWidth: CGFloat = 220
 
     @State private var metadata: LPLinkMetadata?
-    @State private var status: Status = .loading
+    @State private var status: Status
 
     private enum Status { case loading, loaded, failed }
+
+    /// Height of the loaded card (52pt thumbnail plus padding). The placeholder
+    /// is held to the same height, so a row never re-measures when the card
+    /// lands: scrolling up through a thread with links used to hop by ~34pt
+    /// each time a link row entered from the top (audit, 05.09).
+    private static let cardHeight: CGFloat = 68
+
+    init(url: URL, maxWidth: CGFloat = 220) {
+        self.url = url
+        self.maxWidth = maxWidth
+        // Seeded synchronously from what the cache already knows, so a row
+        // realised for the second time starts at its final state instead of
+        // at the placeholder and then growing.
+        switch LinkPreviewCache.known(url) {
+        case .some(.some(let m)):
+            _metadata = State(initialValue: m)
+            _status = State(initialValue: .loaded)
+        case .some(.none):
+            _status = State(initialValue: .failed)
+        case .none:
+            _status = State(initialValue: .loading)
+        }
+    }
 
     var body: some View {
         Group {
@@ -28,7 +51,7 @@ struct LinkPreviewCard: View {
             }
         }
         .frame(maxWidth: maxWidth, alignment: .leading)
-        .task { await fetch() }
+        .task { if status == .loading { await fetch() } }
     }
 
     @ViewBuilder
@@ -57,6 +80,7 @@ struct LinkPreviewCard: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
+            .frame(minHeight: Self.cardHeight)
         }
         .buttonStyle(.plain)
         .background(Theme.Color.bgSecondary.opacity(0.7))
@@ -81,7 +105,8 @@ struct LinkPreviewCard: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: Self.cardHeight, alignment: .leading)
+        .padding(.horizontal, 10)
         .background(Theme.Color.bgSecondary.opacity(0.5))
         .cornerRadius(8)
         .overlay(
@@ -161,6 +186,13 @@ actor LinkPreviewCache {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private static let maxConcurrent = 2
 
+    /// What the actor has already decided, readable without an await: the
+    /// card's `init` runs inside a body evaluation and cannot hop actors. A
+    /// main-actor mirror of `hits` and `failed`, written after each result.
+    /// `.some(.none)` means "tried and failed", `nil` means "never asked".
+    @MainActor private static var knownMirror: [URL: LPLinkMetadata?] = [:]
+    @MainActor static func known(_ url: URL) -> LPLinkMetadata?? { knownMirror[url] }
+
     func metadata(for url: URL) async -> LPLinkMetadata? {
         if failed.contains(url) { return nil }
         if let hit = hits[url] { return hit }
@@ -183,6 +215,8 @@ actor LinkPreviewCache {
         } else {
             failed.insert(url)
         }
+        let outcome: LPLinkMetadata? = m
+        await MainActor.run { Self.knownMirror[url] = .some(outcome) }
         return m
     }
 
