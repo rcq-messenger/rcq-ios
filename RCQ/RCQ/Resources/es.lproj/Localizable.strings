@@ -1829,3 +1829,6 @@
 "badge.official" = "Oficial";
 "badge.tester" = "Tester";
 "badge.special" = "Especial";
+"my_uins.unlist" = "Retirar de la venta";
+"my_uins.listed" = "en venta, %@";
+"my_uins.unlist.error" = "No se pudo retirar de la venta";

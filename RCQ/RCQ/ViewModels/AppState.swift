@@ -1131,9 +1131,15 @@ final class AppState: ObservableObject {
         /// How many one account may hold on this island. Defaults to 10 so an
         /// island too old to send it still gives a sane number to show.
         var maxOwned: Int = 10
+        /// The numbers of this collection that are up for sale right now, set
+        /// from another client (iOS cannot sell). A listed number is not the
+        /// reader's to release or move onto while a buyer may be paying for
+        /// it; the one thing this screen offers for it is taking it back off
+        /// the market (founder, 05.09).
+        var listed: [UINListing] = []
 
         enum CodingKeys: String, CodingKey {
-            case active, owned
+            case active, owned, listed
             case maxOwned = "max_owned"
         }
 
@@ -1150,6 +1156,7 @@ final class AppState: ObservableObject {
             active = try container.decode(Int.self, forKey: .active)
             owned = try container.decodeIfPresent([OwnedUIN].self, forKey: .owned) ?? []
             maxOwned = try container.decodeIfPresent(Int.self, forKey: .maxOwned) ?? 10
+            listed = (try? container.decodeIfPresent([UINListing].self, forKey: .listed)) ?? []
         }
     }
 
@@ -1188,6 +1195,17 @@ final class AppState: ObservableObject {
             priceCents = try c.decode(Int.self, forKey: .priceCents)
             priceDisplay = try c.decode(String.self, forKey: .priceDisplay)
             held = try c.decodeIfPresent(Bool.self, forKey: .held) ?? false
+        }
+    }
+
+    /// Take one of our own numbers back off the market. Refused by the island
+    /// while somebody is paying for it (409), which the screen reports.
+    func unlistUIN(_ uin: Int) async -> Bool {
+        do {
+            let _: EmptyResponse = try await APIClient.shared.request("DELETE", "/uin/listings/\(uin)")
+            return true
+        } catch {
+            return false
         }
     }
 

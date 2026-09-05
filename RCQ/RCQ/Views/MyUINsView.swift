@@ -25,6 +25,7 @@ struct MyUINsView: View {
     @State private var loading = true
     @State private var switching: Int?
     @State private var releasing: Int?
+    @State private var unlisting: Int? = nil
     @State private var confirmTarget: Int?
     @State private var releaseTarget: Int?
     @State private var error: String?
@@ -209,19 +210,41 @@ struct MyUINsView: View {
     }
 
     private func heldRow(_ item: AppState.OwnedUIN) -> some View {
-        HStack(spacing: 10) {
+        let listing = data?.listed.first { $0.uin == item.uin }
+        return HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: "\(item.uin)")
                     .font(.system(size: 19, weight: .medium, design: .monospaced))
                     .foregroundColor(Theme.Color.textPrimary)
                     .monospacedDigit()
-                Text(String(format: "uin_shop.plate.digits".localized, item.length))
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.Color.textSecondary)
+                if let listing {
+                    Text(String(format: "my_uins.listed".localized, listing.priceDisplay))
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.Color.accent)
+                } else {
+                    Text(String(format: "uin_shop.plate.digits".localized, item.length))
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
             }
             Spacer()
-            if switching == item.uin || releasing == item.uin {
+            if switching == item.uin || releasing == item.uin || unlisting == item.uin {
                 ProgressView().scaleEffect(0.8)
+            } else if let listing {
+                // ⚠ On sale: neither released nor moved onto while a buyer may
+                // be paying for it. Listed from another client (iOS cannot
+                // sell); the one door here is back off the market, and the
+                // island refuses even that while somebody is paying.
+                if listing.held {
+                    Text("uin_shop.being_paid".localized)
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Color.textSecondary)
+                } else {
+                    Button("my_uins.unlist".localized) { Task { await unlist(item.uin) } }
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .disabled(busy)
+                }
             } else {
                 // Release sits before Switch and quieter than it, same order
                 // Android uses: this is tidying up, not the thing the screen
@@ -277,6 +300,16 @@ struct MyUINsView: View {
 
     /// Give a number back. The server answers with the whole collection, so the
     /// screen takes that rather than dropping the row locally and hoping.
+    private func unlist(_ uin: Int) async {
+        unlisting = uin
+        defer { unlisting = nil }
+        if await AppState.shared.unlistUIN(uin) {
+            data = await AppState.shared.myUINs()
+        } else {
+            error = "my_uins.unlist.error".localized
+        }
+    }
+
     private func release(_ uin: Int) async {
         releasing = uin
         error = nil
