@@ -263,6 +263,10 @@
 "uin_shop.info.migrate.title" = "Numara almak kim olduğunu değiştirmez";
 "uin_shop.info.migrate.body" = "Numara koleksiyonuna katılır, sen de şimdiki gibi cevap vermeyi sürdürürsün. Üzerine geçmek UIN'lerim ekranında ayrı bir adım ve geri alınabilir: bıraktığın numara da senin kalır, kimse alamaz. Kişiler, gruplar, profil ve sohbet geçmişi iki durumda da seninle gelir.";
 "uin_shop.info.current" = "Şimdiki UIN'in · %@";
+"uin_shop.take.cta" = "Bu numarayı al";
+"uin_shop.take.confirm" = "Al";
+"uin_shop.confirm.title_free" = "UIN %@ alınsın mı?";
+"uin_shop.tier.free" = "ücretsiz";
 "uin_shop.buy.cta" = "%@ karşılığında al";
 "uin_shop.buy.processing" = "İşleniyor…";
 "uin_shop.confirm.title" = "Alımı onayla";

@@ -263,6 +263,10 @@
 "uin_shop.info.migrate.title" = "Tomar un número no cambia quién eres";
 "uin_shop.info.migrate.body" = "El número entra en tu colección y sigues respondiendo igual que ahora. Pasarte a él es un paso aparte, en Mis UIN, y tiene vuelta atrás: el número que dejas también sigue siendo tuyo, así que nadie más puede tomarlo. Tus contactos, tus grupos, tu perfil y tu historial de chats van contigo en cualquier caso.";
 "uin_shop.info.current" = "Tu UIN actual · %@";
+"uin_shop.take.cta" = "Quedarte este número";
+"uin_shop.take.confirm" = "Quedártelo";
+"uin_shop.confirm.title_free" = "¿Quedarte el UIN %@?";
+"uin_shop.tier.free" = "gratis";
 "uin_shop.buy.cta" = "Comprar por %@";
 "uin_shop.buy.processing" = "Procesando…";
 "uin_shop.confirm.title" = "Confirmar la compra";
