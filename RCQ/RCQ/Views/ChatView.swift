@@ -496,6 +496,10 @@ struct ChatView: View {
     /// A send just happened: the arrow holds its place briefly so a second
     /// tap lands on nothing rather than on the microphone.
     @State private var sendHold = false
+    /// A send from up in history: the list is about to jump to the new
+    /// bubble, so the field's collapse must track the bottom even though the
+    /// arrow still says "not at the bottom" for a frame or two.
+    @State private var pendingOwnSendScroll = false
     /// The smiley was tapped while the keyboard was up: the panel opens in
     /// keyboardWillHide, so the two SWAP instead of stacking.
     @State private var emojiPanelAfterKeyboard = false
@@ -1904,6 +1908,7 @@ struct ChatView: View {
                             // only means LazyVStack realized the row, which
                             // happens mid-scroll and proves nothing.
                             if settleDone { revealChat() }
+                            pendingOwnSendScroll = false
                             withAnimation(.easeInOut(duration: 0.18)) { showScrollToBottom = false }
                             // Reached the bottom on your own → drop any stale reply-return target.
                             replyReturnID = nil
@@ -2054,7 +2059,11 @@ struct ChatView: View {
                 let prev = lastComposerHeight
                 lastComposerHeight = newH
                 guard abs(newH - prev) > 0.5 else { return }
-                guard !showScrollToBottom else { return }
+                // ⚠ Or a send from up in history. The list is jumping to the
+                // new bubble anyway, and without this the collapse ran with no
+                // tracking and the list snapped at the tail of the animation,
+                // the exact artifact the loop exists to prevent (audit, 05.09).
+                guard !showScrollToBottom || pendingOwnSendScroll else { return }
                 if newH > prev {
                     // ⚠ Growth too, not only the collapse. The bar grows by a
                     // line while typing, the bottom inset grows with it in the
@@ -3316,6 +3325,7 @@ struct ChatView: View {
             // and a habitual second tap started a voice recording.
             if sendHold { return }
             sendHold = true
+            pendingOwnSendScroll = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sendHold = false }
             Task {
                 if !vm.pendingMedia.isEmpty {
