@@ -32,6 +32,7 @@ struct SitesView: View {
 
     @State private var typed = ""
     @State private var addr: SiteAddress?
+    @State private var reportSite = false
     @State private var page: SitesRepository.SitePage?
     /// `page.html` with its in-network anchors made tappable, armed ONCE when
     /// the page lands rather than on every redraw: it is a regex pass over a
@@ -82,6 +83,15 @@ struct SitesView: View {
                 pageStrip
                 keyChangedBanner
                 content
+            }
+        }
+        .sheet(isPresented: $reportSite) {
+            if let addr {
+                ReportContactSheet(
+                    targetUIN: 0,
+                    targetNickname: addr.display,
+                    context: "site:\(addr.name)@\(addr.host)"
+                )
             }
         }
         .sheet(item: $shareTarget) { target in
@@ -198,6 +208,18 @@ struct SitesView: View {
                             .frame(width: 28, height: 28)
                     }
                     .accessibilityLabel("sites.share".localized)
+                    // The page being read can be reported from here (founder,
+                    // 05.09). Tagged site:<name>@<host>; the reader does not
+                    // know the owner, so nobody is named, and the operator's
+                    // queue offers to freeze the site by name.
+                    Button {
+                        if addr != nil { reportSite = true }
+                    } label: {
+                        Image(systemName: "flag")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.red)
+                    }
+                    .accessibilityLabel("report.title".localized)
 
                     if loading {
                         ProgressView()
