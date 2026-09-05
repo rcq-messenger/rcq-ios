@@ -288,7 +288,11 @@ final class ChatViewModel: ObservableObject {
     /// actually changed, so plain typing fires nothing until the emptiness
     /// flips or a live @-token mutates.
     private func inputDidChange() {
-        let nonEmpty = !input.trimmingCharacters(in: .whitespaces).isEmpty
+        // ⚠ `.whitespacesAndNewlines`, the same set send() trims with. With
+        // `.whitespaces` alone a draft of two Returns lit the arrow, armed
+        // slow mode on the tap, and then send() found nothing to send and
+        // left the newlines and the lit arrow where they were.
+        let nonEmpty = !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if composerNonEmpty != nonEmpty { composerNonEmpty = nonEmpty }
         let query = target.thread.isGroup ? Self.mentionQuery(in: input) : nil
         if activeMentionQuery != query { activeMentionQuery = query }
@@ -861,12 +865,21 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    func send() async {
+    /// True when something actually went out (or an edit was applied), so
+    /// the caller arms slow mode for a message that exists rather than for a
+    /// tap that sent nothing.
+    @discardableResult
+    func send() async -> Bool {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if case .randomPeer = target {
             text = ChatViewModel.scrubbedForStrangerMode(text)
         }
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            // A whitespace-only draft is swept rather than left lit.
+            if !input.isEmpty { setInput("") }
+            return false
+        }
+        stopTypingSignal()
         if let editing = editingTarget {
             // Optimistic: dismiss the edit composer + clear input NOW, send in
             // the background. MessageService.edit applies the local edit to the
@@ -891,7 +904,7 @@ final class ChatViewModel: ObservableObject {
                     } catch { }
                 }
             }
-            return
+            return true
         }
         setInput("")
         EmoticonUsageStore.shared.bump(forText: text)
@@ -903,6 +916,7 @@ final class ChatViewModel: ObservableObject {
             case .randomPeer(let p): try await MessageService.shared.send(text: text, toRandom: p, replyTo: reply)
             }
         } catch { }
+        return true
     }
 
     func startEdit(_ message: Message) {
@@ -979,6 +993,7 @@ final class ChatViewModel: ObservableObject {
     /// the queue empty out immediately.
     @discardableResult
     func sendPendingMediaWithCaption() async -> String? {
+        stopTypingSignal()
         guard !pendingMedia.isEmpty else { return nil }
         let caption = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let queue = pendingMedia
@@ -1085,6 +1100,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func sendVoice(fileURL: URL, durationSec: Double) async -> String? {
+        stopTypingSignal()
         let reply = consumeReplyContext()
         do {
             switch target {
@@ -1131,6 +1147,7 @@ final class ChatViewModel: ObservableObject {
     /// without it we block here so the server's 402 doesn't surface as
     /// a generic upload failure.
     func sendFile(fileURL: URL, fileName: String, mime: String, sizeBytes: Int) async -> String? {
+        stopTypingSignal()
         let reply = consumeReplyContext()
         do {
             switch target {
@@ -1351,6 +1368,16 @@ final class ChatViewModel: ObservableObject {
         for m in snapshot {
             await forward(m, toGroup: group)
         }
+    }
+
+    /// A send ends the "typing" the peer is being shown. Without this the
+    /// only `active:false` ever sent was the 4 s idle task, so the bubble
+    /// arrived and "X is typing" stayed under it for up to four seconds.
+    private func stopTypingSignal() {
+        typingDebounce?.cancel()
+        guard case .peer(let contact) = target, lastTypingActiveAt != nil else { return }
+        WebSocketService.shared.sendTyping(to: contact.uin, active: false)
+        lastTypingActiveAt = nil
     }
 
     private static let typingThrottle: TimeInterval = 3.0
