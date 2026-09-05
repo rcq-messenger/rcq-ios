@@ -244,6 +244,11 @@
 "uin_shop.plate.hint" = "Натисни, щоб ввести";
 "uin_shop.plate.digits" = "%d цифр";
 "uin_shop.status.idle" = "Обери UIN з 3-9 цифр";
+"uin_shop.people.title" = "ВІД ЛЮДЕЙ";
+"uin_shop.people.more" = "Оновити";
+"uin_shop.resale.seller" = "продає #%@";
+"uin_shop.being_paid" = "хтось платить";
+"uin_shop.people.elsewhere" = "Це номери людей, а не острова. Купити такий можна у вебверсії або на комп’ютері.";
 "uin_shop.status.available" = "Вільний";
 "uin_shop.status.checking" = "Перевірка";
 "uin_shop.status.taken" = "Зайнятий";
@@ -1799,7 +1804,7 @@
 "sites.error.offline" = "Не вдалося дістатися острова.";
 "sites.pinned" = "Закріплені";
 "sites.recents" = "Нещодавні";
-"sites.recents.remove" = "Прибрати з нещодавніх";
+"sites.recents.remove" = "Прибрати";
 "sites.share" = "Поділитися адресою";
 "sites.share.sent" = "Адресу надіслано: %@";
 
@@ -1814,7 +1819,8 @@
 "island.trust.via_ca" = "центр сертифікації";
 "island.trust.accept" = "Довіряти новому відбитку";
 "island.trust.later" = "Не зараз";
-"island.trust.settings.ca" = "Довіра через центр сертифікації";
+"island.trust.settings.ca" = "Довіра за сертифікатом";
+"island.trust.settings.footer" = "Як цей пристрій вирішив довіряти острову. Острів без центру сертифікації перевіряється за відбитком його власного сертифіката.";
 "island.trust.settings.pinned" = "Довіра за відбитком";
 "island.trust.copy" = "Скопіювати адресу з відбитком";
 "island.trust.browser_hint" = "Острів без центру сертифікації відкривається в застосунках для комп'ютера і телефона, а не в браузері.";

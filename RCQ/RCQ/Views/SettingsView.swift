@@ -829,6 +829,16 @@ struct SettingsView: View {
                 }
             }
             islandTrustRow
+            // ⚠ On the section, not inside the row: `islandTrustRow` draws
+            // nothing until a handshake has written a record, and a
+            // description that vanishes with the thing it describes explains
+            // nothing. The line above reports a decision nobody makes by hand,
+            // so on its own it is vocabulary rather than an answer
+            // (founder, 05.09).
+            Text("island.trust.settings.footer".localized)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
                     showIslandRules = true

@@ -252,6 +252,11 @@
 "uin_shop.plate.hint" = "Tap to type";
 "uin_shop.plate.digits" = "%d digits";
 "uin_shop.status.idle" = "Pick a 3-9 digit UIN";
+"uin_shop.people.title" = "FROM PEOPLE";
+"uin_shop.people.more" = "Refresh";
+"uin_shop.resale.seller" = "sold by #%@";
+"uin_shop.being_paid" = "being paid for";
+"uin_shop.people.elsewhere" = "These belong to people, not to the island. Buying one happens in the web or desktop app.";
 "uin_shop.status.available" = "Available";
 "uin_shop.status.checking" = "Checking";
 "uin_shop.status.taken" = "Taken";
@@ -2008,7 +2013,7 @@
 "sites.error.offline" = "Could not reach that island.";
 "sites.pinned" = "Pinned";
 "sites.recents" = "Recent";
-"sites.recents.remove" = "Remove from recent";
+"sites.recents.remove" = "Remove";
 "sites.share" = "Share address";
 "sites.share.sent" = "Address sent to %@";
 
@@ -2023,7 +2028,8 @@
 "island.trust.via_ca" = "a certificate authority";
 "island.trust.accept" = "Trust the new fingerprint";
 "island.trust.later" = "Not now";
-"island.trust.settings.ca" = "Trusted through a certificate authority";
+"island.trust.settings.ca" = "Trusted by certificate";
+"island.trust.settings.footer" = "How this device decided to trust this island. An island without a certificate authority is trusted by the fingerprint of its own certificate instead.";
 "island.trust.settings.pinned" = "Trusted by fingerprint";
 "island.trust.copy" = "Copy address with fingerprint";
 "island.trust.browser_hint" = "An island without a certificate authority opens in the desktop and phone apps, not in a browser.";

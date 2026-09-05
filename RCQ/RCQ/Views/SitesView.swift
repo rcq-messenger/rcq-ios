@@ -466,10 +466,18 @@ struct SitesView: View {
             address: SiteAddressParser.display(name: entry.name, host: entry.host, ownHost: ownHost),
             title: entry.title,
             removable: true,
-            // A recent is what this device remembers about a page it opened,
-            // and it never carried a byline. The catalogue is where an author
-            // who asked to be named is named.
-            ownerUIN: nil
+            // The byline, joined back on from the catalogue. A recent is only
+            // name, host and title: the signed manifest carries no owner, so
+            // the island's catalogue is the one place that answer exists, and
+            // only when the author asked to be named. Recomputed on redraw, so
+            // it fills in as soon as /sites lands.
+            //
+            // ⚠ A recent on somebody else's island stays bare, and that is the
+            // privacy rule above rather than a gap: the start screen does not
+            // ask foreign islands anything.
+            ownerUIN: entry.host == ownHost
+                ? catalogue.first { $0.name == entry.name }?.ownerUIN
+                : nil
         )
     }
 
@@ -483,12 +491,19 @@ struct SitesView: View {
             ForEach(rows) { row in
                 if row.removable {
                     siteRow(row).contextMenu {
+                        // ⚠ `.tint(.red)` on the BUTTON, not a foreground style
+                        // on the label. The app already learned this once
+                        // (ContactListView): a style on the label looks right
+                        // in a preview and does not repaint the system menu,
+                        // and `role: .destructive` alone loses to the green
+                        // tint the whole WindowGroup carries.
                         Button(role: .destructive) {
                             SiteRecents.shared.remove(key: row.key)
                             recents = SiteRecents.shared.all()
                         } label: {
-                            Label("sites.recents.remove".localized, systemImage: "xmark")
+                            Label("sites.recents.remove".localized, systemImage: "trash")
                         }
+                        .tint(.red)
                     }
                 } else {
                     siteRow(row)

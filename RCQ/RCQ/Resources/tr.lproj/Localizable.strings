@@ -244,6 +244,11 @@
 "uin_shop.plate.hint" = "Yazmak için dokun";
 "uin_shop.plate.digits" = "%d rakam";
 "uin_shop.status.idle" = "3-9 rakamlı bir UIN seç";
+"uin_shop.people.title" = "İNSANLARDAN";
+"uin_shop.people.more" = "Yenile";
+"uin_shop.resale.seller" = "satan #%@";
+"uin_shop.being_paid" = "biri ödeme yapıyor";
+"uin_shop.people.elsewhere" = "Bunlar adanın değil, insanların numaraları. Satın alma web veya masaüstü sürümünde yapılır.";
 "uin_shop.status.available" = "Boşta";
 "uin_shop.status.checking" = "Kontrol ediliyor";
 "uin_shop.status.taken" = "Alınmış";
@@ -1799,7 +1804,7 @@
 "sites.error.offline" = "O adaya ulaşılamadı.";
 "sites.pinned" = "Sabitlenenler";
 "sites.recents" = "Son açılanlar";
-"sites.recents.remove" = "Son açılanlardan kaldır";
+"sites.recents.remove" = "Kaldır";
 "sites.share" = "Adresi paylaş";
 "sites.share.sent" = "Adres gönderildi: %@";
 
@@ -1814,7 +1819,8 @@
 "island.trust.via_ca" = "bir sertifika otoritesi";
 "island.trust.accept" = "Yeni parmak izine güven";
 "island.trust.later" = "Şimdi değil";
-"island.trust.settings.ca" = "Sertifika otoritesi üzerinden güveniliyor";
+"island.trust.settings.ca" = "Sertifikayla güveniliyor";
+"island.trust.settings.footer" = "Bu cihazın bu adaya nasıl güvenmeye karar verdiği. Sertifika otoritesi olmayan bir ada, kendi sertifikasının parmak iziyle doğrulanır.";
 "island.trust.settings.pinned" = "Parmak iziyle güveniliyor";
 "island.trust.copy" = "Adresi parmak iziyle kopyala";
 "island.trust.browser_hint" = "Sertifika otoritesi olmayan bir ada masaüstü ve telefon uygulamalarında açılır, tarayıcıda değil.";

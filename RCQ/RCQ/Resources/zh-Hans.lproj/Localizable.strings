@@ -235,6 +235,11 @@
 "uin_shop.plate.hint" = "点按输入";
 "uin_shop.plate.digits" = "%d 位";
 "uin_shop.status.idle" = "选择 3-9 位的 UIN";
+"uin_shop.people.title" = "来自用户";
+"uin_shop.people.more" = "刷新";
+"uin_shop.resale.seller" = "由 #%@ 出售";
+"uin_shop.being_paid" = "有人正在付款";
+"uin_shop.people.elsewhere" = "这些号码属于用户，而非本岛。购买请在网页版或桌面版中进行。";
 "uin_shop.status.available" = "可用";
 "uin_shop.status.checking" = "检查中";
 "uin_shop.status.taken" = "已被占用";
@@ -1790,7 +1795,7 @@
 "sites.error.offline" = "无法连接到该岛屿。";
 "sites.pinned" = "置顶";
 "sites.recents" = "最近";
-"sites.recents.remove" = "从最近中移除";
+"sites.recents.remove" = "移除";
 "sites.share" = "分享地址";
 "sites.share.sent" = "地址已发送给 %@";
 
@@ -1805,7 +1810,8 @@
 "island.trust.via_ca" = "证书颁发机构";
 "island.trust.accept" = "信任新指纹";
 "island.trust.later" = "暂不";
-"island.trust.settings.ca" = "通过证书颁发机构信任";
+"island.trust.settings.ca" = "按证书信任";
+"island.trust.settings.footer" = "本设备是如何决定信任这座岛的。没有证书颁发机构的岛，改为按其自身证书的指纹来验证。";
 "island.trust.settings.pinned" = "通过指纹信任";
 "island.trust.copy" = "复制带指纹的地址";
 "island.trust.browser_hint" = "没有证书颁发机构的岛只能在桌面和手机应用中打开，浏览器无法打开。";

@@ -1161,6 +1161,44 @@ final class AppState: ObservableObject {
         try? await APIClient.shared.request("GET", "/uin/mine")
     }
 
+    /// A number somebody is selling to somebody else. The price is the
+    /// SELLER's, not a rung on this island's ladder, and the money never
+    /// touches the island: it goes to the wallet the seller named.
+    struct UINListing: Decodable, Identifiable, Equatable {
+        let uin: Int
+        let sellerUin: Int
+        let priceCents: Int
+        let priceDisplay: String
+        /// Somebody is paying for it right now, so it is not on offer.
+        var held: Bool = false
+
+        var id: Int { uin }
+
+        enum CodingKeys: String, CodingKey {
+            case uin, held
+            case sellerUin = "seller_uin"
+            case priceCents = "price_cents"
+            case priceDisplay = "price_display"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            uin = try c.decode(Int.self, forKey: .uin)
+            sellerUin = try c.decode(Int.self, forKey: .sellerUin)
+            priceCents = try c.decode(Int.self, forKey: .priceCents)
+            priceDisplay = try c.decode(String.self, forKey: .priceDisplay)
+            held = try c.decodeIfPresent(Bool.self, forKey: .held) ?? false
+        }
+    }
+
+    /// What people are selling. ⚠ `try?` and an empty list rather than nil:
+    /// this 404s on an island too old to know the endpoint, on one with the
+    /// shop closed, and on one with resale switched off, and none of those
+    /// three is worth a word on screen.
+    func uinListings(count: Int = 12) async -> [AppState.UINListing] {
+        (try? await APIClient.shared.request("GET", "/uin/listings", query: ["count": String(count)])) ?? []
+    }
+
     /// What came back from `releaseUIN`. Separate from `MigrationResult`
     /// because giving a number away is not a migration and every refusal on it
     /// means something different to the person reading it.
