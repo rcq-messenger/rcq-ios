@@ -2275,6 +2275,7 @@ private struct ContactRow: View {
                     Text(aliasStore.displayName(for: contact.uin, fallback: contact.nickname, host: contact.host))
                         .font(Theme.Font.nickname)
                         .foregroundColor(contact.status == .offline ? Theme.Color.textSecondary : Theme.Color.textPrimary)
+                    BadgeMark(kind: contact.badge)
                     GenderIcon(gender: contact.gender)
                     if contact.blocked {
                         Image(systemName: "nosign").font(.system(size: 10)).foregroundColor(Theme.Color.statusBusy)
@@ -2431,6 +2432,7 @@ private struct GroupRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(group.name).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                    BadgeMark(kind: group.badge)
                     // Crown when the local user owns this group —
                     // matches the AudioRoomRow treatment so the
                     // visual signal is consistent across surfaces.

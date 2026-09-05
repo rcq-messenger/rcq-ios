@@ -48,6 +48,8 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// generic person.3 glyph.
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
+    /// The island's mark on the room: nil or a kind ("official", ...).
+    var badge: String? = nil
     var createdAt: Date
     /// How many people are in the group, independent of whether `members` was
     /// fetched. Every list row needs the number and nothing else, and the
@@ -77,6 +79,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case pinnedBy = "pinned_by"
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
+        case badge
         case createdAt = "created_at"
         case members
     }
@@ -99,6 +102,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.pinnedBy = try? c.decodeIfPresent(Int.self, forKey: .pinnedBy)
         self.avatarMediaID = try? c.decodeIfPresent(String.self, forKey: .avatarMediaID)
         self.avatarMediaKey = try? c.decodeIfPresent(String.self, forKey: .avatarMediaKey)
+        self.badge = try? c.decodeIfPresent(String.self, forKey: .badge)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)
         self.members = try c.decode([RCQGroupMember].self, forKey: .members)
         // Older islands do not send it; the roster's own size is right there.

@@ -1817,3 +1817,6 @@
 "island.trust.browser_hint" = "没有证书颁发机构的岛只能在桌面和手机应用中打开，浏览器无法打开。";
 "island.trust.not_fingerprint" = "这不是指纹：# 之后应为 64 个十六进制字符。";
 "island.trust.ca_only" = "这个岛通过证书颁发机构信任，不需要指纹。";
+"badge.official" = "官方";
+"badge.tester" = "测试者";
+"badge.special" = "特别";
