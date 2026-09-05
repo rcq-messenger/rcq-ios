@@ -361,6 +361,11 @@ struct UINShopView: View {
                 } else if q.available {
                     Text("uin_shop.status.available".localized)
                         .foregroundColor(Theme.Color.accent)
+                } else if q.acquire == "purchase" {
+                    // Not a refusal either: the island sells this one, and
+                    // this build has no till. Say that, not "unavailable".
+                    Text("uin_shop.status.sold".localized)
+                        .foregroundColor(Theme.Color.textSecondary)
                 } else {
                     Text(reasonText(q.reason ?? "taken"))
                         .foregroundColor(.red.opacity(0.85))
@@ -392,7 +397,9 @@ struct UINShopView: View {
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundColor(isAvailable ? Theme.Color.accent : Theme.Color.textPrimary)
                 .animation(.easeInOut(duration: 0.22), value: isAvailable)
-        } else if isValidLength, let cents = Self.priceCentsByLength[typedLength] {
+        } else if isValidLength, displayedQuote != nil, let cents = Self.priceCentsByLength[typedLength] {
+            // Only once the island has spoken: before the quote lands the
+            // ladder price flashed over every free number for a round-trip.
             Text(priceDisplay(cents: cents))
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .foregroundColor(isAvailable ? Theme.Color.accent : Theme.Color.textPrimary)

@@ -152,7 +152,11 @@ struct OnboardingView: View {
             pageDots
             ctaRow
             if page == pages.count - 1 {
+                // Restoring mints an account on this device too, so the same
+                // agreement gates it.
                 restoreLink
+                    .disabled(!acceptedTerms)
+                    .opacity(acceptedTerms ? 1 : 0.45)
             }
         }
     }
@@ -347,7 +351,7 @@ struct OnboardingView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .onTapGesture { showLegal = true }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 24)
                 .padding(.bottom, 10)
                 .confirmationDialog("onboard.terms.read".localized, isPresented: $showLegal, titleVisibility: .visible) {
                     Button("onboard.terms.terms".localized) { openURL(URL(string: "https://rcq.app/terms")!) }
@@ -404,8 +408,11 @@ struct OnboardingView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(Theme.Color.accent.opacity(page == pages.count - 1 && !acceptedTerms ? 0.45 : 1))
+                        .background(Theme.Color.accent)
                         .cornerRadius(8)
+                        // The whole button dims, label included: white on a
+                        // 45% green over white was unreadable in the light theme.
+                        .opacity(page == pages.count - 1 && !acceptedTerms ? 0.45 : 1)
                 }
                 .disabled(page == pages.count - 1 && !acceptedTerms)
             }

@@ -3340,7 +3340,11 @@ struct ChatView: View {
             // and a habitual second tap started a voice recording.
             if sendHold { return }
             sendHold = true
-            pendingOwnSendScroll = true
+            // Only a send from up in history needs the flag; set unconditionally it
+            // stayed true after a send at the bottom (the sentinel that clears it
+            // was already on screen) and a later composer resize yanked a reader
+            // out of history.
+            pendingOwnSendScroll = showScrollToBottom
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sendHold = false }
             Task {
                 if !vm.pendingMedia.isEmpty {
