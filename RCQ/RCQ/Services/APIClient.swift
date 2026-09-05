@@ -427,6 +427,46 @@ actor APIClient {
         }
     }
 
+    /// A GET carrying the validator of the previous answer. `nil` data means
+    /// the island answered 304: nothing changed, keep what you hold. The tag
+    /// to send next time rides along either way.
+    func conditionalGet(_ path: String, etag: String?) async throws -> (data: Data?, etag: String?) {
+        try DuressGate.check()
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "GET"
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        if let serverToken { req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth") }
+        if let etag, !etag.isEmpty { req.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        // URLSession's own cache would answer a conditional GET for us and hide
+        // the 304; the island's validator is the only one we want.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        do {
+            let (data, resp) = try await session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }
+            if http.statusCode == 304 { return (nil, etag) }
+            guard (200..<300).contains(http.statusCode) else {
+                throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))
+            }
+            return (data, http.value(forHTTPHeaderField: "ETag"))
+        } catch let err as APIError {
+            throw err
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error where IslandTrust.shared.refusal(for: error, url: req.url) != nil {
+            throw APIError.transport(IslandTrust.shared.refusal(for: error, url: req.url)!)
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw urlError
+        } catch {
+            throw APIError.transport(error)
+        }
+    }
+
+    /// Decode with the client's own decoder (dates and key strategy included),
+    /// for callers that fetched the bytes themselves.
+    func decodeJSON<T: Decodable>(_ data: Data) throws -> T {
+        do { return try decoder.decode(T.self, from: data) } catch { throw APIError.decoding(error) }
+    }
+
     func rawRequest(
         _ method: String,
         _ path: String,
