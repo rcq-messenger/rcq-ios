@@ -2038,3 +2038,6 @@
 "badge.official" = "Official";
 "badge.tester" = "Tester";
 "badge.special" = "Special";
+"my_uins.unlist" = "Take off sale";
+"my_uins.listed" = "on sale, %@";
+"my_uins.unlist.error" = "Could not take it off sale";

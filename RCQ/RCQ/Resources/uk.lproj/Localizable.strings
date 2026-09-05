@@ -1829,3 +1829,6 @@
 "badge.official" = "Офіційний";
 "badge.tester" = "Тестер";
 "badge.special" = "Особливий";
+"my_uins.unlist" = "Зняти з продажу";
+"my_uins.listed" = "у продажу, %@";
+"my_uins.unlist.error" = "Не вдалося зняти з продажу";

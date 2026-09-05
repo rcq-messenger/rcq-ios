@@ -1829,3 +1829,6 @@
 "badge.official" = "Resmi";
 "badge.tester" = "Test kullanıcısı";
 "badge.special" = "Özel";
+"my_uins.unlist" = "Satıştan kaldır";
+"my_uins.listed" = "satışta, %@";
+"my_uins.unlist.error" = "Satıştan kaldırılamadı";

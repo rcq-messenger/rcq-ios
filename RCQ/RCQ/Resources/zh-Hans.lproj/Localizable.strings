@@ -1820,3 +1820,6 @@
 "badge.official" = "官方";
 "badge.tester" = "测试者";
 "badge.special" = "特别";
+"my_uins.unlist" = "下架";
+"my_uins.listed" = "在售，%@";
+"my_uins.unlist.error" = "无法下架";

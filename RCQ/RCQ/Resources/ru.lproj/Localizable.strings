@@ -1988,3 +1988,6 @@
 "badge.official" = "Официальный";
 "badge.tester" = "Тестер";
 "badge.special" = "Особый";
+"my_uins.unlist" = "Снять с продажи";
+"my_uins.listed" = "на продаже, %@";
+"my_uins.unlist.error" = "Не удалось снять с продажи";

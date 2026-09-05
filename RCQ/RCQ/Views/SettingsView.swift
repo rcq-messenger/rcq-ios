@@ -287,6 +287,8 @@ struct SettingsView: View {
     @State private var showBackupIsland = false
     @State private var showBackupFile = false
     @State private var uinCopied: Bool = false
+    /// The island's mark on this account, read with the own profile.
+    @State private var ownBadge: String? = nil
     /// Settings search (item 28). `pendingSearchPick` is held back until the
     /// search sheet is really gone: routing straight from the result tap puts
     /// a dismiss and a present into one transaction on the same host and UIKit
@@ -1075,6 +1077,7 @@ struct SettingsView: View {
         guard !PanicPINService.shared.isDecoy else { return }
         guard let uin = auth.ownUIN else { return }
         guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
+        ownBadge = p.badge
         PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
         ownAvatarID = p.avatarMediaID
         ownAvatarKey = p.avatarMediaKey
@@ -1183,9 +1186,13 @@ struct SettingsView: View {
             // the status stays ON it rather than being replaced by it.
             avatarPickerButton
             VStack(alignment: .leading, spacing: 4) {
-                Text(auth.nickname.isEmpty ? "—" : auth.nickname)
-                    .font(.system(.title3, weight: .semibold))
-                    .foregroundColor(Theme.Color.textPrimary)
+                HStack(spacing: 6) {
+                    Text(auth.nickname.isEmpty ? "—" : auth.nickname)
+                        .font(.system(.title3, weight: .semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                    // The island's mark on the person looking (founder, 05.09).
+                    BadgeMark(kind: ownBadge, size: 15)
+                }
                 Button {
                     if let uin = auth.ownUIN {
                         UIPasteboard.general.string = String(uin)
