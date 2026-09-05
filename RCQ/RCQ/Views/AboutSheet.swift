@@ -60,6 +60,11 @@ struct AboutSheet: View {
                             // served: the router knows /faq and nothing else,
                             // so the one link an confused user taps was a 404.
                             contactLink(icon: "questionmark.circle", label: "about.contact.faq".localized, value: "rcq.app/faq", url: URL(string: "https://rcq.app/faq"))
+                            // The two documents a store wants reachable from inside the
+                            // app (5.1.1), and the two a person should be able to find
+                            // without a search engine (founder, 05.09).
+                            contactLink(icon: "hand.raised.fill", label: "about.contact.privacy".localized, value: "rcq.app/privacy", url: URL(string: "https://rcq.app/privacy"))
+                            contactLink(icon: "doc.text", label: "about.contact.terms".localized, value: "rcq.app/terms", url: URL(string: "https://rcq.app/terms"))
                             contactLink(icon: "chevron.left.forwardslash.chevron.right", label: "about.contact.github".localized, value: "github.com/rcq-messenger/rcq-ios", url: URL(string: "https://github.com/rcq-messenger/rcq-ios"))
                         }
                         .padding(12)

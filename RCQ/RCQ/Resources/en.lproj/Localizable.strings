@@ -922,6 +922,8 @@
 "about.contact.support" = "Support";
 "about.contact.website" = "Website";
 "about.contact.faq" = "FAQ";
+"about.contact.privacy" = "Privacy Policy";
+"about.contact.terms" = "Terms of Service";
 "about.contact.github" = "Source code (iOS)";
 
 "contact.last_seen" = "last seen %@";

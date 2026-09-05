@@ -854,6 +854,8 @@
 "about.contact.support" = "Suporte";
 "about.contact.website" = "Site";
 "about.contact.faq" = "FAQ";
+"about.contact.privacy" = "Política de privacidade";
+"about.contact.terms" = "Termos de uso";
 "about.contact.github" = "Código-fonte (iOS)";
 "contact.last_seen" = "visto por último %@";
 "contact.last_seen.recently" = "há pouco";
