@@ -258,19 +258,30 @@ final class MediaService {
     /// lands. Everything else keeps minting per blob, which is right for
     /// message media: those keys travel with the message.
     func uploadImage(_ image: UIImage, peerHost: String? = nil, under: String? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> UploadResult {
-        guard let jpeg = ImageCompressor.compress(image, maxSide: 1200, quality: 0.8) else {
-            throw Failure.compressionFailed
-        }
         let key: SymmetricKey
         if let under, let raw = Data(base64Encoded: under), raw.count == 32 {
             key = SymmetricKey(data: raw)
         } else {
             key = SymmetricKey(size: .bits256)
         }
-        guard let sealed = try? AES.GCM.seal(jpeg, using: key),
-              let combined = sealed.combined else {
-            throw Failure.encryptionFailed
+        // ⚠ Off the main actor. Resizing a 12 MP camera photo to JPEG and
+        // sealing it took 50-150 ms, and this class is @MainActor, so it ran
+        // in the very turn the optimistic tile appeared: the tile's fade, the
+        // composer collapse and the strip removal all stalled, five times for
+        // a five-photo album (audit, 05.09). Decode already runs detached
+        // further down; encode now does too.
+        let prepared: (jpeg: Data, combined: Data)? = await Task.detached(priority: .userInitiated) {
+            guard let jpeg = ImageCompressor.compress(image, maxSide: 1200, quality: 0.8) else { return nil }
+            guard let sealed = try? AES.GCM.seal(jpeg, using: key), let combined = sealed.combined else { return nil }
+            return (jpeg, combined)
+        }.value
+        guard let prepared else {
+            // Both failures collapsed into one because the split happened
+            // off-actor; compression is by far the likelier of the two.
+            throw Failure.compressionFailed
         }
+        let jpeg = prepared.jpeg
+        let combined = prepared.combined
         if combined.count > Self.maxBlobBytes {
             throw Failure.tooLarge(actualBytes: combined.count)
         }
