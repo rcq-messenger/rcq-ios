@@ -899,6 +899,8 @@
 "about.contact.support" = "Поддержка";
 "about.contact.website" = "Сайт";
 "about.contact.faq" = "FAQ";
+"about.contact.privacy" = "Политика конфиденциальности";
+"about.contact.terms" = "Условия использования";
 "about.contact.github" = "Исходный код (iOS)";
 
 "contact.last_seen" = "был %@";

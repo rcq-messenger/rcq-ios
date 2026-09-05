@@ -854,6 +854,8 @@
 "about.contact.support" = "Підтримка";
 "about.contact.website" = "Сайт";
 "about.contact.faq" = "Питання і відповіді";
+"about.contact.privacy" = "Політика конфіденційності";
+"about.contact.terms" = "Умови використання";
 "about.contact.github" = "Вихідний код (iOS)";
 "contact.last_seen" = "востаннє %@";
 "contact.last_seen.recently" = "нещодавно";

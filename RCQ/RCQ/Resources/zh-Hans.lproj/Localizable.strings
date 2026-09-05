@@ -845,6 +845,8 @@
 "about.contact.support" = "支持";
 "about.contact.website" = "网站";
 "about.contact.faq" = "常见问题";
+"about.contact.privacy" = "隐私政策";
+"about.contact.terms" = "服务条款";
 "about.contact.github" = "源代码（iOS）";
 "contact.last_seen" = "最后上线 %@";
 "contact.last_seen.recently" = "最近";

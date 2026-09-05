@@ -854,6 +854,8 @@
 "about.contact.support" = "Destek";
 "about.contact.website" = "Web sitesi";
 "about.contact.faq" = "SSS";
+"about.contact.privacy" = "Gizlilik Politikası";
+"about.contact.terms" = "Kullanım Koşulları";
 "about.contact.github" = "Kaynak kod (iOS)";
 "contact.last_seen" = "son görülme %@";
 "contact.last_seen.recently" = "az önce";
