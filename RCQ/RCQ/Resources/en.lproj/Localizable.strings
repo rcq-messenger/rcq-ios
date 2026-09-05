@@ -2058,3 +2058,6 @@
 "my_uins.unlist" = "Take off sale";
 "my_uins.listed" = "on sale, %@";
 "my_uins.unlist.error" = "Could not take it off sale";
+
+"report.heading.site" = "Report this page";
+"uin_shop.status.sold" = "The island sells this number; it can't be taken on this device.";

@@ -1840,3 +1840,6 @@
 "my_uins.unlist" = "下架";
 "my_uins.listed" = "在售，%@";
 "my_uins.unlist.error" = "无法下架";
+
+"report.heading.site" = "举报此页面";
+"uin_shop.status.sold" = "此号码由岛屿出售，无法在此设备上领取。";

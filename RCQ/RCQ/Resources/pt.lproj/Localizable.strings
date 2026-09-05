@@ -1849,3 +1849,6 @@
 "my_uins.unlist" = "Retirar da venda";
 "my_uins.listed" = "à venda, %@";
 "my_uins.unlist.error" = "Não foi possível retirar da venda";
+
+"report.heading.site" = "Denunciar esta página";
+"uin_shop.status.sold" = "A ilha vende este número; não pode ser obtido neste dispositivo.";
