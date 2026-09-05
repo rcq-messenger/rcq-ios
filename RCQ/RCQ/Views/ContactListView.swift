@@ -1857,6 +1857,13 @@ struct ContactListView: View {
     /// sheet the bottom bar's "+" button would.
     private var emptyState: some View {
         VStack(spacing: 14) {
+            // Rooms to walk into, before anything about contacts: nobody arrives
+            // with friends already here, and every new account used to be
+            // dropped into one beta room for exactly this reason. Now it is a
+            // choice (founder, 05.09).
+            DiscoverGroupsStrip { joined in
+                appState.pendingOpenGroupID = joined.id
+            }
             Image(systemName: "person.2.wave.2")
                 .font(.system(size: 44, weight: .light))
                 .foregroundColor(Theme.Color.divider)
@@ -3173,4 +3180,84 @@ final class IslandLogoStore {
 
 #Preview {
     ContactListView()
+}
+
+/// Open rooms, biggest first, each joinable in one tap. Drawn only when the
+/// island answered with something: no heading over an empty strip.
+private struct DiscoverGroupsStrip: View {
+    let onJoined: (RCQGroup) -> Void
+    @ObservedObject private var groups = GroupService.shared
+    @State private var rooms: [GroupService.Preview] = []
+    @State private var joining: Int? = nil
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if !rooms.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("contact_list.discover.title".localized.uppercased())
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(Theme.Color.textSecondary)
+                        .padding(.horizontal, 20)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(rooms) { room in
+                                card(room)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                }
+                .padding(.bottom, 10)
+            }
+        }
+        .task {
+            guard !loaded else { return }
+            loaded = true
+            rooms = await groups.discover()
+        }
+    }
+
+    private func card(_ room: GroupService.Preview) -> some View {
+        VStack(spacing: 8) {
+            GroupAvatarView(mediaID: room.avatarMediaID, keyBase64: room.avatarMediaKey, size: 48)
+            HStack(spacing: 3) {
+                Text(room.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .lineLimit(1)
+                BadgeMark(kind: room.badge, size: 12)
+            }
+            Text(String(format: "contact_list.members_many".localized, room.memberCount))
+                .font(.system(size: 11))
+                .foregroundColor(Theme.Color.textSecondary)
+            Button {
+                guard joining == nil else { return }
+                joining = room.id
+                Task {
+                    let result = await groups.join(groupID: room.id)
+                    joining = nil
+                    if case .success(let g) = result {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        onJoined(g)
+                    } else {
+                        // Refused (closed since, blocked): the card goes, the
+                        // rest of the strip stays.
+                        rooms.removeAll { $0.id == room.id }
+                    }
+                }
+            } label: {
+                Text("contact_list.discover.join".localized)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(joining == room.id ? Theme.Color.textSecondary : Theme.Color.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 132)
+        .padding(12)
+        .background(Theme.Color.bgSecondary)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
 }

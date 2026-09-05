@@ -612,6 +612,8 @@
 "media.error.deposit" = "Не вдалося покласти медіа на острів одержувача. Спробуй ще раз.";
 "media.error.too_large" = "Цей файл %@ МБ, більше за ліміт %@ МБ. Спробуй коротший кліп або нижчу роздільність.";
 "media.bubble.failed" = "Помилка";
+"contact_list.discover.title" = "Відкриті групи";
+"contact_list.discover.join" = "Приєднатися";
 "contact_list.empty.title" = "Контактів поки немає";
 "contact_list.empty.body" = "Додай друга за UIN чи QR-кодом, щоб почати розмову. Випадковий чат працює й без контактів.";
 "contact_list.empty.cta" = "Додати контакт";

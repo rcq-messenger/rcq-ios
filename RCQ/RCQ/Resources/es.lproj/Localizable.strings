@@ -612,6 +612,8 @@
 "media.error.deposit" = "No se pudo dejar el archivo en la isla de quien lo recibe. Inténtalo de nuevo.";
 "media.error.too_large" = "Este archivo pesa %@ MB, por encima del límite de %@ MB. Prueba con un clip más corto o con menos resolución.";
 "media.bubble.failed" = "Falló";
+"contact_list.discover.title" = "Grupos abiertos";
+"contact_list.discover.join" = "Unirse";
 "contact_list.empty.title" = "Todavía no hay contactos";
 "contact_list.empty.body" = "Añade a alguien por su UIN o su código QR para empezar a hablar. El chat aleatorio funciona sin contactos.";
 "contact_list.empty.cta" = "Añadir un contacto";

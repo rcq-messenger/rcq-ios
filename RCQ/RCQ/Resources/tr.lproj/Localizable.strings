@@ -612,6 +612,8 @@
 "media.error.deposit" = "Medya alıcının adasına bırakılamadı. Tekrar dene.";
 "media.error.too_large" = "Bu dosya %@ MB, %@ MB sınırının üstünde. Daha kısa bir klip ya da daha düşük çözünürlük dene.";
 "media.bubble.failed" = "Gitmedi";
+"contact_list.discover.title" = "Açık gruplar";
+"contact_list.discover.join" = "Katıl";
 "contact_list.empty.title" = "Henüz kişi yok";
 "contact_list.empty.body" = "Konuşmaya başlamak için UIN ya da QR koduyla bir arkadaş ekle. Rastgele Sohbet kişi olmadan da çalışır.";
 "contact_list.empty.cta" = "Kişi ekle";

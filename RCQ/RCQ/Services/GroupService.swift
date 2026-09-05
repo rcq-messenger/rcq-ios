@@ -808,6 +808,8 @@ final class GroupService: ObservableObject {
         let ownerNickname: String?
         let avatarMediaID: String?
         let avatarMediaKey: String?
+        /// The island's badge on the room, as `GroupPreviewOut.badge`.
+        var badge: String? = nil
 
         enum CodingKeys: String, CodingKey {
             case id, name
@@ -815,6 +817,7 @@ final class GroupService: ObservableObject {
             case ownerUIN = "owner_uin"
             case ownerNickname = "owner_nickname"
             case avatarMediaID = "avatar_media_id"
+            case badge
             case avatarMediaKey = "avatar_media_key"
         }
     }
@@ -834,6 +837,20 @@ final class GroupService: ObservableObject {
     /// is digits). Server filters out groups the caller is already a
     /// member of, so the returned list is always actionable through
     /// the JoinGroupSheet flow.
+    /// Open rooms the caller is not in, biggest first: what an empty home
+    /// shows instead of nothing (founder, 05.09). Failure is an empty list,
+    /// and an empty list draws no strip.
+    func discover(limit: Int = 12) async -> [Preview] {
+        do {
+            let rows: [Preview] = try await APIClient.shared.request(
+                "GET", "/groups/discover", query: ["limit": String(limit)]
+            )
+            return rows
+        } catch {
+            return []
+        }
+    }
+
     func search(query: String, limit: Int = 20) async -> [Preview] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard trimmed.count >= 2 else { return [] }
