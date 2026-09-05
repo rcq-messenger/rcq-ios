@@ -1826,3 +1826,6 @@
 "island.trust.browser_hint" = "Uma ilha sem autoridade certificadora abre nos apps de desktop e de celular, não em um navegador.";
 "island.trust.not_fingerprint" = "Isso não é uma impressão digital: depois do # vêm 64 caracteres hexadecimais.";
 "island.trust.ca_only" = "Esta ilha é confiada por uma autoridade certificadora e não precisa de impressão digital.";
+"badge.official" = "Oficial";
+"badge.tester" = "Testador";
+"badge.special" = "Especial";

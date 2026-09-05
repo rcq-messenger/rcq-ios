@@ -1826,3 +1826,6 @@
 "island.trust.browser_hint" = "Una isla sin autoridad de certificación se abre en las apps de escritorio y de teléfono, no en un navegador.";
 "island.trust.not_fingerprint" = "Eso no es una huella: después de # van 64 caracteres hexadecimales.";
 "island.trust.ca_only" = "Esta isla confía en una autoridad de certificación y no necesita huella.";
+"badge.official" = "Oficial";
+"badge.tester" = "Tester";
+"badge.special" = "Especial";

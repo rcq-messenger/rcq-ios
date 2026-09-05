@@ -55,6 +55,10 @@ struct Contact: Identifiable, Hashable, Codable {
     /// or a member of a group you are in), so the client never has to gate it.
     var avatarMediaID: String? = nil
     var avatarMediaKey: String? = nil
+    /// The island's mark: nil or a kind ("official", "tester", ...). Optional
+    /// on purpose: the synthesised decoder throws on a missing non-Optional
+    /// key, and an older island does not send it.
+    var badge: String? = nil
 
     /// The key that actually opens this person's picture.
     ///
@@ -87,6 +91,7 @@ struct Contact: Identifiable, Hashable, Codable {
         case host
         case avatarMediaID = "avatar_media_id"
         case avatarMediaKey = "avatar_media_key"
+        case badge
     }
 
     /// Synthetic "Saved Messages" peer — the user's own UIN dressed up

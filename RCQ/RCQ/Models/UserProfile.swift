@@ -74,8 +74,10 @@ struct UserProfile: Codable, Hashable {
     /// Owner-only echo of the uploaded HoF avatar as a data-URI, so the
     /// client can preview the current image. Nil for third parties.
     var hofAvatar: String?
+    /// The island's mark: nil or a kind ("official", "tester", ...).
+    var badge: String?
     enum CodingKeys: String, CodingKey {
-        case uin, nickname
+        case uin, nickname, badge
         case firstName = "first_name"
         case lastName = "last_name"
         case age, gender, city, country, about, interests, homepage

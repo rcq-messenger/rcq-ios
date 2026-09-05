@@ -558,9 +558,12 @@ struct GroupInfoView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(currentGroup.name)
-                    .font(.title3.bold())
-                    .foregroundColor(Theme.Color.textPrimary)
+                HStack(spacing: 6) {
+                    Text(currentGroup.name)
+                        .font(.title3.bold())
+                        .foregroundColor(Theme.Color.textPrimary)
+                    BadgeMark(kind: currentGroup.badge, size: 17)
+                }
                 Text(String(
                     format: "group.created".localized,
                     DateFormatter.localizedString(

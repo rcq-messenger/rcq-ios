@@ -2035,3 +2035,6 @@
 "island.trust.browser_hint" = "An island without a certificate authority opens in the desktop and phone apps, not in a browser.";
 "island.trust.not_fingerprint" = "That is not a fingerprint: 64 hexadecimal characters come after the #.";
 "island.trust.ca_only" = "This island is trusted through a certificate authority and takes no fingerprint.";
+"badge.official" = "Official";
+"badge.tester" = "Tester";
+"badge.special" = "Special";

@@ -253,9 +253,12 @@ struct UserInfoView: View {
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(aliasStore.displayName(for: p.uin, fallback: p.nickname, host: crossIslandHost))
-                            .font(.title3.bold())
-                            .foregroundColor(Theme.Color.textPrimary)
+                        HStack(spacing: 6) {
+                            Text(aliasStore.displayName(for: p.uin, fallback: p.nickname, host: crossIslandHost))
+                                .font(.title3.bold())
+                                .foregroundColor(Theme.Color.textPrimary)
+                            BadgeMark(kind: p.badge, size: 17)
+                        }
                         // What THEY call themselves stays visible whenever it
                         // differs, so a rename never hides who you are talking to.
                         if let mine = aliasStore.alias(for: p.uin, host: crossIslandHost), mine != p.nickname {
