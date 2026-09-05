@@ -1567,6 +1567,11 @@
 "boot.error.retry_now" = "Şimdi dene";
 /* ── Account recovery (seed phrase) ───────────────────────────── */
 "settings.account.recovery" = "Kurtarma ifadesi";
+"onboard.terms.accept" = "Kabul ediyorum:";
+"onboard.terms.terms" = "Kullanım Koşulları";
+"onboard.terms.and" = "ve";
+"onboard.terms.privacy" = "Gizlilik Politikası";
+"onboard.terms.read" = "Oku";
 "onboard.cta.restore" = "Hesabın var mı? İfadeyle geri getir";
 "recovery.title" = "Kurtarma ifadesi";
 "recovery.reveal" = "İfadeyi göster";

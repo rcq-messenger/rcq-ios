@@ -1567,6 +1567,11 @@
 "boot.error.retry_now" = "Reintentar ahora";
 /* ── Account recovery (seed phrase) ───────────────────────────── */
 "settings.account.recovery" = "Frase de recuperación";
+"onboard.terms.accept" = "Acepto los";
+"onboard.terms.terms" = "Términos de uso";
+"onboard.terms.and" = "y la";
+"onboard.terms.privacy" = "Política de privacidad";
+"onboard.terms.read" = "Leer";
 "onboard.cta.restore" = "¿Ya tienes cuenta? Restáurala con tu frase";
 "recovery.title" = "Frase de recuperación";
 "recovery.reveal" = "Mostrar la frase";

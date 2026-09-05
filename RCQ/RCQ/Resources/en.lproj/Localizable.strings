@@ -1707,6 +1707,11 @@
 
 /* ── Account recovery (seed phrase) ───────────────────────────── */
 "settings.account.recovery" = "Recovery phrase";
+"onboard.terms.accept" = "I accept the";
+"onboard.terms.terms" = "Terms of Service";
+"onboard.terms.and" = "and";
+"onboard.terms.privacy" = "Privacy Policy";
+"onboard.terms.read" = "Read";
 "onboard.cta.restore" = "Already have an account? Restore from phrase";
 
 "recovery.title" = "Recovery phrase";
