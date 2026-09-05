@@ -3121,6 +3121,7 @@ struct ChatView: View {
             items: items,
             isInGroupChat: vm.target.thread.isGroup,
             senderNickname: vm.senderNickname(items.first!.senderUIN),
+            senderBadge: groupMember(items.first!.senderUIN)?.badge,
             senderAvatarID: groupMember(items.first!.senderUIN)?.avatarMediaID,
             senderAvatarKey: groupMember(items.first!.senderUIN)?.avatarMediaKey,
             isSelecting: vm.isSelecting,

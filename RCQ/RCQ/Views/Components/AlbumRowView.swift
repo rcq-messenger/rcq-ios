@@ -9,6 +9,7 @@ struct AlbumRowView: View {
     let items: [Message]
     let isInGroupChat: Bool
     let senderNickname: String
+    var senderBadge: String? = nil
     /// The sender's picture, when they have one — to the LEFT of the nick,
     /// never instead of it. Nil leaves the line the plain nick it was.
     var senderAvatarID: String? = nil
@@ -79,6 +80,9 @@ struct AlbumRowView: View {
                             Text(senderNickname)
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(Theme.Color.accent)
+                            if let kind = senderBadge {
+                                BadgeMark(kind: kind, size: 12)
+                            }
                         }
                     }
                     MediaAlbumBubble(
