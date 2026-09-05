@@ -244,6 +244,11 @@
 "uin_shop.plate.hint" = "Toque para digitar";
 "uin_shop.plate.digits" = "%d dígitos";
 "uin_shop.status.idle" = "Escolha um UIN de 3 a 9 dígitos";
+"uin_shop.people.title" = "DE PESSOAS";
+"uin_shop.people.more" = "Atualizar";
+"uin_shop.resale.seller" = "vendido por #%@";
+"uin_shop.being_paid" = "alguém está a pagar";
+"uin_shop.people.elsewhere" = "Estes números são de pessoas, não da ilha. A compra acontece na versão web ou de computador.";
 "uin_shop.status.available" = "Disponível";
 "uin_shop.status.checking" = "Verificando";
 "uin_shop.status.taken" = "Já ocupado";
@@ -1799,7 +1804,7 @@
 "sites.error.offline" = "Não foi possível alcançar essa ilha.";
 "sites.pinned" = "Fixados";
 "sites.recents" = "Recentes";
-"sites.recents.remove" = "Remover dos recentes";
+"sites.recents.remove" = "Remover";
 "sites.share" = "Compartilhar endereço";
 "sites.share.sent" = "Endereço enviado para %@";
 
@@ -1814,7 +1819,8 @@
 "island.trust.via_ca" = "uma autoridade certificadora";
 "island.trust.accept" = "Confiar na nova impressão digital";
 "island.trust.later" = "Agora não";
-"island.trust.settings.ca" = "Confiança por autoridade certificadora";
+"island.trust.settings.ca" = "Confiável pelo certificado";
+"island.trust.settings.footer" = "Como este dispositivo decidiu confiar nesta ilha. Uma ilha sem autoridade certificadora é verificada pela impressão digital do seu próprio certificado.";
 "island.trust.settings.pinned" = "Confiança por impressão digital";
 "island.trust.copy" = "Copiar endereço com impressão digital";
 "island.trust.browser_hint" = "Uma ilha sem autoridade certificadora abre nos apps de desktop e de celular, não em um navegador.";

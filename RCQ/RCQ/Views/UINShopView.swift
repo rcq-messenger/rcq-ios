@@ -55,6 +55,11 @@ struct UINShopView: View {
         3: 99900,
     ]
 
+    /// What people are selling right now. Shown, not sold: the buying happens
+    /// on the web or the desktop, where the till can take crypto.
+    @State private var listings: [AppState.UINListing] = []
+    @State private var loadingListings = false
+
     private var displayedQuote: QuoteResponse? {
         guard let q = quote, q.uin == Int(typed) else { return nil }
         return q
@@ -88,6 +93,7 @@ struct UINShopView: View {
                         statusLine
                         priceLine
                         plateCard
+                        fromPeopleSection
                         // The collection is a screen away, and this is where
                         // somebody who just took a number goes looking for it.
                         Button("my_uins.title".localized) { showMyUINs = true }
@@ -198,7 +204,88 @@ struct UINShopView: View {
             .onChange(of: showMyUINs) { open in
                 if !open { Task { collection = await AppState.shared.myUINs() } }
             }
-            .task { collection = await AppState.shared.myUINs() }
+            .task {
+                collection = await AppState.shared.myUINs()
+                listings = await AppState.shared.uinListings()
+            }
+        }
+    }
+
+    // MARK: - From people
+
+    /// Numbers people are selling to each other. iOS shows them and stops
+    /// there: the checkout is crypto and lives outside the app, so tapping a
+    /// row fills the field and the screen says where the purchase happens.
+    @ViewBuilder
+    private var fromPeopleSection: some View {
+        if !listings.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("uin_shop.people.title".localized)
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundColor(Theme.Color.textSecondary)
+                    Spacer()
+                    Button {
+                        guard !loadingListings else { return }
+                        loadingListings = true
+                        Task {
+                            listings = await AppState.shared.uinListings()
+                            loadingListings = false
+                        }
+                    } label: {
+                        if loadingListings {
+                            ProgressView().scaleEffect(0.6)
+                        } else {
+                            Text("uin_shop.people.more".localized)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Theme.Color.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                VStack(spacing: 6) {
+                    ForEach(listings) { listing in
+                        Button {
+                            // Filling the field is the whole interaction: the
+                            // onChange behind it asks the island and the lines
+                            // above say who is selling and for how much.
+                            typed = String(listing.uin)
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(String(listing.uin))
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text(String(format: "uin_shop.resale.seller".localized, String(listing.sellerUin)))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                                Spacer()
+                                // A listing somebody is paying for says so
+                                // rather than vanishing: a row that disappears
+                                // reads as "the number is gone", and it is not.
+                                Text(listing.held ? "uin_shop.being_paid".localized : listing.priceDisplay)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(listing.held ? Theme.Color.textSecondary : Theme.Color.accent)
+                            }
+                            .padding(.vertical, 13)
+                            .padding(.horizontal, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Theme.Color.bgSecondary)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(listing.held)
+                    }
+                }
+                Text("uin_shop.people.elsewhere".localized)
+                    .font(.system(size: 11))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -256,7 +343,14 @@ struct UINShopView: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
             } else if let q = displayedQuote {
-                if q.available {
+                if q.acquire == "resale", let seller = q.sellerUin {
+                    // Not a refusal. Somebody is selling this number, and iOS
+                    // cannot take the payment (the checkout is crypto, which
+                    // an App Store build may not carry), so the screen says
+                    // whose it is and where the till is.
+                    Text(String(format: "uin_shop.resale.seller".localized, String(seller)))
+                        .foregroundColor(Theme.Color.accent)
+                } else if q.available {
                     Text("uin_shop.status.available".localized)
                         .foregroundColor(Theme.Color.accent)
                 } else {
@@ -275,7 +369,16 @@ struct UINShopView: View {
 
     @ViewBuilder
     private var priceLine: some View {
-        if isValidLength, let cents = Self.priceCentsByLength[typedLength] {
+        // ⚠⚠ THE SELLER NAMES THE PRICE. `priceCentsByLength` is this island's
+        // ladder by length and has nothing to do with what a person is asking
+        // for their own number: printing it over a resale quoted "$49.99" for
+        // a number somebody wants $300 for.
+        if let q = displayedQuote, q.acquire == "resale", let shown = q.priceDisplay {
+            Text(shown)
+                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .foregroundColor(Theme.Color.accent)
+                .monospacedDigit()
+        } else if isValidLength, let cents = Self.priceCentsByLength[typedLength] {
             Text(priceDisplay(cents: cents))
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .foregroundColor(isAvailable ? Theme.Color.accent : Theme.Color.textPrimary)
@@ -500,10 +603,21 @@ private struct QuoteResponse: Decodable {
     let priceCents: Int?
     let priceDisplay: String?
     let reason: String?
+    /// How this number can be had: "free", "purchase", "resale" or "closed".
+    ///
+    /// ⚠⚠ THE ONLY WAY TO RECOGNISE A RESALE. The island deliberately answers
+    /// `available: false` for one (a client too old to know the word would
+    /// otherwise draw "take it" over somebody else's property and walk into a
+    /// 403), so on availability alone a number a person is selling is
+    /// indistinguishable from one that is simply taken.
+    let acquire: String?
+    /// Who is selling it, when somebody is.
+    let sellerUin: Int?
 
     enum CodingKeys: String, CodingKey {
-        case uin, length, available, reason
+        case uin, length, available, reason, acquire
         case priceCents = "price_cents"
         case priceDisplay = "price_display"
+        case sellerUin = "seller_uin"
     }
 }

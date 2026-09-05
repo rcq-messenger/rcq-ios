@@ -242,6 +242,11 @@
 "uin_shop.plate.hint" = "Коснись чтобы ввести";
 "uin_shop.plate.digits" = "%d цифр";
 "uin_shop.status.idle" = "Выбери UIN из 3-9 цифр";
+"uin_shop.people.title" = "ОТ ЛЮДЕЙ";
+"uin_shop.people.more" = "Обновить";
+"uin_shop.resale.seller" = "продаёт #%@";
+"uin_shop.being_paid" = "кто-то платит";
+"uin_shop.people.elsewhere" = "Это номера людей, а не острова. Купить такой можно в веб-версии или на компьютере.";
 "uin_shop.status.available" = "Свободен";
 "uin_shop.status.checking" = "Проверяем";
 "uin_shop.status.taken" = "Занят";
@@ -1958,7 +1963,7 @@
 "sites.error.offline" = "Не удалось достучаться до острова.";
 "sites.pinned" = "Закреплённые";
 "sites.recents" = "Недавние";
-"sites.recents.remove" = "Убрать из недавних";
+"sites.recents.remove" = "Убрать";
 "sites.share" = "Поделиться адресом";
 "sites.share.sent" = "Адрес отправлен: %@";
 
@@ -1973,7 +1978,8 @@
 "island.trust.via_ca" = "удостоверяющий центр";
 "island.trust.accept" = "Доверять новому отпечатку";
 "island.trust.later" = "Не сейчас";
-"island.trust.settings.ca" = "Доверие через удостоверяющий центр";
+"island.trust.settings.ca" = "Доверие по сертификату";
+"island.trust.settings.footer" = "Как это устройство решило доверять острову. Остров без удостоверяющего центра проверяется по отпечатку его собственного сертификата.";
 "island.trust.settings.pinned" = "Доверие по отпечатку";
 "island.trust.copy" = "Скопировать адрес с отпечатком";
 "island.trust.browser_hint" = "Остров без удостоверяющего центра открывается в приложениях для компьютера и телефона, а не в браузере.";

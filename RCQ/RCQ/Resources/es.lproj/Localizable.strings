@@ -244,6 +244,11 @@
 "uin_shop.plate.hint" = "Toca para escribir";
 "uin_shop.plate.digits" = "%d dígitos";
 "uin_shop.status.idle" = "Elige un UIN de 3 a 9 dígitos";
+"uin_shop.people.title" = "DE PERSONAS";
+"uin_shop.people.more" = "Actualizar";
+"uin_shop.resale.seller" = "lo vende #%@";
+"uin_shop.being_paid" = "alguien está pagando";
+"uin_shop.people.elsewhere" = "Estos números son de personas, no de la isla. Se compran en la versión web o de escritorio.";
 "uin_shop.status.available" = "Libre";
 "uin_shop.status.checking" = "Comprobando";
 "uin_shop.status.taken" = "Ocupado";
@@ -1799,7 +1804,7 @@
 "sites.error.offline" = "No se pudo llegar a esa isla.";
 "sites.pinned" = "Fijados";
 "sites.recents" = "Recientes";
-"sites.recents.remove" = "Quitar de recientes";
+"sites.recents.remove" = "Quitar";
 "sites.share" = "Compartir dirección";
 "sites.share.sent" = "Dirección enviada a %@";
 
@@ -1814,7 +1819,8 @@
 "island.trust.via_ca" = "una autoridad de certificación";
 "island.trust.accept" = "Confiar en la nueva huella";
 "island.trust.later" = "Ahora no";
-"island.trust.settings.ca" = "Confianza por autoridad de certificación";
+"island.trust.settings.ca" = "De confianza por certificado";
+"island.trust.settings.footer" = "Cómo este dispositivo decidió confiar en esta isla. Una isla sin autoridad de certificación se verifica por la huella de su propio certificado.";
 "island.trust.settings.pinned" = "Confianza por huella";
 "island.trust.copy" = "Copiar dirección con huella";
 "island.trust.browser_hint" = "Una isla sin autoridad de certificación se abre en las apps de escritorio y de teléfono, no en un navegador.";
