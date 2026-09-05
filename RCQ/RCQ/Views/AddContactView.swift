@@ -425,7 +425,10 @@ private struct AddRow: View {
         HStack(spacing: 10) {
             StatusIcon(status: user.status, size: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(user.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                HStack(spacing: 6) {
+                    Text(user.nickname).font(Theme.Font.nickname).foregroundColor(Theme.Color.textPrimary)
+                    BadgeMark(kind: user.badge)
+                }
                 Text(verbatim: "\(user.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
                 let parts = [user.city, user.country].compactMap { $0?.isEmpty == false ? $0 : nil }
                 if !parts.isEmpty {
@@ -472,7 +475,12 @@ private struct AddDetailView: View {
             Theme.Color.bgPrimary.ignoresSafeArea()
             VStack(spacing: 16) {
                 StatusIcon(status: user.status, size: 64)
-                Text(user.nickname).font(.title2.bold()).foregroundColor(Theme.Color.textPrimary)
+                // The first place a stranger is ever seen, which is where the
+                // island's word about them matters most.
+                HStack(spacing: 6) {
+                    Text(user.nickname).font(.title2.bold()).foregroundColor(Theme.Color.textPrimary)
+                    BadgeMark(kind: user.badge, size: 18)
+                }
                 Text(verbatim: "\(user.uin)").font(Theme.Font.mono).foregroundColor(Theme.Color.textMono)
                 if let about = user.about, !about.isEmpty {
                     Text(about).font(.body).foregroundColor(Theme.Color.textSecondary)
