@@ -2051,9 +2051,9 @@
 "badge.official" = "Official";
 "badge.tester" = "Tester";
 "badge.special" = "Special contribution";
-"badge.desc.official" = "Official account, confirmed by the island: the RCQ team or a source it vouches for.";
-"badge.desc.tester" = "Tester. Took part in the alpha and beta of RCQ and helped find what was broken.";
-"badge.desc.special" = "Given for an outstanding contribution during the alpha and beta of RCQ.";
+"badge.desc.official" = "Official account, confirmed by this island: its team, or a source the island vouches for.";
+"badge.desc.tester" = "Tester. Took part in testing and helped find what was broken.";
+"badge.desc.special" = "Given by this island for an outstanding contribution.";
 "badge.desc.unknown" = "A mark given by this island.";
 "my_uins.unlist" = "Take off sale";
 "my_uins.listed" = "on sale, %@";

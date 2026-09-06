@@ -56,6 +56,17 @@ final class AppState: ObservableObject {
     /// by `IslandAvatarView` (through the switcher's per-account card, so a row
     /// for an island this process is not talking to still has one).
     @Published var serverLogoVersion: String = ""
+    /// What the island we are on calls its badges, keyed by kind. Read by
+    /// `BadgeMark`, which draws in list rows and so cannot wait on a fetch;
+    /// empty until the boot read lands, and then the built-in strings are used,
+    /// which is the same answer as an island that renames nothing.
+    ///
+    /// ⚠ Not persisted, unlike Android's copy. A badge whose text arrives one
+    /// frame late reads as the client default for that frame, which is a true
+    /// sentence either way; a badge whose text is stale after the operator
+    /// changed it does not heal until the next boot. The first is the better
+    /// failure.
+    @Published var serverBadges: [String: BadgeTextResponse] = [:]
     @Published var typingByUIN: [Int: Bool] = [:]
     @Published var pendingAddUIN: Int? = nil
     /// Island host from a contact link's `?h=` (spec §5) — set BEFORE
@@ -448,6 +459,7 @@ final class AppState: ObservableObject {
         serverName = info.name
         serverWelcome = info.welcome ?? ""
         serverLogoVersion = info.logoVersion ?? ""
+        serverBadges = info.badges ?? [:]
         // Stage 3: the island reads bundles against anonymous deposit
         // tokens, and each costs a proof of work. Mint the first batch
         // now, in the background, so the first message to a new peer
@@ -2545,13 +2557,36 @@ struct ServerInfoResponse: Decodable {
     /// draws the tile: the same permissive default the capability flags take.
     let logoVersion: String?
     let capabilities: ServerCapabilities
+    /// What THIS island calls its badges, keyed by kind.
+    ///
+    /// ⚠ The built-in strings are the flagship's words, and on somebody else's
+    /// island they are a lie: the stock description for `official` names the
+    /// RCQ team as the thing being vouched for, on an island the RCQ team does
+    /// not run. An operator can now say what their own marks mean, and a kind
+    /// they invented gets a name at all instead of the raw slug.
+    ///
+    /// Absent on an island older than the field, and an empty entry for a kind
+    /// the operator has not renamed: both fall back to this build's strings,
+    /// which are localized where the island's single line of text cannot be.
+    let badges: [String: BadgeTextResponse]?
 
     private enum CodingKeys: String, CodingKey {
         case name
         case welcome
         case logoVersion = "logo_version"
         case capabilities
+        case badges
     }
+}
+
+/// One badge's words, as its island says them. Any field may be empty, which
+/// means "use your own".
+struct BadgeTextResponse: Decodable, Equatable {
+    let label: String?
+    let description: String?
+    /// A hex colour, so an island can mint a kind the clients have never seen
+    /// and still have it look like something.
+    let color: String?
 }
 
 @MainActor
