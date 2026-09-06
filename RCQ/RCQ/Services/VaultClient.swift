@@ -137,12 +137,13 @@ enum VaultSync {
     /// Both slot names for the account this process is signed in as, or nil
     /// when there is no identity to derive them from (and in a decoy session,
     /// which has no island account and must touch no vault at all).
-    private static func slots() -> (contacts: String, sections: String)? {
+    private static func slots() -> (contacts: String, sections: String, crossisland: String)? {
         guard !PanicPINService.shared.isDecoy else { return nil }
         guard let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return nil }
         return (
             Vault.slotId(identityPriv: ik, name: Vault.contacts),
-            Vault.slotId(identityPriv: ik, name: Vault.sections)
+            Vault.slotId(identityPriv: ik, name: Vault.sections),
+            Vault.slotId(identityPriv: ik, name: Vault.crossisland)
         )
     }
 
@@ -159,6 +160,11 @@ enum VaultSync {
         if slot == names.contacts {
             if version > 0 && version <= VaultFloor.lastSeen(slot) { return }
             await ContactsVault.refreshFromVault()
+            return
+        }
+        if slot == names.crossisland {
+            if version > 0 && version <= VaultFloor.lastSeen(slot) { return }
+            await CrossIslandVault.sync()
         }
     }
 
@@ -182,9 +188,11 @@ enum VaultSync {
         if let names = slots() {
             VaultFloor.forget(names.contacts)
             VaultFloor.forget(names.sections)
+            VaultFloor.forget(names.crossisland)
         }
         SectionsVault.retire()
         ContactsVault.retire()
+        CrossIslandVault.retire()
         os_log("the account rotated its identity elsewhere; this derivation is retired", log: log, type: .info)
     }
 
@@ -232,5 +240,12 @@ enum VaultSync {
         if (versions[names.contacts] ?? 0) > VaultFloor.lastSeen(names.contacts) {
             await ContactsVault.refreshFromVault()
         }
+        // ⚠ Unconditionally, unlike the two above. This slot is not a mirror of
+        // anything the island can be asked for again: an unchanged version
+        // means the island has not moved, NOT that it holds what this device
+        // holds, and the device whose write failed is exactly the one carrying
+        // rows nothing else has. The sync is a no-op when both sides agree.
+        await CrossIslandVault.arm()
+        await CrossIslandVault.sync()
     }
 }

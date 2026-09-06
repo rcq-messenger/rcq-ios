@@ -31,12 +31,33 @@ final class CrossIslandStore: ObservableObject {
     /// per-account slot) so it survives a relaunch — an offline-queue drain
     /// hands us envelopes in whatever order the mailbox held them.
     private static let profileTSPrefix = "rcq.crossisland.profilets.v1."
+    /// When each handle was first added on any of this account's devices.
+    /// ⚠ Needed for the vault merge and for nothing else on screen: the rule
+    /// that decides whose pinned keys survive when two devices hold the same
+    /// peer is "the earlier row wins", and without a stamp there is no earlier.
+    /// Rows already on disk are stamped once, on first read, rather than left
+    /// at zero: a shared zero makes the merge pick by argument order, and two
+    /// devices that pick differently rewrite the slot at each other forever.
+    private static let addedAtPrefix = "rcq.crossisland.addedat.v1."
+    /// Removals have to be remembered, or the next vault sync fetches the row
+    /// straight back off the island and deleting a cross-island contact undoes
+    /// itself on the following launch.
+    private static let gravesPrefix = "rcq.crossisland.graves.v1." 
 
     private let defaults: UserDefaults
     private var accountKey: String
     private var profileTSKey: String
     private var cache: [String: Contact]   // keyed "uin@host"
     private var profileTS: [String: Int]
+    private var addedAtKey: String
+    private var gravesKey: String
+    private var addedAt: [String: Double]
+    private var graves: [String: Double]
+
+    /// A local add or remove the vault mirror has to publish. The store does
+    /// not reach for the vault itself: this file is also read by the
+    /// notification extension, where there is no session and no island.
+    var onChange: (() -> Void)?
 
     private init() {
         defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
@@ -47,7 +68,12 @@ final class CrossIslandStore: ObservableObject {
         profileTSKey = Self.profileTSKeyFor(account)
         cache = Self.load(defaults, accountKey)
         profileTS = (defaults.dictionary(forKey: profileTSKey) as? [String: Int]) ?? [:]
+        addedAtKey = Self.addedAtKeyFor(account)
+        gravesKey = Self.gravesKeyFor(account)
+        addedAt = (defaults.dictionary(forKey: addedAtKey) as? [String: Double]) ?? [:]
+        graves = (defaults.dictionary(forKey: gravesKey) as? [String: Double]) ?? [:]
         contactsSnapshot = Array(cache.values)
+        stampMissingAddedAt()
     }
 
     private static func keyFor(_ id: UUID?) -> String {
@@ -57,6 +83,39 @@ final class CrossIslandStore: ObservableObject {
     private static func profileTSKeyFor(_ id: UUID?) -> String {
         profileTSPrefix + (id?.uuidString ?? "none")
     }
+
+    private static func addedAtKeyFor(_ id: UUID?) -> String {
+        addedAtPrefix + (id?.uuidString ?? "none")
+    }
+
+    private static func gravesKeyFor(_ id: UUID?) -> String {
+        gravesPrefix + (id?.uuidString ?? "none")
+    }
+
+    /// Give every row on disk a stamp, once. Rows added before this build have
+    /// none, and a zero would be "added at the epoch": every one of them would
+    /// win the trust-on-first-use tie against a row synced from another device,
+    /// on nothing but the fact that this client used to forget the date.
+    private func stampMissingAddedAt() {
+        let now = Date().timeIntervalSince1970 * 1000
+        var changed = false
+        for key in cache.keys where addedAt[key] == nil {
+            addedAt[key] = now
+            changed = true
+        }
+        if changed { defaults.set(addedAt, forKey: addedAtKey) }
+    }
+
+    /// ms since the epoch, for the vault row.
+    func addedAtFor(_ uin: Int, _ host: String) -> Double {
+        addedAt[ciKey(uin, host)] ?? 0
+    }
+
+    func profileTSFor(_ uin: Int, _ host: String) -> Int {
+        profileTS[ciKey(uin, host)] ?? 0
+    }
+
+    func tombstones() -> [String: Double] { graves }
 
     private static func load(_ defaults: UserDefaults, _ key: String) -> [String: Contact] {
         guard let data = defaults.data(forKey: key),
@@ -70,10 +129,15 @@ final class CrossIslandStore: ObservableObject {
     func bind(accountID: UUID?) {
         accountKey = Self.keyFor(accountID)
         profileTSKey = Self.profileTSKeyFor(accountID)
+        addedAtKey = Self.addedAtKeyFor(accountID)
+        gravesKey = Self.gravesKeyFor(accountID)
         profileTS = (defaults.dictionary(forKey: profileTSKey) as? [String: Int]) ?? [:]
+        addedAt = (defaults.dictionary(forKey: addedAtKey) as? [String: Double]) ?? [:]
+        graves = (defaults.dictionary(forKey: gravesKey) as? [String: Double]) ?? [:]
         cache = Self.load(defaults, accountKey)
         pruneOwnIsland()
         contactsSnapshot = Array(cache.values)
+        stampMissingAddedAt()
     }
 
     /// Forget every cross-island contact of the active account (burn only).
@@ -87,8 +151,12 @@ final class CrossIslandStore: ObservableObject {
     func wipe() {
         defaults.removeObject(forKey: accountKey)
         defaults.removeObject(forKey: profileTSKey)
+        defaults.removeObject(forKey: addedAtKey)
+        defaults.removeObject(forKey: gravesKey)
         cache = [:]
         profileTS = [:]
+        addedAt = [:]
+        graves = [:]
         contactsSnapshot = []
     }
 
@@ -113,8 +181,38 @@ final class CrossIslandStore: ObservableObject {
     func save(_ c: Contact) {
         // Never file a peer from our own island here — the roster owns those.
         guard let host = c.host, !Multihome.isOwnHost(host) else { return }
-        cache[ciKey(c.uin, host)] = c
+        let key = ciKey(c.uin, host)
+        if addedAt[key] == nil {
+            addedAt[key] = Date().timeIntervalSince1970 * 1000
+            defaults.set(addedAt, forKey: addedAtKey)
+        }
+        cache[key] = c
         persist()
+        contactsSnapshot = Array(cache.values)
+        onChange?()
+    }
+
+    /// The vault sync writing the merged set back. Deliberately silent: it is
+    /// the listener's own result coming home, and announcing it would loop.
+    func replaceAll(_ rows: [(contact: Contact, addedAt: Double, profileTS: Int)], graves: [String: Double]) {
+        var nextCache: [String: Contact] = [:]
+        var nextAdded: [String: Double] = [:]
+        var nextTS: [String: Int] = [:]
+        for r in rows {
+            guard let host = r.contact.host, !Multihome.isOwnHost(host) else { continue }
+            let key = ciKey(r.contact.uin, host)
+            nextCache[key] = r.contact
+            nextAdded[key] = r.addedAt
+            if r.profileTS > 0 { nextTS[key] = r.profileTS }
+        }
+        cache = nextCache
+        addedAt = nextAdded
+        profileTS = nextTS
+        self.graves = graves
+        persist()
+        defaults.set(addedAt, forKey: addedAtKey)
+        defaults.set(profileTS, forKey: profileTSKey)
+        defaults.set(graves, forKey: gravesKey)
         contactsSnapshot = Array(cache.values)
     }
 
@@ -129,9 +227,14 @@ final class CrossIslandStore: ObservableObject {
         let key = ciKey(uin, host)
         cache.removeValue(forKey: key)
         profileTS.removeValue(forKey: key)
+        addedAt.removeValue(forKey: key)
+        graves[key] = Date().timeIntervalSince1970 * 1000
         defaults.set(profileTS, forKey: profileTSKey)
+        defaults.set(addedAt, forKey: addedAtKey)
+        defaults.set(graves, forKey: gravesKey)
         persist()
         contactsSnapshot = Array(cache.values)
+        onChange?()
     }
 
     /// §5e receive: refresh the DISPLAY fields of an EXISTING cross-island row.
@@ -216,6 +319,7 @@ final class CrossIslandStore: ObservableObject {
         cache[key] = row
         persist()
         contactsSnapshot = Array(cache.values)
+        onChange?()
         return row
     }
 
