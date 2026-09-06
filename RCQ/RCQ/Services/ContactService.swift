@@ -178,13 +178,29 @@ final class ContactService: ObservableObject {
             // so a status that moved while this device was away still comes
             // back as a full body.
             let answer = try await APIClient.shared.conditionalGet("/contacts", etag: rosterETag)
+            // ⚠⚠ 304 means "nothing changed on the island", and the only correct
+            // response is to leave the roster alone. Re-decoding the bytes kept
+            // from the last full answer looked equivalent and is not: presence
+            // arrives over the websocket and is written into `contacts`
+            // directly, so folding the stored snapshot paints a contact who
+            // just came online offline again (Android hit exactly this as
+            // report #909 on 0.173, hours after release). The pending and
+            // outgoing lists below still refresh: they have their own reads.
             var list: [Contact]
             if let data = answer.data {
                 list = try await APIClient.shared.decodeJSON(data)
                 rosterServedData = data
                 rosterETag = answer.etag
-            } else if let kept = rosterServedData {
-                list = try await APIClient.shared.decodeJSON(kept)
+            } else if rosterServedData != nil {
+                // The two request lists are separate endpoints with no
+                // validator, so they still carry news; fold just those.
+                let stillPending = (try? await pendingFetch) ?? self.pendingRequests
+                let stillOutgoing = (try? await outgoingFetch) ?? self.outgoingRequests
+                guard epoch == rosterEpoch, account == AccountManager.shared.activeAccountID,
+                      !PanicPINService.shared.isLocked else { return }
+                self.pendingRequests = stillPending.filter { !BlockedContactsStore.shared.contains($0.from_uin) }
+                self.outgoingRequests = stillOutgoing
+                return
             } else {
                 list = try await APIClient.shared.request("GET", "/contacts")
             }
