@@ -1,0 +1,68 @@
+[
+  {
+    "name": "a row only one device has survives",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"101@is2.rcq.app\":{\"uin\":101,\"host\":\"is2.rcq.app\",\"nickname\":\"peer101\",\"identityKey\":\"ident-101\",\"signingKey\":\"sign-101\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{\"202@rcqam.mooo.com\":{\"uin\":202,\"host\":\"rcqam.mooo.com\",\"nickname\":\"peer202\",\"identityKey\":\"ident-202\",\"signingKey\":\"sign-202\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}"
+  },
+  {
+    "name": "pinned keys come from the earlier row",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"7@x.example\":{\"uin\":7,\"host\":\"x.example\",\"nickname\":\"peer7\",\"identityKey\":\"REAL\",\"signingKey\":\"REAL-S\",\"addedAt\":1754408000000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{\"7@x.example\":{\"uin\":7,\"host\":\"x.example\",\"nickname\":\"peer7\",\"identityKey\":\"SWAPPED\",\"signingKey\":\"SWAPPED-S\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}"
+  },
+  {
+    "name": "newest profile wins the display only",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"9@x.example\":{\"uin\":9,\"host\":\"x.example\",\"nickname\":\"old name\",\"identityKey\":\"ident-9\",\"signingKey\":\"sign-9\",\"addedAt\":1754408000000,\"profileTs\":1000}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{\"9@x.example\":{\"uin\":9,\"host\":\"x.example\",\"nickname\":\"new name\",\"identityKey\":\"ident-9\",\"signingKey\":\"sign-9\",\"addedAt\":1756913600000,\"profileTs\":2000,\"gender\":\"f\",\"avatarMediaId\":\"blob-9\",\"avatarMediaKey\":\"k9\"}},\"g\":{}}"
+  },
+  {
+    "name": "half an avatar pair is no avatar",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"11@x.example\":{\"uin\":11,\"host\":\"x.example\",\"nickname\":\"peer11\",\"identityKey\":\"ident-11\",\"signingKey\":\"sign-11\",\"addedAt\":1756913600000,\"profileTs\":0,\"avatarMediaId\":\"blob\"}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{}}"
+  },
+  {
+    "name": "a removal travels",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"21@x.example\":{\"uin\":21,\"host\":\"x.example\",\"nickname\":\"peer21\",\"identityKey\":\"ident-21\",\"signingKey\":\"sign-21\",\"addedAt\":1756136000000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{\"21@x.example\":1756913600000}}"
+  },
+  {
+    "name": "re-adding beats the tombstone",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"22@x.example\":{\"uin\":22,\"host\":\"x.example\",\"nickname\":\"peer22\",\"identityKey\":\"ident-22\",\"signingKey\":\"sign-22\",\"addedAt\":1756996400000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{\"22@x.example\":1756913600000}}"
+  },
+  {
+    "name": "tombstones expire after ninety days",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{},\"g\":{\"23@x.example\":1748360000000,\"24@x.example\":1756136000000}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{}}"
+  },
+  {
+    "name": "a row without keys is dropped",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"31@x.example\":{\"uin\":31,\"host\":\"x.example\",\"nickname\":\"x\",\"addedAt\":1757000000000}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{}}"
+  },
+  {
+    "name": "an empty slot never erases the device",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"41@x.example\":{\"uin\":41,\"host\":\"x.example\",\"nickname\":\"peer41\",\"identityKey\":\"ident-41\",\"signingKey\":\"sign-41\",\"addedAt\":1756913600000,\"profileTs\":0},\"42@y.example\":{\"uin\":42,\"host\":\"y.example\",\"nickname\":\"peer42\",\"identityKey\":\"ident-42\",\"signingKey\":\"sign-42\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{}}"
+  },
+  {
+    "name": "the same peer on two islands is two contacts",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"5@a.example\":{\"uin\":5,\"host\":\"a.example\",\"nickname\":\"peer5\",\"identityKey\":\"ident-5\",\"signingKey\":\"sign-5\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{\"5@b.example\":{\"uin\":5,\"host\":\"b.example\",\"nickname\":\"peer5\",\"identityKey\":\"ident-5\",\"signingKey\":\"sign-5\",\"addedAt\":1756913600000,\"profileTs\":0}},\"g\":{}}"
+  },
+  {
+    "name": "a statusMessage and a signal key ride along",
+    "now": 1757000000000,
+    "a": "{\"v\":1,\"c\":{\"61@x.example\":{\"uin\":61,\"host\":\"x.example\",\"nickname\":\"peer61\",\"identityKey\":\"ident-61\",\"signingKey\":\"sign-61\",\"addedAt\":1756913600000,\"profileTs\":0,\"statusMessage\":\"hi\",\"signalIdentityKey\":\"sig-61\"}},\"g\":{}}",
+    "b": "{\"v\":1,\"c\":{},\"g\":{}}"
+  }
+]
