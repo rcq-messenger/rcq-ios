@@ -1842,9 +1842,9 @@
 "badge.official" = "Oficial";
 "badge.tester" = "Tester";
 "badge.special" = "Contribución especial";
-"badge.desc.official" = "Cuenta oficial, confirmada por la isla: el equipo de RCQ o una fuente que la isla avala.";
-"badge.desc.tester" = "Tester. Participó en la alfa y la beta de RCQ y ayudó a encontrar lo que fallaba.";
-"badge.desc.special" = "Se otorga por una contribución destacada durante la alfa y la beta de RCQ.";
+"badge.desc.official" = "Cuenta oficial, confirmada por esta isla: su equipo o una fuente que la isla avala.";
+"badge.desc.tester" = "Tester. Participó en las pruebas y ayudó a encontrar lo que fallaba.";
+"badge.desc.special" = "Otorgada por esta isla por una contribución destacada.";
 "badge.desc.unknown" = "Una marca otorgada por esta isla.";
 "my_uins.unlist" = "Retirar de la venta";
 "my_uins.listed" = "en venta, %@";

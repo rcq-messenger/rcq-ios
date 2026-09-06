@@ -1842,9 +1842,9 @@
 "badge.official" = "Resmi";
 "badge.tester" = "Test kullanıcısı";
 "badge.special" = "Özel katkı";
-"badge.desc.official" = "Resmi hesap, ada tarafından onaylanmış: RCQ ekibi veya adanın kefil olduğu bir kaynak.";
-"badge.desc.tester" = "Test kullanıcısı. RCQ alfa ve beta sürecine katıldı ve bozuk olanı bulmaya yardım etti.";
-"badge.desc.special" = "RCQ alfa ve beta sürecindeki olağanüstü katkı için verilir.";
+"badge.desc.official" = "Resmi hesap, bu ada tarafından onaylanmış: adanın ekibi veya adanın kefil olduğu bir kaynak.";
+"badge.desc.tester" = "Test kullanıcısı. Testlere katıldı ve bozuk olanı bulmaya yardım etti.";
+"badge.desc.special" = "Bu ada tarafından olağanüstü katkı için verildi.";
 "badge.desc.unknown" = "Bu adanın verdiği bir işaret.";
 "my_uins.unlist" = "Satıştan kaldır";
 "my_uins.listed" = "satışta, %@";

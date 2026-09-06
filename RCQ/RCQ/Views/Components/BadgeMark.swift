@@ -32,7 +32,48 @@ struct BadgeMark: View {
         }
     }
 
+    /// ⚠ THE ISLAND'S OWN WORDS FIRST, this build's strings only as a
+    /// fallback. See `ServerInfoResponse.badges`: the stock description for
+    /// `official` names the RCQ team, which is false on an island the RCQ team
+    /// does not run, and a kind an operator invented had no name at all.
+    ///
+    /// A blank field means "I have not renamed this one", not "call it
+    /// nothing", so each of label, description and colour falls back on its
+    /// own. Bounded on the way out, because this text is drawn beside a
+    /// contact's name and an operator must not be able to push a paragraph
+    /// into a roster row.
+    @MainActor
+    private static func island(_ kind: String) -> BadgeTextResponse? {
+        AppState.shared.serverBadges[kind]
+    }
+
+    private static func trimmed(_ s: String?, _ max: Int) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return String(t.prefix(max))
+    }
+
+    @MainActor
     static func color(for kind: String) -> Color {
+        // An island can colour a kind this build has never heard of. Parsed
+        // defensively: anything that is not #RRGGBB falls through to the
+        // built-in colour rather than drawing nothing.
+        if let hex = trimmed(island(kind)?.color, 16), let c = colorFromHex(hex) { return c }
+        return builtInColor(for: kind)
+    }
+
+    private static func colorFromHex(_ hex: String) -> Color? {
+        var s = hex
+        guard s.hasPrefix("#") else { return nil }
+        s.removeFirst()
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        return Color(
+            red: Double((v >> 16) & 0xFF) / 255,
+            green: Double((v >> 8) & 0xFF) / 255,
+            blue: Double(v & 0xFF) / 255,
+        )
+    }
+
+    static func builtInColor(for kind: String) -> Color {
         switch kind {
         case "official": return Color(red: 0.23, green: 0.62, blue: 0.91)
         case "tester":   return Color(red: 0.88, green: 0.64, blue: 0.11)
@@ -41,13 +82,17 @@ struct BadgeMark: View {
         }
     }
 
+    @MainActor
     static func label(for kind: String) -> String {
+        if let l = trimmed(island(kind)?.label, 32) { return l }
         let key = "badge." + kind
         let s = key.localized
         return s == key ? kind : s
     }
 
+    @MainActor
     static func description(for kind: String) -> String {
+        if let d = trimmed(island(kind)?.description, 200) { return d }
         let key = "badge.desc." + kind
         let s = key.localized
         return s == key ? "badge.desc.unknown".localized : s
