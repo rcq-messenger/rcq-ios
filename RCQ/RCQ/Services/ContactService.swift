@@ -575,7 +575,18 @@ final class ContactService: ObservableObject {
         if contacts.contains(where: { $0.uin == uin }) { return }
         if RemovedContactsStore.shared.contains(uin) { return }
         do {
-            let p: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
+            // ⚠ THE STRANGER PATH: a 1:1 envelope decrypted from a number that
+            // is not in the roster, so a row can be built and the thread can
+            // appear at all. On a closed island this lookup is refused unless
+            // we present the card they handed us — and this is precisely the
+            // case a card exists for, somebody writing to us first. Without it
+            // no Contact row is built, and the chat list is contact-driven, so
+            // the message arrives and the thread never appears.
+            let card = await MainActor.run { GuestCardStore.shared.card(for: uin) }
+            let p: UserProfile = try await APIClient.shared.request(
+                "GET", "/users/\(uin)/info",
+                headers: card.map { ["X-RCQ-Guest-Card": $0] } ?? [:]
+            )
             await MainActor.run {
                 guard !self.contacts.contains(where: { $0.uin == uin }) else { return }
                 let contact = Contact(
