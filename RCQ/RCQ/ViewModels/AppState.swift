@@ -2506,8 +2506,12 @@ struct ServerCapabilities: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // Absent on an island older than the field, and that reads as OPEN,
         // which is the permissive default every flag here takes.
-        closedIsland = (try? c.decodeIfPresent(Bool.self, forKey: .closedIsland)) as? Bool ?? false
-        entryPriceCents = ((try? c.decodeIfPresent(Int.self, forKey: .entryPriceCents)) as? Int ?? 0)
+        // ⚠ `decodeIfPresent` already returns an Optional, and `try?` wraps it
+        // in a second one. The `as? Bool` I first wrote to flatten that does
+        // nothing at all — the compiler said so — and the value survived only
+        // because `?? false` caught the double-Optional. Flattened properly.
+        closedIsland = ((try? c.decodeIfPresent(Bool.self, forKey: .closedIsland)) ?? nil) ?? false
+        entryPriceCents = ((try? c.decodeIfPresent(Int.self, forKey: .entryPriceCents)) ?? nil) ?? 0
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
         nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true

@@ -133,7 +133,12 @@ final class MessageDB {
                     "UIApplicationWillTerminateNotification"] {
             let name = Notification.Name(raw)
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.flushNow()
+                // ⚠ The block runs on the main QUEUE, which is not the same
+                // promise as the main ACTOR, so calling an actor-isolated
+                // method straight from here is unchecked and warns. Hopping
+                // explicitly costs nothing on a queue that is already main and
+                // makes the guarantee the one the compiler can see.
+                Task { @MainActor [weak self] in self?.flushNow() }
             }
         }
     }
