@@ -97,7 +97,10 @@ struct QRSheet: View {
                 // nothing to share while the camera is up.
                 ToolbarItem(placement: .confirmationAction) {
                     if mode == .myCode, let uin = auth.ownUIN,
-                       let url = URL(string: "https://rcq.app/u/\(uin)") {
+                       let url = URL(string: RcqFederation.buildContactLink(
+                           RcqFederation.Address(uin: uin, host: Multihome.ownHost()),
+                           card: OutgoingGuestCard.value,
+                       )) {
                         ShareLink(
                             item: url,
                             subject: Text(auth.nickname.isEmpty ? "RCQ" : auth.nickname),
@@ -294,7 +297,16 @@ struct QRSheet: View {
                 .replacingOccurrences(of: "=", with: "")
             params.append("k=\(urlSafe)")
         }
-        return "rcq://add/\(uin)" + (params.isEmpty ? "" : "?" + params.joined(separator: "&"))
+        // ⚠ The guest card, after the hash, and ONLY on a closed island. A
+        // fragment is never sent to a server, which is the whole reason the
+        // credential can ride in a code at all. On an open island there is no
+        // card to put here — minting one would push a live credential into
+        // every code anybody has ever held up to a camera, for a door that is
+        // not locked.
+        let frag = (OutgoingGuestCard.value?.isEmpty == false)
+            ? "#c=" + (OutgoingGuestCard.value!.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? OutgoingGuestCard.value!)
+            : ""
+        return "rcq://add/\(uin)" + (params.isEmpty ? "" : "?" + params.joined(separator: "&")) + frag
     }
 
     private func handleScan(_ raw: String) async {
@@ -307,6 +319,15 @@ struct QRSheet: View {
             return
         }
         let uin = scanned.uin
+        // ⚠ Kept the MOMENT the code is read, before any decision about adding
+        // them. It is what the next request about this person needs, and
+        // somebody who backs out and adds them an hour later would otherwise
+        // have thrown away the only way to reach them on a closed island.
+        if let card = scanned.card, uin != auth.ownUIN {
+            await MainActor.run {
+                GuestCardStore.shared.remember(uin: uin, host: scanned.host, card: card)
+            }
+        }
         if uin == auth.ownUIN {
             await MainActor.run {
                 scanResult = .failed(message: "qr.alert.own_code".localized)
@@ -362,25 +383,40 @@ struct QRSheet: View {
     /// A scanned add-code: the UIN plus an optional island host. Handles our own
     /// `rcq://add/{uin}[?h=host]` and the web universal link
     /// `https://rcq.app/u/{uin}?h=host` so iOS can scan codes from any client.
-    struct ScannedAddress { let uin: Int; let host: String? }
+    /// `card` is a GUEST CARD the sharer put in the link's FRAGMENT, on a
+    /// closed island: what lets us reach them at all. See `GuestCardStore`.
+    struct ScannedAddress { let uin: Int; let host: String?; var card: String? = nil }
 
     static func parseAddURL(_ url: URL) -> ScannedAddress? {
-        let hostRaw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "h" })?.value?
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let hostRaw = comps?.queryItems?.first(where: { $0.name == "h" })?.value?
             .trimmingCharacters(in: .whitespaces)
         let host = (hostRaw?.isEmpty ?? true) ? nil : hostRaw
+        // ⚠⚠ THE CARD COMES OUT OF THE FRAGMENT, and it is there rather than in
+        // the query on purpose: a fragment is never sent to a server, so a link
+        // can be pasted anywhere without rcq.app, its CDN or a middlebox ever
+        // seeing a live credential. Parsed by hand because `queryItems` cannot
+        // reach it, and bounded because it arrives from a scanned code and
+        // leaves as a request header.
+        let card: String? = comps?.fragment?
+            .split(separator: "&")
+            .first(where: { $0.hasPrefix("c=") })
+            .map { String($0.dropFirst(2)) }
+            .flatMap { $0.removingPercentEncoding ?? $0 }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty || $0.count > 128 ? nil : $0 }
         // rcq://add/{uin}[?h=host]
         if url.scheme == "rcq", url.host == "add" {
             let seg = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard let uin = Int(seg) else { return nil }
-            return ScannedAddress(uin: uin, host: host)
+            return ScannedAddress(uin: uin, host: host, card: card)
         }
         // https://rcq.app/u/{uin}?h=host
         if let scheme = url.scheme, scheme.hasPrefix("http"),
            let h = url.host, h == "rcq.app" || h == "www.rcq.app" {
             let parts = url.path.split(separator: "/").map(String.init)
             if parts.count == 2, parts[0] == "u", let uin = Int(parts[1]) {
-                return ScannedAddress(uin: uin, host: host)
+                return ScannedAddress(uin: uin, host: host, card: card)
             }
         }
         return nil
