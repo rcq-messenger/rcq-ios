@@ -238,7 +238,7 @@
 "settings.account" = "Аккаунт";
 "settings.account.burn" = "Удалить аккаунт навсегда";
 "settings.account.burning" = "Удаляем…";
-"settings.account.about" = "Об этом острове";
+"settings.account.about" = "О RCQ";
 "settings.account.bug_bounty" = "Сообщить о баге";
 "settings.uin_shop" = "Магазин UIN";
 "settings.uin_shop.footer" = "Любой свободный UIN от 3 до 9 цифр. Чем короче, тем дороже.";
@@ -888,7 +888,7 @@
 
 /* ── About sheet ──────────────────────────────────────────── */
 
-"about.title" = "Об этом острове";
+"about.title" = "О RCQ";
 "about.tagline" = "Та же душа, современная криптография.";
 "about.body" = "RCQ бесплатен навсегда. Без рекламы, без сбора данных, без телефонного номера.";
 "about.stats.users" = "человек на этом острове";

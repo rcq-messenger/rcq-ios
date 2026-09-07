@@ -288,6 +288,10 @@ struct SettingsView: View {
     /// screen asks a question this list is the wrong place to answer. The web
     /// draws nothing for the same reason (`ResidentInvites.tsx`).
     @State private var invites: ResidentInvites?
+    /// How many people this island has. Nil until `/public/stats` answers, and
+    /// nil forever on an island that does not publish it, in which case the row
+    /// simply is not there.
+    @State private var islandPeople: Int?
     @State private var showInvites = false
     @State private var burnFailed = false
     @State private var showBlockedUsers = false
@@ -413,6 +417,7 @@ struct SettingsView: View {
                 PresenceRemovalCleanup.runOnce()
                 await refreshHeldUINCount()
                 invites = await ResidentInvitesAPI.mine()
+                islandPeople = await loadIslandPeople()
             }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
@@ -844,6 +849,22 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(Theme.Color.textSecondary)
                     }
+                }
+            }
+            // ⚠ MOVED OUT OF THE ABOUT SHEET (founder, 07.09). `/public/stats`
+            // counts the people on THIS island, not in RCQ, so under an "About
+            // RCQ" title it was a self-hoster's dozen presented as the size of
+            // the network. Here it sits under the island's own name and host,
+            // which is what it has always been counting.
+            if let islandPeople {
+                HStack {
+                    Image(systemName: "person.2.fill").foregroundColor(Theme.Color.accent)
+                    Text("about.stats.users".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    Text(islandPeople.formatted())
+                        .font(.callout.monospacedDigit())
+                        .foregroundColor(Theme.Color.textSecondary)
                 }
             }
             islandTrustRow
@@ -1283,6 +1304,17 @@ struct SettingsView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let base = (picked?.isEmpty == false) ? picked! : APIClient.prodBaseURL
         return URL(string: base)?.host ?? base
+    }
+
+    /// The island's own headcount. Unauthenticated on purpose: it is the same
+    /// public number the island puts on its front page, and asking for it with
+    /// a token would tie a person to a figure that is about everybody.
+    private func loadIslandPeople() async -> Int? {
+        struct StatsOut: Decodable { let user_count: Int }
+        let out: StatsOut? = try? await APIClient.shared.request(
+            "GET", "/public/stats", authenticated: false,
+        )
+        return out?.user_count
     }
 
     /// How this island is trusted (design §5.3): through a certificate

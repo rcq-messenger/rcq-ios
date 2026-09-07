@@ -240,7 +240,7 @@
 "settings.account" = "Cuenta";
 "settings.account.burn" = "Destruir la cuenta para siempre";
 "settings.account.burning" = "Destruyendo…";
-"settings.account.about" = "Sobre esta isla";
+"settings.account.about" = "Acerca de RCQ";
 "settings.account.bug_bounty" = "Informar de un fallo";
 "settings.uin_shop" = "Tienda de UIN";
 "settings.uin_shop.footer" = "Elige cualquier UIN libre de 3 a 9 dígitos. Los más cortos son más raros y más caros.";
@@ -843,7 +843,7 @@
 "random.ended.peer_disconnected" = "El desconocido se desconectó.";
 "random.ended.default" = "Chat terminado.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "Sobre esta isla";
+"about.title" = "Acerca de RCQ";
 "about.tagline" = "La misma alma, criptografía moderna.";
 "about.body" = "RCQ es gratis para siempre. Sin anuncios, sin recogida de datos, sin número de teléfono.";
 "about.stats.users" = "personas en esta isla";

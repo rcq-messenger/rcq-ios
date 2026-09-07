@@ -248,7 +248,7 @@
 "settings.account" = "Account";
 "settings.account.burn" = "Permanently delete account";
 "settings.account.burning" = "Deleting…";
-"settings.account.about" = "About this island";
+"settings.account.about" = "About RCQ";
 "settings.account.bug_bounty" = "Report a bug";
 "settings.uin_shop" = "UIN shop";
 "settings.uin_shop.footer" = "Pick any free 3-9 digit UIN. Shorter UINs are rarer and pricier.";
@@ -911,7 +911,7 @@
 
 /* ── About sheet ──────────────────────────────────────────── */
 
-"about.title" = "About this island";
+"about.title" = "About RCQ";
 "about.tagline" = "Same soul, modern crypto.";
 "about.body" = "RCQ is free forever. No ads, no data collection, no phone number.";
 "about.stats.users" = "people on this island";

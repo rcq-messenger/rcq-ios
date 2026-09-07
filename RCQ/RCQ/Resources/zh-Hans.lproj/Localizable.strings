@@ -231,7 +231,7 @@
 "settings.account" = "账号";
 "settings.account.burn" = "销毁账号";
 "settings.account.burning" = "销毁中…";
-"settings.account.about" = "关于这个岛屿";
+"settings.account.about" = "关于 RCQ";
 "settings.account.bug_bounty" = "反馈";
 "settings.uin_shop" = "UIN 商店";
 "settings.uin_shop.footer" = "选择任意未被占用的 3-9 位 UIN。位数越短越稀有，价格也越高。";
@@ -834,7 +834,7 @@
 "random.ended.peer_disconnected" = "对方已离线。";
 "random.ended.default" = "聊天已结束。";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "关于这个岛屿";
+"about.title" = "关于 RCQ";
 "about.tagline" = "同样的灵魂，现代的密码学。";
 "about.body" = "RCQ 永久免费。没有广告，不收集数据，不需要手机号。";
 "about.stats.users" = "人在这个岛上";

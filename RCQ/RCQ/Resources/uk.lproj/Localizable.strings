@@ -240,7 +240,7 @@
 "settings.account" = "Акаунт";
 "settings.account.burn" = "Остаточно видалити акаунт";
 "settings.account.burning" = "Видалення…";
-"settings.account.about" = "Про цей острів";
+"settings.account.about" = "Про RCQ";
 "settings.account.bug_bounty" = "Повідомити про помилку";
 "settings.uin_shop" = "Магазин UIN";
 "settings.uin_shop.footer" = "Обери будь-який вільний UIN з 3-9 цифр. Коротші трапляються рідше і коштують дорожче.";
@@ -843,7 +843,7 @@
 "random.ended.peer_disconnected" = "Незнайомець вийшов з мережі.";
 "random.ended.default" = "Чат завершено.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "Про цей острів";
+"about.title" = "Про RCQ";
 "about.tagline" = "Та сама душа, сучасна криптографія.";
 "about.body" = "RCQ безкоштовний назавжди. Без реклами, без збору даних, без номера телефона.";
 "about.stats.users" = "людей на цьому острові";

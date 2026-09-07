@@ -14,10 +14,14 @@ import UIKit
 struct AboutSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var headerLogoAngle: Double = 0
-    /// Real registered-user count from `/public/stats`. nil until the
-    /// fetch lands; `displayUserCount` ramps up to it for a count-up.
-    @State private var userCount: Int?
-    @State private var displayUserCount: Int = 0
+    // ⚠ The registered-user count used to live here, and it was the one thing
+    // on this sheet that is NOT about the app: `/public/stats` counts the
+    // people on THIS ISLAND, so on a self-hosted island it was a handful of
+    // people presented as the size of RCQ. It moved to Settings' island
+    // section, next to the island's own name and host, and the label moved
+    // with it (founder, 07.09: "человек в RCQ" reads wrong, it is this island).
+    // This sheet keeps its title: version, source, terms and privacy are the
+    // app, not the island.
 
     var body: some View {
         NavigationStack {
@@ -29,10 +33,6 @@ struct AboutSheet: View {
                         Text("about.body".localized)
                             .font(.subheadline)
                             .foregroundColor(Theme.Color.textSecondary)
-
-                        if userCount != nil {
-                            userCountCard
-                        }
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text("about.privacy.section".localized).font(.system(size: 11, weight: .bold)).foregroundColor(Theme.Color.textSecondary)
@@ -85,57 +85,9 @@ struct AboutSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("common.close".localized) { dismiss() } }
             }
-            .task { await loadStats() }
         }
     }
 
-    /// "1 234 people on RCQ" badge — a small social-proof card under
-    /// the tagline. The number counts up on first appear.
-    private var userCountCard: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: 18))
-                .foregroundColor(Theme.Color.accent)
-                .frame(width: 40, height: 40)
-                .background(Theme.Color.accent.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(displayUserCount.formatted())
-                    .font(.system(.title2, weight: .bold).monospacedDigit())
-                    .foregroundColor(Theme.Color.textPrimary)
-                    .contentTransition(.numericText())
-                Text("about.stats.users".localized)
-                    .font(.caption)
-                    .foregroundColor(Theme.Color.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.Color.bgSecondary)
-        .cornerRadius(6)
-    }
-
-    private func loadStats() async {
-        struct StatsOut: Decodable { let user_count: Int }
-        do {
-            let out: StatsOut = try await APIClient.shared.request(
-                "GET", "/public/stats", authenticated: false,
-            )
-            userCount = out.user_count
-            // Count-up ramp — ~0.6s from 0 to the real figure.
-            let steps = 28
-            for i in 1...steps {
-                try? await Task.sleep(nanoseconds: 22_000_000)
-                withAnimation(.easeOut(duration: 0.1)) {
-                    displayUserCount = out.user_count * i / steps
-                }
-            }
-            withAnimation { displayUserCount = out.user_count }
-        } catch {
-            // Soft-fail — no card if the stat can't be fetched.
-        }
-    }
 
     private var header: some View {
         HStack(spacing: 12) {
