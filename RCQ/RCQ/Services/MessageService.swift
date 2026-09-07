@@ -2258,6 +2258,25 @@ final class MessageService {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
+            // ⚠⚠ A MESSAGE FROM A STRANGER WHOSE SESSION IS OVER IS DROPPED.
+            //
+            // Nothing on the wire marks a random-chat message: it is an ordinary
+            // sealed envelope, because sealed sender means the island must not
+            // be able to tell either. The only thing that made one "random" was
+            // this client knowing who it was talking to at that moment. So a
+            // message still in flight when the session ended used to fall
+            // through to the ordinary path, open a normal thread, and hand the
+            // person the stranger's number and nickname — which is the one
+            // thing random chat promises never to do (founder, 07.09).
+            //
+            // Dropped, not quarantined: the promise is that it ends when it
+            // ends. Somebody who became a real contact during the chat is not
+            // caught by this; see `isFinishedStranger`.
+            if ws.groupID == nil,
+               RandomChatService.shared.isFinishedStranger(decrypted.senderUIN) {
+                return nil
+            }
+
             // Route to ephemeral random buffer when sender is the active anonymous peer.
             if ws.groupID == nil,
                let peer = RandomChatService.shared.activePeer,

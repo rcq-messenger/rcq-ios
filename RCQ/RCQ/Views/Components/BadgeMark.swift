@@ -15,12 +15,33 @@ struct BadgeMark: View {
     var size: CGFloat = 13
     @State private var showInfo = false
 
+    /// ⚠⚠ OBSERVED, not read through the static helper below.
+    ///
+    /// The colour and the name come from the island, and they arrive AFTER the
+    /// first frame: `/server/info` is a fetch. `BadgeMark.color(for:)` reaches
+    /// `AppState.shared` inside a static function, which SwiftUI cannot see as
+    /// a dependency — so a row that never changes for any other reason keeps
+    /// whatever colour it was first drawn with, for ever. An operator who
+    /// recoloured a kind saw it change on every screen except the home list
+    /// and the header, which are exactly the views that had no other reason to
+    /// re-render (founder, 07.09).
+    ///
+    /// The static helpers stay: `BadgeInfoSheet` and the accessibility label
+    /// still use them, and they are correct in a context that re-renders.
+    @ObservedObject private var app = AppState.shared
+
     var body: some View {
         if let kind, !kind.isEmpty {
             Button { showInfo = true } label: {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: size, weight: .semibold))
-                    .foregroundColor(BadgeMark.color(for: kind))
+                    // Read off the observed table so this view has a real
+                    // dependency on it, then fall back exactly as the static
+                    // helper does.
+                    .foregroundColor(
+                        BadgeMark.parseColor(app.serverBadges[kind]?.color)
+                            ?? BadgeMark.builtInColor(for: kind)
+                    )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(BadgeMark.label(for: kind))
@@ -57,8 +78,15 @@ struct BadgeMark: View {
         // An island can colour a kind this build has never heard of. Parsed
         // defensively: anything that is not #RRGGBB falls through to the
         // built-in colour rather than drawing nothing.
-        if let hex = trimmed(island(kind)?.color, 16), let c = colorFromHex(hex) { return c }
-        return builtInColor(for: kind)
+        return parseColor(island(kind)?.color) ?? builtInColor(for: kind)
+    }
+
+    /// The island's colour, or nil when it did not give a usable one. Split out
+    /// so the view above can parse the value it OBSERVED rather than going back
+    /// through a static read SwiftUI cannot track.
+    static func parseColor(_ raw: String?) -> Color? {
+        guard let hex = trimmed(raw, 16) else { return nil }
+        return colorFromHex(hex)
     }
 
     private static func colorFromHex(_ hex: String) -> Color? {

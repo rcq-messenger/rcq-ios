@@ -184,6 +184,22 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // ⚠⚠ A STRANGER WHOSE RANDOM SESSION IS OVER GETS NO BANNER.
+            //
+            // A random-chat message is an ordinary sealed envelope: nothing on
+            // the wire marks it, because the island must not be able to tell
+            // either. So once the session ended, this process titled the banner
+            // with the stranger's bare number, and tapping it opened an
+            // ordinary 1:1 chat where the app resolved their nickname — the one
+            // thing random chat promises never to do (founder, 07.09).
+            //
+            // The app drops the message itself, but this is a SEPARATE PROCESS
+            // and can only be told through the shared container, so the leak
+            // happened before the app was ever opened.
+            if FinishedStrangers.contains(decrypted.senderUIN) {
+                contentHandler(UNNotificationContent())
+                return
+            }
             PushDecryptCache.store(ciphertextB64: envB64, decrypted: decrypted)
             // ⚠ THE DURESS / LOCKED CASE. This process cannot see
             // `PanicPINService` — it is a separate binary in a separate
@@ -730,5 +746,24 @@ class NotificationService: UNNotificationServiceExtension {
             // `#uin` subtitle. A timeout is not permission to show them.
             handler(AppGroup.pushQuiet() ? Self.quietContent(from: content) : content)
         }
+    }
+}
+
+/// The numbers whose random-chat session has just ended, as written by the app
+/// into the shared container.
+///
+/// ⚠ Deliberately a copy of eight lines rather than pulling `RandomChatService`
+/// into this target: the extension is a separate binary with its own launch
+/// budget, and it needs one dictionary lookup, not a service that talks to a
+/// socket. The key and the window must match `RandomChatService`.
+enum FinishedStrangers {
+    private static let key = "rcq.random.recentlyEnded"
+    private static let grace: TimeInterval = 24 * 3600
+
+    static func contains(_ uin: Int) -> Bool {
+        let d = UserDefaults(suiteName: "group.app.rcq.shared") ?? .standard
+        guard let raw = d.dictionary(forKey: key) as? [String: Double],
+              let at = raw[String(uin)] else { return false }
+        return Date().timeIntervalSince1970 - at < grace
     }
 }

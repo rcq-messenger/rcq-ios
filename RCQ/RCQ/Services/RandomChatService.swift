@@ -23,6 +23,100 @@ final class RandomChatService: ObservableObject {
 
     @Published private(set) var lastPeer: RandomPeer?
 
+    /// Numbers that were random peers recently, and when the session with each
+    /// ended.
+    ///
+    /// ⚠⚠ THIS IS A PRIVACY GATE, not bookkeeping. A random-chat message is an
+    /// ordinary sealed 1:1 envelope — nothing on the wire says it came from a
+    /// stranger, because sealed sender means the island cannot be told either.
+    /// The only thing that made an incoming message "random" was this client
+    /// knowing the sender was the peer it was talking to RIGHT NOW. So the
+    /// moment a session ended, a message still in flight from that stranger
+    /// arrived as an ordinary message from an unknown number, was filed into a
+    /// normal thread, and the app then resolved their profile and showed their
+    /// nickname. The founder walked into exactly that on 07.09: he left a random
+    /// chat, a push arrived, he tapped it and was looking at a 1:1 conversation
+    /// with a stranger whose number and name he was never meant to learn.
+    ///
+    /// It is symmetric: the same thing happened to the other person.
+    ///
+    /// ⚠⚠ IN THE SHARED APP GROUP, not in memory, and for two reasons that both
+    /// bite.
+    ///
+    /// First: iOS kills a backgrounded app routinely. An in-memory set is gone
+    /// by the time the queued message is drained on next launch, and it lands
+    /// in an ordinary thread exactly as before — the fix would work only for
+    /// somebody who never closed the app.
+    ///
+    /// Second: the notification extension is a SEPARATE PROCESS. It decrypts
+    /// the envelope itself and titles the banner with the sender's nickname or
+    /// bare number, which is the first half of what the founder saw, before the
+    /// app is even opened. It can only be told through the group container.
+    ///
+    /// Still bounded by time, and still nothing but numbers and timestamps: a
+    /// day is far longer than a message can plausibly be in flight and short
+    /// enough that this never becomes a list of who you talked to.
+    nonisolated private static let storeKey = "rcq.random.recentlyEnded"
+
+    nonisolated private static var sharedDefaults: UserDefaults {
+        UserDefaults(suiteName: "group.app.rcq.shared") ?? .standard
+    }
+
+    private var recentlyEnded: [Int: Date] {
+        get {
+            let raw = Self.sharedDefaults.dictionary(forKey: Self.storeKey) as? [String: Double] ?? [:]
+            var out: [Int: Date] = [:]
+            for (k, v) in raw {
+                if let uin = Int(k) { out[uin] = Date(timeIntervalSince1970: v) }
+            }
+            return out
+        }
+        set {
+            var raw: [String: Double] = [:]
+            for (uin, at) in newValue { raw[String(uin)] = at.timeIntervalSince1970 }
+            Self.sharedDefaults.set(raw, forKey: Self.storeKey)
+        }
+    }
+
+    /// For the notification extension, which has no access to this class.
+    /// Reads the same container and applies the same expiry.
+    nonisolated static func isFinishedStrangerFromExtension(_ uin: Int) -> Bool {
+        let raw = sharedDefaults.dictionary(forKey: storeKey) as? [String: Double] ?? [:]
+        guard let at = raw[String(uin)] else { return false }
+        return Date().timeIntervalSince1970 - at < endedGrace
+    }
+
+    /// How long after a session ends a message from that stranger is still
+    /// treated as belonging to the session that is over.
+    nonisolated static let endedGrace: TimeInterval = 24 * 3600
+
+    /// Should a message from `uin` be dropped rather than filed?
+    ///
+    /// ⚠ `false` for anybody who is now a real contact. Two people CAN choose
+    /// to swap contacts during a random chat (see `addRequestSent`), and once
+    /// they have, they are not strangers any more and their messages are
+    /// ordinary messages. Dropping those would break the one feature that
+    /// exists to let a random chat become a real one.
+    func isFinishedStranger(_ uin: Int) -> Bool {
+        prune()
+        guard let _ = recentlyEnded[uin] else { return false }
+        if ContactService.shared.contacts.contains(where: { $0.uin == uin }) { return false }
+        return true
+    }
+
+    private func prune() {
+        let cutoff = Date().addingTimeInterval(-Self.endedGrace)
+        recentlyEnded = recentlyEnded.filter { $0.value > cutoff }
+    }
+
+    /// Remember the peer of the session that is ending. Call BEFORE the state
+    /// is cleared, while there is still a peer to remember.
+    private func rememberEnded() {
+        if let p = activePeer { recentlyEnded[p.uin] = Date() }
+        if let p = lastPeer { recentlyEnded[p.uin] = Date() }
+        prune()
+    }
+
     private var cancellables = Set<AnyCancellable>()
 
     private init() {
@@ -61,6 +155,7 @@ final class RandomChatService: ObservableObject {
     func leave() async {
         print("[Random] leave() called → state=.idle (caller initiated)")
         let wasMatched = activePeer != nil
+        rememberEnded()
         state = .idle
         messages.removeAll()
         lastPeer = nil
@@ -73,6 +168,7 @@ final class RandomChatService: ObservableObject {
     }
 
     func skip() async {
+        rememberEnded()
         state = .queueing
         messages.removeAll()
         do {
@@ -151,6 +247,7 @@ final class RandomChatService: ObservableObject {
     }
 
     func wipe() {
+        rememberEnded()
         state = .idle
         messages.removeAll()
         addRequestSent = false
@@ -189,6 +286,10 @@ final class RandomChatService: ObservableObject {
             if case .matched(let p) = state {
                 lastPeer = p
             }
+            // The session is over from here, whoever ended it, so anything
+            // still in flight from that stranger must not become an ordinary
+            // conversation. See `recentlyEnded`.
+            rememberEnded()
             state = .ended(reason: reason)
             print("[Random] state now .ended, lastPeer=\(lastPeer?.uin.description ?? "nil")")
         default:
