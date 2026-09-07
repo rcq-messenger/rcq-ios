@@ -364,6 +364,18 @@ struct QRSheet: View {
                     scanResult = .failed(message: "qr.alert.failed.title".localized)
                 }
             }
+            // ⚠ A closed island answers a stranger with the SAME "no such
+            // number" it gives for a number that never existed, deliberately,
+            // so it cannot tell the truth and this is the only place that can.
+            // Asked only after the add failed, so the ordinary path costs
+            // nothing.
+            if !(await ContactService.shared.contacts.contains { $0.uin == uin }),
+               let info = await ServerInfoService.fetch(host: host),
+               info.capabilities.closedIsland {
+                await MainActor.run {
+                    scanResult = .failed(message: "ci.closed_island".localized)
+                }
+            }
             return
         }
         do {

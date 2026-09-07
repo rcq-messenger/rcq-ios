@@ -1856,3 +1856,5 @@
 "reg.invite.label" = "Erişim kodu";
 "reg.invite.required" = "Ada kapalı: girmek için işletmecisinden bir kod gerekiyor. Aşağıya yapıştırın.";
 "reg.invite.invalid" = "Bu kod kabul edilmedi. Kullanılmış, süresi dolmuş veya başka bir adaya ait olabilir.";
+
+"ci.closed_island" = "Bu ada kapalı. Oradaki birine yazmak için kişinin kendisinden bir bağlantı gerekir: kişiyi paylaşması ya da size önce yazması.";

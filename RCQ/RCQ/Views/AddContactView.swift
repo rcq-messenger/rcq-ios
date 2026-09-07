@@ -153,6 +153,14 @@ struct AddContactView: View {
                                                 dismiss()
                                             } else if r.added {
                                                 ciTokenErr = "ci.request_not_sent".localized
+                                            } else if let info = await ServerInfoService.fetch(host: ci.host),
+                                                      info.capabilities.closedIsland {
+                                                // The island refused with the
+                                                // same "no such number" it uses
+                                                // for a number that never
+                                                // existed; only the client can
+                                                // say which it was.
+                                                ciTokenErr = "ci.closed_island".localized
                                             }
                                         }
                                     } label: {
