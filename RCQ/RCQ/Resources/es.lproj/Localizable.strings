@@ -1852,3 +1852,7 @@
 
 "report.heading.site" = "Denunciar esta página";
 "uin_shop.status.sold" = "La isla vende este número; no se puede tomar en este dispositivo.";
+
+"reg.invite.label" = "Código de acceso";
+"reg.invite.required" = "La isla es cerrada: para entrar hace falta un código de su operador. Pegalo abajo.";
+"reg.invite.invalid" = "Ese código no fue aceptado. Puede estar usado, vencido o ser de otra isla.";

@@ -2061,3 +2061,7 @@
 
 "report.heading.site" = "Report this page";
 "uin_shop.status.sold" = "The island sells this number; it can't be taken on this device.";
+
+"reg.invite.label" = "Access code";
+"reg.invite.required" = "This island is closed: joining needs a code from its operator. Paste it below.";
+"reg.invite.invalid" = "That code was not accepted. It may be used up, expired, or meant for another island.";

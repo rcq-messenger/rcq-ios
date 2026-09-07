@@ -1852,3 +1852,7 @@
 
 "report.heading.site" = "Bu sayfayı şikayet et";
 "uin_shop.status.sold" = "Bu numarayı ada satıyor; bu cihazda alınamaz.";
+
+"reg.invite.label" = "Erişim kodu";
+"reg.invite.required" = "Ada kapalı: girmek için işletmecisinden bir kod gerekiyor. Aşağıya yapıştırın.";
+"reg.invite.invalid" = "Bu kod kabul edilmedi. Kullanılmış, süresi dolmuş veya başka bir adaya ait olabilir.";
