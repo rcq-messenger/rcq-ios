@@ -158,6 +158,38 @@ targets:
         com.apple.developer.associated-domains:
           - applinks:rcq.app
     postBuildScripts:
+      # ⚠ The version in About is CFBundleShortVersionString, and it has read
+      # "1.0.0 (131)" since spring: two builds a month apart look identical on
+      # screen. On 2026-09-05 that cost a release — a build went out without
+      # commits that already existed, and nothing about it said so. This drops
+      # the commit into the bundle, and About and Settings print it.
+      #
+      # ⚠⚠ Two dead ends, both from ENABLE_USER_SCRIPT_SANDBOXING (which stays
+      # on). First: the stamp cannot live in Info.plist. Writing it there
+      # succeeded, the script echoed it, and the shipped plist had no such key —
+      # `Process Info.plist` regenerates that file AFTER the script phases and
+      # silently wins. Second: the sandbox denies reading the worktree, so
+      # `git status` fails the build and the stamp cannot say whether the tree
+      # was dirty. It reads refs only, and compares against the last-fetched
+      # origin/main instead. The outputFiles entry is not decoration either:
+      # an undeclared write into the bundle is denied outright.
+      - name: Stamp the commit into the bundle
+        basedOnDependencyAnalysis: false
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/build-stamp.txt
+        script: |
+          set -e
+          cd "${SRCROOT}"
+          HASH=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+          DATE=$(git log -1 --date=format:%d.%m.%Y --format=%cd 2>/dev/null || echo "")
+          STAMP="$HASH"
+          [ -n "$DATE" ] && STAMP="$HASH, $DATE"
+          UP=$(git rev-parse --short origin/main 2>/dev/null || echo "")
+          if [ -n "$UP" ] && [ "$UP" != "$HASH" ]; then
+            STAMP="$STAMP (not origin/main $UP)"
+          fi
+          printf %s "$STAMP" > "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/build-stamp.txt"
+          echo "[stamp] built from $STAMP"
       # Copy WebRTC.framework's bundled dSYM into the archive's
       # dSYMs folder during `archive` builds. stasel/WebRTC ships
       # the dSYM INSIDE the precompiled `WebRTC.xcframework`, but
