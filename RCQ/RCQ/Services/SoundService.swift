@@ -118,7 +118,8 @@ final class SoundService: ObservableObject {
         let cache = players
         DispatchQueue.global(qos: .utility).async {
             for cue in Cue.allCases {
-                guard cache.get(cue) == nil, let built = Self.makePlayer(for: cue) else { continue }
+                guard cache.get(cue) == nil,
+                      let built = Self.makePlayer(for: cue, prepare: false) else { continue }
                 _ = cache.putIfAbsent(built, for: cue)
             }
         }
@@ -152,12 +153,29 @@ final class SoundService: ObservableObject {
 
     /// Pure: opens the bundled file and prepares a player. Callable from any
     /// thread, which is what lets `prewarm` run off the main one.
-    private nonisolated static func makePlayer(for cue: Cue) -> AVAudioPlayer? {
+    /// - Parameter prepare: whether to claim the audio hardware now.
+    ///
+    /// ⚠⚠ FALSE FROM `prewarm`, AND THAT IS THE WHOLE POINT. `prepareToPlay()`
+    /// does not just parse the file, it allocates an audio queue and STARTS THE
+    /// AUDIO DEVICE. Doing that for six cues at launch, under the category
+    /// iOS gives an app that has not set one — `soloAmbient`, which is not
+    /// mixable — took the output away from whatever the person was listening
+    /// to. Open RCQ, your music stops, and nothing in the app has made a sound
+    /// (founder, 07.09). Confirmed in the simulator's own log: at launch
+    /// `AudioQueueObject: New output; 1 ch, 22050 Hz` followed by
+    /// `AudioDeviceStart (err 0)`, with no session configured.
+    ///
+    /// The lazy path still prepares, and by then `play` has run
+    /// `ensureSessionConfigured` and the category is `.ambient` with
+    /// `.mixWithOthers`, so claiming the device costs the music nothing.
+    /// Parsing the file — the expensive part, and the reason prewarm exists —
+    /// happens in the initialiser either way.
+    private nonisolated static func makePlayer(for cue: Cue, prepare: Bool = true) -> AVAudioPlayer? {
         guard let basename = Self.filename(for: cue) else { return nil }
         for ext in ["aif", "aiff", "wav", "m4a", "mp3"] {
             guard let url = Bundle.main.url(forResource: basename, withExtension: ext) else { continue }
             if let player = try? AVAudioPlayer(contentsOf: url) {
-                player.prepareToPlay()
+                if prepare { player.prepareToPlay() }
                 return player
             }
         }
