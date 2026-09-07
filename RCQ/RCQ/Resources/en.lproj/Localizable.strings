@@ -2067,3 +2067,6 @@
 "reg.invite.invalid" = "That code was not accepted. It may be used up, expired, or meant for another island.";
 
 "ci.closed_island" = "This island is closed. To write to somebody there you need a link from them: a shared contact, or a message they sent you first.";
+
+"island.entry.price" = "Entry: %@";
+"island.entry.closed" = "Closed club";

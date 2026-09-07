@@ -1858,3 +1858,6 @@
 "reg.invite.invalid" = "Bu kod kabul edilmedi. Kullanılmış, süresi dolmuş veya başka bir adaya ait olabilir.";
 
 "ci.closed_island" = "Bu ada kapalı. Oradaki birine yazmak için kişinin kendisinden bir bağlantı gerekir: kişiyi paylaşması ya da size önce yazması.";
+
+"island.entry.price" = "Giriş: %@";
+"island.entry.closed" = "Kapalı kulüp";

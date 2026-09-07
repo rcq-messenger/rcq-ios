@@ -1849,3 +1849,6 @@
 "reg.invite.invalid" = "该代码未被接受。可能已被使用、已过期，或属于另一个岛屿。";
 
 "ci.closed_island" = "这个岛屿是封闭的。要给那里的人写信，需要他本人给你的链接：他分享联系方式，或者先给你写信。";
+
+"island.entry.price" = "入场：%@";
+"island.entry.closed" = "封闭俱乐部";
