@@ -1553,7 +1553,7 @@
 "access_token.bad" = "Token de acceso no válido o caducado para esta isla.";
 "add_account.custom.cta" = "Añadir";
 "add_account.custom.invalid" = "No es una dirección de isla. Prueba island.example:8443, o una URL https:// completa.";
-"add_account.custom.token" = "Token de autenticación (opcional, para servidores ocultos)";
+"add_account.custom.token" = "Clave de la pasarela (solo si la isla se oculta tras una)";
 "add_account.adding" = "Registrando en el servidor…";
 "add_account.error" = "No se pudo registrar. Revisa la URL y tu red.";
 "add_account.limit" = "Has llegado al límite de %d cuentas por dispositivo. Quita una en Gestionar cuentas e inténtalo de nuevo.";

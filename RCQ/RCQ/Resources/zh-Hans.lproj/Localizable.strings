@@ -1544,7 +1544,7 @@
 "access_token.bad" = "这个岛的访问令牌无效或已过期。";
 "add_account.custom.cta" = "添加";
 "add_account.custom.invalid" = "这不是岛屿地址。可以填 island.example:8443，或完整的 https:// 网址。";
-"add_account.custom.token" = "认证令牌（可选，用于隐藏的服务器）";
+"add_account.custom.token" = "网关密钥（仅当岛屿隐藏在网关后面时）";
 "add_account.adding" = "正在服务器上注册…";
 "add_account.error" = "注册失败。请检查 URL 和网络。";
 "add_account.limit" = "已达到每台设备 %d 个账号的上限。请在“管理账号”里移除一个，然后重试。";

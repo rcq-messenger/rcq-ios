@@ -1690,7 +1690,7 @@
 "access_token.bad" = "Invalid or expired access token for this island.";
 "add_account.custom.cta" = "Add";
 "add_account.custom.invalid" = "Not an island address. Try island.example:8443, or a full https:// URL.";
-"add_account.custom.token" = "Auth token (optional, for hidden servers)";
+"add_account.custom.token" = "Gateway key (only if the island hides behind one)";
 "add_account.adding" = "Registering on the server…";
 "add_account.error" = "Couldn't register. Check the URL and your network.";
 "add_account.limit" = "Reached the %d-account device limit. Remove one via Manage accounts and try again.";

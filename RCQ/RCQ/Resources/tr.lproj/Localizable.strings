@@ -1553,7 +1553,7 @@
 "access_token.bad" = "Bu ada için geçersiz ya da süresi dolmuş erişim anahtarı.";
 "add_account.custom.cta" = "Ekle";
 "add_account.custom.invalid" = "Bu bir ada adresi değil. island.example:8443 deneyin ya da tam bir https:// adresi.";
-"add_account.custom.token" = "Kimlik doğrulama anahtarı (isteğe bağlı, gizli sunucular için)";
+"add_account.custom.token" = "Ağ geçidi anahtarı (yalnızca ada bir ağ geçidinin arkasındaysa)";
 "add_account.adding" = "Sunucuya kaydediliyor…";
 "add_account.error" = "Kaydolunamadı. Adresi ve ağını kontrol et.";
 "add_account.limit" = "Cihaz başına %d hesap sınırına ulaştın. Hesapları yönet'ten birini kaldırıp tekrar dene.";
