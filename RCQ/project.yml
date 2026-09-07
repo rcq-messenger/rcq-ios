@@ -188,6 +188,13 @@ targets:
           if [ -n "$UP" ] && [ "$UP" != "$HASH" ]; then
             STAMP="$STAMP (not origin/main $UP)"
           fi
+          # ⚠⚠ THE COMMIT ALONE CAN LIE, and did on 2026-09-07: a build made
+          # from a dirty tree carried code that was not in the commit it named,
+          # and the stamp had no way to say so, because the sandbox refuses to
+          # let this script read the worktree (see above). The build time is
+          # what makes two builds of the same commit tellable apart, and it is
+          # the honest thing to compare against "when did I last build".
+          STAMP="$STAMP, $(date '+%H:%M')"
           printf %s "$STAMP" > "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/build-stamp.txt"
           echo "[stamp] built from $STAMP"
       # Copy WebRTC.framework's bundled dSYM into the archive's
