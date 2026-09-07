@@ -1856,3 +1856,5 @@
 "reg.invite.label" = "Código de acesso";
 "reg.invite.required" = "A ilha é fechada: para entrar é preciso um código do operador dela. Cole-o abaixo.";
 "reg.invite.invalid" = "Esse código não foi aceito. Pode estar usado, expirado ou ser de outra ilha.";
+
+"ci.closed_island" = "Esta ilha é fechada. Para escrever a alguém de lá é preciso um link da própria pessoa: ela compartilha o contato, ou escreve para você primeiro.";
