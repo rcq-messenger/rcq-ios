@@ -25,6 +25,9 @@ struct AddAccountSheet: View {
     @State private var showManual = false
     @State private var customURL: String = ""
     @State private var customToken: String = ""
+    /// The DOOR code for a closed island, not the network token above. See the
+    /// note beside its field.
+    @State private var customInvite: String = ""
     /// The typed address disagrees with what this device holds for that
     /// island (design §3): drawn as the banner under the field, nothing dialled.
     @State private var trustChange: IslandTrust.Change?
@@ -311,6 +314,24 @@ struct AddAccountSheet: View {
                 .padding(10)
                 .background(Theme.Color.bgSecondary)
                 .cornerRadius(8)
+            // ⚠⚠ A DIFFERENT CREDENTIAL FROM THE ONE ABOVE, and the two are
+            // easy to confuse because both are pasted strings. The token above
+            // is the NETWORK gate: it gets the request past a masquerading
+            // Caddy, and without it the island serves a decoy page. This one is
+            // the DOOR: a closed island refuses registration without it, and
+            // the island is perfectly reachable either way.
+            //
+            // It is also the only way onto a closed island that is not ours
+            // from an iPhone: Apple does not allow this app to sell entry to a
+            // server we do not run, so the person buys on the operator's site
+            // and brings the code here.
+            TextField("add_account.custom.invite".localized, text: $customInvite)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.never)
+                .font(.system(.caption, design: .monospaced))
+                .padding(10)
+                .background(Theme.Color.bgSecondary)
+                .cornerRadius(8)
             if !customURLTrimmed.isEmpty && !customURLValid {
                 Text((customSplit.badFragment ? "island.trust.not_fingerprint" : "add_account.custom.invalid").localized)
                     .font(.caption2)
@@ -417,7 +438,11 @@ struct AddAccountSheet: View {
         }
         adding = true
         error = nil
-        let ok = await appState.addAccount(serverURL: serverURL, serverToken: serverToken)
+        let ok = await appState.addAccount(
+            serverURL: serverURL,
+            serverToken: serverToken,
+            invite: customInvite.trimmingCharacters(in: .whitespacesAndNewlines),
+        )
         adding = false
         if !ok {
             error = String(

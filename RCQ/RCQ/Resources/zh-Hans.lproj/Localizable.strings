@@ -1852,3 +1852,5 @@
 
 "island.entry.price" = "入场：%@";
 "island.entry.closed" = "封闭俱乐部";
+
+"add_account.custom.invite" = "访问码（封闭岛屿）";
