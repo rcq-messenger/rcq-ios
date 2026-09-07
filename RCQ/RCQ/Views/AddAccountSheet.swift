@@ -504,8 +504,22 @@ private struct IslandEntryLine: View {
         .task(id: host) {
             guard let caps = await ServerInfoService.fetch(host: host)?.capabilities,
                   caps.closedIsland else { return }
+            // ⚠⚠ A PRICE ONLY FOR OUR OWN ISLAND, and this is a rule about
+            // Apple rather than about taste (founder, 2026-09-07).
+            //
+            // Entry to the flagship will be an in-app purchase, so naming its
+            // price is naming the price of something this app sells. Entry to
+            // somebody else's island is bought on their site, and an app that
+            // merely DESCRIBES a purchase it does not handle is the shape that
+            // froze WordPress's updates in August 2020 until Apple backed
+            // down. We do not need to win that argument.
+            //
+            // "Closed club" still shows for every closed island: it is not a
+            // price, it is the fact that tells a person they need a code, and
+            // without it the island looks broken rather than private.
+            let isOurs = RcqFederation.isFlagship(host)
             let cents = caps.entryPriceCents
-            line = cents > 0
+            line = (isOurs && cents > 0)
                 ? String(format: "island.entry.price".localized, Self.usd(cents))
                 : "island.entry.closed".localized
         }
