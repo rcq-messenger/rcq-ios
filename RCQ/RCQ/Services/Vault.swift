@@ -35,6 +35,12 @@ enum Vault {
     /// that outlives the device. See `CrossIslandVault`.
     static let crossisland = "crossisland"
 
+    /// Guest cards other people gave us, on a CLOSED island. The only way to
+    /// reach them; losing them looks exactly like the island working
+    /// correctly, because a closed island answers a caller with no card by
+    /// saying "no such number". See `GuestCardVault`.
+    static let guestcards = "guestcards"
+
     /// My profile key: the AES key my avatar blob is sealed under, mirrored so
     /// a second install of this account reuses it instead of minting a rival
     /// one (docs/profile-key-design.md).

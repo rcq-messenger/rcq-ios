@@ -137,13 +137,14 @@ enum VaultSync {
     /// Both slot names for the account this process is signed in as, or nil
     /// when there is no identity to derive them from (and in a decoy session,
     /// which has no island account and must touch no vault at all).
-    private static func slots() -> (contacts: String, sections: String, crossisland: String)? {
+    private static func slots() -> (contacts: String, sections: String, crossisland: String, guestcards: String)? {
         guard !PanicPINService.shared.isDecoy else { return nil }
         guard let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return nil }
         return (
             Vault.slotId(identityPriv: ik, name: Vault.contacts),
             Vault.slotId(identityPriv: ik, name: Vault.sections),
-            Vault.slotId(identityPriv: ik, name: Vault.crossisland)
+            Vault.slotId(identityPriv: ik, name: Vault.crossisland),
+            Vault.slotId(identityPriv: ik, name: Vault.guestcards)
         )
     }
 
@@ -189,10 +190,12 @@ enum VaultSync {
             VaultFloor.forget(names.contacts)
             VaultFloor.forget(names.sections)
             VaultFloor.forget(names.crossisland)
+            VaultFloor.forget(names.guestcards)
         }
         SectionsVault.retire()
         ContactsVault.retire()
         CrossIslandVault.retire()
+        GuestCardVault.retire()
         os_log("the account rotated its identity elsewhere; this derivation is retired", log: log, type: .info)
     }
 
@@ -247,5 +250,11 @@ enum VaultSync {
         // rows nothing else has. The sync is a no-op when both sides agree.
         await CrossIslandVault.arm()
         await CrossIslandVault.sync()
+        // ⚠ Guest cards OTHERS gave us. Unconditional like the slot above, and
+        // for a sharper reason: these are the only copy in existence, and
+        // losing them is invisible — a closed island answers a caller with no
+        // card by saying "no such number", which is the refusal working
+        // correctly. Skipped inside on an open island, where none exist.
+        await GuestCardVault.sync()
     }
 }
