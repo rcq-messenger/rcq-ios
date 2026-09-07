@@ -1776,6 +1776,45 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Undo an `addAccount` whose first boot on the new island failed, and put
+    /// the person back on the account they were using. `previousActiveID` is
+    /// what `AccountManager.shared.activeAccountID` said BEFORE the add.
+    ///
+    /// ⚠⚠ `AccountManager.remove` on its own is NOT this, and every caller
+    /// that used it alone was wrong. Its fallback is `accounts.first`, i.e.
+    /// the OLDEST account on the device, so a failed join put the founder on
+    /// an account he had not opened in weeks (report 4, 06.09) — and nothing
+    /// rebooted afterwards, so `booted` stayed false and the root view held
+    /// the boot-error wall over an app that was otherwise fine.
+    ///
+    /// ⚠⚠ The stashed join code goes with it. `AuthService.register` is the
+    /// only thing that consumes `pendingServerInviteKey`, so a register that
+    /// never happened leaves the code lying in UserDefaults; the NEXT add, to
+    /// any island, then registers with a code meant for a different door. That
+    /// is why the founder's second attempt appeared to work: it was spending
+    /// the code his first attempt had left behind.
+    func rollbackFailedAdd(previousActiveID: UUID?) async {
+        UserDefaults.standard.removeObject(forKey: Self.pendingServerInviteKey)
+        let dangling = AccountManager.shared.activeAccountID
+        if let dangling, dangling != previousActiveID,
+           AccountManager.shared.accounts.contains(where: { $0.id == dangling }) {
+            // Registration can get as far as writing identity material under
+            // this account's prefix before the island refuses it, so the slot
+            // is emptied rather than orphaned — same wipe the recover path
+            // does when it rolls its own dangling account back.
+            KeychainStore.wipeAccount(dangling)
+            AccountManager.shared.remove(dangling)
+        }
+        // Nothing to go back to: a deep-link join on a device with no account
+        // yet. The boot error stands, which is honest, and the error screen
+        // carries the code field for it.
+        guard let previousActiveID,
+              AccountManager.shared.accounts.contains(where: { $0.id == previousActiveID })
+        else { return }
+        AccountManager.shared.setActive(previousActiveID)
+        await rebootForActiveAccount()
+    }
+
     /// Restore an existing identity from its 24-word BIP39 phrase onto
     /// `serverURL` as a NEW local account. Derives the keypair from the seed,
     /// proves possession of the signing key to the server (`/auth/recover`
@@ -2378,10 +2417,30 @@ struct ServerCapabilities: Codable, Equatable {
     /// island becomes a directory for guessing which numbers exist. False on
     /// any island older than the field.
     var closedIsland: Bool = false
+    /// The island's DOOR: "open", "invite" or "paid". A different fact from
+    /// `closedIsland` above, which is about the sealing key and about who may
+    /// be written to; this one is about who may register at all, and an island
+    /// sets either without the other (`app/routers/server.py` publishes them
+    /// side by side).
+    ///
+    /// ⚠ This client read only `closedIsland` and so could not see an island
+    /// whose door is shut but whose directory is open. "open" on an island
+    /// older than the field, the permissive default the rest of this struct
+    /// takes.
+    var registrationPolicy: String = "open"
     /// What this island charges to join, in US cents; 0 = entry is not sold.
     /// Read from the island rather than the directory file, which is edited by
     /// hand and would be stale the day after a price changed.
     var entryPriceCents: Int = 0
+
+    /// A fresh registration here will be refused without a code.
+    ///
+    /// ⚠ The join path asks THIS, not `closedIsland`, and asks it before it
+    /// dials: an island answers `/server/info` to anybody, with no account, so
+    /// there is never a reason to learn about the door from a failed register.
+    var needsAccessCode: Bool {
+        closedIsland || registrationPolicy.lowercased() != "open"
+    }
     var uinShop: Bool
     var hallOfFame: Bool
     // Operator-toggleable optional features (admin console → Features). Each
@@ -2483,6 +2542,7 @@ struct ServerCapabilities: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case closedIsland = "closed_island"
+        case registrationPolicy = "registration_policy"
         case entryPriceCents = "entry_price_cents"
         case uinShop = "uin_shop"
         case hallOfFame = "hall_of_fame"
@@ -2511,6 +2571,11 @@ struct ServerCapabilities: Codable, Equatable {
         // nothing at all — the compiler said so — and the value survived only
         // because `?? false` caught the double-Optional. Flattened properly.
         closedIsland = ((try? c.decodeIfPresent(Bool.self, forKey: .closedIsland)) ?? nil) ?? false
+        // Absent, empty, or a word this build has never heard of all read as
+        // the island being open: a policy nobody recognises must not lock a
+        // person out of an island that would have taken them.
+        let policy = ((try? c.decodeIfPresent(String.self, forKey: .registrationPolicy)) ?? nil) ?? ""
+        registrationPolicy = policy.isEmpty ? "open" : policy
         entryPriceCents = ((try? c.decodeIfPresent(Int.self, forKey: .entryPriceCents)) ?? nil) ?? 0
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false

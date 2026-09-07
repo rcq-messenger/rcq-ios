@@ -19,7 +19,7 @@ enum SettingsRow: String, CaseIterable, Hashable {
     case sounds, language
     case privacyScreen, networkScreen, notificationsScreen, blockedUsers
     case historyFile, historyClear
-    case uinShop, myUINs, islandRules
+    case uinShop, myUINs, islandRules, residentInvites
     case recoveryPhrase, linkedDevices, backupIsland, burnAccount
     case about, bugBounty, myReports
     // Privacy pane
@@ -281,6 +281,14 @@ struct SettingsView: View {
     @State private var showNotifications = false
     @State private var showMyReports = false
     @State private var showIslandRules = false
+    /// What this island says about the invites this account may hand out.
+    /// ⚠ Read HERE rather than inside the sheet, because the row itself must
+    /// not exist for anybody who is not eligible: only a paid entry voucher
+    /// sets `resident_since`, and a counter reading 0/0 on everyone else's
+    /// screen asks a question this list is the wrong place to answer. The web
+    /// draws nothing for the same reason (`ResidentInvites.tsx`).
+    @State private var invites: ResidentInvites?
+    @State private var showInvites = false
     @State private var burnFailed = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
@@ -404,6 +412,7 @@ struct SettingsView: View {
                 // device when the feature was removed.
                 PresenceRemovalCleanup.runOnce()
                 await refreshHeldUINCount()
+                invites = await ResidentInvitesAPI.mine()
             }
             .sheet(isPresented: $showBugBounty) { BugBountySheet() }
             .sheet(isPresented: $showSoundSheet) { SoundSettingsSheet() }
@@ -424,6 +433,9 @@ struct SettingsView: View {
             .sheet(isPresented: $showMyReports) { MyReportsView() }
             .alert("settings.account.burn_failed".localized, isPresented: $burnFailed) {
                 Button("common.ok".localized, role: .cancel) {}
+            }
+            .sheet(isPresented: $showInvites) {
+                ResidentInvitesSheet(initial: invites) { fresh in invites = fresh }
             }
             .sheet(isPresented: $showIslandRules) {
                 IslandRulesSheet(
@@ -835,6 +847,27 @@ struct SettingsView: View {
                 }
             }
             islandTrustRow
+            if let invites, invites.isVisible {
+                Button {
+                    showInvites = true
+                } label: {
+                    HStack {
+                        Image(systemName: "envelope.open.fill").foregroundColor(Theme.Color.accent)
+                        Text("invites.title".localized)
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        // The count is the whole feature, so it reads off the
+                        // row without opening anything.
+                        Text("\(invites.remaining)/\(invites.total)")
+                            .font(.callout.monospacedDigit())
+                            .foregroundColor(Theme.Color.textSecondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+                .settingsSearchRow(.residentInvites, highlight: highlightedRow)
+            }
             if !appState.serverWelcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
                     showIslandRules = true
@@ -1055,6 +1088,8 @@ struct SettingsView: View {
         .init(row: .myUINs, titleKey: "my_uins.title",
               sectionKey: "settings.title", destination: .settings),
         .init(row: .islandRules, titleKey: "settings.island.rules",
+              sectionKey: "settings.island", destination: .settings),
+        .init(row: .residentInvites, titleKey: "invites.title",
               sectionKey: "settings.island", destination: .settings),
         .init(row: .recoveryPhrase, titleKey: "settings.account.recovery",
               sectionKey: "settings.account", destination: .settings),

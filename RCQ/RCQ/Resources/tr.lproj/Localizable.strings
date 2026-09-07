@@ -240,7 +240,7 @@
 "settings.account" = "Hesap";
 "settings.account.burn" = "Hesabı yak";
 "settings.account.burning" = "Yakılıyor…";
-"settings.account.about" = "RCQ hakkında";
+"settings.account.about" = "Bu ada hakkında";
 "settings.account.bug_bounty" = "Hata bildir";
 "settings.uin_shop" = "UIN mağazası";
 "settings.uin_shop.footer" = "Boştaki 3-9 rakamlı herhangi bir UIN'i seç. Kısa UIN'ler daha nadir ve daha pahalı.";
@@ -843,10 +843,10 @@
 "random.ended.peer_disconnected" = "Yabancı çevrimdışı oldu.";
 "random.ended.default" = "Sohbet bitti.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "RCQ hakkında";
+"about.title" = "Bu ada hakkında";
 "about.tagline" = "Aynı ruh, modern kriptografi.";
 "about.body" = "RCQ sonsuza dek ücretsiz. Reklam yok, veri toplama yok, telefon numarası yok.";
-"about.stats.users" = "kişi RCQ'da";
+"about.stats.users" = "kişi bu adada";
 "about.privacy.section" = "GİZLİLİK";
 "about.privacy.b1" = "Uçtan uca şifreli mesajlar (Signal Protocol).";
 "about.privacy.b2" = "Mühürlü gönderen: sunucu kimin kime yazdığını eşleştiremez.";
@@ -1867,3 +1867,24 @@
 "island.entry.closed" = "Kapalı kulüp";
 
 "add_account.custom.invite" = "Erişim kodu (kapalı adalar)";
+
+/* ── Kapalı bir adanın kapısı ve sakinin davetleri ─────────────────── */
+
+"island.entry.open" = "Herkese açık";
+"island.door.title" = "Erişim kodu";
+"island.door.checking" = "Adaya soruluyor…";
+"island.door.body" = "Ada kapalı: burada hesap açmak için işletmecisinden bir kod gerekiyor.";
+"reg.invite.enter" = "Kodu gir";
+"boot.error.switch_account" = "Başka hesap";
+
+"invites.title" = "Davetler";
+"invites.body" = "Davet tek kullanımlık bir bağlantıdır: onu açan kişi bu adada hesap açar. Yenisi kendiliğinden gelir, dönem başına bir tane.";
+"invites.next" = "Bir sonraki %@ tarihinde gelir";
+"invites.all" = "Hepsi elinizde";
+"invites.mint" = "Davet oluştur";
+"invites.minting" = "Oluşturuluyor…";
+"invites.copy" = "Bağlantıyı kopyala";
+"invites.copied" = "Kopyalandı";
+"invites.once" = "Bir kez gösterilir. Şimdi kopyalayın: ada kodun kendisini değil, yalnızca izini saklar.";
+"invites.error" = "Davet oluşturulamadı. Tekrar deneyin.";
+"settings.search.alias.residentInvites" = "davetler, davet, sakin, giriş bağlantısı, invites";

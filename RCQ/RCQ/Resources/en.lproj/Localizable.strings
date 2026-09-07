@@ -248,7 +248,7 @@
 "settings.account" = "Account";
 "settings.account.burn" = "Permanently delete account";
 "settings.account.burning" = "Deleting…";
-"settings.account.about" = "About RCQ";
+"settings.account.about" = "About this island";
 "settings.account.bug_bounty" = "Report a bug";
 "settings.uin_shop" = "UIN shop";
 "settings.uin_shop.footer" = "Pick any free 3-9 digit UIN. Shorter UINs are rarer and pricier.";
@@ -911,10 +911,10 @@
 
 /* ── About sheet ──────────────────────────────────────────── */
 
-"about.title" = "About RCQ";
+"about.title" = "About this island";
 "about.tagline" = "Same soul, modern crypto.";
 "about.body" = "RCQ is free forever. No ads, no data collection, no phone number.";
-"about.stats.users" = "people on RCQ";
+"about.stats.users" = "people on this island";
 "about.privacy.section" = "PRIVACY";
 "about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
 "about.privacy.b2" = "Sealed sender: server can't link who messages whom.";
@@ -2076,3 +2076,24 @@
 "island.entry.closed" = "Closed club";
 
 "add_account.custom.invite" = "Access code (closed islands)";
+
+/* ── The door of a closed island, and a resident's own invites ──────── */
+
+"island.entry.open" = "Open to everyone";
+"island.door.title" = "Access code";
+"island.door.checking" = "Asking the island…";
+"island.door.body" = "This island is closed: an account here needs a code from its operator.";
+"reg.invite.enter" = "Enter a code";
+"boot.error.switch_account" = "Another account";
+
+"invites.title" = "Invites";
+"invites.body" = "An invite is a one-time link: whoever follows it gets an account on this island. A new one accrues on its own, one per period.";
+"invites.next" = "Your next one arrives %@";
+"invites.all" = "You are holding all of them";
+"invites.mint" = "Create an invite";
+"invites.minting" = "Creating…";
+"invites.copy" = "Copy the link";
+"invites.copied" = "Copied";
+"invites.once" = "Shown once. Copy it now: the island keeps only a fingerprint of the code, not the code.";
+"invites.error" = "The invite was not created. Try again.";
+"settings.search.alias.residentInvites" = "invites, invite, bring a friend, resident, join link, приглашения";

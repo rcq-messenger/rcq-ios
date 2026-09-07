@@ -706,10 +706,25 @@ private struct BootSplash: View {
     }
 }
 
+/// The wall a failed boot puts up in place of the whole interface, and the one
+/// place a closed island's refusal can be answered.
+///
+/// ⚠⚠ THIS SCREEN MUST ALWAYS OFFER A WAY OFF IT. It replaces `mainContent`
+/// entirely — there is no sheet to dismiss and nothing behind it — so a state
+/// with only a "retry" on it is a state the person is stuck in. The founder
+/// met exactly that on 06.09 (points 1 and 5): a code box he could not cancel,
+/// then a "could not connect" with one button. The two exits below are the
+/// answer: back out of the code question, and switch to another account on the
+/// device.
 private struct ErrorScreen: View {
     let message: String
     @State private var nextAttemptIn: Int = 5
     @State private var invite: String = ""
+    /// The code question is on screen. Seeded from `asking` on appear; the
+    /// Back button turns it off, which is the only reason this is state rather
+    /// than a straight read of the message.
+    @State private var showCodeField: Bool = false
+    @ObservedObject private var accountManager = AccountManager.shared
 
     /// ⚠ A CLOSED ISLAND REFUSES WITH A CODE, NOT A SENTENCE. The island
     /// answers registration with `{"code": "invite_required"}`, and this screen
@@ -717,9 +732,24 @@ private struct ErrorScreen: View {
     /// had nowhere on the phone to type it. The field appears ON the refusal
     /// rather than up front, so an open island never asks for a code it does
     /// not want.
-    private var needsInvite: Bool { message.contains("invite_required") }
+    ///
+    /// ⚠ This is the LAST resort, not the normal path. The add-account sheet
+    /// and the link-join sheet both ask the island about its door before they
+    /// register, so a person joining a closed island should never arrive here
+    /// at all; what is left for this screen is onboarding onto a closed island
+    /// on a device that has no account to fall back to.
+    private var needsInvite: Bool { message.contains("invite_required") || message.contains("entry_required") }
     private var badInvite: Bool { message.contains("invite_invalid") }
     private var asking: Bool { needsInvite || badInvite }
+
+    /// ⚠ Only when this device knows WHICH island the code is for. The stash
+    /// below is consumed by the next register, and the next register goes to
+    /// the active account's island — with no account at all, `APIClient` falls
+    /// back to the flagship, so an unguarded field here would quietly send
+    /// somebody's is2 code to api.rcq.app. Unreachable today (an empty roster
+    /// means onboarding has not run, and `mainContent` shows onboarding before
+    /// it shows this), which is exactly why it is worth pinning down.
+    private var canAskForCode: Bool { asking && accountManager.active != nil }
 
     private var humanMessage: String {
         if needsInvite { return "reg.invite.required".localized }
@@ -727,21 +757,70 @@ private struct ErrorScreen: View {
         return message
     }
 
+    /// The host whose door is being knocked on. The active account IS the one
+    /// that failed to boot, so this names the right island even though nothing
+    /// on it has registered yet.
+    private var islandHost: String { accountManager.active?.displayHost ?? "" }
+
+    /// Every other account on the device, oldest first.
+    ///
+    /// ⚠ Empty under duress, for the same reason `ManageAccountsSheet` refuses
+    /// to draw: a list of the real accounts, one tap from being switched to, is
+    /// precisely what a decoy session exists to make unreachable.
+    private var otherAccounts: [Account] {
+        if PanicPINService.shared.isDecoy { return [] }
+        let active = accountManager.activeAccountID
+        return accountManager.accounts
+            .sorted { $0.createdAt < $1.createdAt }
+            .filter { $0.id != active }
+    }
+
     var body: some View {
         ZStack {
             Theme.Color.bgPrimary.ignoresSafeArea()
             VStack(spacing: 12) {
-                LogoMark(size: 72).opacity(0.6)
-                Text("boot.error.title".localized).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
-                Text(humanMessage).font(.caption).foregroundColor(Theme.Color.textSecondary)
-                    .multilineTextAlignment(.center).padding(.horizontal, 32)
-                if asking {
+                if showCodeField && !islandHost.isEmpty {
+                    // The island being joined, not the app's own mark: this
+                    // state is about ONE door, and the sheets that ask the same
+                    // question elsewhere all lead with the island's face.
+                    IslandAvatarView(
+                        name: "",
+                        host: islandHost,
+                        logoVersion: accountManager.activeAccountID
+                            .flatMap { AccountCardCache.card(for: $0)?.islandLogoVersion } ?? "",
+                        size: 56
+                    )
+                    Text(islandHost)
+                        .font(.callout.weight(.medium))
+                        .foregroundColor(Theme.Color.accent)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    LogoMark(size: 72).opacity(0.6)
+                    Text("boot.error.title".localized)
+                        .font(.title3.bold())
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
+                Text(humanMessage)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                if showCodeField {
+                    // House style, not the system's. This field was
+                    // `.roundedBorder` over a `.borderedProminent` button — the
+                    // only two stock controls left in the app, on the screen
+                    // the founder called cheap (06.09, point 2).
                     TextField("reg.invite.label".localized, text: $invite)
-                        .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .padding(12)
+                        .background(Theme.Color.bgSecondary)
+                        .cornerRadius(10)
                         .padding(.horizontal, 32)
-                    Button("boot.error.retry_now".localized) {
+                    primaryButton("serverjoin.join".localized) {
                         let code = invite.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !code.isEmpty else { return }
                         // The same stash the deep-link join uses, consumed once
@@ -749,17 +828,36 @@ private struct ErrorScreen: View {
                         UserDefaults.standard.set(code, forKey: AppState.pendingServerInviteKey)
                         Task { await AppState.shared.boot() }
                     }
-                    .buttonStyle(.borderedProminent).tint(Theme.Color.accent)
                     .disabled(invite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    secondaryButton("common.back".localized) {
+                        // ⚠ The stash goes with it. A code typed and then
+                        // abandoned would otherwise sit in UserDefaults and be
+                        // spent by whatever registers next, on whatever island.
+                        UserDefaults.standard.removeObject(forKey: AppState.pendingServerInviteKey)
+                        invite = ""
+                        showCodeField = false
+                    }
                 } else {
-                    Text("boot.error.retrying".localized(nextAttemptIn)).font(.caption2).foregroundColor(Theme.Color.textSecondary)
-                    Button("boot.error.retry_now".localized) {
+                    if !asking {
+                        Text("boot.error.retrying".localized(nextAttemptIn))
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    primaryButton("boot.error.retry_now".localized) {
                         Task { await AppState.shared.boot() }
                     }
-                    .buttonStyle(.borderedProminent).tint(Theme.Color.accent)
+                    if canAskForCode {
+                        // Backed out of the code question, but the island still
+                        // wants one: the way back in has to stay visible.
+                        secondaryButton("reg.invite.enter".localized) { showCodeField = true }
+                    }
+                }
+                if !otherAccounts.isEmpty {
+                    switchAccountMenu
                 }
             }
         }
+        .onAppear { showCodeField = canAskForCode }
         .task {
             // ⚠ No auto-retry while we are asking for a code: retrying every
             // five seconds against a door that wants something the person has
@@ -774,7 +872,68 @@ private struct ErrorScreen: View {
             }
         }
     }
+
+    /// The other way off this screen: another account on this device. A boot
+    /// error replaces the whole interface, so the switcher pill in the chat
+    /// list — the only other place accounts can be changed — is unreachable
+    /// from here.
+    private var switchAccountMenu: some View {
+        Menu {
+            ForEach(otherAccounts) { account in
+                Button {
+                    Task { await AppState.shared.switchToAccount(account.id) }
+                } label: {
+                    Text(label(for: account))
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 15, weight: .medium))
+                Text("boot.error.switch_account".localized)
+                    .font(.callout.weight(.medium))
+            }
+            .foregroundColor(Theme.Color.textSecondary)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 22)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.Color.bgSecondary))
+        }
+        .padding(.top, 6)
+    }
+
+    /// The island's name when this device has heard it, its host otherwise,
+    /// with the number that disambiguates two accounts on the same island.
+    private func label(for account: Account) -> String {
+        let card = AccountCardCache.card(for: account.id)
+        let name = account.displayLabel
+            ?? card.map { $0.islandName.isEmpty ? $0.host : $0.islandName }
+            ?? account.displayHost
+        if let uin = card?.uin { return "\(name) · #\(uin)" }
+        return name
+    }
+
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 34)
+                .background(Capsule().fill(Theme.Color.accent))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func secondaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.callout)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        .buttonStyle(.plain)
+    }
 }
+
 
 private struct LogoMark: View {
     var size: CGFloat = 96

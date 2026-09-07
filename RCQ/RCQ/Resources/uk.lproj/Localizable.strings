@@ -240,7 +240,7 @@
 "settings.account" = "Акаунт";
 "settings.account.burn" = "Остаточно видалити акаунт";
 "settings.account.burning" = "Видалення…";
-"settings.account.about" = "Про RCQ";
+"settings.account.about" = "Про цей острів";
 "settings.account.bug_bounty" = "Повідомити про помилку";
 "settings.uin_shop" = "Магазин UIN";
 "settings.uin_shop.footer" = "Обери будь-який вільний UIN з 3-9 цифр. Коротші трапляються рідше і коштують дорожче.";
@@ -843,10 +843,10 @@
 "random.ended.peer_disconnected" = "Незнайомець вийшов з мережі.";
 "random.ended.default" = "Чат завершено.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "Про RCQ";
+"about.title" = "Про цей острів";
 "about.tagline" = "Та сама душа, сучасна криптографія.";
 "about.body" = "RCQ безкоштовний назавжди. Без реклами, без збору даних, без номера телефона.";
-"about.stats.users" = "людей у RCQ";
+"about.stats.users" = "людей на цьому острові";
 "about.privacy.section" = "ПРИВАТНІСТЬ";
 "about.privacy.b1" = "Повідомлення з наскрізним шифруванням (Signal Protocol).";
 "about.privacy.b2" = "Прихований відправник: сервер не може пов'язати, хто кому пише.";
@@ -1867,3 +1867,24 @@
 "island.entry.closed" = "Закритий клуб";
 
 "add_account.custom.invite" = "Код доступу (для закритих островів)";
+
+/* ── Двері закритого острова та запрошення резидента ───────────────── */
+
+"island.entry.open" = "Відкритий острів";
+"island.door.title" = "Код доступу";
+"island.door.checking" = "Питаємо острів…";
+"island.door.body" = "Острів закритий: щоб завести тут акаунт, потрібен код від його оператора.";
+"reg.invite.enter" = "Ввести код";
+"boot.error.switch_account" = "Інший акаунт";
+
+"invites.title" = "Запрошення";
+"invites.body" = "Запрошення це одноразове посилання: той, хто ним скористається, заведе акаунт на цьому острові. Наступне з’являється саме, по одному за період.";
+"invites.next" = "Наступне з’явиться %@";
+"invites.all" = "Усі на руках";
+"invites.mint" = "Створити запрошення";
+"invites.minting" = "Створюємо…";
+"invites.copy" = "Скопіювати посилання";
+"invites.copied" = "Скопійовано";
+"invites.once" = "Показується один раз. Скопіюйте зараз: острів зберігає лише відбиток коду, а не сам код.";
+"invites.error" = "Не вдалося створити запрошення. Спробуйте ще раз.";
+"settings.search.alias.residentInvites" = "запрошення, інвайти, запросити, резидент, посилання для входу, invites";

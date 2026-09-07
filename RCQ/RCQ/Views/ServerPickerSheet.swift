@@ -333,6 +333,14 @@ struct IslandCardView: View {
                         .foregroundColor(Theme.Color.accent)
                 }
             }
+            // ⚠ Open or shut, asked of the island itself. The deck said a
+            // region and a blurb and nothing about the one fact that decides
+            // whether the next tap works: is2 is a closed island and the card
+            // for it looked exactly like the flagship's, so the founder picked
+            // it, was refused, and had no way to know why in advance (06.09,
+            // point 3). `/server/info` answers this with no account, so the
+            // card can carry it before anything is registered.
+            IslandEntryLine(host: entry.displayHost)
             if !entry.description.isEmpty {
                 // Capped. is2's blurb is a paragraph, and unbounded it ran
                 // straight through the page dots under the deck (founder,

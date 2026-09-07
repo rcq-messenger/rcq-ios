@@ -32,8 +32,23 @@ struct AddAccountSheet: View {
     /// island (design §3): drawn as the banner under the field, nothing dialled.
     @State private var trustChange: IslandTrust.Change?
     @State private var adding: Bool = false
+    /// Asking the island about its door, before anything is dialled. Its own
+    /// flag rather than `adding`, because the toolbar's Close stays live
+    /// through it: a probe is not a commitment and must not trap anybody.
+    @State private var probing: Bool = false
+    /// The island whose door turned out to be shut. Non-nil = the code sheet
+    /// is up; setting it back to nil is the way out, and there is one.
+    @State private var door: DoorRequest?
     @State private var error: String?
     @State private var showRestore: Bool = false
+
+    /// One island waiting on a code, with what it already told us about itself
+    /// so the sheet can draw its face without asking twice.
+    private struct DoorRequest: Identifiable {
+        let entry: ServerEntry
+        let status: IslandDoorStatus
+        var id: String { entry.url }
+    }
 
     private var filtered: [ServerEntry] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -79,7 +94,7 @@ struct AddAccountSheet: View {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 VStack(spacing: 0) {
                     headerBlock
-                    if !adding {
+                    if !adding && !probing {
                         // The same deck of islands the onboarding picker draws
                         // (`IslandCardView`). This sheet is the same question
                         // asked a second time -- which island -- and it was
@@ -98,10 +113,26 @@ struct AddAccountSheet: View {
                             // The dots sat right on the button. They belong with the deck
                             // they describe, not with the thing you press next.
                             .padding(.bottom, 10)
+                            // ⚠ The deck had NOWHERE to say why an add failed:
+                            // `error` was drawn only inside the typed-address
+                            // sheet, so a refusal from a card silently rolled
+                            // the account back and left the person looking at
+                            // the same deck wondering what had happened
+                            // (founder, 06.09). Above the button, where the eye
+                            // already is.
+                            if let error {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red.opacity(0.85))
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.horizontal, 18)
+                                    .padding(.bottom, 8)
+                            }
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 let entry = directory.servers[min(page, directory.servers.count - 1)]
-                                Task { await performAdd(serverURL: entry.url) }
+                                Task { await use(entry) }
                             } label: {
                                 Text("island.use".localized)
                                     .font(.system(size: 16, weight: .semibold))
@@ -131,7 +162,11 @@ struct AddAccountSheet: View {
                         .padding(.top, 10)
                         .padding(.bottom, 12)
                     } else {
-                        loadingState
+                        // ⚠ Two different waits, and they must not share a
+                        // sentence: "registering on the island" over a probe
+                        // that has created nothing would be a lie about what
+                        // the app has already done on the person's behalf.
+                        loadingState(probing ? "island.door.checking" : "add_account.adding")
                     }
                 }
             }
@@ -153,6 +188,17 @@ struct AddAccountSheet: View {
             }
             .sheet(isPresented: $showRestore) {
                 RestoreFromSeedView(onCompleted: { dismiss() })
+            }
+            .sheet(item: $door) { request in
+                IslandDoorSheet(entry: request.entry, status: request.status) { code in
+                    door = nil
+                    Task { await performAdd(serverURL: request.entry.url, invite: code) }
+                } onCancel: {
+                    // Back to the deck with nothing spent and no account made:
+                    // the whole point of asking here rather than after a
+                    // refusal that has already replaced the interface.
+                    door = nil
+                }
             }
             .sheet(isPresented: $showManual) {
                 NavigationStack {
@@ -413,11 +459,11 @@ struct AddAccountSheet: View {
         .padding(.vertical, 20)
     }
 
-    private var loadingState: some View {
+    private func loadingState(_ titleKey: String) -> some View {
         VStack(spacing: 14) {
             ProgressView()
                 .scaleEffect(1.2)
-            Text("add_account.adding".localized)
+            Text(titleKey.localized)
                 .font(.callout)
                 .foregroundColor(Theme.Color.textSecondary)
         }
@@ -426,7 +472,35 @@ struct AddAccountSheet: View {
 
     // MARK: - actions
 
-    private func performAdd(serverURL: String, serverToken: String? = nil) async {
+    /// ⚠⚠ ASK THE ISLAND ABOUT ITS DOOR BEFORE DIALLING IT.
+    ///
+    /// This button used to register straight away, so joining a closed island
+    /// went: register, refused, the whole app replaced by the boot-error wall,
+    /// type the code there. That wall belongs to whatever account is active
+    /// when it is drawn — which, after the failed add rolled itself back, was
+    /// no longer the island being joined — so the code was stashed against the
+    /// wrong door, the person landed on an unrelated account, and the join only
+    /// worked on a second run that spent the code left over from the first
+    /// (founder, 06.09, points 4 and 6).
+    ///
+    /// `/server/info` is served to anybody with no account, so the question
+    /// costs one request and answers itself before anything is created.
+    private func use(_ entry: ServerEntry) async {
+        error = nil
+        probing = true
+        let status = await IslandDoor.status(host: entry.displayHost)
+        probing = false
+        if let status, status.needsCode {
+            door = DoorRequest(entry: entry, status: status)
+            return
+        }
+        // An island that did not answer at all is still dialled. It may only
+        // be reachable through the transport the add itself raises, and
+        // refusing on our own guess would be a worse answer than the island's.
+        await performAdd(serverURL: entry.url)
+    }
+
+    private func performAdd(serverURL: String, serverToken: String? = nil, invite: String? = nil) async {
         // UI defence: AccountManager also refuses but we'd rather
         // not flash the loading state for a guaranteed-fail add.
         if accountManager.isAtAccountLimit {
@@ -438,10 +512,15 @@ struct AddAccountSheet: View {
         }
         adding = true
         error = nil
+        // ⚠ Read BEFORE the add, because `AccountManager.add` makes the new
+        // account active on the spot. This is the id the rollback below puts
+        // the person back on, and reading it afterwards would name the
+        // dangling account instead.
+        let previousActiveID = AccountManager.shared.activeAccountID
         let ok = await appState.addAccount(
             serverURL: serverURL,
             serverToken: serverToken,
-            invite: customInvite.trimmingCharacters(in: .whitespacesAndNewlines),
+            invite: invite ?? customInvite.trimmingCharacters(in: .whitespacesAndNewlines),
         )
         adding = false
         if !ok {
@@ -451,15 +530,12 @@ struct AddAccountSheet: View {
             )
             return
         }
-        if appState.bootError != nil {
-            // Boot pipeline failed (network unreachable, server
-            // refused registration, etc). Roll back: remove the
-            // dangling account from the roster so the user lands
-            // back on the previous active account untouched.
-            if let danglingID = AccountManager.shared.activeAccountID,
-               AccountManager.shared.accounts.last?.id == danglingID {
-                AccountManager.shared.remove(danglingID)
-            }
+        if let failure = appState.bootError {
+            // Boot pipeline failed (network unreachable, server refused
+            // registration, etc). Undo the whole thing: the dangling account
+            // goes, the account the person was on comes back and boots, and
+            // the reason stays here on this sheet where they can read it.
+            await appState.rollbackFailedAdd(previousActiveID: previousActiveID)
             // The island answered and this device refused its certificate:
             // that is the banner with both fingerprints, not "check your
             // network".
@@ -467,7 +543,17 @@ struct AddAccountSheet: View {
                 trustChange = change
                 return
             }
-            error = "add_account.error".localized
+            // The island's own refusal, read off the register error it threw
+            // (`{"code": "invite_invalid"}` and friends). "Check the URL and
+            // your network" is the wrong sentence to show somebody whose code
+            // was simply the wrong one, and it was the only one we had.
+            if failure.contains("invite_invalid") {
+                error = "reg.invite.invalid".localized
+            } else if failure.contains("invite_required") || failure.contains("entry_required") {
+                error = "reg.invite.required".localized
+            } else {
+                error = "add_account.error".localized
+            }
             return
         }
         dismiss()
@@ -475,7 +561,55 @@ struct AddAccountSheet: View {
 }
 
 
-/// What an island charges to get in, under its address in the list.
+/// The three facts a join needs about an island before it registers anything.
+///
+/// Deliberately NOT nested inside `IslandDoor` below: that enum is main-actor
+/// isolated because it owns a cache, and a view's `init` reads one of these
+/// while it is still nonisolated.
+struct IslandDoorStatus {
+    /// Registration here will be refused without a code.
+    let needsCode: Bool
+    /// US cents; 0 when the island does not sell entry.
+    let entryPriceCents: Int
+    /// The island's own name, or "" when its operator never set one.
+    let name: String
+    let logoVersion: String
+}
+
+/// What an island says about its own DOOR, remembered for the life of the
+/// process.
+///
+/// ⚠ Asked ONCE per island and shared by the two places that need the answer:
+/// the badge under a card, and the Use button, which must know before it dials
+/// whether to ask for a code. Without the shared answer the button would repeat
+/// the round trip the card in front of it has already made, and the person
+/// would wait for the same question twice.
+///
+/// ⚠ A miss is NOT remembered. An island that did not answer may be behind a
+/// network this app has not raised its transport for yet, and caching "no" for
+/// the life of the process would make it permanently unaskable.
+@MainActor
+enum IslandDoor {
+    private static var cache: [String: IslandDoorStatus] = [:]
+
+    static func cached(host: String) -> IslandDoorStatus? { cache[host.lowercased()] }
+
+    static func status(host: String) async -> IslandDoorStatus? {
+        if let hit = cache[host.lowercased()] { return hit }
+        guard let info = await ServerInfoService.fetch(host: host) else { return nil }
+        let status = IslandDoorStatus(
+            needsCode: info.capabilities.needsAccessCode,
+            entryPriceCents: info.capabilities.entryPriceCents,
+            name: info.name,
+            logoVersion: info.logoVersion ?? ""
+        )
+        cache[host.lowercased()] = status
+        return status
+    }
+}
+
+/// Whether an island is open or shut, and what it charges, under its name on
+/// the card.
 ///
 /// ⚠ Asked of the ISLAND, not of the directory file. servers.json is edited by
 /// hand and would be stale the day after an operator changed a price — and a
@@ -487,47 +621,179 @@ struct AddAccountSheet: View {
 /// that gets an app pulled. The price alone is a fact about an island, the
 /// same as its region.
 ///
-/// Nothing is drawn for an open island: a list full of "free" labels teaches
-/// nobody anything.
-private struct IslandEntryLine: View {
+/// ⚠ THE OPEN ISLANDS SAY SO TOO NOW. This used to draw nothing for them, on
+/// the reasoning that a column of "free" labels teaches nobody anything — true
+/// of a list of rows, false of the deck, where a card carries one island and
+/// silence there reads as "not loaded yet" rather than "open". The founder
+/// asked for it in as many words (06.09, point 3): the carousel has to say
+/// which islands you can simply walk into.
+///
+/// ⚠⚠ THIS PUTS ONE REQUEST ON EVERY ISLAND IN THE CATALOGUE the moment the
+/// deck opens, including the ones somebody swipes past and never joins, which
+/// is the exact cost `ServerEntry.logo` refuses to pay for a picture (it is
+/// mirrored on rcq.app instead). The trade is accepted here and cannot be made
+/// the same way: whether a door is open is a live fact about the island, and
+/// mirroring it in a hand-edited catalogue file would be wrong the day after an
+/// operator locked their door — and a card that says "open" about a shut island
+/// is worse than a card that says nothing. `IslandDoor` makes it one request
+/// per island per launch, not one per swipe.
+struct IslandEntryLine: View {
     let host: String
-    @State private var line: String?
+    @State private var status: IslandDoorStatus?
+
+    init(host: String) {
+        self.host = host
+        _status = State(initialValue: IslandDoor.cached(host: host))
+    }
 
     var body: some View {
         Group {
-            if let line {
-                Text(line)
+            if let status {
+                Text(label(for: status))
                     .font(.caption2)
-                    .foregroundColor(Theme.Color.accent)
+                    .foregroundColor(status.needsCode ? Theme.Color.accent : Theme.Color.textSecondary)
             }
         }
         .task(id: host) {
-            guard let caps = await ServerInfoService.fetch(host: host)?.capabilities,
-                  caps.closedIsland else { return }
-            // ⚠⚠ A PRICE ONLY FOR OUR OWN ISLAND, and this is a rule about
-            // Apple rather than about taste (founder, 2026-09-07).
-            //
-            // Entry to the flagship will be an in-app purchase, so naming its
-            // price is naming the price of something this app sells. Entry to
-            // somebody else's island is bought on their site, and an app that
-            // merely DESCRIBES a purchase it does not handle is the shape that
-            // froze WordPress's updates in August 2020 until Apple backed
-            // down. We do not need to win that argument.
-            //
-            // "Closed club" still shows for every closed island: it is not a
-            // price, it is the fact that tells a person they need a code, and
-            // without it the island looks broken rather than private.
-            let isOurs = RcqFederation.isFlagship(host)
-            let cents = caps.entryPriceCents
-            line = (isOurs && cents > 0)
-                ? String(format: "island.entry.price".localized, Self.usd(cents))
-                : "island.entry.closed".localized
+            status = await IslandDoor.status(host: host)
         }
+    }
+
+    private func label(for status: IslandDoorStatus) -> String {
+        guard status.needsCode else { return "island.entry.open".localized }
+        // ⚠⚠ A PRICE ONLY FOR OUR OWN ISLAND, and this is a rule about
+        // Apple rather than about taste (founder, 2026-09-07).
+        //
+        // Entry to the flagship will be an in-app purchase, so naming its
+        // price is naming the price of something this app sells. Entry to
+        // somebody else's island is bought on their site, and an app that
+        // merely DESCRIBES a purchase it does not handle is the shape that
+        // froze WordPress's updates in August 2020 until Apple backed
+        // down. We do not need to win that argument.
+        //
+        // "Closed club" still shows for every closed island: it is not a
+        // price, it is the fact that tells a person they need a code, and
+        // without it the island looks broken rather than private.
+        let isOurs = RcqFederation.isFlagship(host)
+        let cents = status.entryPriceCents
+        return (isOurs && cents > 0)
+            ? String(format: "island.entry.price".localized, Self.usd(cents))
+            : "island.entry.closed".localized
     }
 
     /// Whole dollars lose the ".00": a club that costs fifteen dollars should
     /// say fifteen dollars.
     private static func usd(_ cents: Int) -> String {
         cents % 100 == 0 ? "$\(cents / 100)" : String(format: "$%.2f", Double(cents) / 100)
+    }
+}
+
+/// The door of a closed island, asked before anything is registered.
+///
+/// Shaped after `ServerJoinSheet`, which is this same moment reached from a
+/// link: the island's own logo, its name, its host, one field, one button. It
+/// used to be the boot-error wall in `RCQApp`, wearing a `.roundedBorder` field
+/// and a `.borderedProminent` button — the only two system defaults left in the
+/// app — with no cancel and no back on it at all (founder, 06.09, points 1 and
+/// 2).
+///
+/// ⚠ A NavigationStack sheet rather than a `.medium` detent, and that is about
+/// the keyboard: this screen has a text field, a detented sheet gives it no
+/// room to scroll out from under the keyboard, and #867 is what that looks
+/// like. The typed-address sheet in this same file is built the same way for
+/// the same reason.
+private struct IslandDoorSheet: View {
+    let entry: ServerEntry
+    let status: IslandDoorStatus
+    /// The trimmed, non-empty code.
+    let onJoin: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var code: String = ""
+
+    private var trimmed: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 14) {
+                        IslandAvatarView(
+                            name: status.name.isEmpty ? entry.name : status.name,
+                            host: entry.displayHost,
+                            logoVersion: status.logoVersion,
+                            size: 56
+                        )
+                        .padding(.top, 8)
+
+                        Text(status.name.isEmpty ? entry.name : status.name)
+                            .font(.title3.weight(.semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .multilineTextAlignment(.center)
+
+                        Text(entry.displayHost)
+                            .font(.callout.weight(.medium))
+                            .foregroundColor(Theme.Color.accent)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        IslandEntryLine(host: entry.displayHost)
+
+                        Text("island.door.body".localized)
+                            .font(.footnote)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 8)
+
+                        TextField("reg.invite.label".localized, text: $code)
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.never)
+                            .font(.system(.callout, design: .monospaced))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .padding(12)
+                            .background(Theme.Color.bgSecondary)
+                            .cornerRadius(10)
+                            .submitLabel(.join)
+                            .onSubmit { if !trimmed.isEmpty { onJoin(trimmed) } }
+
+                        Button {
+                            onJoin(trimmed)
+                        } label: {
+                            Text("serverjoin.join".localized)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    Capsule().fill(
+                                        trimmed.isEmpty ? Theme.Color.bgSecondary : Theme.Color.accent
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(trimmed.isEmpty)
+
+                        // The second way out, next to the one in the bar: this
+                        // is the screen the founder could not leave, so it says
+                        // so twice.
+                        Button("common.cancel".localized) { onCancel() }
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .padding(.top, 2)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 24)
+                }
+            }
+            .navigationTitle("island.door.title".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.cancel".localized) { onCancel() }
+                }
+            }
+        }
     }
 }

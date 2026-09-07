@@ -238,7 +238,7 @@
 "settings.account" = "Аккаунт";
 "settings.account.burn" = "Удалить аккаунт навсегда";
 "settings.account.burning" = "Удаляем…";
-"settings.account.about" = "О RCQ";
+"settings.account.about" = "Об этом острове";
 "settings.account.bug_bounty" = "Сообщить о баге";
 "settings.uin_shop" = "Магазин UIN";
 "settings.uin_shop.footer" = "Любой свободный UIN от 3 до 9 цифр. Чем короче, тем дороже.";
@@ -888,10 +888,10 @@
 
 /* ── About sheet ──────────────────────────────────────────── */
 
-"about.title" = "О RCQ";
+"about.title" = "Об этом острове";
 "about.tagline" = "Та же душа, современная криптография.";
 "about.body" = "RCQ бесплатен навсегда. Без рекламы, без сбора данных, без телефонного номера.";
-"about.stats.users" = "человек в RCQ";
+"about.stats.users" = "человек на этом острове";
 "about.privacy.section" = "ПРИВАТНОСТЬ";
 "about.privacy.b1" = "Сообщения с end-to-end шифрованием (Signal Protocol).";
 "about.privacy.b2" = "Sealed sender: сервер не знает, кто кому пишет.";
@@ -2026,3 +2026,24 @@
 "island.entry.closed" = "Закрытый клуб";
 
 "add_account.custom.invite" = "Код доступа (для закрытых островов)";
+
+/* ── Дверь закрытого острова и приглашения резидента ──────────────── */
+
+"island.entry.open" = "Открытый остров";
+"island.door.title" = "Код доступа";
+"island.door.checking" = "Спрашиваем остров…";
+"island.door.body" = "Остров закрытый: чтобы завести здесь аккаунт, нужен код от его оператора.";
+"reg.invite.enter" = "Ввести код";
+"boot.error.switch_account" = "Другой аккаунт";
+
+"invites.title" = "Приглашения";
+"invites.body" = "Приглашение это одноразовая ссылка: тот, кто по ней придёт, заведёт аккаунт на этом острове. Новое появляется само, по одному за период.";
+"invites.next" = "Следующее появится %@";
+"invites.all" = "Все на руках";
+"invites.mint" = "Создать приглашение";
+"invites.minting" = "Создаём…";
+"invites.copy" = "Скопировать ссылку";
+"invites.copied" = "Скопировано";
+"invites.once" = "Показывается один раз. Скопируйте сейчас: остров хранит только отпечаток кода, а не сам код.";
+"invites.error" = "Не получилось создать приглашение. Попробуйте ещё раз.";
+"settings.search.alias.residentInvites" = "приглашения, инвайты, пригласить, резидент, ссылка для входа, invites";

@@ -10,11 +10,31 @@ struct ServerJoinSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var joining = false
     @State private var error: String?
+    /// Typed here when the link carried no code and the island turns out to
+    /// want one. A shared `rcq://server/<host>` without `?invite=` is an
+    /// ordinary thing for an operator to hand out, and this sheet used to send
+    /// it at a shut door and report "could not connect".
+    @State private var code: String = ""
+    @State private var detent: PresentationDetent = .medium
     /// The island's own description, asked of the island. Both fields have been
     /// served forever and shown nowhere, so an operator could name their island
     /// and set house rules that no one could ever read. This is the screen they
     /// are for.
     @State private var info: ServerInfoResponse?
+
+    /// The island wants a code and the link did not bring one.
+    private var asksForCode: Bool {
+        request.invite == nil && (info?.capabilities.needsAccessCode ?? false)
+    }
+
+    private var typedCode: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// What register is handed: the link's code when it had one, otherwise
+    /// whatever was typed, and nil when there is neither.
+    private var effectiveInvite: String? {
+        if let fromLink = request.invite, !fromLink.isEmpty { return fromLink }
+        return typedCode.isEmpty ? nil : typedCode
+    }
 
     /// Bare domain from the link → a full https URL the app can register against.
     private var serverURL: String {
@@ -49,11 +69,24 @@ struct ServerJoinSheet: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Text((request.invite == nil ? "serverjoin.body_open" : "serverjoin.body").localized)
+            Text((asksForCode ? "island.door.body"
+                  : request.invite == nil ? "serverjoin.body_open"
+                  : "serverjoin.body").localized)
                 .font(.footnote)
                 .foregroundColor(Theme.Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if asksForCode {
+                TextField("reg.invite.label".localized, text: $code)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundColor(Theme.Color.textPrimary)
+                    .padding(12)
+                    .background(Theme.Color.bgSecondary)
+                    .cornerRadius(10)
+            }
 
             // House rules, if the operator wrote any. Scrolls under a cap: a
             // long set is exactly what pushes the buttons off a sheet.
@@ -90,7 +123,7 @@ struct ServerJoinSheet: View {
                 .foregroundColor(.white)
                 .clipShape(Capsule())
             }
-            .disabled(joining)
+            .disabled(joining || (asksForCode && typedCode.isEmpty))
 
             Button("common.cancel".localized) { dismiss() }
                 .foregroundColor(Theme.Color.textSecondary)
@@ -99,10 +132,17 @@ struct ServerJoinSheet: View {
         .padding(24)
         .frame(maxWidth: .infinity)
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
-        .presentationDetents([.medium])
+        // ⚠ Draggable to full height, and taken there by hand when the code
+        // field appears: that field brings the keyboard with it and a fixed
+        // `.medium` leaves the keyboard sitting on the two buttons (#867 is
+        // what that looks like). The SET stays constant and only the selection
+        // moves — swapping the set itself while the sheet is up is what makes
+        // it jump.
+        .presentationDetents([.medium, .large], selection: $detent)
         .task {
             // Asked of the island being joined, not of the one we are on.
             info = await ServerInfoService.fetch(host: request.host)
+            if asksForCode { detent = .large }
         }
     }
 
@@ -113,20 +153,29 @@ struct ServerJoinSheet: View {
         }
         joining = true
         error = nil
-        let ok = await AppState.shared.addAccount(serverURL: serverURL, invite: request.invite)
+        // ⚠ Read BEFORE the add: `AccountManager.add` makes the new account
+        // active immediately, so afterwards this would name the dangling one.
+        let previousActiveID = AccountManager.shared.activeAccountID
+        let ok = await AppState.shared.addAccount(serverURL: serverURL, invite: effectiveInvite)
         joining = false
         if !ok {
             error = String(format: "add_account.limit".localized, AccountManager.maxAccounts)
             return
         }
-        if AppState.shared.bootError != nil {
-            // Register failed (wrong/expired invite, server unreachable). Roll
-            // back the dangling account so the user stays on their previous one.
-            if let danglingID = AccountManager.shared.activeAccountID,
-               AccountManager.shared.accounts.last?.id == danglingID {
-                AccountManager.shared.remove(danglingID)
+        if let failure = AppState.shared.bootError {
+            // Register failed (wrong/expired invite, server unreachable). Undo
+            // it whole: remove the dangling account, put the person back on the
+            // one they were using, reboot it. Removing alone fell back to the
+            // OLDEST account on the device and never rebooted — see
+            // `AppState.rollbackFailedAdd`.
+            await AppState.shared.rollbackFailedAdd(previousActiveID: previousActiveID)
+            if failure.contains("invite_invalid") {
+                error = "reg.invite.invalid".localized
+            } else if failure.contains("invite_required") || failure.contains("entry_required") {
+                error = "reg.invite.required".localized
+            } else {
+                error = "serverjoin.error".localized
             }
-            error = "serverjoin.error".localized
             return
         }
         onJoined()

@@ -240,7 +240,7 @@
 "settings.account" = "Cuenta";
 "settings.account.burn" = "Destruir la cuenta para siempre";
 "settings.account.burning" = "Destruyendo…";
-"settings.account.about" = "Acerca de RCQ";
+"settings.account.about" = "Sobre esta isla";
 "settings.account.bug_bounty" = "Informar de un fallo";
 "settings.uin_shop" = "Tienda de UIN";
 "settings.uin_shop.footer" = "Elige cualquier UIN libre de 3 a 9 dígitos. Los más cortos son más raros y más caros.";
@@ -843,10 +843,10 @@
 "random.ended.peer_disconnected" = "El desconocido se desconectó.";
 "random.ended.default" = "Chat terminado.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "Acerca de RCQ";
+"about.title" = "Sobre esta isla";
 "about.tagline" = "La misma alma, criptografía moderna.";
 "about.body" = "RCQ es gratis para siempre. Sin anuncios, sin recogida de datos, sin número de teléfono.";
-"about.stats.users" = "personas en RCQ";
+"about.stats.users" = "personas en esta isla";
 "about.privacy.section" = "PRIVACIDAD";
 "about.privacy.b1" = "Mensajes con cifrado de extremo a extremo (protocolo Signal).";
 "about.privacy.b2" = "Remitente sellado: el servidor no puede saber quién escribe a quién.";
@@ -1867,3 +1867,24 @@
 "island.entry.closed" = "Club cerrado";
 
 "add_account.custom.invite" = "Código de acceso (islas cerradas)";
+
+/* ── La puerta de una isla cerrada y las invitaciones del residente ── */
+
+"island.entry.open" = "Abierta para todos";
+"island.door.title" = "Código de acceso";
+"island.door.checking" = "Preguntando a la isla…";
+"island.door.body" = "La isla es cerrada: para tener una cuenta aquí hace falta un código de su operador.";
+"reg.invite.enter" = "Escribir el código";
+"boot.error.switch_account" = "Otra cuenta";
+
+"invites.title" = "Invitaciones";
+"invites.body" = "Una invitación es un enlace de un solo uso: quien lo siga tendrá una cuenta en esta isla. La siguiente llega sola, una por período.";
+"invites.next" = "La siguiente llega el %@";
+"invites.all" = "Las tienes todas";
+"invites.mint" = "Crear una invitación";
+"invites.minting" = "Creando…";
+"invites.copy" = "Copiar el enlace";
+"invites.copied" = "Copiado";
+"invites.once" = "Se muestra una sola vez. Cópialo ahora: la isla guarda solo una huella del código, no el código.";
+"invites.error" = "No se pudo crear la invitación. Probá de nuevo.";
+"settings.search.alias.residentInvites" = "invitaciones, invitar, residente, enlace de entrada, invites";

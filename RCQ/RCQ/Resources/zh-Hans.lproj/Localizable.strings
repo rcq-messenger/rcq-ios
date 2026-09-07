@@ -231,7 +231,7 @@
 "settings.account" = "账号";
 "settings.account.burn" = "销毁账号";
 "settings.account.burning" = "销毁中…";
-"settings.account.about" = "关于 RCQ";
+"settings.account.about" = "关于这个岛屿";
 "settings.account.bug_bounty" = "反馈";
 "settings.uin_shop" = "UIN 商店";
 "settings.uin_shop.footer" = "选择任意未被占用的 3-9 位 UIN。位数越短越稀有，价格也越高。";
@@ -834,10 +834,10 @@
 "random.ended.peer_disconnected" = "对方已离线。";
 "random.ended.default" = "聊天已结束。";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "关于 RCQ";
+"about.title" = "关于这个岛屿";
 "about.tagline" = "同样的灵魂，现代的密码学。";
 "about.body" = "RCQ 永久免费。没有广告，不收集数据，不需要手机号。";
-"about.stats.users" = "人在使用 RCQ";
+"about.stats.users" = "人在这个岛上";
 "about.privacy.section" = "隐私";
 "about.privacy.b1" = "端到端加密的消息（Signal Protocol）。";
 "about.privacy.b2" = "密封发送者：服务器无法把谁给谁发消息对应起来。";
@@ -1858,3 +1858,24 @@
 "island.entry.closed" = "封闭俱乐部";
 
 "add_account.custom.invite" = "访问码（封闭岛屿）";
+
+/* ── 封闭岛屿的门，以及居民自己的邀请 ─────────────────────────────── */
+
+"island.entry.open" = "对所有人开放";
+"island.door.title" = "访问码";
+"island.door.checking" = "正在询问岛屿…";
+"island.door.body" = "这个岛屿是封闭的：要在这里开设账户，需要岛主提供的代码。";
+"reg.invite.enter" = "输入代码";
+"boot.error.switch_account" = "切换账户";
+
+"invites.title" = "邀请";
+"invites.body" = "邀请是一次性链接：使用它的人会在这个岛屿上开设账户。下一个会自动累积，每个周期一个。";
+"invites.next" = "下一个将在 %@ 到来";
+"invites.all" = "全部都在您手上";
+"invites.mint" = "创建邀请";
+"invites.minting" = "创建中…";
+"invites.copy" = "复制链接";
+"invites.copied" = "已复制";
+"invites.once" = "只显示一次。请立即复制：岛屿只保存代码的指纹，不保存代码本身。";
+"invites.error" = "邀请创建失败。请重试。";
+"settings.search.alias.residentInvites" = "邀请, 邀请链接, 居民, invites";

@@ -240,7 +240,7 @@
 "settings.account" = "Conta";
 "settings.account.burn" = "Apagar a conta para sempre";
 "settings.account.burning" = "Apagando…";
-"settings.account.about" = "Sobre o RCQ";
+"settings.account.about" = "Sobre esta ilha";
 "settings.account.bug_bounty" = "Relatar um bug";
 "settings.uin_shop" = "Loja de UIN";
 "settings.uin_shop.footer" = "Escolha qualquer UIN livre de 3 a 9 dígitos. Os mais curtos são mais raros e mais caros.";
@@ -843,10 +843,10 @@
 "random.ended.peer_disconnected" = "O desconhecido ficou offline.";
 "random.ended.default" = "Conversa encerrada.";
 /* ── About sheet ──────────────────────────────────────────── */
-"about.title" = "Sobre o RCQ";
+"about.title" = "Sobre esta ilha";
 "about.tagline" = "A mesma alma, criptografia moderna.";
 "about.body" = "O RCQ é grátis para sempre. Sem anúncios, sem coleta de dados, sem número de telefone.";
-"about.stats.users" = "pessoas no RCQ";
+"about.stats.users" = "pessoas nesta ilha";
 "about.privacy.section" = "PRIVACIDADE";
 "about.privacy.b1" = "Mensagens com criptografia de ponta a ponta (Signal Protocol).";
 "about.privacy.b2" = "Sealed sender: o servidor não consegue ligar quem escreve para quem.";
@@ -1867,3 +1867,24 @@
 "island.entry.closed" = "Clube fechado";
 
 "add_account.custom.invite" = "Código de acesso (ilhas fechadas)";
+
+/* ── A porta de uma ilha fechada e os convites do residente ────────── */
+
+"island.entry.open" = "Aberta para todos";
+"island.door.title" = "Código de acesso";
+"island.door.checking" = "Perguntando à ilha…";
+"island.door.body" = "A ilha é fechada: para ter uma conta aqui é preciso um código do operador dela.";
+"reg.invite.enter" = "Digitar o código";
+"boot.error.switch_account" = "Outra conta";
+
+"invites.title" = "Convites";
+"invites.body" = "Um convite é um link de uso único: quem o seguir ganha uma conta nesta ilha. O próximo chega sozinho, um por período.";
+"invites.next" = "O próximo chega em %@";
+"invites.all" = "Você tem todos";
+"invites.mint" = "Criar um convite";
+"invites.minting" = "Criando…";
+"invites.copy" = "Copiar o link";
+"invites.copied" = "Copiado";
+"invites.once" = "Mostrado uma única vez. Copie agora: a ilha guarda apenas uma impressão do código, não o código.";
+"invites.error" = "Não deu para criar o convite. Tente de novo.";
+"settings.search.alias.residentInvites" = "convites, convidar, residente, link de entrada, invites";
