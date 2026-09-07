@@ -248,7 +248,7 @@ enum VaultSync {
         // means the island has not moved, NOT that it holds what this device
         // holds, and the device whose write failed is exactly the one carrying
         // rows nothing else has. The sync is a no-op when both sides agree.
-        await CrossIslandVault.arm()
+        CrossIslandVault.arm()
         await CrossIslandVault.sync()
         // ⚠ Guest cards OTHERS gave us. Unconditional like the slot above, and
         // for a sharper reason: these are the only copy in existence, and

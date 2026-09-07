@@ -369,7 +369,10 @@ struct QRSheet: View {
             // so it cannot tell the truth and this is the only place that can.
             // Asked only after the add failed, so the ordinary path costs
             // nothing.
-            if !(await ContactService.shared.contacts.contains { $0.uin == uin }),
+            let alreadyAdded = await MainActor.run {
+                ContactService.shared.contacts.contains { $0.uin == uin }
+            }
+            if !alreadyAdded,
                let info = await ServerInfoService.fetch(host: host),
                info.capabilities.closedIsland {
                 await MainActor.run {

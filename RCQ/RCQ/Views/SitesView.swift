@@ -376,7 +376,9 @@ struct SitesView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(24)
-        } else if let page {
+        // The value is never read here, only its presence: `if let` bound a
+        // name nobody used.
+        } else if page != nil {
             // Under the home indicator too, so the strip down there is the
             // page's own background and not our ground: a dark page over our
             // light one drew a bright island at the bottom of the screen
