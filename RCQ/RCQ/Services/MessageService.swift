@@ -1954,6 +1954,19 @@ final class MessageService {
             }
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
 
+            // ⚠ A GUEST CARD the sender handed us, kept BEFORE anything is
+            // decided about the message. It is what makes "they wrote to me"
+            // into "I can answer them", and the reply path runs from the same
+            // handler. Kept even for a message we go on to treat as a
+            // stranger's: the card costs nothing to hold, and the alternative
+            // is somebody who accepts an hour later and then cannot reply.
+            // Never from our own carbon, where the card is ours coming back.
+            if let card = decrypted.guestCard, decrypted.senderUIN != ownUIN {
+                GuestCardStore.shared.remember(
+                    uin: decrypted.senderUIN, host: decrypted.senderHost, card: card,
+                )
+            }
+
             // Any decrypted envelope naming its device — a message, a receipt,
             // anything — proves that install can talk to us: its silence probe
             // stands down. Both delivery paths (live socket, queue drain) and

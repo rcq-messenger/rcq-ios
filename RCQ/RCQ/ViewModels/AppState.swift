@@ -460,6 +460,23 @@ final class AppState: ObservableObject {
         serverWelcome = info.welcome ?? ""
         serverLogoVersion = info.logoVersion ?? ""
         serverBadges = info.badges ?? [:]
+        // ⚠ The card the seal path will attach to outgoing 1:1 envelopes, set
+        // once here rather than threaded through four encrypt signatures:
+        // there is ONE card for everybody by design, so no per-recipient
+        // lookup exists to thread. Cleared on an open island, where a live
+        // credential has no business travelling to a door that is not locked.
+        if info.capabilities.closedIsland {
+            Task { @MainActor in
+                OutgoingGuestCard.value = await GuestCardStore.shared.shareableCard { hash in
+                    struct Body: Encodable { let card_hash: String; let label: String? }
+                    _ = try await APIClient.shared.rawRequest(
+                        "POST", "/guest-cards", body: Body(card_hash: hash, label: "shared"),
+                    )
+                }
+            }
+        } else {
+            OutgoingGuestCard.value = nil
+        }
         // Stage 3: the island reads bundles against anonymous deposit
         // tokens, and each costs a proof of work. Mint the first batch
         // now, in the background, so the first message to a new peer
@@ -2355,6 +2372,12 @@ final class AppState: ObservableObject {
 // CodingKeys, so a cached blob round-trips through the custom decoder like
 // a wire reply would.
 struct ServerCapabilities: Codable, Equatable {
+    /// The island withholds the key that seals an envelope to its residents,
+    /// so a number alone no longer reaches somebody. Read because the refusal
+    /// cannot say so: it is byte-identical to "no such number", or a closed
+    /// island becomes a directory for guessing which numbers exist. False on
+    /// any island older than the field.
+    var closedIsland: Bool = false
     var uinShop: Bool
     var hallOfFame: Bool
     // Operator-toggleable optional features (admin console → Features). Each
@@ -2455,6 +2478,7 @@ struct ServerCapabilities: Codable, Equatable {
     static let defaultLegacy = ServerCapabilities(uinShop: false, hallOfFame: true)
 
     private enum CodingKeys: String, CodingKey {
+        case closedIsland = "closed_island"
         case uinShop = "uin_shop"
         case hallOfFame = "hall_of_fame"
         case nearby
@@ -2475,6 +2499,9 @@ struct ServerCapabilities: Codable, Equatable {
     // (or one that omits them) keeps the tabs visible.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Absent on an island older than the field, and that reads as OPEN,
+        // which is the permissive default every flag here takes.
+        closedIsland = (try? c.decodeIfPresent(Bool.self, forKey: .closedIsland)) as? Bool ?? false
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
         nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true
