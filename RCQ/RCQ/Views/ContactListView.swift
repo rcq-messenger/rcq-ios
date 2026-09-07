@@ -860,11 +860,19 @@ struct ContactListView: View {
             // 06.09). It used to sit on the far side of the nickname, which put
             // a route indicator inside the block that says who you are. It is
             // not about you, it is about how your traffic leaves.
+            //
+            // ⚠ Taking real width, so the name does move over when relays come
+            // up. That was the founder's call once he saw both: reserving the
+            // 22pt always would hold the name still, and would also hold an
+            // empty gap open for the whole life of the app for a thing that is
+            // off most of the time. It moves — but it slides, and the shield
+            // fades in rather than blinking into place (founder, 07.09).
             if singboxActivePort > 0 {
                 StealthHeaderBadge {
                     showStealthInfo = true
                 }
                 .frame(width: 22, height: 22)
+                .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
@@ -950,6 +958,11 @@ struct ContactListView: View {
             Color.clear
                 .frame(width: 22, height: 22)
         }
+        // On the whole stack, not on the shield: the shield's own transition
+        // fades IT in, and this is what carries the avatar and the name across
+        // the distance it opened up. Animating only the shield leaves the name
+        // jumping the 15pt in one frame while the shield dissolves politely.
+        .animation(.easeInOut(duration: 0.28), value: singboxActivePort > 0)
     }
 
     @ViewBuilder
