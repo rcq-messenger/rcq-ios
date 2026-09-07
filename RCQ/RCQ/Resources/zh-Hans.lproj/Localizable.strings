@@ -1843,3 +1843,7 @@
 
 "report.heading.site" = "举报此页面";
 "uin_shop.status.sold" = "此号码由岛屿出售，无法在此设备上领取。";
+
+"reg.invite.label" = "访问码";
+"reg.invite.required" = "岛屿是封闭的：加入需要岛主提供的代码。请粘贴在下方。";
+"reg.invite.invalid" = "该代码未被接受。可能已被使用、已过期，或属于另一个岛屿。";

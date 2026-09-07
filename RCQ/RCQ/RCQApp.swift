@@ -709,6 +709,23 @@ private struct BootSplash: View {
 private struct ErrorScreen: View {
     let message: String
     @State private var nextAttemptIn: Int = 5
+    @State private var invite: String = ""
+
+    /// ⚠ A CLOSED ISLAND REFUSES WITH A CODE, NOT A SENTENCE. The island
+    /// answers registration with `{"code": "invite_required"}`, and this screen
+    /// showed the raw text to somebody who has been handed a code in words and
+    /// had nowhere on the phone to type it. The field appears ON the refusal
+    /// rather than up front, so an open island never asks for a code it does
+    /// not want.
+    private var needsInvite: Bool { message.contains("invite_required") }
+    private var badInvite: Bool { message.contains("invite_invalid") }
+    private var asking: Bool { needsInvite || badInvite }
+
+    private var humanMessage: String {
+        if needsInvite { return "reg.invite.required".localized }
+        if badInvite { return "reg.invite.invalid".localized }
+        return message
+    }
 
     var body: some View {
         ZStack {
@@ -716,17 +733,38 @@ private struct ErrorScreen: View {
             VStack(spacing: 12) {
                 LogoMark(size: 72).opacity(0.6)
                 Text("boot.error.title".localized).font(.title3.bold()).foregroundColor(Theme.Color.textPrimary)
-                Text(message).font(.caption).foregroundColor(Theme.Color.textSecondary)
+                Text(humanMessage).font(.caption).foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center).padding(.horizontal, 32)
-                Text("boot.error.retrying".localized(nextAttemptIn)).font(.caption2).foregroundColor(Theme.Color.textSecondary)
-                Button("boot.error.retry_now".localized) {
-                    Task { await AppState.shared.boot() }
+                if asking {
+                    TextField("reg.invite.label".localized, text: $invite)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .padding(.horizontal, 32)
+                    Button("boot.error.retry_now".localized) {
+                        let code = invite.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !code.isEmpty else { return }
+                        // The same stash the deep-link join uses, consumed once
+                        // by AuthService.register on the next boot.
+                        UserDefaults.standard.set(code, forKey: AppState.pendingServerInviteKey)
+                        Task { await AppState.shared.boot() }
+                    }
+                    .buttonStyle(.borderedProminent).tint(Theme.Color.accent)
+                    .disabled(invite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    Text("boot.error.retrying".localized(nextAttemptIn)).font(.caption2).foregroundColor(Theme.Color.textSecondary)
+                    Button("boot.error.retry_now".localized) {
+                        Task { await AppState.shared.boot() }
+                    }
+                    .buttonStyle(.borderedProminent).tint(Theme.Color.accent)
                 }
-                .buttonStyle(.borderedProminent).tint(Theme.Color.accent)
             }
         }
         .task {
-            while !AppState.shared.booted {
+            // ⚠ No auto-retry while we are asking for a code: retrying every
+            // five seconds against a door that wants something the person has
+            // not typed yet would clear the field under their fingers.
+            while !AppState.shared.booted && !asking {
                 for s in stride(from: 5, through: 1, by: -1) {
                     nextAttemptIn = s
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
