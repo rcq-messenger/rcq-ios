@@ -60,6 +60,11 @@ struct PrivacySettingsView: View {
     /// Relay tag pending a delete confirmation (set by the trash button).
     @State private var relayPendingDelete: String? = nil
     @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
+    /// The mark itself, so the row can show what it is talking about and can
+    /// stay away entirely from people who have none. Same mirror the header
+    /// reads, written when Settings refreshes the profile.
+    @State private var ownBadge: String? = UserDefaults.standard.string(forKey: "rcq.ownBadge")
+    @State private var badgeHidden: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.badgeHidden")
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
     @State private var hofAvatar: String? = nil
@@ -141,6 +146,8 @@ struct PrivacySettingsView: View {
         .init(row: .callPolicy, titleKey: "settings.privacy.calls",
               sectionKey: "settings.privacy", destination: .privacy),
         .init(row: .readReceipts, titleKey: "settings.privacy.read_receipts",
+              sectionKey: "settings.privacy", destination: .privacy),
+        .init(row: .wearBadge, titleKey: "settings.privacy.badge",
               sectionKey: "settings.privacy", destination: .privacy),
         .init(row: .howItWorks, titleKey: "how.title",
               sectionKey: "settings.privacy", destination: .privacy),
@@ -337,6 +344,34 @@ struct PrivacySettingsView: View {
                             Text("settings.privacy.read_receipts.desc".localized)
                         }
                         .listRowBackground(Theme.Color.bgSecondary)
+
+                        // Only for people who have a mark: a switch for hiding
+                        // something you were never given is noise. Your own row
+                        // always carries the mark whatever this says, so this
+                        // section cannot make itself disappear.
+                        if ownBadge != nil {
+                            Section {
+                                Toggle(isOn: Binding(
+                                    get: { !badgeHidden },
+                                    set: { badgeHidden = !$0 }
+                                )) {
+                                    HStack(spacing: 6) {
+                                        Text("settings.privacy.badge".localized)
+                                            .foregroundColor(Theme.Color.textPrimary)
+                                        BadgeMark(kind: ownBadge, size: 14)
+                                    }
+                                }
+                                .tint(Theme.Color.accent)
+                                .onChange(of: badgeHidden) { newValue in
+                                    UserDefaults.standard.set(newValue, forKey: "rcq.privacy.badgeHidden")
+                                    Task { await pushBoolField("badge_hidden", newValue) }
+                                }
+                                .settingsSearchRow(.wearBadge, highlight: activeHighlight)
+                            } footer: {
+                                Text("settings.privacy.badge.desc".localized)
+                            }
+                            .listRowBackground(Theme.Color.bgSecondary)
+                        }
 
                         howItWorksSection
 
@@ -1007,6 +1042,11 @@ struct PrivacySettingsView: View {
                 ProfileCardPrivacy.myPolicy = v
             }
             if let v = p.hofOptIn { hofOptIn = v; d.set(v, forKey: "rcq.privacy.hofOptIn") }
+            // The mark and the choice about it travel together: the row only
+            // exists when there is a mark, and both come from this one fetch.
+            ownBadge = p.badge
+            d.set(p.badge, forKey: "rcq.ownBadge")
+            if let v = p.badgeHidden { badgeHidden = v; d.set(v, forKey: "rcq.privacy.badgeHidden") }
             hofAvatar = p.hofAvatar
             hofPreview = p.hofAvatar.flatMap(Self.decodeDataUri)
             gender = p.gender ?? ""

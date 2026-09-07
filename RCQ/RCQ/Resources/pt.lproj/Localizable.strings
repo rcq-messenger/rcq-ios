@@ -72,6 +72,8 @@
 "settings.privacy.calls.desc" = "Quem pode te ligar. \"Ninguém\" esconde todos os botões de chamada nas conversas e nos menus; \"Contatos\" permite só contatos mútuos.";
 "settings.privacy.footer.short" = "Visto por último, gênero, convites de grupo, ofertas de troca, chamadas, confirmações de leitura.";
 "settings.privacy.calls" = "Chamadas de";
+"settings.privacy.badge" = "Exibir minha marca";
+"settings.privacy.badge.desc" = "A marca da ilha ao lado do seu nome. Se desativar, mais ninguém a vê; você continua vendo.";
 "settings.privacy.read_receipts" = "Confirmações de leitura para";
 "settings.privacy.read_receipts.desc" = "Quando você lê uma mensagem, seu contato vê o segundo tique. \"Ninguém\" desliga isso; você continua vendo quando leem as suas.";
 "settings.privacy.reputation" = "Reputação visível para";

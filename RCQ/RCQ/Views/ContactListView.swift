@@ -120,6 +120,10 @@ struct ContactListView: View {
     @State private var deepLinkAddHost: String? = nil
     @State private var deepLinkProfileUIN: DeepLinkUIN? = nil
     @State private var showStealthInfo: Bool = false
+    /// Written by Settings when it refreshes the profile. Read from the
+    /// same mirror rather than fetched here: the header draws on every
+    /// launch and must not wait on a request to know what to draw.
+    @State private var ownBadge: String? = UserDefaults.standard.string(forKey: "rcq.ownBadge")
     @State private var refreshAttemptedFor: Set<Int> = []
     /// Group ids we already re-fetched the roster for, so a push tap that
     /// arrives before the group list exists gets exactly one retry instead of
@@ -852,6 +856,16 @@ struct ContactListView: View {
     private var identityPrincipal: some View {
         // Trailing Color.clear pads against the leading icon to centre nick/UIN in the nav bar.
         HStack(spacing: 8) {
+            // Left of the status flower, ahead of the identity block (founder,
+            // 06.09). It used to sit on the far side of the nickname, which put
+            // a route indicator inside the block that says who you are. It is
+            // not about you, it is about how your traffic leaves.
+            if singboxActivePort > 0 {
+                StealthHeaderBadge {
+                    showStealthInfo = true
+                }
+                .frame(width: 22, height: 22)
+            }
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
@@ -905,10 +919,17 @@ struct ContactListView: View {
             }
             Button { showProfile = true } label: {
                 VStack(spacing: 0) {
-                    Text(auth.nickname.isEmpty ? "—" : auth.nickname)
-                        .font(.system(.subheadline, weight: .semibold))
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(auth.nickname.isEmpty ? "—" : auth.nickname)
+                            .font(.system(.subheadline, weight: .semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .lineLimit(1)
+                        // Your own mark. It stays here even when you have
+                        // chosen not to wear it in public: the island still
+                        // gave it to you, and the setting is about everyone
+                        // else, so your own row is never blanked.
+                        BadgeMark(kind: ownBadge, size: 12)
+                    }
                     if appState.isOffline && !panicPIN.isDecoy {
                         Text("contact_list.offline_badge".localized)
                             .font(.system(size: 10, weight: .semibold))
@@ -922,16 +943,12 @@ struct ContactListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Group {
-                if singboxActivePort > 0 {
-                    StealthHeaderBadge {
-                        showStealthInfo = true
-                    }
-                } else {
-                    Color.clear
-                }
-            }
-            .frame(width: 22, height: 22)
+            // The counterweight the comment at the top of this stack means:
+            // it balances the leading icon so the nick and UIN sit centred in
+            // the nav bar. It held the shield until 06.09 and is now only ever
+            // empty, which is what it was there for in the first place.
+            Color.clear
+                .frame(width: 22, height: 22)
         }
     }
 

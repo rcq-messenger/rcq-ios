@@ -63,6 +63,8 @@
 "settings.privacy.calls.desc" = "谁可以呼叫你。“无人”会隐藏聊天和菜单里的所有通话按钮；“仅联系人”只允许互为好友的人。";
 "settings.privacy.footer.short" = "最后上线时间、性别、群组邀请、交易请求、通话、已读回执。";
 "settings.privacy.calls" = "通话来自";
+"settings.privacy.badge" = "显示我的标记";
+"settings.privacy.badge.desc" = "您名字旁边的岛屿标记。关闭后其他人都看不到，您自己仍然可见。";
 "settings.privacy.read_receipts" = "已读回执发送给";
 "settings.privacy.read_receipts.desc" = "你读了消息后，联系人会看到第二个对勾。“无人”会关闭它。你仍然能看到别人什么时候读了你的消息。";
 "settings.privacy.reputation" = "声望可见范围";

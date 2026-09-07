@@ -73,6 +73,8 @@
 "settings.privacy.calls.desc" = "Who can call you. \"Nobody\" hides every call button in chats and menus; \"Contacts\" allows mutual friends only.";
 "settings.privacy.footer.short" = "Last seen, gender, group invites, trade offers, calls, read receipts.";
 "settings.privacy.calls" = "Calls from";
+"settings.privacy.badge" = "Wear my mark";
+"settings.privacy.badge.desc" = "The island's mark beside your name. Turning this off hides it from everyone else; you still see it yourself.";
 "settings.privacy.read_receipts" = "Read receipts to";
 "settings.privacy.read_receipts.desc" = "When you read a message, your contact sees the second checkmark. \"Nobody\" turns this off. You'll still see when others read yours.";
 "settings.privacy.reputation" = "Reputation visible to";

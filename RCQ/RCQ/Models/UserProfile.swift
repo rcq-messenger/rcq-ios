@@ -75,7 +75,14 @@ struct UserProfile: Codable, Hashable {
     /// client can preview the current image. Nil for third parties.
     var hofAvatar: String?
     /// The island's mark: nil or a kind ("official", "tester", ...).
+    ///
+    /// ⚠ Nil is TWO facts on somebody else's row: no mark, and a mark its
+    /// owner keeps off other people's screens. The island answers the same way
+    /// for both on purpose, so there is nothing here to tell them apart.
     var badge: String?
+    /// Owner-only: whether this account keeps its mark to itself. Nil from an
+    /// island that predates the setting, and nil on anyone but yourself.
+    var badgeHidden: Bool?
     enum CodingKeys: String, CodingKey {
         case uin, nickname, badge
         case firstName = "first_name"
@@ -95,6 +102,7 @@ struct UserProfile: Codable, Hashable {
         case readReceiptsVisibility = "read_receipts_visibility"
         case profileCardPolicy = "profile_card_policy"
         case profileOpenable = "profile_openable"
+        case badgeHidden = "badge_hidden"
         case hofOptIn = "hof_opt_in"
         case hofAvatar = "hof_avatar"
         case avatarMediaID = "avatar_media_id"
