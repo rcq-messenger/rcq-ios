@@ -83,6 +83,10 @@ struct UserProfile: Codable, Hashable {
     /// Owner-only: whether this account keeps its mark to itself. Nil from an
     /// island that predates the setting, and nil on anyone but yourself.
     var badgeHidden: Bool?
+    /// Owner-only: every mark this account HOLDS. `badge` is the one it wears.
+    /// Empty on an island that predates the set, and for anybody holding one
+    /// mark or none, which is almost everybody.
+    var badgesEarned: [String]?
     enum CodingKeys: String, CodingKey {
         case uin, nickname, badge
         case firstName = "first_name"
@@ -103,6 +107,7 @@ struct UserProfile: Codable, Hashable {
         case profileCardPolicy = "profile_card_policy"
         case profileOpenable = "profile_openable"
         case badgeHidden = "badge_hidden"
+        case badgesEarned = "badges_earned"
         case hofOptIn = "hof_opt_in"
         case hofAvatar = "hof_avatar"
         case avatarMediaID = "avatar_media_id"

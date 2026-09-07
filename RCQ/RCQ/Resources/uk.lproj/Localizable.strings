@@ -74,6 +74,8 @@
 "settings.privacy.calls" = "Хто може дзвонити";
 "settings.privacy.badge" = "Показувати мою позначку";
 "settings.privacy.badge.desc" = "Позначка острова поруч з вашим ім'ям. Якщо вимкнути, її не побачить ніхто, крім вас.";
+"settings.privacy.badge_pick" = "Яку позначку носити";
+"settings.privacy.badge_pick.desc" = "У вас їх кілька. Поруч з іменем показується лише вибрана.";
 "settings.privacy.read_receipts" = "Позначки про прочитання для";
 "settings.privacy.read_receipts.desc" = "Коли ти читаєш повідомлення, контакт бачить другу галочку. «Ніхто» це вимикає. Ти й далі бачитимеш, коли читають твої.";
 "settings.privacy.reputation" = "Репутацію бачать";

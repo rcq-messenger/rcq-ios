@@ -64,6 +64,7 @@ struct PrivacySettingsView: View {
     /// stay away entirely from people who have none. Same mirror the header
     /// reads, written when Settings refreshes the profile.
     @State private var ownBadge: String? = UserDefaults.standard.string(forKey: "rcq.ownBadge")
+    @State private var ownBadges: [String] = UserDefaults.standard.stringArray(forKey: "rcq.ownBadges") ?? []
     @State private var badgeHidden: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.badgeHidden")
     /// Current HoF avatar as a data-URI (nil = none), plus a decoded preview
     /// image and the picker/busy state.
@@ -344,6 +345,36 @@ struct PrivacySettingsView: View {
                             Text("settings.privacy.read_receipts.desc".localized)
                         }
                         .listRowBackground(Theme.Color.bgSecondary)
+
+                        // More than one mark held: which one to wear. Above
+                        // the switch, because the questions run "which one" and
+                        // then "show it at all"; reversed, the picker looks
+                        // like it belongs to a setting that may be off.
+                        if ownBadges.count > 1 {
+                            Section {
+                                Picker("settings.privacy.badge_pick".localized, selection: Binding(
+                                    get: { ownBadge ?? ownBadges.first ?? "" },
+                                    set: { picked in
+                                        ownBadge = picked
+                                        UserDefaults.standard.set(picked, forKey: "rcq.ownBadge")
+                                        Task { await pushStringField("badge", picked) }
+                                    }
+                                )) {
+                                    ForEach(ownBadges, id: \.self) { kind in
+                                        HStack(spacing: 6) {
+                                            BadgeMark(kind: kind, size: 14)
+                                            Text(("badge." + kind).localized)
+                                        }
+                                        .tag(kind)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.Color.accent)
+                            } footer: {
+                                Text("settings.privacy.badge_pick.desc".localized)
+                            }
+                            .listRowBackground(Theme.Color.bgSecondary)
+                        }
 
                         // Only for people who have a mark: a switch for hiding
                         // something you were never given is noise. Your own row
@@ -1045,6 +1076,8 @@ struct PrivacySettingsView: View {
             // The mark and the choice about it travel together: the row only
             // exists when there is a mark, and both come from this one fetch.
             ownBadge = p.badge
+            ownBadges = p.badgesEarned ?? []
+            UserDefaults.standard.set(ownBadges, forKey: "rcq.ownBadges")
             d.set(p.badge, forKey: "rcq.ownBadge")
             if let v = p.badgeHidden { badgeHidden = v; d.set(v, forKey: "rcq.privacy.badgeHidden") }
             hofAvatar = p.hofAvatar
@@ -1060,6 +1093,37 @@ struct PrivacySettingsView: View {
     /// Boolean variant of `pushField` for toggles like `hof_opt_in`. The
     /// server's PUT /users/me handler treats missing keys as no-op so the
     /// partial payload is safe.
+    /// The string twin of [pushBoolField], for the one string field on this
+    /// screen a person can set: which of their marks to wear.
+    ///
+    /// ⚠ The island checks the value against what this account actually holds,
+    /// so the worst a client can send is a mark they earned. This is not a way
+    /// to award one.
+    private func pushStringField(_ key: String, _ value: String) async {
+        struct Body: Encodable {
+            let key: String
+            let value: String
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: DynamicStringKey.self)
+                try c.encode(value, forKey: DynamicStringKey(stringValue: key)!)
+            }
+        }
+        struct DynamicStringKey: CodingKey {
+            var stringValue: String
+            var intValue: Int? { nil }
+            init?(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+        do {
+            let _: UserProfile = try await APIClient.shared.request(
+                "PUT", "/users/me",
+                body: Body(key: key, value: value)
+            )
+        } catch {
+            // Soft-fail; the picker can be used again.
+        }
+    }
+
     private func pushBoolField(_ key: String, _ value: Bool) async {
         struct Body: Encodable {
             let key: String

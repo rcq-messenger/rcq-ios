@@ -66,6 +66,8 @@
 "settings.privacy.calls" = "Звонить могут";
 "settings.privacy.badge" = "Показывать мою метку";
 "settings.privacy.badge.desc" = "Метка острова рядом с вашим именем. Если выключить, её не увидит никто, кроме вас.";
+"settings.privacy.badge_pick" = "Какую метку носить";
+"settings.privacy.badge_pick.desc" = "У вас их несколько. Рядом с именем показывается только выбранная.";
 "settings.privacy.read_receipts" = "Отчёты о прочтении";
 "settings.privacy.read_receipts.desc" = "Когда вы открываете сообщение, у собеседника появляется вторая галочка. \"Никто\" выключает отправку. Вы по-прежнему видите, когда читают ваши сообщения.";
 "settings.privacy.reputation" = "Репутацию видят";
