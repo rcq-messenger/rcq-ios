@@ -193,13 +193,23 @@ enum RcqFederation {
 
     /// Build the contact deep link. Flagship + no keys yields exactly the legacy
     /// `https://rcq.app/u/<uin>`.
-    static func buildContactLink(_ a: Address, sk: String? = nil, ik: String? = nil, base: String = "https://rcq.app") -> String {
+    static func buildContactLink(_ a: Address, sk: String? = nil, ik: String? = nil, base: String = "https://rcq.app", card: String? = nil) -> String {
         var params: [String] = []
         if !isFlagship(a.host) { params.append("h=\(a.host)") }
         if let sk = sk { params.append("k=\(b64ToUrl(sk))") }
         if let ik = ik { params.append("i=\(b64ToUrl(ik))") }
         let q = params.joined(separator: "&")
-        return "\(base)/u/\(a.uin)" + (q.isEmpty ? "" : "?\(q)")
+        // ⚠⚠ THE GUEST CARD GOES AFTER THE HASH. Everything else here is a
+        // PUBLIC key card and rides the query as it always has; a guest card
+        // cannot share that home, because it is a live credential with no
+        // expiry. A fragment is never sent to a server — not to rcq.app, not
+        // to the CDN in front of it, not in a Referer — where the query would
+        // land it in an access log, which is how session tokens reached
+        // journald until 22.08.
+        let frag = (card?.isEmpty == false)
+            ? "#c=" + (card!.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? card!)
+            : ""
+        return "\(base)/u/\(a.uin)" + (q.isEmpty ? "" : "?\(q)") + frag
     }
 
     struct ParsedContactLink {
