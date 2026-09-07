@@ -63,6 +63,15 @@ final class WebSocketService: ObservableObject {
         case roomKeyRotated(roomID: Int, newKey: String)
         case roomRenamed(roomID: Int, name: String)
         case accountBurned
+        /// The island moved THIS account onto another number and is telling the
+        /// sockets still logged in under the old one — that is, the owner's own
+        /// other devices. `newUIN` is where the account went.
+        ///
+        /// ⚠⚠ This is NOT `accountBurned` and must never end in a wipe. Until
+        /// 07.09 the island sent `account_burned` here, so a person who took a
+        /// shorter number on their laptop watched both their phones erase
+        /// themselves and then fail to connect. See AppState's handler.
+        case accountMoved(newUIN: Int)
     }
 
     struct EnvelopePacket {
@@ -593,7 +602,22 @@ final class WebSocketService: ObservableObject {
 
         switch type {
         case "account_burned":
+            // A REAL burn: the account is gone server-side and local state has
+            // to follow. Untouched on purpose — everything below is about the
+            // OTHER event, the one that used to arrive dressed as this one.
             events.send(.accountBurned)
+
+        case "account_moved":
+            // The account is ALIVE under a different number. The island fires
+            // this at the old uin, which is where the owner's other devices are
+            // sitting. Nothing local may be destroyed on this path.
+            //
+            // ⚠ No uin, no event: a frame we cannot read must not be guessed at,
+            // and doing nothing leaves the device where it was — connected to a
+            // number that no longer exists, which the next launch repairs
+            // through /auth/refresh. That is the failure we can afford.
+            guard let newUIN = dict["uin"] as? Int else { return }
+            events.send(.accountMoved(newUIN: newUIN))
 
         case "presence":
             guard let uin = dict["uin"] as? Int,

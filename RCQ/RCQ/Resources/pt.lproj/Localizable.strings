@@ -1874,6 +1874,7 @@
 "island.door.title" = "Código de acesso";
 "island.door.checking" = "Perguntando à ilha…";
 "island.door.body" = "A ilha é fechada: para ter uma conta aqui é preciso um código do operador dela.";
+"settings.island.rules" = "Regras da ilha";
 "reg.invite.enter" = "Digitar o código";
 "boot.error.switch_account" = "Outra conta";
 
@@ -1888,3 +1889,7 @@
 "invites.once" = "Mostrado uma única vez. Copie agora: a ilha guarda apenas uma impressão do código, não o código.";
 "invites.error" = "Não deu para criar o convite. Tente de novo.";
 "settings.search.alias.residentInvites" = "convites, convidar, residente, link de entrada, invites";
+
+/* ── A conta mudou para outro número (evento `account_moved`) ── */
+"account.moved.blocked.title" = "Sua conta mudou para um número novo";
+"account.moved.blocked.body" = "Você pegou um número novo em outro dispositivo, e este aqui não conseguiu acompanhar. Nada foi apagado: suas conversas continuam aqui. Entre de novo com a sua frase de recuperação para continuar no número novo.";

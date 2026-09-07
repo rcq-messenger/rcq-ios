@@ -2097,3 +2097,7 @@
 "invites.once" = "Shown once. Copy it now: the island keeps only a fingerprint of the code, not the code.";
 "invites.error" = "The invite was not created. Try again.";
 "settings.search.alias.residentInvites" = "invites, invite, bring a friend, resident, join link, приглашения";
+
+/* ── Account moved to another UIN (followed off `account_moved`) ── */
+"account.moved.blocked.title" = "Your account moved to a new number";
+"account.moved.blocked.body" = "You took a new number on another device, and this one could not follow it there. Nothing has been deleted: your chats are still here. Sign in again with your recovery phrase to continue on the new number.";

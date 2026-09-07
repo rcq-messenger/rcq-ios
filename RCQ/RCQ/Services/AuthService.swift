@@ -75,7 +75,39 @@ final class AuthService: ObservableObject {
                 // / server DB wipe) fall through to the historical
                 // wipe + fresh-register self-heal — after stashing the keys.
                 print("[boot] cached uin=\(uin) rejected by \(APIClient.shared.baseURL.absoluteString) — attempting key recover")
-                switch await recoverOwnSession(expectedUIN: uin) {
+                // ⚠ ASK `/auth/refresh` FIRST, and only then fall back to the
+                // recover handshake below. The two answer different questions:
+                // refresh is told WHICH number we want and says whether that
+                // number is still ours, whether the account MOVED off it (this
+                // install slept through somebody taking a shorter number on
+                // another device), or nothing at all. Recover just resolves the
+                // key to the oldest account carrying it, so it can neither spot
+                // a move nor tell one apart from a shared key.
+                //
+                // This can only ever REMOVE a wipe, never add one: a `.moved` or
+                // `.unchanged` answer short-circuits into the `.recovered`
+                // branch, and anything else drops through to exactly the code
+                // that ran before. A genuinely burned account has no row and no
+                // key left, so refresh 404s, recover 404s, and the wipe below
+                // still happens — which is the direction that must not break.
+                var refreshed: Multihome.Credentials? = nil
+                switch await refreshOwnSession(currentUIN: uin) {
+                case .moved(let creds, from: let from):
+                    print("[boot] account moved \(from) -> \(creds.uin) while we were away — following it")
+                    refreshed = creds
+                case .unchanged(let creds):
+                    print("[boot] uin=\(uin) still ours, token re-minted")
+                    refreshed = creds
+                case .refused, .transient:
+                    break
+                }
+                let outcome: RecoverOutcome
+                if let creds = refreshed {
+                    outcome = .recovered(creds)
+                } else {
+                    outcome = await recoverOwnSession(expectedUIN: uin)
+                }
+                switch outcome {
                 case .recovered(let creds):
                     print("[boot] recovered uin=\(creds.uin) with a fresh token")
                     KeychainStore.setString(KeychainStore.Keys.uin, String(creds.uin))
@@ -238,6 +270,74 @@ final class AuthService: ObservableObject {
                 return .identityUnknown
             }
             return creds.uin == expectedUIN ? .recovered(creds) : .transient
+        } catch {
+            return .transient
+        }
+    }
+
+    /// Outcome of `/auth/refresh` — the call that names the uin it wants
+    /// instead of letting the island pick one.
+    ///
+    /// ⚠⚠ NOTHING here means "the account is gone", and nothing here may be
+    /// answered with a wipe. `.refused` is the island declining to name an
+    /// account for us; the local copy is still the only one that exists and is
+    /// worth more than a tidy state machine.
+    enum RefreshOutcome {
+        /// The number we asked about is still ours. Fresh token, nothing moved.
+        case unchanged(Multihome.Credentials)
+        /// The number is gone and our signing key resolved to exactly one live
+        /// account: the owner moved, on another device, while we were logged in.
+        case moved(Multihome.Credentials, from: Int)
+        /// The island completed the proof and still would not hand us a session:
+        /// somebody else answers as that number now, our key is carried by more
+        /// than one account (deliberate — that ambiguity goes to the recovery
+        /// phrase, where a person is looking at the screen), or this install was
+        /// disconnected from the account. Tell the user; touch nothing.
+        ///
+        /// ⚠ An island too OLD to have the endpoint 404s the same way and lands
+        /// here too. That is safe only because of who acts on this: the boot
+        /// path just falls through to the recover handshake it always used, and
+        /// the one caller that shows the person a message got here from an
+        /// `account_moved` frame, which no island without `/auth/refresh` sends.
+        case refused
+        /// Proved nothing (offline, a malformed answer, the challenge step
+        /// itself failing). Worth retrying, never worth acting on.
+        case transient
+    }
+
+    /// Ask the ACTIVE island to re-mint a token for `currentUIN`, and find out
+    /// whether that number is even still ours.
+    ///
+    /// This is the rescue built on 03.09 for a device that had been ASLEEP
+    /// through somebody's UIN move and asked on its next launch. iOS never
+    /// called it, because iOS keeps its token on disk and had no reason to ask
+    /// for one at start-up. It is called now from the one place that needs the
+    /// same answer while ONLINE: the `account_moved` socket frame.
+    func refreshOwnSession(currentUIN: Int) async -> RefreshOutcome {
+        guard let host = APIClient.shared.baseURL.host,
+              let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else {
+            return .transient
+        }
+        // ⚠ The port, which `recoverOwnSession` above drops. A self-hosted
+        // island on `:8443` is not the island on `:443`, and every caller here
+        // builds `https://\(host)/...` from this string.
+        let authority = APIClient.shared.baseURL.port.map { "\(host):\($0)" } ?? host
+        do {
+            guard let out = try await Multihome.refreshOn(
+                host: authority, uin: currentUIN, signingPriv: signingPriv
+            ) else {
+                return .refused
+            }
+            let creds = Multihome.Credentials(uin: out.uin, token: out.token)
+            // Both halves are checked, not just `moved_from`: an island that
+            // answers a DIFFERENT number without saying it moved is not one we
+            // follow, and one that says it moved while handing back the number
+            // we already have has moved nothing.
+            guard let from = out.moved_from, from == currentUIN, out.uin != currentUIN else {
+                return out.uin == currentUIN ? .unchanged(creds) : .refused
+            }
+            return .moved(creds, from: from)
         } catch {
             return .transient
         }

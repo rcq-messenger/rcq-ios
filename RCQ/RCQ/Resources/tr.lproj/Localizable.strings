@@ -1874,6 +1874,7 @@
 "island.door.title" = "Erişim kodu";
 "island.door.checking" = "Adaya soruluyor…";
 "island.door.body" = "Ada kapalı: burada hesap açmak için işletmecisinden bir kod gerekiyor.";
+"settings.island.rules" = "Ada kuralları";
 "reg.invite.enter" = "Kodu gir";
 "boot.error.switch_account" = "Başka hesap";
 
@@ -1888,3 +1889,7 @@
 "invites.once" = "Bir kez gösterilir. Şimdi kopyalayın: ada kodun kendisini değil, yalnızca izini saklar.";
 "invites.error" = "Davet oluşturulamadı. Tekrar deneyin.";
 "settings.search.alias.residentInvites" = "davetler, davet, sakin, giriş bağlantısı, invites";
+
+/* ── Hesap başka bir numaraya taşındı (`account_moved` olayı) ── */
+"account.moved.blocked.title" = "Hesabınız yeni bir numaraya taşındı";
+"account.moved.blocked.body" = "Başka bir cihazda yeni bir numara aldınız, bu cihaz ise onu takip edemedi. Hiçbir şey silinmedi: sohbetleriniz burada duruyor. Yeni numarada devam etmek için kurtarma ifadenizle yeniden giriş yapın.";

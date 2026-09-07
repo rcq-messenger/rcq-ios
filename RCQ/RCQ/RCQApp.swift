@@ -385,6 +385,19 @@ struct RootView: View {
                 privacyCover
             }
         }
+        // The account moved onto a new number on another of this person's
+        // devices and THIS one could not follow it there — see
+        // `AppState.followAccountMove`. Nothing has been deleted: the chats are
+        // still on the device, the island simply will not hand this install a
+        // session for the new number, so the way back in is the recovery phrase.
+        .alert(
+            "account.moved.blocked.title".localized,
+            isPresented: $appState.accountMoveNeedsRecovery
+        ) {
+            Button("common.ok".localized, role: .cancel) {}
+        } message: {
+            Text("account.moved.blocked.body".localized)
+        }
         .task(id: panicPIN.lockState) {
             guard panicPIN.lockState == .unlocked else { return }
             if appState.booted {

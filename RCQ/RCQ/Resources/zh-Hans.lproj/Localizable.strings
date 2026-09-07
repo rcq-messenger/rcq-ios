@@ -1865,6 +1865,7 @@
 "island.door.title" = "访问码";
 "island.door.checking" = "正在询问岛屿…";
 "island.door.body" = "这个岛屿是封闭的：要在这里开设账户，需要岛主提供的代码。";
+"settings.island.rules" = "岛屿规则";
 "reg.invite.enter" = "输入代码";
 "boot.error.switch_account" = "切换账户";
 
@@ -1879,3 +1880,7 @@
 "invites.once" = "只显示一次。请立即复制：岛屿只保存代码的指纹，不保存代码本身。";
 "invites.error" = "邀请创建失败。请重试。";
 "settings.search.alias.residentInvites" = "邀请, 邀请链接, 居民, invites";
+
+/* ── 账号已迁移到别的号码（`account_moved` 事件）── */
+"account.moved.blocked.title" = "你的账号已迁移到新号码";
+"account.moved.blocked.body" = "你在另一台设备上换了新号码，这台设备没能跟过去。这里什么都没有被删除，聊天记录仍在。请用恢复短语重新登录，以便在新号码上继续使用。";

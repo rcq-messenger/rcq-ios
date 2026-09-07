@@ -574,6 +574,10 @@ struct IslandDoorStatus {
     /// The island's own name, or "" when its operator never set one.
     let name: String
     let logoVersion: String
+    /// The operator's house rules, trimmed, or "" when they wrote none. Rides
+    /// along on the same `/server/info` answer the door is read from: the
+    /// rules button on a card must not cost a second request per island.
+    let welcome: String
 }
 
 /// What an island says about its own DOOR, remembered for the life of the
@@ -591,19 +595,34 @@ struct IslandDoorStatus {
 @MainActor
 enum IslandDoor {
     private static var cache: [String: IslandDoorStatus] = [:]
+    /// ⚠ The answers already ON THE WIRE, keyed by host. The card and the entry
+    /// line inside it both ask in the same frame — one for the rules button,
+    /// one for its own words — and the cache above cannot help before the
+    /// first reply lands, so without this the deck would put TWO requests on
+    /// every island instead of the one this type exists to promise.
+    private static var inFlight: [String: Task<IslandDoorStatus?, Never>] = [:]
 
     static func cached(host: String) -> IslandDoorStatus? { cache[host.lowercased()] }
 
     static func status(host: String) async -> IslandDoorStatus? {
-        if let hit = cache[host.lowercased()] { return hit }
-        guard let info = await ServerInfoService.fetch(host: host) else { return nil }
-        let status = IslandDoorStatus(
-            needsCode: info.capabilities.needsAccessCode,
-            entryPriceCents: info.capabilities.entryPriceCents,
-            name: info.name,
-            logoVersion: info.logoVersion ?? ""
-        )
-        cache[host.lowercased()] = status
+        let key = host.lowercased()
+        if let hit = cache[key] { return hit }
+        if let running = inFlight[key] { return await running.value }
+        let task = Task { () -> IslandDoorStatus? in
+            guard let info = await ServerInfoService.fetch(host: host) else { return nil }
+            return IslandDoorStatus(
+                needsCode: info.capabilities.needsAccessCode,
+                entryPriceCents: info.capabilities.entryPriceCents,
+                name: info.name,
+                logoVersion: info.logoVersion ?? "",
+                welcome: (info.welcome ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+        inFlight[key] = task
+        let status = await task.value
+        inFlight[key] = nil
+        // A miss is still not remembered — see the note above.
+        if let status { cache[key] = status }
         return status
     }
 }
@@ -697,11 +716,16 @@ struct IslandEntryLine: View {
 /// app — with no cancel and no back on it at all (founder, 06.09, points 1 and
 /// 2).
 ///
-/// ⚠ A NavigationStack sheet rather than a `.medium` detent, and that is about
-/// the keyboard: this screen has a text field, a detented sheet gives it no
-/// room to scroll out from under the keyboard, and #867 is what that looks
-/// like. The typed-address sheet in this same file is built the same way for
-/// the same reason.
+/// ⚠⚠ THE HEIGHT IS FITTED, NOT FIXED, and the difference is the keyboard.
+/// The founder asked for this sheet to end at its cancel button rather than
+/// stand at full screen, "like our QR sheet" (07.09) — so it is measured the
+/// way `QRSheet` measures its code column and asks for exactly that height.
+/// What it must NOT be is a sheet PINNED to that height: this screen has a
+/// text field, and a detent the sheet cannot leave when the keyboard comes up
+/// leaves the keyboard sitting on the button you are trying to reach, which is
+/// what #867 looks like. So `.large` stays in the set and the selection moves
+/// to it the moment the field takes focus — the same remedy, and the same
+/// constant set, as `ServerJoinSheet`.
 private struct IslandDoorSheet: View {
     let entry: ServerEntry
     let status: IslandDoorStatus
@@ -710,6 +734,35 @@ private struct IslandDoorSheet: View {
     let onCancel: () -> Void
 
     @State private var code: String = ""
+    /// Focus is the only honest signal that the keyboard is coming: this sheet
+    /// has one field and the keyboard arrives with it.
+    @FocusState private var codeFocused: Bool
+    /// Natural height of the column, reported by the column itself.
+    @State private var columnHeight: CGFloat = 0
+    @State private var detent: PresentationDetent = .height(IslandDoorSheet.estimatedHeight)
+    @State private var showRules = false
+
+    /// Inline navigation bar: inside the sheet's height, outside the column
+    /// that is measured.
+    private static let navigationBarHeight: CGFloat = 44
+    /// First-frame guess, replaced the moment the column reports its real
+    /// size. Close enough that the correction does not read as a jump.
+    private static let estimatedHeight: CGFloat = 470
+
+    /// Home-indicator strip: also inside the sheet's height and outside the
+    /// measured column.
+    private static var bottomSafeInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return scene?.windows.first(where: { $0.isKeyWindow })?.safeAreaInsets.bottom ?? 0
+    }
+
+    private static func detent(forColumnHeight height: CGFloat) -> PresentationDetent {
+        guard height > 0 else { return .height(estimatedHeight) }
+        return .height(height + navigationBarHeight + bottomSafeInset)
+    }
+
+    private var fittedDetent: PresentationDetent { Self.detent(forColumnHeight: columnHeight) }
 
     private var trimmed: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -748,6 +801,7 @@ private struct IslandDoorSheet: View {
                             .padding(.horizontal, 8)
 
                         TextField("reg.invite.label".localized, text: $code)
+                            .focused($codeFocused)
                             .autocorrectionDisabled(true)
                             .textInputAutocapitalization(.never)
                             .font(.system(.callout, design: .monospaced))
@@ -785,7 +839,18 @@ private struct IslandDoorSheet: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 24)
+                    // Hands the column's natural height to `fittedDetent`, so
+                    // the sheet ends under the cancel button above.
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: DoorColumnHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    )
                 }
+                .onPreferenceChange(DoorColumnHeightKey.self) { columnHeight = $0 }
             }
             .navigationTitle("island.door.title".localized)
             .navigationBarTitleDisplayMode(.inline)
@@ -793,7 +858,50 @@ private struct IslandDoorSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("common.cancel".localized) { onCancel() }
                 }
+                // Read the house rules BEFORE typing a code (founder, 07.09).
+                // A closed island is the one whose rules matter most, and this
+                // is the last screen before an account is made on it.
+                //
+                // ⚠ Only when the operator wrote some: an empty page behind a
+                // button is worse than no button.
+                ToolbarItem(placement: .confirmationAction) {
+                    if !status.welcome.isEmpty {
+                        Button { showRules = true } label: {
+                            Image(systemName: "text.book.closed.fill")
+                        }
+                        .accessibilityLabel("settings.island.rules".localized)
+                    }
+                }
             }
         }
+        .presentationDetents([fittedDetent, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+        // ⚠ Take the INCOMING height: `columnHeight` read off `self` in here is
+        // still the old value.
+        .onChange(of: columnHeight) { height in
+            // Not while the keyboard is up: the field re-measuring the column
+            // must not drag the sheet back down over it.
+            guard !codeFocused else { return }
+            detent = Self.detent(forColumnHeight: height)
+        }
+        .onChange(of: codeFocused) { focused in
+            detent = focused ? .large : fittedDetent
+        }
+        .sheet(isPresented: $showRules) {
+            IslandHouseRules(
+                title: status.name.isEmpty ? entry.name : status.name,
+                rules: status.welcome
+            )
+        }
+    }
+}
+
+/// The door sheet's own column height. `QRSheet` measures its code column with
+/// a key of its own, private to that file; this is the same three lines rather
+/// than a shared one, because a preference key is the plumbing of one screen.
+private struct DoorColumnHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

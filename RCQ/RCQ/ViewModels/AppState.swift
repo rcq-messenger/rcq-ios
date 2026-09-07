@@ -1138,7 +1138,28 @@ final class AppState: ObservableObject {
     // Suppresses the `.accountBurned` handler on THIS session during
     // an in-flight migrate; the server fans `account_burned` to every
     // WS under the old uin, including this one.
+    //
+    // ⚠ Since 07.09 a migrate fans `account_moved` instead, so this flag now
+    // also has to cover THAT handler: the device performing the move already
+    // applies the new number itself, and following the frame as well would
+    // wipe the caches and re-boot a second time mid-migration.
     private var migratingAccount: Bool = false
+
+    // Re-entrancy guard for `followAccountMove`. One `account_moved` per socket
+    // is what the island sends, but a reconnect can replay it and a linked
+    // device can produce a second one; a follow already in flight must not be
+    // restarted underneath itself.
+    private var followingAccountMove: Bool = false
+
+    /// The account moved to another number and this device could NOT follow it:
+    /// the island completed the key proof and still refused to name an account
+    /// (the number is somebody else's now, or this signing key is carried by
+    /// more than one account, which is deliberately sent to phrase recovery).
+    ///
+    /// ⚠⚠ Nothing local is touched when this goes true. The person is told, and
+    /// their chats stay on the device — the whole point of the fix is that a
+    /// device which cannot follow keeps what it has instead of erasing it.
+    @Published var accountMoveNeedsRecovery: Bool = false
 
     /// Migrate the account to a freshly-allocated UIN. Server keeps
     /// profile + contacts + groups; identity + signing keys are
@@ -1430,6 +1451,22 @@ final class AppState: ObservableObject {
             return .other(error.localizedDescription)
         }
 
+        await applyMovedIdentity(newUIN: resp.new_uin, token: resp.token)
+
+        migratingAccount = false
+        return .success(newUIN: resp.new_uin)
+    }
+
+    /// The LOCAL half of a UIN move: swap the credentials, drop the caches that
+    /// were keyed by the old number, and re-boot. Shared by the device that
+    /// PERFORMS the move (`performMigration`) and by every OTHER device of the
+    /// same owner, which follows it here off the `account_moved` frame.
+    ///
+    /// ⚠⚠ This is deliberately NOT `burnAccount()`. The identity is unchanged —
+    /// only the server-side handle moved — so chat history, favourites, archive
+    /// and per-chat settings all stay valid and must survive. Wiping them here
+    /// is exactly the data loss this whole path exists to undo.
+    private func applyMovedIdentity(newUIN: Int, token: String) async {
         await settleBoot()
         networkReady = false
         WebSocketService.shared.disconnect()
@@ -1474,19 +1511,90 @@ final class AppState: ObservableObject {
         let nickname = AuthService.shared.nickname
         KeychainStore.delete(KeychainStore.Keys.uin)
         KeychainStore.delete(KeychainStore.Keys.token)
-        KeychainStore.setString(KeychainStore.Keys.uin, String(resp.new_uin))
-        KeychainStore.setString(KeychainStore.Keys.token, resp.token)
+        KeychainStore.setString(KeychainStore.Keys.uin, String(newUIN))
+        KeychainStore.setString(KeychainStore.Keys.token, token)
         if !nickname.isEmpty {
             KeychainStore.setString(KeychainStore.Keys.nickname, nickname)
         }
-        await APIClient.shared.setToken(resp.token)
+        await APIClient.shared.setToken(token)
 
         booted = false
         bootError = nil
         await boot()
+    }
 
-        migratingAccount = false
-        return .success(newUIN: resp.new_uin)
+    /// The owner took a new number on ANOTHER of their devices and the island
+    /// just said so on our socket. Follow the account onto `announced` instead
+    /// of tearing ourselves down.
+    ///
+    /// ⚠⚠ THIS IS THE FIX FOR 07.09. The island used to send `account_burned`
+    /// here and the handler below wiped the device — a laptop bought a shorter
+    /// number and two phones erased their chats and then could not connect. The
+    /// account was alive the whole time; only its handle had changed. So: no
+    /// branch out of this function may destroy local data. A REAL burn is a
+    /// different frame (`account_burned`), it still runs `burnAccount()`
+    /// unchanged, and it still wipes.
+    ///
+    /// The move is not taken on the frame's word. The frame says only that
+    /// something happened; the proof is `/auth/refresh`, which re-mints a token
+    /// for the number we hold and answers `moved_from` when that number is gone
+    /// and our signing key resolves to exactly one live account. That is the
+    /// rescue built on 03.09 for a device that had been asleep through a move;
+    /// an online device now takes the same road at the moment it is told,
+    /// instead of waiting for a launch that would have come after the wipe.
+    func followAccountMove(to announced: Int) async {
+        // A decoy session holds no real signing key and must not spend one. It
+        // never carries the real account's socket either; belt and braces, same
+        // as the 4401 probe.
+        guard !PanicPINService.shared.isDecoy else { return }
+        guard !followingAccountMove else { return }
+        guard let oldUIN = AuthService.shared.ownUIN else { return }
+        // Already there (a replayed frame after we followed, or a frame for a
+        // number that was never ours). Nothing to do, and nothing to break.
+        guard oldUIN != announced else { return }
+        followingAccountMove = true
+        defer { followingAccountMove = false }
+
+        // Three tries with a widening gap, and ONLY for `.transient`. Without
+        // this a device that happened to be between networks when the frame
+        // landed would sit on a dead token until its next launch: our socket
+        // now authenticates as a uin the island has deleted, so it will be
+        // refused (4401) for as long as we hold the old credentials.
+        for attempt in 0..<3 {
+            switch await AuthService.shared.refreshOwnSession(currentUIN: oldUIN) {
+            case .unchanged:
+                // The island still knows our number. Whatever that frame was
+                // about, it was not this account moving. Leave everything.
+                print("[move] account_moved for \(announced) but \(oldUIN) is still ours - ignoring")
+                return
+            case .moved(let creds, from: let from):
+                print("[move] following account \(from) -> \(creds.uin)")
+                // ⚠ The island's answer wins over the frame, not the other way
+                // round: `creds.uin` is the number the signing key proved, the
+                // frame is just a doorbell. They should agree; if they do not,
+                // the proven one is the one worth acting on.
+                if creds.uin != announced {
+                    print("[move] ⚠ frame said \(announced), refresh said \(creds.uin) - trusting the proof")
+                }
+                await applyMovedIdentity(newUIN: creds.uin, token: creds.token)
+                return
+            case .refused:
+                // Deliberate refusal, and the one case the person has to hear
+                // about: their account is somewhere this device cannot follow it
+                // to. Data stays exactly where it is.
+                print("[move] refresh refused - keeping local data, asking for the recovery phrase")
+                accountMoveNeedsRecovery = true
+                return
+            case .transient:
+                guard attempt < 2 else {
+                    // Out of tries. Still no wipe: the next launch runs the same
+                    // refresh, and until then the device holds what it has.
+                    print("[move] refresh unproven after 3 tries - keeping local data")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(attempt == 0 ? 2 : 6) * 1_000_000_000)
+            }
+        }
     }
 
     /// User-initiated nuclear reset. Wipes server account + every local
@@ -2248,9 +2356,23 @@ final class AppState: ObservableObject {
             break
 
         case .accountBurned:
+            // A REAL burn: the account no longer exists on the island, so the
+            // local copy has to go too. UNCHANGED, and deliberately so — the
+            // 07.09 fix is about the OTHER event below, and getting it wrong in
+            // this direction (a genuine burn that leaves the data behind) is the
+            // worse mistake of the two.
             // Suppressed during migration — see `migratingAccount`.
             if migratingAccount { return }
             Task { await self.burnAccount() }
+
+        case .accountMoved(let newUIN):
+            // NOT a burn. The account is alive under `newUIN`; this device is
+            // simply one the owner did not have in their hand when they moved.
+            // Suppressed on the session that DID the move for the same reason
+            // the burn is: `performMigration` has already applied the new number
+            // here, and following the frame would re-run the whole swap.
+            if migratingAccount { return }
+            Task { await self.followAccountMove(to: newUIN) }
 
         case .presence(let uin, let status, let message):
             let contact = ContactService.shared.contacts.first(where: { $0.uin == uin })

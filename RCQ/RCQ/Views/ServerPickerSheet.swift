@@ -307,6 +307,33 @@ struct IslandCardView: View {
     let entry: ServerEntry
     var selected: Bool = false
 
+    /// What the island says about ITSELF: its door, and whether its operator
+    /// ever wrote house rules. One answer for both, asked once per island per
+    /// launch by `IslandDoor` and shared with the entry line below the host.
+    @State private var status: IslandDoorStatus?
+    @State private var showRules = false
+
+    /// ⚠ Hand-written because of the `@State` above. A private stored property
+    /// makes the SYNTHESIZED memberwise initializer private too, and this view
+    /// is also built from `AddAccountSheet`, in another file.
+    ///
+    /// Seeded from the cache so a card that has been on screen once already
+    /// opens WITH its rules button instead of growing one a moment later.
+    init(entry: ServerEntry, selected: Bool = false) {
+        self.entry = entry
+        self.selected = selected
+        _status = State(initialValue: IslandDoor.cached(host: entry.displayHost))
+    }
+
+    /// The title over the house rules. What the island calls ITSELF wins over
+    /// what the catalogue calls it: rules are the operator's own words and
+    /// belong under the name they typed into their own console, not under the
+    /// one the team wrote into a file by hand.
+    private var displayName: String {
+        guard let name = status?.name, !name.isEmpty else { return entry.name }
+        return name
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             // A capped gap above and free slack below. Splitting the space
@@ -331,6 +358,28 @@ struct IslandCardView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundColor(Theme.Color.accent)
+                }
+                // The island's house rules, before joining rather than after
+                // (founder, 07.09: "a good idea, so you can look before
+                // joining"). The same words its own Settings screen shows to
+                // the people already living there.
+                //
+                // ⚠ ONLY WHEN THE ISLAND ACTUALLY WROTE SOME. An operator who
+                // left the welcome blank is the ordinary case, and a button
+                // that opens an empty page is worse than no button.
+                if let rules = status?.welcome, !rules.isEmpty {
+                    Button { showRules = true } label: {
+                        Image(systemName: "text.book.closed.fill")
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.accent)
+                            // A caption-sized glyph is a 15pt target. The
+                            // padding is the tap area, not the look.
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("settings.island.rules".localized)
                 }
             }
             // ⚠ Open or shut, asked of the island itself. The deck said a
@@ -358,5 +407,53 @@ struct IslandCardView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
+        // Costs nothing: `IslandDoor` answers from its cache when the entry
+        // line under the host has already asked, and holds the request in
+        // flight when both ask in the same frame.
+        .task(id: entry.displayHost) {
+            status = await IslandDoor.status(host: entry.displayHost)
+        }
+        .sheet(isPresented: $showRules) {
+            IslandHouseRules(title: displayName, rules: status?.welcome ?? "")
+        }
+    }
+}
+
+/// The operator's welcome text, read-only and scrollable. Free text of any
+/// length typed into an admin panel, so it gets a screen rather than a row.
+///
+/// ⚠⚠ THIS IS A SECOND COPY of `IslandRulesSheet` in `SettingsView.swift`, and
+/// it should not stay one. That one is a `private struct`, which cannot be
+/// named from another file — and a `private` type in one file and an internal
+/// type of the same name in another are an "invalid redeclaration" to the
+/// compiler, so it cannot even be shadowed. Deleting the word `private` on
+/// `SettingsView.swift`'s declaration and deleting this view merges them:
+/// one word and one block. That file was outside this change's remit.
+struct IslandHouseRules: View {
+    let title: String
+    let rules: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Color.bgPrimary.ignoresSafeArea()
+                ScrollView {
+                    Text(rules)
+                        .font(.callout)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(16)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close".localized) { dismiss() }
+                }
+            }
+        }
     }
 }

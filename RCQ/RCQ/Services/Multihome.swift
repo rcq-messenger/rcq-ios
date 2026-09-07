@@ -210,6 +210,71 @@ enum Multihome {
         }
     }
 
+    /// What `/auth/refresh` answered. `movedFrom` is filled only when the number
+    /// we asked about is gone and the island resolved our signing key to exactly
+    /// one live account instead — i.e. the account moved and we are the device
+    /// that was not in the owner's hand at the time.
+    struct RefreshResult: Decodable {
+        let uin: Int
+        let token: String
+        let moved_from: Int?
+    }
+
+    /// Re-mint a session token for the uin we ALREADY believe is ours, proving
+    /// possession of the same Ed25519 signing key `recoverOn` proves.
+    ///
+    /// ⚠ This is not a second flavour of `recoverOn`, and the two are not
+    /// interchangeable. `/auth/recover` resolves a key to the OLDEST account
+    /// carrying it, which is right for "I lost everything, take me home" and
+    /// wrong here: a handful of keys on the flagship are carried by more than
+    /// one account, and for those a recover would quietly hand us somebody
+    /// else's number. Naming the uin removes that ambiguity. It is also the only
+    /// call that answers `moved_from`, which is the whole reason this exists.
+    ///
+    /// Returns nil when the island refused to name an account for us (404): the
+    /// number is taken by somebody else now, or the key is ambiguous. The caller
+    /// must treat that as "ask the person", never as "the account is gone".
+    /// Throws on anything else, which is a transient failure worth retrying.
+    static func refreshOn(
+        host: String,
+        uin: Int,
+        signingPriv: Curve25519.Signing.PrivateKey
+    ) async throws -> RefreshResult? {
+        struct ChallengeOut: Decodable { let challenge: String }
+        let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
+        // Same nonce endpoint as recover — the server verifies both against the
+        // "recover" challenge namespace, so there is no /auth/refresh/challenge
+        // to look for.
+        let challenge: ChallengeOut = try await post(
+            "https://\(host)/auth/recover/challenge", json: ["signing_key": sk]
+        )
+        let signature = try RecoveryPhrase.signChallenge(signingPrivate: signingPriv, challenge: challenge.challenge)
+        do {
+            return try await post(
+                "https://\(host)/auth/refresh",
+                // The install name matters here: a token minted without it is
+                // unnamed, and the island seeds this device's queue cursor from
+                // it — an install it does not recognise is handed the whole
+                // queue on its next drain and notifies for all of it.
+                json: [
+                    "signing_key": sk,
+                    "challenge": challenge.challenge,
+                    "signature": signature,
+                    "device_id": KeychainStore.deviceID(),
+                ],
+                extra: ["uin": uin]
+            )
+        } catch HttpError.status(404, _) {
+            return nil
+        } catch HttpError.status(401, _) {
+            return nil
+        } catch HttpError.status(403, _) {
+            // This install was disconnected from the account on purpose. It is
+            // not getting a token, and it must not read that as a burn.
+            return nil
+        }
+    }
+
     /// Register (or recover) this identity on `hostInput` as a backup home,
     /// persist it, and return it. The caller republishes the home-island record.
     static func addBackupIsland(ownUin: Int, hostInput: String, nickname: String, auto: Bool = false) async throws -> MultihomeStore.Home {
