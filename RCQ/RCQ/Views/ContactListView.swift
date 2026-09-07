@@ -861,19 +861,32 @@ struct ContactListView: View {
             // a route indicator inside the block that says who you are. It is
             // not about you, it is about how your traffic leaves.
             //
-            // ⚠ Taking real width, so the name does move over when relays come
-            // up. That was the founder's call once he saw both: reserving the
-            // 22pt always would hold the name still, and would also hold an
-            // empty gap open for the whole life of the app for a thing that is
-            // off most of the time. It moves — but it slides, and the shield
-            // fades in rather than blinking into place (founder, 07.09).
-            if singboxActivePort > 0 {
-                StealthHeaderBadge {
-                    showStealthInfo = true
+            // ⚠⚠ THE SLOT IS ALWAYS HERE, EMPTY OR NOT, and that is the whole
+            // fix (founder, 07.09, second pass: "the avatar and nick slide in
+            // a broken way"). This view is the nav bar's PRINCIPAL item, which
+            // UIKit centres between the leading and trailing items. Changing
+            // its intrinsic width re-runs a UIKit layout that SwiftUI's
+            // implicit animation does not drive, so what you actually saw was
+            // the name SNAPPING 15pt while the shield dissolved politely into
+            // place: two motions of different kinds, which reads as a bug
+            // because it is one.
+            //
+            // Holding the width constant removes the UIKit relayout entirely.
+            // The shield now cross-fades inside a slot that was already there,
+            // nothing else moves, and the earlier objection to reserving it
+            // (an empty gap for the life of the app) is answered by the
+            // counterweight below, which is widened by exactly this slot so
+            // the name keeps the position it has today with relays OFF.
+            ZStack {
+                if singboxActivePort > 0 {
+                    StealthHeaderBadge {
+                        showStealthInfo = true
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 }
-                .frame(width: 22, height: 22)
-                .transition(.opacity.combined(with: .scale(scale: 0.6)))
             }
+            .frame(width: Self.shieldSlot, height: Self.shieldSlot)
+            .animation(.easeInOut(duration: 0.28), value: singboxActivePort > 0)
             Menu {
                 Picker("contact_list.status_picker".localized, selection: statusBinding) {
                     ForEach(UserStatus.allCases) { status in
@@ -952,18 +965,33 @@ struct ContactListView: View {
             }
             .buttonStyle(.plain)
             // The counterweight the comment at the top of this stack means:
-            // it balances the leading icon so the nick and UIN sit centred in
-            // the nav bar. It held the shield until 06.09 and is now only ever
-            // empty, which is what it was there for in the first place.
+            // it balances everything ahead of the name so the nick and UIN sit
+            // where they do today, rather than being shoved right by the
+            // leading group.
+            //
+            // ⚠ It is the whole leading group now, not just the avatar: the
+            // shield slot above is permanent, so without matching it here the
+            // name would rest 30pt further right than it does with relays off.
+            // Written as the arithmetic rather than a number so it cannot
+            // silently stop balancing if the avatar is resized.
             Color.clear
-                .frame(width: 22, height: 22)
+                .frame(width: Self.headerCounterweight, height: Self.shieldSlot)
         }
-        // On the whole stack, not on the shield: the shield's own transition
-        // fades IT in, and this is what carries the avatar and the name across
-        // the distance it opened up. Animating only the shield leaves the name
-        // jumping the 15pt in one frame while the shield dissolves politely.
-        .animation(.easeInOut(duration: 0.28), value: singboxActivePort > 0)
+        // ⚠ NO animation on the stack any more, and that is deliberate: the
+        // stack's width no longer changes, so there is nothing here to carry.
+        // The shield's own cross-fade above is the entire motion.
     }
+
+    /// The relay shield's reserved square in the header.
+    private static let shieldSlot: CGFloat = 22
+    /// What the avatar measures; `PersonAvatarView(size: 26)` below.
+    private static let headerAvatar: CGFloat = 26
+    /// `identityPrincipal`'s own spacing.
+    private static let headerSpacing: CGFloat = 8
+    /// Everything ahead of the name, mirrored after it, so the name is not
+    /// pushed sideways by the shield slot and the avatar.
+    private static let headerCounterweight: CGFloat =
+        shieldSlot + headerSpacing + headerAvatar
 
     @ViewBuilder
     private var contactListMenu: some View {
