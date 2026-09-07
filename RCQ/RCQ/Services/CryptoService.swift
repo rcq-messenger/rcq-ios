@@ -145,6 +145,55 @@ struct CICard: Codable, Hashable {
     let status: String?
 }
 
+
+/// The guest card this account hands out, on a CLOSED island.
+///
+/// ⚠ A single value rather than a parameter threaded through every seal, and
+/// that is a consequence of a product decision rather than laziness: there is
+/// ONE card for everybody (see GuestCardStore), because a card per contact
+/// would hand the island a stable per-relationship identifier it could count
+/// and time. One card means the seal path needs no per-recipient lookup, no
+/// actor hop out of a synchronous encode, and no new argument on four
+/// functions.
+///
+/// Set by AppState when /server/info lands; nil on an open island, where a
+/// live credential has no business travelling to a door that is not locked.
+enum OutgoingGuestCard {
+    /// Written on the main actor at boot, read on the seal path. A stale value
+    /// costs nothing: the worst case is a card the recipient already has.
+    nonisolated(unsafe) static var value: String?
+}
+
+/// Encode an envelope for the wire, with the guest card riding along as a
+/// passenger at the top level.
+///
+/// ⚠ NOT a case on `Envelope`. The card is not part of the message: it applies
+/// to every kind, it is meaningless once the two of you are talking, and
+/// adding an associated value would have meant touching seventeen pattern
+/// matches for a field none of them care about. As a passenger it is also
+/// forward compatible in the direction that matters — a build that has never
+/// heard of cards decodes the envelope and ignores the extra key.
+func encodeEnvelopeForWire(_ envelope: Envelope, card: String?) throws -> Data {
+    let data = try JSONEncoder().encode(envelope.withSendTimestamp())
+    guard let card, !card.isEmpty,
+          var obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return data }
+    obj["card"] = card
+    // `.sortedKeys` only so the bytes are stable across runs; nothing verifies
+    // this JSON, the signature is taken over whatever comes back from here.
+    return (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? data
+}
+
+/// The card a sender handed us, out of a decoded envelope's raw JSON.
+func guestCardFromWire(_ data: Data) -> String? {
+    guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          let card = obj["card"] as? String
+    else { return nil }
+    let trimmed = card.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Bounded: it arrives from a peer and leaves as a request header.
+    return (trimmed.isEmpty || trimmed.count > 128) ? nil : trimmed
+}
+
 enum Envelope: Codable, Hashable {
     case text(id: UUID, text: String, ttl: Int? = nil, ts: Int? = nil, forwardedFromName: String? = nil, replyTo: ReplyContext? = nil)
     /// `spoiler` = sent blurred, receiver taps to reveal (Android parity;
@@ -868,6 +917,11 @@ struct ReplyContext: Codable, Hashable {
 
 struct DecryptedEnvelope {
     let senderUIN: Int
+    /// A GUEST CARD the sender handed us, on a closed island: the thing that
+    /// lets us write back to somebody who is not a contact. Read off the raw
+    /// envelope JSON rather than the decoded `Envelope`, because a card is not
+    /// part of the message — see `encodeEnvelopeForWire`.
+    var guestCard: String? = nil
     /// The sender's island host if they included it (v=1 `from_host`); nil for
     /// pre-`from_host` senders and all v=2 (same-island). Drives Variant A.
     var senderHost: String? = nil
@@ -1000,7 +1054,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             outputByteCount: 32
         )
 
-        let envelopeJSON = try JSONEncoder().encode(envelope.withSendTimestamp())
+        let envelopeJSON = try encodeEnvelopeForWire(envelope, card: OutgoingGuestCard.value)
         let toSign = ephemeralPubBytes + envelopeJSON
         let signature = try signingPriv.signature(for: toSign)
 
@@ -1124,7 +1178,7 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         let recipientAddr = try ProtocolAddress(name: String(recipient.uin), deviceId: deviceId)
         let localAddr = try stores.localAddress()
 
-        let envelopeJSON = try JSONEncoder().encode(envelope.withSendTimestamp())
+        let envelopeJSON = try encodeEnvelopeForWire(envelope, card: OutgoingGuestCard.value)
         let cipher = try signalEncrypt(
             message: envelopeJSON,
             for: recipientAddr,
@@ -1290,7 +1344,10 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
         }
         let env = try JSONDecoder().decode(Envelope.self, from: envBytes)
         let fromHost = inner["from_host"] as? String
-        return DecryptedEnvelope(senderUIN: from, senderHost: fromHost, senderSigningKey: spubB64, envelope: env)
+        return DecryptedEnvelope(
+            senderUIN: from, guestCard: guestCardFromWire(envBytes),
+            senderHost: fromHost, senderSigningKey: spubB64, envelope: env,
+        )
     }
 
     private func decryptV2(wire: [String: Any]) throws -> DecryptedEnvelope {
@@ -1370,7 +1427,10 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             throw error
         }
         let env = try JSONDecoder().decode(Envelope.self, from: plainEnvelope)
-        return DecryptedEnvelope(senderUIN: from, senderDeviceID: senderDeviceId, envelope: env)
+        return DecryptedEnvelope(
+            senderUIN: from, guestCard: guestCardFromWire(plainEnvelope),
+            senderDeviceID: senderDeviceId, envelope: env,
+        )
     }
 }
 
