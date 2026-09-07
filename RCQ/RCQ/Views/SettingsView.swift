@@ -25,6 +25,7 @@ enum SettingsRow: String, CaseIterable, Hashable {
     // Privacy pane
     case profileVisibility, profileCard, lastSeen, relayCalls, strangers
     case genderVisibility, groupInvites, callPolicy, readReceipts
+    case wearBadge
     case howItWorks, panicPIN, migrate, hallOfFame
     // Network pane
     case accounts, stealth, onion, localProxy, customServer, diagnostics, sharedRelays

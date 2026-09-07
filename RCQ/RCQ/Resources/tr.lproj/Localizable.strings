@@ -72,6 +72,8 @@
 "settings.privacy.calls.desc" = "Seni kimler arayabilir. \"Hiç kimse\" sohbetlerdeki ve menülerdeki bütün arama düğmelerini gizler; \"Kişiler\" yalnızca karşılıklı arkadaşlara izin verir.";
 "settings.privacy.footer.short" = "Son görülme, cinsiyet, grup davetleri, takas teklifleri, aramalar, okundu bilgisi.";
 "settings.privacy.calls" = "Beni kimler arayabilir";
+"settings.privacy.badge" = "İşaretimi göster";
+"settings.privacy.badge.desc" = "Adınızın yanındaki ada işareti. Kapatırsanız başka kimse göremez; siz görmeye devam edersiniz.";
 "settings.privacy.read_receipts" = "Okundu bilgisini görenler";
 "settings.privacy.read_receipts.desc" = "Bir mesajı okuduğunda karşı taraf ikinci tiki görür. \"Hiç kimse\" bunu kapatır; sen yine de seninkileri okuduklarını görürsün.";
 "settings.privacy.reputation" = "İtibarı görenler";
