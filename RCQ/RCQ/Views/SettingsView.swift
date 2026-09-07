@@ -1233,11 +1233,7 @@ struct SettingsView: View {
         "settings.account.burn.message".localized
     }
 
-    private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        return "\(v) (\(b))"
-    }
+    private var appVersion: String { BuildStamp.line() }
 
     /// The island this account lives on.
     ///
