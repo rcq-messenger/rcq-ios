@@ -1861,3 +1861,5 @@
 
 "island.entry.price" = "Вхід: %@";
 "island.entry.closed" = "Закритий клуб";
+
+"add_account.custom.invite" = "Код доступу (для закритих островів)";

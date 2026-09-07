@@ -2020,3 +2020,5 @@
 
 "island.entry.price" = "Вход: %@";
 "island.entry.closed" = "Закрытый клуб";
+
+"add_account.custom.invite" = "Код доступа (для закрытых островов)";
