@@ -199,11 +199,7 @@ struct AboutSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var versionLine: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        return "RCQ \(v) (\(b))"
-    }
+    private var versionLine: String { BuildStamp.line(prefix: "RCQ ") }
 }
 
 /// QR helper — still consumed by `QRSheet` for contact-share QRs.
