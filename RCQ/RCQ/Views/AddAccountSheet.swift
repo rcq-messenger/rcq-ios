@@ -252,6 +252,7 @@ struct AddAccountSheet: View {
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                IslandEntryLine(host: entry.displayHost)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -445,5 +446,49 @@ struct AddAccountSheet: View {
             return
         }
         dismiss()
+    }
+}
+
+
+/// What an island charges to get in, under its address in the list.
+///
+/// ⚠ Asked of the ISLAND, not of the directory file. servers.json is edited by
+/// hand and would be stale the day after an operator changed a price — and a
+/// wrong price is worse than no price.
+///
+/// ⚠ NO LINK AND NO BUTTON, on purpose and permanently on this platform.
+/// Apple's rules do not allow an app to point somebody at a purchase it does
+/// not handle, and a price with a way to pay beside it is exactly the shape
+/// that gets an app pulled. The price alone is a fact about an island, the
+/// same as its region.
+///
+/// Nothing is drawn for an open island: a list full of "free" labels teaches
+/// nobody anything.
+private struct IslandEntryLine: View {
+    let host: String
+    @State private var line: String?
+
+    var body: some View {
+        Group {
+            if let line {
+                Text(line)
+                    .font(.caption2)
+                    .foregroundColor(Theme.Color.accent)
+            }
+        }
+        .task(id: host) {
+            guard let caps = await ServerInfoService.fetch(host: host)?.capabilities,
+                  caps.closedIsland else { return }
+            let cents = caps.entryPriceCents
+            line = cents > 0
+                ? String(format: "island.entry.price".localized, Self.usd(cents))
+                : "island.entry.closed".localized
+        }
+    }
+
+    /// Whole dollars lose the ".00": a club that costs fifteen dollars should
+    /// say fifteen dollars.
+    private static func usd(_ cents: Int) -> String {
+        cents % 100 == 0 ? "$\(cents / 100)" : String(format: "$%.2f", Double(cents) / 100)
     }
 }

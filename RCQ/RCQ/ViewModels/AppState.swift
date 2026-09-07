@@ -2378,6 +2378,10 @@ struct ServerCapabilities: Codable, Equatable {
     /// island becomes a directory for guessing which numbers exist. False on
     /// any island older than the field.
     var closedIsland: Bool = false
+    /// What this island charges to join, in US cents; 0 = entry is not sold.
+    /// Read from the island rather than the directory file, which is edited by
+    /// hand and would be stale the day after a price changed.
+    var entryPriceCents: Int = 0
     var uinShop: Bool
     var hallOfFame: Bool
     // Operator-toggleable optional features (admin console → Features). Each
@@ -2479,6 +2483,7 @@ struct ServerCapabilities: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case closedIsland = "closed_island"
+        case entryPriceCents = "entry_price_cents"
         case uinShop = "uin_shop"
         case hallOfFame = "hall_of_fame"
         case nearby
@@ -2502,6 +2507,7 @@ struct ServerCapabilities: Codable, Equatable {
         // Absent on an island older than the field, and that reads as OPEN,
         // which is the permissive default every flag here takes.
         closedIsland = (try? c.decodeIfPresent(Bool.self, forKey: .closedIsland)) as? Bool ?? false
+        entryPriceCents = ((try? c.decodeIfPresent(Int.self, forKey: .entryPriceCents)) as? Int ?? 0)
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
         nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true
