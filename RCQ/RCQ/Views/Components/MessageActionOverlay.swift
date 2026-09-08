@@ -217,15 +217,26 @@ struct MessageActionOverlay: View {
     /// never be scrolled away from.
     private func lifted(geo: GeometryProxy) -> some View {
         let side: HorizontalAlignment = message.isFromMe ? .trailing : .leading
-        return ZStack(alignment: .top) {
+        return ZStack {
             DimWithHole(hole: .zero, radius: 0)
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
-            VStack(spacing: 10) {
-                reactionsPanel
-                    .measured($pillSize)
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: side, spacing: 8) {
+            ScrollView(showsIndicators: false) {
+                // ⚠⚠ A PINNED SECTION HEADER, not a measured overlay. The bar
+                // has to do two things at once — sit directly over the message,
+                // and stay on screen once the message has been scrolled past it
+                // — which is what Telegram does and what the founder asked for
+                // with two screenshots (08.09).
+                //
+                // Two measured versions came before this one and both left the
+                // bar frozen: a `.background` GeometryReader's preferences do
+                // not flow up to its parent, and preferences from inside a
+                // ScrollView did not reach an `onPreferenceChange` on the
+                // ScrollView either. `pinnedViews` is the same behaviour with no
+                // measurement at all: the header scrolls with its section and
+                // sticks to the top when the section goes under it.
+                LazyVStack(alignment: side, spacing: 8, pinnedViews: [.sectionHeaders]) {
+                    Section {
                         if !senderNickname.isEmpty {
                             Text(senderNickname)
                                 .font(.caption.weight(.semibold))
@@ -233,24 +244,26 @@ struct MessageActionOverlay: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
-                        // No line cap: the scroll view around this exists so
-                        // the whole message can be read.
+                        // No line cap: the scroll view around this exists so the
+                        // whole message can be read.
                         MessagePreviewCard(message: message, lineLimit: nil)
                         actionsPanel
                             .frame(width: Self.panelWidth)
                             .measured($panelSize)
+                    } header: {
+                        HStack(spacing: 0) {
+                            if message.isFromMe { Spacer(minLength: 0) }
+                            reactionsPanel.measured($pillSize)
+                            if !message.isFromMe { Spacer(minLength: 0) }
+                        }
+                        .padding(.bottom, 6)
                     }
-                    .frame(maxWidth: .infinity, alignment: side == .trailing ? .trailing : .leading)
-                    .padding(.horizontal, 20)
-                    // The stack is bottom-heavy on purpose: a long message
-                    // starts at the top of the scroll and the menu is one flick
-                    // away, rather than the other way round.
-                    .padding(.bottom, 12)
                 }
+                .frame(maxWidth: .infinity, alignment: side == .trailing ? .trailing : .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, geo.safeAreaInsets.top + Self.edgeMargin)
+                .padding(.bottom, geo.safeAreaInsets.bottom + Self.edgeMargin + 12)
             }
-            .padding(.top, geo.safeAreaInsets.top + Self.edgeMargin)
-            .padding(.bottom, geo.safeAreaInsets.bottom + Self.edgeMargin)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
