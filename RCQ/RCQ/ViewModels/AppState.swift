@@ -1336,7 +1336,19 @@ final class AppState: ObservableObject {
     /// A transport failure is already a sentence ("The Internet connection
     /// appears to be offline") and must survive untouched, so anything without
     /// a `code` is passed straight through.
+    ///
+    /// ⚠ Except a body that is JSON without a `code`, which used to go through
+    /// this guard untouched and land on screen as `{"detail":"internal_error"}`
+    /// — the island's 500, printed verbatim under the person's own collection
+    /// (founder, 08.09.2026). It tells them nothing and reads like the app
+    /// broke. Anything shaped like a payload becomes the generic sentence; a
+    /// sentence stays a sentence.
     static func uinRefusalText(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.contains("\"code\"")
+            && (trimmed.hasPrefix("{") || trimmed.hasPrefix("[") || trimmed.contains("\"detail\"")) {
+            return "uin_shop.error.generic".localized
+        }
         guard raw.contains("\"code\"") else { return raw }
         if raw.contains("suspended") { return "uin.error.suspended".localized }
         if raw.contains("too_many_uins") { return "uin.error.too_many".localized }
