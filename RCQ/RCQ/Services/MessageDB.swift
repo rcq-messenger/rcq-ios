@@ -766,6 +766,26 @@ final class MessageDB {
 
     /// Hide a message the user deleted, keeping its id so a re-delivered copy
     /// is still recognised as known. See the `deletedLocally` note in the model.
+    /// Which of these ids this device has a DELETE on record for.
+    ///
+    /// ⚠ Reads `deletedLocally`, the hidden row `markDeletedLocally` leaves
+    /// behind so a redelivered copy is still recognised as known. That row is
+    /// the only memory a deleted message leaves here, and it is exactly what a
+    /// reply quote needs: a quote carries a COPY of the words, so deleting the
+    /// original leaves its text alive in every quote of it, which is the one
+    /// place it survived the delete (report #947, vss).
+    ///
+    /// An id with no row means this device never had that message, which is NOT
+    /// the same as deleted: those quotes keep their snippet.
+    func deletedAmong(_ ids: [UUID]) -> Set<UUID> {
+        guard !ids.isEmpty else { return [] }
+        let req = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+        req.predicate = NSPredicate(format: "id IN %@ AND deletedLocally == YES", ids)
+        req.propertiesToFetch = ["id"]
+        let rows = (try? ctx.fetch(req)) ?? []
+        return Set(rows.compactMap { $0.value(forKey: "id") as? UUID })
+    }
+
     func markDeletedLocally(id: UUID) {
         guard let row = find(id: id) else { return }
         row.deletedLocally = true

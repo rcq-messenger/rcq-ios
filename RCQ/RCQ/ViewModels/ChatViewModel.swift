@@ -44,13 +44,22 @@ final class ChatViewModel: ObservableObject {
     /// message id → isFromMe, for O(1) `replyIsMine` — it used to scan the
     /// whole loaded window per reply row.
     private var isMineByID: [UUID: Bool] = [:]
-    /// Message ids this thread has that were retracted for everyone. A quote of
-    /// one of them must not go on showing the words it used to say: the message
-    /// is gone from the chat and the quote was the one place its text survived
-    /// (report #947, vss). Absent from the map means we simply do not have the
-    /// message on this device, which is NOT the same as deleted, and the quote
-    /// keeps its snippet in that case.
-    private var isDeletedByID: [UUID: Bool] = [:]
+    /// Quoted message ids this device has a DELETE on record for.
+    ///
+    /// ⚠⚠ ASKED OF THE DATABASE, not of the thread, and the first version of
+    /// this got that wrong. A deleted message is REMOVED from the thread here:
+    /// `MessageService` calls `deleteLocal` on every retraction path and leaves
+    /// no placeholder, which `MessageService.swift:2664` says is a deliberate
+    /// product choice. `Message.deletedForEveryone` exists but nothing alive
+    /// sets it - `MessageStore.tombstone` has no callers - so a map built from
+    /// the loaded messages answered "not deleted" for every message that had
+    /// actually been deleted, which is the only case it was written for.
+    ///
+    /// What a delete DOES leave is `deletedLocally` on the row, kept so a
+    /// redelivered copy is still recognised as known. That is the memory this
+    /// reads. An id with no row at all means we never had that message, which
+    /// is not the same as deleted, and the quote keeps its snippet.
+    @Published private(set) var deletedQuotedIDs: Set<UUID> = []
     /// Composer text. NOT @Published on purpose: a keystroke used to fire
     /// objectWillChange and re-run ChatView's whole body (every visible row)
     /// per character. The UITextView owns the live text; SwiftUI learns about
@@ -216,7 +225,12 @@ final class ChatViewModel: ObservableObject {
                 // view of the same data in step with it.
                 self.rebuildUnitIndex(grouped)
                 self.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
-                self.isDeletedByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.deletedForEveryone }
+                // Only the quotes whose target is NOT in the thread can be
+                // deleted; the rest are answered by the thread itself and never
+                // reach the database.
+                let present = Set(msgs.map(\.id))
+                let orphanQuotes = Array(Set(msgs.compactMap(\.replyToID)).subtracting(present))
+                self.deletedQuotedIDs = orphanQuotes.isEmpty ? [] : MessageDB.shared.deletedAmong(orphanQuotes)
                 // A message landing while the reader SITS at the bottom is
                 // seen the instant it renders, but the sentinel stays
                 // realized (no fresh onAppear), so noteAtBottom never re-runs
@@ -1553,11 +1567,11 @@ final class ChatViewModel: ObservableObject {
         return isMineByID[rid] ?? false
     }
 
-    /// Was the message this one quotes retracted for everyone? See
-    /// `isDeletedByID`.
+    /// Was the message this one quotes deleted on this device? See
+    /// `deletedQuotedIDs`.
     func replyTargetDeleted(_ message: Message) -> Bool {
         guard let rid = message.replyToID else { return false }
-        return isDeletedByID[rid] ?? false
+        return deletedQuotedIDs.contains(rid)
     }
 
     func senderNickname(_ uin: Int) -> String {

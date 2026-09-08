@@ -1921,9 +1921,17 @@ struct ContactListView: View {
     /// sheet the bottom bar's "+" button would.
     private var emptyState: some View {
         VStack(spacing: 14) {
-            // ⚠ The rooms strip MOVED to the Add window, under the search
-            // field (founder, 08.09): drawn only here it vanished for good with
-            // the first contact added, and there was nowhere to open it again.
+            // Rooms to walk into, before anything about contacts: nobody
+            // arrives with friends already here (founder, 05.09).
+            //
+            // ⚠ ALSO under the search field in the Add window, and that is not
+            // a duplicate: this copy is for the first minute of an empty
+            // account, the other is where it lives afterwards, because this
+            // whole view disappears with the first contact added and used to
+            // take the only way to find a room with it (founder, 08.09).
+            DiscoverGroupsStrip { joined in
+                appState.pendingOpenGroupID = joined.id
+            }
             Image(systemName: "person.2.wave.2")
                 .font(.system(size: 44, weight: .light))
                 .foregroundColor(Theme.Color.divider)
