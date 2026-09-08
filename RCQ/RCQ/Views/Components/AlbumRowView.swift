@@ -90,12 +90,18 @@ struct AlbumRowView: View {
                         onTapTile: onTapTile,
                         onLongPress: onLongPress
                     )
-                    // Caption rides inline on the last media so it
-                    // can't race ahead of the (slow) video upload —
-                    // here we re-render it as a normal-looking text
-                    // bubble so visually it still reads as a separate
-                    // chat message.
-                    if let caption = items.last?.text, !caption.isEmpty {
+                    // The sender puts the caption on the LAST item it
+                    // composed, so the text cannot race ahead of a slow
+                    // video upload. ⚠ But "last composed" is not "last
+                    // received": every item uploads in its own detached
+                    // task and the island stamps them in completion order,
+                    // so on the receiving side the captioned item can sit
+                    // FIRST. Reading `items.last` here drew a two-tile album
+                    // with no text at all for exactly that case (founder,
+                    // 08.09, iOS to iOS in a group) while Android, which takes
+                    // the first non-empty text, showed it. Take it from
+                    // whichever item carries it.
+                    if let caption = items.first(where: { !$0.text.isEmpty })?.text, !caption.isEmpty {
                         // Caption text alignment matches the outgoing-
                         // vs-incoming side so a multi-line caption on
                         // a right-pinned bubble doesn't read flush-left

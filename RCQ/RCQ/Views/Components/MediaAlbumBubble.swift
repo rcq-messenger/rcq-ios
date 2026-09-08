@@ -4,8 +4,9 @@ import SwiftUI
 /// pendingMedia batch, rendered as one grouped bubble. Uses a 2-column
 /// grid up to 4 tiles; for 3-tile albums the first row is one wide
 /// tile and the second row is two halves so the layout never leaves a
-/// stranded singleton. Caption is the trailing message's text — same
-/// "anchor" rule the sender uses when composing the album.
+/// stranded singleton. The caption is drawn by AlbumRowView, from
+/// whichever item carries it: the sender puts it on the item it composed
+/// last, and that item is not necessarily the one received last.
 struct MediaAlbumBubble: View {
     let items: [Message]
     var maxWidth: CGFloat = 248
