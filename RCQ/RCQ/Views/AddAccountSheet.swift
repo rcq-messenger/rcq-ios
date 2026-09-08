@@ -578,6 +578,9 @@ struct IslandDoorStatus {
     /// along on the same `/server/info` answer the door is read from: the
     /// rules button on a card must not cost a second request per island.
     let welcome: String
+    /// How many people live there, or 0 when the island did not say. On the
+    /// same answer as everything else here, for the same reason the rules are.
+    let people: Int
 }
 
 /// What an island says about its own DOOR, remembered for the life of the
@@ -615,7 +618,8 @@ enum IslandDoor {
                 entryPriceCents: info.capabilities.entryPriceCents,
                 name: info.name,
                 logoVersion: info.logoVersion ?? "",
-                welcome: (info.welcome ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                welcome: (info.welcome ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                people: info.capabilities.userCount
             )
         }
         inFlight[key] = task
@@ -679,7 +683,12 @@ struct IslandEntryLine: View {
     }
 
     private func label(for status: IslandDoorStatus) -> String {
-        guard status.needsCode else { return "island.entry.open".localized }
+        // ⚠ Appended to the line rather than given one of its own: this sits in
+        // a card whose height is fitted, and a second line would change it.
+        // Absent when the island did not say, because a card that says nothing
+        // is honest and one that says 0 is not (founder, 09.09).
+        let crowd = status.people > 0 ? " · \(status.people.formatted())" : ""
+        guard status.needsCode else { return "island.entry.open".localized + crowd }
         // ⚠⚠ A PRICE ONLY FOR OUR OWN ISLAND, and this is a rule about
         // Apple rather than about taste (founder, 2026-09-07).
         //
@@ -695,9 +704,9 @@ struct IslandEntryLine: View {
         // without it the island looks broken rather than private.
         let isOurs = RcqFederation.isFlagship(host)
         let cents = status.entryPriceCents
-        return (isOurs && cents > 0)
+        return ((isOurs && cents > 0)
             ? String(format: "island.entry.price".localized, Self.usd(cents))
-            : "island.entry.closed".localized
+            : "island.entry.closed".localized) + crowd
     }
 
     /// Whole dollars lose the ".00": a club that costs fifteen dollars should

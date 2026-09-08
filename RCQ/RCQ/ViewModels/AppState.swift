@@ -2566,6 +2566,10 @@ struct ServerCapabilities: Codable, Equatable {
     /// Read from the island rather than the directory file, which is edited by
     /// hand and would be stale the day after a price changed.
     var entryPriceCents: Int = 0
+    /// How many accounts live on that island. 0 means it did not say — one
+    /// older than the field, or one that has not counted yet — so a card draws
+    /// nothing rather than claiming an empty island.
+    var userCount: Int = 0
 
     /// A fresh registration here will be refused without a code.
     ///
@@ -2678,6 +2682,7 @@ struct ServerCapabilities: Codable, Equatable {
         case closedIsland = "closed_island"
         case registrationPolicy = "registration_policy"
         case entryPriceCents = "entry_price_cents"
+        case userCount = "user_count"
         case uinShop = "uin_shop"
         case hallOfFame = "hall_of_fame"
         case nearby
@@ -2711,6 +2716,7 @@ struct ServerCapabilities: Codable, Equatable {
         let policy = ((try? c.decodeIfPresent(String.self, forKey: .registrationPolicy)) ?? nil) ?? ""
         registrationPolicy = policy.isEmpty ? "open" : policy
         entryPriceCents = ((try? c.decodeIfPresent(Int.self, forKey: .entryPriceCents)) ?? nil) ?? 0
+        userCount = ((try? c.decodeIfPresent(Int.self, forKey: .userCount)) ?? nil) ?? 0
         uinShop = try c.decode(Bool.self, forKey: .uinShop)
         hallOfFame = try c.decodeIfPresent(Bool.self, forKey: .hallOfFame) ?? false
         nearby = try c.decodeIfPresent(Bool.self, forKey: .nearby) ?? true
