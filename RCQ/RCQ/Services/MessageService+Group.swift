@@ -53,6 +53,10 @@ extension MessageService {
             isSpoiler: spoiler
         )
         MessageStore.shared.append(local)
+        // Our own picture: its shape is in hand here, so the bubble is the
+        // right box from the first frame instead of reflowing when the
+        // upload finally returns a media id.
+        MediaBox.remember(local.id, size: image.size)
         MediaProgressStore.shared.begin(local.id)
         Task { [weak self] in
             guard let self else { return }
@@ -93,6 +97,10 @@ extension MessageService {
             albumID: albumID
         )
         MessageStore.shared.append(local)
+        // Our own picture: its shape is in hand here, so the bubble is the
+        // right box from the first frame instead of reflowing when the
+        // upload finally returns a media id.
+        MediaBox.remember(local.id, size: preview.size)
         MediaProgressStore.shared.begin(local.id)
         Task { [weak self] in
             guard let self else { return }

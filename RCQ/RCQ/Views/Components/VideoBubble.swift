@@ -29,13 +29,21 @@ struct VideoBubble: View {
         message.isSpoiler && !spoilerRevealed
     }
 
+    /// The poster travels INSIDE the message, and `MediaBox` reads its header
+    /// without decoding it, so a clip's shape is known on the very first frame
+    /// and the bubble never resizes afterwards. With no poster at all the box
+    /// is a player's 16:9.
+    private var box: CGSize {
+        MediaBox.size(for: message, maxWidth: maxWidth)
+    }
+
     var body: some View {
         ZStack {
             if let thumb {
                 Image(uiImage: thumb)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: maxWidth, height: maxWidth * 0.75)
+                    .frame(width: box.width, height: box.height)
                     .blur(radius: spoilerCovered ? 18 : 0, opaque: true)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
@@ -54,7 +62,7 @@ struct VideoBubble: View {
                     }
                     Spacer()
                 }
-                .frame(width: maxWidth, height: maxWidth * 0.75)
+                .frame(width: box.width, height: box.height)
             }
             if isUploading {
                 uploadRing
@@ -72,7 +80,7 @@ struct VideoBubble: View {
                     .shadow(radius: 4)
             }
         }
-        .frame(width: maxWidth, height: maxWidth * 0.75)
+        .frame(width: box.width, height: box.height)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture {

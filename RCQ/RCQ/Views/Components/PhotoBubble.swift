@@ -48,6 +48,7 @@ struct PhotoBubble: View {
                let data = MediaService.shared.cachedData(mediaID: parts[0], keyBase64: parts[1]) {
                 _image = State(initialValue: img)
                 _gifData = State(initialValue: AnimatedGIFView.isGIF(data) ? data : nil)
+                MediaBox.remember(raw, size: img.size)
             }
         }
     }
@@ -66,7 +67,11 @@ struct PhotoBubble: View {
     var body: some View {
         Group {
             if let image {
-                let frameSize: CGSize = forcedSize ?? CGSize(width: maxWidth, height: maxWidth * 0.75)
+                // The picture is in hand, so its own shape decides the box.
+                // `forcedSize` still wins: album tiles and the premium flow need
+                // every cell to match exactly.
+                let frameSize: CGSize = forcedSize ?? MediaBox.size(
+                    ratio: image.size.width / max(image.size.height, 1), maxWidth: maxWidth)
                 Group {
                     if let gifData, AnimatedGIFView.isGIF(gifData) {
                         // GIF path — animated frames from the
@@ -105,6 +110,15 @@ struct PhotoBubble: View {
         message.mediaID == nil && message.deliveryState == .sending
     }
 
+    /// Box to hold while there is no picture to measure. A photo we sent
+    /// ourselves is known from the moment it is composed (the send path writes
+    /// its size down); one that has been decoded before is known from the
+    /// cache; a stranger's first photo reserves a square and reflows once, when
+    /// the spinner becomes a picture.
+    private var reservedSize: CGSize {
+        forcedSize ?? MediaBox.size(for: message, maxWidth: maxWidth)
+    }
+
     private var failedPlaceholder: some View {
         ZStack {
             Theme.Color.bgSecondary
@@ -117,7 +131,9 @@ struct PhotoBubble: View {
                     .foregroundColor(Theme.Color.textSecondary)
             }
         }
-        .frame(width: maxWidth, height: maxWidth * 0.75)
+        // The box this photo is already known to want, so the row does not
+        // resize the moment the bytes arrive.
+        .frame(width: reservedSize.width, height: reservedSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -128,8 +144,7 @@ struct PhotoBubble: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .font(.system(size: 26))
         }
-        .frame(width: forcedSize?.width ?? maxWidth,
-               height: forcedSize?.height ?? maxWidth * 0.75)
+        .frame(width: reservedSize.width, height: reservedSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -156,7 +171,7 @@ struct PhotoBubble: View {
                     .tint(Theme.Color.textSecondary)
             }
         }
-        .frame(width: maxWidth, height: maxWidth * 0.75)
+        .frame(width: reservedSize.width, height: reservedSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -171,6 +186,9 @@ struct PhotoBubble: View {
         if let (img, data) = await MediaService.shared.loadImageWithData(
             mediaID: parts[0], keyBase64: parts[1],
         ) {
+            // Write the shape down before handing over the picture: every
+            // later appearance of this row is then sized before it is drawn.
+            MediaBox.remember(raw, size: img.size)
             self.image = img
             self.gifData = AnimatedGIFView.isGIF(data) ? data : nil
         } else {
