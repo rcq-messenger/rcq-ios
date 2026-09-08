@@ -29,13 +29,16 @@ struct HeldBubbleAnchorKey: PreferenceKey {
 struct DimWithHole: View {
     let hole: CGRect
     let radius: CGFloat
-    var opacity: Double = 0.55
+    var opacity: Double = 0.22
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(Color.black.opacity(opacity))
-                .padding(-400)
+            // The blur the overlay has always had, with a little dark over it:
+            // the material alone does not separate the held message from a
+            // light chat, and the dark alone loses the depth (founder, 08.09:
+            // "the blur is gone").
+            Rectangle().fill(.regularMaterial).padding(-400)
+            Rectangle().fill(Color.black.opacity(opacity)).padding(-400)
             if hole.width > 0, hole.height > 0 {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .frame(width: hole.width, height: hole.height)

@@ -9,6 +9,12 @@ import SwiftUI
 /// stays readable while the action panels float around it.
 struct MessagePreviewCard: View {
     let message: Message
+    /// How many lines of a text message to show. Six for a card that has to fit
+    /// somewhere; unlimited when the caller has put it in a scroll view, which
+    /// is what the long-press menu does for a message too tall to leave where
+    /// it is: truncating there would mean the one layout built to let you read
+    /// a long message still cut it off at six lines (founder, 08.09).
+    var lineLimit: Int? = 6
 
     var body: some View {
         HStack {
@@ -56,7 +62,7 @@ struct MessagePreviewCard: View {
                 pollSummary
             default:
                 EmoticonText(text: message.text)
-                    .lineLimit(6)
+                    .lineLimit(lineLimit)
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                     .cornerRadius(Theme.Metrics.bubbleRadius)

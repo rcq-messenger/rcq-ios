@@ -1865,7 +1865,7 @@
 
 "ci.closed_island" = "Esta isla es cerrada. Para escribirle a alguien de ahí hace falta un enlace suyo: que comparta su contacto, o que te escriba primero.";
 
-"island.entry.price" = "Entrada: %@";
+"island.entry.price" = "%@ una vez";
 "island.entry.closed" = "Club cerrado";
 
 "add_account.custom.invite" = "Código de acceso (islas cerradas)";

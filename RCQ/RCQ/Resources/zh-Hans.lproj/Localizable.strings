@@ -1856,7 +1856,7 @@
 
 "ci.closed_island" = "这个岛屿是封闭的。要给那里的人写信，需要他本人给你的链接：他分享联系方式，或者先给你写信。";
 
-"island.entry.price" = "入场：%@";
+"island.entry.price" = "一次性 %@";
 "island.entry.closed" = "封闭俱乐部";
 
 "add_account.custom.invite" = "访问码（封闭岛屿）";

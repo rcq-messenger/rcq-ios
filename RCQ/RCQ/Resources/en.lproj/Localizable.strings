@@ -2074,7 +2074,7 @@
 
 "ci.closed_island" = "This island is closed. To write to somebody there you need a link from them: a shared contact, or a message they sent you first.";
 
-"island.entry.price" = "Entry: %@";
+"island.entry.price" = "%@ once";
 "island.entry.closed" = "Closed club";
 
 "add_account.custom.invite" = "Access code (closed islands)";

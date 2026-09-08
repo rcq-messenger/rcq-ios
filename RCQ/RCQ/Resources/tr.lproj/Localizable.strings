@@ -1865,7 +1865,7 @@
 
 "ci.closed_island" = "Bu ada kapalı. Oradaki birine yazmak için kişinin kendisinden bir bağlantı gerekir: kişiyi paylaşması ya da size önce yazması.";
 
-"island.entry.price" = "Giriş: %@";
+"island.entry.price" = "tek seferlik %@";
 "island.entry.closed" = "Kapalı kulüp";
 
 "add_account.custom.invite" = "Erişim kodu (kapalı adalar)";

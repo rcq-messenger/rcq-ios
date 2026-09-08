@@ -70,13 +70,13 @@ struct MessageActionOverlay: View {
 
     var body: some View {
         GeometryReader { geo in
-            if let rect = bubbleRect {
+            if let rect = bubbleRect, fitsBeside(rect, geo) {
                 anchored(rect: rect, geo: geo)
             } else {
-                // No anchor: the message is off screen (jumped to from search,
-                // or scrolled away under the finger). Nothing to sit beside, so
-                // the old centred stack still has a job.
-                centred(geo: geo)
+                // Either there is no anchor (the message is off screen, jumped
+                // to from search) or it is too tall to leave where it is: see
+                // `fitsBeside`.
+                lifted(geo: geo)
             }
         }
         // "The bar opens" - see `orderedReactions`. onAppear, not `.task`: the
@@ -178,40 +178,79 @@ struct MessageActionOverlay: View {
     /// rows and a scroll bar.
     private static let minPanelHeight: CGFloat = 180
 
-    // MARK: - fallback
+    // MARK: - too tall to leave alone
 
-    /// The pre-08.09 layout, for the case where there is no anchor to sit
-    /// beside. Here the copy IS the message, so it keeps its name label.
-    private func centred(geo: GeometryProxy) -> some View {
-        let safeHeight = geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
-        let bubbleMaxHeight = max(140, safeHeight * 0.45)
-        return ZStack {
-            Rectangle()
-                .fill(.regularMaterial)
-                .ignoresSafeArea()
+    /// Can the menu sit beside the message without anything being cut off?
+    ///
+    /// Two questions, and a no to either means the message has to be lifted.
+    /// Is the message ITSELF fully on screen: one that runs off the top cannot
+    /// be read where it lies, and there is no way to scroll the chat while the
+    /// menu is up. And is there room on one side of it for a menu worth
+    /// showing.
+    private func fitsBeside(_ rect: CGRect, _ geo: GeometryProxy) -> Bool {
+        // Nothing has been measured yet on the first pass. Answer YES so the
+        // anchored branch renders and measures; it draws at opacity 0 until it
+        // has its numbers, and a wrong answer for one invisible frame is
+        // cheaper than flashing the lifted layout at every long press.
+        if pillSize.height == 0 || panelSize.height == 0 { return true }
+        let top = geo.safeAreaInsets.top + Self.edgeMargin
+        let bottom = geo.size.height - geo.safeAreaInsets.bottom - Self.edgeMargin
+        guard rect.minY >= top, rect.maxY <= bottom else { return false }
+        let above = max(0, rect.minY - Self.gap - top)
+        let below = max(0, bottom - rect.maxY - Self.gap)
+        let pillAbove = pillSize.height <= above
+        let freeBelow = pillAbove ? below : max(0, below - pillSize.height - Self.gap)
+        let freeAbove = pillAbove ? max(0, above - pillSize.height - Self.gap) : above
+        return max(freeBelow, freeAbove) >= min(panelSize.height, Self.minPanelHeight)
+    }
+
+    /// A message too long to leave where it is: LIFTED, with the menu under it,
+    /// and the two of them scrolling together.
+    ///
+    /// This is the founder's 08.09 note in full. A long message ran off the top
+    /// of the screen with no way to scroll it, and the menu had nowhere to go,
+    /// so the reactions ended up where the menu should have been and the menu
+    /// was not drawn at all. Here the message is a copy — the real one is under
+    /// the blur — and the copy is free to move, so the message goes up, the
+    /// menu goes under it, and one scroll view carries both. Reactions pin to
+    /// the top, clear of the pair, because they are the one thing that must
+    /// never be scrolled away from.
+    private func lifted(geo: GeometryProxy) -> some View {
+        let side: HorizontalAlignment = message.isFromMe ? .trailing : .leading
+        return ZStack(alignment: .top) {
+            DimWithHole(hole: .zero, radius: 0)
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
-
             VStack(spacing: 10) {
                 reactionsPanel
-                ScrollView {
-                    VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                        Text(senderNickname)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(Theme.Color.accent)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        MessagePreviewCard(message: message)
+                    .measured($pillSize)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: side, spacing: 8) {
+                        if !senderNickname.isEmpty {
+                            Text(senderNickname)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Theme.Color.accent)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        // No line cap: the scroll view around this exists so
+                        // the whole message can be read.
+                        MessagePreviewCard(message: message, lineLimit: nil)
+                        actionsPanel
+                            .frame(width: Self.panelWidth)
+                            .measured($panelSize)
                     }
-                    .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
+                    .frame(maxWidth: .infinity, alignment: side == .trailing ? .trailing : .leading)
+                    .padding(.horizontal, 20)
+                    // The stack is bottom-heavy on purpose: a long message
+                    // starts at the top of the scroll and the menu is one flick
+                    // away, rather than the other way round.
+                    .padding(.bottom, 12)
                 }
-                .frame(maxHeight: bubbleMaxHeight)
-                actionsPanel
-                    .frame(width: Self.panelWidth)
             }
-            .padding(.vertical, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
+            .padding(.top, geo.safeAreaInsets.top + Self.edgeMargin)
+            .padding(.bottom, geo.safeAreaInsets.bottom + Self.edgeMargin)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
     }
 
