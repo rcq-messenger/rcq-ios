@@ -106,6 +106,13 @@ struct BadgeMark: View {
         case "official": return Color(red: 0.23, green: 0.62, blue: 0.91)
         case "tester":   return Color(red: 0.88, green: 0.64, blue: 0.11)
         case "special":  return Color(red: 0.88, green: 0.31, blue: 0.41)
+        // ⚠⚠ The one kind the ISLAND grants by itself, and the only one no
+        // client knew. `/auth/register` writes badge="resident" the moment an
+        // entry voucher verifies, so somebody who has just paid to get in gets
+        // a mark that fell through to this switch: grey, and named by its raw
+        // slug. Orange, clearly apart from tester's amber, and far from the
+        // colours the operator hands out by hand.
+        case "resident": return Color(red: 0.98, green: 0.45, blue: 0.09)
         default:         return Theme.Color.textSecondary
         }
     }

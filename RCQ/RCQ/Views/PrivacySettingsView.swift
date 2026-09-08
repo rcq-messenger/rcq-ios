@@ -352,28 +352,64 @@ struct PrivacySettingsView: View {
                         // like it belongs to a setting that may be off.
                         if ownBadges.count > 1 {
                             Section {
-                                Picker("settings.privacy.badge_pick".localized, selection: Binding(
-                                    get: { ownBadge ?? ownBadges.first ?? "" },
-                                    set: { picked in
-                                        ownBadge = picked
-                                        UserDefaults.standard.set(picked, forKey: "rcq.ownBadge")
-                                        Task { await pushStringField("badge", picked) }
-                                    }
-                                )) {
-                                    ForEach(ownBadges, id: \.self) { kind in
-                                        HStack(spacing: 6) {
-                                            BadgeMark(kind: kind, size: 14)
-                                            Text(("badge." + kind).localized)
+                                // ⚠⚠ ROWS, NOT A MENU PICKER, and the menu is why
+                                // this section was reported (founder, 09.09,
+                                // screenshots). `.pickerStyle(.menu)` hands the
+                                // list to UIKit, and a UIMenu draws every image
+                                // in it as a TEMPLATE tinted with the menu's
+                                // tint - which was `.tint(Theme.Color.accent)`
+                                // right below. So both marks came out green
+                                // while the row underneath, an ordinary SwiftUI
+                                // view, drew the same account's mark in its real
+                                // colour: green in one place, red in the other,
+                                // and two different kinds sharing one colour.
+                                // The popup's width was UIKit's too, so a long
+                                // name broke mid-word.
+                                //
+                                // Rows in the list solve all three: the mark
+                                // keeps the colour the island gave it, the name
+                                // wraps like any other label, and with two to
+                                // four marks a list is less work to read than a
+                                // menu anyway.
+                                ForEach(ownBadges, id: \.self) { kind in
+                                    Button {
+                                        ownBadge = kind
+                                        UserDefaults.standard.set(kind, forKey: "rcq.ownBadge")
+                                        Task { await pushStringField("badge", kind) }
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            // ⚠ BadgeMark is itself a Button (it
+                                            // opens the "what is this mark"
+                                            // sheet). Inside a row that IS a
+                                            // choice, that button would swallow
+                                            // the tap meant for the choice.
+                                            BadgeMark(kind: kind, size: 15)
+                                                .allowsHitTesting(false)
+                                            // The ISLAND's word for it, falling
+                                            // back to this build's. The picker
+                                            // used to read the string table
+                                            // directly, so an operator who
+                                            // renamed a kind saw the stock name
+                                            // here and their own everywhere else.
+                                            Text(BadgeMark.label(for: kind))
+                                                .foregroundColor(Theme.Color.textPrimary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            Spacer(minLength: 8)
+                                            if (ownBadge ?? ownBadges.first) == kind {
+                                                Image(systemName: "checkmark")
+                                                    .font(.footnote.weight(.semibold))
+                                                    .foregroundColor(Theme.Color.accent)
+                                            }
                                         }
-                                        .tag(kind)
                                     }
+                                    .buttonStyle(.plain)
+                                    .listRowBackground(Theme.Color.bgSecondary)
                                 }
-                                .pickerStyle(.menu)
-                                .tint(Theme.Color.accent)
+                            } header: {
+                                Text("settings.privacy.badge_pick".localized)
                             } footer: {
                                 Text("settings.privacy.badge_pick.desc".localized)
                             }
-                            .listRowBackground(Theme.Color.bgSecondary)
                         }
 
                         // Only for people who have a mark: a switch for hiding

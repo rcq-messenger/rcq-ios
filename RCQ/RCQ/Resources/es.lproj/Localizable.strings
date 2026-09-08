@@ -1849,6 +1849,8 @@
 "badge.desc.official" = "Cuenta oficial, confirmada por esta isla: su equipo o una fuente que la isla avala.";
 "badge.desc.tester" = "Tester. Participó en las pruebas y ayudó a encontrar lo que fallaba.";
 "badge.desc.special" = "Otorgada por esta isla por una contribución destacada.";
+"badge.resident" = "Residente";
+"badge.desc.resident" = "Pagaste para entrar en esta isla, así que vives aquí.";
 "badge.desc.unknown" = "Una marca otorgada por esta isla.";
 "my_uins.unlist" = "Retirar de la venta";
 "my_uins.listed" = "en venta, %@";

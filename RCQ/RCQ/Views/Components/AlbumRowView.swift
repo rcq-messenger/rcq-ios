@@ -16,6 +16,9 @@ struct AlbumRowView: View {
     var senderAvatarKey: String? = nil
     let isSelecting: Bool
     let isSelected: Bool
+    /// This album is the one under the long-press menu: publish where it is
+    /// drawn so the menu can sit beside it. See `heldAnchor`.
+    var isHeld: Bool = false
     let onTapTile: (Int) -> Void
     let onLongPress: () -> Void
     let onSwipeReply: () -> Void
@@ -139,6 +142,11 @@ struct AlbumRowView: View {
                         }
                     }
                 }
+                // ⚠ HERE, on the column that hugs the grid, not on the row.
+                // The row is `maxWidth: .infinity`, and anchoring that drew the
+                // long-press hole as a white slab across the whole chat with
+                // the album in one corner of it.
+                .heldAnchor(isHeld)
                 if !isFromMe { Spacer(minLength: 40) }
             }
             .offset(x: swipeOffset)

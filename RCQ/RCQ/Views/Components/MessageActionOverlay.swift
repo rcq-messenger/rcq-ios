@@ -5,6 +5,9 @@ import UIKit
 struct MessageActionOverlay: View {
     let message: Message
     let senderNickname: String
+    /// Where the held bubble actually is, in this overlay's own space. Nil
+    /// when the row is not on screen.
+    var bubbleRect: CGRect? = nil
     let canDeleteForEveryone: Bool
     let canReply: Bool
     let canEdit: Bool
@@ -25,6 +28,8 @@ struct MessageActionOverlay: View {
     var onPin: (() -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
+    @State private var pillSize: CGSize = .zero
+    @State private var panelSize: CGSize = .zero
 
     /// The user's chosen quick reactions, defaulting to the historical set until
     /// customised in the emoji picker.
@@ -64,59 +69,150 @@ struct MessageActionOverlay: View {
     }
 
     var body: some View {
-        // Telegram-style overlay: bubble "lifts" to a comfortable
-        // position with reactions strip pinned ABOVE it and actions
-        // menu BELOW. For long messages we used to render the bubble
-        // at its natural height in a centered VStack, which pushed
-        // either the reactions strip off the top or the actions menu
-        // off the bottom — testers couldn't see either. Clamping the
-        // bubble's slot to ~45% of available height with internal
-        // scrolling keeps both anchors on-screen for any message
-        // length.
         GeometryReader { geo in
-            let safeHeight = geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
-            // Reserve enough room for the two anchor panels + label
-            // + spacing; the bubble takes whatever's left of the
-            // ~45% budget, with a floor so short messages don't get
-            // squished.
-            let bubbleMaxHeight = max(140, safeHeight * 0.45)
-            ZStack {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { onDismiss() }
-
-                VStack(spacing: 10) {
-                    reactionsPanel
-                    ScrollView {
-                        VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
-                            Text(senderNickname)
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(Theme.Color.accent)
-                                // Truncate long group nicknames so a
-                                // 30-char handle doesn't wrap to two
-                                // lines and break the 45% height budget
-                                // calculated above.
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            MessagePreviewCard(message: message)
-                        }
-                        .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
-                    }
-                    .frame(maxHeight: bubbleMaxHeight)
-                    actionsPanel
-                        .frame(width: 260)
-                }
-                .padding(.vertical, 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
+            if let rect = bubbleRect {
+                anchored(rect: rect, geo: geo)
+            } else {
+                // No anchor: the message is off screen (jumped to from search,
+                // or scrolled away under the finger). Nothing to sit beside, so
+                // the old centred stack still has a job.
+                centred(geo: geo)
             }
         }
         // "The bar opens" - see `orderedReactions`. onAppear, not `.task`: the
         // work is synchronous and must be done before the first paint, so the
         // row never visibly re-shuffles in front of the user.
         .onAppear { settleReactionOrder() }
+    }
+
+    // MARK: - the message stays where it is
+
+    /// ⚠⚠ THE HELD MESSAGE IS NOT DRAWN HERE. It is the real bubble, still in
+    /// the chat, showing through a hole cut in this view's dim. That is the
+    /// whole of the founder's 08.09 note: every other messenger leaves the
+    /// message under your finger where your eye already is, and lifting a copy
+    /// of it into the middle of the screen made you find it twice.
+    ///
+    /// A copy was the obvious alternative and it is worse: `MessagePreviewCard`
+    /// re-derives the bubble from the message, so a reply quote, a forwarded
+    /// label, an edit mark or a reaction row would sit slightly differently
+    /// from the original two points underneath it, and the mismatch reads as a
+    /// ghost. Nothing can drift out of line with a hole.
+    ///
+    /// The panels are placed AROUND the rectangle, never over it, and the
+    /// rectangle never moves: a message near the top gets its reactions below
+    /// rather than being pushed down the screen to make room above.
+    @ViewBuilder
+    private func anchored(rect: CGRect, geo: GeometryProxy) -> some View {
+        let top = geo.safeAreaInsets.top + Self.edgeMargin
+        let bottom = geo.size.height - geo.safeAreaInsets.bottom - Self.edgeMargin
+        // The message splits what is left into two bands. Everything below is
+        // arithmetic on those two numbers, and nothing is ever placed over the
+        // message itself.
+        let above = max(0, rect.minY - Self.gap - top)
+        let below = max(0, bottom - rect.maxY - Self.gap)
+
+        // Reactions go over the message, which is where every messenger puts
+        // them; under it when the message is close enough to the top that they
+        // would not fit, because the message does not move.
+        let pillAbove = pillSize.height <= above
+        let pillY = pillAbove ? rect.minY - Self.gap - pillSize.height : rect.maxY + Self.gap
+
+        // Whatever the pill did not take.
+        let freeBelow = pillAbove ? below : max(0, below - pillSize.height - Self.gap)
+        let freeAbove = pillAbove ? max(0, above - pillSize.height - Self.gap) : above
+        // Below by preference; above only when below cannot hold a usable menu
+        // AND above can hold more of one.
+        let panelBelow = freeBelow >= min(panelSize.height, Self.minPanelHeight) || freeBelow >= freeAbove
+        let room = panelBelow ? freeBelow : freeAbove
+        let panelHeight = min(panelSize.height, room)
+        let panelY = panelBelow
+            ? (pillAbove ? rect.maxY + Self.gap : pillY + pillSize.height + Self.gap)
+            : (pillAbove ? pillY - Self.gap - panelHeight : rect.minY - Self.gap - panelHeight)
+
+        ZStack(alignment: .topLeading) {
+            DimWithHole(
+                hole: rect.insetBy(dx: -Self.holePad, dy: -Self.holePad),
+                radius: Theme.Metrics.bubbleRadius + Self.holePad,
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { onDismiss() }
+            reactionsPanel
+                .measured($pillSize)
+                .offset(x: clampedX(width: pillSize.width, rect: rect, geo: geo), y: pillY)
+            // ⚠ A ScrollView, always, because `panelHeight` is a clamp: a menu
+            // taller than the band it was given must still reach its last row
+            // rather than have it cut off. Scrolling is off when it all fits,
+            // so a menu that fits does not bounce under the finger.
+            ScrollView {
+                actionsPanel
+                    .frame(width: Self.panelWidth)
+                    .measured($panelSize)
+            }
+            .scrollDisabled(panelHeight >= panelSize.height)
+            .frame(width: Self.panelWidth, height: max(0, panelHeight))
+            .offset(x: clampedX(width: Self.panelWidth, rect: rect, geo: geo), y: panelY)
+        }
+        // Both panels are placed off measurements that are zero on the first
+        // pass. Showing that pass would flash them in the top-left corner.
+        .opacity(pillSize.height > 0 && panelSize.height > 0 ? 1 : 0)
+    }
+
+    /// The panels line up with the side the bubble is on, the way the bubble
+    /// itself does, and stay inside the screen.
+    private func clampedX(width: CGFloat, rect: CGRect, geo: GeometryProxy) -> CGFloat {
+        let ideal = message.isFromMe ? rect.maxX - width : rect.minX
+        let lo = geo.safeAreaInsets.leading + Self.edgeMargin
+        let hi = geo.size.width - geo.safeAreaInsets.trailing - Self.edgeMargin - width
+        return min(max(ideal, lo), max(lo, hi))
+    }
+
+    private static let gap: CGFloat = 8
+    private static let edgeMargin: CGFloat = 10
+    /// The hole hugs the bubble exactly. Any padding here shows the chat
+    /// background around a photo or a video, which have no bubble colour of
+    /// their own: a 4pt pad drew a white frame around every held picture.
+    private static let holePad: CGFloat = 0
+    private static let panelWidth: CGFloat = 260
+    /// Below this a menu is not worth placing on that side: it would be two
+    /// rows and a scroll bar.
+    private static let minPanelHeight: CGFloat = 180
+
+    // MARK: - fallback
+
+    /// The pre-08.09 layout, for the case where there is no anchor to sit
+    /// beside. Here the copy IS the message, so it keeps its name label.
+    private func centred(geo: GeometryProxy) -> some View {
+        let safeHeight = geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom
+        let bubbleMaxHeight = max(140, safeHeight * 0.45)
+        return ZStack {
+            Rectangle()
+                .fill(.regularMaterial)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 10) {
+                reactionsPanel
+                ScrollView {
+                    VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 2) {
+                        Text(senderNickname)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Theme.Color.accent)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        MessagePreviewCard(message: message)
+                    }
+                    .frame(maxWidth: 320, alignment: message.isFromMe ? .trailing : .leading)
+                }
+                .frame(maxHeight: bubbleMaxHeight)
+                actionsPanel
+                    .frame(width: Self.panelWidth)
+            }
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .center)))
+        }
     }
 
     // MARK: - reactions

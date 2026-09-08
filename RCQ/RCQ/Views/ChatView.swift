@@ -308,7 +308,7 @@ struct ChatView: View {
     // dropped it and the endpoints with it. Nothing replaces the badge.
 
     @ViewBuilder
-    private func actionOverlay(for target: Message) -> some View {
+    private func actionOverlay(for target: Message, bubbleRect: CGRect?) -> some View {
         let resendCallback: (() -> Void)? = (target.deliveryState == .failed && target.isFromMe)
             ? { Task { await vm.resend(target) } }
             : nil
@@ -323,6 +323,7 @@ struct ChatView: View {
         MessageActionOverlay(
             message: target,
             senderNickname: vm.senderNickname(target.senderUIN),
+            bubbleRect: bubbleRect,
             canDeleteForEveryone: canDeleteForEveryone(target),
             canReply: replyAllowed,
             canEdit: target.isFromMe
@@ -839,9 +840,16 @@ struct ChatView: View {
                 .zIndex(60)
             }
 
-            if let target = actionTarget {
-                actionOverlay(for: target)
-                    .zIndex(50)
+        }
+        // ⚠ An overlay, not another child of the ZStack, because it has to read
+        // the anchor the held row published from INSIDE that stack. The stack's
+        // own children cannot see each other's preferences.
+        .overlayPreferenceValue(HeldBubbleAnchorKey.self) { anchor in
+            GeometryReader { proxy in
+                if let target = actionTarget {
+                    actionOverlay(for: target, bubbleRect: anchor.map { proxy[$0] })
+                        .zIndex(50)
+                }
             }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
@@ -1795,6 +1803,7 @@ struct ChatView: View {
                                 isTranslated: vm.isTranslated(msg),
                                 isHighlighted: flashHighlightID == msg.id,
                                 isSelected: vm.isSelecting && vm.selectedIDs.contains(msg.id),
+                                isHeld: actionTarget?.id == msg.id,
                                 showSelectionAffordance: vm.isSelecting,
                                 onTapReaction: { asset in vm.toggleReaction(asset, on: msg) },
                                 onShowReactors: {
@@ -3126,6 +3135,11 @@ struct ChatView: View {
             senderAvatarKey: groupMember(items.first!.senderUIN)?.avatarMediaKey,
             isSelecting: vm.isSelecting,
             isSelected: items.allSatisfy { vm.selectedIDs.contains($0.id) },
+            // An album is not a `MessageRow`, so it publishes its own anchor or
+            // the menu falls back to the centred copy for albums alone. The
+            // whole album is held, not one tile: the menu acts on the album,
+            // and cutting one tile out of a grid would say otherwise.
+            isHeld: actionTarget.map { m in items.contains { $0.id == m.id } } ?? false,
             onTapTile: { tappedIdx in
                 if vm.isSelecting {
                     let allSelected = items.allSatisfy { vm.selectedIDs.contains($0.id) }

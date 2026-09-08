@@ -36,6 +36,17 @@ struct MessageRow: View, Equatable {
     let isTranslated: Bool
     let isHighlighted: Bool
     var isSelected: Bool = false
+    /// This row is the one under the long-press menu. The row publishes the
+    /// BUBBLE'S rectangle while it is true, and nothing while it is false, so
+    /// exactly one anchor exists at a time and no other row pays for a
+    /// preference it will never use.
+    ///
+    /// ⚠ The rectangle is the bubble's, not the row's. The menu cuts a hole in
+    /// its own dim at this rect so the held message stays where it is instead
+    /// of being copied into the middle of the screen (founder, 08.09), and a
+    /// hole the width of the row would be a stripe across the chat rather than
+    /// a message.
+    var isHeld: Bool = false
     var showSelectionAffordance: Bool = false
     let onTapReaction: (String) -> Void
     var onShowReactors: (() -> Void)? = nil
@@ -72,6 +83,7 @@ struct MessageRow: View, Equatable {
             && lhs.isTranslated == rhs.isTranslated
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isSelected == rhs.isSelected
+            && lhs.isHeld == rhs.isHeld
             && lhs.showSelectionAffordance == rhs.showSelectionAffordance
             && lhs.currentGroupMembers == rhs.currentGroupMembers
             && lhs.linksAllowed == rhs.linksAllowed
@@ -351,6 +363,7 @@ struct MessageRow: View, Equatable {
                 replyQuote
                 bubbleContent
             }
+            .heldAnchor(isHeld)
             .frame(maxWidth: Self.maxBubbleWidth, alignment: message.isFromMe ? .trailing : .leading)
             metaRow
         }
@@ -394,6 +407,8 @@ struct MessageRow: View, Equatable {
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
             .cornerRadius(Theme.Metrics.bubbleRadius)
+            // The coloured container, which hugs its text: see `heldAnchor`.
+            .heldAnchor(isHeld)
             // maxWidth cap LAST (outermost) so the bubble HUGS its content and
             // only caps the wrap width — like the original bubbleContent. With
             // the frame innermost the VStack filled the full width (founder:

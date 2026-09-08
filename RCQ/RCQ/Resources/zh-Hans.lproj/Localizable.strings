@@ -1840,6 +1840,8 @@
 "badge.desc.official" = "官方账号，由本岛屿确认：本岛团队或本岛担保的来源。";
 "badge.desc.tester" = "测试者。参与了测试，帮助发现问题。";
 "badge.desc.special" = "由本岛屿因杰出贡献而授予。";
+"badge.resident" = "居民";
+"badge.desc.resident" = "你付费加入了这座岛屿，所以你住在这里。";
 "badge.desc.unknown" = "由本岛授予的标记。";
 "my_uins.unlist" = "下架";
 "my_uins.listed" = "在售，%@";

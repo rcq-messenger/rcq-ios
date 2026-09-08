@@ -1849,6 +1849,8 @@
 "badge.desc.official" = "Resmi hesap, bu ada tarafından onaylanmış: adanın ekibi veya adanın kefil olduğu bir kaynak.";
 "badge.desc.tester" = "Test kullanıcısı. Testlere katıldı ve bozuk olanı bulmaya yardım etti.";
 "badge.desc.special" = "Bu ada tarafından olağanüstü katkı için verildi.";
+"badge.resident" = "Sakin";
+"badge.desc.resident" = "Bu adaya girmek için ödeme yaptın, yani burada yaşıyorsun.";
 "badge.desc.unknown" = "Bu adanın verdiği bir işaret.";
 "my_uins.unlist" = "Satıştan kaldır";
 "my_uins.listed" = "satışta, %@";
