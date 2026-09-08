@@ -143,12 +143,27 @@ private struct AlbumTile: View {
     /// opens the album viewer as usual.
     @State private var spoilerRevealed = false
 
+    /// ⚠⚠ When the long press last fired, and the whole reason a long press on
+    /// an album did nothing you could see (founder, 08.09: "если я отправил
+    /// медиа 2 и более то не работает контекстное меню по зажатию, можно
+    /// только ответить"). The gesture rides alongside the Button so it cannot
+    /// steal the tap - but a Button fires its action on touch-UP whatever
+    /// happened during the touch, so lifting the finger after a long press ALSO
+    /// opened the album viewer, full screen, directly over the action menu that
+    /// had just appeared. The menu was there the whole time, underneath.
+    ///
+    /// A timestamp rather than a flag: a flag set by a press that ends outside
+    /// the tile is never cleared and would swallow the next real tap.
+    @State private var lastLongPress: Date = .distantPast
+
     private var spoilerCovered: Bool {
         message.isSpoiler && !spoilerRevealed
     }
 
     var body: some View {
         Button(action: {
+            // The touch that just opened the menu is not also a tap.
+            if Date().timeIntervalSince(lastLongPress) < 1 { return }
             if spoilerCovered {
                 withAnimation(.easeOut(duration: 0.25)) { spoilerRevealed = true }
             } else {
@@ -177,6 +192,7 @@ private struct AlbumTile: View {
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.4)
                 .onEnded { _ in
+                    lastLongPress = Date()
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onLongPress()
                 }

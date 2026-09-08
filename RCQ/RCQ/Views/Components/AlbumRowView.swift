@@ -116,6 +116,17 @@ struct AlbumRowView: View {
                             .padding(.vertical, 6)
                             .background(isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
                             .cornerRadius(Theme.Metrics.bubbleRadius)
+                            // The caption is part of the message, so it opens
+                            // the same menu the tiles do. Only the tiles
+                            // carried the gesture, and a press on the text did
+                            // nothing at all (the Android twin of this is
+                            // report #954: "долгое зажатие на комментарий к
+                            // фото не вызывает меню, но это часть сообщения").
+                            .contentShape(Rectangle())
+                            .onLongPressGesture(minimumDuration: 0.4) {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                onLongPress()
+                            }
                     }
                     HStack(spacing: 4) {
                         Text(DateFormatters.timeOfDay.string(from: first.sentAt))
