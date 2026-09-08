@@ -516,14 +516,24 @@ struct MessageRow: View, Equatable {
                 // same.
                 .background(Theme.Color.accent.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                // Always leading: the accent bar sits at the content's LEFT
-                // edge for both incoming and outgoing. Trailing-aligning an
-                // outgoing quote floated the bar inward off the body's left
-                // edge — the "crooked" reply on my own messages.
-                .frame(
-                    maxWidth: 240,
-                    alignment: .leading
-                )
+                // ⚠⚠ NO WIDTH OF ITS OWN. This used to be
+                // `.frame(maxWidth: 240, alignment: .leading)`, and
+                // `frame(maxWidth:)` is GREEDY: the quote took all 240 points
+                // whatever it said. Invisible while the quote had no
+                // background, and the moment it got one the damage showed —
+                // the bubble's content column is as wide as its widest child,
+                // so a 152pt photo under a 240pt quote sat left-aligned inside
+                // a 240pt block with 88 points of nothing to the right of it,
+                // and the whole outgoing message looked pushed off the right
+                // wall (founder, 08.09, with a screenshot).
+                //
+                // Text is not greedy: with no frame here the quote hugs its own
+                // words and wraps at whatever the bubble proposes, which is
+                // already capped at `maxBubbleWidth` one level up. The bar
+                // stays at the content's LEFT edge for incoming and outgoing
+                // alike; trailing-aligning an outgoing quote floated it inward
+                // off the body's left edge, which was the older "crooked reply
+                // on my own messages".
             }
             .buttonStyle(.plain)
         }

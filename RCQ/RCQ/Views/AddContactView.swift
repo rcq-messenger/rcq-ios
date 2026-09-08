@@ -76,6 +76,22 @@ struct AddContactView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 0) {
+                                // ⚠ THE ROOMS STRIP LIVES HERE NOW, under the
+                                // field, and only while the field is empty. It
+                                // used to be drawn on the empty contact list
+                                // alone, so the one place to find a room to
+                                // walk into disappeared with the first contact
+                                // added and could never be opened again
+                                // (founder, 08.09). This window is where
+                                // looking for people happens, and the strip
+                                // steps aside the moment anything is typed.
+                                if trimmedQuery.isEmpty {
+                                    DiscoverGroupsStrip { joined in
+                                        AppState.shared.pendingOpenGroupID = joined.id
+                                        dismiss()
+                                    }
+                                    .padding(.bottom, 6)
+                                }
                                 if !foreignGroups.isEmpty {
                                     sectionHeader("add.section.join_group".localized)
                                     ForEach(foreignGroups) { preview in

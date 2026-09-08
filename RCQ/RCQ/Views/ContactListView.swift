@@ -1921,13 +1921,9 @@ struct ContactListView: View {
     /// sheet the bottom bar's "+" button would.
     private var emptyState: some View {
         VStack(spacing: 14) {
-            // Rooms to walk into, before anything about contacts: nobody arrives
-            // with friends already here, and every new account used to be
-            // dropped into one beta room for exactly this reason. Now it is a
-            // choice (founder, 05.09).
-            DiscoverGroupsStrip { joined in
-                appState.pendingOpenGroupID = joined.id
-            }
+            // ⚠ The rooms strip MOVED to the Add window, under the search
+            // field (founder, 08.09): drawn only here it vanished for good with
+            // the first contact added, and there was nowhere to open it again.
             Image(systemName: "person.2.wave.2")
                 .font(.system(size: 44, weight: .light))
                 .foregroundColor(Theme.Color.divider)
@@ -3248,7 +3244,7 @@ final class IslandLogoStore {
 
 /// Open rooms, biggest first, each joinable in one tap. Drawn only when the
 /// island answered with something: no heading over an empty strip.
-private struct DiscoverGroupsStrip: View {
+struct DiscoverGroupsStrip: View {
     let onJoined: (RCQGroup) -> Void
     @ObservedObject private var groups = GroupService.shared
     @State private var rooms: [GroupService.Preview] = []
