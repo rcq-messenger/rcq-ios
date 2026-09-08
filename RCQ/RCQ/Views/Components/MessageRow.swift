@@ -32,6 +32,10 @@ struct MessageRow: View, Equatable {
     /// when the quoted message is the viewer's own — the wire still carries
     /// the real nick so other people see the nick).
     var replyAuthorOverride: String? = nil
+    /// The message this one quotes has been retracted for everyone, so the
+    /// quote says so instead of going on showing words that no longer exist
+    /// anywhere else in the chat (report #947).
+    var replyTargetDeleted: Bool = false
     let displayBody: String
     let isTranslated: Bool
     let isHighlighted: Bool
@@ -79,6 +83,7 @@ struct MessageRow: View, Equatable {
             && lhs.showSender == rhs.showSender
             && lhs.senderNickname == rhs.senderNickname
             && lhs.replyAuthorOverride == rhs.replyAuthorOverride
+            && lhs.replyTargetDeleted == rhs.replyTargetDeleted
             && lhs.displayBody == rhs.displayBody
             && lhs.isTranslated == rhs.isTranslated
             && lhs.isHighlighted == rhs.isHighlighted
@@ -487,19 +492,29 @@ struct MessageRow: View, Equatable {
                                 .foregroundColor(Theme.Color.accent)
                                 .lineLimit(1)
                         }
-                        EmoticonText(
-                            // Newlines flattened: EmoticonText renders each hard line
-                            // as its OWN Text, so one flat line + lineLimit(2) is the
-                            // whole preview contract.
-                            text: snippet.replacingOccurrences(of: "\n", with: " "),
-                            font: .caption2,
-                            color: Theme.Color.textSecondary,
-                            emoticonSize: 15,
-                            members: currentGroupMembers,
-                            uinNick: uinNick,
-                            linksEnabled: linksAllowed
-                        )
-                        .lineLimit(2)
+                        if replyTargetDeleted {
+                            // Italic and nothing else: the words are gone from
+                            // the chat, and a quote that still showed them was
+                            // the one place they survived.
+                            Text("chat.deleted".localized)
+                                .font(.caption2.italic())
+                                .foregroundColor(Theme.Color.textSecondary)
+                                .lineLimit(1)
+                        } else {
+                            EmoticonText(
+                                // Newlines flattened: EmoticonText renders each hard line
+                                // as its OWN Text, so one flat line + lineLimit(2) is the
+                                // whole preview contract.
+                                text: snippet.replacingOccurrences(of: "\n", with: " "),
+                                font: .caption2,
+                                color: Theme.Color.textSecondary,
+                                emoticonSize: 15,
+                                members: currentGroupMembers,
+                                uinNick: uinNick,
+                                linksEnabled: linksAllowed
+                            )
+                            .lineLimit(2)
+                        }
                     }
                 }
                 .padding(.vertical, 3)

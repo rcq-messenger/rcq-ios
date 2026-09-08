@@ -44,6 +44,13 @@ final class ChatViewModel: ObservableObject {
     /// message id → isFromMe, for O(1) `replyIsMine` — it used to scan the
     /// whole loaded window per reply row.
     private var isMineByID: [UUID: Bool] = [:]
+    /// Message ids this thread has that were retracted for everyone. A quote of
+    /// one of them must not go on showing the words it used to say: the message
+    /// is gone from the chat and the quote was the one place its text survived
+    /// (report #947, vss). Absent from the map means we simply do not have the
+    /// message on this device, which is NOT the same as deleted, and the quote
+    /// keeps its snippet in that case.
+    private var isDeletedByID: [UUID: Bool] = [:]
     /// Composer text. NOT @Published on purpose: a keystroke used to fire
     /// objectWillChange and re-run ChatView's whole body (every visible row)
     /// per character. The UITextView owns the live text; SwiftUI learns about
@@ -209,6 +216,7 @@ final class ChatViewModel: ObservableObject {
                 // view of the same data in step with it.
                 self.rebuildUnitIndex(grouped)
                 self.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
+                self.isDeletedByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.deletedForEveryone }
                 // A message landing while the reader SITS at the bottom is
                 // seen the instant it renders, but the sentinel stays
                 // realized (no fresh onAppear), so noteAtBottom never re-runs
@@ -1543,6 +1551,13 @@ final class ChatViewModel: ObservableObject {
     func replyIsMine(_ message: Message) -> Bool {
         guard let rid = message.replyToID else { return false }
         return isMineByID[rid] ?? false
+    }
+
+    /// Was the message this one quotes retracted for everyone? See
+    /// `isDeletedByID`.
+    func replyTargetDeleted(_ message: Message) -> Bool {
+        guard let rid = message.replyToID else { return false }
+        return isDeletedByID[rid] ?? false
     }
 
     func senderNickname(_ uin: Int) -> String {

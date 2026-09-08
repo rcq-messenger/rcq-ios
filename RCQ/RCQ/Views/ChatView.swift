@@ -1799,6 +1799,7 @@ struct ChatView: View {
                                 showSender: vm.target.thread.isGroup && !msg.isFromMe && Self.startsSenderRun(group.units, idx),
                                 senderNickname: vm.senderNickname(msg.senderUIN),
                                 replyAuthorOverride: vm.replyIsMine(msg) ? "chat.you".localized : nil,
+                                replyTargetDeleted: vm.replyTargetDeleted(msg),
                                 displayBody: vm.displayText(for: msg),
                                 isTranslated: vm.isTranslated(msg),
                                 isHighlighted: flashHighlightID == msg.id,
