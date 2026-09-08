@@ -15,12 +15,26 @@ extension Int {
     ///                           1100 → "1.1K", 12 480 → "12.5K".
     ///   • 1 000 000 and above → the same shape on "M": 1 500 000 → "1.5M".
     ///
-    /// ⚠ Rounded, never truncated: 1949 is "1.9K" and 1950 is "2K". Truncating
-    /// makes a room look smaller than it is at every boundary, which is the one
-    /// direction a member count must not be wrong in. The arithmetic below is
-    /// deliberately written in the same order as the web's
-    /// `Math.round((n / unit) * 10) / 10` so both sides make the same IEEE-754
-    /// rounding decision on the same input.
+    /// ⚠⚠ TRUNCATED, never rounded, and this file said the opposite for a
+    /// fortnight. The rule was settled on 23.08 in
+    /// `web-chat/src/lib/format-count.ts`: a count that reads HIGHER than the
+    /// room actually is claims people who are not in it, so 1999 members is
+    /// "1.9K" and never "2K". The web and Android were changed then; this was
+    /// not, and it kept rounding while its own comment insisted it was the
+    /// mirror. RCQ Beta at 2273 members therefore read "2.3K" on an iPhone and
+    /// "2.2K" on the same account's Android, which is exactly how the tester
+    /// found it (report #956, vss, 08.09).
+    ///
+    /// The arithmetic below is now the web's, line for line, in integer
+    /// division only: there is no floating-point rounding mode left for two
+    /// clients to disagree about.
+    ///
+    ///     tenths = n * 10 / unit      // integer division, truncating
+    ///     whole  = tenths / 10
+    ///     frac   = tenths % 10
+    ///
+    /// Boundaries all three clients must agree on: 999 → "999", 1000 → "1K",
+    /// 1999 → "1.9K", 9999 → "9.9K", 999999 → "999.9K", 1000000 → "1M".
     ///
     /// ⚠ The suffixes are NOT translated, the way a unit symbol is not: they
     /// are the same letters in every language we ship, so a localised "тыс."
@@ -35,9 +49,10 @@ extension Int {
         if self < 1_000 { return "\(self)" }
         if self < 1_000_000 {
             let s = Self.short(self, unit: 1_000, suffix: "K")
-            // Rounding up can push a value into the next unit: 999 950 scales
-            // to "1000K". Hand it to the M branch instead, exactly as the web
-            // does, so no client ever prints a four-digit thousands figure.
+            // Kept from the rounding era, where 999 950 scaled to "1000K".
+            // Truncation cannot reach it, and the web keeps the same guard:
+            // a branch that can no longer fire is cheaper than one client
+            // quietly losing a rule the others still have.
             return s == "1000K" ? Self.short(self, unit: 1_000_000, suffix: "M") : s
         }
         return Self.short(self, unit: 1_000_000, suffix: "M")
@@ -48,10 +63,12 @@ extension Int {
     /// the decimal point), which is what the web prints and what keeps the
     /// badge identical across RU + EN so the layout doesn't shift.
     private static func short(_ n: Int, unit: Int, suffix: String) -> String {
-        let scaled = ((Double(n) / Double(unit)) * 10).rounded() / 10
-        let whole = Int(scaled)
-        if scaled == Double(whole) { return "\(whole)\(suffix)" }
-        return String(format: "%.1f", scaled) + suffix
+        // Integer arithmetic only, in the web's order: `n * 10 / unit` on two
+        // whole numbers, not `(n / unit) * 10` on a Double.
+        let tenths = n * 10 / unit
+        let whole = tenths / 10
+        let frac = tenths % 10
+        return frac == 0 ? "\(whole)\(suffix)" : "\(whole).\(frac)\(suffix)"
     }
 }
 

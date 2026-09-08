@@ -502,9 +502,20 @@ struct MessageRow: View, Equatable {
                         .lineLimit(2)
                     }
                 }
-                .padding(.vertical, 2)
-                .padding(.horizontal, 4)
+                .padding(.vertical, 3)
+                .padding(.trailing, 6)
                 .fixedSize(horizontal: false, vertical: true)
+                // ⚠ A TINT AS WELL AS THE BAR. The bar alone left the quote
+                // reading as the first two lines of the message, and people
+                // were answering the wrong thing (founder, 08.09 - "people do
+                // not understand quotes; WhatsApp colours them"). The two
+                // together are what every messenger has in common: a shape at
+                // the leading edge for anyone who cannot tell the tint apart,
+                // and a panel that says where the quote ends. Same 14% accent
+                // Android uses, so a screenshot from either phone reads the
+                // same.
+                .background(Theme.Color.accent.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 // Always leading: the accent bar sits at the content's LEFT
                 // edge for both incoming and outgoing. Trailing-aligning an
                 // outgoing quote floated the bar inward off the body's left
