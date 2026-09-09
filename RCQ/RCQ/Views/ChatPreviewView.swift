@@ -63,7 +63,8 @@ struct ChatPreviewView: View {
             case .peer(let snapshot):
                 let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
                 PersonAvatarView(
-                    mediaID: live.avatarMediaID, keyBase64: live.avatarMediaKey,
+                    // See ChatView: the raw field is empty for a keyed picture.
+                    mediaID: live.avatarMediaID, keyBase64: live.avatarKeyResolved,
                     status: live.status, host: live.host, size: 28,
                     crossIsland: live.host != nil
                 )

@@ -92,22 +92,26 @@ final class MediaService {
     /// media lives on the GROUP's island (the sender deposits it there, not
     /// ours), so on an own-island miss fall back to each VISITED island's open
     /// `GET /media/{id}`. Zero view changes — every fetcher routes through here.
-    nonisolated static func fetchBlob(mediaID: String, host: String? = nil) async throws -> Data {
+    nonisolated static func fetchBlob(
+        mediaID: String,
+        host: String? = nil,
+        watcher: MediaTransferWatcher? = nil,
+    ) async throws -> Data {
         // When the caller knows the blob's island (a cross-island GROUP avatar
         // lives on the GROUP's host), try it FIRST — relying on the visited-island
         // fallback was flaky because the group's island isn't always visited (the
         // "group avatar sometimes shows" report).
         if let host, let url = URL(string: "https://\(host)/media/\(mediaID)"),
-           let (data, resp) = try? await IslandHTTP.data(from: url),
+           let (data, resp) = try? await IslandHTTP.data(for: URLRequest(url: url), delegate: watcher),
            let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
             return data
         }
         do {
-            return try await APIClient.shared.downloadBlob("/media/\(mediaID)")
+            return try await APIClient.shared.downloadBlob("/media/\(mediaID)", watcher: watcher)
         } catch {
             for v in VisitedIslandsStore.shared.list() {
                 if let url = URL(string: "https://\(v.host)/media/\(mediaID)"),
-                   let (data, resp) = try? await IslandHTTP.data(from: url),
+                   let (data, resp) = try? await IslandHTTP.data(for: URLRequest(url: url), delegate: watcher),
                    let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                     return data
                 }
@@ -362,12 +366,48 @@ final class MediaService {
     /// the extension. Hits the in-memory data cache when warm so a
     /// re-tap inside the same chat session is instant.
     func fetchDecrypted(mediaID: String, keyBase64: String) async -> Data? {
+        await fetchDecrypted(mediaID: mediaID, keyBase64: keyBase64, onProgress: nil)
+    }
+
+    /// `fetchDecrypted` for a row that is SHOWING the download.
+    ///
+    /// ⚠ A tester receiving a large file asked how fast it was going (#901).
+    /// Android answered that; here the bubble spun a featureless ring for as
+    /// long as it took, which is indistinguishable from a bubble that has hung.
+    /// `onProgress` is called on the main actor roughly three times a second
+    /// with (received, expected); expected is -1 until the island declares a
+    /// length, which is why the caller has the row's own byte count to fall
+    /// back on.
+    ///
+    /// ⚠ The cache is checked FIRST and answers without a single tick, so a
+    /// second tap must not draw a progress line at all.
+    func fetchDecrypted(
+        mediaID: String,
+        keyBase64: String,
+        onProgress: (@MainActor (Int64, Int64) -> Void)?,
+    ) async -> Data? {
         let cacheKey = (mediaID + ":" + keyBase64) as NSString
         if let hit = decryptedDataCache.object(forKey: cacheKey) {
             return hit as Data
         }
+        // The counters are POLLED off the task rather than pushed by a
+        // callback: see `MediaTransferWatcher`. Three ticks a second is
+        // slower than the eye and cheap enough to leave running.
+        let watcher = onProgress == nil ? nil : MediaTransferWatcher()
+        var ticker: Task<Void, Never>?
+        if let watcher, let onProgress {
+            ticker = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    if Task.isCancelled { return }
+                    let (got, total) = watcher.counters
+                    await onProgress(got, total)
+                }
+            }
+        }
+        defer { ticker?.cancel() }
         do {
-            let blob = try await Self.fetchBlob(mediaID: mediaID)
+            let blob = try await Self.fetchBlob(mediaID: mediaID, watcher: watcher)
             guard let keyBytes = Data(base64Encoded: keyBase64) else { return nil }
             let ceiling = Self.inMemoryPlaintextCeiling
             let plain: Data? = await Task.detached(priority: .userInitiated) {
@@ -577,5 +617,40 @@ final class MediaService {
             EncryptedBlobDiskCache.shared.storeBlob(mediaID: mediaID, data: blob)
         } catch {
         }
+    }
+}
+
+
+/// A transfer somebody is WATCHING, as a URLSession task delegate.
+///
+/// ⚠⚠ IT TAKES THE TASK, NOT THE BYTES, and that is the whole design. The
+/// async `data(for:delegate:)` accumulates the response body itself; a task
+/// delegate that also claims `urlSession(_:dataTask:didReceive:)` takes that
+/// body away from the call awaiting it, and the same trap sits on the download
+/// shape with `didFinishDownloadingTo:`. `didCreateTask` claims nothing: it
+/// hands over the task, and `countOfBytesReceived` on that task is everything a
+/// progress line needs.
+///
+/// ⚠ And it answers NO challenge. A task delegate only takes the callbacks it
+/// implements, so the session delegate (`IslandTrust`) keeps the certificate
+/// rule; an auth method here would quietly put that rule out of the loop.
+final class MediaTransferWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    /// (received, expected). Expected is -1 until the island declares a length,
+    /// and some do not declare one at all — which is why the row keeps its own
+    /// byte count to fall back on.
+    var counters: (Int64, Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let task else { return (0, -1) }
+        return (task.countOfBytesReceived, task.countOfBytesExpectedToReceive)
     }
 }

@@ -21,6 +21,14 @@ struct FileBubble: View {
     @State private var downloading = false
     @State private var failed = false
     @StateObject private var progress = MediaProgressStore.shared
+    /// Bytes in so far and, when the island declared one, the total. Nil until
+    /// the first tick of a download this row started. See `downloadLine`.
+    @State private var got: Int64 = 0
+    @State private var expected: Int64 = -1
+    /// Bytes per second over the last few seconds, or nil while there is not
+    /// enough of a sample to say a number rather than flicker one.
+    @State private var speed: Double?
+    @State private var lastSample: (at: Date, bytes: Int64)?
 
     private var fileName: String { message.fileName ?? "file" }
     private var mime: String { message.fileMime ?? "application/octet-stream" }
@@ -50,18 +58,29 @@ struct FileBubble: View {
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    HStack(spacing: 6) {
-                        Text(Self.formatSize(sizeBytes))
+                    // While it is coming down the line says how far it has got
+                    // and how fast, and the size + kind go back the moment it
+                    // lands. Two facts in one slot rather than a second row:
+                    // this bubble sits in a chat and must not change height.
+                    if let line = downloadLine {
+                        Text(line)
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundColor(Theme.Color.textMono)
-                        if let ext = Self.shortExt(for: fileName) {
-                            Text("·")
+                            .lineLimit(1)
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(Self.formatSize(sizeBytes))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Theme.Color.textMono)
-                            Text(ext.uppercased())
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Theme.Color.textMono)
-                                .tracking(1.2)
+                            if let ext = Self.shortExt(for: fileName) {
+                                Text("·")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Theme.Color.textMono)
+                                Text(ext.uppercased())
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Theme.Color.textMono)
+                                    .tracking(1.2)
+                            }
                         }
                     }
                 }
@@ -88,7 +107,11 @@ struct FileBubble: View {
                     .font(.system(size: 18))
                     .foregroundColor(Theme.Color.statusBusy)
             } else if downloading {
-                ProgressView().tint(Theme.Color.accent)
+                if let f = downloadFraction {
+                    progressRing(f)
+                } else {
+                    ProgressView().tint(Theme.Color.accent)
+                }
             } else if failed {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 18, weight: .semibold))
@@ -164,6 +187,43 @@ struct FileBubble: View {
         }
     }
 
+    /// "12.3 MB / 48.1 MB · 2.4 MB/s" while the blob comes down, and nil when
+    /// nothing is coming down. The total is what the island declared, or the
+    /// row's own size when it declared none; the speed appears once there is a
+    /// second of samples behind it, so it reads as a number rather than a
+    /// flicker.
+    private var downloadLine: String? {
+        guard downloading, got > 0 else { return nil }
+        let total = expected > 0 ? Int(expected) : sizeBytes
+        var line = Self.formatSize(Int(got))
+        if total > 0 { line += " / " + Self.formatSize(total) }
+        if let speed { line += " · " + Self.formatSize(Int(speed)) + "/s" }
+        return line
+    }
+
+    private var downloadFraction: Double? {
+        let total = expected > 0 ? expected : Int64(sizeBytes)
+        guard downloading, total > 0, got > 0 else { return nil }
+        return min(1, Double(got) / Double(total))
+    }
+
+    /// One tick of the counters, turned into a speed. Three-second window: a
+    /// per-tick rate on a mobile link swings by a factor of five and reads as
+    /// noise.
+    private func sample(_ received: Int64, _ total: Int64) {
+        got = received
+        expected = total
+        let now = Date()
+        guard let last = lastSample else {
+            lastSample = (now, received)
+            return
+        }
+        let dt = now.timeIntervalSince(last.at)
+        guard dt >= 1 else { return }
+        speed = max(0, Double(received - last.bytes) / dt)
+        lastSample = (now, received)
+    }
+
     private func quickLookTap() {
         guard let raw = message.mediaID else { return }
         let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
@@ -172,8 +232,16 @@ struct FileBubble: View {
         let key = parts[1]
         downloading = true
         failed = false
+        got = 0
+        expected = -1
+        speed = nil
+        lastSample = nil
         Task {
-            let data = await MediaService.shared.fetchDecrypted(mediaID: mediaID, keyBase64: key)
+            let data = await MediaService.shared.fetchDecrypted(
+                mediaID: mediaID,
+                keyBase64: key,
+                onProgress: { received, total in sample(received, total) },
+            )
             await MainActor.run {
                 downloading = false
                 if let data {

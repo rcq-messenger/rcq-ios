@@ -1319,7 +1319,15 @@ struct ChatView: View {
                         .frame(width: 24, height: 24)
                 } else {
                     PersonAvatarView(
-                        mediaID: live.avatarMediaID, keyBase64: live.avatarMediaKey,
+                        // ⚠ RESOLVED, not the raw field. The island does not
+                        // hold the key to a picture set under the profile-key
+                        // model, so `avatarMediaKey` is empty for one and the
+                        // real key is the one its owner sealed to us.
+                        // `avatarKeyResolved` falls back to that store; the
+                        // contact list has always used it and this header did
+                        // not, so the same person had a face in the list and a
+                        // flower in the chat (founder, 09.09).
+                        mediaID: live.avatarMediaID, keyBase64: live.avatarKeyResolved,
                         status: live.status, host: live.host, size: 30,
                         crossIsland: live.host != nil
                     )

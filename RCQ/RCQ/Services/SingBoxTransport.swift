@@ -841,6 +841,30 @@ enum IslandHTTP {
         }
     }
 
+    /// The same request with somebody WATCHING it: a per-task delegate rides
+    /// along so the caller can read the byte counters while the body arrives.
+    ///
+    /// ⚠⚠ THE DELEGATE MUST NOT IMPLEMENT A BODY CALLBACK. `data(for:)`
+    /// accumulates the response itself, and a task delegate that also claims
+    /// `didReceive data:` (or, on the download shape, `didFinishDownloadingTo:`)
+    /// takes the body away from the call that is awaiting it. `didCreateTask`
+    /// is the safe half: it hands over the task, and `countOfBytesReceived`
+    /// on that task is the whole of what a progress row needs. See
+    /// `MediaTransferWatcher`.
+    ///
+    /// ⚠ No default on `delegate`, so this cannot silently capture the callers
+    /// of the plain overload above.
+    static func data(
+        for request: URLRequest,
+        allowTunnelFallback: Bool = true,
+        transfer: Bool = false,
+        delegate: URLSessionTaskDelegate?,
+    ) async throws -> (Data, URLResponse) {
+        try await run(url: request.url, allowTunnelFallback: allowTunnelFallback, transfer: transfer) {
+            try await $0.data(for: request, delegate: delegate)
+        }
+    }
+
     static func upload(
         for request: URLRequest,
         from body: Data,

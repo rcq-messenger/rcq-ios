@@ -39,6 +39,14 @@ struct AddAccountSheet: View {
     /// The island whose door turned out to be shut. Non-nil = the code sheet
     /// is up; setting it back to nil is the way out, and there is one.
     @State private var door: DoorRequest?
+    /// The same thing for a TYPED address. Its own state because it is
+    /// presented from inside the manual sheet: a sheet cannot present another
+    /// one over a presenter it is itself covering, so the door for the deck and
+    /// the door for the typed field are two presentations of one view.
+    @State private var manualDoor: DoorRequest?
+    /// Half the screen, until a field takes focus. See the note on the sheet.
+    @State private var manualDetent: PresentationDetent = .medium
+    @FocusState private var manualFocused: Bool
     @State private var error: String?
     @State private var showRestore: Bool = false
 
@@ -200,6 +208,16 @@ struct AddAccountSheet: View {
                     door = nil
                 }
             }
+            // ⚠ HALF THE SCREEN, not all of it (founder, 09.09): "the Enter an
+            // address instead sheet should open half way, like the Access Code
+            // one". It carries three short fields and a button, and standing at
+            // full height over the deck made typing an address look like
+            // leaving the screen you were on.
+            //
+            // ⚠⚠ `.large` STAYS IN THE SET, and this is #867 rather than taste:
+            // a sheet pinned to a detent it cannot leave puts the keyboard on
+            // top of the button you are reaching for. Focus moves the selection
+            // up, exactly as `IslandDoorSheet` and `ServerJoinSheet` do.
             .sheet(isPresented: $showManual) {
                 NavigationStack {
                     ZStack {
@@ -218,6 +236,29 @@ struct AddAccountSheet: View {
                                 .accessibilityLabel("common.cancel".localized)
                         }
                     }
+                    // The typed address turned out to lead to a shut door. Same
+                    // sheet the deck raises, presented from in here because the
+                    // deck's own is behind this one.
+                    .sheet(item: $manualDoor) { request in
+                        IslandDoorSheet(entry: request.entry, status: request.status) { code in
+                            manualDoor = nil
+                            let token = customTokenTrimmed
+                            Task {
+                                await performAdd(
+                                    serverURL: request.entry.url,
+                                    serverToken: token.isEmpty ? nil : token,
+                                    invite: code,
+                                )
+                            }
+                        } onCancel: {
+                            manualDoor = nil
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large], selection: $manualDetent)
+                .presentationDragIndicator(.visible)
+                .onChange(of: manualFocused) { focused in
+                    manualDetent = focused ? .large : .medium
                 }
             }
         }
@@ -330,23 +371,34 @@ struct AddAccountSheet: View {
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
                     .font(.system(.callout, design: .monospaced))
+                    .focused($manualFocused)
                     .padding(12)
                     .background(Theme.Color.bgSecondary)
                     .cornerRadius(10)
                 Button {
                     Task { await addCustom() }
                 } label: {
-                    Text("add_account.custom.cta".localized)
-                        .font(.callout.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            customURLValid ? Theme.Color.accent : Theme.Color.bgSecondary
-                        )
-                        .cornerRadius(10)
+                    Group {
+                        // The wait is IN HERE, because this sheet stays up
+                        // through it: the loading state behind it is covered,
+                        // and a button that answers nothing for a couple of
+                        // seconds reads as a button that did not work.
+                        if probing || adding {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("add_account.custom.cta".localized)
+                                .font(.callout.weight(.semibold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        customURLValid ? Theme.Color.accent : Theme.Color.bgSecondary
+                    )
+                    .cornerRadius(10)
                 }
-                .disabled(!customURLValid)
+                .disabled(!customURLValid || probing || adding)
             }
             // Optional masquerade token for self-host backends gated
             // behind a Caddy `X-RCQ-Auth` header. Empty for default
@@ -405,6 +457,18 @@ struct AddAccountSheet: View {
     /// The manual address goes through the trust door (design §3) before
     /// anything is dialled: a fingerprint is pinned as typed, a bad one is an
     /// address error, one that disagrees with the record on file is the banner.
+    ///
+    /// ⚠⚠ AND THEN IT ASKS THE ISLAND ABOUT ITS DOOR, exactly as the deck's Use
+    /// button does. Typing `api.rcq.app` here used to register straight away:
+    /// the flagship refused it (paid entry), the failed add rolled itself back,
+    /// and the person watched a loading screen and landed back on the account
+    /// they already had, with no idea the island had a price (founder, 09.09).
+    /// `/server/info` is served to anybody with no account, so the question
+    /// costs one request and is answered before anything is created.
+    ///
+    /// ⚠ Not when a code is already in the field below. Somebody who pasted one
+    /// has answered the question the door sheet would ask, and raising it over
+    /// their own answer would be the app not reading what they typed.
     private func addCustom() async {
         error = nil
         trustChange = nil
@@ -416,11 +480,39 @@ struct AddAccountSheet: View {
         case .changed(let change):
             trustChange = change
         case .admitted(let address):
-            await performAdd(
-                serverURL: address,
-                serverToken: customTokenTrimmed.isEmpty ? nil : customTokenTrimmed
-            )
+            let token = customTokenTrimmed.isEmpty ? nil : customTokenTrimmed
+            let typedCode = customInvite.trimmingCharacters(in: .whitespacesAndNewlines)
+            if typedCode.isEmpty, let host = URL(string: address)?.host {
+                probing = true
+                let status = await IslandDoor.status(host: host, token: token)
+                probing = false
+                if let status, status.needsCode {
+                    manualDoor = DoorRequest(entry: Self.typedEntry(address: address, host: host, status: status), status: status)
+                    return
+                }
+                // An island that did not answer at all is still dialled: it may
+                // only be reachable through the transport the add itself
+                // raises, and our guess is a worse answer than the island's.
+            }
+            await performAdd(serverURL: address, serverToken: token)
         }
+    }
+
+    /// The catalogue row an island that is NOT in the catalogue would have had,
+    /// so the door sheet can draw its face from the same fields as any other.
+    /// Everything the sheet reads comes off `IslandDoorStatus`, which the probe
+    /// just filled in; the host stands in for a name only until the island's
+    /// own name arrives with it.
+    private static func typedEntry(address: String, host: String, status: IslandDoorStatus) -> ServerEntry {
+        ServerEntry(
+            url: address,
+            name: status.name.isEmpty ? host : status.name,
+            description: "",
+            region: "",
+            operatorContact: "",
+            addedAt: "",
+            logo: nil,
+        )
     }
 
     /// One of the two doors under the deck: a glyph over a word, both halves
@@ -607,12 +699,15 @@ enum IslandDoor {
 
     static func cached(host: String) -> IslandDoorStatus? { cache[host.lowercased()] }
 
-    static func status(host: String) async -> IslandDoorStatus? {
+    /// ⚠ `token` is the masquerade header for a private island, passed through
+    /// to the probe. Not part of the cache key: it is a property of the person
+    /// asking, not of the island, and one host has one door either way.
+    static func status(host: String, token: String? = nil) async -> IslandDoorStatus? {
         let key = host.lowercased()
         if let hit = cache[key] { return hit }
         if let running = inFlight[key] { return await running.value }
         let task = Task { () -> IslandDoorStatus? in
-            guard let info = await ServerInfoService.fetch(host: host) else { return nil }
+            guard let info = await ServerInfoService.fetch(host: host, token: token) else { return nil }
             return IslandDoorStatus(
                 needsCode: info.capabilities.needsAccessCode,
                 entryPriceCents: info.capabilities.entryPriceCents,
@@ -672,7 +767,7 @@ struct IslandEntryLine: View {
     var body: some View {
         Group {
             if let status {
-                Text(label(for: status))
+                line(for: status)
                     .font(.caption2)
                     .foregroundColor(status.needsCode ? Theme.Color.accent : Theme.Color.textSecondary)
             }
@@ -682,13 +777,28 @@ struct IslandEntryLine: View {
         }
     }
 
+    /// The card's one line: what the door says, then how many people are behind
+    /// it.
+    ///
+    /// ⚠ A Text, not a String, because the headcount needs a GLYPH in front of
+    /// it. "$15 once · 2,649" reads as two prices (founder, 09.09: "what is
+    /// 2649?"); the little two-person mark says which of the numbers is money
+    /// and which is people, in every language and without a word.
+    private func line(for status: IslandDoorStatus) -> Text {
+        var t = Text(label(for: status))
+        if status.people > 0 {
+            t = t + Text(verbatim: " · ")
+                + Text(Image(systemName: "person.2.fill"))
+                + Text(verbatim: " \(status.people.formatted())")
+        }
+        return t
+    }
+
     private func label(for status: IslandDoorStatus) -> String {
-        // ⚠ Appended to the line rather than given one of its own: this sits in
-        // a card whose height is fitted, and a second line would change it.
-        // Absent when the island did not say, because a card that says nothing
-        // is honest and one that says 0 is not (founder, 09.09).
-        let crowd = status.people > 0 ? " · \(status.people.formatted())" : ""
-        guard status.needsCode else { return "island.entry.open".localized + crowd }
+        // ⚠ The headcount is appended by `line(for:)` above rather than given a
+        // row of its own: this sits in a card whose height is fitted, and a
+        // second line would change it.
+        guard status.needsCode else { return "island.entry.open".localized }
         // ⚠⚠ A PRICE ONLY FOR OUR OWN ISLAND, and this is a rule about
         // Apple rather than about taste (founder, 2026-09-07).
         //
@@ -704,9 +814,9 @@ struct IslandEntryLine: View {
         // without it the island looks broken rather than private.
         let isOurs = RcqFederation.isFlagship(host)
         let cents = status.entryPriceCents
-        return ((isOurs && cents > 0)
+        return (isOurs && cents > 0)
             ? String(format: "island.entry.price".localized, Self.usd(cents))
-            : "island.entry.closed".localized) + crowd
+            : "island.entry.closed".localized
     }
 
     /// Whole dollars lose the ".00": a club that costs fifteen dollars should

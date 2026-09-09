@@ -616,13 +616,16 @@ actor APIClient {
         }
     }
 
-    func downloadBlob(_ path: String) async throws -> Data {
+    /// `watcher` is a per-task delegate for a row that is DRAWING this
+    /// download. Nil for everything else, which is most callers. See
+    /// `MediaTransferWatcher` for why it may only implement `didCreateTask`.
+    func downloadBlob(_ path: String, watcher: URLSessionTaskDelegate? = nil) async throws -> Data {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "GET"
         if let serverToken {
             req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
         }
-        let (data, resp) = try await session.data(for: req)
+        let (data, resp) = try await session.data(for: req, delegate: watcher)
         guard let http = resp as? HTTPURLResponse else { throw APIError.http(-1, nil) }
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.http(http.statusCode, String(data: data, encoding: .utf8))

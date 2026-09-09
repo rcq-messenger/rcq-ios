@@ -2842,10 +2842,17 @@ enum ServerInfoService {
     /// house rules belong on the confirm before joining, which is the one
     /// moment anybody reads them, and that has to ask the island itself rather
     /// than the one we happen to be on. Nil when it does not answer.
-    static func fetch(host: String) async -> ServerInfoResponse? {
+    ///
+    /// ⚠ `token` is the MASQUERADE header, not a door code. An island hidden
+    /// behind a Caddy that demands `X-RCQ-Auth` serves a decoy 404 to everyone
+    /// else, `/server/info` included — so a typed address with a token beside
+    /// it has to ask WITH the token or the probe learns nothing and the join
+    /// falls back to dialling blind, which is the bug this probe exists to fix.
+    static func fetch(host: String, token: String? = nil) async -> ServerInfoResponse? {
         guard let url = URL(string: "https://\(host)/server/info") else { return nil }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token, !token.isEmpty { req.setValue(token, forHTTPHeaderField: "X-RCQ-Auth") }
         do {
             // `IslandHTTP`, not a bare session: this is the first handshake
             // with an island a person is about to join, so it rides the tunnel
