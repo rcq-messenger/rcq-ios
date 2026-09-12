@@ -348,7 +348,12 @@ struct MessageActionOverlay: View {
                     }
                     rowDivider
                 }
-                if canForward, message.kind == .text, !message.text.isEmpty {
+                // #971: a caption is text too. This was gated on the KIND being
+                // text, so a photo with a paragraph under it had no Copy; `text`
+                // carries the caption for media, so the gate is whether there is
+                // anything in it.
+                if canForward, !message.text.isEmpty,
+                   [.text, .photo, .video, .voice, .file].contains(message.kind) {
                     actionRow("chat.action.copy".localized, icon: "doc.on.doc", destructive: false) {
                         UIPasteboard.general.string = message.text
                         UISelectionFeedbackGenerator().selectionChanged()
