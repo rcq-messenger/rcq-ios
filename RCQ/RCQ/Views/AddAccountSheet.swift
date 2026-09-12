@@ -816,11 +816,18 @@ struct IslandEntryLine: View {
         // "Closed club" still shows for every closed island: it is not a
         // price, it is the fact that tells a person they need a code, and
         // without it the island looks broken rather than private.
+        //
+        // ⚠ A door that is FOR SALE is not a closed club, whoever owns it.
+        // What we withhold off the flagship is the NUMBER, not the fact, so
+        // somebody else's paid island says "Paid entry" and stops there: the
+        // old word sent a buyer hunting an operator who never had a code to
+        // give. Still no price, no link and no button here.
         let isOurs = RcqFederation.isFlagship(host)
         let cents = status.entryPriceCents
-        return (isOurs && cents > 0)
+        guard cents > 0 else { return "island.entry.closed".localized }
+        return isOurs
             ? String(format: "island.entry.price".localized, Self.usd(cents))
-            : "island.entry.closed".localized
+            : "island.entry.paid".localized
     }
 
     /// Whole dollars lose the ".00": a club that costs fifteen dollars should
@@ -916,7 +923,12 @@ private struct IslandDoorSheet: View {
 
                         IslandEntryLine(host: entry.displayHost)
 
-                        Text("island.door.body".localized)
+                        // Same split as the line above it: the sentence for a
+                        // paid door names the shop, not an operator. Otherwise
+                        // the card could read "Paid entry" and the sheet it
+                        // opens could call the same island closed.
+                        Text((status.entryPriceCents > 0
+                              ? "reg.entry.required" : "island.door.body").localized)
                             .font(.footnote)
                             .foregroundColor(Theme.Color.textSecondary)
                             .multilineTextAlignment(.center)

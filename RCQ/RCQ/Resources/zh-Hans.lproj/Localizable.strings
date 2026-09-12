@@ -1861,6 +1861,7 @@
 
 "island.entry.price" = "一次性 %@";
 "island.entry.closed" = "封闭俱乐部";
+"island.entry.paid" = "付费进入";
 
 "add_account.custom.invite" = "访问代码（封闭岛屿）";
 

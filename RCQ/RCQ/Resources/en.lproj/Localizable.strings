@@ -2079,6 +2079,7 @@
 
 "island.entry.price" = "%@ once";
 "island.entry.closed" = "Closed club";
+"island.entry.paid" = "Paid entry";
 
 "add_account.custom.invite" = "Access code (closed islands)";
 

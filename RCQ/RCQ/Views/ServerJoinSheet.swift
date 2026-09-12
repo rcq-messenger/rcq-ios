@@ -27,6 +27,17 @@ struct ServerJoinSheet: View {
         request.invite == nil && (info?.capabilities.needsAccessCode ?? false)
     }
 
+    /// The island SELLS entry rather than keeping a guest list. Same field,
+    /// same button, different sentence: "a code from its operator" is an
+    /// errand nobody can run on a $15 island.
+    ///
+    /// ⚠ The policy counts as well as the price, so an island that sells entry
+    /// without publishing what it costs still gets the right words.
+    private var paidDoor: Bool {
+        guard let caps = info?.capabilities else { return false }
+        return caps.entryPriceCents > 0 || caps.registrationPolicy.lowercased() == "paid"
+    }
+
     private var typedCode: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     /// What register is handed: the link's code when it had one, otherwise
@@ -69,7 +80,7 @@ struct ServerJoinSheet: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Text((asksForCode ? "island.door.body"
+            Text((asksForCode ? (paidDoor ? "reg.entry.required" : "island.door.body")
                   : request.invite == nil ? "serverjoin.body_open"
                   : "serverjoin.body").localized)
                 .font(.footnote)
@@ -171,7 +182,15 @@ struct ServerJoinSheet: View {
             await AppState.shared.rollbackFailedAdd(previousActiveID: previousActiveID)
             if failure.contains("invite_invalid") {
                 error = "reg.invite.invalid".localized
-            } else if failure.contains("invite_required") || failure.contains("entry_required") {
+            } else if failure.contains("entry_required") {
+                // A PAID door refused, not a closed one. "Get a code from the
+                // operator" sends a buyer looking for a person; the island is
+                // selling entry and the sentence has to say so. Reached
+                // whenever the door probe did not land before the tap: the
+                // /server/info request still in the air, a probe that failed
+                // or failed to decode, a link carrying an empty `?invite=`.
+                error = "reg.entry.required".localized
+            } else if failure.contains("invite_required") {
                 error = "reg.invite.required".localized
             } else {
                 error = "serverjoin.error".localized

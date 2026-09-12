@@ -1870,6 +1870,7 @@
 
 "island.entry.price" = "%@ разово";
 "island.entry.closed" = "Закритий клуб";
+"island.entry.paid" = "Платний вхід";
 
 "add_account.custom.invite" = "Код доступу (для закритих островів)";
 

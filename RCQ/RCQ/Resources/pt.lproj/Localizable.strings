@@ -1870,6 +1870,7 @@
 
 "island.entry.price" = "%@ uma vez";
 "island.entry.closed" = "Clube fechado";
+"island.entry.paid" = "Entrada paga";
 
 "add_account.custom.invite" = "Código de acesso (ilhas fechadas)";
 

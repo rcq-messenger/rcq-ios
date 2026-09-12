@@ -1870,6 +1870,7 @@
 
 "island.entry.price" = "tek seferlik %@";
 "island.entry.closed" = "Kapalı kulüp";
+"island.entry.paid" = "Ücretli giriş";
 
 "add_account.custom.invite" = "Erişim kodu (kapalı adalar)";
 
