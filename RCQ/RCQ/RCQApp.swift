@@ -752,6 +752,11 @@ private struct ErrorScreen: View {
     /// at all; what is left for this screen is onboarding onto a closed island
     /// on a device that has no account to fall back to.
     private var needsInvite: Bool { message.contains("invite_required") || message.contains("entry_required") }
+    /// ⚠ A paid door and a closed door ask for the same field and are not the
+    /// same sentence. "Closed: you need a code from the operator" told a person
+    /// standing in front of a $15 door to go and find an operator, when what
+    /// they needed was the shop. Android and the web already split these.
+    private var paidEntry: Bool { message.contains("entry_required") }
     private var badInvite: Bool { message.contains("invite_invalid") }
     private var asking: Bool { needsInvite || badInvite }
 
@@ -765,8 +770,9 @@ private struct ErrorScreen: View {
     private var canAskForCode: Bool { asking && accountManager.active != nil }
 
     private var humanMessage: String {
-        if needsInvite { return "reg.invite.required".localized }
         if badInvite { return "reg.invite.invalid".localized }
+        if paidEntry { return "reg.entry.required".localized }
+        if needsInvite { return "reg.invite.required".localized }
         return message
     }
 

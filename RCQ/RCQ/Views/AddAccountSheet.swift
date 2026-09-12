@@ -641,7 +641,11 @@ struct AddAccountSheet: View {
             // was simply the wrong one, and it was the only one we had.
             if failure.contains("invite_invalid") {
                 error = "reg.invite.invalid".localized
-            } else if failure.contains("invite_required") || failure.contains("entry_required") {
+            } else if failure.contains("entry_required") {
+                // A paid door, not a closed one: the sentence points at the
+                // shop, not at "an operator" who does not exist for a $15 island.
+                error = "reg.entry.required".localized
+            } else if failure.contains("invite_required") {
                 error = "reg.invite.required".localized
             } else {
                 error = "add_account.error".localized

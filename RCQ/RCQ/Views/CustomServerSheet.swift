@@ -255,19 +255,35 @@ struct CustomServerSheet: View {
         // history, favorites) stays on this device and is switchable from the
         // account switcher. Mirrors AddAccountSheet's proven add path, which
         // also sets the new account active and rebuilds the UI against it.
+        let previousActiveID = AccountManager.shared.activeAccountID
         let ok = await AppState.shared.addAccount(serverURL: address)
         if !ok || AppState.shared.bootError != nil {
-            // Roll back a dangling account so we land back on the previous one.
-            if let danglingID = AccountManager.shared.activeAccountID,
-               AccountManager.shared.accounts.last?.id == danglingID {
-                AccountManager.shared.remove(danglingID)
-            }
+            let failure = AppState.shared.bootError ?? ""
+            // ⚠ The SAME rollback the add-account sheet uses, not a hand-rolled
+            // remove. The hand-rolled one left `pendingServerInviteKey` in
+            // UserDefaults, so a code typed for THIS island was quietly spent
+            // by the NEXT registration, wherever that went, and it landed on
+            // `accounts.first` rather than on the account the person was
+            // actually using. AppState.rollbackFailedAdd documents both.
+            await AppState.shared.rollbackFailedAdd(previousActiveID: previousActiveID)
             // Refused by this device, not unreachable: the banner says so.
             if let change = IslandTrust.shared.change(forAddress: address) {
                 trustChange = change
                 return
             }
-            validationError = "add_account.error".localized
+            // The island's own refusal, in its own words. "Check the URL and
+            // your network" was the only sentence this sheet had, and it was
+            // shown to a person whose entry code was simply wrong (founder,
+            // 12.09: same hole on Android's custom-server screen).
+            if failure.contains("invite_invalid") {
+                validationError = "reg.invite.invalid".localized
+            } else if failure.contains("entry_required") {
+                validationError = "reg.entry.required".localized
+            } else if failure.contains("invite_required") {
+                validationError = "reg.invite.required".localized
+            } else {
+                validationError = "add_account.error".localized
+            }
             return
         }
         dismiss()

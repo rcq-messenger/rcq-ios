@@ -2070,6 +2070,7 @@
 
 "reg.invite.label" = "Access code";
 "reg.invite.required" = "This island is closed: joining needs a code from its operator. Paste it below.";
+"reg.entry.required" = "Entry to this island is paid. Buy entry, then paste the code you get below.";
 "reg.invite.invalid" = "That code was not accepted. It may be used up, expired, or meant for another island.";
 
 "ci.closed_island" = "This island is closed. To write to somebody there you need a link from them: a shared contact, or a message they sent you first.";
