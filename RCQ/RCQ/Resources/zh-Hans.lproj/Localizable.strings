@@ -109,7 +109,7 @@
 "serverjoin.body" = "有人邀请你加入一个私有 RCQ 岛。我们会把它添加为一个独立账号，拥有自己的身份。";
 "serverjoin.body_open" = "把这个 RCQ 服务器添加为一个独立账号，拥有自己的身份。";
 "serverjoin.join" = "加入";
-"serverjoin.error" = "无法加入。邀请可能有误或已过期，也可能是服务器无法访问。";
+"serverjoin.error" = "无法加入。访问代码可能有误或已过期，也可能是服务器无法访问。";
 "weblink.title" = "连接 %@？";
 "weblink.body" = "这会让 %@ 以你的账号登录，好在那边聊天。只有这个 QR 是你自己打开的，才继续。";
 "weblink.confirm" = "连接";
@@ -1852,7 +1852,7 @@
 "report.heading.site" = "举报此页面";
 "uin_shop.status.sold" = "此号码由岛屿出售，无法在此设备上领取。";
 
-"reg.invite.label" = "访问码";
+"reg.invite.label" = "访问代码";
 "reg.invite.required" = "岛屿是封闭的：加入需要岛主提供的代码。请粘贴在下方。";
 "reg.entry.required" = "进入这座岛屿需要付费。购买入场资格后，把拿到的代码粘贴在下方。";
 "reg.invite.invalid" = "该代码未被接受。可能已被使用、已过期，或属于另一个岛屿。";
@@ -1862,35 +1862,35 @@
 "island.entry.price" = "一次性 %@";
 "island.entry.closed" = "封闭俱乐部";
 
-"add_account.custom.invite" = "访问码（封闭岛屿）";
+"add_account.custom.invite" = "访问代码（封闭岛屿）";
 
 /* ── 封闭岛屿的门，以及居民自己的邀请 ─────────────────────────────── */
 
 "island.entry.open" = "对所有人开放";
-"island.door.title" = "访问码";
+"island.door.title" = "访问代码";
 "island.door.checking" = "正在询问岛屿…";
 "island.door.body" = "这个岛屿是封闭的：要在这里开设账户，需要岛主提供的代码。";
 "settings.island.rules" = "岛屿规则";
 "reg.invite.enter" = "输入代码";
 "boot.error.switch_account" = "切换账户";
 
-"invites.title" = "邀请";
-"invites.body" = "邀请是一次性链接：使用它的人会在这个岛屿上开设账户。下一个会自动累积，每个周期一个。";
+"invites.title" = "访问代码";
+"invites.body" = "访问代码只能使用一次：输入它的人会在这个岛屿上开设账户。下一个会自动累积，每个周期一个。";
 "invites.next" = "下一个将在 %@ 到来";
 "invites.all" = "全部都在您手上";
-"invites.mint" = "创建邀请";
+"invites.mint" = "创建访问代码";
 "invites.minting" = "创建中…";
 "invites.copy" = "复制链接";
 "invites.copied" = "已复制";
 "invites.once" = "只显示一次。请立即复制：岛屿只保存代码的指纹，不保存代码本身。";
-"invites.error" = "邀请创建失败。请重试。";
-"settings.search.alias.residentInvites" = "邀请, 邀请链接, 居民, invites";
+"invites.error" = "访问代码创建失败。请重试。";
+"settings.search.alias.residentInvites" = "访问代码, 邀请, 邀请链接, 居民, access code, invites";
 
 /* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
-"invites.free" = "您在居民制度出现之前就已在此：岛屿仍会给您邀请，每月一个。";
+"invites.free" = "您在居民制度出现之前就已在此：岛屿仍会给您可分发的访问代码，每月一个。";
 "residency.title" = "居民身份";
 "residency.since" = "自 %@ 起成为居民";
-"residency.body" = "一次付款，仅一次。居民每月获得一个可分发的邀请，并佩戴岛屿的标记。";
+"residency.body" = "一次付款，仅一次。居民每月获得一个可分发的访问代码，并佩戴岛屿的标记。";
 "residency.have_code" = "我有代码";
 "residency.redeem" = "激活";
 "residency.already" = "此账户已是居民。";

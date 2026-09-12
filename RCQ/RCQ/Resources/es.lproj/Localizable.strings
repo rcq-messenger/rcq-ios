@@ -118,7 +118,7 @@
 "serverjoin.body" = "Te han invitado a una isla RCQ privada. La añadiremos como una cuenta aparte, con su propia identidad.";
 "serverjoin.body_open" = "Añade este servidor RCQ como una cuenta aparte, con su propia identidad.";
 "serverjoin.join" = "Entrar";
-"serverjoin.error" = "No se pudo entrar. La invitación puede estar mal o caducada, o el servidor no responde.";
+"serverjoin.error" = "No se pudo entrar. El código de acceso puede estar mal o caducado, o el servidor no responde.";
 "weblink.title" = "¿Conectar %@?";
 "weblink.body" = "Esto hará que %@ entre con tu cuenta para que puedas chatear ahí. Continúa solo si abriste este QR tú mismo.";
 "weblink.confirm" = "Conectar";
@@ -1883,23 +1883,23 @@
 "reg.invite.enter" = "Escribir el código";
 "boot.error.switch_account" = "Otra cuenta";
 
-"invites.title" = "Invitaciones";
-"invites.body" = "Una invitación es un enlace de un solo uso: quien lo siga tendrá una cuenta en esta isla. La siguiente llega sola, una por período.";
-"invites.next" = "La siguiente llega el %@";
-"invites.all" = "Las tienes todas";
-"invites.mint" = "Crear una invitación";
+"invites.title" = "Códigos de acceso";
+"invites.body" = "Un código de acceso se usa una sola vez: quien lo introduzca tendrá una cuenta en esta isla. El siguiente llega solo, uno por período.";
+"invites.next" = "El siguiente llega el %@";
+"invites.all" = "Los tienes todos";
+"invites.mint" = "Crear un código de acceso";
 "invites.minting" = "Creando…";
 "invites.copy" = "Copiar el enlace";
 "invites.copied" = "Copiado";
 "invites.once" = "Se muestra una sola vez. Cópialo ahora: la isla guarda solo una huella del código, no el código.";
-"invites.error" = "No se pudo crear la invitación. Probá de nuevo.";
-"settings.search.alias.residentInvites" = "invitaciones, invitar, residente, enlace de entrada, invites";
+"invites.error" = "No se pudo crear el código de acceso. Probá de nuevo.";
+"settings.search.alias.residentInvites" = "código de acceso, códigos de acceso, invitaciones, invitar, residente, enlace de entrada, access code, invites";
 
 /* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
-"invites.free" = "Estabas aquí antes de la residencia: la isla igualmente te da invitaciones, una al mes.";
+"invites.free" = "Estabas aquí antes de la residencia: la isla igualmente te da códigos de acceso para repartir, uno al mes.";
 "residency.title" = "Residencia";
 "residency.since" = "Residente desde %@";
-"residency.body" = "Un pago, una sola vez. Un residente recibe invitaciones para repartir, una al mes, y lleva la marca de la isla.";
+"residency.body" = "Un pago, una sola vez. Un residente recibe códigos de acceso para repartir, uno al mes, y lleva la marca de la isla.";
 "residency.have_code" = "Tengo un código";
 "residency.redeem" = "Activar";
 "residency.already" = "Esta cuenta ya es residente.";

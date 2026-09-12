@@ -118,7 +118,7 @@
 "serverjoin.body" = "Özel bir RCQ adasına davet edildin. Onu kendi kimliği olan ayrı bir hesap olarak ekleyeceğiz.";
 "serverjoin.body_open" = "Bu RCQ sunucusunu kendi kimliği olan ayrı bir hesap olarak ekle.";
 "serverjoin.join" = "Katıl";
-"serverjoin.error" = "Katılınamadı. Davet yanlış ya da süresi dolmuş olabilir veya sunucuya ulaşılamıyor.";
+"serverjoin.error" = "Katılınamadı. Erişim kodu yanlış ya da süresi dolmuş olabilir veya sunucuya ulaşılamıyor.";
 "weblink.title" = "%@ bağlansın mı?";
 "weblink.body" = "Bu, %@ tarayıcısını senin hesabınla açar, böylece orada da yazışabilirsin. Yalnızca bu QR kodunu kendin açtıysan devam et.";
 "weblink.confirm" = "Bağla";
@@ -1883,23 +1883,23 @@
 "reg.invite.enter" = "Kodu gir";
 "boot.error.switch_account" = "Başka hesap";
 
-"invites.title" = "Davetler";
-"invites.body" = "Davet tek kullanımlık bir bağlantıdır: onu açan kişi bu adada hesap açar. Yenisi kendiliğinden gelir, dönem başına bir tane.";
+"invites.title" = "Erişim kodları";
+"invites.body" = "Erişim kodu bir kez kullanılır: onu giren kişi bu adada hesap açar. Yenisi kendiliğinden gelir, dönem başına bir tane.";
 "invites.next" = "Bir sonraki %@ tarihinde gelir";
 "invites.all" = "Hepsi elinizde";
-"invites.mint" = "Davet oluştur";
+"invites.mint" = "Erişim kodu oluştur";
 "invites.minting" = "Oluşturuluyor…";
 "invites.copy" = "Bağlantıyı kopyala";
 "invites.copied" = "Kopyalandı";
 "invites.once" = "Bir kez gösterilir. Şimdi kopyalayın: ada kodun kendisini değil, yalnızca izini saklar.";
-"invites.error" = "Davet oluşturulamadı. Tekrar deneyin.";
-"settings.search.alias.residentInvites" = "davetler, davet, sakin, giriş bağlantısı, invites";
+"invites.error" = "Erişim kodu oluşturulamadı. Tekrar deneyin.";
+"settings.search.alias.residentInvites" = "erişim kodu, erişim kodları, davetler, davet, sakin, giriş bağlantısı, access code, invites";
 
 /* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
-"invites.free" = "Sakin statüsünden önce buradaydınız: ada yine de size davet veriyor, ayda bir.";
+"invites.free" = "Sakin statüsünden önce buradaydınız: ada yine de size dağıtmanız için erişim kodu veriyor, ayda bir.";
 "residency.title" = "Sakin statüsü";
 "residency.since" = "%@ tarihinden beri sakin";
-"residency.body" = "Tek ödeme, bir kez. Sakin, ayda bir dağıtacak davet alır ve adanın işaretini taşır.";
+"residency.body" = "Tek ödeme, bir kez. Sakin, ayda bir dağıtacak erişim kodu alır ve adanın işaretini taşır.";
 "residency.have_code" = "Kodum var";
 "residency.redeem" = "Etkinleştir";
 "residency.already" = "Bu hesap zaten sakin.";

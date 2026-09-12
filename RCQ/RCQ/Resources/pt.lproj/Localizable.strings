@@ -118,7 +118,7 @@
 "serverjoin.body" = "Você foi convidado para uma ilha RCQ privada. Vamos adicioná-la como uma conta separada, com identidade própria.";
 "serverjoin.body_open" = "Adiciona este servidor RCQ como uma conta separada, com identidade própria.";
 "serverjoin.join" = "Entrar";
-"serverjoin.error" = "Não foi possível entrar. O convite pode estar errado ou vencido, ou o servidor está inacessível.";
+"serverjoin.error" = "Não foi possível entrar. O código de acesso pode estar errado ou vencido, ou o servidor está inacessível.";
 "weblink.title" = "Conectar %@?";
 "weblink.body" = "Isso vai conectar %@ com a sua conta para você conversar por lá. Só continue se você mesmo abriu este QR.";
 "weblink.confirm" = "Conectar";
@@ -1883,23 +1883,23 @@
 "reg.invite.enter" = "Digitar o código";
 "boot.error.switch_account" = "Outra conta";
 
-"invites.title" = "Convites";
-"invites.body" = "Um convite é um link de uso único: quem o seguir ganha uma conta nesta ilha. O próximo chega sozinho, um por período.";
+"invites.title" = "Códigos de acesso";
+"invites.body" = "Um código de acesso é usado uma única vez: quem o digitar ganha uma conta nesta ilha. O próximo chega sozinho, um por período.";
 "invites.next" = "O próximo chega em %@";
 "invites.all" = "Você tem todos";
-"invites.mint" = "Criar um convite";
+"invites.mint" = "Criar um código de acesso";
 "invites.minting" = "Criando…";
 "invites.copy" = "Copiar o link";
 "invites.copied" = "Copiado";
 "invites.once" = "Mostrado uma única vez. Copie agora: a ilha guarda apenas uma impressão do código, não o código.";
-"invites.error" = "Não deu para criar o convite. Tente de novo.";
-"settings.search.alias.residentInvites" = "convites, convidar, residente, link de entrada, invites";
+"invites.error" = "Não deu para criar o código de acesso. Tente de novo.";
+"settings.search.alias.residentInvites" = "código de acesso, códigos de acesso, convites, convidar, residente, link de entrada, access code, invites";
 
 /* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
-"invites.free" = "Você estava aqui antes da residência: a ilha ainda assim lhe dá convites, um por mês.";
+"invites.free" = "Você estava aqui antes da residência: a ilha ainda assim lhe dá códigos de acesso para distribuir, um por mês.";
 "residency.title" = "Residência";
 "residency.since" = "Residente desde %@";
-"residency.body" = "Um pagamento, uma vez só. Um residente recebe convites para distribuir, um por mês, e usa a marca da ilha.";
+"residency.body" = "Um pagamento, uma vez só. Um residente recebe códigos de acesso para distribuir, um por mês, e usa a marca da ilha.";
 "residency.have_code" = "Tenho um código";
 "residency.redeem" = "Ativar";
 "residency.already" = "Esta conta já é residente.";
