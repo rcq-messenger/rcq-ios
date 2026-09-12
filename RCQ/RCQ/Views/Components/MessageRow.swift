@@ -24,9 +24,67 @@ extension Message {
 /// Self-contained: every dependency travels as an init parameter
 /// (target, callbacks, group-member list for @mention rendering),
 /// so the row knows nothing about the surrounding chat lifecycle.
+/// The outline of a text bubble, given where it sits in a run of messages from
+/// one person (#958, founder 12.09).
+///
+/// Only the two corners on the AUTHOR'S OWN SIDE are squared off: the right for
+/// my messages, the left for theirs. A bubble whose neighbour above is from the
+/// same person loses the top one, one whose neighbour below is loses the
+/// bottom, so a run reads as a single column with a flat spine instead of five
+/// separate cards. The far side stays round the whole way down: bubbles differ
+/// in width, and squaring a corner with nothing beside it reads as a rendering
+/// fault rather than as grouping.
+///
+/// ⚠ Hand-drawn rather than `UnevenRoundedRectangle`, which is iOS 17 and this
+/// app ships to iOS 16.
+struct RunBubbleShape: Shape {
+    let fromMe: Bool
+    /// The message above is from the same person.
+    let continues: Bool
+    /// The message below is.
+    let continued: Bool
+
+    private static let big = Theme.Metrics.bubbleRadius
+    /// Not 0: a hard corner against a rounded one reads as a glitch at this
+    /// size, and every messenger that groups bubbles keeps a point or two.
+    private static let small: CGFloat = 2
+
+    func path(in rect: CGRect) -> Path {
+        let big = Self.big
+        let top = continues ? Self.small : big
+        let bottom = continued ? Self.small : big
+        let tl = fromMe ? big : top
+        let tr = fromMe ? top : big
+        let br = fromMe ? bottom : big
+        let bl = fromMe ? big : bottom
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+        p.addArc(center: CGPoint(x: rect.maxX - tr, y: rect.minY + tr), radius: tr,
+                 startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+        p.addArc(center: CGPoint(x: rect.maxX - br, y: rect.maxY - br), radius: br,
+                 startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX + bl, y: rect.maxY))
+        p.addArc(center: CGPoint(x: rect.minX + bl, y: rect.maxY - bl), radius: bl,
+                 startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        p.addArc(center: CGPoint(x: rect.minX + tl, y: rect.minY + tl), radius: tl,
+                 startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct MessageRow: View, Equatable {
     let message: Message
     let showSender: Bool
+    /// Where this row sits in a run of messages from one person (#958). Unlike
+    /// `showSender`, which is a group-only question about the NAME, these two
+    /// are about the shape and the gap and are asked in 1:1 threads as well:
+    /// a run of my own messages groups the same way.
+    var continuesRun: Bool = false
+    var continuedRun: Bool = false
     let senderNickname: String
     /// When set, overrides the reply-quote author label (used to show "You"
     /// when the quoted message is the viewer's own — the wire still carries
@@ -82,6 +140,11 @@ struct MessageRow: View, Equatable {
     static func == (lhs: MessageRow, rhs: MessageRow) -> Bool {
         lhs.message == rhs.message
             && lhs.showSender == rhs.showSender
+            // ⚠ Both belong here. A message arriving below this one turns
+            // `continuedRun` on, and without the comparison the row would be
+            // skipped and keep its round corner against the new neighbour.
+            && lhs.continuesRun == rhs.continuesRun
+            && lhs.continuedRun == rhs.continuedRun
             && lhs.senderNickname == rhs.senderNickname
             && lhs.replyAuthorOverride == rhs.replyAuthorOverride
             && lhs.replyTargetDeleted == rhs.replyTargetDeleted
@@ -174,11 +237,20 @@ struct MessageRow: View, Equatable {
 
     @ViewBuilder
     var body: some View {
-        if showSelectionAffordance {
-            selectableRow
-        } else {
-            primaryBody
+        Group {
+            if showSelectionAffordance {
+                selectableRow
+            } else {
+                primaryBody
+            }
         }
+        // ⚠ HALF THE GAP INSIDE A RUN (#958). The list spaces its rows 6 points
+        // apart; a bubble whose neighbour above is from the same person pulls
+        // itself up by half of that, so a run reads as one block and the gap
+        // between two people stays what it was. Done here rather than by
+        // changing the stack's spacing, which would also have moved the date
+        // and unread dividers, and they are not part of this.
+        .padding(.top, continuesRun ? -3 : 0)
     }
 
     private var selectableRow: some View {
@@ -416,7 +488,11 @@ struct MessageRow: View, Equatable {
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(message.isFromMe ? Theme.Color.bubbleSelf : Theme.Color.bubbleOther)
-            .cornerRadius(Theme.Metrics.bubbleRadius)
+            // ⚠ Text bubbles only. Photos, video, voice, files and the rest
+            // draw their own shapes below and keep their plain radius: a run
+            // of those is rare enough that carrying the spine through all of
+            // them is more code than it is worth.
+            .clipShape(RunBubbleShape(fromMe: message.isFromMe, continues: continuesRun, continued: continuedRun))
             // The coloured container, which hugs its text: see `heldAnchor`.
             .heldAnchor(isHeld)
             // maxWidth cap LAST (outermost) so the bubble HUGS its content and

@@ -1811,7 +1811,9 @@ struct ChatView: View {
                                 // Group: show the sender name only on the first
                                 // message of a consecutive run from that person
                                 // (WA/TG style), not on every bubble.
-                                showSender: vm.target.thread.isGroup && !msg.isFromMe && Self.startsSenderRun(group.units, idx),
+                                showSender: vm.target.thread.isGroup && !msg.isFromMe && !Self.continuesRun(group.units, idx, unread: vm.unreadDividerID),
+                                continuesRun: Self.continuesRun(group.units, idx, unread: vm.unreadDividerID),
+                                continuedRun: Self.continuedRun(group.units, idx, unread: vm.unreadDividerID),
                                 senderNickname: vm.senderNickname(msg.senderUIN),
                                 replyAuthorOverride: vm.replyIsMine(msg) ? "chat.you".localized : nil,
                                 replyTargetDeleted: vm.replyTargetDeleted(msg),
@@ -2505,13 +2507,40 @@ struct ChatView: View {
     /// group). Used to show the group sender name once per run, WA/TG style.
     private static func startsSenderRun(_ units: [ChatViewModel.RenderUnit], _ index: Int) -> Bool {
         guard index > 0 else { return true }
-        func sender(_ u: ChatViewModel.RenderUnit) -> Int {
-            switch u {
-            case .single(let m): return m.senderUIN
-            case .album(_, let items): return items.first?.senderUIN ?? -1
-            }
+        return runKey(units[index]) != runKey(units[index - 1])
+    }
+
+    /// Who a row belongs to, for the purpose of grouping.
+    ///
+    /// ⚠ THE KEY CARRIES `isFromMe`, NOT THE UIN ALONE. In a 1:1 thread the
+    /// two sides can carry the same uin field, and a uin-only key then makes
+    /// the whole conversation one run: harmless while the only thing keyed on
+    /// it was a group's sender name, but the gap and the corner (#958) would
+    /// have merged my bubbles with the other person's.
+    private static func runKey(_ u: ChatViewModel.RenderUnit) -> String {
+        let m: Message?
+        switch u {
+        case .single(let msg): m = msg
+        case .album(_, let items): m = items.first
         }
-        return sender(units[index]) != sender(units[index - 1])
+        guard let m else { return "?" }
+        return m.isFromMe ? "me" : "u\(m.senderUIN)"
+    }
+
+    /// Does the row above belong to the same run? The unread marker breaks it
+    /// the way a date divider does: it is drawn between the two, and a run
+    /// that reads across it hides the fact that reading stopped there.
+    private static func continuesRun(_ units: [ChatViewModel.RenderUnit], _ index: Int, unread: UUID?) -> Bool {
+        // ⚠ The upper bound is not decoration: `continuedRun` below asks this
+        // about the row AFTER the last one, which does not exist.
+        guard index > 0, index < units.count else { return false }
+        if let unread, units[index].id == unread { return false }
+        return !startsSenderRun(units, index)
+    }
+
+    /// Does the row below?
+    private static func continuedRun(_ units: [ChatViewModel.RenderUnit], _ index: Int, unread: UUID?) -> Bool {
+        continuesRun(units, index + 1, unread: unread)
     }
 
     /// The composer for a room this viewer may not post in (24): the same bar,
