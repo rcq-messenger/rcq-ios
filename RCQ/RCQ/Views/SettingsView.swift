@@ -19,7 +19,7 @@ enum SettingsRow: String, CaseIterable, Hashable {
     case sounds, language
     case privacyScreen, networkScreen, notificationsScreen, blockedUsers
     case historyFile, historyClear
-    case uinShop, myUINs, islandRules, residentInvites
+    case uinShop, myUINs, islandRules, residentInvites, residency
     case recoveryPhrase, linkedDevices, backupIsland, burnAccount
     case about, bugBounty, myReports
     // Privacy pane
@@ -293,6 +293,12 @@ struct SettingsView: View {
     /// simply is not there.
     @State private var islandPeople: Int?
     @State private var showInvites = false
+    @State private var showResidency = false
+    /// Owner-only `resident_since` off the own profile, nil for everybody who
+    /// did not pay (founder item 5, 12.09). The residency row reads it, and
+    /// the mark is the fallback on an island older than the field.
+    @State private var residentSince: String?
+    @State private var isResident = false
     @State private var burnFailed = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
@@ -441,6 +447,20 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showInvites) {
                 ResidentInvitesSheet(initial: invites) { fresh in invites = fresh }
+            }
+            // Re-read on dismiss whatever happened inside: the mark is granted
+            // server-side, and an "already a resident" refusal means the row
+            // that opened the sheet was stale, so the row must not wait for
+            // the next launch either way.
+            .sheet(isPresented: $showResidency, onDismiss: { Task { await loadOwnAvatar() } }) {
+                ResidencySheet(host: islandHost, priceCents: appState.serverCapabilities.entryPriceCents) { out in
+                    isResident = true
+                    residentSince = out.residentSince
+                    // The counter goes from nothing to a full allowance in
+                    // that one round trip, and the answer carries it.
+                    if let fresh = out.invites { invites = fresh }
+                    else { Task { invites = await ResidentInvitesAPI.mine() } }
+                }
             }
             .sheet(isPresented: $showIslandRules) {
                 IslandRulesSheet(
@@ -868,6 +888,9 @@ struct SettingsView: View {
                 }
             }
             islandTrustRow
+            // Residency, and the invites it pays for, one under the other
+            // (founder item 5, 12.09).
+            residencyRow
             if let invites, invites.isVisible {
                 Button {
                     showInvites = true
@@ -1112,6 +1135,8 @@ struct SettingsView: View {
               sectionKey: "settings.island", destination: .settings),
         .init(row: .residentInvites, titleKey: "invites.title",
               sectionKey: "settings.island", destination: .settings),
+        .init(row: .residency, titleKey: "residency.title",
+              sectionKey: "settings.island", destination: .settings),
         .init(row: .recoveryPhrase, titleKey: "settings.account.recovery",
               sectionKey: "settings.account", destination: .settings),
         .init(row: .linkedDevices, titleKey: "linkeddevices.title",
@@ -1139,6 +1164,12 @@ struct SettingsView: View {
         guard let p: UserProfile = try? await APIClient.shared.request("GET", "/users/\(uin)/info") else { return }
         ownBadge = p.badge
         UserDefaults.standard.set(p.badge, forKey: "rcq.ownBadge")
+        // The residency row's two inputs come off the same read. The mark is
+        // the fallback for an island that grants residency but predates the
+        // `resident_since` field.
+        residentSince = p.residentSince
+        isResident = p.residentSince != nil || p.badge == "resident"
+            || (p.badgesEarned ?? []).contains("resident")
         PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
         ownAvatarID = p.avatarMediaID
         ownAvatarKey = p.avatarMediaKey
@@ -1315,6 +1346,71 @@ struct SettingsView: View {
             "GET", "/public/stats", authenticated: false,
         )
         return out?.user_count
+    }
+
+    /// Residency, beside the invites it pays for (founder item 5, 12.09).
+    ///
+    /// Three states and only two of them draw. A resident sees the date they
+    /// became one and nothing to tap: the fact is the whole row. Somebody who
+    /// is not, on an island that sells entry (`entry_price_cents > 0`), sees a
+    /// row into `ResidencySheet`, because until now an entry voucher was
+    /// accepted by registration alone and a person already here for free had
+    /// no door short of a second account. Everybody else, which is everybody
+    /// on an open island, gets no row: an offer that cannot be taken up is a
+    /// question, not a setting.
+    ///
+    /// ⚠ The price is named only on the flagship, and there is no link
+    /// anywhere: `AddAccountSheet.label(for:)` explains the rule.
+    @ViewBuilder
+    private var residencyRow: some View {
+        if isResident {
+            HStack {
+                Image(systemName: "checkmark.seal.fill").foregroundColor(Theme.Color.accent)
+                Text(residentSinceLine)
+                    .foregroundColor(Theme.Color.textPrimary)
+                Spacer()
+            }
+            .settingsSearchRow(.residency, highlight: highlightedRow)
+        } else if appState.serverCapabilities.entryPriceCents > 0 {
+            Button {
+                showResidency = true
+            } label: {
+                HStack {
+                    Image(systemName: "checkmark.seal.fill").foregroundColor(Theme.Color.accent)
+                    Text("residency.title".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                    Spacer()
+                    if let price = residencyPrice {
+                        Text(price)
+                            .font(.callout)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundColor(Theme.Color.textSecondary)
+                }
+            }
+            .settingsSearchRow(.residency, highlight: highlightedRow)
+        }
+    }
+
+    /// "Resident since <date>", or the bare mark when the island granted
+    /// residency but is too old to say when.
+    private var residentSinceLine: String {
+        guard let date = ResidentInvites.instant(residentSince) else { return "badge.resident".localized }
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return String(format: "residency.since".localized, f.string(from: date))
+    }
+
+    /// Nil off the flagship, whatever the island charges: the row then names
+    /// no price and the sheet does not either.
+    private var residencyPrice: String? {
+        let cents = appState.serverCapabilities.entryPriceCents
+        guard RcqFederation.isFlagship(islandHost), cents > 0 else { return nil }
+        let usd = cents % 100 == 0 ? "$\(cents / 100)" : String(format: "$%.2f", Double(cents) / 100)
+        return String(format: "island.entry.price".localized, usd)
     }
 
     /// How this island is trusted (design §5.3): through a certificate

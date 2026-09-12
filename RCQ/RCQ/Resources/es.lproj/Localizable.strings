@@ -1895,6 +1895,19 @@
 "invites.error" = "No se pudo crear la invitación. Probá de nuevo.";
 "settings.search.alias.residentInvites" = "invitaciones, invitar, residente, enlace de entrada, invites";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "Estabas aquí antes de la residencia: la isla igualmente te da invitaciones, una al mes.";
+"residency.title" = "Residencia";
+"residency.since" = "Residente desde %@";
+"residency.body" = "Un pago, una sola vez. Un residente recibe invitaciones para repartir, una al mes, y lleva la marca de la isla.";
+"residency.have_code" = "Tengo un código";
+"residency.redeem" = "Activar";
+"residency.already" = "Esta cuenta ya es residente.";
+"residency.code_spent" = "Ese código ya fue usado.";
+"residency.not_sold" = "Esta isla no vende residencia.";
+"residency.error" = "La isla no lo aceptó. Probá de nuevo.";
+"settings.search.alias.residency" = "residencia, residente, entrada, membresía, residency";
+
 /* ── La cuenta se mudó a otro número (evento `account_moved`) ── */
 "account.moved.blocked.title" = "Tu cuenta se mudó a un número nuevo";
 "account.moved.blocked.body" = "Tomaste un número nuevo en otro dispositivo y este no pudo seguirlo. No se borró nada: tus chats siguen acá. Volvé a entrar con tu frase de recuperación para continuar en el número nuevo.";

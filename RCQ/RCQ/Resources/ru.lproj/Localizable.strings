@@ -2053,6 +2053,19 @@
 "invites.error" = "Не получилось создать приглашение. Попробуйте ещё раз.";
 "settings.search.alias.residentInvites" = "приглашения, инвайты, пригласить, резидент, ссылка для входа, invites";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "Вы были здесь до резидентства: остров всё равно даёт вам приглашения, по одному в месяц.";
+"residency.title" = "Резидентство";
+"residency.since" = "Резидент с %@";
+"residency.body" = "Один платёж, один раз. Резидент получает приглашения, по одному в месяц, и носит знак острова.";
+"residency.have_code" = "У меня есть код";
+"residency.redeem" = "Активировать";
+"residency.already" = "Этот аккаунт уже резидент.";
+"residency.code_spent" = "Этот код уже использован.";
+"residency.not_sold" = "Этот остров не продаёт резидентство.";
+"residency.error" = "Остров не принял код. Попробуйте ещё раз.";
+"settings.search.alias.residency" = "резидентство, резидент, вход, членство, residency";
+
 /* ── Аккаунт переехал на другой номер (событие `account_moved`) ── */
 "account.moved.blocked.title" = "Аккаунт переехал на новый номер";
 "account.moved.blocked.body" = "Вы взяли новый номер на другом устройстве, а это устройство не смогло за ним последовать. Ничего не удалено: переписка на месте. Войдите заново по фразе восстановления, чтобы продолжить на новом номере.";

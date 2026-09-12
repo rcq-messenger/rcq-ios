@@ -1895,6 +1895,19 @@
 "invites.error" = "Не вдалося створити запрошення. Спробуйте ще раз.";
 "settings.search.alias.residentInvites" = "запрошення, інвайти, запросити, резидент, посилання для входу, invites";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "Ви були тут до резидентства: острів усе одно дає вам запрошення, по одному на місяць.";
+"residency.title" = "Резидентство";
+"residency.since" = "Резидент з %@";
+"residency.body" = "Один платіж, один раз. Резидент отримує запрошення, по одному на місяць, і носить знак острова.";
+"residency.have_code" = "У мене є код";
+"residency.redeem" = "Активувати";
+"residency.already" = "Цей акаунт уже резидент.";
+"residency.code_spent" = "Цей код уже використано.";
+"residency.not_sold" = "Цей острів не продає резидентство.";
+"residency.error" = "Острів не прийняв код. Спробуйте ще раз.";
+"settings.search.alias.residency" = "резидентство, резидент, вхід, членство, residency";
+
 /* ── Акаунт переїхав на інший номер (подія `account_moved`) ── */
 "account.moved.blocked.title" = "Акаунт переїхав на новий номер";
 "account.moved.blocked.body" = "Ви взяли новий номер на іншому пристрої, а цей пристрій не зміг піти за ним. Нічого не видалено: листування на місці. Увійдіть знову за фразою відновлення, щоб продовжити на новому номері.";

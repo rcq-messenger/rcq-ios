@@ -87,6 +87,16 @@ struct UserProfile: Codable, Hashable {
     /// Empty on an island that predates the set, and for anybody holding one
     /// mark or none, which is almost everybody.
     var badgesEarned: [String]?
+    /// Owner-only, ISO-8601 as the island wrote it: when this account became a
+    /// resident, nil for everybody who did not pay. Until founder item 5
+    /// (12.09) the owner could only infer it from `badgesEarned`; the
+    /// residency row in Settings reads this and falls back to the mark on an
+    /// island older than the field. Kept as text so a stamp the client's date
+    /// strategy does not recognise can never fail the whole profile decode.
+    var residentSince: String?
+    /// Owner-only: `voucher` | `invite` | `open`, nil on a row older than the
+    /// column. Carried for parity with the wire; nothing branches on it yet.
+    var enteredVia: String?
     enum CodingKeys: String, CodingKey {
         case uin, nickname, badge
         case firstName = "first_name"
@@ -108,6 +118,8 @@ struct UserProfile: Codable, Hashable {
         case profileOpenable = "profile_openable"
         case badgeHidden = "badge_hidden"
         case badgesEarned = "badges_earned"
+        case residentSince = "resident_since"
+        case enteredVia = "entered_via"
         case hofOptIn = "hof_opt_in"
         case hofAvatar = "hof_avatar"
         case avatarMediaID = "avatar_media_id"

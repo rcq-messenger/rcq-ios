@@ -2103,6 +2103,19 @@
 "invites.error" = "The invite was not created. Try again.";
 "settings.search.alias.residentInvites" = "invites, invite, bring a friend, resident, join link, приглашения";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "You were here before residency: the island still gives you invites, one a month.";
+"residency.title" = "Residency";
+"residency.since" = "Resident since %@";
+"residency.body" = "One payment, once. A resident gets invites to hand out, one a month, and wears the island's mark.";
+"residency.have_code" = "I have a code";
+"residency.redeem" = "Activate";
+"residency.already" = "This account is already a resident.";
+"residency.code_spent" = "That code has already been used.";
+"residency.not_sold" = "This island does not sell residency.";
+"residency.error" = "The island did not accept it. Try again.";
+"settings.search.alias.residency" = "residency, resident, entry, membership, резидентство";
+
 /* ── Account moved to another UIN (followed off `account_moved`) ── */
 "account.moved.blocked.title" = "Your account moved to a new number";
 "account.moved.blocked.body" = "You took a new number on another device, and this one could not follow it there. Nothing has been deleted: your chats are still here. Sign in again with your recovery phrase to continue on the new number.";

@@ -1886,6 +1886,19 @@
 "invites.error" = "邀请创建失败。请重试。";
 "settings.search.alias.residentInvites" = "邀请, 邀请链接, 居民, invites";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "您在居民制度出现之前就已在此：岛屿仍会给您邀请，每月一个。";
+"residency.title" = "居民身份";
+"residency.since" = "自 %@ 起成为居民";
+"residency.body" = "一次付款，仅一次。居民每月获得一个可分发的邀请，并佩戴岛屿的标记。";
+"residency.have_code" = "我有代码";
+"residency.redeem" = "激活";
+"residency.already" = "此账户已是居民。";
+"residency.code_spent" = "该代码已被使用。";
+"residency.not_sold" = "此岛屿不出售居民身份。";
+"residency.error" = "岛屿未接受。请重试。";
+"settings.search.alias.residency" = "居民身份, 居民, 入岛, residency";
+
 /* ── 账号已迁移到别的号码（`account_moved` 事件）── */
 "account.moved.blocked.title" = "你的账号已迁移到新号码";
 "account.moved.blocked.body" = "你在另一台设备上换了新号码，这台设备没能跟过去。这里什么都没有被删除，聊天记录仍在。请用恢复短语重新登录，以便在新号码上继续使用。";

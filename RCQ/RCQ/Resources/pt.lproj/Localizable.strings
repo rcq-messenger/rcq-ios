@@ -1895,6 +1895,19 @@
 "invites.error" = "Não deu para criar o convite. Tente de novo.";
 "settings.search.alias.residentInvites" = "convites, convidar, residente, link de entrada, invites";
 
+/* Residency bought on an existing account, and the smaller drip for accounts that were here before it existed (founder item 5, 12.09). */
+"invites.free" = "Você estava aqui antes da residência: a ilha ainda assim lhe dá convites, um por mês.";
+"residency.title" = "Residência";
+"residency.since" = "Residente desde %@";
+"residency.body" = "Um pagamento, uma vez só. Um residente recebe convites para distribuir, um por mês, e usa a marca da ilha.";
+"residency.have_code" = "Tenho um código";
+"residency.redeem" = "Ativar";
+"residency.already" = "Esta conta já é residente.";
+"residency.code_spent" = "Esse código já foi usado.";
+"residency.not_sold" = "Esta ilha não vende residência.";
+"residency.error" = "A ilha não aceitou. Tente de novo.";
+"settings.search.alias.residency" = "residência, residente, entrada, adesão, residency";
+
 /* ── A conta mudou para outro número (evento `account_moved`) ── */
 "account.moved.blocked.title" = "Sua conta mudou para um número novo";
 "account.moved.blocked.body" = "Você pegou um número novo em outro dispositivo, e este aqui não conseguiu acompanhar. Nada foi apagado: suas conversas continuam aqui. Entre de novo com a sua frase de recuperação para continuar no número novo.";
