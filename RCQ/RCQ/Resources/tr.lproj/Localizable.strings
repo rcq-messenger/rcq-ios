@@ -609,6 +609,8 @@
 "chat.deleted" = "Mesaj silindi";
 "chat.message_fallback" = "Mesaj";
 "chat.replying_to" = "%@ yanıtlanıyor";
+"chat.quote.expand" = "Alıntının tamamını göster";
+"chat.quote.collapse" = "Alıntıyı daralt";
 "chat.edit.editing" = "Mesaj düzenleniyor";
 "chat.edited_suffix" = "(düzenlendi)";
 "media.error.compression" = "Bu medya sıkıştırılamadı. Daha küçük bir dosya dene.";

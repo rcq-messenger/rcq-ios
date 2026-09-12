@@ -600,6 +600,8 @@
 "chat.deleted" = "消息已删除";
 "chat.message_fallback" = "消息";
 "chat.replying_to" = "回复 %@";
+"chat.quote.expand" = "显示完整引用";
+"chat.quote.collapse" = "收起引用";
 "chat.edit.editing" = "正在编辑消息";
 "chat.edited_suffix" = "（已编辑）";
 "media.error.compression" = "无法压缩这个媒体文件。请换一个更小的文件。";

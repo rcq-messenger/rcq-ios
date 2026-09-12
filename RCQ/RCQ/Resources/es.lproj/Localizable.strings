@@ -609,6 +609,8 @@
 "chat.deleted" = "Mensaje eliminado";
 "chat.message_fallback" = "Mensaje";
 "chat.replying_to" = "Respondiendo a %@";
+"chat.quote.expand" = "Mostrar la cita completa";
+"chat.quote.collapse" = "Contraer la cita";
 "chat.edit.editing" = "Editando el mensaje";
 "chat.edited_suffix" = "(editado)";
 "media.error.compression" = "No se pudo comprimir ese archivo. Prueba con uno más pequeño.";

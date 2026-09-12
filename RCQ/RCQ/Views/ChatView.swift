@@ -388,6 +388,7 @@ struct ChatView: View {
                 let copy = target
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { pinMessage(copy) }
             } : nil,
+            onUsesCopy: { overlayUsesCopy = $0 }
         )
     }
 
@@ -768,6 +769,9 @@ struct ChatView: View {
     private var replyAllowed: Bool { true }
     @State private var now = Date()
     @State private var actionTarget: Message?
+    /// True while the long-press menu draws a copy of the message (see
+    /// MessageActionOverlay.placement); the real row is dimmed meanwhile.
+    @State private var overlayUsesCopy = false
     /// Long-pressing a reaction chip opens a "who reacted" sheet for this message.
     @State private var reactorsSheetMessage: Message?
     @State private var evidenceReportTarget: PendingEvidenceReport?
@@ -851,6 +855,9 @@ struct ChatView: View {
                         .zIndex(50)
                 }
             }
+        }
+        .onChange(of: actionTarget?.id) { id in
+            if id == nil { overlayUsesCopy = false }
         }
         .background(Theme.Color.bgPrimary.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1850,7 +1857,7 @@ struct ChatView: View {
                                     vm.toggleSelection(msg.id)
                                 },
                                 onTapReplyQuote: { targetID in
-                                    guard vm.messages.contains(where: { $0.id == targetID }) else { return }
+                                    guard vm.messages.contains(where: { $0.id == targetID }) else { return false }
                                     // Remember the reply we jumped FROM so the chevron returns here.
                                     replyReturnID = msg.id
                                     pendingScrollID = targetID
@@ -1864,6 +1871,7 @@ struct ChatView: View {
                                             }
                                         }
                                     }
+                                    return true
                                 },
                                 onSwipeReply: {
                                     beginReply(to: msg)
@@ -1890,12 +1898,16 @@ struct ChatView: View {
                             }
                             .onDisappear { vm.rowDerealized(unit.id) }
                             // Soft-delete fade beats the dim+scale so a vanishing bubble doesn't hold at 30% opacity.
+                            // The held row stays bright and slightly grown under the
+                            // hole. When the menu draws a COPY instead (a message that
+                            // had to move), the real row is dimmed with the rest: a
+                            // bright, scaled twin under the blur read as a ghost.
                             .opacity(vm.fadingOutIDs.contains(msg.id)
                                      ? 0
-                                     : (actionTarget == nil || actionTarget?.id == msg.id ? 1 : 0.3))
+                                     : (actionTarget == nil || (actionTarget?.id == msg.id && !overlayUsesCopy) ? 1 : 0.3))
                             .scaleEffect(vm.fadingOutIDs.contains(msg.id)
                                          ? 0.85
-                                         : (actionTarget?.id == msg.id ? 1.04 : 1.0),
+                                         : (actionTarget?.id == msg.id && !overlayUsesCopy ? 1.04 : 1.0),
                                          anchor: msg.isFromMe ? .trailing : .leading)
                             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: actionTarget?.id)
                             // Implicit (Combine receive(on:) would drop a withAnimation transaction).
@@ -2464,39 +2476,9 @@ struct ChatView: View {
 
     // MARK: - reply helpers
 
-    /// Same one-line preview ChatViewModel uses for the wire-side
-    /// snippet. Duplicated here so the on-screen compose strip and
-    /// the persisted snippet stay in sync without exporting the
-    /// private static.
-    private static func replyPreview(for message: Message) -> String {
-        if message.deletedForEveryone { return "chat.deleted".localized }
-        let raw: String
-        switch message.kind {
-        case .text:  raw = message.text
-        case .photo: raw = message.text.isEmpty ? "📷 \("chat.attach.photo".localized)" : "📷 \(message.text)"
-        case .video: raw = message.text.isEmpty ? "🎬 \("chat.attach.video".localized)" : "🎬 \(message.text)"
-        case .voice: raw = "🎤 Voice"
-        case .file:  raw = "📎 \(message.fileName ?? "chat.attach.document".localized)"
-        case .location: raw = "📍 \("chat.preview.location".localized)"
-        case .poll:
-            // Polls are gone (14a). The `text` of an old `.poll` row is still a
-            // JSON blob on disk, so this branch must stay and must never fall
-            // through to `raw = message.text` - that would print raw braces into
-            // a reply strip.
-            raw = "📊 \("chat.poll.removed".localized)"
-        default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
-        }
-        // Quote the replied-to message generously so the bubble shows it in
-        // full for normal-length messages (no more tiny mid-word "…" that forced
-        // a tap to read). Only a very long quote is clipped, and at a word
-        // boundary so it never cuts mid-word.
-        if raw.count <= 280 { return raw }
-        let cut = raw.prefix(280)
-        if let lastSpace = cut.lastIndex(of: " "), lastSpace > cut.startIndex {
-            return String(cut[..<lastSpace]) + "…"
-        }
-        return String(cut) + "…"
-    }
+    // The one-line preview of a quoted message lives in ChatViewModel now, so
+    // the strip and the wire cannot drift apart again (they had: 280 here, 80
+    // on the wire).
 
     // MARK: - reply compose strip
 
@@ -3048,7 +3030,7 @@ struct ChatView: View {
 
     @ViewBuilder
     private func inlineReplyContext(_ message: Message) -> some View {
-        let snippet = Self.replyPreview(for: message)
+        let snippet = ChatViewModel.replySnippet(for: message)
         let author = vm.senderNickname(message.senderUIN)
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 1.5)
@@ -3100,7 +3082,7 @@ struct ChatView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(Theme.Color.accent)
                     .lineLimit(1)
-                Text(Self.replyPreview(for: message))
+                Text(ChatViewModel.replySnippet(for: message))
                     .font(.caption2)
                     .foregroundColor(Theme.Color.textSecondary)
                     .lineLimit(1)

@@ -609,6 +609,8 @@
 "chat.deleted" = "Повідомлення видалено";
 "chat.message_fallback" = "Повідомлення";
 "chat.replying_to" = "Відповідь для %@";
+"chat.quote.expand" = "Показати цитату повністю";
+"chat.quote.collapse" = "Згорнути цитату";
 "chat.edit.editing" = "Редагування повідомлення";
 "chat.edited_suffix" = "(змінено)";
 "media.error.compression" = "Не вдалося стиснути це медіа. Спробуй менший файл.";

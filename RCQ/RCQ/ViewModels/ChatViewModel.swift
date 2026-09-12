@@ -1110,7 +1110,7 @@ final class ChatViewModel: ObservableObject {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
             replyTarget = nil
         }
-        let snippet = Self.snippet(for: target)
+        let snippet = Self.replySnippet(for: target)
         // ⚠⚠ `wireNickname`, not `senderNickname`: this context ships INSIDE
         // the sealed envelope, so the quote's author label reaches the very
         // person it names. `senderNickname` applies MY alias for them, which is
@@ -1120,25 +1120,35 @@ final class ChatViewModel: ObservableObject {
         return ReplyContext(id: target.id, snippet: snippet, authorName: author)
     }
 
-    private static func snippet(for message: Message) -> String {
-        if message.deletedForEveryone { return "Message deleted" }
+    /// How much of a quoted message rides in the reply, and what a non-text
+    /// message is quoted as. ONE function now: the wire used to ship 80
+    /// characters through this while the compose strip showed 280 through a
+    /// private twin in ChatView, so a person composed against a full sentence
+    /// and the other side received its first clause (founder item 3, #964).
+    /// 280 on every client; a word boundary; a real ellipsis; labels localised.
+    static func replySnippet(for message: Message) -> String {
+        if message.deletedForEveryone { return "chat.deleted".localized }
         let raw: String
         switch message.kind {
         case .text:  raw = message.text
-        case .photo: raw = message.text.isEmpty ? "📷 Photo" : "📷 \(message.text)"
-        case .video: raw = message.text.isEmpty ? "🎬 Video" : "🎬 \(message.text)"
+        case .photo: raw = message.text.isEmpty ? "📷 \("chat.attach.photo".localized)" : "📷 \(message.text)"
+        case .video: raw = message.text.isEmpty ? "🎬 \("chat.attach.video".localized)" : "🎬 \(message.text)"
         case .voice: raw = "🎤 Voice"
-        case .file:  raw = "📎 \(message.fileName ?? "File")"
-        case .location: raw = "📍 Location"
+        case .file:  raw = "📎 \(message.fileName ?? "chat.attach.document".localized)"
+        case .location: raw = "📍 \("chat.preview.location".localized)"
         case .poll:
             // Polls are gone (14a). Old rows still carry the payload JSON in
             // `text`, so this branch has to stay: falling through to the default
             // would print raw braces into a reply strip.
             raw = "📊 \("chat.poll.removed".localized)"
-        default:     raw = message.text.isEmpty ? "Message" : message.text
+        default:     raw = message.text.isEmpty ? "chat.message_fallback".localized : message.text
         }
-        if raw.count <= 80 { return raw }
-        return raw.prefix(80) + "…"
+        if raw.count <= 280 { return raw }
+        let cut = raw.prefix(280)
+        if let lastSpace = cut.lastIndex(of: " "), cut.distance(from: cut.startIndex, to: lastSpace) > 140 {
+            return String(cut[..<lastSpace]) + "…"
+        }
+        return String(cut) + "…"
     }
 
     func sendVoice(fileURL: URL, durationSec: Double) async -> String? {

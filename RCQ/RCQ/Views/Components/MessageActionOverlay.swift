@@ -26,10 +26,22 @@ struct MessageActionOverlay: View {
     /// Group owner / info-moderator only: pin this message into the group's
     /// single pin slot (replaces whatever was pinned, chat- or settings-set).
     var onPin: (() -> Void)? = nil
+    /// Told when the layout switches to drawing a COPY of the message (see
+    /// `placement`), so the chat can dim the real row under the blur instead of
+    /// leaving a bright, slightly scaled twin of the copy where the message was.
+    var onUsesCopy: ((Bool) -> Void)? = nil
 
     @State private var showDeleteSubmenu = false
     @State private var pillSize: CGSize = .zero
     @State private var panelSize: CGSize = .zero
+    /// The copy's natural height at the bubble's width, once it has been drawn.
+    @State private var copySize: CGSize = .zero
+    /// The bubble's rectangle at the moment the copy layout was chosen. The
+    /// live anchor keeps moving for a quarter second after a long press (the
+    /// keyboard resigns, the composer shrinks, the list re-lays out) and a copy
+    /// that chased it slid across the screen. The hole layout follows the live
+    /// rect on purpose; the copy layout freezes it.
+    @State private var frozenRect: CGRect? = nil
 
     /// The user's chosen quick reactions, defaulting to the historical set until
     /// customised in the emoji picker.
@@ -70,14 +82,12 @@ struct MessageActionOverlay: View {
 
     var body: some View {
         GeometryReader { geo in
-            if let rect = bubbleRect, fitsBeside(rect, geo) {
-                anchored(rect: rect, geo: geo)
-            } else {
-                // Either there is no anchor (the message is off screen, jumped
-                // to from search) or it is too tall to leave where it is: see
-                // `fitsBeside`.
-                lifted(geo: geo)
-            }
+            let p = placement(rect: frozenRect ?? bubbleRect, geo: geo)
+            layout(p, geo: geo)
+                .onChange(of: p.usesCopy) { uses in
+                    if uses, frozenRect == nil { frozenRect = bubbleRect }
+                    onUsesCopy?(uses)
+                }
         }
         // "The bar opens" - see `orderedReactions`. onAppear, not `.task`: the
         // work is synchronous and must be done before the first paint, so the
@@ -85,77 +95,181 @@ struct MessageActionOverlay: View {
         .onAppear { settleReactionOrder() }
     }
 
-    // MARK: - the message stays where it is
+    // MARK: - where everything goes
 
-    /// ⚠⚠ THE HELD MESSAGE IS NOT DRAWN HERE. It is the real bubble, still in
-    /// the chat, showing through a hole cut in this view's dim. That is the
-    /// whole of the founder's 08.09 note: every other messenger leaves the
-    /// message under your finger where your eye already is, and lifting a copy
-    /// of it into the middle of the screen made you find it twice.
+    /// One answer for every case: where the pill is, where the panel is, and
+    /// whether the message is the real bubble showing through a hole or a copy
+    /// that has been moved.
+    private struct Placement {
+        /// The real bubble stays under a hole in the dim (false), or a copy of
+        /// it is drawn and may be moved (true).
+        var usesCopy: Bool
+        /// False until every panel has been measured. The first pass draws at
+        /// opacity 0 so the panels can report their sizes without flashing in
+        /// the top-left corner.
+        var ready: Bool
+        /// Where the message is drawn: the live bubble, or the copy.
+        var rect: CGRect
+        /// Set when the copy is taller than the room left for it, and has to
+        /// scroll inside a frame of this height.
+        var messageMaxHeight: CGFloat?
+        var pillY: CGFloat
+        var panelY: CGFloat
+    }
+
+    /// The rule, in the order it is tried (founder, 12.09):
     ///
-    /// A copy was the obvious alternative and it is worse: `MessagePreviewCard`
-    /// re-derives the bubble from the message, so a reply quote, a forwarded
-    /// label, an edit mark or a reaction row would sit slightly differently
-    /// from the original two points underneath it, and the mismatch reads as a
-    /// ghost. Nothing can drift out of line with a hole.
+    /// 1. The message stays where it is, and the WHOLE menu goes on whichever
+    ///    side has room for the whole menu — below first, above second. The
+    ///    menu is never clamped to a band: a short message near the middle of
+    ///    the screen used to get a menu cut to the band under it, two rows and
+    ///    a scroll bar, with half the screen empty.
+    /// 2. Neither side can hold the whole menu, or the message is not fully on
+    ///    screen: a COPY of the message is drawn and MOVED. The menu is pinned
+    ///    fully visible at the bottom, the message sits directly above it, the
+    ///    reactions above that. A long message goes UP and the menu is under
+    ///    it, which is what every other messenger does; it used to be lifted
+    ///    into a scroll view with the menu after its last line, off the bottom
+    ///    of the screen, and you scrolled the message to find the menu.
+    /// 3. A message taller than what is left scrolls inside its frame, opened
+    ///    at its tail so the last lines sit right above the menu; the reactions
+    ///    pin at the top, the menu at the bottom, nothing ever off screen.
     ///
-    /// The panels are placed AROUND the rectangle, never over it, and the
-    /// rectangle never moves: a message near the top gets its reactions below
-    /// rather than being pushed down the screen to make room above.
-    @ViewBuilder
-    private func anchored(rect: CGRect, geo: GeometryProxy) -> some View {
+    /// Everything is decided from `rect.height`, which is known on the first
+    /// frame, never from the copy's measured height, so the invisible first
+    /// pass does not flip between layouts.
+    private func placement(rect anchor: CGRect?, geo: GeometryProxy) -> Placement {
         let top = geo.safeAreaInsets.top + Self.edgeMargin
         let bottom = geo.size.height - geo.safeAreaInsets.bottom - Self.edgeMargin
-        // The message splits what is left into two bands. Everything below is
-        // arithmetic on those two numbers, and nothing is ever placed over the
-        // message itself.
-        let above = max(0, rect.minY - Self.gap - top)
-        let below = max(0, bottom - rect.maxY - Self.gap)
+        let gap = Self.gap
+        let pillH = pillSize.height
+        let panelH = panelSize.height
+        let measured = pillH > 0 && panelH > 0
 
-        // Reactions go over the message, which is where every messenger puts
-        // them; under it when the message is close enough to the top that they
-        // would not fit, because the message does not move.
-        let pillAbove = pillSize.height <= above
-        let pillY = pillAbove ? rect.minY - Self.gap - pillSize.height : rect.maxY + Self.gap
+        // Nothing measured yet: draw the in-place layout invisibly so the
+        // panels can report their sizes. One wrong invisible frame is cheaper
+        // than flashing the copy layout at every long press.
+        if let rect = anchor, !measured {
+            return Placement(usesCopy: false, ready: false, rect: rect, messageMaxHeight: nil,
+                             pillY: rect.minY - gap - pillH, panelY: rect.maxY + gap)
+        }
 
-        // Whatever the pill did not take.
-        let freeBelow = pillAbove ? below : max(0, below - pillSize.height - Self.gap)
-        let freeAbove = pillAbove ? max(0, above - pillSize.height - Self.gap) : above
-        // Below by preference; above only when below cannot hold a usable menu
-        // AND above can hold more of one.
-        let panelBelow = freeBelow >= min(panelSize.height, Self.minPanelHeight) || freeBelow >= freeAbove
-        let room = panelBelow ? freeBelow : freeAbove
-        let panelHeight = min(panelSize.height, room)
-        let panelY = panelBelow
-            ? (pillAbove ? rect.maxY + Self.gap : pillY + pillSize.height + Self.gap)
-            : (pillAbove ? pillY - Self.gap - panelHeight : rect.minY - Self.gap - panelHeight)
+        if let rect = anchor, rect.minY >= top, rect.maxY <= bottom {
+            let above = max(0, rect.minY - gap - top)
+            let below = max(0, bottom - rect.maxY - gap)
+            // Reactions over the message, where every messenger puts them;
+            // under it only when the message is too close to the top.
+            let pillAbove = pillH <= above
+            let pillY = pillAbove ? rect.minY - gap - pillH : rect.maxY + gap
+            let freeBelow = pillAbove ? below : max(0, below - pillH - gap)
+            let freeAbove = pillAbove ? max(0, above - pillH - gap) : above
+            if freeBelow >= panelH {
+                let panelY = pillAbove ? rect.maxY + gap : pillY + pillH + gap
+                return Placement(usesCopy: false, ready: true, rect: rect, messageMaxHeight: nil, pillY: pillY, panelY: panelY)
+            }
+            if freeAbove >= panelH {
+                let panelY = pillAbove ? pillY - gap - panelH : rect.minY - gap - panelH
+                return Placement(usesCopy: false, ready: true, rect: rect, messageMaxHeight: nil, pillY: pillY, panelY: panelY)
+            }
+        }
 
+        // The copy. Its width is the bubble's own, so it wraps exactly as the
+        // bubble did; with no anchor at all (jumped to from search) it takes
+        // the chat's width less the margins.
+        let width = anchor?.width ?? (geo.size.width - 40)
+        let x = anchor?.minX ?? (message.isFromMe ? geo.size.width - 20 - width : 20)
+        let panelY = bottom - panelH
+        let maxMessageH = max(0, panelY - gap - (top + pillH + gap))
+        let naturalH = copySize.height > 0 ? copySize.height : (anchor?.height ?? 0)
+        let messageH = min(naturalH, maxMessageH)
+        let messageY = panelY - gap - messageH
+        let pillY = messageY - gap - pillH
+        return Placement(
+            usesCopy: true,
+            ready: measured && copySize.height > 0,
+            rect: CGRect(x: x, y: messageY, width: width, height: messageH),
+            messageMaxHeight: naturalH > maxMessageH ? maxMessageH : nil,
+            pillY: pillY,
+            panelY: panelY
+        )
+    }
+
+    /// ⚠⚠ THE HELD MESSAGE IS NOT DRAWN HERE unless it has to move. In the
+    /// ordinary case it is the real bubble, still in the chat, showing through
+    /// a hole cut in this view's dim: every other messenger leaves the message
+    /// under your finger where your eye already is, and lifting a copy of it
+    /// into the middle of the screen made you find it twice (founder, 08.09).
+    ///
+    /// A copy is drawn only when the message cannot stay: nothing beside it
+    /// would hold the menu, or it runs off the screen. The real one is then
+    /// under the blur, dimmed by the chat like every other row (`onUsesCopy`).
+    ///
+    /// Dismissal is the dim. The panels and the copy are framed to their own
+    /// sizes, so a tap anywhere else lands on the dim; the copy itself
+    /// dismisses on tap too, as the hole does.
+    @ViewBuilder
+    private func layout(_ p: Placement, geo: GeometryProxy) -> some View {
         ZStack(alignment: .topLeading) {
             DimWithHole(
-                hole: rect.insetBy(dx: -Self.holePad, dy: -Self.holePad),
-                radius: Theme.Metrics.bubbleRadius + Self.holePad,
+                hole: p.usesCopy ? .zero : p.rect.insetBy(dx: -Self.holePad, dy: -Self.holePad),
+                radius: Theme.Metrics.bubbleRadius + Self.holePad
             )
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
+            if p.usesCopy {
+                messageCopy(p)
+                    .offset(x: p.rect.minX, y: p.rect.minY)
+            }
             reactionsPanel
                 .measured($pillSize)
-                .offset(x: clampedX(width: pillSize.width, rect: rect, geo: geo), y: pillY)
-            // ⚠ A ScrollView, always, because `panelHeight` is a clamp: a menu
-            // taller than the band it was given must still reach its last row
-            // rather than have it cut off. Scrolling is off when it all fits,
-            // so a menu that fits does not bounce under the finger.
-            ScrollView {
-                actionsPanel
-                    .frame(width: Self.panelWidth)
-                    .measured($panelSize)
-            }
-            .scrollDisabled(panelHeight >= panelSize.height)
-            .frame(width: Self.panelWidth, height: max(0, panelHeight))
-            .offset(x: clampedX(width: Self.panelWidth, rect: rect, geo: geo), y: panelY)
+                .offset(x: clampedX(width: pillSize.width, rect: p.rect, geo: geo), y: p.pillY)
+            actionsPanel
+                .frame(width: Self.panelWidth)
+                .measured($panelSize)
+                .offset(x: clampedX(width: Self.panelWidth, rect: p.rect, geo: geo), y: p.panelY)
         }
-        // Both panels are placed off measurements that are zero on the first
-        // pass. Showing that pass would flash them in the top-left corner.
-        .opacity(pillSize.height > 0 && panelSize.height > 0 ? 1 : 0)
+        // Placed off measurements that are zero on the first pass. Showing that
+        // pass would flash the panels in the top-left corner.
+        .opacity(p.ready ? 1 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: p.rect.minY)
+    }
+
+    /// The copy of the message, framed to the bubble's width. Taller than the
+    /// room left for it, it scrolls inside that room and opens at its tail.
+    @ViewBuilder
+    private func messageCopy(_ p: Placement) -> some View {
+        let side: HorizontalAlignment = message.isFromMe ? .trailing : .leading
+        let card = VStack(alignment: side, spacing: 4) {
+            if !senderNickname.isEmpty {
+                Text(senderNickname)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.Color.accent)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            // No line cap: this layout exists so the whole message can be read.
+            MessagePreviewCard(message: message, lineLimit: nil)
+        }
+        .frame(width: p.rect.width, alignment: side == .trailing ? .trailing : .leading)
+        .measured($copySize)
+        .contentShape(Rectangle())
+        .onTapGesture { onDismiss() }
+
+        if let maxHeight = p.messageMaxHeight {
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    card
+                    Color.clear.frame(height: 1).id("tail")
+                }
+                .frame(width: p.rect.width, height: maxHeight)
+                // Opened at the end, so the last lines sit right above the menu
+                // and the reader scrolls UP for the beginning, the way a chat
+                // reads. `defaultScrollAnchor` is iOS 17; this app ships to 16.
+                .onAppear { proxy.scrollTo("tail", anchor: .bottom) }
+            }
+        } else {
+            card
+        }
     }
 
     /// The panels line up with the side the bubble is on, the way the bubble
@@ -174,98 +288,6 @@ struct MessageActionOverlay: View {
     /// their own: a 4pt pad drew a white frame around every held picture.
     private static let holePad: CGFloat = 0
     private static let panelWidth: CGFloat = 260
-    /// Below this a menu is not worth placing on that side: it would be two
-    /// rows and a scroll bar.
-    private static let minPanelHeight: CGFloat = 180
-
-    // MARK: - too tall to leave alone
-
-    /// Can the menu sit beside the message without anything being cut off?
-    ///
-    /// Two questions, and a no to either means the message has to be lifted.
-    /// Is the message ITSELF fully on screen: one that runs off the top cannot
-    /// be read where it lies, and there is no way to scroll the chat while the
-    /// menu is up. And is there room on one side of it for a menu worth
-    /// showing.
-    private func fitsBeside(_ rect: CGRect, _ geo: GeometryProxy) -> Bool {
-        // Nothing has been measured yet on the first pass. Answer YES so the
-        // anchored branch renders and measures; it draws at opacity 0 until it
-        // has its numbers, and a wrong answer for one invisible frame is
-        // cheaper than flashing the lifted layout at every long press.
-        if pillSize.height == 0 || panelSize.height == 0 { return true }
-        let top = geo.safeAreaInsets.top + Self.edgeMargin
-        let bottom = geo.size.height - geo.safeAreaInsets.bottom - Self.edgeMargin
-        guard rect.minY >= top, rect.maxY <= bottom else { return false }
-        let above = max(0, rect.minY - Self.gap - top)
-        let below = max(0, bottom - rect.maxY - Self.gap)
-        let pillAbove = pillSize.height <= above
-        let freeBelow = pillAbove ? below : max(0, below - pillSize.height - Self.gap)
-        let freeAbove = pillAbove ? max(0, above - pillSize.height - Self.gap) : above
-        return max(freeBelow, freeAbove) >= min(panelSize.height, Self.minPanelHeight)
-    }
-
-    /// A message too long to leave where it is: LIFTED, with the menu under it,
-    /// and the two of them scrolling together.
-    ///
-    /// This is the founder's 08.09 note in full. A long message ran off the top
-    /// of the screen with no way to scroll it, and the menu had nowhere to go,
-    /// so the reactions ended up where the menu should have been and the menu
-    /// was not drawn at all. Here the message is a copy — the real one is under
-    /// the blur — and the copy is free to move, so the message goes up, the
-    /// menu goes under it, and one scroll view carries both. Reactions pin to
-    /// the top, clear of the pair, because they are the one thing that must
-    /// never be scrolled away from.
-    private func lifted(geo: GeometryProxy) -> some View {
-        let side: HorizontalAlignment = message.isFromMe ? .trailing : .leading
-        return ZStack {
-            DimWithHole(hole: .zero, radius: 0)
-                .contentShape(Rectangle())
-                .onTapGesture { onDismiss() }
-            ScrollView(showsIndicators: false) {
-                // ⚠⚠ A PINNED SECTION HEADER, not a measured overlay. The bar
-                // has to do two things at once — sit directly over the message,
-                // and stay on screen once the message has been scrolled past it
-                // — which is what Telegram does and what the founder asked for
-                // with two screenshots (08.09).
-                //
-                // Two measured versions came before this one and both left the
-                // bar frozen: a `.background` GeometryReader's preferences do
-                // not flow up to its parent, and preferences from inside a
-                // ScrollView did not reach an `onPreferenceChange` on the
-                // ScrollView either. `pinnedViews` is the same behaviour with no
-                // measurement at all: the header scrolls with its section and
-                // sticks to the top when the section goes under it.
-                LazyVStack(alignment: side, spacing: 8, pinnedViews: [.sectionHeaders]) {
-                    Section {
-                        if !senderNickname.isEmpty {
-                            Text(senderNickname)
-                                .font(.caption.weight(.semibold))
-                                .foregroundColor(Theme.Color.accent)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        // No line cap: the scroll view around this exists so the
-                        // whole message can be read.
-                        MessagePreviewCard(message: message, lineLimit: nil)
-                        actionsPanel
-                            .frame(width: Self.panelWidth)
-                            .measured($panelSize)
-                    } header: {
-                        HStack(spacing: 0) {
-                            if message.isFromMe { Spacer(minLength: 0) }
-                            reactionsPanel.measured($pillSize)
-                            if !message.isFromMe { Spacer(minLength: 0) }
-                        }
-                        .padding(.bottom, 6)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: side == .trailing ? .trailing : .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, geo.safeAreaInsets.top + Self.edgeMargin)
-                .padding(.bottom, geo.safeAreaInsets.bottom + Self.edgeMargin + 12)
-            }
-        }
-    }
 
     // MARK: - reactions
 

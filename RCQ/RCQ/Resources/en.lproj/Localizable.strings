@@ -651,6 +651,8 @@
 "chat.deleted" = "Message deleted";
 "chat.message_fallback" = "Message";
 "chat.replying_to" = "Replying to %@";
+"chat.quote.expand" = "Show the whole quote";
+"chat.quote.collapse" = "Collapse the quote";
 "chat.edit.editing" = "Editing message";
 "chat.edited_suffix" = "(edited)";
 

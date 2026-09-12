@@ -57,7 +57,8 @@ struct MessageRow: View, Equatable {
     let onLongPress: () -> Void
     let onDoubleTapLike: () -> Void
     var onTapWhenSelecting: (() -> Void)? = nil
-    let onTapReplyQuote: (UUID) -> Void
+    /// Answers whether it could jump; when it cannot, the quote opens in place.
+    let onTapReplyQuote: (UUID) -> Bool
     let onSwipeReply: () -> Void
     var currentGroupMembers: [RCQGroupMember] = []
     /// This room's `links_allowed` rule, already resolved for THIS viewer by
@@ -108,6 +109,10 @@ struct MessageRow: View, Equatable {
     @State private var bubblePressed: Bool = false
     /// Telegram-style collapse of a very long text body (#2): tap "Show more".
     @State private var bodyExpanded: Bool = false
+    /// The reply quote, opened in place because its target is not on screen to
+    /// jump to (founder item 3): two lines of a 280-character quote, or all of
+    /// it, with the newlines back.
+    @State private var quoteExpanded: Bool = false
 
     /// Conservative estimate of how many wrapped lines [body] takes in a chat
     /// bubble (~38 chars/line): sum over hard lines of ceil(len/38). Decides
@@ -476,9 +481,10 @@ struct MessageRow: View, Equatable {
     private var replyQuote: some View {
         if let snippet = message.replyToSnippet, !snippet.isEmpty {
             Button {
-                if let target = message.replyToID {
+                if let target = message.replyToID, onTapReplyQuote(target) {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onTapReplyQuote(target)
+                } else if !replyTargetDeleted {
+                    withAnimation(.easeInOut(duration: 0.18)) { quoteExpanded.toggle() }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -502,10 +508,11 @@ struct MessageRow: View, Equatable {
                                 .lineLimit(1)
                         } else {
                             EmoticonText(
-                                // Newlines flattened: EmoticonText renders each hard line
-                                // as its OWN Text, so one flat line + lineLimit(2) is the
-                                // whole preview contract.
-                                text: snippet.replacingOccurrences(of: "\n", with: " "),
+                                // Newlines flattened while collapsed: EmoticonText renders
+                                // each hard line as its OWN Text, so one flat line +
+                                // lineLimit(2) is the whole preview contract. Opened, the
+                                // newlines come back and every line shows.
+                                text: quoteExpanded ? snippet : snippet.replacingOccurrences(of: "\n", with: " "),
                                 font: .caption2,
                                 color: Theme.Color.textSecondary,
                                 emoticonSize: 15,
@@ -513,7 +520,8 @@ struct MessageRow: View, Equatable {
                                 uinNick: uinNick,
                                 linksEnabled: linksAllowed
                             )
-                            .lineLimit(2)
+                            .lineLimit(quoteExpanded ? nil : 2)
+                            .accessibilityHint((quoteExpanded ? "chat.quote.collapse" : "chat.quote.expand").localized)
                         }
                     }
                 }

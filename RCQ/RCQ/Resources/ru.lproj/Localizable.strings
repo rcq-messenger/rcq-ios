@@ -630,6 +630,8 @@
 "chat.deleted" = "Сообщение удалено";
 "chat.message_fallback" = "Сообщение";
 "chat.replying_to" = "Отвечаем %@";
+"chat.quote.expand" = "Показать цитату целиком";
+"chat.quote.collapse" = "Свернуть цитату";
 "chat.edit.editing" = "Редактируем сообщение";
 "chat.edited_suffix" = "(изм.)";
 
