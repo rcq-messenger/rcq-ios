@@ -139,8 +139,18 @@ struct MessageActionOverlay: View {
     /// frame, never from the copy's measured height, so the invisible first
     /// pass does not flip between layouts.
     private func placement(rect anchor: CGRect?, geo: GeometryProxy) -> Placement {
-        let top = geo.safeAreaInsets.top + Self.edgeMargin
-        let bottom = geo.size.height - geo.safeAreaInsets.bottom - Self.edgeMargin
+        // ⚠⚠ THE FRAME ALREADY EXCLUDES THE BARS. This overlay respects the safe
+        // area (the dim reaches under the bars only because it is padded out by
+        // 400 on every side), so `geo.size` is the room between the header and
+        // the composer, and y = 0 is the first point under the header. The old
+        // arithmetic subtracted the insets AGAIN (measured on an iPhone Air:
+        // size 700, insets 122 over 90, so "top" landed 122pt below the header
+        // and "bottom" 90pt above the composer) and threw away 212pt of a
+        // 700pt screen. That is most of why a short message got a clipped
+        // menu with half the screen empty, and why a lifted message got a
+        // 133pt window to read itself through.
+        let top = Self.edgeMargin
+        let bottom = geo.size.height - Self.edgeMargin
         let gap = Self.gap
         let pillH = pillSize.height
         let panelH = panelSize.height
@@ -265,7 +275,11 @@ struct MessageActionOverlay: View {
                 // Opened at the end, so the last lines sit right above the menu
                 // and the reader scrolls UP for the beginning, the way a chat
                 // reads. `defaultScrollAnchor` is iOS 17; this app ships to 16.
-                .onAppear { proxy.scrollTo("tail", anchor: .bottom) }
+                .onAppear {
+                    // A frame later: scrollTo inside onAppear runs before the
+                    // scroll view has laid its content out and is dropped.
+                    DispatchQueue.main.async { proxy.scrollTo("tail", anchor: .bottom) }
+                }
             }
         } else {
             card
