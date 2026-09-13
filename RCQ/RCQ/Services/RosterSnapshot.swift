@@ -43,7 +43,9 @@ enum RosterSnapshot {
     // the detached decode (30.08). Kept nonisolated so it still is.
     nonisolated private static let sealedMagic = Data("RCQS1".utf8)
 
-    enum Kind: String { case contacts, groups, rooms }
+    /// `memberNames` is `GroupMemberNameStore`: the last nickname of every
+    /// group member ever seen, which is what names the people who left.
+    enum Kind: String, CaseIterable { case contacts, groups, rooms, memberNames = "member-names" }
 
     nonisolated private static func url(_ kind: Kind, accountID: UUID) -> URL? {
         guard let base = try? FileManager.default.url(
@@ -65,13 +67,29 @@ enum RosterSnapshot {
     /// resolved at that moment would put one account's roster in another
     /// account's file.
     static func save<T: Encodable>(_ value: T, as kind: Kind, accountID: UUID?) {
-        if PanicPINService.shared.isDecoy { return }
+        guard let gate = writeGate(accountID: accountID) else { return }
+        saveOffMain(value, as: kind, accountID: gate.accountID, dataKey: gate.dataKey)
+    }
+
+    /// The main-actor half of `save`: may this account's file be written now,
+    /// and under which key. For a writer whose map is big enough that the
+    /// encode and the write belong off the main thread (`GroupMemberNameStore`).
+    static func writeGate(accountID: UUID?) -> (accountID: UUID, dataKey: SymmetricKey?)? {
+        if PanicPINService.shared.isDecoy { return nil }
         // A PIN is configured but not unlocked in this process (the app was
         // locked with a fetch still in the air): nothing may be written in
         // the clear. The drain refuses to touch the history in this state
         // for the same reason.
-        if PanicPINService.shared.isConfigured, dataKey == nil { return }
-        guard let id = accountID, id == AppGroup.readActiveAccountID(), let url = url(kind, accountID: id) else { return }
+        if PanicPINService.shared.isConfigured, dataKey == nil { return nil }
+        guard let id = accountID, id == AppGroup.readActiveAccountID() else { return nil }
+        return (id, dataKey)
+    }
+
+    /// The encode, the seal and the write, with the gate already passed.
+    nonisolated static func saveOffMain<T: Encodable>(
+        _ value: T, as kind: Kind, accountID: UUID, dataKey: SymmetricKey?
+    ) {
+        guard let url = url(kind, accountID: accountID) else { return }
         do {
             var data = try JSONEncoder().encode(value)
             if let key = dataKey {
@@ -79,7 +97,9 @@ enum RosterSnapshot {
             }
             try data.write(to: url, options: [.atomic, .completeFileProtection])
         } catch {
-            os_log("save %{public}@: %{public}@", log: log, type: .error, kind.rawValue, "\(error)")
+            os_log("save %{public}@: %{public}@",
+                   log: OSLog(subsystem: "app.rcq.client", category: "RosterSnapshot"),
+                   type: .error, kind.rawValue, "\(error)")
         }
     }
 
@@ -113,14 +133,14 @@ enum RosterSnapshot {
     }
 
     /// Forget one account's roster, for a burn or a UIN migration.
-    static func delete(accountID: UUID) {
-        for kind in [Kind.contacts, .groups, .rooms] {
+    static func delete(accountID: UUID, kinds: [Kind] = Kind.allCases) {
+        for kind in kinds {
             if let url = url(kind, accountID: accountID) { try? FileManager.default.removeItem(at: url) }
         }
     }
 
-    static func deleteActive() {
-        if let id = AppGroup.readActiveAccountID() { delete(accountID: id) }
+    static func deleteActive(kinds: [Kind] = Kind.allCases) {
+        if let id = AppGroup.readActiveAccountID() { delete(accountID: id, kinds: kinds) }
     }
 
     /// Rewrite every roster file under the current sealing: a PIN was just
@@ -130,5 +150,6 @@ enum RosterSnapshot {
         ContactService.shared.saveSnapshot()
         GroupService.shared.saveSnapshot()
         AudioRoomService.shared.saveSnapshot()
+        GroupMemberNameStore.shared.saveSnapshot()
     }
 }

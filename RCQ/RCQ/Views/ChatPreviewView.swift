@@ -196,8 +196,11 @@ struct ChatPreviewView: View {
 
     private func senderNickname(_ uin: Int) -> String {
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
-        if case .group(let g) = target, let m = g.members.first(where: { $0.uin == uin }) {
-            return m.nickname
+        if case .group(let g) = target {
+            if let m = g.members.first(where: { $0.uin == uin }) { return m.nickname }
+            // #982: someone who left keeps the name they last had here.
+            let key = GroupMemberNameStore.groupKey(host: g.host, groupID: g.id)
+            if let name = GroupMemberNameStore.shared.names[key]?[uin] { return name }
         }
         if let c = contacts.contacts.first(where: { $0.uin == uin }) { return c.nickname }
         return String(uin)

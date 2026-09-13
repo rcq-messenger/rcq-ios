@@ -129,6 +129,7 @@ final class AuthService: ObservableObject {
                     ContactService.shared.wipe()
                     GroupService.shared.wipe()
                     AudioRoomService.shared.wipe()
+                    await GroupMemberNameStore.shared.wipe()
                     RosterSnapshot.deleteActive()
                 case .transient:
                     // Can't prove the account is gone (no signing key, the

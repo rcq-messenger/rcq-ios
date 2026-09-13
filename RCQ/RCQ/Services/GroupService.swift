@@ -244,6 +244,9 @@ final class GroupService: ObservableObject {
                 return overlaid
             }
             for row in rows { self.roomRules[row.group.id] = row.rules }
+            // #982: the foreign groups arrive with their rosters; the own ones
+            // do not (`?members=0`) and are recorded by `ensureRoster`.
+            for g in foreign { GroupMemberNameStore.shared.record(g) }
             self.rosterAccount = account
             self.groupsLoaded = true
             saveSnapshot()
@@ -345,12 +348,20 @@ final class GroupService: ObservableObject {
         guard let cached = find(groupID) else { return nil }
         if cached.host != nil { return cached }
         if !refresh && !cached.members.isEmpty && rosterFetched.contains(groupID) { return cached }
+        let epoch = rosterEpoch
         guard let full: GroupWithRules = try? await APIClient.shared.request(
             "GET", "/groups/\(groupID)"
         ) else { return cached }
+        // A burn, a switch or a decoy clear while this was in the air: the
+        // answer belongs to the state that is gone.
+        guard epoch == rosterEpoch else { return nil }
         rosterFetched.insert(groupID)
         roomRules[groupID] = full.rules
         guard let idx = groups.firstIndex(where: { $0.id == groupID }) else { return full.group }
+        // #982: the last name of everyone in it, kept after they leave. Only
+        // for a group still here: one this user left while the GET was in
+        // flight has had its names forgotten, and they must stay forgotten.
+        GroupMemberNameStore.shared.record(full.group)
         // Only the roster is taken: everything else on the row is already live
         // and may have been patched locally while this was in flight.
         groups[idx].members = full.group.members
@@ -430,6 +441,7 @@ final class GroupService: ObservableObject {
             "DELETE", "/groups/\(groupID)/members/\(uin)"
         )
         if uin == AuthService.shared.ownUIN {
+            GroupMemberNameStore.shared.forget(host: find(groupID)?.host, groupID: groupID)
             groups.removeAll { $0.id == groupID }
             roomRules[groupID] = nil
             rosterFetched.remove(groupID)
@@ -962,6 +974,7 @@ final class GroupService: ObservableObject {
         let _: EmptyResponse = try await APIClient.shared.request(
             "DELETE", "/groups/\(groupID)"
         )
+        GroupMemberNameStore.shared.forget(host: find(groupID)?.host, groupID: groupID)
         groups.removeAll { $0.id == groupID }
         roomRules[groupID] = nil
         rosterFetched.remove(groupID)
@@ -993,6 +1006,7 @@ final class GroupService: ObservableObject {
             BadgeCounter.syncIcon()
             return
         }
+        GroupMemberNameStore.shared.record(g)
         if let idx = groups.firstIndex(where: { $0.id == g.id }) {
             var next = g
             // Keep a roster we already paid for rather than dropping it for a
@@ -1005,6 +1019,8 @@ final class GroupService: ObservableObject {
     }
 
     func purge(_ groupID: Int) {
+        // The only caller is `group_deleted`, which clears the thread too.
+        GroupMemberNameStore.shared.forget(host: find(groupID)?.host, groupID: groupID)
         groups.removeAll { $0.id == groupID }
         roomRules[groupID] = nil
         rosterFetched.remove(groupID)

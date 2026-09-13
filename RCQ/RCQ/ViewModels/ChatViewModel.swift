@@ -41,6 +41,16 @@ final class ChatViewModel: ObservableObject {
     /// changes; `senderNickname` is then a dictionary hit instead of three
     /// linear scans per row per body pass.
     @Published private(set) var nickByUIN: [Int: String] = [:]
+    /// uin → the last nickname this group's roster carried for them
+    /// (`GroupMemberNameStore`), including people who have since left. Empty
+    /// for 1:1 threads and before the store has been read.
+    @Published private(set) var lastKnownByUIN: [Int: String] = [:]
+    /// uin → the author name stored on a loaded quote of one of their
+    /// messages, newest quote wins. The last resort before the bare number
+    /// for someone no roster or contact names any more (#982); a name that
+    /// is only digits is a number some client already fell back to, not a
+    /// name, and is skipped.
+    @Published private(set) var quoteAuthorByUIN: [Int: String] = [:]
     /// message id → isFromMe, for O(1) `replyIsMine` — it used to scan the
     /// whole loaded window per reply row.
     private var isMineByID: [UUID: Bool] = [:]
@@ -225,6 +235,8 @@ final class ChatViewModel: ObservableObject {
                 // view of the same data in step with it.
                 self.rebuildUnitIndex(grouped)
                 self.isMineByID = msgs.reduce(into: [:]) { $0[$1.id] = $1.isFromMe }
+                let quoted = ChatViewModel.quoteAuthors(msgs)
+                if quoted != self.quoteAuthorByUIN { self.quoteAuthorByUIN = quoted }
                 // Only the quotes whose target is NOT in the thread can be
                 // deleted; the rest are answered by the thread itself and never
                 // reach the database.
@@ -255,21 +267,43 @@ final class ChatViewModel: ObservableObject {
                 .map { $0?.members ?? [] }
                 .removeDuplicates()
                 .assign(to: &$groupMembers)
+            let names = GroupMemberNameStore.shared
+            names.ensureLoaded()
+            let nameKey = GroupMemberNameStore.groupKey(host: g.host, groupID: g.id)
+            names.$names
+                .map { $0[nameKey] ?? [:] }
+                .removeDuplicates()
+                .assign(to: &$lastKnownByUIN)
         }
 
         if case .randomPeer = target {
             // Random sessions never expose real names on either side.
         } else {
             $groupMembers
-                .combineLatest(ContactService.shared.$contacts, ContactAliasStore.shared.$aliases)
-                .map { members, contacts, aliases -> [Int: String] in
+                .combineLatest(ContactService.shared.$contacts, ContactAliasStore.shared.$aliases, $lastKnownByUIN)
+                .combineLatest($quoteAuthorByUIN)
+                .map { sources, quoted -> [Int: String] in
+                    let (members, contacts, aliases, lastKnown) = sources
                     // Resolve against the EMITTED alias dictionary, never the
                     // store's property: @Published emits during willSet, so a
                     // read-back here still sees the PRE-change table and a
                     // rename would rebuild this map with the old name.
+                    //
+                    // Lowest precedence first, each layer overwriting the one
+                    // before: quote author, contact, last-known roster name,
+                    // live roster. An alias wins inside every layer.
                     var out: [Int: String] = [:]
+                    for (uin, name) in quoted {
+                        out[uin] = aliases[ContactAliasStore.aliasKey(uin)] ?? name
+                    }
                     for c in contacts {
                         out[c.uin] = aliases[ContactAliasStore.aliasKey(c.uin, host: c.host)] ?? c.nickname
+                    }
+                    // #982: someone who LEFT is gone from the roster, and the
+                    // name they last had here beats their contact-row name the
+                    // same way the live roster does.
+                    for (uin, name) in lastKnown {
+                        out[uin] = aliases[ContactAliasStore.aliasKey(uin)] ?? name
                     }
                     // Roster last: a group member's entry wins over the
                     // contact-list one, matching the old scan order.
@@ -1601,7 +1635,11 @@ final class ChatViewModel: ObservableObject {
     ///
     /// Same sources as `senderNickname` in the same order, minus the alias
     /// layer: the roster first (what they call themselves in this room), then
-    /// the contact row's nickname, then the bare number.
+    /// the last name the roster had for them (they may have left), then the
+    /// contact row's nickname, then a quote of theirs, then the bare number.
+    ///
+    /// ⚠ The number is what #982 spread: a reply to someone who had left
+    /// wrote their UIN into the quote every other member received.
     func wireNickname(_ uin: Int) -> String {
         if case .randomPeer = target {
             return uin == AuthService.shared.ownUIN
@@ -1609,8 +1647,34 @@ final class ChatViewModel: ObservableObject {
         }
         if uin == AuthService.shared.ownUIN { return AuthService.shared.nickname }
         if let m = groupMembers.first(where: { $0.uin == uin }) { return m.nickname }
+        if let name = lastKnownByUIN[uin] { return name }
         if let c = ContactService.shared.contacts.first(where: { $0.uin == uin }) { return c.nickname }
+        if let name = quoteAuthorByUIN[uin] { return name }
         return String(uin)
+    }
+
+    /// uin → the author name the newest loaded quote of their messages
+    /// carries. Only quotes whose target is loaded can be attributed: the uin
+    /// comes from the quoted row, the name from the quote. See
+    /// `quoteAuthorByUIN`.
+    ///
+    /// ⚠ Only quotes other people sent. My own replies from before e3eaeae
+    /// stored `senderNickname`, i.e. MY alias, and this map feeds
+    /// `wireNickname`.
+    static func quoteAuthors(_ msgs: [Message]) -> [Int: String] {
+        guard msgs.contains(where: { $0.replyToID != nil && $0.replyToAuthorName != nil }) else { return [:] }
+        let senderByID = Dictionary(msgs.map { ($0.id, $0.senderUIN) }, uniquingKeysWith: { a, _ in a })
+        let me = AuthService.shared.ownUIN
+        var out: [Int: String] = [:]
+        for m in msgs {
+            guard !m.isFromMe, let rid = m.replyToID, let uin = senderByID[rid], uin != me,
+                  let name = m.replyToAuthorName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty,
+                  !name.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) })
+            else { continue }
+            out[uin] = name
+        }
+        return out
     }
 
     /// The picture that belongs with `senderNickname(_:)`, read from the same

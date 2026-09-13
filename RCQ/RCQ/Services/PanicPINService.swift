@@ -354,6 +354,9 @@ final class PanicPINService: ObservableObject {
         NicknameCache.wipe()
         GroupNameCache.wipe()
         AvatarThumbCache.wipe()
+        // Every name ever seen in the real account's groups, former members
+        // included. Memory only; the store reads and writes nothing in decoy.
+        GroupMemberNameStore.shared.clearMemory()
 
         // The account's OWN profile picture. It is held here (not in a screen's
         // @State) and mirrored into plain UserDefaults, so it survived the lock

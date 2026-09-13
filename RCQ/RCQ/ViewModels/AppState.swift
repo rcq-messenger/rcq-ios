@@ -686,6 +686,10 @@ final class AppState: ObservableObject {
         let contacts = ContactService.shared.applySnapshot(contactSnap)
         let groups = GroupService.shared.applySnapshot(groupList)
         AudioRoomService.shared.hydrateFromSnapshot()
+        // Read now rather than on the first chat open: a PIN removed later in
+        // this session reseals the map from memory, and the key that opens
+        // the file is gone by then. Off the main thread, like the rest.
+        GroupMemberNameStore.shared.ensureLoaded()
         return contacts || groups
     }
 
@@ -1484,7 +1488,9 @@ final class AppState: ObservableObject {
         WebSocketService.shared.disconnect()
         ContactService.shared.wipe()
         // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
-        RosterSnapshot.deleteActive()
+        // The last-known member names stay: group ids and the other members'
+        // uins do not change when OUR number does.
+        RosterSnapshot.deleteActive(kinds: [.contacts, .groups, .rooms])
         GroupService.shared.wipe()
         AudioRoomService.shared.wipe()
         PushDecryptCache.wipe()
@@ -1658,9 +1664,15 @@ final class AppState: ObservableObject {
         WebSocketService.shared.disconnect()
 
         ContactService.shared.wipe()
+        // Before the member names, and before the suspension below: the epoch
+        // bump drops every roster answer still in the air, so none of the
+        // burned identity's names reaches the store again.
+        GroupService.shared.wipe()
+        // Before the delete: a write of the member names still in flight
+        // would otherwise put the file back after it.
+        await GroupMemberNameStore.shared.wipe()
         // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
         RosterSnapshot.deleteActive()
-        GroupService.shared.wipe()
         // A burn mints a fresh identity under the SAME account UUID, so every
         // per-account key below still resolves to the same slot afterwards and
         // nothing else empties it. The burned identity's foreign contacts, the
@@ -2150,6 +2162,8 @@ final class AppState: ObservableObject {
 
         ContactService.shared.wipe()
         GroupService.shared.wipe()
+        // Memory only; the file stays with the outgoing account.
+        GroupMemberNameStore.shared.clearMemory()
         // Kill the backup-home poll BEFORE the stores below are repointed. It
         // is a detached 30s loop that nothing used to stop, so it outlived
         // every switch: a pass suspended in its own fetch resumed after these
