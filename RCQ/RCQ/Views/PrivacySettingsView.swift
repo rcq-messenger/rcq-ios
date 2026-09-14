@@ -57,6 +57,9 @@ struct PrivacySettingsView: View {
     @State private var relayKeyResult: Int?
     /// Why a key was refused, already localized.
     @State private var relayKeyError: String?
+    /// The broker could not be asked about a pasted key. Not an error about the
+    /// key: it stays, and the person is told what actually happened.
+    @State private var relayKeyOffline = false
     /// Relay tag pending a delete confirmation (set by the trash button).
     @State private var relayPendingDelete: String? = nil
     @State private var hofOptIn: Bool = UserDefaults.standard.bool(forKey: "rcq.privacy.hofOptIn")
@@ -485,7 +488,19 @@ struct PrivacySettingsView: View {
             ) {
                 Button("common.ok".localized) { relayKeyResult = nil }
             } message: {
-                Text(String(format: "relay.key.ok.body".localized, relayKeyResult ?? 0))
+                // A key can be good and still have nothing behind it yet: the
+                // cabinet assigns nodes after the key exists. "0 nodes of your
+                // own are now in use" read as a failure of the key.
+                if (relayKeyResult ?? 0) > 0 {
+                    Text(String(format: "relay.key.ok.body".localized, relayKeyResult ?? 0))
+                } else {
+                    Text("relay.key.ok.none".localized)
+                }
+            }
+            .alert("relay.key.offline.title".localized, isPresented: $relayKeyOffline) {
+                Button("common.ok".localized) {}
+            } message: {
+                Text("relay.key.offline.body".localized)
             }
             .alert(
                 "relay.key.bad.title".localized,
@@ -519,21 +534,44 @@ struct PrivacySettingsView: View {
                         // key and report success on the spot, so a string typed
                         // at random was accepted exactly like a real key. The
                         // broker says which it is now.
+                        //
+                        // ⚠ And only an ANSWER counts. This used to read the
+                        // stored verdict after the refresh, so a refresh that
+                        // never reached the broker left the previous key's
+                        // verdict (or none) in place and the person was told
+                        // their key was "not one of ours" and had it removed,
+                        // when the only thing wrong was the network. Same
+                        // split as desktop `broker.rs`: offline is its own
+                        // outcome, and it keeps the key.
                         BrokerRelayStore.shared.setTenantKey(key)
                         Task {
-                            await BrokerRelayStore.shared.refresh()
-                            switch BrokerRelayStore.shared.keyVerdict {
-                            case "ok":
+                            switch await BrokerRelayStore.shared.refresh() {
+                            case .reached(let verdict):
+                                switch verdict {
+                                case "ok":
+                                    hasRelayKey = true
+                                    relayKeyResult = BrokerRelayStore.shared.privateRelays().count
+                                case "expired":
+                                    BrokerRelayStore.shared.setTenantKey(nil)
+                                    relayKeyError = "relay.key.expired".localized
+                                default:
+                                    // The broker looked and does not know it
+                                    // (nil is an answer without a verdict field,
+                                    // which the flagship broker has not sent
+                                    // since verdicts exist; treated the same so
+                                    // "any string accepted" stays closed). Drop
+                                    // it rather than leave a dead key in place
+                                    // quietly failing forever.
+                                    BrokerRelayStore.shared.setTenantKey(nil)
+                                    relayKeyError = "relay.key.unknown".localized
+                                }
+                            case .offline:
+                                // The question never got there. The key stays,
+                                // the boot refresh asks again, and the person
+                                // hears what happened instead of a verdict the
+                                // broker never gave.
                                 hasRelayKey = true
-                                relayKeyResult = BrokerRelayStore.shared.privateRelays().count
-                            case "expired":
-                                BrokerRelayStore.shared.setTenantKey(nil)
-                                relayKeyError = "relay.key.expired".localized
-                            default:
-                                // Not ours: drop it rather than leave a dead key
-                                // in place quietly failing forever.
-                                BrokerRelayStore.shared.setTenantKey(nil)
-                                relayKeyError = "relay.key.unknown".localized
+                                relayKeyOffline = true
                             }
                         }
                     case .unusable:

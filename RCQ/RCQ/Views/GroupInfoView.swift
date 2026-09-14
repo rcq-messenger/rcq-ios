@@ -20,6 +20,9 @@ struct GroupInfoView: View {
     @State private var showSettings = false
     @State private var showFullAvatar = false
     @State private var linkCopied = false
+    /// "Report group" (App Review 1.2, B.14): the same sheet the chat header
+    /// menu opens, from the one screen that is about the room itself.
+    @State private var showReportGroup = false
     /// Members past the first N are folded behind a "Show all" disclosure
     /// — on big groups the info screen was unscrollable with every member
     /// rendered eagerly.
@@ -162,6 +165,7 @@ struct GroupInfoView: View {
                             .background(Theme.Color.statusBusy)
                             .cornerRadius(4)
                     }
+                    reportGroupRow
                     if let error {
                         Text(error).font(.caption).foregroundColor(Theme.Color.statusBusy)
                     }
@@ -212,6 +216,9 @@ struct GroupInfoView: View {
         }
         .sheet(isPresented: $showAddMember) {
             AddGroupMemberView(group: currentGroup)
+        }
+        .sheet(isPresented: $showReportGroup) {
+            ReportContactSheet.forGroup(currentGroup)
         }
         .sheet(item: Binding(
             get: { viewInfoForUIN.map { ViewInfoUIN(uin: $0) } },
@@ -316,6 +323,26 @@ struct GroupInfoView: View {
             Button("common.cancel".localized, role: .cancel) {}
         } message: { target in
             Text("group.transfer.confirm".localized(target.nickname))
+        }
+    }
+
+    /// A small text link under the leave button, where Android keeps it. Not
+    /// for the owner (the island refuses a self-report). A room on another
+    /// island is reported too, against nobody (`ReportContactSheet.forGroup`).
+    @ViewBuilder
+    private var reportGroupRow: some View {
+        if !amOwner {
+            Button {
+                showReportGroup = true
+            } label: {
+                Text("chat.menu.report_group".localized)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
         }
     }
 

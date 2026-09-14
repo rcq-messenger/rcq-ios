@@ -38,11 +38,9 @@
 "settings.sound.row.off" = "Вимк.";
 "settings.sound.section.master" = "Головний";
 "settings.sound.section.presence" = "Присутність контактів";
-"settings.sound.section.presence.hint" = "Сигнал у стилі ICQ, коли контакт заходить у мережу або виходить. Обидва за замовчуванням вимкнені.";
+"settings.sound.section.presence.hint" = "Класичний сигнал, коли контакт заходить у мережу або виходить. Обидва за замовчуванням вимкнені.";
 "settings.sound.contact_online" = "Контакт зайшов у мережу";
 "settings.sound.contact_offline" = "Контакт вийшов з мережі";
-"settings.minis.toggle" = "Ігрові міні-віджети";
-"settings.minis.toggle.footer" = "Показувати плаваючі віджети Crash і аукціону UIN у списку чатів, щоб стежити за раундом чи ставкою, не заходячи в гру.";
 "settings.trades.realtime" = "Обміни спливають одразу";
 "settings.trades.realtime.footer" = "Коли увімкнено, вхідний обмін відкривається одразу. Вимкнено: обміни тихо чекають у вікні обмінів і в чаті з відправником.";
 "settings.language" = "Мова";
@@ -209,12 +207,6 @@
 "settings.network.singbox.status.on" = "Через релеї RCQ";
 "relays.learn_more" = "Що таке релей?";
 "settings.network.coming_soon" = "Скоро";
-"settings.traffic" = "Трафік файлів";
-"settings.traffic.used" = "Витрачено цього місяця";
-"settings.traffic.used.value" = "%d МБ";
-"settings.traffic.spent" = "Витрачено";
-"settings.traffic.pay_large" = "Платити жетонами за файли > 50 МБ";
-"settings.traffic.pay_large.footer" = "До 50 МБ безкоштовно. Далі 1 жетон за 10 МБ. Поки є жетони, обмеження розміру немає.";
 "settings.history" = "Історія";
 "settings.history.file" = "Файл історії листування";
 "backup.intro" = "Зберігає історію з цього пристрою у файл, зашифрований твоєю фразою відновлення. Файл твій: тримай його де завгодно. До нас нічого не вивантажується, і прочитати його ми не можемо.";
@@ -336,20 +328,13 @@
 "group_join.island_hint" = "Приєднання реєструє твій ключ на %@, щоб група могла тобі доставляти.";
 "group_join.open_button" = "Відкрити";
 "group_join.closed_button" = "Лише за запрошенням";
-"group_join.price_suffix" = "за вхід";
 "group_join.owner" = "Власник: %@";
 "group_join.owner_label" = "Власник";
 "group_join.closed_hint" = "Ця група лише за запрошенням. Попроси власника додати тебе.";
-"group_join.insufficient" = "Потрібно %d жетонів, у тебе %d.";
 "group_join.error.generic" = "Не вдалося завантажити цю групу.";
 "group_join.error.blocked" = "Власник закрив тобі доступ до цієї групи.";
 "group.settings.closed" = "Закрита група";
 "group.settings.closed.hint" = "Нових учасників додає лише власник, запрошеннями. Спільне посилання й далі показує картку групи, але автоматично не впускає.";
-"paid_traffic.title" = "Платити за трафік?";
-"paid_traffic.body" = "Цей файл %@, більший за безкоштовні 50 МБ. Увімкни платний трафік у налаштуваннях, щоб надіслати його.";
-"paid_traffic.price_suffix" = "цей файл";
-"paid_traffic.enable" = "Увімкнути платний трафік";
-"paid_traffic.cancel" = "Скасувати";
 "contact_list.ctx.report" = "Поскаржитися";
 "report.title" = "Скарга";
 "report.heading" = "Поскаржитися на користувача";
@@ -365,7 +350,6 @@
 "settings.account.burn.title" = "Остаточно видалити цей акаунт?";
 "settings.account.burn.confirm" = "Видалити остаточно";
 "settings.account.burn.message" = "Твій акаунт буде видалено на сервері і на цьому пристрої. Ти почнеш із зовсім новим UIN. Старі контакти і групи зникнуть: жодного зв'язку з твоєю новою особистістю в них не лишиться. Скасувати це неможливо.";
-"settings.account.burn.tally" = "%d предметів, %d жетонів, %d самоцвітів";
 "settings.link_web" = "Підключити веб";
 "settings.share.message" = "Додай мене в RCQ: %@ (%d)";
 "settings.link_web.footer" = "Користуйся chat.rcq.app у браузері на комп'ютері. Створює одноразовий код, який ти вставляєш на сайті. Поки що лише надсилання. Відповіді й далі приходять на iOS.";
@@ -411,7 +395,6 @@
 "status.offline" = "Не в мережі";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Не в мережі";
-"contact_list.bar.games" = "Ігри";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Поруч";
 "contact_list.bar.settings" = "Налаштування";
@@ -531,17 +514,6 @@
 "report_evidence.consent.toggle" = "Я дозволяю модераторам RCQ переглянути цей вміст";
 "report_evidence.cta.send" = "Надіслати скаргу";
 "report_evidence.error.no_bytes" = "Не вдалося завантажити вміст для скарги. Відкрий повідомлення заново і спробуй ще раз.";
-/* ── Crash mini-bar ───────────────────────────────────────── */
-"crash.mini.betting" = "Ставка";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Поставити";
-"crash.mini.placed" = "Ставку зроблено";
-"crash.mini.cashout_cta" = "Забрати";
-"crash.mini.crashed_at" = "Обвал на %.2f×";
-/* ── Auction mini-bar ─────────────────────────────────────── */
-"auction.mini.leading" = "Лідируєш · %d";
-"auction.mini.outbid" = "Ставку перебито. Підняти?";
-"auction.mini.bid_cta" = "Підняти";
 "chat.menu.voice_call" = "Голосовий дзвінок";
 "chat.menu.video_call" = "Відеодзвінок";
 "chat.menu.propose_trade" = "Запропонувати обмін";
@@ -561,7 +533,6 @@
 "chat.attach.photo" = "Фото";
 "chat.attach.video" = "Відео";
 "chat.attach.camera" = "Камера";
-"chat.attach.premium" = "Платне";
 "chat.attach.document" = "Документ";
 "chat.attach.location" = "Геопозиція";
 "chat.location.title" = "Обери місце";
@@ -570,7 +541,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "Копіювати координати";
-"chat.file.pay_required" = "Для файлів понад 50 МБ увімкни в налаштуваннях платні файли.";
 "chat.translate.title" = "Переклад";
 "chat.translate.section.original" = "Оригінал";
 "chat.translate.section.translated" = "Переклад";
@@ -578,22 +548,6 @@
 "chat.translate.empty" = "Нічого перекладати.";
 "chat.translate.translated_badge" = "Перекладено";
 "chat.action.show_original" = "Показати оригінал";
-"chat.premium.compose.title" = "Платний вміст";
-"chat.premium.compose.body" = "Постав ціну в жетонах. Одержувачі бачать розмиту бульбашку і платять, щоб відкрити медіа. Ти отримуєш 95% (5% комісія майданчика).";
-"chat.premium.compose.price_placeholder" = "Ціна";
-"chat.premium.compose.hint" = "Від 1 до 999 999 жетонів.";
-"chat.premium.compose.pick_photo" = "Фото";
-"chat.premium.compose.pick_video" = "Відео";
-"chat.premium.unlock_for" = "Відкрити за";
-"chat.premium.preview_photo" = "Платне фото";
-"chat.premium.preview_video" = "Платне відео";
-"chat.premium.confirm.title" = "Відкрити за %d жетонів?";
-"chat.premium.confirm.body" = "Жетони спишуться з твого балансу, і ключ до медіа буде доставлено.";
-"chat.premium.confirm.pay" = "Заплатити %d";
-"chat.premium.error.title" = "Не вдалося відкрити";
-"chat.premium.error.insufficient" = "Не вистачає жетонів.";
-"chat.premium.error.gone" = "Цього вмісту більше немає.";
-"chat.premium.error.generic" = "Щось пішло не так. Спробуй ще раз.";
 "chat.voice.permission.title" = "Потрібен доступ до мікрофона";
 "chat.voice.permission.body" = "Дозволь доступ до мікрофона в Налаштуваннях → RCQ, щоб записувати голосові.";
 "settings.migrate.header" = "Акаунт";
@@ -621,7 +575,8 @@
 "contact_list.discover.title" = "Відкриті групи";
 "contact_list.discover.join" = "Приєднатися";
 "contact_list.empty.title" = "Контактів поки немає";
-"contact_list.empty.body" = "Додай друга за UIN чи QR-кодом, щоб почати розмову. Випадковий чат працює й без контактів.";
+"contact_list.empty.body" = "Додай друга за UIN чи QR-кодом, щоб почати розмову.";
+"contact_list.empty.stranger" = "Випадковий чат працює й без контактів.";
 "contact_list.empty.cta" = "Додати контакт";
 "chat.empty.title" = "Повідомлень поки немає";
 "chat.empty.body" = "Привітайся. Перше повідомлення почне розмову.";
@@ -684,8 +639,6 @@
 "chat.preview.market_item" = "Предмет з ринку";
 "chat.preview.uin_listing" = "Оголошення UIN";
 "chat.preview.group_invite" = "Запрошення в групу";
-"chat.preview.premium_photo" = "🔒 Платне фото";
-"chat.preview.premium_video" = "🔒 Платне відео";
 "chat.preview.generic" = "Повідомлення";
 "chat.banner.new_message" = "Нове повідомлення";
 /* ── Call screen ──────────────────────────────────────────── */
@@ -766,8 +719,6 @@
 "group.settings.post_policy.all" = "Усі";
 "group.settings.post_policy.owner_only" = "Лише власник";
 "group.settings.post_policy.hint" = "У режимі «лише власник» учасники читають, але не пишуть.";
-"group.settings.entry_price" = "Ціна входу в жетонах";
-"group.settings.entry_price.hint" = "0 це безкоштовно. З кожного платежу утримується 5% комісії майданчика, решта йде власнику.";
 "group.settings.name" = "Назва групи";
 "group.settings.photo" = "Фото групи";
 "group.settings.change_photo" = "Змінити фото";
@@ -779,7 +730,6 @@
 "group.avatar.remove.confirm" = "Прибрати фото групи?";
 "group.unavailable" = "Група недоступна.";
 "group.compose.broadcast_only" = "Писати може лише власник";
-"group.error.join_payment" = "Не вдалося оплатити вхід у групу";
 "group.cta.add_member" = "Додати учасника";
 "group.cta.copy_link" = "Копіювати посилання на групу";
 "group.cta.link_copied" = "Посилання скопійовано";
@@ -847,7 +797,7 @@
 /* ── About sheet ──────────────────────────────────────────── */
 "about.title" = "Про RCQ";
 "about.tagline" = "Та сама душа, сучасна криптографія.";
-"about.body" = "RCQ безкоштовний назавжди. Без реклами, без збору даних, без номера телефона.";
+"about.body" = "RCQ це приватний месенджер. Без реклами, без трекерів, без аналітики, без номера телефону.";
 "about.stats.users" = "людей на цьому острові";
 "about.privacy.section" = "ПРИВАТНІСТЬ";
 "about.privacy.b1" = "Повідомлення з наскрізним шифруванням (Signal Protocol).";
@@ -855,7 +805,7 @@
 "about.privacy.b3" = "Бекенд без доступу до вмісту: повідомлення зберігаються лише як зашифровані блоби і видаляються після доставки.";
 "about.privacy.b4" = "Без номера телефона й пошти: UIN це твоя єдина особистість.";
 "about.privacy.b5" = "Історія живе лише на твоєму пристрої і шифрується, коли він заблокований.";
-"about.privacy.b6" = "Ваш акаунт живе на острові, сервері, який може підняти будь-хто. Острови не спілкуються між собою, їх зʼєднує ваш застосунок.";
+"about.privacy.b6" = "Ваш акаунт живе на острові, сервері, який може підняти будь-хто. Люди з різних островів усе одно можуть спілкуватися між собою.";
 "about.contact.section" = "КОНТАКТИ";
 "about.contact.support" = "Підтримка";
 "about.contact.website" = "Сайт";
@@ -880,17 +830,10 @@
 "add.section.groups" = "ГРУПИ";
 "add.section.join_group" = "ПРИЄДНАТИСЯ ДО ГРУПИ";
 "join_group.title" = "Приєднатися до групи";
-"join_group.entry_price" = "Ціна входу";
-"join_group.your_balance" = "У тебе";
 "join_group.cta.free" = "Приєднатися";
-"join_group.cta.pay" = "Заплатити і приєднатися";
-"join_group.cta.insufficient" = "Не вистачає жетонів";
 "join_group.alert.title" = "Група";
-"join_group.error.insufficient" = "Потрібно %d жетонів, є %d";
 "join_group.error.blocked" = "Власник тебе заблокував";
 "join_group.error.generic" = "Не вдалося приєднатися. Спробуй ще раз.";
-"chat.menu.premium_content" = "Платний вміст";
-"chat.premium.coming_soon" = "Скоро. Власник зможе публікувати фото й відео під розмиттям з ціною в жетонах. Учасники відкривають кожне окремо, а власник отримує 95% (5% комісія майданчика).";
 "add.section.people" = "ЛЮДИ";
 "add.cta.add" = "Додати в контакти";
 "add.cta.in_list" = "Уже у твоєму списку контактів";
@@ -986,18 +929,6 @@
 "ci.add_self" = "Це ти: твій акаунт на цьому острові";
 "contact_list.section.cross_island" = "Інші острови";
 "pending.cta.decline" = "Відхилити";
-"pool.boost_note" = "Шанси показані з бонусом улюбленця %d%%.";
-"shop.kicker" = "МАГАЗИН";
-"shop.title" = "Купити жетони";
-"shop.subtitle" = "Жетони це внутрішня валюта RCQ. Витрачаються на ігри, ринок, платний вміст і аукціони.";
-"shop.tokens_n" = "%d жетонів";
-"shop.best_value" = "НАЙВИГІДНІШЕ";
-"shop.per_token" = "%d¢ за жетон";
-"shop.balance" = "Твій баланс живе на сервері під твоїм UIN. Справжня оплата через App Store буде пізніше. Поки що пакети вище зараховують жетони одразу, для тестування.";
-"pool.title" = "Пул";
-"pool.section_share" = "%.0f%% випадінь";
-"pool.cap" = "межа %d";
-"pool.cap_remaining" = "%d / %d лишилося";
 "settings.privacy.relay_calls" = "Дзвінки завжди через релей";
 "settings.privacy.relay_calls.desc" = "Вести звук і відео дзвінка через наш релей, щоб інша сторона ніколи не дізналася твою IP-адресу. Якщо вимкнути, якість дзвінка може стати кращою, а твою адресу буде видно.";
 "settings.privacy.strangers" = "Незнайомці в запити";
@@ -1025,19 +956,6 @@
 "radio.info.privacy.body" = "Нічого не виходить за межі локальної мережі. Сеанси наскрізно зашифровані між учасниками, а ключ сеансу створювач кімнати роздає як пароль. Історія тільки в пам'яті: розмова зникає, щойно ти закриваєш чат.";
 "radio.info.when.title" = "Коли це знадобиться";
 "radio.info.when.body" = "Домовитися з друзями на гучній події. Передати коротку записку комусь у тій самій будівлі. Лишитися на зв'язку під час аварії в мережі або в регіоні, де мобільний інтернет ріжуть. Усюди, де телефони поруч, а звичайний інтернет недоступний, повільний або ризикований.";
-"pool.detail.chance" = "ШАНС ВИПАДІННЯ  %.2f%%";
-"pool.detail.cap" = "ТИРАЖ  %d";
-"pool.detail.cap_remaining" = "%d / %d ЛИШИЛОСЯ";
-"pool.gems.section" = "Самоцвіти";
-"pool.gems.title" = "Набір самоцвітів";
-"pool.gems.range" = "%d–%d самоцвітів за випадіння";
-"pool.pack.contents" = "ВМІСТ НАБОРУ · %d";
-"disassemble.title" = "Розібрати";
-"disassemble.body" = "Розбирання знищить цей предмет назавжди. Ти отримаєш самоцвіти залежно від його рідкості й рівня загартування.";
-"disassemble.cta" = "Розібрати";
-"disassemble.cta.busy" = "Розбираємо…";
-"disassemble.cta.cancel" = "Скасувати";
-"disassemble.success.body" = "%@ зникає.";
 /* ── Trades ───────────────────────────────────────────────── */
 /* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Поруч";
@@ -1129,7 +1047,7 @@
 "onboard.federation.body" = "RCQ це не сервер однієї компанії. Острів може підняти будь-хто, ваш акаунт живе на обраному, а номер переїжджає з вами.";
 "onboard.relay.kicker" = "ПРИВАТНІСТЬ";
 "onboard.relay.title" = "Острів не бачить вашу адресу";
-"onboard.relay.body" = "Трафік іде через релеї спільноти: острів не бачить, звідки ви, а ваша мережа не бачить, що ви користуєтеся RCQ. Там, де RCQ блокують, це ще й шлях усередину.";
+"onboard.relay.body" = "Якщо пряме з'єднання з островом не проходить або ви ввімкнули релеї самі, застосунок іде через релеї RCQ. Тоді острів не бачить вашої IP-адреси, а трафік виглядає як звичайне зашифроване з'єднання.";
 "onboard.chat.kicker" = "ЧАТ";
 "onboard.chat.title" = "Сервер не читає листування";
 "onboard.chat.body" = "Кожне повідомлення зашифроване наскрізно, а відправник схований усередині конверта. Сервер не знає, хто кому пише.";
@@ -1139,114 +1057,11 @@
 "onboard.calls.kicker" = "ГОЛОС І ВІДЕО";
 "onboard.calls.title" = "Дзвінки і групи";
 "onboard.calls.body" = "Голосові та відеодзвінки на WebRTC, групові чати з усіма, кого додаси. Пуш-сповіщення будять телефон на вхідний дзвінок; прихований відправник ховає маршрут від нас.";
-"onboard.pets.kicker" = "УЛЮБЛЕНЦІ";
-"onboard.pets.title" = "Заведи цифрового улюбленця";
-"onboard.pets.body" = "Відкривай коробки і збирай рідкісних анімованих улюбленців. Прокачуй їх, даруй, обмінюй. Той самий улюбленець випадає з різною рідкістю. Полюй за ідеальною копією.";
-"onboard.trade.kicker" = "ОБМІН";
-"onboard.trade.title" = "Обмін у реальному часі";
-"onboard.trade.body" = "Надішли пропозицію в чат, і одержувач бачить її миттєво. Предмети, жетони, самоцвіти з обох боків. Порожнє «прошу» = подарунок. Порожнє «пропоную» = прохання купити.";
 "onboard.privacy.kicker" = "ПРИВАТНІСТЬ";
 "onboard.privacy.title" = "Ти вирішуєш, хто що бачить";
 "onboard.privacy.body" = "Окрема видимість для часу в мережі, статі, запрошень у групи, пропозицій обміну: Усі, Лише контакти або Ніхто. Акаунт можна остаточно видалити коли завгодно; після цього не відновити нічого.";
 /* ── Rarity (used in chips, filters, history) ─────────────── */
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Ігри";
-"games.subtitle" = "Швидкі ставки жетонами.\nРаунд триває 15-30 секунд.";
-"games.section.solo" = "Соло";
-"games.section.pvp" = "Гравець проти гравця";
-"games.section.pets" = "Улюбленці";
-"games.soon" = "СКОРО";
-"games.cta.topup" = "Поповнити гаманець";
-"games.crash.title" = "Crash";
-"games.crash.body" = "Множник росте. Забери до обвалу.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Вгадай, наступна карта більша чи менша.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Обери цільовий множник і випробуй удачу.";
-"crash.title" = "Crash";
-"crash.you" = "Ти";
-"crash.phase.betting" = "Ставки · %.1f с";
-"crash.phase.running" = "ЙДЕ";
-"crash.phase.crashed" = "ОБВАЛ";
-"crash.feed.title" = "Забрали";
-"crash.feed.bets" = "%d гравців";
-"crash.feed.empty" = "Ще ніхто не поставив, будь першим";
-"crash.row.holding" = "ТРИМАЄ";
-"crash.row.burned" = "ЗГОРІВ";
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Зроби ставку";
-"hilo.phase.guess" = "БІЛЬША ЧИ МЕНША?";
-"hilo.card.label" = "Карта: %@";
-"hilo.bet.label" = "Ставка";
-"hilo.cta.start" = "СТАРТ %d";
-"hilo.cta.settling" = "РАХУЄМО…";
-"hilo.cta.higher" = "БІЛЬША";
-"hilo.cta.lower" = "МЕНША";
-"hilo.cta.cashout" = "ЗАБРАТИ %.2fx";
-"hilo.banner.won" = "Виграш %.2fx · +%d жетонів";
-"hilo.banner.lost" = "Карта %@: не вгадав. Ставка згоріла.";
-"hilo.rules.title" = "Правила Hi-Lo";
-"hilo.rules.how.title" = "Як грати";
-"hilo.rules.how.body" = "Зроби ставку, і сервер відкриває карту від A до K. Вгадай, наступна карта більша чи менша за поточну. Кожна правильна відповідь множить коефіцієнт. Помилка: ставка згоріла. Забрати можна будь-коли: ставка × поточний множник.";
-"hilo.rules.payout.title" = "Множник";
-"hilo.rules.payout.body" = "Чим менша ймовірність, тим більший множник. На 7 більша і менша майже рівні (×1,83). На A, де більша майже гарантована, лише ×1,04. На K дзеркально. Кожен правильний крок множить ланцюг.";
-"hilo.rules.fair.title" = "Чесність можна перевірити";
-"hilo.rules.fair.body" = "Кожна карта в раунді визначена ДО старту: SHA256(seed + index). Хеш ти бачиш одразу, а seed відкривається в кінці раунду, тож кожну роздачу можна перевірити вручну.";
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "ГОТОВИЙ КИДАТИ";
-"limbo.phase.rolling" = "Кидаємо…";
-"limbo.phase.won" = "ВИГРАШ";
-"limbo.phase.lost" = "МИМО";
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Улюбленець";
-"pet_preview.owner" = "Носить %@";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ЕСС %d";
-"pet_preview.purity" = "ЧИСТ %.2fx";
-"limbo.target.label" = "Ціль: %.2fx";
-"limbo.slider.label" = "Ціль";
-"limbo.slider.chance" = "Шанс";
-"limbo.bet.label" = "Ставка";
-"limbo.cta.roll" = "КИНУТИ %d";
-"limbo.banner.won" = "Випало %.2fx · +%d жетонів";
-"limbo.banner.lost" = "Випало %.2fx (треба було ≥%.2fx), мимо";
-"limbo.rules.title" = "Правила Limbo";
-"limbo.rules.how.title" = "Як грати";
-"limbo.rules.how.body" = "Обери повзунком цільовий множник (від 1.10x до 100x). Зроби ставку, натисни КИНУТИ. Сервер бере випадкове число з тієї ж кривої, що й Crash. Якщо випало ≥ цілі, ти виграв.";
-"limbo.rules.payout.title" = "Множник";
-"limbo.rules.payout.body" = "Чим вища ціль, тим більший множник і менший шанс. Ціль 2.00x це ~48% × 1.94. Ціль 10x це ~9.7% × 9.7. Баланс ризику обираєш ти.";
-"limbo.rules.fair.title" = "Чесність можна перевірити";
-"limbo.rules.fair.body" = "Кожен кидок бере client_seed (створений на твоєму пристрої) + server_seed (відкривається після кидка). Ти можеш сам перевірити SHA256(server + client) і переконатися, що результат не підмінили.";
-"crash.bet.label" = "Ставка";
-"crash.bet.cta" = "СТАВКА %d";
-"crash.bet.placed" = "Ставку %d зроблено";
-"crash.bet.wait" = "чекаємо на старт";
-"crash.cashout.label" = "ЗАБРАТИ %.2fx";
-"crash.you_cashed" = "Ти забрав ✓";
-"crash.spectating" = "Чекай наступного раунду";
-"crash.result.lost" = "Обвал на %.2fx, ставка згоріла";
-"crash.result.won" = "Виграш! %.2fx · +%d жетонів";
-"crash.result.next_in" = "Наступний раунд через %d с";
-"crash.banner.cashed" = "Забрано %.2fx · +%d жетонів";
-"crash.error.betting_closed" = "Ставки вже закриті";
-"crash.error.cashout_too_late" = "Пізно. Раунд обвалився саме тоді, коли надійшов твій дотик. Ставка згоріла.";
-"crash.error.already_cashed" = "Ти вже забрав цього раунду";
-"crash.error.already_bet" = "Ти вже поставив цього раунду";
-"crash.error.no_bet" = "У тебе немає ставки в цьому раунді";
-"crash.error.insufficient" = "Не вистачає жетонів";
-"crash.error.network" = "Зв'язок спіткнувся, спробуй ще раз";
-"crash.rules.title" = "Правила Crash";
-"crash.rules.how.title" = "Як грати";
-"crash.rules.how.body" = "Кожен раунд: 8 секунд на ставку, далі множник росте від 1.00x. Будь-якої миті натисни ЗАБРАТИ: фіксуєш ставку × поточний множник. Якщо затримаєшся, раунд обвалиться і ти втратиш усе.";
-"crash.rules.payout.title" = "Виплата";
-"crash.rules.payout.body" = "Виграш = ставка × множник на момент забору. Приклад: ставка 10 жетонів, забрав на 2.50x → +25 жетонів. Чим довше тримаєш, тим більший можливий виграш, і тим вищий ризик обвалу.";
-"crash.rules.fair.title" = "Чесність можна перевірити";
-"crash.rules.fair.body" = "Точка обвалу визначена ДО відкриття ставок: SHA256(seed + round_id). Хеш публікується на старті раунду, а сам seed відкривається в кінці. Перевірити можна вручну: після твоєї ставки результат ніхто не змінить.";
-"crash.rules.risk.title" = "Ризик";
-"crash.rules.risk.body" = "Близько 3% раундів обвалюються одразу на 1.00x. Це математична перевага закладу (жетони згоряють, ніхто на цьому не заробляє). 50% раундів обвалюються до 2.00x. 10% доходять за 10x. Грай на те, що готовий втратити.";
 "contact_list.bar.add" = "Додати";  /* legacy key kept for transitional bundles */
 /* ── Audio Rooms ─────────────────────────────────────────── */
 "audio_room.section.title" = "Аудіокімнати";
@@ -1307,106 +1122,8 @@
 "audio_room.rotate.confirm.body" = "Старий ключ перестає працювати. У всіх, у кого кімната вже в списку, вона лишається: їхній ключ оновиться сам. Хто тримає старий ключ, але не заходив, більше не увійде.";
 "audio_room.rotate.confirm.do" = "Змінити";
 "audio_room.rotate.toast" = "Ключ змінено";
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "Аукціон UIN";
-"games.uin_auction.body" = "Один UIN щогодини. Битви ставок до останньої секунди.";
-"games.pets_hunt.title" = "Полювання";
-"games.pets_hunt.body" = "Вдягнений улюбленець заробляє жетони сам. Ризикни ним на полюванні заради великої винагороди.";
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "%d жетонів / день при повній зайнятості";
-"pet_hunt.daily_gems" = "%d самоцвітів / день при повній зайнятості";
-"pet_hunt.cap_reached" = "Буфер повний. Забирай, інакше здобуток пропаде";
-"pet_hunt.claim" = "Забрати";
-"pet_hunt.send" = "ВІДПРАВИТИ НА ПОЛЮВАННЯ";
-"pet_hunt.hunts_left" = "%d / %d полювань сьогодні";
-"pet_hunt.cta.open_memorial" = "Меморіал";
-"pool.rarity.section" = "Кидок рідкості";
-"pool.rarity.hint" = "Рідкість кидається окремо від того, що саме випадає: будь-який улюбленець, набір смайлів чи голос може випасти з будь-якою рідкістю за шансами нижче.";
-"pet_hunt.empty.no_pet.title" = "Улюбленця не вдягнено";
-"pet_hunt.accumulator.title" = "У буфері";
-"pet_hunt.spec.daily_yield" = "Жетонів / день";
-"pet_hunt.spec.daily_gems" = "Самоцвітів / день";
-"pet_hunt.spec.hourly_rate" = "Жетонів / годину";
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "Як це працює";
-"pet_hunt.info.passive.title" = "Пасивний фарм";
-"pet_hunt.info.passive.body" = "Вдягнений улюбленець заробляє жетони цілодобово. Вища рідкість, вищий рівень і вища чистота підвищують швидкість. Буфер вміщає 24 години. Забирай щодня, інакше надлишок пропаде.";
-"pet_hunt.info.zones.title" = "Зони полювання";
-"pet_hunt.info.zones.body" = "Три полювання на день дають ризикнути улюбленцем заради більшої винагороди. Ліс безпечний, Гори ризиковані, Печера хардкор. Сильніші улюбленці частіше досягають успіху І частіше виживають після невдачі.";
-"pet_hunt.info.death.title" = "Смерть назавжди";
-"pet_hunt.info.death.body" = "Якщо улюбленець провалить полювання і дістане поранення на 0 рівні, він гине назавжди. Катастрофи в Горах і Печері вбивають будь-якого улюбленця незалежно від рівня. Загартовуй улюбленців, перш ніж відправляти їх у складні зони.";
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "Обери полювання";
-"pet_hunt.zone_picker.intro" = "Більша винагорода, більший ризик. Якість твого улюбленця змінює справжні числа.";
-"pet_hunt.zone.forest" = "Ліс";
-"pet_hunt.zone.forest.reward" = "Жетони 3–8 × характеристики + самоцвіти 0–2";
-"pet_hunt.zone.forest.risk" = "Безпечно: лише легкі поранення, без смерті";
-"pet_hunt.zone.mountain" = "Гори";
-"pet_hunt.zone.mountain.reward" = "Жетони 8–20 × характеристики + самоцвіти 1–4";
-"pet_hunt.zone.mountain.risk" = "Ризиковано: поранення часті, смерті рідкісні";
-"pet_hunt.zone.cave" = "Печера";
-"pet_hunt.zone.cave.reward" = "Жетони 20–50 × характеристики + самоцвіти 2–7";
-"pet_hunt.zone.cave.risk" = "Хардкор: часті поранення, справжній ризик смерті";
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "Вдале полювання";
-"pet_hunt.result.success.body" = "Твій улюбленець повернувся неушкодженим. Зона: %@.";
-"pet_hunt.result.wound" = "Поранений";
-"pet_hunt.result.wound.body" = "Твого улюбленця поранено, він втратив рівень. Тепер рівень %d.";
-"pet_hunt.result.death" = "Не повернувся";
-"pet_hunt.result.death.body" = "Твій улюбленець загинув. Його пам'ятатимуть у Меморіалі.";
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "Меморіал";
-"pet_hunt.memorial.empty.title" = "Ще ніхто не загинув";
-"pet_hunt.memorial.empty.body" = "Улюбленці, що гинуть на полюванні, будуть тут.";
-"pet_hunt.memorial.died_in" = "Загинув: %@";
 /* Common */
 "common.continue" = "Далі";
-"uin_auction.alert.title" = "Аукціон";
-"uin_auction.hero.kicker" = "ПОТОЧНИЙ ЛОТ";
-"uin_auction.tier.legendary" = "Легендарний";
-"uin_auction.tier.mid" = "Рідкісний";
-"uin_auction.tier.common" = "Звичайний";
-"uin_auction.soft_close" = "М'яке закриття: будь-яка ставка додає 60 с";
-"uin_auction.soft_close.badge" = "М'ЯКЕ ЗАКРИТТЯ";
-"uin_auction.soft_close.note" = "Будь-яка нова ставка додає до таймера 60 секунд";
-"uin_auction.error.generic" = "Не вдалося зробити ставку. Спробуй ще раз.";
-"uin_auction.high_bid" = "НАЙВИЩА СТАВКА";
-"uin_auction.no_bids_yet" = "Ставок ще немає";
-"uin_auction.you_lead" = "Ти лідируєш";
-"uin_auction.lead_by" = "Лідер: %@";
-"uin_auction.min_next" = "МІН. НАСТУПНА";
-"uin_auction.bid_placeholder" = "Мін. %d";
-"uin_auction.cta.bid" = "Ставка";
-"uin_auction.cta.topup" = "Поповнити";
-"uin_auction.insufficient_hint" = "Не вистачає жетонів";
-"uin_auction.need_tokens" = "Не вистачає жетонів, купи ще";
-"uin_auction.history.title" = "ІСТОРІЯ СТАВОК";
-"uin_auction.history.empty" = "Постав першим";
-"uin_auction.waiting.title" = "Готуємо наступний лот…";
-"uin_auction.waiting.body" = "Новий аукціон почнеться за кілька секунд. Легендарні UIN трапляються нечасто, лишайся поруч.";
-"uin_auction.error.bid_too_low" = "Мінімальна ставка %d жетонів";
-"uin_auction.error.no_amount" = "Спершу введи суму ставки.";
-"uin_auction.error.insufficient" = "Потрібно %d жетонів, є %d";
-"uin_auction.error.already_lead" = "Ти вже лідер";
-"uin_auction.error.ended" = "Аукціон завершено";
-"uin_auction.outbid_refund" = "Твою ставку перебито. %d жетонів повернуто.";
-"uin_auction.banner.outbid.title" = "Ставку на аукціоні UIN перебито";
-"uin_auction.banner.outbid.body" = "Твою ставку перебито, %d жетонів повернуто. Натисни, щоб поставити ще раз.";
-"uin_auction.recent.title" = "Останні переможці";
-"uin_auction.recent.empty" = "Завершених аукціонів ще немає";
-"uin_auction.recent.won_by" = "Виграв %@";
-"uin_auction.owned.title" = "Мої UIN";
-"uin_auction.owned.body" = "UIN, виграні на аукціоні. Будь-який можна зробити своїм поточним UIN: це запускає переїзд (99 жетонів).";
-"uin_auction.owned.empty" = "Виграних UIN поки немає. Вигравай аукціон!";
-"uin_auction.owned.activate" = "Активувати";
-"uin_auction.owned.sell" = "Продати на ринку";
-"uin_auction.owned.remove.confirm.title" = "Прибрати UIN #%d?";
-"uin_auction.owned.remove.confirm.message" = "Це незворотно. UIN повертається в пул, і його можуть видати комусь іншому.";
-"uin_auction.owned.remove.confirm.button" = "Прибрати";
-"uin_auction.owned.remove.error" = "Не вдалося прибрати UIN. Спробуй за мить.";
-"uin_auction.owned.confirm.title" = "Зробити UIN %d твоїм?";
-"uin_auction.owned.confirm.button" = "Активувати (%d)";
-"uin_auction.owned.activated" = "Готово. Твій новий UIN: %d";
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "щойно";
 "last_seen.minute_one" = "%d хвилину тому";
@@ -1523,7 +1240,7 @@
 "chat.voice.lock_armed" = "Відпусти, щоб зафіксувати";
 "chat.voice.swipe_hints" = "← скасувати   ↑ зафіксувати";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "АНОНІМНО";
+"onboard.anon.kicker" = "ПРИВАТНО";
 "onboard.anon.title" = "Без телефону й пошти";
 "onboard.anon.body" = "Ваша особа це номер і більше нічого. Він не прив'язаний до вас, його можна спалити й почати знову будь-коли.";
 "onboard.mesh.kicker" = "ОФЛАЙН";
@@ -1569,7 +1286,7 @@
 "onboard.server.picker.intro.body" = "Кожен сервер RCQ це свій острів. Твій акаунт, контакти й повідомлення живуть тільки на сервері, який ти обрав. Писати можна лише користувачам того самого сервера.";
 "onboard.server.picker.search" = "Пошук серверів";
 "onboard.server.picker.empty" = "Нічого не знайдено";
-"boot.error.unreachable" = "Не вдалося дістатися RCQ. Можливо, твоя мережа його блокує. Спробуй VPN.";
+"boot.error.unreachable" = "Не вдалося дістатися RCQ. Можливо, твоя мережа його блокує. Спробуй іншу мережу або релеї RCQ.";
 "boot.error.title" = "Не вдалося підключитися";
 "boot.error.retrying" = "Повтор через %d с…";
 "boot.error.retry_now" = "Повторити зараз";
@@ -1883,6 +1600,7 @@
 "settings.island.rules" = "Правила острова";
 "reg.invite.enter" = "Ввести код";
 "boot.error.switch_account" = "Інший акаунт";
+"boot.error.choose_island" = "Вибрати інший острів";
 
 "invites.title" = "Коди доступу";
 "invites.body" = "Код доступу використовується один раз: той, хто його введе, заведе акаунт на цьому острові. Наступний з’являється сам, по одному за період.";
@@ -1912,3 +1630,10 @@
 /* ── Акаунт переїхав на інший номер (подія `account_moved`) ── */
 "account.moved.blocked.title" = "Акаунт переїхав на новий номер";
 "account.moved.blocked.body" = "Ви взяли новий номер на іншому пристрої, а цей пристрій не зміг піти за ним. Нічого не видалено: листування на місці. Увійдіть знову за фразою відновлення, щоб продовжити на новому номері.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "Острів недоступний";
+"relay.key.offline.body" = "Ключ збережено, але острів не відповів, і перевірити ключ не вдалося. Перевіримо ще раз під час наступного підключення.";
+"relay.key.ok.none" = "Ключ прийнято. Приватних вузлів за ним ще не закріплено, тому працює спільний пул.";
+"chat.menu.report_group" = "Поскаржитися на групу";
+"report.heading.group" = "Поскаржитися на групу";

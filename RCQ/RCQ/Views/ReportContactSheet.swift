@@ -15,17 +15,69 @@ struct ReportContactSheet: View {
     /// — admin uses it to triage by where the report originated.
     /// Defaults to "contact" for legacy call sites that don't pass
     /// a value; UGC surfaces wire their own ("profile", "chat",
-    /// "group", "audio_room", "stranger_mode").
+    /// "group", "audio_room", "stranger_mode", "site:<name>@<host>",
+    /// "group:<id>").
     var context: String = "contact"
+    /// What the reason field opens with. Empty for a person; a room report
+    /// seeds it with the room's name so the moderator sees which room without
+    /// looking the id in `context` up. It does not count towards the minimum:
+    /// the person still has to say what happened.
+    let initialReason: String
 
     @Environment(\.dismiss) private var dismiss
-    @State private var reason: String = ""
+    @State private var reason: String
     @State private var sending: Bool = false
     @State private var sentOK: Bool = false
     @State private var errorMessage: String?
 
     private static let maxLength: Int = 1000
     private static let minLength: Int = 10
+
+    init(targetUIN: Int, targetNickname: String, context: String = "contact", initialReason: String = "") {
+        self.targetUIN = targetUIN
+        self.targetNickname = targetNickname
+        self.context = context
+        self.initialReason = initialReason
+        _reason = State(initialValue: initialReason)
+    }
+
+    /// The sheet for a room itself (App Review 1.2, B.14), not a member of it.
+    /// Names the OWNER, with the room in `context` as `group:<id>` (the form
+    /// the server's `Report.context` comment names and Android sends) and the
+    /// room's name on the first line of the reason.
+    static func forGroup(_ group: RCQGroup) -> ReportContactSheet {
+        ReportContactSheet(
+            targetUIN: groupReportTarget(group),
+            targetNickname: group.name,
+            context: groupReportContext(group),
+            initialReason: group.name + "\n"
+        )
+    }
+
+    /// The account a report about `group` names: its owner on THIS island. A
+    /// room on another island carries its owner's uin in THAT island's uin
+    /// space (§5c), and posting it to ours would file the report against
+    /// whoever holds the same number here, so it goes out as `target_uin = 0`,
+    /// which the server accepts with a `group:` context (reports.py,
+    /// `create_report`); Android sends the same for a room without an owner.
+    private static func groupReportTarget(_ group: RCQGroup) -> Int {
+        guard group.host == nil, group.ownerUIN > 0 else { return 0 }
+        return group.ownerUIN
+    }
+
+    /// `group:<id>` for a room on this island. A room on another island has a
+    /// local NEGATIVE alias for an id here (§5c), which means nothing to the
+    /// moderator reading the queue, so the host island's own id goes out with
+    /// the host after it, the way a site report names its page.
+    private static func groupReportContext(_ group: RCQGroup) -> String {
+        if let host = group.host {
+            let remote = VisitedIslandsStore.shared.refByAlias(group.id)?.remoteId ?? group.id
+            return "group:\(remote)@\(host)"
+        }
+        return "group:\(group.id)"
+    }
+
+    private var isGroupReport: Bool { context.hasPrefix("group:") }
 
     var body: some View {
         NavigationStack {
@@ -71,15 +123,18 @@ struct ReportContactSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
                 // A site has no person behind it: the heading says "this
-                // page" and no "0" is printed where a number would go.
-                Text((context.hasPrefix("site:") ? "report.heading.site" : "report.heading").localized)
+                // page" and no "0" is printed where a number would go. A room
+                // report names its owner, but the line under the heading is
+                // the room, so the owner's number is not printed next to a
+                // name that is not theirs.
+                Text(headingKey.localized)
                     .font(.title3.weight(.semibold))
                     .foregroundColor(Theme.Color.textPrimary)
                 HStack(spacing: 4) {
                     Text(targetNickname)
                         .font(.callout)
                         .foregroundColor(Theme.Color.textPrimary)
-                    if targetUIN > 0 {
+                    if targetUIN > 0 && !isGroupReport {
                         Text(verbatim: "\(targetUIN)")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(Theme.Color.textSecondary)
@@ -146,8 +201,23 @@ struct ReportContactSheet: View {
         }
     }
 
+    private var headingKey: String {
+        if context.hasPrefix("site:") { return "report.heading.site" }
+        if isGroupReport { return "report.heading.group" }
+        return "report.heading"
+    }
+
     private var canSubmit: Bool {
-        reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= Self.minLength
+        // The seeded first line is not the person's account of what happened,
+        // so the minimum is measured on what they typed after it. Comparing the
+        // whole text to the seed was not enough: a room with a ten-letter name
+        // could be reported with one more character.
+        let seeded = initialReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        var own = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !seeded.isEmpty, own.hasPrefix(seeded) {
+            own = String(own.dropFirst(seeded.count))
+        }
+        return own.trimmingCharacters(in: .whitespacesAndNewlines).count >= Self.minLength
     }
 
     private func submit() async {

@@ -74,7 +74,7 @@ enum Emoticons {
         return words.prefix(1).uppercased() + words.dropFirst()
     }
 
-    /// Every emoticon with a `:code:`. One pack now: the ICQ "set 14" that
+    /// Every emoticon with a `:code:`. One pack now: the classic "set 14" that
     /// shipped before it was retired asset-and-all, so a `:smile:` from an old
     /// message has nothing to draw and stays as the text it is.
     static let entries: [Entry] = {

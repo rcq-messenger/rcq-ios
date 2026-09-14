@@ -38,11 +38,9 @@
 "settings.sound.row.off" = "Kapalı";
 "settings.sound.section.master" = "Ana anahtar";
 "settings.sound.section.presence" = "Kişi durumu";
-"settings.sound.section.presence.hint" = "Bir kişi çevrimiçi olduğunda ya da çıktığında ICQ tarzı bir ses. İkisi de varsayılan olarak kapalı.";
+"settings.sound.section.presence.hint" = "Bir kişi çevrimiçi olduğunda ya da çıktığında klasik bir ses. İkisi de varsayılan olarak kapalı.";
 "settings.sound.contact_online" = "Kişi çevrimiçi oldu";
 "settings.sound.contact_offline" = "Kişi çevrimdışı oldu";
-"settings.minis.toggle" = "Oyun mini pencereleri";
-"settings.minis.toggle.footer" = "Sohbet listesinde yüzen Crash ve UIN açık artırma pencerelerini gösterir; böylece oyunun içinde kalmadan bir turu ya da teklifi takip edebilirsin.";
 "settings.trades.realtime" = "Anlık takas pencereleri";
 "settings.trades.realtime.footer" = "Açıkken gelen takas hemen açılır. Kapalıyken takaslar sessizce Takaslar penceresinde ve gönderenle olan sohbette bekler.";
 "settings.language" = "Dil";
@@ -209,12 +207,6 @@
 "settings.network.singbox.status.on" = "RCQ röleleri üzerinden";
 "relays.learn_more" = "Röle nedir?";
 "settings.network.coming_soon" = "Yakında";
-"settings.traffic" = "Dosya trafiği";
-"settings.traffic.used" = "Bu ay kullanılan";
-"settings.traffic.used.value" = "%d MB";
-"settings.traffic.spent" = "Harcanan";
-"settings.traffic.pay_large" = "50 MB'tan büyük dosyalar için jeton öde";
-"settings.traffic.pay_large.footer" = "50 MB'a kadar ücretsiz. Üstü için her 10 MB'ta 1 jeton; jetonun olduğu sürece boyut sınırı yok.";
 "settings.history" = "Geçmiş";
 "settings.history.file" = "Sohbet geçmişi dosyası";
 "backup.intro" = "Bu cihazdaki geçmişi, kurtarma ifadenle şifreleyip bir dosyaya kaydeder. Dosya senin: istediğin yerde sakla. Bize hiçbir şey yüklenmez ve biz okuyamayız.";
@@ -336,20 +328,13 @@
 "group_join.island_hint" = "Katılmak anahtarını %@ adasına kaydeder, böylece grup sana teslim edebilir.";
 "group_join.open_button" = "Aç";
 "group_join.closed_button" = "Davetle";
-"group_join.price_suffix" = "katılmak için";
 "group_join.owner" = "Grup sahibi: %@";
 "group_join.owner_label" = "Grup sahibi";
 "group_join.closed_hint" = "Bu gruba yalnızca davetle girilir. Grup sahibinden seni eklemesini iste.";
-"group_join.insufficient" = "%d jeton gerek, sende %d var.";
 "group_join.error.generic" = "Bu grup yüklenemedi.";
 "group_join.error.blocked" = "Grup sahibi seni bu gruptan engelledi.";
 "group.settings.closed" = "Kapalı grup";
 "group.settings.closed.hint" = "Yeni üyeyi yalnızca grup sahibinin daveti ekler. Paylaşılan bağlantı yine önizleme gösterir ama kendiliğinden katılamaz.";
-"paid_traffic.title" = "Trafik için ödensin mi?";
-"paid_traffic.body" = "Bu dosya %@; ücretsiz 50 MB sınırından büyük. Göndermek için Ayarlar'dan ücretli trafiği aç.";
-"paid_traffic.price_suffix" = "bu dosya";
-"paid_traffic.enable" = "Ücretli trafiği aç";
-"paid_traffic.cancel" = "İptal";
 "contact_list.ctx.report" = "Bildir";
 "report.title" = "Bildir";
 "report.heading" = "Kullanıcıyı bildir";
@@ -365,7 +350,6 @@
 "settings.account.burn.title" = "Bu hesap yakılsın mı?";
 "settings.account.burn.confirm" = "Yak";
 "settings.account.burn.message" = "Hesabın sunucuda ve bu cihazda silinir. Yepyeni bir UIN ile başlarsın. Eski kişilerin ve grupların gider; yeni kimliğinle aralarında hiçbir bağ kalmaz. Bu geri alınamaz.";
-"settings.account.burn.tally" = "%d eşya, %d jeton, %d taş";
 "settings.link_web" = "Web bağla";
 "settings.share.message" = "RCQ'da beni ekle: %@ (%d)";
 "settings.link_web.footer" = "Masaüstü tarayıcıda chat.rcq.app kullan. Siteye yapıştıracağın tek kullanımlık bir kod üretir. Şimdilik yalnızca gönderme; cevaplar yine iOS'a düşer.";
@@ -411,7 +395,6 @@
 "status.offline" = "Çevrimdışı";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Çevrimdışı";
-"contact_list.bar.games" = "Oyunlar";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Yakındakiler";
 "contact_list.bar.settings" = "Ayarlar";
@@ -531,17 +514,6 @@
 "report_evidence.consent.toggle" = "RCQ moderatörlerinin bu içeriği incelemesine izin veriyorum";
 "report_evidence.cta.send" = "Bildirimi gönder";
 "report_evidence.error.no_bytes" = "İçerik bildirim için yüklenemedi. Mesajı yeniden açıp tekrar dene.";
-/* ── Crash mini-bar ───────────────────────────────────────── */
-"crash.mini.betting" = "Bahis";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Bahis koy";
-"crash.mini.placed" = "Kondu";
-"crash.mini.cashout_cta" = "Çek";
-"crash.mini.crashed_at" = "%.2f× patladı";
-/* ── Auction mini-bar ─────────────────────────────────────── */
-"auction.mini.leading" = "Önde · %d";
-"auction.mini.outbid" = "Geçildin, yeniden teklif?";
-"auction.mini.bid_cta" = "Yükselt";
 "chat.menu.voice_call" = "Sesli arama";
 "chat.menu.video_call" = "Görüntülü arama";
 "chat.menu.propose_trade" = "Takas öner";
@@ -561,7 +533,6 @@
 "chat.attach.photo" = "Fotoğraf";
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Kamera";
-"chat.attach.premium" = "Ücretli";
 "chat.attach.document" = "Belge";
 "chat.attach.location" = "Konum";
 "chat.location.title" = "Konum seç";
@@ -570,7 +541,6 @@
 "chat.location.open.apple" = "Apple Haritalar";
 "chat.location.open.google" = "Google Haritalar";
 "chat.location.copy" = "Koordinatları kopyala";
-"chat.file.pay_required" = "50 MB'tan büyük dosyalar için Ayarlar'daki dosya ödeme anahtarı gerekli.";
 "chat.translate.title" = "Çeviri";
 "chat.translate.section.original" = "Özgün";
 "chat.translate.section.translated" = "Çeviri";
@@ -578,22 +548,6 @@
 "chat.translate.empty" = "Çevrilecek bir şey yok.";
 "chat.translate.translated_badge" = "Çevrildi";
 "chat.action.show_original" = "Özgün metni göster";
-"chat.premium.compose.title" = "Ücretli içerik";
-"chat.premium.compose.body" = "Bir jeton fiyatı koy. Alıcılar bulanık bir balon görür ve medyayı açmak için öder. Sana yüzde 95 kalır (yüzde 5 komisyon).";
-"chat.premium.compose.price_placeholder" = "Fiyat";
-"chat.premium.compose.hint" = "1 ile 999.999 jeton arası.";
-"chat.premium.compose.pick_photo" = "Fotoğraf";
-"chat.premium.compose.pick_video" = "Video";
-"chat.premium.unlock_for" = "Açmak için";
-"chat.premium.preview_photo" = "Ücretli fotoğraf";
-"chat.premium.preview_video" = "Ücretli video";
-"chat.premium.confirm.title" = "%d jetona açılsın mı?";
-"chat.premium.confirm.body" = "Jetonlar bakiyenden düşülür ve medya anahtarı sana iletilir.";
-"chat.premium.confirm.pay" = "%d öde";
-"chat.premium.error.title" = "Açılamadı";
-"chat.premium.error.insufficient" = "Yeterli jeton yok.";
-"chat.premium.error.gone" = "Bu içerik artık yok.";
-"chat.premium.error.generic" = "Bir şeyler ters gitti. Tekrar dene.";
 "chat.voice.permission.title" = "Mikrofon erişimi gerekli";
 "chat.voice.permission.body" = "Sesli mesaj kaydetmek için Ayarlar → RCQ altından mikrofon erişimini aç.";
 "settings.migrate.header" = "Hesap";
@@ -621,7 +575,8 @@
 "contact_list.discover.title" = "Açık gruplar";
 "contact_list.discover.join" = "Katıl";
 "contact_list.empty.title" = "Henüz kişi yok";
-"contact_list.empty.body" = "Konuşmaya başlamak için UIN ya da QR koduyla bir arkadaş ekle. Rastgele Sohbet kişi olmadan da çalışır.";
+"contact_list.empty.body" = "Konuşmaya başlamak için UIN ya da QR koduyla bir arkadaş ekle.";
+"contact_list.empty.stranger" = "Rastgele Sohbet kişi olmadan da çalışır.";
 "contact_list.empty.cta" = "Kişi ekle";
 "chat.empty.title" = "Henüz mesaj yok";
 "chat.empty.body" = "Selam ver, ilk mesajın konuşmayı başlatır.";
@@ -684,8 +639,6 @@
 "chat.preview.market_item" = "Pazar eşyası";
 "chat.preview.uin_listing" = "UIN ilanı";
 "chat.preview.group_invite" = "Grup daveti";
-"chat.preview.premium_photo" = "🔒 Ücretli fotoğraf";
-"chat.preview.premium_video" = "🔒 Ücretli video";
 "chat.preview.generic" = "Mesaj";
 "chat.banner.new_message" = "Yeni mesaj";
 /* ── Call screen ──────────────────────────────────────────── */
@@ -766,8 +719,6 @@
 "group.settings.post_policy.all" = "Herkes";
 "group.settings.post_policy.owner_only" = "Yalnızca grup sahibi";
 "group.settings.post_policy.hint" = "Yalnızca grup sahibi modunda üyeler okur ama yazamaz.";
-"group.settings.entry_price" = "Jetonla giriş ücreti";
-"group.settings.entry_price.hint" = "0 = ücretsiz. Her ödemeden yüzde 5 pazar komisyonu kesilir; kalanı grup sahibine gider.";
 "group.settings.name" = "Grup adı";
 "group.settings.photo" = "Grup görseli";
 "group.settings.change_photo" = "Görseli değiştir";
@@ -779,7 +730,6 @@
 "group.avatar.remove.confirm" = "Grup görseli kaldırılsın mı?";
 "group.unavailable" = "Grup kullanılamıyor.";
 "group.compose.broadcast_only" = "Yalnızca grup sahibi yazabilir";
-"group.error.join_payment" = "Grup girişi ödenemedi";
 "group.cta.add_member" = "Üye ekle";
 "group.cta.copy_link" = "Grup bağlantısını kopyala";
 "group.cta.link_copied" = "Bağlantı kopyalandı";
@@ -847,7 +797,7 @@
 /* ── About sheet ──────────────────────────────────────────── */
 "about.title" = "RCQ hakkında";
 "about.tagline" = "Aynı ruh, modern kriptografi.";
-"about.body" = "RCQ sonsuza dek ücretsiz. Reklam yok, veri toplama yok, telefon numarası yok.";
+"about.body" = "RCQ özel bir mesajlaşma uygulamasıdır. Reklam yok, izleyici yok, analitik yok, telefon numarası yok.";
 "about.stats.users" = "kişi bu adada";
 "about.privacy.section" = "GİZLİLİK";
 "about.privacy.b1" = "Uçtan uca şifreli mesajlar (Signal Protocol).";
@@ -855,7 +805,7 @@
 "about.privacy.b3" = "Sıfır bilgili sunucu: mesajlar yalnızca şifreli yığın olarak durur, teslimde silinir.";
 "about.privacy.b4" = "Telefon numarası yok, e-posta yok; tek kimlik UIN.";
 "about.privacy.b5" = "Geçmiş yalnızca cihazında yaşar, kilitliyken şifreli durur.";
-"about.privacy.b6" = "Hesabın bir adada yaşar; bu adayı isteyen herkes kurabilir. Adalar birbiriyle hiç konuşmaz, onları birbirine bağlayan senin uygulaman.";
+"about.privacy.b6" = "Hesabın bir adada yaşar; bu adayı isteyen herkes kurabilir. Farklı adalardaki insanlar yine de birbiriyle konuşabilir.";
 "about.contact.section" = "İLETİŞİM";
 "about.contact.support" = "Destek";
 "about.contact.website" = "Web sitesi";
@@ -880,17 +830,10 @@
 "add.section.groups" = "GRUPLAR";
 "add.section.join_group" = "GRUBA KATIL";
 "join_group.title" = "Gruba katıl";
-"join_group.entry_price" = "Giriş ücreti";
-"join_group.your_balance" = "Sende";
 "join_group.cta.free" = "Katıl";
-"join_group.cta.pay" = "Öde ve katıl";
-"join_group.cta.insufficient" = "Yeterli jeton yok";
 "join_group.alert.title" = "Grup";
-"join_group.error.insufficient" = "%d jeton gerek, sende %d var";
 "join_group.error.blocked" = "Grup sahibi seni engelledi";
 "join_group.error.generic" = "Katılınamadı. Tekrar dene.";
-"chat.menu.premium_content" = "Ücretli içerik";
-"chat.premium.coming_soon" = "Yakında. Grup sahibi, jeton fiyatı koyup fotoğraf ve videoları bulanık paylaşabilecek; üyeler mesaj başına açar, sahibine yüzde 95 kalır (yüzde 5 pazar komisyonu).";
 "add.section.people" = "KİŞİLER";
 "add.cta.add" = "Kişilere ekle";
 "add.cta.in_list" = "Zaten kişi listende";
@@ -986,18 +929,6 @@
 "ci.add_self" = "Bu sensin, bu adadaki hesabın";
 "contact_list.section.cross_island" = "Diğer adalar";
 "pending.cta.decline" = "Reddet";
-"pool.boost_note" = "İhtimaller %%%d evcil hayvan artışıyla gösteriliyor.";
-"shop.kicker" = "MAĞAZA";
-"shop.title" = "Jeton al";
-"shop.subtitle" = "Jeton, RCQ'nun uygulama içi para birimi. Oyunlarda, pazarda, ücretli içerikte ve açık artırmalarda harcanır.";
-"shop.tokens_n" = "%d jeton";
-"shop.best_value" = "EN AVANTAJLI";
-"shop.per_token" = "jeton başına %d¢";
-"shop.balance" = "Bakiyen sunucuda, UIN'inin altında durur. Gerçek App Store satın alması sonra gelecek; yukarıdaki paketler test için cüzdanına anında yüklenir.";
-"pool.title" = "Havuz";
-"pool.section_share" = "çekilişlerde %%%.0f";
-"pool.cap" = "üst sınır %d";
-"pool.cap_remaining" = "%d / %d kaldı";
 "settings.privacy.relay_calls" = "Aramaları hep röleden geçir";
 "settings.privacy.relay_calls.desc" = "Arama sesini ve görüntüsünü rölemizden geçirir, böylece karşı taraf IP adresini hiç öğrenmez. Bunu kapatmak arama kalitesini artırabilir ama adresini gösterir.";
 "settings.privacy.strangers" = "Yabancılar isteklere düşsün";
@@ -1025,19 +956,6 @@
 "radio.info.privacy.body" = "Hiçbir şey yerel ağdan dışarı çıkmaz. Oturumların katılımcılar arasında uçtan uca şifreli; oturum anahtarını odayı kuran kişi parola olarak paylaşır. Geçmiş yalnızca bellekte durur, sohbeti kapattığında konuşma kaybolur.";
 "radio.info.when.title" = "Ne zaman kullanılır";
 "radio.info.when.body" = "Gürültülü bir etkinlikte arkadaşlarınla anlaş. Aynı binadaki birine hızlı bir not geç. Ağ kesintisinde ya da mobil verinin kısıldığı bir bölgede irtibatta kal. Telefonların yakın olduğu ve normal internet yolunun kapalı, yavaş ya da riskli olduğu her yerde.";
-"pool.detail.chance" = "DÜŞME ŞANSI  %%%.2f";
-"pool.detail.cap" = "BASKI  %d";
-"pool.detail.cap_remaining" = "%d / %d KALDI";
-"pool.gems.section" = "Taşlar";
-"pool.gems.title" = "Taş paketi";
-"pool.gems.range" = "her düşüşte %d–%d taş";
-"pool.pack.contents" = "PAKET İÇERİĞİ · %d";
-"disassemble.title" = "Parçala";
-"disassemble.body" = "Parçalamak bu eşyayı kalıcı olarak yok eder. Nadirliğine ve tavlama seviyesine göre taş alırsın.";
-"disassemble.cta" = "Parçala";
-"disassemble.cta.busy" = "Parçalanıyor…";
-"disassemble.cta.cancel" = "İptal";
-"disassemble.success.body" = "%@ gitti.";
 /* ── Trades ───────────────────────────────────────────────── */
 /* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Yakındakiler";
@@ -1129,7 +1047,7 @@
 "onboard.federation.body" = "RCQ tek bir şirketin sunucusu değildir. Adayı herkes kurabilir, hesabınız seçtiğiniz adada yaşar ve numaranız sizinle taşınır.";
 "onboard.relay.kicker" = "GİZLİLİK";
 "onboard.relay.title" = "Ada adresinizi görmez";
-"onboard.relay.body" = "Trafik topluluk aktarıcılarından geçer: ada nerede olduğunuzu, ağınız RCQ kullandığınızı asla görmez. RCQ'nun engellendiği yerde bu aynı zamanda giriş yoludur.";
+"onboard.relay.body" = "Adanıza doğrudan bağlantı kurulamazsa ya da siz açarsanız, uygulama RCQ aktarıcıları üzerinden bağlanır. Ada o zaman IP adresinizi görmez, trafiğiniz de sıradan bir şifreli bağlantı gibi görünür.";
 "onboard.chat.kicker" = "SOHBET";
 "onboard.chat.title" = "Sunucu okuyamaz";
 "onboard.chat.body" = "Her mesaj uçtan uca şifrelenir ve gönderen zarfın içinde gizlidir. Sunucu kimin kime yazdığını bilmez.";
@@ -1139,114 +1057,11 @@
 "onboard.calls.kicker" = "SES VE GÖRÜNTÜ";
 "onboard.calls.title" = "Aramalar + gruplar";
 "onboard.calls.body" = "WebRTC ile sesli ve görüntülü aramalar, eklediğin herkesle grup sohbetleri. Gelen aramalarda push bildirimi seni uyandırır; mühürlü gönderen yönlendirmeyi bizden gizler.";
-"onboard.pets.kicker" = "EVCİL HAYVANLAR";
-"onboard.pets.title" = "Dijital bir evcil hayvan edin";
-"onboard.pets.body" = "Kutu aç ve nadir, hareketli evcil hayvanlar topla. Onları geliştir, hediye et, takas et. Aynı hayvan farklı nadirliklerde düşebilir; mükemmel kopyanın peşine düş.";
-"onboard.trade.kicker" = "TAKAS";
-"onboard.trade.title" = "Anlık takas";
-"onboard.trade.body" = "Sohbette bir teklif gönder, alıcı anında görür. İki tarafta da eşya, jeton, taş olabilir. Boş \"istenen\" = hediye. Boş \"verilen\" = satın alma isteği.";
 "onboard.privacy.kicker" = "GİZLİLİK";
 "onboard.privacy.title" = "Kimin ne göreceğine sen karar ver";
 "onboard.privacy.body" = "Son görülme, cinsiyet, grup davetleri, takas teklifleri için alan alan görünürlük: Herkes, Yalnızca kişiler ya da Hiç kimse. Hesabı istediğin zaman temelli sil; sonrasında kurtarılacak hiçbir şey kalmaz.";
 /* ── Rarity (used in chips, filters, history) ─────────────── */
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Oyunlar";
-"games.subtitle" = "Hızlı jeton bahisleri.\nTurlar 15-30 saniye sürer.";
-"games.section.solo" = "Tek kişilik";
-"games.section.pvp" = "Oyuncuya karşı oyuncu";
-"games.section.pets" = "Evcil hayvanlar";
-"games.soon" = "YAKINDA";
-"games.cta.topup" = "Cüzdanı doldur";
-"games.crash.title" = "Crash";
-"games.crash.body" = "Çarpan yükselir; patlamadan önce çek.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Sonraki kart daha yüksek mi düşük mü, tahmin et.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Bir hedef çarpan koy ve şansını dene.";
-"crash.title" = "Crash";
-"crash.you" = "Sen";
-"crash.phase.betting" = "Bahisler · %.1fs";
-"crash.phase.running" = "GİDİYOR";
-"crash.phase.crashed" = "PATLADI";
-"crash.feed.title" = "Çekenler";
-"crash.feed.bets" = "%d oyuncu";
-"crash.feed.empty" = "Henüz kimse bahis koymadı, ilk sen ol";
-"crash.row.holding" = "TUTUYOR";
-"crash.row.burned" = "YANDI";
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Bahis koy";
-"hilo.phase.guess" = "YÜKSEK Mİ DÜŞÜK MÜ?";
-"hilo.card.label" = "Kart: %@";
-"hilo.bet.label" = "Bahis";
-"hilo.cta.start" = "BAŞLA %d";
-"hilo.cta.settling" = "HESAPLANIYOR…";
-"hilo.cta.higher" = "YÜKSEK";
-"hilo.cta.lower" = "DÜŞÜK";
-"hilo.cta.cashout" = "ÇEK %.2fx";
-"hilo.banner.won" = "Kazandın %.2fx · +%d jeton";
-"hilo.banner.lost" = "Kart %@, yanlış. Bahis gitti.";
-"hilo.rules.title" = "Hi-Lo kuralları";
-"hilo.rules.how.title" = "Nasıl oynanır";
-"hilo.rules.how.body" = "Bahis koy; sunucu A ile K arasında bir kart açar. Sonraki kart şimdikinden yüksek mi düşük mü, tahmin et. Her doğru tahmin çarpanı büyütür. Yanlış tahmin = bahis gitti. İstediğin an çek = bahis × o anki çarpan.";
-"hilo.rules.payout.title" = "Çarpan";
-"hilo.rules.payout.body" = "Olasılık küçüldükçe çarpan büyür. 7'de yüksek ve düşük neredeyse eşit (×1.83). A'da (yüksek gelmesi neredeyse kesin) yalnızca ×1.04. K'da tam tersi. Her doğru adım zinciri çarpar.";
-"hilo.rules.fair.title" = "Kanıtlanabilir adil";
-"hilo.rules.fair.body" = "Turdaki her kart BAŞLAMADAN önce belirlenir: SHA256(seed + index). Hash'i hemen görürsün; seed tur bitince açıklanır, böylece her açılan kartı elle doğrulayabilirsin.";
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "ATMAYA HAZIR";
-"limbo.phase.rolling" = "Atılıyor…";
-"limbo.phase.won" = "KAZANDIN";
-"limbo.phase.lost" = "ISKA";
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Evcil hayvan";
-"pet_preview.owner" = "%@ takıyor";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ÖZ %d";
-"pet_preview.purity" = "SAF %.2fx";
-"limbo.target.label" = "Hedef: %.2fx";
-"limbo.slider.label" = "Hedef";
-"limbo.slider.chance" = "Şans";
-"limbo.bet.label" = "Bahis";
-"limbo.cta.roll" = "AT %d";
-"limbo.banner.won" = "%.2fx geldi · +%d jeton";
-"limbo.banner.lost" = "%.2fx geldi (≥%.2fx gerekiyordu), ıska";
-"limbo.rules.title" = "Limbo kuralları";
-"limbo.rules.how.title" = "Nasıl oynanır";
-"limbo.rules.how.body" = "Kaydırıcıyla bir hedef çarpan seç (1.10x ile 100x arası). Bahis koy, AT'a bas. Sunucu, Crash'in kullandığı eğriden rastgele bir sayı çeker. Gelen sayı ≥ hedef ise kazanırsın.";
-"limbo.rules.payout.title" = "Çarpan";
-"limbo.rules.payout.body" = "Hedef yükseldikçe çarpan büyür, şans küçülür. Hedef 2.00x = yaklaşık yüzde 48 ve 1.94 kat. Hedef 10x = yaklaşık yüzde 9.7 ve 9.7 kat. Risk dengesini sen kurarsın.";
-"limbo.rules.fair.title" = "Kanıtlanabilir adil";
-"limbo.rules.fair.body" = "Her atış bir client_seed (senin cihazında üretilir) artı bir server_seed (atıştan sonra açıklanır) kullanır. SHA256(server + client) değerini kendin doğrulayıp sonucun değiştirilmediğini görebilirsin.";
-"crash.bet.label" = "Bahis";
-"crash.bet.cta" = "BAHİS %d";
-"crash.bet.placed" = "%d bahis kondu";
-"crash.bet.wait" = "başlaması bekleniyor";
-"crash.cashout.label" = "ÇEK %.2fx";
-"crash.you_cashed" = "Çektin ✓";
-"crash.spectating" = "Sonraki turu bekle";
-"crash.result.lost" = "%.2fx'te patladı, bahis gitti";
-"crash.result.won" = "Kazandın! %.2fx · +%d jeton";
-"crash.result.next_in" = "Sonraki tur %d sn sonra";
-"crash.banner.cashed" = "Çekildi %.2fx · +%d jeton";
-"crash.error.betting_closed" = "Bahisler kapandı";
-"crash.error.cashout_too_late" = "Çok geç, dokunuşun geldiği anda tur patladı. Bahis yandı.";
-"crash.error.already_cashed" = "Bu turda zaten çektin";
-"crash.error.already_bet" = "Bu turda zaten bahis koydun";
-"crash.error.no_bet" = "Bu turda bahsin yok";
-"crash.error.insufficient" = "Yeterli jeton yok";
-"crash.error.network" = "Bağlantı takıldı, tekrar dene";
-"crash.rules.title" = "Crash kuralları";
-"crash.rules.how.title" = "Nasıl oynanır";
-"crash.rules.how.body" = "Her tur: bahis için 8 saniye, sonra çarpan 1.00x'ten yükselir. İstediğin an ÇEK'e dokun; bahis × o anki çarpanı kilitlersin. Çok beklersen tur patlar ve her şeyi kaybedersin.";
-"crash.rules.payout.title" = "Ödeme";
-"crash.rules.payout.body" = "Kazanç = bahis × çektiğin andaki çarpan. Örnek: 10 jeton bahis, 2.50x'te çekildi → +25 jeton. Ne kadar uzun tutarsan olası kazanç o kadar büyük, patlama riski de o kadar yüksek.";
-"crash.rules.fair.title" = "Kanıtlanabilir adil";
-"crash.rules.fair.body" = "Patlama noktası bahisler açılmadan ÖNCE belirlenir: SHA256(seed + round_id). Hash tur başında yayımlanır, seed tur bitince açıklanır. Elle doğrulayabilirsin; kimse bahsinden sonra sonucu değiştiremez.";
-"crash.rules.risk.title" = "Risk";
-"crash.rules.risk.body" = "Turların yaklaşık yüzde 3'ü 1.00x'te anında patlar; matematiksel ev payı budur (jetonlar yakılır, kimse kazanmaz). Turların yüzde 50'si 2.00x'ten önce patlar. Yüzde 10'u 10x'i geçer. Kaybetmeyi göze aldığın kadarıyla oyna.";
 "contact_list.bar.add" = "Ekle";  /* legacy key kept for transitional bundles */
 /* ── Audio Rooms ─────────────────────────────────────────── */
 "audio_room.section.title" = "Sesli odalar";
@@ -1307,106 +1122,8 @@
 "audio_room.rotate.confirm.body" = "Eski anahtar çalışmayı bırakır. Listesinde bu oda olan herkes odayı korur, anahtarları kendiliğinden güncellenir. Eski anahtarı elinde tutup hiç katılmamış olan artık giremez.";
 "audio_room.rotate.confirm.do" = "Yenile";
 "audio_room.rotate.toast" = "Anahtar yenilendi";
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "UIN açık artırması";
-"games.uin_auction.body" = "Saatte bir UIN. Son saniyeye kadar teklif savaşı.";
-"games.pets_hunt.title" = "Av";
-"games.pets_hunt.body" = "Takılı evcil hayvanın kendiliğinden jeton kazanır. Büyük ödüller için onu ava yollayıp riske at.";
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "kesintisiz çalışırsa günde %d jeton";
-"pet_hunt.daily_gems" = "kesintisiz çalışırsa günde %d taş";
-"pet_hunt.cap_reached" = "Tampon dolu, şimdi al yoksa kazanç gider";
-"pet_hunt.claim" = "Al";
-"pet_hunt.send" = "AVA YOLLA";
-"pet_hunt.hunts_left" = "bugün %d / %d av kaldı";
-"pet_hunt.cta.open_memorial" = "Anıt";
-"pool.rarity.section" = "Nadirlik atışı";
-"pool.rarity.hint" = "Nadirlik, düşen türden bağımsız atılır: herhangi bir evcil hayvan, ifade paketi ya da ses, aşağıdaki ihtimallerle herhangi bir nadirlikte gelebilir.";
-"pet_hunt.empty.no_pet.title" = "Takılı evcil hayvan yok";
-"pet_hunt.accumulator.title" = "Tamponda";
-"pet_hunt.spec.daily_yield" = "Günde jeton";
-"pet_hunt.spec.daily_gems" = "Günde taş";
-"pet_hunt.spec.hourly_rate" = "Saatte jeton";
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "Nasıl işler";
-"pet_hunt.info.passive.title" = "Pasif kazanç";
-"pet_hunt.info.passive.body" = "Takılı evcil hayvanın 7/24 jeton kazanır. Nadirlik, seviye ve saflık arttıkça hız da artar. Tampon 24 saatte dolar; her gün al, yoksa taşanı kaybedersin.";
-"pet_hunt.info.zones.title" = "Av bölgeleri";
-"pet_hunt.info.zones.body" = "Günde üç av, daha büyük ödüller için evcil hayvanını riske atmanı sağlar. Orman güvenli, Dağ riskli, Mağara acımasız. Güçlü hayvanlar hem daha sık başarır HEM DE başarısızlıktan daha sık sağ çıkar.";
-"pet_hunt.info.death.title" = "Kalıcı ölüm";
-"pet_hunt.info.death.body" = "Evcil hayvanın bir avda başarısız olur ve 0. seviyede yaralanırsa temelli ölür. Dağ ve Mağara'daki felaketler seviyesi ne olursa olsun her hayvanı öldürebilir. Zor bölgelere yollamadan önce hayvanlarını tavla.";
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "Av seç";
-"pet_hunt.zone_picker.intro" = "Ödül büyüdükçe risk de büyür. Gerçek sayıları hayvanının kalitesi değiştirir.";
-"pet_hunt.zone.forest" = "Orman";
-"pet_hunt.zone.forest.reward" = "Jeton 3–8 × özellikler + taş 0–2";
-"pet_hunt.zone.forest.risk" = "Güvenli: yalnızca hafif yaralar, ölüm yok";
-"pet_hunt.zone.mountain" = "Dağ";
-"pet_hunt.zone.mountain.reward" = "Jeton 8–20 × özellikler + taş 1–4";
-"pet_hunt.zone.mountain.risk" = "Riskli: yara sık, ölüm nadir";
-"pet_hunt.zone.cave" = "Mağara";
-"pet_hunt.zone.cave.reward" = "Jeton 20–50 × özellikler + taş 2–7";
-"pet_hunt.zone.cave.risk" = "Acımasız: sık yara, gerçek ölüm riski";
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "Av başarılı";
-"pet_hunt.result.success.body" = "Evcil hayvanın %@ bölgesinden çizik almadan döndü.";
-"pet_hunt.result.wound" = "Yaralandı";
-"pet_hunt.result.wound.body" = "Evcil hayvanın yaralandı ve bir seviye kaybetti. Şimdi %d. seviyede.";
-"pet_hunt.result.death" = "Dönmedi";
-"pet_hunt.result.death.body" = "Evcil hayvanın düştü. Anıt'ta anılacak.";
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "Anıt";
-"pet_hunt.memorial.empty.title" = "Henüz düşen yok";
-"pet_hunt.memorial.empty.body" = "Avda ölen evcil hayvanlar burada anılacak.";
-"pet_hunt.memorial.died_in" = "%@ bölgesinde düştü";
 /* Common */
 "common.continue" = "Devam";
-"uin_auction.alert.title" = "Açık artırma";
-"uin_auction.hero.kicker" = "ŞİMDİKİ LOT";
-"uin_auction.tier.legendary" = "Efsanevi";
-"uin_auction.tier.mid" = "Nadir";
-"uin_auction.tier.common" = "Sıradan";
-"uin_auction.soft_close" = "Yumuşak kapanış: her teklif süreyi 60 sn uzatır";
-"uin_auction.soft_close.badge" = "YUMUŞAK KAPANIŞ";
-"uin_auction.soft_close.note" = "Her yeni teklif süreyi 60 saniye uzatır";
-"uin_auction.error.generic" = "Teklif verilemedi. Tekrar dene.";
-"uin_auction.high_bid" = "EN YÜKSEK TEKLİF";
-"uin_auction.no_bids_yet" = "Henüz teklif yok";
-"uin_auction.you_lead" = "Öndesin";
-"uin_auction.lead_by" = "Önde: %@";
-"uin_auction.min_next" = "EN AZ SONRAKİ";
-"uin_auction.bid_placeholder" = "En az %d";
-"uin_auction.cta.bid" = "Teklif ver";
-"uin_auction.cta.topup" = "Doldur";
-"uin_auction.insufficient_hint" = "Yeterli jeton yok";
-"uin_auction.need_tokens" = "Yeterli jeton yok, biraz al";
-"uin_auction.history.title" = "TEKLİF GEÇMİŞİ";
-"uin_auction.history.empty" = "İlk teklifi sen ver";
-"uin_auction.waiting.title" = "Sonraki lot hazırlanıyor…";
-"uin_auction.waiting.body" = "Yeni açık artırma birkaç saniye içinde başlıyor. Efsanevi UIN'ler ara sıra çıkar, buralarda kal.";
-"uin_auction.error.bid_too_low" = "En az teklif %d jeton";
-"uin_auction.error.no_amount" = "Önce bir teklif tutarı gir.";
-"uin_auction.error.insufficient" = "%d jeton gerek, sende %d var";
-"uin_auction.error.already_lead" = "Zaten öndesin";
-"uin_auction.error.ended" = "Açık artırma bitti";
-"uin_auction.outbid_refund" = "Teklifin geçildi. %d jeton iade edildi.";
-"uin_auction.banner.outbid.title" = "UIN açık artırmasında geçildin";
-"uin_auction.banner.outbid.body" = "Teklifin geçildi, %d jeton iade edildi. Yeniden teklif vermek için dokun.";
-"uin_auction.recent.title" = "Son kazananlar";
-"uin_auction.recent.empty" = "Henüz biten açık artırma yok";
-"uin_auction.recent.won_by" = "Kazanan %@";
-"uin_auction.owned.title" = "UIN'lerim";
-"uin_auction.owned.body" = "Açık artırmada kazanılan UIN'ler. Herhangi birini şimdiki UIN'in yap; taşınma işlemi çalışır (99 jeton).";
-"uin_auction.owned.empty" = "Henüz kazanılmış UIN yok. Bir açık artırma kazan!";
-"uin_auction.owned.activate" = "Etkinleştir";
-"uin_auction.owned.sell" = "Pazarda sat";
-"uin_auction.owned.remove.confirm.title" = "UIN #%d kaldırılsın mı?";
-"uin_auction.owned.remove.confirm.message" = "Bu geri alınamaz. UIN havuza döner ve başkasına verilebilir.";
-"uin_auction.owned.remove.confirm.button" = "Kaldır";
-"uin_auction.owned.remove.error" = "UIN kaldırılamadı. Birazdan tekrar dene.";
-"uin_auction.owned.confirm.title" = "UIN %d senin olsun mu?";
-"uin_auction.owned.confirm.button" = "Etkinleştir (%d)";
-"uin_auction.owned.activated" = "Tamam. Yeni UIN'in: %d";
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "az önce";
 "last_seen.minute_one" = "%d dakika önce";
@@ -1523,7 +1240,7 @@
 "chat.voice.lock_armed" = "Kilitlemek için bırak";
 "chat.voice.swipe_hints" = "← iptal   ↑ kilit";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "ANONİM";
+"onboard.anon.kicker" = "ÖZEL";
 "onboard.anon.title" = "Telefon yok, e-posta yok";
 "onboard.anon.body" = "Kimliğiniz bir numaradan ibarettir. Size bağlı değildir; istediğiniz an yakıp yeniden başlayabilirsiniz.";
 "onboard.mesh.kicker" = "ÇEVRİMDIŞI";
@@ -1569,7 +1286,7 @@
 "onboard.server.picker.intro.body" = "Her RCQ sunucusu kendi adasıdır. Hesabın, kişilerin ve mesajların yalnızca seçtiğin sunucuda yaşar. Yalnızca aynı sunucudaki kullanıcılara mesaj atabilirsin.";
 "onboard.server.picker.search" = "Sunucularda ara";
 "onboard.server.picker.empty" = "Eşleşme yok";
-"boot.error.unreachable" = "RCQ'ya ulaşılamadı. Ağın engelliyor olabilir, bir VPN dene.";
+"boot.error.unreachable" = "RCQ'ya ulaşılamadı. Ağın engelliyor olabilir, başka bir ağ ya da RCQ aktarıcılarını dene.";
 "boot.error.title" = "Bağlanılamadı";
 "boot.error.retrying" = "%ds sonra tekrar denenecek…";
 "boot.error.retry_now" = "Şimdi dene";
@@ -1883,6 +1600,7 @@
 "settings.island.rules" = "Ada kuralları";
 "reg.invite.enter" = "Kodu gir";
 "boot.error.switch_account" = "Başka hesap";
+"boot.error.choose_island" = "Başka bir ada seç";
 
 "invites.title" = "Erişim kodları";
 "invites.body" = "Erişim kodu bir kez kullanılır: onu giren kişi bu adada hesap açar. Yenisi kendiliğinden gelir, dönem başına bir tane.";
@@ -1912,3 +1630,10 @@
 /* ── Hesap başka bir numaraya taşındı (`account_moved` olayı) ── */
 "account.moved.blocked.title" = "Hesabınız yeni bir numaraya taşındı";
 "account.moved.blocked.body" = "Başka bir cihazda yeni bir numara aldınız, bu cihaz ise onu takip edemedi. Hiçbir şey silinmedi: sohbetleriniz burada duruyor. Yeni numarada devam etmek için kurtarma ifadenizle yeniden giriş yapın.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "Adaya ulaşılamadı";
+"relay.key.offline.body" = "Anahtar kaydedildi, ama kontrol etmek için adaya ulaşılamadı. Uygulama bir sonraki bağlandığında yeniden kontrol edilecek.";
+"relay.key.ok.none" = "Anahtar kabul edildi. Henüz ona atanmış özel düğüm yok, bu yüzden ortak havuz kullanılmaya devam ediyor.";
+"chat.menu.report_group" = "Grubu şikayet et";
+"report.heading.group" = "Bu grubu şikayet et";

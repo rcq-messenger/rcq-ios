@@ -726,9 +726,9 @@ private struct BootSplash: View {
 /// entirely — there is no sheet to dismiss and nothing behind it — so a state
 /// with only a "retry" on it is a state the person is stuck in. The founder
 /// met exactly that on 06.09 (points 1 and 5): a code box he could not cancel,
-/// then a "could not connect" with one button. The two exits below are the
-/// answer: back out of the code question, and switch to another account on the
-/// device.
+/// then a "could not connect" with one button. The three exits below are the
+/// answer: back out of the code question, switch to another account on the
+/// device, and choose another island.
 private struct ErrorScreen: View {
     let message: String
     @State private var nextAttemptIn: Int = 5
@@ -737,6 +737,9 @@ private struct ErrorScreen: View {
     /// Back button turns it off, which is the only reason this is state rather
     /// than a straight read of the message.
     @State private var showCodeField: Bool = false
+    /// "Choose another island" is waiting for a boot in flight to end; the
+    /// button is off meanwhile so a second tap cannot start a second wait.
+    @State private var choosingIsland: Bool = false
     @ObservedObject private var accountManager = AccountManager.shared
 
     /// ⚠ A CLOSED ISLAND REFUSES WITH A CODE, NOT A SENTENCE. The island
@@ -768,6 +771,21 @@ private struct ErrorScreen: View {
     /// means onboarding has not run, and `mainContent` shows onboarding before
     /// it shows this), which is exactly why it is worth pinning down.
     private var canAskForCode: Bool { asking && accountManager.active != nil }
+
+    /// Whether the active account has ever registered on its island: a UIN in
+    /// its own Keychain slot. False for the account onboarding minted a minute
+    /// ago and the island then refused, which is the account "choose another
+    /// island" may throw away; true for an account whose island is merely
+    /// unreachable right now, which it must not touch.
+    private var activeIsRegistered: Bool {
+        guard let id = accountManager.activeAccountID else { return false }
+        return KeychainStore.string(KeychainStore.Keys.uin, forAccount: id) != nil
+    }
+
+    /// The third exit. Always while the island is asking for a code (on a
+    /// fresh device the code field, Retry and Back otherwise lead nowhere), and
+    /// on any other failure when there is no other account to switch to.
+    private var canChooseIsland: Bool { asking || otherAccounts.isEmpty }
 
     private var humanMessage: String {
         if badInvite { return "reg.invite.invalid".localized }
@@ -871,6 +889,10 @@ private struct ErrorScreen: View {
                         secondaryButton("reg.invite.enter".localized) { showCodeField = true }
                     }
                 }
+                if canChooseIsland {
+                    secondaryButton("boot.error.choose_island".localized) { chooseAnotherIsland() }
+                        .disabled(choosingIsland)
+                }
                 if !otherAccounts.isEmpty {
                     switchAccountMenu
                 }
@@ -881,13 +903,83 @@ private struct ErrorScreen: View {
             // ⚠ No auto-retry while we are asking for a code: retrying every
             // five seconds against a door that wants something the person has
             // not typed yet would clear the field under their fingers.
-            while !AppState.shared.booted && !asking {
+            //
+            // ⚠ And none once this screen is gone. A cancelled task's sleeps
+            // return at once, so without the checks the loop would spin boot()
+            // back to back for as long as the app stays unbooted, e.g. the
+            // whole time the person is back on the onboarding deck.
+            while !Task.isCancelled && !AppState.shared.booted && !asking {
                 for s in stride(from: 5, through: 1, by: -1) {
                     nextAttemptIn = s
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    if AppState.shared.booted { return }
+                    if Task.isCancelled || AppState.shared.booted { return }
                 }
                 await AppState.shared.boot()
+            }
+        }
+    }
+
+    /// The third way off this screen: pick a different island. On a fresh
+    /// device the island the person kept on the onboarding deck refused them
+    /// (paid or closed door) and nothing here led back to the picker; the only
+    /// other route was deleting the app.
+    ///
+    /// The account onboarding minted for that island never registered, so it
+    /// is emptied and dropped the same way `rollbackFailedAdd` drops a join
+    /// that got refused; a registered account is never touched. With no
+    /// account left the deck comes back on its last page with the picker up
+    /// (`OnboardingView.reopenIslandPickerKey`); with one left, that account
+    /// is booted and the chat list opens the add-account sheet, which does
+    /// what its "New server" row does from there.
+    ///
+    /// ⚠ The stashed code goes first, for the reason `rollbackFailedAdd`
+    /// spells out: a code typed for this door must not be spent by the next
+    /// register on whatever island is chosen instead.
+    ///
+    /// ⚠ A boot may still be running: the auto-retry above, or the
+    /// fresh-install watchdog, up to 25 s. Its late result would put
+    /// `bootError` back after it is cleared here, and the boot that
+    /// `RootView.onChange(didOnboard)` fires for the deck's Get started is
+    /// dropped by the single-flight while it runs. So the same wait an account
+    /// switch takes, before anything is decided; the account question is asked
+    /// after it, in case that boot registered the account after all.
+    private func chooseAnotherIsland() {
+        UserDefaults.standard.removeObject(forKey: AppState.pendingServerInviteKey)
+        invite = ""
+        showCodeField = false
+        guard !choosingIsland else { return }
+        choosingIsland = true
+        Task { @MainActor in
+            defer { choosingIsland = false }
+            await AppState.shared.settleBoot()
+            // That boot got in: this screen is gone and the person is in the
+            // app, there is nothing left to choose.
+            if AppState.shared.booted { return }
+            if let dangling = accountManager.activeAccountID, !activeIsRegistered {
+                KeychainStore.wipeAccount(dangling)
+                accountManager.remove(dangling)
+            }
+            if accountManager.accounts.isEmpty {
+                // The message on this screen is about a door nobody is standing
+                // in front of any more, and `boot()` deliberately keeps
+                // `bootError` across retries, so it is cleared here: the deck's
+                // Get started must land on the splash, not on this screen's
+                // stale text.
+                AppState.shared.bootError = nil
+                UserDefaults.standard.set(true, forKey: OnboardingView.reopenIslandPickerKey)
+                // The same `rcq.onboarded` flag `RootView` reads through
+                // `@AppStorage`; flipping it swaps this screen for the deck.
+                UserDefaults.standard.set(false, forKey: "rcq.onboarded")
+            } else {
+                // `remove` moved the active pointer to the survivor, but nothing
+                // has booted it: `bootError` still holds the OTHER door's text
+                // while `islandHost` now names this island, and a code typed
+                // into the field would go to the wrong island. The reboot an
+                // account switch runs clears `bootError` and boots the
+                // survivor; that takes this screen down with it, sheet and all,
+                // so the add-account sheet is asked for through the chat list.
+                AppState.shared.pendingOpenAddAccount = true
+                await AppState.shared.rebootForActiveAccount()
             }
         }
     }

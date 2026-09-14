@@ -86,6 +86,12 @@ final class AppState: ObservableObject {
     /// carried one (`/g/<id>@<host>`); nil = own island.
     @Published var pendingJoinGroupHost: String? = nil
     @Published var pendingOpenPending: Bool = false
+    /// Set by the boot error screen's "choose another island" when a registered
+    /// account is left to fall back on: that screen is torn down by the reboot
+    /// it starts, so the chat list presents the add-account sheet in its place.
+    /// Deliberately NOT in `rebootForActiveAccount`'s reset list, which runs
+    /// between the set and the read.
+    @Published var pendingOpenAddAccount: Bool = false
     /// Set when a "we answered your report" push is tapped: the reports screen
     /// is opened directly rather than making the user find it in Settings.
     @Published var pendingOpenReports: Bool = false
@@ -2118,7 +2124,11 @@ final class AppState: ObservableObject {
     /// survive untouched for the next switch-back. The wipe set
     /// mirrors burnAccount()'s pile minus the destructive bits
     /// (wipeLocalIdentity, deleteServerAccount, SignalProtocolDB.wipe).
-    private func rebootForActiveAccount() async {
+    ///
+    /// Not private: the boot error screen's "choose another island" lands on
+    /// the same path once it has dropped the account that never registered and
+    /// `AccountManager.remove` has moved the active pointer to the survivor.
+    func rebootForActiveAccount() async {
         // The chat list is interactive while the boot chain still runs, so
         // a switch can now land mid-chain; boot() drops a concurrent boot,
         // which would leave the new account half-booted under the old one's
@@ -2503,7 +2513,7 @@ final class AppState: ObservableObject {
             if accepted { Task { await ContactService.shared.refresh() } }
 
         case .contactRemoved(let peer):
-            // Peer removed us from their contacts (ICQ-style mutual delete).
+            // Peer removed us from their contacts (classic mutual delete).
             // Drop them from our local list so the UI updates instantly.
             // Skip RemovedContactsStore here — the deleter, not the deleted,
             // decides who to filter.

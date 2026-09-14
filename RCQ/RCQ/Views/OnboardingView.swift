@@ -4,6 +4,12 @@ import SwiftUI
 struct OnboardingView: View {
     let onFinish: () -> Void
 
+    /// One-shot flag the boot error screen sets before sending a person back
+    /// to this deck: open on the last page with the island picker up, because
+    /// the island they kept on the first pass refused them and the picker is
+    /// the one thing they came back for. Consumed on appear.
+    static let reopenIslandPickerKey = "rcq.onboarding.reopenIslandPicker"
+
     @State private var page: Int = 0
     @State private var showLanguagePicker = false
     @State private var showServerPicker = false
@@ -76,6 +82,14 @@ struct OnboardingView: View {
                 deck
                     .transition(.opacity)
             }
+        }
+        .onAppear {
+            guard UserDefaults.standard.bool(forKey: Self.reopenIslandPickerKey) else { return }
+            UserDefaults.standard.removeObject(forKey: Self.reopenIslandPickerKey)
+            page = pages.count - 1
+            // A sheet flagged in the same frame the deck first appears is
+            // dropped by SwiftUI; one tick later it presents.
+            DispatchQueue.main.async { showServerPicker = true }
         }
         .sheet(isPresented: $showLanguagePicker) {
             LanguagePickerSheet()

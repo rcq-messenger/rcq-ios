@@ -473,6 +473,13 @@ struct ContactListView: View {
                 if appState.pendingOpenReports {
                     openMyReports()
                 }
+                // "Choose another island" on the boot error screen, with a
+                // registered account left to boot: that screen is gone by the
+                // time this one is up, so the sheet it promised is opened here.
+                if appState.pendingOpenAddAccount {
+                    appState.pendingOpenAddAccount = false
+                    showAddAccount = true
+                }
                 // Cold-launch push-tap navigation: didReceive sets
                 // pendingOpenChatUIN before this view mounts, so the
                 // initial value never triggers `.onChange`. Manually
@@ -554,6 +561,12 @@ struct ContactListView: View {
             }
             .onChange(of: appState.pendingOpenReports) { newValue in
                 if newValue { openMyReports() }
+            }
+            .onChange(of: appState.pendingOpenAddAccount) { newValue in
+                if newValue {
+                    appState.pendingOpenAddAccount = false
+                    showAddAccount = true
+                }
             }
             .sheet(isPresented: $showMyReports) { MyReportsView() }
             .onChange(of: appState.pendingOpenGroupID) { _ in
@@ -1938,11 +1951,23 @@ struct ContactListView: View {
             Text("contact_list.empty.title".localized)
                 .font(.system(.headline, weight: .semibold))
                 .foregroundColor(Theme.Color.textPrimary)
-            Text("contact_list.empty.body".localized)
-                .font(.footnote)
-                .foregroundColor(Theme.Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            // The Stranger Mode sentence rides the same `random_chat` flag as
+            // the menu item above: an island that does not run it must not
+            // advertise it on the first screen a new account sees.
+            //
+            // ⚠ A line of its own, not glued to the body with a space: zh-Hans
+            // puts no space between sentences, and one Latin space between two
+            // Chinese ones is a visible seam.
+            VStack(spacing: 4) {
+                Text("contact_list.empty.body".localized)
+                if appState.serverCapabilities.randomChat {
+                    Text("contact_list.empty.stranger".localized)
+                }
+            }
+            .font(.footnote)
+            .foregroundColor(Theme.Color.textSecondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 32)
             Button {
                 showAddContact = true
             } label: {
@@ -2288,7 +2313,7 @@ struct ContactListView: View {
     }
 }
 
-/// Contact row — status icon stands in for the avatar, exactly like ICQ 2002. The
+/// Contact row — status icon stands in for the avatar, exactly like the 2002 classic. The
 /// unread badge is anchored to the icon. Status message (if any) appears italicized
 /// under the UIN, just as it did in the legacy client.
 private struct ContactRow: View {

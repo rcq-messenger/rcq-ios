@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Per-contact notification-sound override. ICQ-classic feature
+/// Per-contact notification-sound override. A classic-messenger feature
 /// (different "uh-oh!" per buddy). Persistence is local
 /// UserDefaults — assignments don't survive account-burn
 /// (intentional, alongside FavoritesStore / ArchiveStore — those

@@ -29,11 +29,9 @@
 "settings.sound.row.off" = "Выключены";
 "settings.sound.section.master" = "Основное";
 "settings.sound.section.presence" = "Присутствие контактов";
-"settings.sound.section.presence.hint" = "ICQ-style чирик когда контакт онлайн или ушёл. По умолчанию оба выключены.";
+"settings.sound.section.presence.hint" = "Классический чирик, когда контакт появляется онлайн или уходит. По умолчанию оба выключены.";
 "settings.sound.contact_online" = "Контакт онлайн";
 "settings.sound.contact_offline" = "Контакт офлайн";
-"settings.minis.toggle" = "Миниатюры игр";
-"settings.minis.toggle.footer" = "Показывать плавающие виджеты Crash и аукциона UIN на главном экране, чтобы следить за раундом или ставкой не возвращаясь в игру.";
 "settings.trades.realtime" = "Всплывающие трейды";
 "settings.trades.realtime.footer" = "Когда включено, входящий трейд открывается сразу. Выключено: трейды ждут в окне трейдов и в чате с отправителем.";
 "settings.language" = "Язык";
@@ -206,11 +204,6 @@
 "relays.learn_more" = "Что такое релей?";
 "settings.network.coming_soon" = "Скоро";
 
-"settings.traffic" = "Трафик файлов";
-"settings.traffic.used" = "Использовано за месяц";
-"settings.traffic.used.value" = "%d МБ";
-"settings.traffic.spent" = "Потрачено";
-"settings.traffic.pay_large" = "Платить за файлы > 50 МБ";
 
 "settings.history" = "История";
 "settings.history.file" = "Копия переписки в файл";
@@ -336,7 +329,6 @@
 "group_join.button" = "Вступить";
 "group_join.open_button" = "Открыть";
 "group_join.closed_button" = "По приглашению";
-"group_join.price_suffix" = "за вход";
 "group_join.owner" = "Владелец: %@";
 "group_join.owner_label" = "Владелец";
 "group_join.closed_hint" = "В эту группу можно вступить только по приглашению владельца.";
@@ -346,11 +338,6 @@
 "group.settings.closed" = "Закрытая группа";
 "group.settings.closed.hint" = "Только приглашения владельца добавляют новых участников. Ссылкой можно поделиться: превью покажется, но автоматически вступить не получится.";
 
-"paid_traffic.title" = "Платный трафик?";
-"paid_traffic.body" = "Файл весит %@, больше бесплатного лимита 50 МБ. Включи платный трафик в Настройках чтобы отправить.";
-"paid_traffic.price_suffix" = "за этот файл";
-"paid_traffic.enable" = "Включить платный трафик";
-"paid_traffic.cancel" = "Отмена";
 
 "contact_list.ctx.report" = "Пожаловаться";
 
@@ -423,7 +410,6 @@
 
 "contact_list.offline_badge" = "Без сети";
 
-"contact_list.bar.games" = "Игры";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Рядом";
 "contact_list.bar.settings" = "Настройки";
@@ -552,20 +538,9 @@
 "report_evidence.cta.send" = "Отправить жалобу";
 "report_evidence.error.no_bytes" = "Не удалось загрузить контент для жалобы. Попробуйте после повторного открытия сообщения.";
 
-/* ── Crash mini-bar ───────────────────────────────────────── */
 
-"crash.mini.betting" = "Ставка";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Поставить";
-"crash.mini.placed" = "Принято";
-"crash.mini.cashout_cta" = "Забрать";
-"crash.mini.crashed_at" = "Крах @ %.2f×";
 
-/* ── Auction mini-bar ─────────────────────────────────────── */
 
-"auction.mini.leading" = "Лидер · %d";
-"auction.mini.outbid" = "Перебили. Поднять?";
-"auction.mini.bid_cta" = "Поднять";
 "chat.menu.voice_call" = "Голосовой звонок";
 "chat.menu.video_call" = "Видеозвонок";
 "chat.menu.propose_trade" = "Предложить обмен";
@@ -585,7 +560,6 @@
 "chat.attach.photo" = "Фото";
 "chat.attach.video" = "Видео";
 "chat.attach.camera" = "Камера";
-"chat.attach.premium" = "Платно";
 "chat.attach.document" = "Файл";
 "chat.attach.location" = "Геопозиция";
 "chat.location.title" = "Выбери место";
@@ -594,7 +568,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "Скопировать координаты";
-"chat.file.pay_required" = "Файлы больше 50 МБ требуют тогл «Платить за файлы» в настройках.";
 
 "chat.translate.title" = "Перевод";
 "chat.translate.section.original" = "Оригинал";
@@ -604,17 +577,6 @@
 "chat.translate.translated_badge" = "Переведено";
 "chat.action.show_original" = "Показать оригинал";
 
-"chat.premium.compose.title" = "Платный контент";
-"chat.premium.compose.price_placeholder" = "Цена";
-"chat.premium.compose.pick_photo" = "Фото";
-"chat.premium.compose.pick_video" = "Видео";
-"chat.premium.unlock_for" = "Открыть за";
-"chat.premium.preview_photo" = "Платное фото";
-"chat.premium.preview_video" = "Платное видео";
-"chat.premium.confirm.pay" = "Оплатить %d";
-"chat.premium.error.title" = "Не удалось открыть";
-"chat.premium.error.gone" = "Контент больше недоступен.";
-"chat.premium.error.generic" = "Что-то пошло не так. Попробуй ещё раз.";
 "chat.voice.permission.title" = "Нужен доступ к микрофону";
 "chat.voice.permission.body" = "Включи микрофон в Настройках → RCQ, чтобы записывать голосовые сообщения.";
 "settings.migrate.header" = "Аккаунт";
@@ -644,7 +606,8 @@
 "contact_list.discover.title" = "Открытые группы";
 "contact_list.discover.join" = "Вступить";
 "contact_list.empty.title" = "Пока никого нет";
-"contact_list.empty.body" = "Добавьте друга по UIN или QR-коду, чтобы начать переписку. Чат с незнакомцем работает и без контактов.";
+"contact_list.empty.body" = "Добавьте друга по UIN или QR-коду, чтобы начать переписку.";
+"contact_list.empty.stranger" = "Чат с незнакомцем работает и без контактов.";
 "contact_list.empty.cta" = "Добавить контакт";
 
 "chat.empty.title" = "Сообщений пока нет";
@@ -715,8 +678,6 @@
 "chat.preview.market_item" = "Предмет с маркета";
 "chat.preview.uin_listing" = "Лот UIN";
 "chat.preview.group_invite" = "Приглашение в группу";
-"chat.preview.premium_photo" = "🔒 Премиум-фото";
-"chat.preview.premium_video" = "🔒 Премиум-видео";
 "chat.preview.generic" = "Сообщение";
 "chat.banner.new_message" = "Новое сообщение";
 
@@ -768,7 +729,6 @@
 "group.settings.post_policy.all" = "Все";
 "group.settings.post_policy.owner_only" = "Только владелец";
 "group.settings.post_policy.hint" = "В режиме «Только владелец» участники видят сообщения, но не могут писать.";
-"group.settings.entry_price.hint" = "0 = бесплатно. С каждой покупки удерживается 5% комиссии маркета, остальное идёт владельцу.";
 "group.settings.name" = "Название группы";
 "group.settings.photo" = "Фото группы";
 "group.settings.change_photo" = "Сменить фото";
@@ -791,7 +751,6 @@
 "group.avatar.remove.confirm" = "Удалить фото группы?";
 "group.unavailable" = "Группа недоступна.";
 "group.compose.broadcast_only" = "Только владелец может писать";
-"group.error.join_payment" = "Не удалось оплатить вход в группу";
 "group.cta.add_member" = "Добавить участника";
 "group.cta.copy_link" = "Скопировать ссылку на группу";
 "group.cta.link_copied" = "Ссылка скопирована";
@@ -892,7 +851,7 @@
 
 "about.title" = "О RCQ";
 "about.tagline" = "Та же душа, современная криптография.";
-"about.body" = "RCQ бесплатен навсегда. Без рекламы, без сбора данных, без телефонного номера.";
+"about.body" = "RCQ это приватный мессенджер. Без рекламы, без трекеров, без аналитики, без номера телефона.";
 "about.stats.users" = "человек на этом острове";
 "about.privacy.section" = "ПРИВАТНОСТЬ";
 "about.privacy.b1" = "Сообщения с end-to-end шифрованием (Signal Protocol).";
@@ -900,7 +859,7 @@
 "about.privacy.b3" = "Бэкенд без доступа к содержимому: сообщения хранятся только как зашифрованные блобы и удаляются после доставки.";
 "about.privacy.b4" = "Без телефона и почты: UIN это ваша единственная личность.";
 "about.privacy.b5" = "История живёт только на вашем устройстве и шифруется при блокировке.";
-"about.privacy.b6" = "Ваш аккаунт живёт на острове, сервере, который может поднять любой. Острова не общаются между собой, их связывает ваше приложение.";
+"about.privacy.b6" = "Ваш аккаунт живёт на острове, сервере, который может поднять любой. Люди с разных островов всё равно могут общаться друг с другом.";
 "about.contact.section" = "КОНТАКТ";
 "about.contact.support" = "Поддержка";
 "about.contact.website" = "Сайт";
@@ -933,15 +892,11 @@
 "add.section.join_group" = "ВСТУПИТЬ В ГРУППУ";
 
 "join_group.title" = "Вступление в группу";
-"join_group.entry_price" = "Цена входа";
-"join_group.your_balance" = "У тебя";
 "join_group.cta.free" = "Вступить";
-"join_group.cta.pay" = "Оплатить и вступить";
 "join_group.alert.title" = "Группа";
 "join_group.error.blocked" = "Владелец заблокировал тебя";
 "join_group.error.generic" = "Не удалось вступить. Попробуй позже.";
 
-"chat.menu.premium_content" = "Платный контент";
 "add.section.people" = "ЛЮДИ";
 "add.cta.add" = "Добавить в контакты";
 "add.cta.in_list" = "Уже в вашем списке контактов";
@@ -1041,16 +996,8 @@
 "contact_list.section.cross_island" = "Другие острова";
 "pending.cta.decline" = "Отклонить";
 
-"pool.boost_note" = "Шансы показаны с бустом питомцев %d%%.";
 
-"shop.kicker" = "ШОП";
-"shop.best_value" = "ВЫГОДНЕЕ";
-"shop.balance" = "Баланс хранится на сервере под твоим UIN. Реальная оплата через App Store придёт позже. Сейчас пакеты пополняют кошелёк сразу для тестирования.";
 
-"pool.title" = "Пул";
-"pool.section_share" = "%.0f%% выпадений";
-"pool.cap" = "лимит %d";
-"pool.cap_remaining" = "%d / %d осталось";
 "settings.privacy.relay_calls" = "Всегда ретранслировать звонки";
 "settings.privacy.relay_calls.desc" = "Пропускать звук и видео через наш ретранслятор, чтобы собеседник не узнал ваш IP-адрес. Если выключить, качество может вырасти, но собеседник увидит ваш адрес.";
 "settings.privacy.strangers" = "Незнакомцы в запросы";
@@ -1086,18 +1033,7 @@
 
 "radio.info.when.title" = "Когда использовать";
 "radio.info.when.body" = "Согласовать что-то с друзьями на шумном мероприятии. Перекинуть быстрое сообщение человеку в этом же здании. Остаться на связи во время сбоя сети или в регионе с заблокированным мобильным интернетом. Везде где телефоны рядом, а обычный путь через интернет недоступен, медленный или нежелателен.";
-"pool.detail.chance" = "ШАНС ВЫПАДЕНИЯ  %.2f%%";
-"pool.detail.cap" = "ТИРАЖ  %d";
-"pool.detail.cap_remaining" = "%d / %d ОСТАЛОСЬ";
-"pool.gems.title" = "Связка гемов";
-"pool.gems.range" = "%d–%d гемов за выпадение";
-"pool.pack.contents" = "СОДЕРЖИМОЕ ПАКА · %d";
 
-"disassemble.title" = "Разбор";
-"disassemble.cta" = "Разобрать";
-"disassemble.cta.busy" = "Разбираем…";
-"disassemble.cta.cancel" = "Отмена";
-"disassemble.success.body" = "%@ исчезает.";
 
 /* ── Trades ───────────────────────────────────────────────── */
 
@@ -1198,7 +1134,7 @@
 "onboard.federation.body" = "RCQ это не сервер одной компании. Остров может поднять любой, ваш аккаунт живёт на выбранном, а номер переезжает с вами.";
 "onboard.relay.kicker" = "ПРИВАТНОСТЬ";
 "onboard.relay.title" = "Остров не видит ваш адрес";
-"onboard.relay.body" = "Трафик идёт через релеи сообщества: остров не видит, откуда вы, а ваша сеть не видит, что вы пользуетесь RCQ. Там, где RCQ блокируют, это ещё и путь внутрь.";
+"onboard.relay.body" = "Если прямое соединение с островом не проходит или вы включили релеи сами, приложение идёт через релеи RCQ. Тогда остров не видит ваш IP-адрес, а трафик выглядит как обычное зашифрованное соединение.";
 
 "onboard.chat.kicker" = "ЧАТ";
 "onboard.chat.title" = "Сервер не читает переписку";
@@ -1212,12 +1148,7 @@
 "onboard.calls.title" = "Голос, видео, группы";
 "onboard.calls.body" = "WebRTC голосовые и видеозвонки, групповые чаты. Push-уведомления будят на входящие звонки; sealed sender прячет маршрутизацию от нас.";
 
-"onboard.pets.kicker" = "ПИТОМЦЫ";
-"onboard.pets.title" = "Заведи цифрового питомца";
-"onboard.pets.body" = "Открывай коробки и собирай редких анимированных питомцев. Улучшай, дари, обменивай. Один и тот же питомец может выпасть с разной редкостью. Гонись за идеальной копией.";
 
-"onboard.trade.kicker" = "ОБМЕН";
-"onboard.trade.title" = "Обмен в реальном времени";
 
 "onboard.privacy.kicker" = "ПРИВАТНОСТЬ";
 "onboard.privacy.title" = "Вы решаете кто что видит";
@@ -1225,103 +1156,14 @@
 
 /* ── Rarity ───────────────────────────────────────────────── */
 
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Игры";
-"games.section.solo" = "Соло";
-"games.section.pvp" = "Между игроками";
-"games.section.pets" = "Питомцы";
-"games.soon" = "СКОРО";
-"games.cta.topup" = "Пополнить кошелёк";
-"games.crash.title" = "Crash";
-"games.crash.body" = "Множитель растёт. Успей забрать до краха.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Угадай выше или ниже следующая карта.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Поставь множитель и проверь удачу.";
 
-"crash.title" = "Crash";
-"crash.you" = "Вы";
-"crash.phase.betting" = "Ставки · %.1fс";
-"crash.phase.running" = "ИДЁТ";
-"crash.phase.crashed" = "КРАХ";
-"crash.feed.title" = "Кто забрал";
-"crash.feed.bets" = "%d игроков";
-"crash.feed.empty" = "Пока никто не сделал ставку, будь первым";
-"crash.row.holding" = "ДЕРЖИТ";
-"crash.row.burned" = "СГОРЕЛ";
 
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Сделай ставку";
-"hilo.phase.guess" = "ВЫШЕ ИЛИ НИЖЕ?";
-"hilo.card.label" = "Карта: %@";
-"hilo.bet.label" = "Ставка";
-"hilo.cta.start" = "СТАРТ %d";
-"hilo.cta.settling" = "ПОДВОДИМ ИТОГИ…";
-"hilo.cta.higher" = "ВЫШЕ";
-"hilo.cta.lower" = "НИЖЕ";
-"hilo.cta.cashout" = "ЗАБРАТЬ %.2fx";
-"hilo.banner.lost" = "Карта %@: мимо. Ставка сгорела.";
 
-"hilo.rules.title" = "Правила Hi-Lo";
-"hilo.rules.how.title" = "Как играть";
-"hilo.rules.how.body" = "Сделай ставку, и сервер откроет карту от A до K. Угадай: следующая выше или ниже текущей. Каждый правильный ответ умножает множитель. Если ошибся, ставка сгорела. «Забрать» в любой момент = ставка × текущий множитель.";
-"hilo.rules.payout.title" = "Множитель";
-"hilo.rules.payout.body" = "Чем меньше шанс, тем больше множитель. На 7-ке шансы выше/ниже примерно равны (×1.83). На A, где «выше» почти гарантировано, всего ×1.04. На K наоборот. После каждого правильного шага множитель умножается на множитель следующего шага.";
-"hilo.rules.fair.title" = "Честность (Provably Fair)";
-"hilo.rules.fair.body" = "Все карты раунда определены ДО старта: SHA256(seed + индекс). Хеш видишь сразу, сам seed получаешь после краха или кэшаута, так что можешь проверить вручную каждый ход.";
 
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "ГОТОВ К БРОСКУ";
-"limbo.phase.rolling" = "Бросаем…";
-"limbo.phase.won" = "ВЫИГРАЛ";
-"limbo.phase.lost" = "МИМО";
 
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Питомец";
-"pet_preview.owner" = "Носит %@";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ЭСС %d";
-"pet_preview.purity" = "ЧИСТ %.2fx";
-"limbo.target.label" = "Цель: %.2fx";
-"limbo.slider.label" = "Цель";
-"limbo.slider.chance" = "Шанс";
-"limbo.bet.label" = "Ставка";
-"limbo.cta.roll" = "БРОСИТЬ %d";
-"limbo.banner.lost" = "Выпало %.2fx (нужно ≥%.2fx), мимо";
 
-"limbo.rules.title" = "Правила Limbo";
-"limbo.rules.how.title" = "Как играть";
-"limbo.rules.how.body" = "Выбери целевой множитель ползунком (от 1.10x до 100x). Сделай ставку и нажми «БРОСИТЬ». Сервер кинет случайное число по той же кривой что и в Crash. Если выпало больше или равно цели, ты выиграл.";
-"limbo.rules.payout.title" = "Множитель";
-"limbo.rules.payout.body" = "Чем выше цель, тем больше множитель и тем меньше шанс. Цель 2.00x = ~48% шанса × 1.94. Цель 10x = ~9.7% × 9.7. Сам выбираешь баланс риска.";
-"limbo.rules.fair.title" = "Честность (Provably Fair)";
-"limbo.rules.fair.body" = "В каждом броске участвует client_seed (генерируется на твоём устройстве) + server_seed (показывается после броска). Можешь проверить SHA256(server + client) и убедиться что результат не подменили.";
-"crash.bet.label" = "Ставка";
-"crash.bet.cta" = "ПОСТАВИТЬ %d";
-"crash.bet.placed" = "Ставка %d принята";
-"crash.bet.wait" = "ждём старта";
-"crash.cashout.label" = "ЗАБРАТЬ %.2fx";
-"crash.you_cashed" = "Ты вышел вовремя ✓";
-"crash.spectating" = "Жди следующего раунда";
-"crash.result.lost" = "Краш на %.2fx, ставка сгорела";
-"crash.result.next_in" = "Следующий раунд через %d сек";
-"crash.error.betting_closed" = "Ставки уже закрыты";
-"crash.error.cashout_too_late" = "Не успел. Раунд крашнулся ровно когда ты нажал. Ставка сгорела.";
-"crash.error.already_cashed" = "Ты уже забрал в этом раунде";
-"crash.error.already_bet" = "Ты уже сделал ставку в этом раунде";
-"crash.error.no_bet" = "В этом раунде ставки нет";
-"crash.error.network" = "Сетевая ошибка, попробуй ещё раз";
 
-"crash.rules.title" = "Правила Crash";
-"crash.rules.how.title" = "Как играть";
-"crash.rules.how.body" = "Каждый раунд: 8 секунд на ставку, потом множитель растёт от 1.00x вверх. В любой момент жми «ЗАБРАТЬ»: фиксируешь ставку × текущий множитель. Если сидишь до краха, теряешь всё.";
-"crash.rules.payout.title" = "Выплата";
-"crash.rules.fair.title" = "Честность (Provably Fair)";
-"crash.rules.fair.body" = "Точка краха определена ДО открытия ставок: SHA256(seed + round_id). Хеш публикуется в начале раунда, сам seed раскрывается после краха. Можешь проверить вручную: никто не может поменять результат после твоей ставки.";
-"crash.rules.risk.title" = "Риск";
 
 "contact_list.bar.add" = "Добавить";  /* legacy key kept for transitional bundles */
 
@@ -1387,106 +1229,15 @@
 "audio_room.rotate.confirm.do" = "Перевыпустить";
 "audio_room.rotate.toast" = "Ключ обновлён";
 
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "Аукцион UIN";
-"games.uin_auction.body" = "Один UIN в час. Ставка-война до последней секунды.";
-"games.pets_hunt.title" = "Охота";
 
-/* ── Экран Pet Hunt ─────────────────────────── */
-"pet_hunt.daily_gems" = "%d гемов / день при полной загрузке";
-"pet_hunt.cap_reached" = "Буфер заполнен, забери награду или она сгорит";
-"pet_hunt.claim" = "Забрать";
-"pet_hunt.send" = "ОТПРАВИТЬ НА ОХОТУ";
-"pet_hunt.hunts_left" = "%d / %d охот сегодня";
-"pet_hunt.cta.open_memorial" = "Мемориал";
-"pool.rarity.section" = "Редкость";
-"pool.rarity.hint" = "Редкость роллится независимо от выпавшего предмета: любой пет, пак смайлов или звук может оказаться любого тира с шансами ниже.";
-"pet_hunt.empty.no_pet.title" = "Питомец не снаряжён";
-"pet_hunt.accumulator.title" = "В буфере";
-"pet_hunt.spec.daily_gems" = "Гемов / день";
 
-/* Pet Hunt: info */
-"pet_hunt.info.title" = "Как работает";
-"pet_hunt.info.passive.title" = "Пассивный фарм";
-"pet_hunt.info.zones.title" = "Зоны охоты";
-"pet_hunt.info.death.title" = "Permadeath";
-"pet_hunt.info.death.body" = "Если питомец проваливает охоту и получает рану на 0 уровне, он умирает навсегда. В Горе и Пещере возможна катастрофа: смерть независимо от уровня. Темперьте питомцев перед сложными зонами.";
 
-/* Pet Hunt: выбор зоны */
-"pet_hunt.zone_picker.title" = "Куда отправить";
-"pet_hunt.zone_picker.intro" = "Больше награда, больше риск. Качество питомца меняет реальные числа.";
-"pet_hunt.zone.forest" = "Лес";
-"pet_hunt.zone.forest.risk" = "Безопасно: только мелкие раны, без смерти";
-"pet_hunt.zone.mountain" = "Гора";
-"pet_hunt.zone.mountain.risk" = "Рискованно: раны частые, смерть редко";
-"pet_hunt.zone.cave" = "Пещера";
-"pet_hunt.zone.cave.risk" = "Хардкор: частые раны, реальный риск смерти";
 
-/* Pet Hunt: результат */
-"pet_hunt.result.success" = "Успешная охота";
-"pet_hunt.result.success.body" = "Питомец вернулся с %@ невредимым.";
-"pet_hunt.result.wound" = "Ранен";
-"pet_hunt.result.wound.body" = "Питомец ранен и потерял уровень. Сейчас уровень %d.";
-"pet_hunt.result.death" = "Не вернулся";
-"pet_hunt.result.death.body" = "Питомец погиб. Он останется в Мемориале.";
 
-/* Pet Hunt: Мемориал */
-"pet_hunt.memorial.title" = "Мемориал";
-"pet_hunt.memorial.empty.title" = "Никто пока не пал";
-"pet_hunt.memorial.empty.body" = "Здесь будут храниться питомцы, погибшие на охоте.";
-"pet_hunt.memorial.died_in" = "Пал в зоне %@";
 
 /* Common */
 "common.continue" = "Продолжить";
-"uin_auction.alert.title" = "Аукцион";
-"uin_auction.hero.kicker" = "ТЕКУЩИЙ ЛОТ";
-"uin_auction.tier.legendary" = "Легендарный";
-"uin_auction.tier.mid" = "Редкий";
-"uin_auction.tier.common" = "Обычный";
-"uin_auction.soft_close" = "Soft close: ставка продлит таймер на 60с";
-"uin_auction.soft_close.badge" = "SOFT CLOSE";
-"uin_auction.soft_close.note" = "Любая новая ставка продлит таймер на 60 секунд";
-"uin_auction.error.generic" = "Не удалось сделать ставку. Попробуй ещё раз.";
-"uin_auction.high_bid" = "СТАВКА";
-"uin_auction.no_bids_yet" = "Ставок ещё не было";
-"uin_auction.you_lead" = "Ты лидируешь";
-"uin_auction.lead_by" = "Лидер: %@";
-"uin_auction.min_next" = "МИНИМУМ";
-"uin_auction.bid_placeholder" = "Минимум %d";
-"uin_auction.cta.bid" = "Ставка";
-"uin_auction.cta.topup" = "Пополнить";
-"uin_auction.insufficient_hint" = "Не хватает средств";
-"uin_auction.history.title" = "ИСТОРИЯ СТАВОК";
-"uin_auction.history.empty" = "Будь первым, кто сделает ставку";
-"uin_auction.waiting.title" = "Готовим следующий лот…";
-"uin_auction.waiting.body" = "Через несколько секунд стартует новый аукцион. Иногда легендарные UIN'ы выпадают, будь готов.";
-"uin_auction.error.no_amount" = "Сначала укажите сумму ставки.";
-"uin_auction.error.already_lead" = "Ты уже лидер";
-"uin_auction.error.ended" = "Аукцион закончился";
-"uin_auction.banner.outbid.title" = "Перебили ставку";
-"uin_auction.recent.title" = "Прошлые лоты";
-"uin_auction.recent.empty" = "Завершённых аукционов пока нет";
-"uin_auction.recent.won_by" = "Победитель: %@";
-"uin_auction.owned.title" = "Мои UIN'ы";
-"uin_auction.owned.empty" = "Пока нет выигранных UIN'ов. Победи в аукционе!";
-"uin_auction.owned.activate" = "Активировать";
-"uin_auction.owned.sell" = "Продать на маркете";
-"uin_auction.owned.remove.confirm.title" = "Удалить UIN #%d?";
-"uin_auction.owned.remove.confirm.message" = "Это необратимо. UIN вернётся в общий пул и может достаться кому-то другому.";
-"uin_auction.owned.remove.confirm.button" = "Удалить";
-"uin_auction.owned.remove.error" = "Не удалось удалить UIN. Попробуй через минуту.";
-"uin_auction.owned.confirm.title" = "Сделать UIN %d своим?";
-"uin_auction.owned.confirm.button" = "Активировать (%d)";
-"uin_auction.owned.activated" = "Готово. Твой новый UIN: %d";
 
-/* ── UIN Auction rules sheet ────────────────────────────── */
-"uin_auction.rules.title" = "Как работает аукцион";
-"uin_auction.rules.what.title" = "Что разыгрывается";
-"uin_auction.rules.what.body" = "Премиум UIN'ы: короткие 4-5-значные, палиндромы (1234321), повторы (777777), последовательности (1234567). Один лот в час. Чем реже паттерн, тем выше rarity (Обычный → Редкий → Легендарный) и стартовая цена.";
-"uin_auction.rules.bidding.title" = "Как ставить";
-"uin_auction.rules.softclose.title" = "Soft close (без снайпинга)";
-"uin_auction.rules.softclose.body" = "Если ставка прилетает в последние 30 секунд, таймер продлевается на +60 секунд. Длится пока ставки идут в финальном окне. Это ломает паттерн «ткнул в последнюю секунду»: все участники видят и могут перебить.";
-"uin_auction.rules.win.title" = "После победы";
 
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "только что";
@@ -1612,7 +1363,7 @@
 "chat.voice.swipe_hints" = "← отмена   ↑ фиксация";
 
 /* Онбординг: переработанные страницы (анонимность / mesh / PIN) */
-"onboard.anon.kicker" = "АНОНИМНО";
+"onboard.anon.kicker" = "ПРИВАТНО";
 "onboard.anon.title" = "Без телефона и почты";
 "onboard.anon.body" = "Ваша личность это номер, и больше ничего. Он не привязан к вам, его можно сжечь и начать заново в любой момент.";
 "onboard.mesh.kicker" = "ОФЛАЙН";
@@ -1661,7 +1412,7 @@
 "onboard.server.picker.search" = "Поиск сервера";
 "onboard.server.picker.empty" = "Ничего не нашлось";
 
-"boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ, попробуйте VPN.";
+"boot.error.unreachable" = "Не удалось подключиться к RCQ. Возможно, сеть блокирует доступ. Попробуйте другую сеть или релеи RCQ.";
 "boot.error.title" = "Не удалось подключиться";
 "boot.error.retrying" = "Повтор через %d с…";
 "boot.error.retry_now" = "Повторить сейчас";
@@ -2041,6 +1792,7 @@
 "island.door.body" = "Остров закрытый: чтобы завести здесь аккаунт, нужен код от его оператора.";
 "reg.invite.enter" = "Ввести код";
 "boot.error.switch_account" = "Другой аккаунт";
+"boot.error.choose_island" = "Выбрать другой остров";
 
 "invites.title" = "Коды доступа";
 "invites.body" = "Код доступа используется один раз: тот, кто его введёт, заведёт аккаунт на этом острове. Новый появляется сам, по одному за период.";
@@ -2070,3 +1822,10 @@
 /* ── Аккаунт переехал на другой номер (событие `account_moved`) ── */
 "account.moved.blocked.title" = "Аккаунт переехал на новый номер";
 "account.moved.blocked.body" = "Вы взяли новый номер на другом устройстве, а это устройство не смогло за ним последовать. Ничего не удалено: переписка на месте. Войдите заново по фразе восстановления, чтобы продолжить на новом номере.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "Остров недоступен";
+"relay.key.offline.body" = "Ключ сохранён, но остров не ответил, и проверить ключ не удалось. Проверим ещё раз при следующем подключении.";
+"relay.key.ok.none" = "Ключ принят. Приватных узлов за ним пока не закреплено, поэтому работает общий пул.";
+"chat.menu.report_group" = "Пожаловаться на группу";
+"report.heading.group" = "Пожаловаться на группу";

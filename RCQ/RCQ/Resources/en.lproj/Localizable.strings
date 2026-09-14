@@ -38,11 +38,9 @@
 "settings.sound.row.off" = "Off";
 "settings.sound.section.master" = "Master";
 "settings.sound.section.presence" = "Contact presence";
-"settings.sound.section.presence.hint" = "ICQ-style chirp when a contact comes online or leaves. Both off by default.";
+"settings.sound.section.presence.hint" = "A classic chirp when a contact comes online or leaves. Both off by default.";
 "settings.sound.contact_online" = "Contact came online";
 "settings.sound.contact_offline" = "Contact went offline";
-"settings.minis.toggle" = "Game minis";
-"settings.minis.toggle.footer" = "Show floating Crash and UIN auction widgets on the chat list so you can keep an eye on a round or a bid without staying inside the game.";
 "settings.trades.realtime" = "Real-time trade pop-ups";
 "settings.trades.realtime.footer" = "When on, an incoming trade opens immediately. Off: trades wait quietly in the Trades window and in the chat with the sender.";
 "settings.language" = "Language";
@@ -215,12 +213,6 @@
 "relays.learn_more" = "What is a relay?";
 "settings.network.coming_soon" = "Coming soon";
 
-"settings.traffic" = "File traffic";
-"settings.traffic.used" = "Used this month";
-"settings.traffic.used.value" = "%d MB";
-"settings.traffic.spent" = "Spent";
-"settings.traffic.pay_large" = "Pay tokens for files > 50 MB";
-"settings.traffic.pay_large.footer" = "Up to 50 MB is free. Above that, 1 token per 10 MB. No size limit while you have tokens.";
 
 "settings.history" = "History";
 "settings.history.file" = "Chat history file";
@@ -349,22 +341,15 @@
 "group_join.island_hint" = "Joining registers your key on %@ so the group can deliver to you.";
 "group_join.open_button" = "Open";
 "group_join.closed_button" = "Invite-only";
-"group_join.price_suffix" = "to join";
 "group_join.owner" = "Owner: %@";
 "group_join.owner_label" = "Owner";
 "group_join.closed_hint" = "This group is invite-only. Ask the owner to add you.";
-"group_join.insufficient" = "Need %d tokens, you have %d.";
 "group_join.error.generic" = "Couldn't load this group.";
 "group_join.error.blocked" = "The owner has blocked you from this group.";
 
 "group.settings.closed" = "Closed group";
 "group.settings.closed.hint" = "Only invitations from the owner add new members. The shared link still shows a preview but can't auto-join.";
 
-"paid_traffic.title" = "Pay for traffic?";
-"paid_traffic.body" = "This file is %@, bigger than the free 50 MB cap. Enable paid traffic in Settings to send it.";
-"paid_traffic.price_suffix" = "this file";
-"paid_traffic.enable" = "Enable paid traffic";
-"paid_traffic.cancel" = "Cancel";
 
 "contact_list.ctx.report" = "Report";
 
@@ -382,7 +367,6 @@
 "settings.account.burn.title" = "Permanently delete this account?";
 "settings.account.burn.confirm" = "Delete permanently";
 "settings.account.burn.message" = "Your account will be deleted on the server and on this device. You'll start with a brand-new UIN. Old contacts and groups are gone; they keep no link to your new identity. This cannot be undone.";
-"settings.account.burn.tally" = "%d items, %d tokens, %d gems";
 
 "settings.link_web" = "Link Web";
 "settings.share.message" = "Add me on RCQ: %@ (%d)";
@@ -439,7 +423,6 @@
 
 "contact_list.offline_badge" = "Offline";
 
-"contact_list.bar.games" = "Games";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Nearby";
 "contact_list.bar.settings" = "Settings";
@@ -568,20 +551,9 @@
 "report_evidence.cta.send" = "Submit report";
 "report_evidence.error.no_bytes" = "Could not load the content for report. Try again after re-opening the message.";
 
-/* ── Crash mini-bar ───────────────────────────────────────── */
 
-"crash.mini.betting" = "Bet";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Place bet";
-"crash.mini.placed" = "Placed";
-"crash.mini.cashout_cta" = "Cash out";
-"crash.mini.crashed_at" = "Crashed @ %.2f×";
 
-/* ── Auction mini-bar ─────────────────────────────────────── */
 
-"auction.mini.leading" = "Leading · %d";
-"auction.mini.outbid" = "Outbid. Re-bid?";
-"auction.mini.bid_cta" = "Raise";
 "chat.menu.voice_call" = "Voice call";
 "chat.menu.video_call" = "Video call";
 "chat.menu.propose_trade" = "Propose trade";
@@ -601,7 +573,6 @@
 "chat.attach.photo" = "Photo";
 "chat.attach.video" = "Video";
 "chat.attach.camera" = "Camera";
-"chat.attach.premium" = "Paid";
 "chat.attach.document" = "Document";
 "chat.attach.location" = "Location";
 "chat.location.title" = "Pick a location";
@@ -610,7 +581,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "Copy coordinates";
-"chat.file.pay_required" = "Files over 50 MB need the Pay-for-files toggle in Settings.";
 
 "chat.translate.title" = "Translation";
 "chat.translate.section.original" = "Original";
@@ -620,22 +590,6 @@
 "chat.translate.translated_badge" = "Translated";
 "chat.action.show_original" = "Show original";
 
-"chat.premium.compose.title" = "Premium content";
-"chat.premium.compose.body" = "Set a token price. Recipients see a blurred bubble and pay to unlock the media. You earn 95% (5% house fee).";
-"chat.premium.compose.price_placeholder" = "Price";
-"chat.premium.compose.hint" = "From 1 to 999,999 tokens.";
-"chat.premium.compose.pick_photo" = "Photo";
-"chat.premium.compose.pick_video" = "Video";
-"chat.premium.unlock_for" = "Unlock for";
-"chat.premium.preview_photo" = "Premium photo";
-"chat.premium.preview_video" = "Premium video";
-"chat.premium.confirm.title" = "Unlock for %d tokens?";
-"chat.premium.confirm.body" = "Tokens will be charged from your balance and the media key will be delivered.";
-"chat.premium.confirm.pay" = "Pay %d";
-"chat.premium.error.title" = "Couldn't unlock";
-"chat.premium.error.insufficient" = "Not enough tokens.";
-"chat.premium.error.gone" = "This content is no longer available.";
-"chat.premium.error.generic" = "Something went wrong. Try again.";
 "chat.voice.permission.title" = "Mic access required";
 "chat.voice.permission.body" = "Enable microphone access in Settings → RCQ to record voice messages.";
 "settings.migrate.header" = "Account";
@@ -665,7 +619,8 @@
 "contact_list.discover.title" = "Open groups";
 "contact_list.discover.join" = "Join";
 "contact_list.empty.title" = "No contacts yet";
-"contact_list.empty.body" = "Add a friend by their UIN or QR code to start a conversation. Stranger Mode works without contacts.";
+"contact_list.empty.body" = "Add a friend by their UIN or QR code to start a conversation.";
+"contact_list.empty.stranger" = "Stranger Mode works without contacts.";
 "contact_list.empty.cta" = "Add a contact";
 
 "chat.empty.title" = "No messages yet";
@@ -736,8 +691,6 @@
 "chat.preview.market_item" = "Marketplace item";
 "chat.preview.uin_listing" = "UIN listing";
 "chat.preview.group_invite" = "Group invite";
-"chat.preview.premium_photo" = "🔒 Premium photo";
-"chat.preview.premium_video" = "🔒 Premium video";
 "chat.preview.generic" = "Message";
 "chat.banner.new_message" = "New message";
 
@@ -790,8 +743,6 @@
 "group.settings.post_policy.all" = "Everyone";
 "group.settings.post_policy.owner_only" = "Owner only";
 "group.settings.post_policy.hint" = "In owner-only mode members can read but can't post.";
-"group.settings.entry_price" = "Entry price in tokens";
-"group.settings.entry_price.hint" = "0 = free. A 5% marketplace fee is withheld from every payment; the rest goes to the owner.";
 "group.settings.name" = "Group name";
 "group.settings.photo" = "Group photo";
 "group.settings.change_photo" = "Change photo";
@@ -814,7 +765,6 @@
 "group.avatar.remove.confirm" = "Remove the group photo?";
 "group.unavailable" = "Group unavailable.";
 "group.compose.broadcast_only" = "Only the owner can post";
-"group.error.join_payment" = "Couldn't pay group entry";
 "group.cta.add_member" = "Add member";
 "group.cta.copy_link" = "Copy group link";
 "group.cta.link_copied" = "Link copied";
@@ -914,8 +864,8 @@
 /* ── About sheet ──────────────────────────────────────────── */
 
 "about.title" = "About RCQ";
-"about.tagline" = "Same soul, modern crypto.";
-"about.body" = "RCQ is free forever. No ads, no data collection, no phone number.";
+"about.tagline" = "Same soul, modern cryptography.";
+"about.body" = "RCQ is a private messenger. No ads, no trackers, no analytics, no phone number.";
 "about.stats.users" = "people on this island";
 "about.privacy.section" = "PRIVACY";
 "about.privacy.b1" = "End-to-end encrypted messages (Signal Protocol).";
@@ -923,7 +873,7 @@
 "about.privacy.b3" = "The backend never sees message contents: messages are stored only as encrypted blobs and deleted once delivered.";
 "about.privacy.b4" = "No phone number, no email: UIN is the only identity.";
 "about.privacy.b5" = "History lives on your device only, encrypted at rest when locked.";
-"about.privacy.b6" = "Your account lives on an island, a server anyone can run. Islands never talk to each other, your app is what connects them.";
+"about.privacy.b6" = "Your account lives on an island, a server anyone can run. People on different islands can still talk to each other.";
 "about.contact.section" = "CONTACT";
 "about.contact.support" = "Support";
 "about.contact.website" = "Website";
@@ -956,18 +906,11 @@
 "add.section.join_group" = "JOIN GROUP";
 
 "join_group.title" = "Join group";
-"join_group.entry_price" = "Entry price";
-"join_group.your_balance" = "You have";
 "join_group.cta.free" = "Join";
-"join_group.cta.pay" = "Pay and join";
-"join_group.cta.insufficient" = "Not enough tokens";
 "join_group.alert.title" = "Group";
-"join_group.error.insufficient" = "Need %d tokens, have %d";
 "join_group.error.blocked" = "The owner blocked you";
 "join_group.error.generic" = "Couldn't join. Try again.";
 
-"chat.menu.premium_content" = "Premium content";
-"chat.premium.coming_soon" = "Coming soon. The owner will be able to post photos/videos behind a blur with a token price. Members unlock per-message and the owner gets 95% (5% marketplace fee).";
 "add.section.people" = "PEOPLE";
 "add.cta.add" = "Add to contacts";
 "add.cta.in_list" = "Already in your contact list";
@@ -1067,20 +1010,8 @@
 "contact_list.section.cross_island" = "Other islands";
 "pending.cta.decline" = "Decline";
 
-"pool.boost_note" = "Odds shown with pet boost at %d%%.";
 
-"shop.kicker" = "SHOP";
-"shop.title" = "Buy tokens";
-"shop.subtitle" = "Tokens are RCQ's in-app currency. Spent on games, the market, premium content, and auctions.";
-"shop.tokens_n" = "%d tokens";
-"shop.best_value" = "BEST VALUE";
-"shop.per_token" = "%d¢ per token";
-"shop.balance" = "Your balance lives server-side under your UIN. Real App Store purchase will come later. Packs above credit your wallet instantly for testing.";
 
-"pool.title" = "Pool";
-"pool.section_share" = "%.0f%% of pulls";
-"pool.cap" = "cap %d";
-"pool.cap_remaining" = "%d / %d left";
 "settings.privacy.relay_calls" = "Always relay calls";
 "settings.privacy.relay_calls.desc" = "Send call audio and video through our relay so the other side never learns your IP address. Turning this off can improve call quality and shows them your address.";
 "settings.privacy.strangers" = "Strangers go to requests";
@@ -1116,20 +1047,7 @@
 
 "radio.info.when.title" = "When to use it";
 "radio.info.when.body" = "Coordinate with friends at a noisy event. Pass a quick note to someone in the same building. Stay in touch during a network outage or in a region where mobile data is throttled. Anywhere phones are close and the regular internet path is unavailable, slow, or risky.";
-"pool.detail.chance" = "DROP CHANCE  %.2f%%";
-"pool.detail.cap" = "EDITION  %d";
-"pool.detail.cap_remaining" = "%d / %d REMAINING";
-"pool.gems.section" = "Gems";
-"pool.gems.title" = "Gem bundle";
-"pool.gems.range" = "%d–%d gems per drop";
-"pool.pack.contents" = "PACK CONTENTS · %d";
 
-"disassemble.title" = "Disassemble";
-"disassemble.body" = "Disassembling will destroy this item permanently. You'll receive gems based on its rarity and temper level.";
-"disassemble.cta" = "Disassemble";
-"disassemble.cta.busy" = "Disassembling…";
-"disassemble.cta.cancel" = "Cancel";
-"disassemble.success.body" = "%@ is gone.";
 
 /* ── Trades ───────────────────────────────────────────────── */
 
@@ -1230,7 +1148,7 @@
 "onboard.federation.body" = "RCQ is not one company's server. Anyone can run an island, your account lives on the one you choose, and your number moves with you.";
 "onboard.relay.kicker" = "PRIVACY";
 "onboard.relay.title" = "The island does not see your address";
-"onboard.relay.body" = "Traffic goes through community relays: the island never sees where you are, and your network never sees that you use RCQ. Where RCQ is blocked, this is also the way in.";
+"onboard.relay.body" = "If a direct connection to your island is blocked, or you turn them on in the menu, the app goes through RCQ relays instead. The island then does not see your IP address, and your traffic looks like an ordinary encrypted connection.";
 
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "The server cannot read along";
@@ -1244,13 +1162,7 @@
 "onboard.calls.title" = "Calls + groups";
 "onboard.calls.body" = "WebRTC voice and video calls, group chats with everyone you add. Push notifications wake you for incoming calls; sealed sender hides the routing from us.";
 
-"onboard.pets.kicker" = "PETS";
-"onboard.pets.title" = "Get a digital pet";
-"onboard.pets.body" = "Open boxes and collect rare animated pets. Upgrade them, gift them, trade them. The same pet can drop at different rarities. Chase the perfect copy.";
 
-"onboard.trade.kicker" = "TRADE";
-"onboard.trade.title" = "Trade in real time";
-"onboard.trade.body" = "Send an offer in a chat, and the recipient sees it instantly. Items, tokens, gems, on either side. Empty \"requested\" = gift. Empty \"offered\" = buy request.";
 
 "onboard.privacy.kicker" = "PRIVACY";
 "onboard.privacy.title" = "You decide who sees what";
@@ -1258,111 +1170,14 @@
 
 /* ── Rarity (used in chips, filters, history) ─────────────── */
 
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Games";
-"games.subtitle" = "Fast token bets.\nRounds last 15-30 seconds.";
-"games.section.solo" = "Solo";
-"games.section.pvp" = "Player vs player";
-"games.section.pets" = "Pets";
-"games.soon" = "SOON";
-"games.cta.topup" = "Top up wallet";
-"games.crash.title" = "Crash";
-"games.crash.body" = "The multiplier rises. Cash out before it crashes.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Guess if the next card is higher or lower.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Set a target multiplier and roll your luck.";
 
-"crash.title" = "Crash";
-"crash.you" = "You";
-"crash.phase.betting" = "Bets · %.1fs";
-"crash.phase.running" = "RUNNING";
-"crash.phase.crashed" = "CRASHED";
-"crash.feed.title" = "Cashed out";
-"crash.feed.bets" = "%d players";
-"crash.feed.empty" = "Nobody has bet yet. Be the first";
-"crash.row.holding" = "HOLDING";
-"crash.row.burned" = "BURNED";
 
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Place a bet";
-"hilo.phase.guess" = "HIGHER OR LOWER?";
-"hilo.card.label" = "Card: %@";
-"hilo.bet.label" = "Bet";
-"hilo.cta.start" = "START %d";
-"hilo.cta.settling" = "SETTLING…";
-"hilo.cta.higher" = "HIGHER";
-"hilo.cta.lower" = "LOWER";
-"hilo.cta.cashout" = "CASH OUT %.2fx";
-"hilo.banner.won" = "Won %.2fx · +%d tokens";
-"hilo.banner.lost" = "Card %@: wrong. Bet lost.";
 
-"hilo.rules.title" = "Hi-Lo rules";
-"hilo.rules.how.title" = "How to play";
-"hilo.rules.how.body" = "Place a bet, and the server reveals a card A through K. Guess if the next card is higher or lower than the current one. Each correct guess compounds the multiplier. Wrong guess = bet lost. Cash out any time = bet × current multiplier.";
-"hilo.rules.payout.title" = "Multiplier";
-"hilo.rules.payout.body" = "Smaller probability = bigger multiplier. On a 7, higher and lower are roughly even (×1.83). On an A (higher is almost certain) it's only ×1.04. On a K, mirrored. Each correct step multiplies the chain.";
-"hilo.rules.fair.title" = "Provably fair";
-"hilo.rules.fair.body" = "Every card in the round is determined BEFORE start: SHA256(seed + index). You see the hash immediately; the seed is revealed when the round ends so you can verify every draw by hand.";
 
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "READY TO ROLL";
-"limbo.phase.rolling" = "Rolling…";
-"limbo.phase.won" = "WON";
-"limbo.phase.lost" = "MISSED";
 
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Pet";
-"pet_preview.owner" = "Worn by %@";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ESS %d";
-"pet_preview.purity" = "PUR %.2fx";
-"limbo.target.label" = "Target: %.2fx";
-"limbo.slider.label" = "Target";
-"limbo.slider.chance" = "Chance";
-"limbo.bet.label" = "Bet";
-"limbo.cta.roll" = "ROLL %d";
-"limbo.banner.won" = "Rolled %.2fx · +%d tokens";
-"limbo.banner.lost" = "Rolled %.2fx (needed ≥%.2fx), missed";
 
-"limbo.rules.title" = "Limbo rules";
-"limbo.rules.how.title" = "How to play";
-"limbo.rules.how.body" = "Pick a target multiplier with the slider (from 1.10x up to 100x). Place a bet, hit ROLL. The server draws a random number from the same curve Crash uses. Roll ≥ target = you win.";
-"limbo.rules.payout.title" = "Multiplier";
-"limbo.rules.payout.body" = "Higher target = bigger multiplier and smaller chance. Target 2.00x = ~48% × 1.94. Target 10x = ~9.7% × 9.7. You set the risk balance.";
-"limbo.rules.fair.title" = "Provably fair";
-"limbo.rules.fair.body" = "Each roll uses a client_seed (generated on your device) + server_seed (revealed after the roll). You can verify SHA256(server + client) yourself and confirm the result wasn't swapped.";
-"crash.bet.label" = "Bet";
-"crash.bet.cta" = "BET %d";
-"crash.bet.placed" = "Bet %d placed";
-"crash.bet.wait" = "waiting for start";
-"crash.cashout.label" = "CASH OUT %.2fx";
-"crash.you_cashed" = "You cashed out ✓";
-"crash.spectating" = "Wait for next round";
-"crash.result.lost" = "Crashed at %.2fx. Bet lost";
-"crash.result.won" = "Won! %.2fx · +%d tokens";
-"crash.result.next_in" = "Next round in %d s";
-"crash.banner.cashed" = "Cashed %.2fx · +%d tokens";
-"crash.error.betting_closed" = "Bets already closed";
-"crash.error.cashout_too_late" = "Too late. The round crashed just as your tap arrived. Bet is forfeit.";
-"crash.error.already_cashed" = "You've already cashed out this round";
-"crash.error.already_bet" = "You've already bet this round";
-"crash.error.no_bet" = "You have no bet in this round";
-"crash.error.insufficient" = "Not enough tokens";
-"crash.error.network" = "Connection hiccup. Try again";
 
-"crash.rules.title" = "Crash rules";
-"crash.rules.how.title" = "How to play";
-"crash.rules.how.body" = "Each round: 8 seconds to place a bet, then the multiplier rises from 1.00x. At any moment tap CASH OUT: you lock in bet × current multiplier. Stay in too long and the round crashes. You lose everything.";
-"crash.rules.payout.title" = "Payout";
-"crash.rules.payout.body" = "Winnings = bet × multiplier at cashout. Example: bet 10 tokens, cashed at 2.50x → +25 tokens. The longer you hold, the bigger the potential win, and the higher the crash risk.";
-"crash.rules.fair.title" = "Provably fair";
-"crash.rules.fair.body" = "The crash point is decided BEFORE bets open: SHA256(seed + round_id). The hash is published at round start, the seed itself is revealed when the round ends. You can verify by hand; nobody can change the result after your bet.";
-"crash.rules.risk.title" = "Risk";
-"crash.rules.risk.body" = "About 3% of rounds crash instantly at 1.00x. That's the mathematical house edge (tokens are burned, nobody profits). 50% of rounds crash before 2.00x. 10% make it past 10x. Play with what you're willing to lose.";
 
 "contact_list.bar.add" = "Add";  /* legacy key kept for transitional bundles */
 
@@ -1428,112 +1243,14 @@
 "audio_room.rotate.confirm.do" = "Rotate";
 "audio_room.rotate.toast" = "Key rotated";
 
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "UIN Auction";
-"games.uin_auction.body" = "One UIN per hour. Bid wars to the last second.";
-"games.pets_hunt.title" = "Hunt";
-"games.pets_hunt.body" = "Your equipped pet earns tokens passively. Risk it on hunts for big rewards.";
 
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "%d tokens / day at full uptime";
-"pet_hunt.daily_gems" = "%d gems / day at full uptime";
-"pet_hunt.cap_reached" = "Buffer full. Claim now or yield is lost";
-"pet_hunt.claim" = "Claim";
-"pet_hunt.send" = "SEND TO HUNT";
-"pet_hunt.hunts_left" = "%d / %d hunts left today";
-"pet_hunt.cta.open_memorial" = "Memorial";
-"pool.rarity.section" = "Rarity roll";
-"pool.rarity.hint" = "Rarity is rolled independently of the kind that drops: any pet, smiley pack, or voice can land at any rarity at the chances below.";
-"pet_hunt.empty.no_pet.title" = "No pet equipped";
-"pet_hunt.accumulator.title" = "In buffer";
-"pet_hunt.spec.daily_yield" = "Tokens / day";
-"pet_hunt.spec.daily_gems" = "Gems / day";
-"pet_hunt.spec.hourly_rate" = "Tokens / hour";
 
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "How it works";
-"pet_hunt.info.passive.title" = "Passive farming";
-"pet_hunt.info.passive.body" = "Your equipped pet earns tokens 24/7. Higher rarity, higher level and higher purity all increase the rate. Buffer caps at 24 hours. Claim daily or you lose the overflow.";
-"pet_hunt.info.zones.title" = "Hunt zones";
-"pet_hunt.info.zones.body" = "Three daily hunts let you risk your pet for bigger rewards. Forest is safe, Mountain is risky, Cave is hardcore. Stronger pets succeed more often AND survive failure more often.";
-"pet_hunt.info.death.title" = "Permadeath";
-"pet_hunt.info.death.body" = "If your pet fails a hunt and gets wounded at level 0, it dies forever. Disasters in Mountain and Cave can kill any pet regardless of level. Temper your pets before sending them to hard zones.";
 
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "Choose hunt";
-"pet_hunt.zone_picker.intro" = "Bigger reward, bigger risk. Your pet quality changes the actual numbers.";
-"pet_hunt.zone.forest" = "Forest";
-"pet_hunt.zone.forest.reward" = "Tokens 3–8 × stats + gems 0–2";
-"pet_hunt.zone.forest.risk" = "Safe: only minor wounds, no death";
-"pet_hunt.zone.mountain" = "Mountain";
-"pet_hunt.zone.mountain.reward" = "Tokens 8–20 × stats + gems 1–4";
-"pet_hunt.zone.mountain.risk" = "Risky: wounds common, rare deaths";
-"pet_hunt.zone.cave" = "Cave";
-"pet_hunt.zone.cave.reward" = "Tokens 20–50 × stats + gems 2–7";
-"pet_hunt.zone.cave.risk" = "Hardcore: frequent wounds, real death risk";
 
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "Successful hunt";
-"pet_hunt.result.success.body" = "Your pet returned from the %@ unscathed.";
-"pet_hunt.result.wound" = "Wounded";
-"pet_hunt.result.wound.body" = "Your pet was hurt and lost a level. Now at level %d.";
-"pet_hunt.result.death" = "Did not return";
-"pet_hunt.result.death.body" = "Your pet has fallen. It will be remembered in the Memorial.";
 
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "Memorial";
-"pet_hunt.memorial.empty.title" = "Nobody's fallen yet";
-"pet_hunt.memorial.empty.body" = "Pets that die on hunts will be remembered here.";
-"pet_hunt.memorial.died_in" = "Fell in %@";
 
 /* Common */
 "common.continue" = "Continue";
-"uin_auction.alert.title" = "Auction";
-"uin_auction.hero.kicker" = "CURRENT LOT";
-"uin_auction.tier.legendary" = "Legendary";
-"uin_auction.tier.mid" = "Rare";
-"uin_auction.tier.common" = "Common";
-"uin_auction.soft_close" = "Soft close: any bid extends timer by 60s";
-"uin_auction.soft_close.badge" = "SOFT CLOSE";
-"uin_auction.soft_close.note" = "Any new bid extends the timer by 60 seconds";
-"uin_auction.error.generic" = "Couldn't place bid. Try again.";
-"uin_auction.high_bid" = "HIGH BID";
-"uin_auction.no_bids_yet" = "No bids yet";
-"uin_auction.you_lead" = "You're leading";
-"uin_auction.lead_by" = "Leader: %@";
-"uin_auction.min_next" = "MIN NEXT";
-"uin_auction.bid_placeholder" = "Min %d";
-"uin_auction.cta.bid" = "Bid";
-"uin_auction.cta.topup" = "Top up";
-"uin_auction.insufficient_hint" = "Not enough tokens";
-"uin_auction.need_tokens" = "Not enough tokens. Buy more";
-"uin_auction.history.title" = "BID HISTORY";
-"uin_auction.history.empty" = "Be the first to bid";
-"uin_auction.waiting.title" = "Preparing the next lot…";
-"uin_auction.waiting.body" = "A new auction starts in a few seconds. Legendary UINs drop occasionally, so stick around.";
-"uin_auction.error.bid_too_low" = "Min bid is %d tokens";
-"uin_auction.error.no_amount" = "Enter a bid amount first.";
-"uin_auction.error.insufficient" = "Need %d tokens, have %d";
-"uin_auction.error.already_lead" = "You're already the leader";
-"uin_auction.error.ended" = "Auction ended";
-"uin_auction.outbid_refund" = "You've been outbid. %d tokens refunded.";
-"uin_auction.banner.outbid.title" = "Outbid on UIN auction";
-"uin_auction.banner.outbid.body" = "You were outbid, %d tokens refunded. Tap to rebid.";
-"uin_auction.recent.title" = "Recent winners";
-"uin_auction.recent.empty" = "No completed auctions yet";
-"uin_auction.recent.won_by" = "Won by %@";
-"uin_auction.owned.title" = "My UINs";
-"uin_auction.owned.body" = "UINs won at auction. Activate any as your current UIN; this runs the migration (99 tokens).";
-"uin_auction.owned.empty" = "No won UINs yet. Win an auction!";
-"uin_auction.owned.activate" = "Activate";
-"uin_auction.owned.sell" = "Sell on marketplace";
-"uin_auction.owned.remove.confirm.title" = "Remove UIN #%d?";
-"uin_auction.owned.remove.confirm.message" = "This is irreversible. The UIN goes back to the pool and could be reissued to someone else.";
-"uin_auction.owned.remove.confirm.button" = "Remove";
-"uin_auction.owned.remove.error" = "Couldn't remove the UIN. Try again in a moment.";
-"uin_auction.owned.confirm.title" = "Make UIN %d yours?";
-"uin_auction.owned.confirm.button" = "Activate (%d)";
-"uin_auction.owned.activated" = "Done. Your new UIN: %d";
 
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "just now";
@@ -1659,7 +1376,7 @@
 "chat.voice.swipe_hints" = "← cancel   ↑ lock";
 
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "ANONYMOUS";
+"onboard.anon.kicker" = "PRIVATE";
 "onboard.anon.title" = "No phone, no email";
 "onboard.anon.body" = "Your identity is a number and nothing else. It is not tied to you, and you can burn it and start over at any time.";
 "onboard.mesh.kicker" = "OFFLINE";
@@ -1708,7 +1425,7 @@
 "onboard.server.picker.search" = "Search servers";
 "onboard.server.picker.empty" = "No matches";
 
-"boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it. Try a VPN.";
+"boot.error.unreachable" = "Couldn't reach RCQ. Your network may be blocking it. Try another network or RCQ relays.";
 "boot.error.title" = "Couldn't connect";
 "boot.error.retrying" = "Retrying in %ds…";
 "boot.error.retry_now" = "Retry now";
@@ -2091,6 +1808,7 @@
 "island.door.body" = "This island is closed: an account here needs a code from its operator.";
 "reg.invite.enter" = "Enter a code";
 "boot.error.switch_account" = "Another account";
+"boot.error.choose_island" = "Choose another island";
 
 "invites.title" = "Access codes";
 "invites.body" = "An access code is used once: whoever enters it gets an account on this island. A new one accrues on its own, one per period.";
@@ -2120,3 +1838,10 @@
 /* ── Account moved to another UIN (followed off `account_moved`) ── */
 "account.moved.blocked.title" = "Your account moved to a new number";
 "account.moved.blocked.body" = "You took a new number on another device, and this one could not follow it there. Nothing has been deleted: your chats are still here. Sign in again with your recovery phrase to continue on the new number.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "Island not reached";
+"relay.key.offline.body" = "The key is saved, but the island could not be reached to check it. It will be checked again the next time the app connects.";
+"relay.key.ok.none" = "The key was accepted. No private nodes are assigned to it yet, so the shared pool stays in use.";
+"chat.menu.report_group" = "Report group";
+"report.heading.group" = "Report group";

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// Per-app language override. ICQ-era users expect a manual switcher
+/// Per-app language override. Users of the 2002-era classics expect a manual switcher
 /// in Settings. Translations live in `*.lproj/Localizable.strings`;
 /// adding a language = add a case to `AppLanguage` + drop strings file.
 /// `String.localized` reads the active bundle; `set(_:)` flips the

@@ -38,11 +38,9 @@
 "settings.sound.row.off" = "Desligado";
 "settings.sound.section.master" = "Geral";
 "settings.sound.section.presence" = "Presença dos contatos";
-"settings.sound.section.presence.hint" = "Um bipe estilo ICQ quando um contato fica online ou sai. Os dois vêm desligados.";
+"settings.sound.section.presence.hint" = "Um bipe clássico quando um contato fica online ou sai. Os dois vêm desligados.";
 "settings.sound.contact_online" = "Contato ficou online";
 "settings.sound.contact_offline" = "Contato saiu";
-"settings.minis.toggle" = "Widgets de jogo";
-"settings.minis.toggle.footer" = "Mostra os widgets flutuantes do Crash e do leilão de UIN na lista de conversas, para você acompanhar uma rodada ou um lance sem ficar dentro do jogo.";
 "settings.trades.realtime" = "Trocas em tempo real";
 "settings.trades.realtime.footer" = "Ligado, uma troca que chega abre na hora. Desligado, as trocas esperam quietas na janela de Trocas e na conversa com quem enviou.";
 "settings.language" = "Idioma";
@@ -209,12 +207,6 @@
 "settings.network.singbox.status.on" = "Pelos relays do RCQ";
 "relays.learn_more" = "O que é um relay?";
 "settings.network.coming_soon" = "Em breve";
-"settings.traffic" = "Tráfego de arquivos";
-"settings.traffic.used" = "Usado este mês";
-"settings.traffic.used.value" = "%d MB";
-"settings.traffic.spent" = "Gasto";
-"settings.traffic.pay_large" = "Pagar fichas por arquivos > 50 MB";
-"settings.traffic.pay_large.footer" = "Até 50 MB é grátis. Acima disso, 1 ficha a cada 10 MB, sem limite de tamanho enquanto você tiver fichas.";
 "settings.history" = "Histórico";
 "settings.history.file" = "Arquivo com o histórico";
 "backup.intro" = "Salva o histórico deste dispositivo em um arquivo, criptografado com sua frase de recuperação. O arquivo é seu: guarde onde quiser. Nada sobe para nós, e não temos como ler.";
@@ -336,20 +328,13 @@
 "group_join.island_hint" = "Entrar registra sua chave em %@ para o grupo conseguir te entregar as mensagens.";
 "group_join.open_button" = "Abrir";
 "group_join.closed_button" = "Só por convite";
-"group_join.price_suffix" = "para entrar";
 "group_join.owner" = "Dono: %@";
 "group_join.owner_label" = "Dono";
 "group_join.closed_hint" = "Este grupo é só por convite. Peça ao dono para te adicionar.";
-"group_join.insufficient" = "Precisa de %d fichas, você tem %d.";
 "group_join.error.generic" = "Não foi possível carregar este grupo.";
 "group_join.error.blocked" = "O dono bloqueou você neste grupo.";
 "group.settings.closed" = "Grupo fechado";
 "group.settings.closed.hint" = "Só convites do dono adicionam membros novos. O link compartilhado ainda mostra uma prévia, mas não entra sozinho.";
-"paid_traffic.title" = "Pagar pelo tráfego?";
-"paid_traffic.body" = "Este arquivo tem %@, mais que o limite grátis de 50 MB. Ligue o tráfego pago nas Configurações para enviar.";
-"paid_traffic.price_suffix" = "este arquivo";
-"paid_traffic.enable" = "Ligar tráfego pago";
-"paid_traffic.cancel" = "Cancelar";
 "contact_list.ctx.report" = "Denunciar";
 "report.title" = "Denúncia";
 "report.heading" = "Denunciar usuário";
@@ -365,7 +350,6 @@
 "settings.account.burn.title" = "Apagar esta conta para sempre?";
 "settings.account.burn.confirm" = "Apagar para sempre";
 "settings.account.burn.message" = "Sua conta será apagada no servidor e neste dispositivo. Você começa com um UIN novo em folha. Contatos e grupos antigos somem, e não fica nenhum vínculo com sua identidade nova. Isso não pode ser desfeito.";
-"settings.account.burn.tally" = "%d itens, %d fichas, %d gemas";
 "settings.link_web" = "Conectar web";
 "settings.share.message" = "Me adiciona no RCQ: %@ (%d)";
 "settings.link_web.footer" = "Use chat.rcq.app num navegador de computador. Gera um código de uso único que você cola no site. Por enquanto só envia; as respostas continuam chegando no iOS.";
@@ -411,7 +395,6 @@
 "status.offline" = "Offline";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Offline";
-"contact_list.bar.games" = "Jogos";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Por perto";
 "contact_list.bar.settings" = "Configurações";
@@ -531,17 +514,6 @@
 "report_evidence.consent.toggle" = "Autorizo os moderadores do RCQ a analisar este conteúdo";
 "report_evidence.cta.send" = "Enviar denúncia";
 "report_evidence.error.no_bytes" = "Não foi possível carregar o conteúdo para a denúncia. Tente de novo depois de reabrir a mensagem.";
-/* ── Crash mini-bar ───────────────────────────────────────── */
-"crash.mini.betting" = "Apostar";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Fazer aposta";
-"crash.mini.placed" = "Feita";
-"crash.mini.cashout_cta" = "Sacar";
-"crash.mini.crashed_at" = "Quebrou em %.2f×";
-/* ── Auction mini-bar ─────────────────────────────────────── */
-"auction.mini.leading" = "Na frente · %d";
-"auction.mini.outbid" = "Te superaram, dar outro lance?";
-"auction.mini.bid_cta" = "Aumentar";
 "chat.menu.voice_call" = "Chamada de voz";
 "chat.menu.video_call" = "Chamada de vídeo";
 "chat.menu.propose_trade" = "Propor troca";
@@ -561,7 +533,6 @@
 "chat.attach.photo" = "Foto";
 "chat.attach.video" = "Vídeo";
 "chat.attach.camera" = "Câmera";
-"chat.attach.premium" = "Pago";
 "chat.attach.document" = "Documento";
 "chat.attach.location" = "Localização";
 "chat.location.title" = "Escolher um local";
@@ -570,7 +541,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "Copiar coordenadas";
-"chat.file.pay_required" = "Arquivos acima de 50 MB precisam da opção Pagar por arquivos nas Configurações.";
 "chat.translate.title" = "Tradução";
 "chat.translate.section.original" = "Original";
 "chat.translate.section.translated" = "Tradução";
@@ -578,22 +548,6 @@
 "chat.translate.empty" = "Nada para traduzir.";
 "chat.translate.translated_badge" = "Traduzido";
 "chat.action.show_original" = "Mostrar o original";
-"chat.premium.compose.title" = "Conteúdo pago";
-"chat.premium.compose.body" = "Defina um preço em fichas. Quem recebe vê um balão borrado e paga para desbloquear a mídia. Você fica com 95% (5% de taxa da casa).";
-"chat.premium.compose.price_placeholder" = "Preço";
-"chat.premium.compose.hint" = "De 1 a 999.999 fichas.";
-"chat.premium.compose.pick_photo" = "Foto";
-"chat.premium.compose.pick_video" = "Vídeo";
-"chat.premium.unlock_for" = "Desbloquear por";
-"chat.premium.preview_photo" = "Foto paga";
-"chat.premium.preview_video" = "Vídeo pago";
-"chat.premium.confirm.title" = "Desbloquear por %d fichas?";
-"chat.premium.confirm.body" = "As fichas saem do seu saldo e a chave da mídia é entregue.";
-"chat.premium.confirm.pay" = "Pagar %d";
-"chat.premium.error.title" = "Não foi possível desbloquear";
-"chat.premium.error.insufficient" = "Fichas insuficientes.";
-"chat.premium.error.gone" = "Este conteúdo não está mais disponível.";
-"chat.premium.error.generic" = "Algo deu errado. Tente de novo.";
 "chat.voice.permission.title" = "Precisa de acesso ao microfone";
 "chat.voice.permission.body" = "Libere o acesso ao microfone em Ajustes → RCQ para gravar mensagens de voz.";
 "settings.migrate.header" = "Conta";
@@ -621,7 +575,8 @@
 "contact_list.discover.title" = "Grupos abertos";
 "contact_list.discover.join" = "Entrar";
 "contact_list.empty.title" = "Nenhum contato ainda";
-"contact_list.empty.body" = "Adicione alguém pelo UIN ou pelo código QR para começar uma conversa. O bate-papo aleatório funciona sem contatos.";
+"contact_list.empty.body" = "Adicione alguém pelo UIN ou pelo código QR para começar uma conversa.";
+"contact_list.empty.stranger" = "O bate-papo aleatório funciona sem contatos.";
 "contact_list.empty.cta" = "Adicionar um contato";
 "chat.empty.title" = "Nenhuma mensagem ainda";
 "chat.empty.body" = "Diga oi: sua primeira mensagem começa a conversa.";
@@ -684,8 +639,6 @@
 "chat.preview.market_item" = "Item do mercado";
 "chat.preview.uin_listing" = "Anúncio de UIN";
 "chat.preview.group_invite" = "Convite de grupo";
-"chat.preview.premium_photo" = "🔒 Foto paga";
-"chat.preview.premium_video" = "🔒 Vídeo pago";
 "chat.preview.generic" = "Mensagem";
 "chat.banner.new_message" = "Mensagem nova";
 /* ── Call screen ──────────────────────────────────────────── */
@@ -766,8 +719,6 @@
 "group.settings.post_policy.all" = "Todos";
 "group.settings.post_policy.owner_only" = "Só o dono";
 "group.settings.post_policy.hint" = "No modo só o dono, os membros leem mas não podem publicar.";
-"group.settings.entry_price" = "Preço de entrada em fichas";
-"group.settings.entry_price.hint" = "0 = grátis. Uma taxa de 5% do mercado é retida de cada pagamento; o resto vai para o dono.";
 "group.settings.name" = "Nome do grupo";
 "group.settings.photo" = "Foto do grupo";
 "group.settings.change_photo" = "Trocar a foto";
@@ -779,7 +730,6 @@
 "group.avatar.remove.confirm" = "Remover a foto do grupo?";
 "group.unavailable" = "Grupo indisponível.";
 "group.compose.broadcast_only" = "Só o dono pode publicar";
-"group.error.join_payment" = "Não foi possível pagar a entrada do grupo";
 "group.cta.add_member" = "Adicionar membro";
 "group.cta.copy_link" = "Copiar link do grupo";
 "group.cta.link_copied" = "Link copiado";
@@ -847,7 +797,7 @@
 /* ── About sheet ──────────────────────────────────────────── */
 "about.title" = "Sobre o RCQ";
 "about.tagline" = "A mesma alma, criptografia moderna.";
-"about.body" = "O RCQ é grátis para sempre. Sem anúncios, sem coleta de dados, sem número de telefone.";
+"about.body" = "O RCQ é um mensageiro privado. Sem anúncios, sem rastreadores, sem análises, sem número de telefone.";
 "about.stats.users" = "pessoas nesta ilha";
 "about.privacy.section" = "PRIVACIDADE";
 "about.privacy.b1" = "Mensagens com criptografia de ponta a ponta (Signal Protocol).";
@@ -855,7 +805,7 @@
 "about.privacy.b3" = "Backend zero-knowledge: as mensagens ficam guardadas só como blocos criptografados e são apagadas na entrega.";
 "about.privacy.b4" = "Sem número de telefone, sem e-mail: o UIN é a única identidade.";
 "about.privacy.b5" = "O histórico vive só no seu dispositivo, criptografado quando o app está trancado.";
-"about.privacy.b6" = "Sua conta vive em uma ilha, um servidor que qualquer pessoa pode manter. As ilhas nunca conversam entre si, quem as conecta é o seu aplicativo.";
+"about.privacy.b6" = "Sua conta vive em uma ilha, um servidor que qualquer pessoa pode manter. Pessoas de ilhas diferentes ainda assim conseguem conversar entre si.";
 "about.contact.section" = "CONTATO";
 "about.contact.support" = "Suporte";
 "about.contact.website" = "Site";
@@ -880,17 +830,10 @@
 "add.section.groups" = "GRUPOS";
 "add.section.join_group" = "ENTRAR NO GRUPO";
 "join_group.title" = "Entrar no grupo";
-"join_group.entry_price" = "Preço de entrada";
-"join_group.your_balance" = "Você tem";
 "join_group.cta.free" = "Entrar";
-"join_group.cta.pay" = "Pagar e entrar";
-"join_group.cta.insufficient" = "Fichas insuficientes";
 "join_group.alert.title" = "Grupo";
-"join_group.error.insufficient" = "Precisa de %d fichas, você tem %d";
 "join_group.error.blocked" = "O dono bloqueou você";
 "join_group.error.generic" = "Não foi possível entrar. Tente de novo.";
-"chat.menu.premium_content" = "Conteúdo pago";
-"chat.premium.coming_soon" = "Em breve. O dono vai poder publicar fotos e vídeos borrados com preço em fichas: os membros desbloqueiam por mensagem e o dono fica com 95% (5% de taxa do mercado).";
 "add.section.people" = "PESSOAS";
 "add.cta.add" = "Adicionar aos contatos";
 "add.cta.in_list" = "Já está na sua lista de contatos";
@@ -986,18 +929,6 @@
 "ci.add_self" = "Este é você: sua conta nesta ilha";
 "contact_list.section.cross_island" = "Outras ilhas";
 "pending.cta.decline" = "Recusar";
-"pool.boost_note" = "Chances mostradas com o bônus do bichinho em %d%%.";
-"shop.kicker" = "LOJA";
-"shop.title" = "Comprar fichas";
-"shop.subtitle" = "As fichas são a moeda interna do RCQ. Servem para jogos, mercado, conteúdo pago e leilões.";
-"shop.tokens_n" = "%d fichas";
-"shop.best_value" = "MELHOR OFERTA";
-"shop.per_token" = "%d¢ por ficha";
-"shop.balance" = "Seu saldo fica no servidor, ligado ao seu UIN. A compra de verdade pela App Store vem depois; por enquanto os pacotes acima creditam sua carteira na hora, para teste.";
-"pool.title" = "Pool";
-"pool.section_share" = "%.0f%% dos sorteios";
-"pool.cap" = "limite %d";
-"pool.cap_remaining" = "restam %d / %d";
 "settings.privacy.relay_calls" = "Sempre passar chamadas por relay";
 "settings.privacy.relay_calls.desc" = "Manda o áudio e o vídeo da chamada pelo nosso relay, assim o outro lado nunca fica sabendo seu endereço IP. Desligar isto pode melhorar a qualidade da chamada e mostra seu endereço a ele.";
 "settings.privacy.strangers" = "Desconhecidos vão para solicitações";
@@ -1025,19 +956,6 @@
 "radio.info.privacy.body" = "Nada sai da rede local. Suas sessões têm criptografia de ponta a ponta entre os participantes, com uma chave de sessão que quem criou a sala compartilha como senha. O histórico fica só na memória: a conversa some quando você fecha o chat.";
 "radio.info.when.title" = "Quando usar";
 "radio.info.when.body" = "Combinar com os amigos num evento barulhento. Passar um recado rápido para alguém no mesmo prédio. Continuar em contato durante uma queda de rede ou numa região onde os dados móveis estão limitados. Em qualquer lugar onde os celulares estejam perto e o caminho normal da internet esteja indisponível, lento ou arriscado.";
-"pool.detail.chance" = "CHANCE DE DROP  %.2f%%";
-"pool.detail.cap" = "EDIÇÃO  %d";
-"pool.detail.cap_remaining" = "%d / %d RESTANTES";
-"pool.gems.section" = "Gemas";
-"pool.gems.title" = "Pacote de gemas";
-"pool.gems.range" = "%d–%d gemas por drop";
-"pool.pack.contents" = "CONTEÚDO DO PACOTE · %d";
-"disassemble.title" = "Desmontar";
-"disassemble.body" = "Desmontar destrói este item para sempre. Você recebe gemas conforme a raridade e o nível de têmpera dele.";
-"disassemble.cta" = "Desmontar";
-"disassemble.cta.busy" = "Desmontando…";
-"disassemble.cta.cancel" = "Cancelar";
-"disassemble.success.body" = "%@ se foi.";
 /* ── Trades ───────────────────────────────────────────────── */
 /* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Por perto";
@@ -1129,7 +1047,7 @@
 "onboard.federation.body" = "O RCQ não é o servidor de uma empresa. Qualquer um pode erguer uma ilha, sua conta vive na que escolher e seu número se muda com você.";
 "onboard.relay.kicker" = "PRIVACIDADE";
 "onboard.relay.title" = "A ilha não vê seu endereço";
-"onboard.relay.body" = "O tráfego passa por relés da comunidade: a ilha nunca vê onde você está e sua rede nunca vê que você usa o RCQ. Onde o RCQ é bloqueado, é também a entrada.";
+"onboard.relay.body" = "Se a conexão direta com a sua ilha falhar, ou se você os ligar, o app passa pelos relés do RCQ. A ilha então não vê seu endereço IP e seu tráfego parece uma conexão criptografada comum.";
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "O servidor não lê a conversa";
 "onboard.chat.body" = "Cada mensagem é cifrada de ponta a ponta e o remetente fica escondido dentro do envelope. O servidor não sabe quem escreve para quem.";
@@ -1139,114 +1057,11 @@
 "onboard.calls.kicker" = "VOZ E VÍDEO";
 "onboard.calls.title" = "Chamadas + grupos";
 "onboard.calls.body" = "Chamadas de voz e vídeo por WebRTC, conversas em grupo com todo mundo que você adicionar. As notificações push te acordam para as chamadas que chegam; o sealed sender esconde o roteamento da gente.";
-"onboard.pets.kicker" = "BICHINHOS";
-"onboard.pets.title" = "Ganhe um bichinho digital";
-"onboard.pets.body" = "Abra caixas e colecione bichinhos animados raros. Melhore, presenteie, troque. O mesmo bichinho pode cair em raridades diferentes: cace a cópia perfeita.";
-"onboard.trade.kicker" = "TROCA";
-"onboard.trade.title" = "Troque em tempo real";
-"onboard.trade.body" = "Mande uma oferta numa conversa: quem recebe vê na hora. Itens, fichas, gemas, dos dois lados. \"Pedido\" vazio = presente. \"Oferecido\" vazio = pedido de compra.";
 "onboard.privacy.kicker" = "PRIVACIDADE";
 "onboard.privacy.title" = "Você decide quem vê o quê";
 "onboard.privacy.body" = "Visibilidade campo a campo para visto por último, gênero, convites de grupo e ofertas de troca: Todos, Só contatos ou Ninguém. Apague a conta para sempre quando quiser; depois disso não sobra nada para recuperar.";
 /* ── Rarity (used in chips, filters, history) ─────────────── */
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Jogos";
-"games.subtitle" = "Apostas rápidas em fichas.\nAs rodadas duram de 15 a 30 segundos.";
-"games.section.solo" = "Solo";
-"games.section.pvp" = "Jogador contra jogador";
-"games.section.pets" = "Bichinhos";
-"games.soon" = "EM BREVE";
-"games.cta.topup" = "Recarregar a carteira";
-"games.crash.title" = "Crash";
-"games.crash.body" = "O multiplicador sobe: saque antes de quebrar.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Adivinhe se a próxima carta é maior ou menor.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Defina um multiplicador alvo e teste a sorte.";
-"crash.title" = "Crash";
-"crash.you" = "Você";
-"crash.phase.betting" = "Apostas · %.1fs";
-"crash.phase.running" = "RODANDO";
-"crash.phase.crashed" = "QUEBROU";
-"crash.feed.title" = "Sacaram";
-"crash.feed.bets" = "%d jogadores";
-"crash.feed.empty" = "Ninguém apostou ainda, seja o primeiro";
-"crash.row.holding" = "SEGURANDO";
-"crash.row.burned" = "QUEIMOU";
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Faça uma aposta";
-"hilo.phase.guess" = "MAIOR OU MENOR?";
-"hilo.card.label" = "Carta: %@";
-"hilo.bet.label" = "Aposta";
-"hilo.cta.start" = "COMEÇAR %d";
-"hilo.cta.settling" = "FECHANDO…";
-"hilo.cta.higher" = "MAIOR";
-"hilo.cta.lower" = "MENOR";
-"hilo.cta.cashout" = "SACAR %.2fx";
-"hilo.banner.won" = "Ganhou %.2fx · +%d fichas";
-"hilo.banner.lost" = "Carta %@, errou. Aposta perdida.";
-"hilo.rules.title" = "Regras do Hi-Lo";
-"hilo.rules.how.title" = "Como jogar";
-"hilo.rules.how.body" = "Faça uma aposta: o servidor revela uma carta de A a K. Adivinhe se a próxima carta é maior ou menor que a atual. Cada acerto multiplica em cima do anterior. Errou = aposta perdida. Sacar a qualquer momento = aposta × multiplicador atual.";
-"hilo.rules.payout.title" = "Multiplicador";
-"hilo.rules.payout.body" = "Probabilidade menor = multiplicador maior. Num 7, maior e menor são quase iguais (×1.83). Num A (maior é quase certo) fica só ×1.04. Num K, o espelho disso. Cada passo certo multiplica a corrente.";
-"hilo.rules.fair.title" = "Comprovadamente justo";
-"hilo.rules.fair.body" = "Toda carta da rodada é definida ANTES do início: SHA256(seed + índice). Você vê o hash na hora; o seed é revelado quando a rodada termina, então dá para conferir cada carta na mão.";
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "PRONTO PARA ROLAR";
-"limbo.phase.rolling" = "Rolando…";
-"limbo.phase.won" = "GANHOU";
-"limbo.phase.lost" = "ERROU";
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Bichinho";
-"pet_preview.owner" = "Usado por %@";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ESS %d";
-"pet_preview.purity" = "PUR %.2fx";
-"limbo.target.label" = "Alvo: %.2fx";
-"limbo.slider.label" = "Alvo";
-"limbo.slider.chance" = "Chance";
-"limbo.bet.label" = "Aposta";
-"limbo.cta.roll" = "ROLAR %d";
-"limbo.banner.won" = "Rolou %.2fx · +%d fichas";
-"limbo.banner.lost" = "Rolou %.2fx (precisava de ≥%.2fx), errou";
-"limbo.rules.title" = "Regras do Limbo";
-"limbo.rules.how.title" = "Como jogar";
-"limbo.rules.how.body" = "Escolha um multiplicador alvo no controle deslizante (de 1.10x até 100x). Faça uma aposta e toque em ROLAR. O servidor sorteia um número da mesma curva que o Crash usa. Resultado ≥ alvo = você ganha.";
-"limbo.rules.payout.title" = "Multiplicador";
-"limbo.rules.payout.body" = "Alvo mais alto = multiplicador maior e chance menor. Alvo 2.00x = ~48% × 1.94. Alvo 10x = ~9.7% × 9.7. Você define o equilíbrio do risco.";
-"limbo.rules.fair.title" = "Comprovadamente justo";
-"limbo.rules.fair.body" = "Cada rolagem usa um client_seed (gerado no seu dispositivo) + um server_seed (revelado depois da rolagem). Você mesmo pode conferir SHA256(server + client) e confirmar que o resultado não foi trocado.";
-"crash.bet.label" = "Aposta";
-"crash.bet.cta" = "APOSTAR %d";
-"crash.bet.placed" = "Aposta de %d feita";
-"crash.bet.wait" = "esperando o início";
-"crash.cashout.label" = "SACAR %.2fx";
-"crash.you_cashed" = "Você sacou ✓";
-"crash.spectating" = "Espere a próxima rodada";
-"crash.result.lost" = "Quebrou em %.2fx, aposta perdida";
-"crash.result.won" = "Ganhou! %.2fx · +%d fichas";
-"crash.result.next_in" = "Próxima rodada em %d s";
-"crash.banner.cashed" = "Sacou %.2fx · +%d fichas";
-"crash.error.betting_closed" = "As apostas já fecharam";
-"crash.error.cashout_too_late" = "Tarde demais: a rodada quebrou bem quando seu toque chegou. A aposta se foi.";
-"crash.error.already_cashed" = "Você já sacou nesta rodada";
-"crash.error.already_bet" = "Você já apostou nesta rodada";
-"crash.error.no_bet" = "Você não tem aposta nesta rodada";
-"crash.error.insufficient" = "Fichas insuficientes";
-"crash.error.network" = "Tropeço na conexão, tente de novo";
-"crash.rules.title" = "Regras do Crash";
-"crash.rules.how.title" = "Como jogar";
-"crash.rules.how.body" = "Cada rodada: 8 segundos para apostar, depois o multiplicador sobe a partir de 1.00x. A qualquer momento toque em SACAR e você trava aposta × multiplicador atual. Fique tempo demais e a rodada quebra: você perde tudo.";
-"crash.rules.payout.title" = "Prêmio";
-"crash.rules.payout.body" = "Ganho = aposta × multiplicador no saque. Exemplo: aposta de 10 fichas, saque em 2.50x → +25 fichas. Quanto mais você segura, maior o ganho possível, e maior o risco de quebrar.";
-"crash.rules.fair.title" = "Comprovadamente justo";
-"crash.rules.fair.body" = "O ponto de quebra é decidido ANTES de as apostas abrirem: SHA256(seed + round_id). O hash é publicado no começo da rodada e o seed é revelado quando ela termina. Dá para conferir na mão: ninguém consegue mudar o resultado depois da sua aposta.";
-"crash.rules.risk.title" = "Risco";
-"crash.rules.risk.body" = "Cerca de 3% das rodadas quebram na hora, em 1.00x: essa é a vantagem matemática da casa (as fichas são queimadas, ninguém lucra). 50% das rodadas quebram antes de 2.00x. 10% passam de 10x. Jogue com o que você pode perder.";
 "contact_list.bar.add" = "Adicionar";  /* legacy key kept for transitional bundles */
 /* ── Audio Rooms ─────────────────────────────────────────── */
 "audio_room.section.title" = "Salas de áudio";
@@ -1307,106 +1122,8 @@
 "audio_room.rotate.confirm.body" = "A chave antiga para de funcionar. Quem já tem a sala na lista continua com ela, e a chave atualiza sozinha. Quem só guardou a chave antiga sem entrar não consegue mais entrar.";
 "audio_room.rotate.confirm.do" = "Trocar";
 "audio_room.rotate.toast" = "Chave trocada";
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "Leilão de UIN";
-"games.uin_auction.body" = "Um UIN por hora. Guerra de lances até o último segundo.";
-"games.pets_hunt.title" = "Caçada";
-"games.pets_hunt.body" = "Seu bichinho equipado ganha fichas sozinho. Arrisque ele em caçadas para prêmios maiores.";
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "%d fichas / dia com o tempo todo ativo";
-"pet_hunt.daily_gems" = "%d gemas / dia com o tempo todo ativo";
-"pet_hunt.cap_reached" = "Reserva cheia: resgate agora ou o rendimento se perde";
-"pet_hunt.claim" = "Resgatar";
-"pet_hunt.send" = "MANDAR CAÇAR";
-"pet_hunt.hunts_left" = "faltam %d / %d caçadas hoje";
-"pet_hunt.cta.open_memorial" = "Memorial";
-"pool.rarity.section" = "Sorteio de raridade";
-"pool.rarity.hint" = "A raridade é sorteada separada do tipo que cai: qualquer bichinho, pacote de carinhas ou voz pode sair em qualquer raridade, com as chances abaixo.";
-"pet_hunt.empty.no_pet.title" = "Nenhum bichinho equipado";
-"pet_hunt.accumulator.title" = "Na reserva";
-"pet_hunt.spec.daily_yield" = "Fichas / dia";
-"pet_hunt.spec.daily_gems" = "Gemas / dia";
-"pet_hunt.spec.hourly_rate" = "Fichas / hora";
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "Como funciona";
-"pet_hunt.info.passive.title" = "Ganho passivo";
-"pet_hunt.info.passive.body" = "Seu bichinho equipado ganha fichas 24 horas por dia. Raridade maior, nível maior e pureza maior aumentam a taxa. A reserva enche em 24 horas: resgate todo dia ou você perde o que passar disso.";
-"pet_hunt.info.zones.title" = "Zonas de caça";
-"pet_hunt.info.zones.body" = "Três caçadas por dia deixam você arriscar seu bichinho por prêmios maiores. A Floresta é segura, a Montanha é arriscada, a Caverna é hardcore. Bichinhos mais fortes acertam mais vezes E sobrevivem mais vezes ao fracasso.";
-"pet_hunt.info.death.title" = "Morte permanente";
-"pet_hunt.info.death.body" = "Se seu bichinho falha numa caçada e se fere no nível 0, ele morre para sempre. Desastres na Montanha e na Caverna podem matar qualquer bichinho, não importa o nível. Tempere seus bichinhos antes de mandar para as zonas difíceis.";
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "Escolher caçada";
-"pet_hunt.zone_picker.intro" = "Prêmio maior, risco maior. A qualidade do seu bichinho muda os números de verdade.";
-"pet_hunt.zone.forest" = "Floresta";
-"pet_hunt.zone.forest.reward" = "Fichas 3–8 × atributos + gemas 0–2";
-"pet_hunt.zone.forest.risk" = "Segura: só ferimentos leves, sem morte";
-"pet_hunt.zone.mountain" = "Montanha";
-"pet_hunt.zone.mountain.reward" = "Fichas 8–20 × atributos + gemas 1–4";
-"pet_hunt.zone.mountain.risk" = "Arriscada: ferimentos comuns, mortes raras";
-"pet_hunt.zone.cave" = "Caverna";
-"pet_hunt.zone.cave.reward" = "Fichas 20–50 × atributos + gemas 2–7";
-"pet_hunt.zone.cave.risk" = "Hardcore: ferimentos frequentes, risco real de morte";
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "Caçada bem-sucedida";
-"pet_hunt.result.success.body" = "Seu bichinho voltou da %@ sem um arranhão.";
-"pet_hunt.result.wound" = "Ferido";
-"pet_hunt.result.wound.body" = "Seu bichinho se machucou e perdeu um nível. Agora está no nível %d.";
-"pet_hunt.result.death" = "Não voltou";
-"pet_hunt.result.death.body" = "Seu bichinho caiu. Ele vai ser lembrado no Memorial.";
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "Memorial";
-"pet_hunt.memorial.empty.title" = "Ninguém caiu ainda";
-"pet_hunt.memorial.empty.body" = "Os bichinhos que morrem nas caçadas vão ser lembrados aqui.";
-"pet_hunt.memorial.died_in" = "Caiu na %@";
 /* Common */
 "common.continue" = "Continuar";
-"uin_auction.alert.title" = "Leilão";
-"uin_auction.hero.kicker" = "LOTE ATUAL";
-"uin_auction.tier.legendary" = "Lendário";
-"uin_auction.tier.mid" = "Raro";
-"uin_auction.tier.common" = "Comum";
-"uin_auction.soft_close" = "Fechamento suave: qualquer lance estende o tempo em 60s";
-"uin_auction.soft_close.badge" = "FECHAMENTO SUAVE";
-"uin_auction.soft_close.note" = "Qualquer lance novo estende o tempo em 60 segundos";
-"uin_auction.error.generic" = "Não foi possível dar o lance. Tente de novo.";
-"uin_auction.high_bid" = "MAIOR LANCE";
-"uin_auction.no_bids_yet" = "Nenhum lance ainda";
-"uin_auction.you_lead" = "Você está na frente";
-"uin_auction.lead_by" = "Na frente: %@";
-"uin_auction.min_next" = "MÍNIMO SEGUINTE";
-"uin_auction.bid_placeholder" = "Mín. %d";
-"uin_auction.cta.bid" = "Dar lance";
-"uin_auction.cta.topup" = "Recarregar";
-"uin_auction.insufficient_hint" = "Fichas insuficientes";
-"uin_auction.need_tokens" = "Fichas insuficientes, compre mais";
-"uin_auction.history.title" = "HISTÓRICO DE LANCES";
-"uin_auction.history.empty" = "Seja o primeiro a dar um lance";
-"uin_auction.waiting.title" = "Preparando o próximo lote…";
-"uin_auction.waiting.body" = "Um leilão novo começa em alguns segundos. UINs lendários aparecem de vez em quando, fique por aqui.";
-"uin_auction.error.bid_too_low" = "O lance mínimo é de %d fichas";
-"uin_auction.error.no_amount" = "Digite um valor de lance primeiro.";
-"uin_auction.error.insufficient" = "Precisa de %d fichas, você tem %d";
-"uin_auction.error.already_lead" = "Você já está na frente";
-"uin_auction.error.ended" = "O leilão acabou";
-"uin_auction.outbid_refund" = "Te superaram. %d fichas devolvidas.";
-"uin_auction.banner.outbid.title" = "Te superaram no leilão de UIN";
-"uin_auction.banner.outbid.body" = "Te superaram, %d fichas devolvidas. Toque para dar outro lance.";
-"uin_auction.recent.title" = "Ganhadores recentes";
-"uin_auction.recent.empty" = "Nenhum leilão encerrado ainda";
-"uin_auction.recent.won_by" = "Ganho por %@";
-"uin_auction.owned.title" = "Meus UINs";
-"uin_auction.owned.body" = "UINs ganhos em leilão. Ative qualquer um como seu UIN atual: isso roda a migração (99 fichas).";
-"uin_auction.owned.empty" = "Nenhum UIN ganho ainda. Ganhe um leilão!";
-"uin_auction.owned.activate" = "Ativar";
-"uin_auction.owned.sell" = "Vender no mercado";
-"uin_auction.owned.remove.confirm.title" = "Remover o UIN #%d?";
-"uin_auction.owned.remove.confirm.message" = "Isso é irreversível. O UIN volta para o pool e pode ser dado a outra pessoa.";
-"uin_auction.owned.remove.confirm.button" = "Remover";
-"uin_auction.owned.remove.error" = "Não foi possível remover o UIN. Tente daqui a pouco.";
-"uin_auction.owned.confirm.title" = "Tornar o UIN %d seu?";
-"uin_auction.owned.confirm.button" = "Ativar (%d)";
-"uin_auction.owned.activated" = "Pronto. Seu UIN novo: %d";
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "agora mesmo";
 "last_seen.minute_one" = "há %d minuto";
@@ -1523,7 +1240,7 @@
 "chat.voice.lock_armed" = "Solte para travar";
 "chat.voice.swipe_hints" = "← cancelar   ↑ travar";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "ANÔNIMO";
+"onboard.anon.kicker" = "PRIVADO";
 "onboard.anon.title" = "Sem telefone nem e-mail";
 "onboard.anon.body" = "Sua identidade é um número e nada mais. Não está ligado a você, e pode queimá-lo e começar de novo a qualquer momento.";
 "onboard.mesh.kicker" = "OFFLINE";
@@ -1569,7 +1286,7 @@
 "onboard.server.picker.intro.body" = "Cada servidor RCQ é uma ilha própria. Sua conta, seus contatos e suas mensagens vivem só no servidor que você escolher. Você só consegue falar com usuários do mesmo servidor.";
 "onboard.server.picker.search" = "Buscar servidores";
 "onboard.server.picker.empty" = "Nada encontrado";
-"boot.error.unreachable" = "Não foi possível alcançar o RCQ. Sua rede pode estar bloqueando: experimente uma VPN.";
+"boot.error.unreachable" = "Não foi possível alcançar o RCQ. Sua rede pode estar bloqueando: experimente outra rede ou os relés do RCQ.";
 "boot.error.title" = "Não foi possível conectar";
 "boot.error.retrying" = "Tentando de novo em %ds…";
 "boot.error.retry_now" = "Tentar agora";
@@ -1883,6 +1600,7 @@
 "settings.island.rules" = "Regras da ilha";
 "reg.invite.enter" = "Digitar o código";
 "boot.error.switch_account" = "Outra conta";
+"boot.error.choose_island" = "Escolher outra ilha";
 
 "invites.title" = "Códigos de acesso";
 "invites.body" = "Um código de acesso é usado uma única vez: quem o digitar ganha uma conta nesta ilha. O próximo chega sozinho, um por período.";
@@ -1912,3 +1630,10 @@
 /* ── A conta mudou para outro número (evento `account_moved`) ── */
 "account.moved.blocked.title" = "Sua conta mudou para um número novo";
 "account.moved.blocked.body" = "Você pegou um número novo em outro dispositivo, e este aqui não conseguiu acompanhar. Nada foi apagado: suas conversas continuam aqui. Entre de novo com a sua frase de recuperação para continuar no número novo.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "Não foi possível falar com a ilha";
+"relay.key.offline.body" = "A chave ficou salva, mas não foi possível falar com a ilha para conferir. Ela será conferida de novo na próxima vez que o app se conectar.";
+"relay.key.ok.none" = "A chave foi aceita. Ainda não há nós privados atribuídos a ela, então o pool compartilhado continua em uso.";
+"chat.menu.report_group" = "Denunciar grupo";
+"report.heading.group" = "Denunciar este grupo";

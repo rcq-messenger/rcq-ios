@@ -571,6 +571,8 @@ struct ChatView: View {
     @State private var showTTLPicker = false
     @State private var showInChatSearch = false
     @State private var showAllMedia = false
+    /// "Report group" from the header menu (App Review 1.2, B.14).
+    @State private var showReportGroup = false
     @State private var pendingScrollID: UUID?
     /// #1 reply-jump return: the reply message the user was reading when they
     /// tapped its quote, so the scroll-to-bottom chevron takes them BACK there
@@ -945,6 +947,11 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showEmojiPicker) {
             EmoticonPickerSheet()
+        }
+        .sheet(isPresented: $showReportGroup) {
+            if let live = liveGroup {
+                ReportContactSheet.forGroup(live)
+            }
         }
         .sheet(item: $forwardTarget) { msg in
             ForwardPickerSheet(message: msg) { destination in
@@ -1499,6 +1506,25 @@ struct ChatView: View {
                         Label(disappearingLabel, systemImage: ttlActive ? "clock.fill" : "clock")
                     }
                 }
+                // App Review 1.2 (B.14): the room itself can be reported, not
+                // only a member of it from the roster. Names the owner, with
+                // the room in `context`; see `ReportContactSheet.forGroup`.
+                // Not offered to the owner (the island refuses a self-report).
+                if canReportGroup {
+                    Divider()
+                    Button(role: .destructive) {
+                        showReportGroup = true
+                    } label: {
+                        Label {
+                            Text("chat.menu.report_group".localized)
+                        } icon: {
+                            Image(systemName: "exclamationmark.bubble")
+                                .renderingMode(.template)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .tint(.red)
+                }
                 // Premium-content moved entirely to the `+` attach menu —
                 // same entry point as Photo / Video / Camera, since
                 // premium is just a paywalled flavor of those. There
@@ -1531,6 +1557,18 @@ struct ChatView: View {
             Image(systemName: "ellipsis")
                 .foregroundColor(Theme.Color.textPrimary)
         }
+    }
+
+    /// Whether "Report group" is offered for the open room: false for a 1:1
+    /// thread and for a room I own. A room on another island is reported too,
+    /// against nobody (`ReportContactSheet.forGroup`).
+    ///
+    /// ⚠ Asked with `myUIN(in:)`, never the primary uin: a guest group's
+    /// `ownerUIN` lives in the host island's uin space. See `readOnlyGroup`.
+    private var canReportGroup: Bool {
+        guard let live = liveGroup else { return false }
+        if let me = myUIN(in: live), me == live.ownerUIN { return false }
+        return true
     }
 
     private var disappearingLabel: String {

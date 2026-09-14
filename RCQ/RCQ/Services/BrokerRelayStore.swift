@@ -37,8 +37,11 @@ final class BrokerRelayStore {
     /// lost it about as often as it won.
     private let privateKey = "rcq.brokerRelays.private.v1"
     /// What the broker made of the key we last sent: nil (none sent), "ok",
-    /// "unknown", "expired". A wrong key used to be indistinguishable from a
-    /// right one, so the app accepted anything typed into the field.
+    /// "unknown", "expired", or "offline" when the last try never reached the
+    /// broker at all. A wrong key used to be indistinguishable from a right
+    /// one, so the app accepted anything typed into the field; and a dead
+    /// network used to be indistinguishable from a wrong key, so the app
+    /// threw away a good one (desktop `broker.rs` has the same split).
     private let verdictKey = "rcq.brokerRelays.keyVerdict.v1"
     private static let host = "api.rcq.app"   // the broker lives on the flagship
     private static let want = 3
@@ -46,6 +49,18 @@ final class BrokerRelayStore {
     private static let reportInterval: TimeInterval = 3600   // report at most hourly
     private static let probeTimeout: TimeInterval = 2.5
     private static let maxProbe = 20
+
+    /// What one round trip to the broker came back with. Two things that used
+    /// to be one: the broker looking at the key and not liking it, and the
+    /// question never getting there.
+    enum RefreshOutcome {
+        /// The broker answered. `verdict` is what it said about the key we sent
+        /// ("ok", "unknown", "expired"), nil when no key was sent.
+        case reached(verdict: String?)
+        /// No answer: no network, a timeout, a non-200 from something in the
+        /// way. Says nothing about the key, and must not be read as if it did.
+        case offline
+    }
 
     private struct BridgesResponse: Codable { let relays: [Envelope.RelayShareWire] }
     /// The verdict on the key we sent, alongside the relays.
@@ -88,6 +103,12 @@ final class BrokerRelayStore {
     }
 
     /// Store (or clear, with nil) the paid access key.
+    ///
+    /// The verdict and the private endpoints go with the key they were earned
+    /// by. A stale "ok" left behind by the previous key made a newly pasted
+    /// string look accepted before the broker had seen it, and endpoints
+    /// bought with a key that is gone would keep carrying traffic for somebody
+    /// who no longer holds it (desktop `set_key` drops them the same way).
     func setTenantKey(_ key: String?) {
         let trimmed = key?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let trimmed, !trimmed.isEmpty {
@@ -95,14 +116,25 @@ final class BrokerRelayStore {
         } else {
             UserDefaults.standard.removeObject(forKey: tenantKeyKey)
         }
+        UserDefaults.standard.removeObject(forKey: verdictKey)
+        let mine = Set(UserDefaults.standard.stringArray(forKey: privateKey) ?? [])
+        if !mine.isEmpty {
+            let rest = relays().filter { !mine.contains($0.tag) }
+            if let enc = try? JSONEncoder().encode(rest) {
+                UserDefaults.standard.set(enc, forKey: self.key)
+            }
+            UserDefaults.standard.removeObject(forKey: privateKey)
+        }
     }
 
     func refreshInBackground() { Task { await self.refresh() } }
 
-    /// Best-effort: pull a few bridges from the broker + cache them. No-op on any
-    /// network/decode failure (we keep whatever we had).
-    func refresh() async {
-        guard let url = URL(string: "https://\(Self.host)/broker/bridges?n=\(Self.want)") else { return }
+    /// Best-effort: pull a few bridges from the broker + cache them. On any
+    /// network/decode failure the cached set is kept, and the outcome says the
+    /// broker was not reached rather than pretending it said anything.
+    @discardableResult
+    func refresh() async -> RefreshOutcome {
+        guard let url = URL(string: "https://\(Self.host)/broker/bridges?n=\(Self.want)") else { return .offline }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         // The paid key, when there is one, rides in Authorization — the broker
@@ -125,7 +157,7 @@ final class BrokerRelayStore {
                 config.connectionProxyDictionary = proxy
             }
             let (data, response) = try await URLSession(configuration: config).data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return noteUnreached() }
             let parsed = try JSONDecoder().decode(BridgesResponse.self, from: data)
             let tiers = (try? JSONDecoder().decode(TierResponse.self, from: data))?.relays ?? []
             let verdict = (try? JSONDecoder().decode(KeyResponse.self, from: data))?.key
@@ -151,9 +183,22 @@ final class BrokerRelayStore {
             UserDefaults.standard.set(mine, forKey: privateKey)
             if let verdict { UserDefaults.standard.set(verdict, forKey: verdictKey) }
             else { UserDefaults.standard.removeObject(forKey: verdictKey) }
+            return .reached(verdict: verdict)
         } catch {
             // best-effort — keep the cached set
+            return noteUnreached()
         }
+    }
+
+    /// The broker was not reached. With a key on file the recorded verdict
+    /// becomes "offline", so nothing downstream mistakes the previous answer
+    /// (or its absence) for a fresh one; the key and the cached endpoints
+    /// stay, because a dead network is not a verdict on either.
+    private func noteUnreached() -> RefreshOutcome {
+        if tenantKey != nil {
+            UserDefaults.standard.set("offline", forKey: verdictKey)
+        }
+        return .offline
     }
 
     func reportReachabilityInBackground() { Task { await self.reportReachability() } }

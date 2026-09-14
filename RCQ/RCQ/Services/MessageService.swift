@@ -2441,7 +2441,7 @@ final class MessageService {
                 }
                 return nil
             }
-            // User removed this contact (ICQ-style mutual delete). Server
+            // User removed this contact (classic mutual delete). Server
             // can't filter sealed messages by sender; we silently drop on
             // ingest so no banner, no sound, no chat-list reappearance.
             if !isSelf, RemovedContactsStore.shared.contains(decrypted.senderUIN) {

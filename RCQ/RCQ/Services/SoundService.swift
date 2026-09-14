@@ -2,7 +2,7 @@ import AVFoundation
 import AudioToolbox
 import Foundation
 
-/// Plays ICQ-style sounds. Uses `.ambient` so the hardware silent switch silences playback.
+/// Plays the classic-style cue sounds. Uses `.ambient` so the hardware silent switch silences playback.
 @MainActor
 final class SoundService: ObservableObject {
     static let shared = SoundService()

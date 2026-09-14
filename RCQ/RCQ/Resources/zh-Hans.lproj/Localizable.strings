@@ -29,11 +29,9 @@
 "settings.sound.row.off" = "已关闭";
 "settings.sound.section.master" = "总开关";
 "settings.sound.section.presence" = "联系人在线状态";
-"settings.sound.section.presence.hint" = "联系人上线或离开时播放 ICQ 风格的提示音。两项默认关闭。";
+"settings.sound.section.presence.hint" = "联系人上线或离开时播放经典提示音。两项默认关闭。";
 "settings.sound.contact_online" = "联系人上线";
 "settings.sound.contact_offline" = "联系人离线";
-"settings.minis.toggle" = "游戏小组件";
-"settings.minis.toggle.footer" = "在聊天列表上显示 Crash 和 UIN 拍卖的浮动小组件，不用留在游戏里也能盯着当前一局或自己的出价。";
 "settings.trades.realtime" = "实时交易弹窗";
 "settings.trades.realtime.footer" = "开启后，收到的交易会立即打开。关闭后，交易会安静地留在交易窗口和与发送者的聊天里。";
 "settings.language" = "语言";
@@ -200,12 +198,6 @@
 "settings.network.singbox.status.on" = "走 RCQ 中继";
 "relays.learn_more" = "什么是中继？";
 "settings.network.coming_soon" = "即将推出";
-"settings.traffic" = "文件流量";
-"settings.traffic.used" = "本月已用";
-"settings.traffic.used.value" = "%d MB";
-"settings.traffic.spent" = "已花费";
-"settings.traffic.pay_large" = "超过 50 MB 的文件用代币支付";
-"settings.traffic.pay_large.footer" = "50 MB 以内免费。超出部分每 10 MB 收 1 个代币。只要还有代币，就没有大小限制。";
 "settings.history" = "聊天记录";
 "settings.history.file" = "聊天记录文件";
 "backup.intro" = "把这台设备上的聊天记录保存成文件，用你的恢复短语加密。文件是你的：想放在哪儿就放在哪儿。它不会上传给我们，我们也读不了它。";
@@ -327,20 +319,13 @@
 "group_join.island_hint" = "加入会把你的密钥注册到 %@，这样群组才能把消息送到你这里。";
 "group_join.open_button" = "打开";
 "group_join.closed_button" = "仅限邀请";
-"group_join.price_suffix" = "可加入";
 "group_join.owner" = "群主：%@";
 "group_join.owner_label" = "群主";
 "group_join.closed_hint" = "这个群组仅限邀请。请让群主把你加进来。";
-"group_join.insufficient" = "需要 %d 代币，你有 %d。";
 "group_join.error.generic" = "无法加载这个群组。";
 "group_join.error.blocked" = "群主已把你从这个群组拉黑。";
 "group.settings.closed" = "封闭群组";
 "group.settings.closed.hint" = "只有群主的邀请才能加入新成员。分享出去的链接仍然会显示预览，但无法自动加入。";
-"paid_traffic.title" = "为流量付费？";
-"paid_traffic.body" = "这个文件有 %@，超过了 50 MB 的免费上限。在设置里开启付费流量才能发送。";
-"paid_traffic.price_suffix" = "本文件";
-"paid_traffic.enable" = "开启付费流量";
-"paid_traffic.cancel" = "取消";
 "contact_list.ctx.report" = "举报";
 "report.title" = "举报";
 "report.heading" = "举报用户";
@@ -356,7 +341,6 @@
 "settings.account.burn.title" = "销毁这个账号？";
 "settings.account.burn.confirm" = "销毁";
 "settings.account.burn.message" = "你的账号会在服务器和这台设备上被删除。你将拿到一个全新的 UIN。原来的联系人和群组都会消失，它们和你的新身份没有任何关联。此操作无法撤销。";
-"settings.account.burn.tally" = "%d 项，%d 代币，%d 宝石";
 "settings.link_web" = "连接网页版";
 "settings.share.message" = "在 RCQ 上加我：%@（%d）";
 "settings.link_web.footer" = "在桌面浏览器里使用 chat.rcq.app。会生成一次性代码，你把它粘贴到网站上。目前只能发送，回复仍然到 iOS 上接收。";
@@ -402,7 +386,6 @@
 "status.offline" = "离线";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "离线";
-"contact_list.bar.games" = "游戏";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "附近";
 "contact_list.bar.settings" = "设置";
@@ -522,17 +505,6 @@
 "report_evidence.consent.toggle" = "我授权 RCQ 审核人员查看这条内容";
 "report_evidence.cta.send" = "提交举报";
 "report_evidence.error.no_bytes" = "无法加载要举报的内容。请重新打开该消息后再试。";
-/* ── Crash mini-bar ───────────────────────────────────────── */
-"crash.mini.betting" = "下注";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "下注";
-"crash.mini.placed" = "已下注";
-"crash.mini.cashout_cta" = "兑现";
-"crash.mini.crashed_at" = "崩盘 @ %.2f×";
-/* ── Auction mini-bar ─────────────────────────────────────── */
-"auction.mini.leading" = "领先 · %d";
-"auction.mini.outbid" = "出价被超过，再加一次？";
-"auction.mini.bid_cta" = "加价";
 "chat.menu.voice_call" = "语音通话";
 "chat.menu.video_call" = "视频通话";
 "chat.menu.propose_trade" = "发起交易";
@@ -552,7 +524,6 @@
 "chat.attach.photo" = "照片";
 "chat.attach.video" = "视频";
 "chat.attach.camera" = "摄像头";
-"chat.attach.premium" = "付费";
 "chat.attach.document" = "文件";
 "chat.attach.location" = "位置";
 "chat.location.title" = "选择位置";
@@ -561,7 +532,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "复制坐标";
-"chat.file.pay_required" = "超过 50 MB 的文件需要在设置中打开“文件付费”开关。";
 "chat.translate.title" = "翻译";
 "chat.translate.section.original" = "原文";
 "chat.translate.section.translated" = "译文";
@@ -569,22 +539,6 @@
 "chat.translate.empty" = "没有可翻译的内容。";
 "chat.translate.translated_badge" = "已翻译";
 "chat.action.show_original" = "显示原文";
-"chat.premium.compose.title" = "付费内容";
-"chat.premium.compose.body" = "设定代币价格。接收者看到的是模糊的气泡，付费后才能解锁媒体。你可得到 95%（平台收取 5%）。";
-"chat.premium.compose.price_placeholder" = "价格";
-"chat.premium.compose.hint" = "1 到 999,999 代币。";
-"chat.premium.compose.pick_photo" = "照片";
-"chat.premium.compose.pick_video" = "视频";
-"chat.premium.unlock_for" = "解锁需付";
-"chat.premium.preview_photo" = "付费照片";
-"chat.premium.preview_video" = "付费视频";
-"chat.premium.confirm.title" = "花 %d 代币解锁？";
-"chat.premium.confirm.body" = "代币将从你的余额中扣除，然后发送媒体密钥。";
-"chat.premium.confirm.pay" = "支付 %d";
-"chat.premium.error.title" = "解锁失败";
-"chat.premium.error.insufficient" = "代币不足。";
-"chat.premium.error.gone" = "这条内容已不可用。";
-"chat.premium.error.generic" = "出了点问题。请重试。";
 "chat.voice.permission.title" = "需要麦克风权限";
 "chat.voice.permission.body" = "在“设置 → RCQ”中开启麦克风权限，才能录制语音消息。";
 "settings.migrate.header" = "账号";
@@ -612,7 +566,8 @@
 "contact_list.discover.title" = "公开群组";
 "contact_list.discover.join" = "加入";
 "contact_list.empty.title" = "还没有联系人";
-"contact_list.empty.body" = "通过 UIN 或 QR 码添加好友，开始聊天。随机聊天不需要联系人也能用。";
+"contact_list.empty.body" = "通过 UIN 或 QR 码添加好友，开始聊天。";
+"contact_list.empty.stranger" = "随机聊天不需要联系人也能用。";
 "contact_list.empty.cta" = "添加联系人";
 "chat.empty.title" = "还没有消息";
 "chat.empty.body" = "打个招呼，第一条消息就开启了对话。";
@@ -675,8 +630,6 @@
 "chat.preview.market_item" = "市场商品";
 "chat.preview.uin_listing" = "UIN 挂单";
 "chat.preview.group_invite" = "群组邀请";
-"chat.preview.premium_photo" = "🔒 付费照片";
-"chat.preview.premium_video" = "🔒 付费视频";
 "chat.preview.generic" = "消息";
 "chat.banner.new_message" = "新消息";
 /* ── Call screen ──────────────────────────────────────────── */
@@ -757,8 +710,6 @@
 "group.settings.post_policy.all" = "所有人";
 "group.settings.post_policy.owner_only" = "仅群主";
 "group.settings.post_policy.hint" = "在仅群主模式下，成员可以看消息，但不能发言。";
-"group.settings.entry_price" = "入群价格（代币）";
-"group.settings.entry_price.hint" = "0 = 免费。每笔付款都会扣除 5% 的市场手续费，其余归群主。";
 "group.settings.name" = "群组名称";
 "group.settings.photo" = "群组头像";
 "group.settings.change_photo" = "更换头像";
@@ -770,7 +721,6 @@
 "group.avatar.remove.confirm" = "要删除群组头像吗？";
 "group.unavailable" = "群组不可用。";
 "group.compose.broadcast_only" = "只有群主可以发言";
-"group.error.join_payment" = "入群支付失败";
 "group.cta.add_member" = "添加成员";
 "group.cta.copy_link" = "复制群组链接";
 "group.cta.link_copied" = "链接已复制";
@@ -838,7 +788,7 @@
 /* ── About sheet ──────────────────────────────────────────── */
 "about.title" = "关于 RCQ";
 "about.tagline" = "同样的灵魂，现代的密码学。";
-"about.body" = "RCQ 永久免费。没有广告，不收集数据，不需要手机号。";
+"about.body" = "RCQ 是一款私密通讯应用。没有广告，没有跟踪器，没有分析统计，不需要手机号。";
 "about.stats.users" = "人在这个岛上";
 "about.privacy.section" = "隐私";
 "about.privacy.b1" = "端到端加密的消息（Signal Protocol）。";
@@ -846,7 +796,7 @@
 "about.privacy.b3" = "零知识后端：消息只以加密数据块的形式存放，送达后即删除。";
 "about.privacy.b4" = "不需要手机号和邮箱，UIN 是唯一的身份。";
 "about.privacy.b5" = "聊天记录只保存在你的设备上，锁定时静态加密。";
-"about.privacy.b6" = "你的账号住在一座岛上，任何人都可以自己运行一座。岛与岛之间从不通信，连接它们的是你的客户端。";
+"about.privacy.b6" = "你的账号住在一座岛上，任何人都可以自己运行一座。身处不同岛上的人依然可以互相聊天。";
 "about.contact.section" = "联系";
 "about.contact.support" = "支持";
 "about.contact.website" = "网站";
@@ -871,17 +821,10 @@
 "add.section.groups" = "群组";
 "add.section.join_group" = "加入群组";
 "join_group.title" = "加入群组";
-"join_group.entry_price" = "入群价格";
-"join_group.your_balance" = "你有";
 "join_group.cta.free" = "加入";
-"join_group.cta.pay" = "支付并加入";
-"join_group.cta.insufficient" = "代币不足";
 "join_group.alert.title" = "群组";
-"join_group.error.insufficient" = "需要 %d 代币，现有 %d";
 "join_group.error.blocked" = "群主已将你拉黑";
 "join_group.error.generic" = "无法加入。请重试。";
-"chat.menu.premium_content" = "付费内容";
-"chat.premium.coming_soon" = "即将推出。群主可以发布带模糊遮罩和代币价格的图片或视频，成员按条解锁，群主拿到 95%（5% 为市场手续费）。";
 "add.section.people" = "用户";
 "add.cta.add" = "添加为联系人";
 "add.cta.in_list" = "已是联系人";
@@ -977,18 +920,6 @@
 "ci.add_self" = "这是你，你在本岛的账号";
 "contact_list.section.cross_island" = "其他岛";
 "pending.cta.decline" = "拒绝";
-"pool.boost_note" = "所示概率已含 %d%% 的宠物加成。";
-"shop.kicker" = "商店";
-"shop.title" = "购买代币";
-"shop.subtitle" = "代币是 RCQ 的应用内货币，用于游戏、市场、付费内容和拍卖。";
-"shop.tokens_n" = "%d 代币";
-"shop.best_value" = "最划算";
-"shop.per_token" = "每个代币 %d¢";
-"shop.balance" = "余额存在服务器上，挂在你的 UIN 下。真正的 App Store 购买以后会做，现在上面的礼包会立刻充进钱包，方便测试。";
-"pool.title" = "奖池";
-"pool.section_share" = "占抽取的 %.0f%%";
-"pool.cap" = "上限 %d";
-"pool.cap_remaining" = "剩余 %d / %d";
 "settings.privacy.relay_calls" = "通话始终走中继";
 "settings.privacy.relay_calls.desc" = "通话的音频和视频经我们的中继转发，对方不会知道你的 IP 地址。关掉之后通话质量可能更好，但对方会看到你的地址。";
 "settings.privacy.strangers" = "陌生人进入请求";
@@ -1016,19 +947,6 @@
 "radio.info.privacy.body" = "没有任何内容离开本地网络。参与者之间的会话是端到端加密的，会话密钥由房间创建者当作密码分享。聊天记录只保存在内存里，关掉聊天，对话就消失。";
 "radio.info.when.title" = "什么时候用";
 "radio.info.when.body" = "在嘈杂的活动上和朋友对接。给同一栋楼里的人捎句话。在网络中断时，或者在移动数据被限速的地区保持联系。只要手机离得近，而平常的网络路径不可用、很慢或者有风险，都可以用。";
-"pool.detail.chance" = "掉落概率  %.2f%%";
-"pool.detail.cap" = "限量  %d";
-"pool.detail.cap_remaining" = "剩余 %d / %d";
-"pool.gems.section" = "宝石";
-"pool.gems.title" = "宝石包";
-"pool.gems.range" = "每次掉落 %d–%d 宝石";
-"pool.pack.contents" = "礼包内容 · %d";
-"disassemble.title" = "分解";
-"disassemble.body" = "分解会永久销毁这件物品。你会按它的稀有度和强化等级拿到宝石。";
-"disassemble.cta" = "分解";
-"disassemble.cta.busy" = "分解中…";
-"disassemble.cta.cancel" = "取消";
-"disassemble.success.body" = "%@ 已消失。";
 /* ── Trades ───────────────────────────────────────────────── */
 /* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "附近";
@@ -1120,7 +1038,7 @@
 "onboard.federation.body" = "RCQ 不是某家公司的服务器。任何人都可以架设岛屿，你的账号住在你选择的岛上，号码随你迁移。";
 "onboard.relay.kicker" = "隐私";
 "onboard.relay.title" = "岛屿看不到你的地址";
-"onboard.relay.body" = "流量经由社区中继：岛屿看不到你在哪里，你的网络也看不到你在使用 RCQ。在 RCQ 被封锁的地方，这也是进入的通道。";
+"onboard.relay.body" = "如果无法直接连接到你的岛屿，或者你手动开启了中继，应用会改走 RCQ 中继。这时岛屿看不到你的 IP 地址，你的流量看起来也只是普通的加密连接。";
 "onboard.chat.kicker" = "聊天";
 "onboard.chat.title" = "服务器读不到内容";
 "onboard.chat.body" = "每条消息都是端到端加密，发送者藏在信封里。服务器不知道谁在给谁写信。";
@@ -1130,114 +1048,11 @@
 "onboard.calls.kicker" = "语音和视频";
 "onboard.calls.title" = "通话和群组";
 "onboard.calls.body" = "基于 WebRTC 的语音和视频通话，和你添加的所有人建群聊天。来电由推送通知唤醒；密封发送者让我们看不到路由。";
-"onboard.pets.kicker" = "宠物";
-"onboard.pets.title" = "领养一只数字宠物";
-"onboard.pets.body" = "开箱收集稀有的动画宠物。升级、赠送、交易。同一只宠物会以不同稀有度掉落，去追一只完美的。";
-"onboard.trade.kicker" = "交易";
-"onboard.trade.title" = "实时交易";
-"onboard.trade.body" = "在聊天里发出报价，对方立刻就能看到。物品、代币、宝石，双方都能放。“想要”留空 = 赠送。“提供”留空 = 求购。";
 "onboard.privacy.kicker" = "隐私";
 "onboard.privacy.title" = "谁能看到什么由你决定";
 "onboard.privacy.body" = "最后在线时间、性别、群组邀请、交易报价，每一项都能单独设置可见范围：所有人、仅联系人，或任何人都不可见。你随时可以永久删除账号，之后什么都找不回来。";
 /* ── Rarity (used in chips, filters, history) ─────────────── */
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "游戏";
-"games.subtitle" = "快速的代币下注。\n每轮 15-30 秒。";
-"games.section.solo" = "单人";
-"games.section.pvp" = "玩家对战";
-"games.section.pets" = "宠物";
-"games.soon" = "即将上线";
-"games.cta.topup" = "给钱包充值";
-"games.crash.title" = "Crash";
-"games.crash.body" = "倍数不断上涨，在崩盘前把钱拿走。";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "猜下一张牌是大还是小。";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "设定目标倍数，赌一把运气。";
-"crash.title" = "Crash";
-"crash.you" = "你";
-"crash.phase.betting" = "下注 · %.1f 秒";
-"crash.phase.running" = "进行中";
-"crash.phase.crashed" = "已崩盘";
-"crash.feed.title" = "已兑现";
-"crash.feed.bets" = "%d 名玩家";
-"crash.feed.empty" = "还没有人下注，来当第一个";
-"crash.row.holding" = "持有中";
-"crash.row.burned" = "已烧毁";
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "下注";
-"hilo.phase.guess" = "更大还是更小？";
-"hilo.card.label" = "牌：%@";
-"hilo.bet.label" = "下注额";
-"hilo.cta.start" = "开始 %d";
-"hilo.cta.settling" = "结算中…";
-"hilo.cta.higher" = "更大";
-"hilo.cta.lower" = "更小";
-"hilo.cta.cashout" = "兑现 %.2fx";
-"hilo.banner.won" = "赢了 %.2fx · +%d 代币";
-"hilo.banner.lost" = "牌是 %@，猜错了。下注输光。";
-"hilo.rules.title" = "Hi-Lo 规则";
-"hilo.rules.how.title" = "怎么玩";
-"hilo.rules.how.body" = "先下注，服务器会翻开一张 A 到 K 的牌。猜下一张比当前这张大还是小。每猜对一次，倍数就叠乘一次。猜错 = 输掉下注。随时兑现 = 下注额 × 当前倍数。";
-"hilo.rules.payout.title" = "倍数";
-"hilo.rules.payout.body" = "概率越小，倍数越大。在 7 上，猜大和猜小的机会差不多（×1.83）。在 A 上（猜大几乎必中）只有 ×1.04。在 K 上正好相反。每猜对一步，整条链就再乘一次。";
-"hilo.rules.fair.title" = "可验证公平";
-"hilo.rules.fair.body" = "本轮的每张牌在开始之前就已经确定：SHA256(seed + index)。哈希立刻就能看到；seed 在这一轮结束时公开，你可以手工核对每一次发牌。";
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "准备开摇";
-"limbo.phase.rolling" = "开摇中…";
-"limbo.phase.won" = "赢了";
-"limbo.phase.lost" = "没中";
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "宠物";
-"pet_preview.owner" = "%@ 佩戴中";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "精华 %d";
-"pet_preview.purity" = "纯度 %.2fx";
-"limbo.target.label" = "目标：%.2fx";
-"limbo.slider.label" = "目标";
-"limbo.slider.chance" = "概率";
-"limbo.bet.label" = "下注额";
-"limbo.cta.roll" = "开摇 %d";
-"limbo.banner.won" = "摇出 %.2fx · +%d 代币";
-"limbo.banner.lost" = "摇出 %.2fx（需要 ≥%.2fx），没中";
-"limbo.rules.title" = "Limbo 规则";
-"limbo.rules.how.title" = "怎么玩";
-"limbo.rules.how.body" = "用滑块选一个目标倍数（1.10x 到 100x）。下注，然后按「开摇」。服务器会按 Crash 用的同一条曲线抽一个随机数。摇出的结果 ≥ 目标就算赢。";
-"limbo.rules.payout.title" = "倍数";
-"limbo.rules.payout.body" = "目标越高，倍数越大，概率越小。目标 2.00x = 约 48% × 1.94。目标 10x = 约 9.7% × 9.7。风险的平衡由你自己定。";
-"limbo.rules.fair.title" = "可验证公平";
-"limbo.rules.fair.body" = "每次开摇都用 client_seed（在你的设备上生成）+ server_seed（开摇后公开）。你可以自己核对 SHA256(server + client)，确认结果没有被掉包。";
-"crash.bet.label" = "下注额";
-"crash.bet.cta" = "下注 %d";
-"crash.bet.placed" = "已下注 %d";
-"crash.bet.wait" = "等待开始";
-"crash.cashout.label" = "兑现 %.2fx";
-"crash.you_cashed" = "你已兑现 ✓";
-"crash.spectating" = "等待下一轮";
-"crash.result.lost" = "在 %.2fx 崩盘，下注输光";
-"crash.result.won" = "赢了 %.2fx · +%d 代币";
-"crash.result.next_in" = "下一轮 %d 秒后开始";
-"crash.banner.cashed" = "兑现 %.2fx · +%d 代币";
-"crash.error.betting_closed" = "下注已截止";
-"crash.error.cashout_too_late" = "太晚了，你点下去的瞬间这一轮正好崩盘。下注作废。";
-"crash.error.already_cashed" = "这一轮你已经兑现过了";
-"crash.error.already_bet" = "这一轮你已经下过注了";
-"crash.error.no_bet" = "你在这一轮没有下注";
-"crash.error.insufficient" = "代币不足";
-"crash.error.network" = "连接出了点问题，请重试";
-"crash.rules.title" = "Crash 规则";
-"crash.rules.how.title" = "怎么玩";
-"crash.rules.how.body" = "每一轮：8 秒下注时间，然后倍数从 1.00x 开始往上涨。随时可以点「兑现」，锁定下注额 × 当前倍数。待得太久，这一轮崩盘，你就输光了。";
-"crash.rules.payout.title" = "赔付";
-"crash.rules.payout.body" = "收益 = 下注额 × 兑现时的倍数。例如：下注 10 代币，在 2.50x 兑现 → +25 代币。持有得越久，可能赢得越多，崩盘的风险也越高。";
-"crash.rules.fair.title" = "可验证公平";
-"crash.rules.fair.body" = "崩盘点在开放下注之前就已经决定：SHA256(seed + round_id)。哈希在这一轮开始时公布，seed 本身在这一轮结束时公开。你可以手工核对，没有人能在你下注之后改动结果。";
-"crash.rules.risk.title" = "风险";
-"crash.rules.risk.body" = "大约 3% 的轮次会在 1.00x 直接崩盘，这就是数学上的庄家优势（代币被销毁，没有人从中获利）。50% 的轮次在 2.00x 之前崩盘。10% 能撑过 10x。只拿你输得起的东西来玩。";
 "contact_list.bar.add" = "添加";  /* legacy key kept for transitional bundles */
 /* ── Audio Rooms ─────────────────────────────────────────── */
 "audio_room.section.title" = "语音房间";
@@ -1298,106 +1113,8 @@
 "audio_room.rotate.confirm.body" = "旧密钥会失效。已经在你列表里的人仍然保留这个房间，他们的密钥会自动更新。只拿着旧密钥、还没加入过的人将无法再进入。";
 "audio_room.rotate.confirm.do" = "更换";
 "audio_room.rotate.toast" = "密钥已更换";
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "UIN 拍卖";
-"games.uin_auction.body" = "每小时一个 UIN。出价战一直打到最后一秒。";
-"games.pets_hunt.title" = "狩猎";
-"games.pets_hunt.body" = "已装备的宠物会被动赚取代币。让它去狩猎冒险，换取更大的奖励。";
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "满负荷运转每天 %d 代币";
-"pet_hunt.daily_gems" = "满负荷运转每天 %d 宝石";
-"pet_hunt.cap_reached" = "缓冲区已满，现在领取，否则收益作废";
-"pet_hunt.claim" = "领取";
-"pet_hunt.send" = "派去狩猎";
-"pet_hunt.hunts_left" = "今日剩余狩猎 %d / %d";
-"pet_hunt.cta.open_memorial" = "纪念碑";
-"pool.rarity.section" = "稀有度抽取";
-"pool.rarity.hint" = "稀有度与掉落的种类分开抽取：任何宠物、表情包或语音都可能以下面的概率落在任意稀有度上。";
-"pet_hunt.empty.no_pet.title" = "未装备宠物";
-"pet_hunt.accumulator.title" = "缓冲区中";
-"pet_hunt.spec.daily_yield" = "代币 / 天";
-"pet_hunt.spec.daily_gems" = "宝石 / 天";
-"pet_hunt.spec.hourly_rate" = "代币 / 小时";
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "玩法说明";
-"pet_hunt.info.passive.title" = "被动产出";
-"pet_hunt.info.passive.body" = "已装备的宠物全天候赚取代币。稀有度越高、等级越高、纯度越高，速率就越快。缓冲区上限是 24 小时，请每天领取，否则溢出的部分会丢失。";
-"pet_hunt.info.zones.title" = "狩猎区域";
-"pet_hunt.info.zones.body" = "每天三次狩猎，可以让宠物冒险换取更大的奖励。森林安全，山地有风险，洞穴是硬核。宠物越强，成功的次数越多，失败后活下来的次数也越多。";
-"pet_hunt.info.death.title" = "永久死亡";
-"pet_hunt.info.death.body" = "如果宠物在 0 级时狩猎失败并受伤，它会永远死去。山地和洞穴里的灾难可以杀死任何宠物，与等级无关。送去困难区域之前，先把宠物强化好。";
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "选择狩猎";
-"pet_hunt.zone_picker.intro" = "奖励越大，风险越高。宠物的品质会改变实际数值。";
-"pet_hunt.zone.forest" = "森林";
-"pet_hunt.zone.forest.reward" = "代币 3–8 × 属性 + 宝石 0–2";
-"pet_hunt.zone.forest.risk" = "安全：只有轻伤，不会死亡";
-"pet_hunt.zone.mountain" = "山地";
-"pet_hunt.zone.mountain.reward" = "代币 8–20 × 属性 + 宝石 1–4";
-"pet_hunt.zone.mountain.risk" = "有风险：受伤常见，偶有死亡";
-"pet_hunt.zone.cave" = "洞穴";
-"pet_hunt.zone.cave.reward" = "代币 20–50 × 属性 + 宝石 2–7";
-"pet_hunt.zone.cave.risk" = "硬核：频繁受伤，有真实的死亡风险";
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "狩猎成功";
-"pet_hunt.result.success.body" = "你的宠物从 %@ 平安归来。";
-"pet_hunt.result.wound" = "受伤";
-"pet_hunt.result.wound.body" = "你的宠物受了伤，掉了一级。现在是 %d 级。";
-"pet_hunt.result.death" = "没有回来";
-"pet_hunt.result.death.body" = "你的宠物倒下了。纪念碑会记住它。";
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "纪念碑";
-"pet_hunt.memorial.empty.title" = "还没有谁倒下";
-"pet_hunt.memorial.empty.body" = "在狩猎中死去的宠物会记在这里。";
-"pet_hunt.memorial.died_in" = "倒在 %@";
 /* Common */
 "common.continue" = "继续";
-"uin_auction.alert.title" = "拍卖";
-"uin_auction.hero.kicker" = "当前拍品";
-"uin_auction.tier.legendary" = "传说";
-"uin_auction.tier.mid" = "稀有";
-"uin_auction.tier.common" = "普通";
-"uin_auction.soft_close" = "延时结拍：任何出价都会把计时延长 60 秒";
-"uin_auction.soft_close.badge" = "延时结拍";
-"uin_auction.soft_close.note" = "任何新出价都会把计时延长 60 秒";
-"uin_auction.error.generic" = "出价失败，请重试。";
-"uin_auction.high_bid" = "最高出价";
-"uin_auction.no_bids_yet" = "还没有出价";
-"uin_auction.you_lead" = "你目前领先";
-"uin_auction.lead_by" = "领先者：%@";
-"uin_auction.min_next" = "最低加价";
-"uin_auction.bid_placeholder" = "最低 %d";
-"uin_auction.cta.bid" = "出价";
-"uin_auction.cta.topup" = "充值";
-"uin_auction.insufficient_hint" = "代币不足";
-"uin_auction.need_tokens" = "代币不足，去买一些";
-"uin_auction.history.title" = "出价记录";
-"uin_auction.history.empty" = "来做第一个出价的人";
-"uin_auction.waiting.title" = "正在准备下一件拍品…";
-"uin_auction.waiting.body" = "新一轮拍卖几秒后开始。传说级 UIN 偶尔会出现，别走开。";
-"uin_auction.error.bid_too_low" = "最低出价是 %d 代币";
-"uin_auction.error.no_amount" = "请先输入出价金额。";
-"uin_auction.error.insufficient" = "需要 %d 代币，你有 %d";
-"uin_auction.error.already_lead" = "你已经是领先者";
-"uin_auction.error.ended" = "拍卖已结束";
-"uin_auction.outbid_refund" = "有人出价更高。已退还 %d 代币。";
-"uin_auction.banner.outbid.title" = "UIN 拍卖：有人出价更高";
-"uin_auction.banner.outbid.body" = "有人出价更高，已退还 %d 代币。点按可重新出价。";
-"uin_auction.recent.title" = "最近的赢家";
-"uin_auction.recent.empty" = "还没有结束的拍卖";
-"uin_auction.recent.won_by" = "由 %@ 赢得";
-"uin_auction.owned.title" = "我的 UIN";
-"uin_auction.owned.body" = "在拍卖中赢得的 UIN。可以把其中任意一个激活为当前 UIN，这会执行迁移（99 代币）。";
-"uin_auction.owned.empty" = "还没有赢得的 UIN。去赢一场拍卖吧。";
-"uin_auction.owned.activate" = "激活";
-"uin_auction.owned.sell" = "在市场出售";
-"uin_auction.owned.remove.confirm.title" = "移除 UIN #%d？";
-"uin_auction.owned.remove.confirm.message" = "此操作不可撤销。该 UIN 会回到号码池，可能被重新发放给别人。";
-"uin_auction.owned.remove.confirm.button" = "移除";
-"uin_auction.owned.remove.error" = "无法移除该 UIN。请稍后再试。";
-"uin_auction.owned.confirm.title" = "把 UIN %d 变成你的？";
-"uin_auction.owned.confirm.button" = "激活（%d）";
-"uin_auction.owned.activated" = "完成。你的新 UIN：%d";
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "刚刚";
 "last_seen.minute_one" = "%d 分钟前";
@@ -1514,7 +1231,7 @@
 "chat.voice.lock_armed" = "松开锁定";
 "chat.voice.swipe_hints" = "← 取消   ↑ 锁定";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "匿名";
+"onboard.anon.kicker" = "私密";
 "onboard.anon.title" = "无手机号，无邮箱";
 "onboard.anon.body" = "你的身份只是一个号码，别无其他。它不与你绑定，随时可以销毁重来。";
 "onboard.mesh.kicker" = "离线";
@@ -1560,7 +1277,7 @@
 "onboard.server.picker.intro.body" = "每台 RCQ 服务器都是一座独立的岛。你的账号、联系人和消息只存在于你选择的服务器上。你只能和同一台服务器上的用户通信。";
 "onboard.server.picker.search" = "搜索服务器";
 "onboard.server.picker.empty" = "没有匹配结果";
-"boot.error.unreachable" = "无法连接到 RCQ。你的网络可能封锁了它，试试 VPN。";
+"boot.error.unreachable" = "无法连接到 RCQ。你的网络可能封锁了它，试试其他网络或 RCQ 中继。";
 "boot.error.title" = "连接失败";
 "boot.error.retrying" = "%d 秒后重试…";
 "boot.error.retry_now" = "立即重试";
@@ -1874,6 +1591,7 @@
 "settings.island.rules" = "岛屿规则";
 "reg.invite.enter" = "输入代码";
 "boot.error.switch_account" = "切换账户";
+"boot.error.choose_island" = "选择其他岛屿";
 
 "invites.title" = "访问代码";
 "invites.body" = "访问代码只能使用一次：输入它的人会在这个岛屿上开设账户。下一个会自动累积，每个周期一个。";
@@ -1903,3 +1621,10 @@
 /* ── 账号已迁移到别的号码（`account_moved` 事件）── */
 "account.moved.blocked.title" = "你的账号已迁移到新号码";
 "account.moved.blocked.body" = "你在另一台设备上换了新号码，这台设备没能跟过去。这里什么都没有被删除，聊天记录仍在。请用恢复短语重新登录，以便在新号码上继续使用。";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "无法连到岛";
+"relay.key.offline.body" = "密钥已保存，但无法连到岛去校验。下次应用连接时会再次校验。";
+"relay.key.ok.none" = "密钥已接受。目前还没有分配给它的私有节点，所以仍在使用共享池。";
+"chat.menu.report_group" = "举报群组";
+"report.heading.group" = "举报此群组";

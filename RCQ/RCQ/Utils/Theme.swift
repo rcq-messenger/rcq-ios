@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Visual constants. Two palettes (light = classic ICQ 2002 white, dark = night mode).
+/// Visual constants. Two palettes (light = classic 2002 messenger white, dark = night mode).
 /// Colors are dynamic via UIColor providers, so anywhere in the app we just write
 /// `Theme.Color.bgPrimary` and SwiftUI picks the right variant from the current trait
 /// collection. Switching theme is therefore a single `.preferredColorScheme(...)` flip
@@ -26,7 +26,7 @@ enum Theme {
         static let textSecondary   = dyn(light: 0x555555, dark: 0x9A9A9A)
         static let textMono        = dyn(light: 0x222222, dark: 0xB8B8B8)
 
-        /// ICQ "flower" green — the iconic shade from the 2002 client logo. Used for
+        /// "Flower" green — the shade of the classic 2002 messenger logo. Used for
         /// primary actions (Send, Save, Accept) and for the active-status accent.
         static let accent          = dyn(light: 0x6BB12C, dark: 0x84C32C)
         static let accentPressed   = dyn(light: 0x4F8E1C, dark: 0x6BB12C)

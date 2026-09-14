@@ -38,11 +38,9 @@
 "settings.sound.row.off" = "Desactivados";
 "settings.sound.section.master" = "General";
 "settings.sound.section.presence" = "Presencia de contactos";
-"settings.sound.section.presence.hint" = "Un pitido al estilo ICQ cuando un contacto se conecta o se va. Los dos vienen desactivados.";
+"settings.sound.section.presence.hint" = "Un pitido clásico cuando un contacto se conecta o se va. Los dos vienen desactivados.";
 "settings.sound.contact_online" = "Contacto conectado";
 "settings.sound.contact_offline" = "Contacto desconectado";
-"settings.minis.toggle" = "Miniaturas de juegos";
-"settings.minis.toggle.footer" = "Muestra los widgets flotantes de Crash y de la subasta de UIN en la lista de chats, para seguir una ronda o una puja sin quedarte dentro del juego.";
 "settings.trades.realtime" = "Intercambios emergentes al momento";
 "settings.trades.realtime.footer" = "Activado, un intercambio entrante se abre al momento. Desactivado, los intercambios esperan sin ruido en la ventana de Intercambios y en el chat con quien lo envía.";
 "settings.language" = "Idioma";
@@ -209,12 +207,6 @@
 "settings.network.singbox.status.on" = "Por los relays de RCQ";
 "relays.learn_more" = "¿Qué es un relay?";
 "settings.network.coming_soon" = "Pronto";
-"settings.traffic" = "Tráfico de archivos";
-"settings.traffic.used" = "Usado este mes";
-"settings.traffic.used.value" = "%d MB";
-"settings.traffic.spent" = "Gastado";
-"settings.traffic.pay_large" = "Pagar tokens por archivos de más de 50 MB";
-"settings.traffic.pay_large.footer" = "Hasta 50 MB es gratis. A partir de ahí, 1 token por cada 10 MB: sin límite de tamaño mientras te queden tokens.";
 "settings.history" = "Historial";
 "settings.history.file" = "Archivo del historial de chats";
 "backup.intro" = "Guarda el historial de este dispositivo en un archivo, cifrado con tu frase de recuperación. El archivo es tuyo: guárdalo donde quieras. No se sube nada a nuestros servidores y no podemos leerlo.";
@@ -336,20 +328,13 @@
 "group_join.island_hint" = "Al entrar, tu clave queda registrada en %@ para que el grupo pueda entregarte los mensajes.";
 "group_join.open_button" = "Abrir";
 "group_join.closed_button" = "Solo por invitación";
-"group_join.price_suffix" = "para entrar";
 "group_join.owner" = "Propietario: %@";
 "group_join.owner_label" = "Propietario";
 "group_join.closed_hint" = "Este grupo es solo por invitación. Pídele al propietario que te añada.";
-"group_join.insufficient" = "Hacen falta %d tokens y tienes %d.";
 "group_join.error.generic" = "No se pudo cargar este grupo.";
 "group_join.error.blocked" = "El propietario te ha bloqueado el acceso a este grupo.";
 "group.settings.closed" = "Grupo cerrado";
 "group.settings.closed.hint" = "Solo las invitaciones del propietario añaden miembros nuevos. El enlace compartido sigue mostrando una vista previa, pero no deja entrar solo.";
-"paid_traffic.title" = "¿Pagar por el tráfico?";
-"paid_traffic.body" = "Este archivo pesa %@, más que el tope gratuito de 50 MB. Activa el tráfico de pago en Ajustes para enviarlo.";
-"paid_traffic.price_suffix" = "este archivo";
-"paid_traffic.enable" = "Activar el tráfico de pago";
-"paid_traffic.cancel" = "Cancelar";
 "contact_list.ctx.report" = "Informar";
 "report.title" = "Informar";
 "report.heading" = "Informar sobre un usuario";
@@ -365,7 +350,6 @@
 "settings.account.burn.title" = "¿Destruir esta cuenta para siempre?";
 "settings.account.burn.confirm" = "Destruir para siempre";
 "settings.account.burn.message" = "Tu cuenta se borrará en el servidor y en este dispositivo. Empezarás con un UIN nuevo. Los contactos y grupos de antes desaparecen y no guardan ningún enlace con tu identidad nueva. Esto no se puede deshacer.";
-"settings.account.burn.tally" = "%d objetos, %d tokens, %d gemas";
 "settings.link_web" = "Vincular web";
 "settings.share.message" = "Añádeme en RCQ: %@ (%d)";
 "settings.link_web.footer" = "Usa chat.rcq.app en el navegador de un ordenador. Genera un código de un solo uso que pegas en la web. Por ahora es solo de envío: las respuestas siguen llegando a iOS.";
@@ -411,7 +395,6 @@
 "status.offline" = "Desconectado";
 /* ── Contact list (main screen) ───────────────────────────── */
 "contact_list.offline_badge" = "Desconectado";
-"contact_list.bar.games" = "Juegos";
 "contact_list.bar.qr" = "QR";
 "contact_list.bar.nearby" = "Cerca";
 "contact_list.bar.settings" = "Ajustes";
@@ -531,17 +514,6 @@
 "report_evidence.consent.toggle" = "Autorizo a los moderadores de RCQ a revisar este contenido";
 "report_evidence.cta.send" = "Enviar el informe";
 "report_evidence.error.no_bytes" = "No se pudo cargar el contenido para el informe. Vuelve a abrir el mensaje e inténtalo otra vez.";
-/* ── Crash mini-bar ───────────────────────────────────────── */
-"crash.mini.betting" = "Apostar";
-"crash.mini.bet" = "%d 🪙";
-"crash.mini.bet_cta" = "Hacer la apuesta";
-"crash.mini.placed" = "Apostado";
-"crash.mini.cashout_cta" = "Retirar";
-"crash.mini.crashed_at" = "Reventó en %.2f×";
-/* ── Auction mini-bar ─────────────────────────────────────── */
-"auction.mini.leading" = "Vas ganando · %d";
-"auction.mini.outbid" = "Te superaron, ¿pujas otra vez?";
-"auction.mini.bid_cta" = "Subir";
 "chat.menu.voice_call" = "Llamada de voz";
 "chat.menu.video_call" = "Videollamada";
 "chat.menu.propose_trade" = "Proponer intercambio";
@@ -561,7 +533,6 @@
 "chat.attach.photo" = "Foto";
 "chat.attach.video" = "Vídeo";
 "chat.attach.camera" = "Cámara";
-"chat.attach.premium" = "De pago";
 "chat.attach.document" = "Documento";
 "chat.attach.location" = "Ubicación";
 "chat.location.title" = "Elige una ubicación";
@@ -570,7 +541,6 @@
 "chat.location.open.apple" = "Apple Maps";
 "chat.location.open.google" = "Google Maps";
 "chat.location.copy" = "Copiar las coordenadas";
-"chat.file.pay_required" = "Los archivos de más de 50 MB necesitan el interruptor de pago por archivos en Ajustes.";
 "chat.translate.title" = "Traducción";
 "chat.translate.section.original" = "Original";
 "chat.translate.section.translated" = "Traducción";
@@ -578,22 +548,6 @@
 "chat.translate.empty" = "No hay nada que traducir.";
 "chat.translate.translated_badge" = "Traducido";
 "chat.action.show_original" = "Ver el original";
-"chat.premium.compose.title" = "Contenido de pago";
-"chat.premium.compose.body" = "Pon un precio en tokens. Quien lo reciba ve una burbuja borrosa y paga para desbloquear el archivo. Tú te llevas el 95% (5% de comisión de la casa).";
-"chat.premium.compose.price_placeholder" = "Precio";
-"chat.premium.compose.hint" = "De 1 a 999.999 tokens.";
-"chat.premium.compose.pick_photo" = "Foto";
-"chat.premium.compose.pick_video" = "Vídeo";
-"chat.premium.unlock_for" = "Desbloquear por";
-"chat.premium.preview_photo" = "Foto de pago";
-"chat.premium.preview_video" = "Vídeo de pago";
-"chat.premium.confirm.title" = "¿Desbloquear por %d tokens?";
-"chat.premium.confirm.body" = "Se descontarán los tokens de tu saldo y recibirás la clave del archivo.";
-"chat.premium.confirm.pay" = "Pagar %d";
-"chat.premium.error.title" = "No se pudo desbloquear";
-"chat.premium.error.insufficient" = "No tienes tokens suficientes.";
-"chat.premium.error.gone" = "Este contenido ya no está disponible.";
-"chat.premium.error.generic" = "Algo salió mal. Inténtalo de nuevo.";
 "chat.voice.permission.title" = "Hace falta acceso al micrófono";
 "chat.voice.permission.body" = "Activa el acceso al micrófono en Ajustes → RCQ para grabar mensajes de voz.";
 "settings.migrate.header" = "Cuenta";
@@ -621,7 +575,8 @@
 "contact_list.discover.title" = "Grupos abiertos";
 "contact_list.discover.join" = "Unirse";
 "contact_list.empty.title" = "Todavía no hay contactos";
-"contact_list.empty.body" = "Añade a alguien por su UIN o su código QR para empezar a hablar. El chat aleatorio funciona sin contactos.";
+"contact_list.empty.body" = "Añade a alguien por su UIN o su código QR para empezar a hablar.";
+"contact_list.empty.stranger" = "El chat aleatorio funciona sin contactos.";
 "contact_list.empty.cta" = "Añadir un contacto";
 "chat.empty.title" = "Todavía no hay mensajes";
 "chat.empty.body" = "Saluda: tu primer mensaje abre la conversación.";
@@ -684,8 +639,6 @@
 "chat.preview.market_item" = "Objeto del mercado";
 "chat.preview.uin_listing" = "Anuncio de UIN";
 "chat.preview.group_invite" = "Invitación a un grupo";
-"chat.preview.premium_photo" = "🔒 Foto de pago";
-"chat.preview.premium_video" = "🔒 Vídeo de pago";
 "chat.preview.generic" = "Mensaje";
 "chat.banner.new_message" = "Mensaje nuevo";
 /* ── Call screen ──────────────────────────────────────────── */
@@ -766,8 +719,6 @@
 "group.settings.post_policy.all" = "Todos";
 "group.settings.post_policy.owner_only" = "Solo el propietario";
 "group.settings.post_policy.hint" = "En el modo solo propietario los miembros pueden leer, pero no escribir.";
-"group.settings.entry_price" = "Precio de entrada en tokens";
-"group.settings.entry_price.hint" = "0 = gratis. De cada pago se retiene un 5% de comisión del mercado; el resto va al propietario.";
 "group.settings.name" = "Nombre del grupo";
 "group.settings.photo" = "Foto del grupo";
 "group.settings.change_photo" = "Cambiar la foto";
@@ -779,7 +730,6 @@
 "group.avatar.remove.confirm" = "¿Quitar la foto del grupo?";
 "group.unavailable" = "Grupo no disponible.";
 "group.compose.broadcast_only" = "Solo escribe el propietario";
-"group.error.join_payment" = "No se pudo pagar la entrada al grupo";
 "group.cta.add_member" = "Añadir miembro";
 "group.cta.copy_link" = "Copiar el enlace del grupo";
 "group.cta.link_copied" = "Enlace copiado";
@@ -847,7 +797,7 @@
 /* ── About sheet ──────────────────────────────────────────── */
 "about.title" = "Acerca de RCQ";
 "about.tagline" = "La misma alma, criptografía moderna.";
-"about.body" = "RCQ es gratis para siempre. Sin anuncios, sin recogida de datos, sin número de teléfono.";
+"about.body" = "RCQ es un mensajero privado. Sin anuncios, sin rastreadores, sin analíticas, sin número de teléfono.";
 "about.stats.users" = "personas en esta isla";
 "about.privacy.section" = "PRIVACIDAD";
 "about.privacy.b1" = "Mensajes con cifrado de extremo a extremo (protocolo Signal).";
@@ -855,7 +805,7 @@
 "about.privacy.b3" = "Backend de conocimiento cero: los mensajes se guardan solo como bloques cifrados y se borran al entregarse.";
 "about.privacy.b4" = "Sin número de teléfono, sin correo: el UIN es la única identidad.";
 "about.privacy.b5" = "El historial vive solo en tu dispositivo, cifrado cuando está bloqueado.";
-"about.privacy.b6" = "Tu cuenta vive en una isla, un servidor que cualquiera puede levantar. Las islas nunca se comunican entre sí, quien las conecta es tu aplicación.";
+"about.privacy.b6" = "Tu cuenta vive en una isla, un servidor que cualquiera puede levantar. Las personas de islas distintas pueden hablar entre sí igualmente.";
 "about.contact.section" = "CONTACTO";
 "about.contact.support" = "Soporte";
 "about.contact.website" = "Web";
@@ -880,17 +830,10 @@
 "add.section.groups" = "GRUPOS";
 "add.section.join_group" = "ENTRAR EN UN GRUPO";
 "join_group.title" = "Entrar en el grupo";
-"join_group.entry_price" = "Precio de entrada";
-"join_group.your_balance" = "Tienes";
 "join_group.cta.free" = "Entrar";
-"join_group.cta.pay" = "Pagar y entrar";
-"join_group.cta.insufficient" = "No tienes tokens suficientes";
 "join_group.alert.title" = "Grupo";
-"join_group.error.insufficient" = "Hacen falta %d tokens y tienes %d";
 "join_group.error.blocked" = "El propietario te ha bloqueado";
 "join_group.error.generic" = "No se pudo entrar. Inténtalo de nuevo.";
-"chat.menu.premium_content" = "Contenido de pago";
-"chat.premium.coming_soon" = "Llega pronto. El propietario podrá publicar fotos y vídeos detrás de un desenfoque con un precio en tokens: los miembros desbloquean cada mensaje y el propietario se lleva el 95% (5% de comisión del mercado).";
 "add.section.people" = "PERSONAS";
 "add.cta.add" = "Añadir a contactos";
 "add.cta.in_list" = "Ya está en tu lista de contactos";
@@ -986,18 +929,6 @@
 "ci.add_self" = "Eres tú: tu cuenta en esta isla";
 "contact_list.section.cross_island" = "Otras islas";
 "pending.cta.decline" = "Rechazar";
-"pool.boost_note" = "Probabilidades con el bonus de la mascota al %d%%.";
-"shop.kicker" = "TIENDA";
-"shop.title" = "Comprar tokens";
-"shop.subtitle" = "Los tokens son la moneda interna de RCQ. Se gastan en los juegos, el mercado, el contenido de pago y las subastas.";
-"shop.tokens_n" = "%d tokens";
-"shop.best_value" = "MEJOR PRECIO";
-"shop.per_token" = "%d¢ por token";
-"shop.balance" = "Tu saldo vive en el servidor, bajo tu UIN. La compra real desde la App Store llegará más adelante: los paquetes de arriba abonan tu cartera al momento, para probar.";
-"pool.title" = "Pool";
-"pool.section_share" = "%.0f%% de las tiradas";
-"pool.cap" = "tope %d";
-"pool.cap_remaining" = "quedan %d / %d";
 "settings.privacy.relay_calls" = "Llamadas siempre por relay";
 "settings.privacy.relay_calls.desc" = "Manda el audio y el vídeo de las llamadas por nuestro relay para que la otra parte nunca sepa tu dirección IP. Desactivarlo puede mejorar la calidad de la llamada y le muestra tu dirección.";
 "settings.privacy.strangers" = "Desconocidos a solicitudes";
@@ -1025,19 +956,6 @@
 "radio.info.privacy.body" = "Nada sale de la red local. Vuestras sesiones tienen cifrado de extremo a extremo entre los participantes, con una clave de sesión que quien crea la sala comparte como contraseña. El historial solo está en memoria: la conversación desaparece al cerrar el chat.";
 "radio.info.when.title" = "Cuándo usarlo";
 "radio.info.when.body" = "Para quedar con amigos en un sitio con ruido. Para pasarle una nota rápida a alguien del mismo edificio. Para seguir en contacto durante un corte de red o en una zona donde los datos móviles van estrangulados. Donde los teléfonos estén cerca y la ruta normal de internet no esté disponible, vaya lenta o sea arriesgada.";
-"pool.detail.chance" = "PROBABILIDAD  %.2f%%";
-"pool.detail.cap" = "EDICIÓN  %d";
-"pool.detail.cap_remaining" = "QUEDAN %d / %d";
-"pool.gems.section" = "Gemas";
-"pool.gems.title" = "Paquete de gemas";
-"pool.gems.range" = "%d–%d gemas por tirada";
-"pool.pack.contents" = "CONTENIDO DEL PAQUETE · %d";
-"disassemble.title" = "Desmontar";
-"disassemble.body" = "Al desmontarlo, este objeto se destruye para siempre. Recibirás gemas según su rareza y su nivel de temple.";
-"disassemble.cta" = "Desmontar";
-"disassemble.cta.busy" = "Desmontando…";
-"disassemble.cta.cancel" = "Cancelar";
-"disassemble.success.body" = "%@ ya no está.";
 /* ── Trades ───────────────────────────────────────────────── */
 /* ── Nearby ───────────────────────────────────────────────── */
 "nearby.title" = "Cerca";
@@ -1129,7 +1047,7 @@
 "onboard.federation.body" = "RCQ no es el servidor de una empresa. Cualquiera puede levantar una isla, tu cuenta vive en la que elijas y tu número se mueve contigo.";
 "onboard.relay.kicker" = "PRIVACIDAD";
 "onboard.relay.title" = "La isla no ve tu dirección";
-"onboard.relay.body" = "El tráfico pasa por relés de la comunidad: la isla nunca ve dónde estás y tu red nunca ve que usas RCQ. Donde RCQ está bloqueado, también es la entrada.";
+"onboard.relay.body" = "Si la conexión directa con tu isla falla, o si los activas tú, la app pasa por los relés de RCQ. La isla entonces no ve tu dirección IP y tu tráfico parece una conexión cifrada corriente.";
 "onboard.chat.kicker" = "CHAT";
 "onboard.chat.title" = "El servidor no puede leer";
 "onboard.chat.body" = "Cada mensaje va cifrado de extremo a extremo y el remitente queda oculto dentro del sobre. El servidor no sabe quién escribe a quién.";
@@ -1139,114 +1057,11 @@
 "onboard.calls.kicker" = "VOZ Y VÍDEO";
 "onboard.calls.title" = "Llamadas y grupos";
 "onboard.calls.body" = "Llamadas de voz y vídeo por WebRTC, y grupos con toda la gente que añadas. Las notificaciones push te despiertan para las llamadas entrantes; el remitente sellado nos esconde el enrutado.";
-"onboard.pets.kicker" = "MASCOTAS";
-"onboard.pets.title" = "Consigue una mascota digital";
-"onboard.pets.body" = "Abre cajas y colecciona mascotas animadas raras. Súbelas de nivel, regálalas, cámbialas. La misma mascota puede salir con rarezas distintas: ve a por la copia perfecta.";
-"onboard.trade.kicker" = "INTERCAMBIO";
-"onboard.trade.title" = "Intercambia en tiempo real";
-"onboard.trade.body" = "Manda una oferta en un chat y la otra persona la ve al momento. Objetos, tokens y gemas, por cualquiera de los dos lados. \"Pedido\" vacío = regalo. \"Ofrecido\" vacío = petición de compra.";
 "onboard.privacy.kicker" = "PRIVACIDAD";
 "onboard.privacy.title" = "Tú decides quién ve qué";
 "onboard.privacy.body" = "Visibilidad campo a campo para la última vez, el género, las invitaciones a grupos y las ofertas de intercambio: Todos, Solo contactos o Nadie. Destruye la cuenta para siempre cuando quieras; después no queda nada que rescatar.";
 /* ── Rarity (used in chips, filters, history) ─────────────── */
-/* ── Games hub + Crash ───────────────────────────────────────── */
-"games.title" = "Juegos";
-"games.subtitle" = "Apuestas rápidas con tokens.\nLas rondas duran de 15 a 30 segundos.";
-"games.section.solo" = "En solitario";
-"games.section.pvp" = "Jugador contra jugador";
-"games.section.pets" = "Mascotas";
-"games.soon" = "PRONTO";
-"games.cta.topup" = "Recargar la cartera";
-"games.crash.title" = "Crash";
-"games.crash.body" = "El multiplicador sube: retírate antes de que reviente.";
-"games.hi_lo.title" = "Hi-Lo";
-"games.hi_lo.body" = "Adivina si la carta siguiente es más alta o más baja.";
-"games.limbo.title" = "Limbo";
-"games.limbo.body" = "Pon un multiplicador objetivo y prueba suerte.";
-"crash.title" = "Crash";
-"crash.you" = "Tú";
-"crash.phase.betting" = "Apuestas · %.1fs";
-"crash.phase.running" = "EN MARCHA";
-"crash.phase.crashed" = "REVENTÓ";
-"crash.feed.title" = "Se retiraron";
-"crash.feed.bets" = "%d jugadores";
-"crash.feed.empty" = "Todavía no ha apostado nadie, sé el primero";
-"crash.row.holding" = "AGUANTA";
-"crash.row.burned" = "QUEMADO";
-/* ── Hi-Lo ───────────────────────────────────────────────────── */
-"hilo.title" = "Hi-Lo";
-"hilo.phase.idle" = "Haz una apuesta";
-"hilo.phase.guess" = "¿MÁS ALTA O MÁS BAJA?";
-"hilo.card.label" = "Carta: %@";
-"hilo.bet.label" = "Apuesta";
-"hilo.cta.start" = "EMPEZAR %d";
-"hilo.cta.settling" = "RESOLVIENDO…";
-"hilo.cta.higher" = "MÁS ALTA";
-"hilo.cta.lower" = "MÁS BAJA";
-"hilo.cta.cashout" = "RETIRAR %.2fx";
-"hilo.banner.won" = "Ganaste %.2fx · +%d tokens";
-"hilo.banner.lost" = "Carta %@, fallaste. Apuesta perdida.";
-"hilo.rules.title" = "Reglas de Hi-Lo";
-"hilo.rules.how.title" = "Cómo se juega";
-"hilo.rules.how.body" = "Haz una apuesta y el servidor descubre una carta, de la A a la K. Adivina si la siguiente es más alta o más baja que la actual. Cada acierto multiplica lo acumulado. Fallo = apuesta perdida. Retírate cuando quieras = apuesta × multiplicador actual.";
-"hilo.rules.payout.title" = "Multiplicador";
-"hilo.rules.payout.body" = "Menos probabilidad = más multiplicador. Con un 7, más alta y más baja están casi igualadas (×1.83). Con un A (más alta es casi seguro) solo sale ×1.04. Con una K, al revés. Cada acierto multiplica la cadena.";
-"hilo.rules.fair.title" = "Justicia demostrable";
-"hilo.rules.fair.body" = "Todas las cartas de la ronda se deciden ANTES de empezar: SHA256(semilla + índice). El hash lo ves al momento; la semilla se revela al terminar la ronda, así que puedes comprobar cada carta a mano.";
-/* ── Limbo ───────────────────────────────────────────────────── */
-"limbo.title" = "Limbo";
-"limbo.phase.ready" = "LISTO PARA TIRAR";
-"limbo.phase.rolling" = "Tirando…";
-"limbo.phase.won" = "GANASTE";
-"limbo.phase.lost" = "FALLASTE";
 /* ── Equipped-pet preview sheet ───────────────────────────── */
-"pet_preview.title" = "Mascota";
-"pet_preview.owner" = "La lleva %@";
-"pet_preview.mint" = "#%d";
-"pet_preview.level" = "+%d";
-"pet_preview.essence" = "ESENCIA %d";
-"pet_preview.purity" = "PUREZA %.2fx";
-"limbo.target.label" = "Objetivo: %.2fx";
-"limbo.slider.label" = "Objetivo";
-"limbo.slider.chance" = "Probabilidad";
-"limbo.bet.label" = "Apuesta";
-"limbo.cta.roll" = "TIRAR %d";
-"limbo.banner.won" = "Salió %.2fx · +%d tokens";
-"limbo.banner.lost" = "Salió %.2fx (hacía falta ≥%.2fx), fallaste";
-"limbo.rules.title" = "Reglas de Limbo";
-"limbo.rules.how.title" = "Cómo se juega";
-"limbo.rules.how.body" = "Elige un multiplicador objetivo con el deslizador (de 1.10x hasta 100x). Haz una apuesta y toca TIRAR. El servidor saca un número al azar de la misma curva que usa Crash. Tirada ≥ objetivo = ganas.";
-"limbo.rules.payout.title" = "Multiplicador";
-"limbo.rules.payout.body" = "Objetivo más alto = más multiplicador y menos probabilidad. Objetivo 2.00x = ~48% × 1.94. Objetivo 10x = ~9.7% × 9.7. El equilibrio del riesgo lo pones tú.";
-"limbo.rules.fair.title" = "Justicia demostrable";
-"limbo.rules.fair.body" = "Cada tirada usa una client_seed (generada en tu dispositivo) y una server_seed (revelada después de la tirada). Puedes comprobar tú mismo SHA256(server + client) y confirmar que no se cambió el resultado.";
-"crash.bet.label" = "Apuesta";
-"crash.bet.cta" = "APOSTAR %d";
-"crash.bet.placed" = "Apuesta de %d hecha";
-"crash.bet.wait" = "esperando el inicio";
-"crash.cashout.label" = "RETIRAR %.2fx";
-"crash.you_cashed" = "Te retiraste ✓";
-"crash.spectating" = "Espera a la ronda siguiente";
-"crash.result.lost" = "Reventó en %.2fx, apuesta perdida";
-"crash.result.won" = "¡Ganaste! %.2fx · +%d tokens";
-"crash.result.next_in" = "Ronda siguiente en %d s";
-"crash.banner.cashed" = "Retirado %.2fx · +%d tokens";
-"crash.error.betting_closed" = "Las apuestas ya están cerradas";
-"crash.error.cashout_too_late" = "Demasiado tarde: la ronda reventó justo cuando llegó tu toque. La apuesta se pierde.";
-"crash.error.already_cashed" = "Ya te retiraste en esta ronda";
-"crash.error.already_bet" = "Ya apostaste en esta ronda";
-"crash.error.no_bet" = "No tienes ninguna apuesta en esta ronda";
-"crash.error.insufficient" = "No tienes tokens suficientes";
-"crash.error.network" = "Fallo de conexión: inténtalo de nuevo";
-"crash.rules.title" = "Reglas de Crash";
-"crash.rules.how.title" = "Cómo se juega";
-"crash.rules.how.body" = "Cada ronda: 8 segundos para apostar y luego el multiplicador sube desde 1.00x. En cualquier momento toca RETIRAR y te llevas apuesta × multiplicador actual. Si aguantas demasiado, la ronda revienta y lo pierdes todo.";
-"crash.rules.payout.title" = "Pago";
-"crash.rules.payout.body" = "Ganancia = apuesta × multiplicador al retirarte. Ejemplo: apuestas 10 tokens y te retiras en 2.50x → +25 tokens. Cuanto más aguantes, mayor es la ganancia posible, y mayor el riesgo de que reviente.";
-"crash.rules.fair.title" = "Justicia demostrable";
-"crash.rules.fair.body" = "El punto de reventón se decide ANTES de abrir las apuestas: SHA256(semilla + round_id). El hash se publica al empezar la ronda y la semilla se revela al terminarla. Puedes comprobarlo a mano: nadie puede cambiar el resultado después de tu apuesta.";
-"crash.rules.risk.title" = "Riesgo";
-"crash.rules.risk.body" = "Alrededor del 3% de las rondas revientan al instante en 1.00x: esa es la ventaja matemática de la casa (los tokens se queman, nadie gana). El 50% de las rondas revientan antes de 2.00x. El 10% pasan de 10x. Juega con lo que estés dispuesto a perder.";
 "contact_list.bar.add" = "Añadir";  /* legacy key kept for transitional bundles */
 /* ── Audio Rooms ─────────────────────────────────────────── */
 "audio_room.section.title" = "Salas de audio";
@@ -1307,106 +1122,8 @@
 "audio_room.rotate.confirm.body" = "La clave antigua deja de funcionar. Quien ya tenga la sala en su lista la conserva: su clave se actualiza sola. Quien tenga la clave antigua sin haber entrado ya no puede pasar.";
 "audio_room.rotate.confirm.do" = "Cambiar";
 "audio_room.rotate.toast" = "Clave cambiada";
-/* ── Premium UIN Auction ────────────────────────────────── */
-"games.uin_auction.title" = "Subasta de UIN";
-"games.uin_auction.body" = "Un UIN cada hora. Guerra de pujas hasta el último segundo.";
-"games.pets_hunt.title" = "Caza";
-"games.pets_hunt.body" = "Tu mascota equipada gana tokens sola. Arriésgala en cacerías para llevarte más.";
-/* ── Pet Hunt screen ───────────────────────────── */
-"pet_hunt.daily_yield" = "%d tokens al día a pleno rendimiento";
-"pet_hunt.daily_gems" = "%d gemas al día a pleno rendimiento";
-"pet_hunt.cap_reached" = "Búfer lleno: recoge ahora o se pierde lo que gane";
-"pet_hunt.claim" = "Recoger";
-"pet_hunt.send" = "ENVIAR A CAZAR";
-"pet_hunt.hunts_left" = "Quedan %d / %d cacerías hoy";
-"pet_hunt.cta.open_memorial" = "Memorial";
-"pool.rarity.section" = "Tirada de rareza";
-"pool.rarity.hint" = "La rareza se tira aparte del tipo que sale: cualquier mascota, pack de emoticonos o voz puede caer con cualquier rareza, con las probabilidades de abajo.";
-"pet_hunt.empty.no_pet.title" = "No hay ninguna mascota equipada";
-"pet_hunt.accumulator.title" = "En el búfer";
-"pet_hunt.spec.daily_yield" = "Tokens al día";
-"pet_hunt.spec.daily_gems" = "Gemas al día";
-"pet_hunt.spec.hourly_rate" = "Tokens por hora";
-/* Pet Hunt: info sheet */
-"pet_hunt.info.title" = "Cómo funciona";
-"pet_hunt.info.passive.title" = "Ganancia pasiva";
-"pet_hunt.info.passive.body" = "Tu mascota equipada gana tokens las 24 horas. Más rareza, más nivel y más pureza suben el ritmo. El búfer se llena a las 24 horas: recoge a diario o pierdes lo que se salga.";
-"pet_hunt.info.zones.title" = "Zonas de caza";
-"pet_hunt.info.zones.body" = "Tres cacerías al día te dejan arriesgar la mascota por premios mayores. El bosque es seguro, la montaña es arriesgada, la cueva es para valientes. Las mascotas más fuertes aciertan más a menudo Y sobreviven más a los fallos.";
-"pet_hunt.info.death.title" = "Muerte permanente";
-"pet_hunt.info.death.body" = "Si tu mascota falla una cacería y cae herida en el nivel 0, muere para siempre. Los desastres de la montaña y de la cueva pueden matar a cualquier mascota, sea del nivel que sea. Templa a tus mascotas antes de mandarlas a las zonas duras.";
-/* Pet Hunt: zone picker */
-"pet_hunt.zone_picker.title" = "Elige la cacería";
-"pet_hunt.zone_picker.intro" = "Más premio, más riesgo. La calidad de tu mascota cambia los números reales.";
-"pet_hunt.zone.forest" = "Bosque";
-"pet_hunt.zone.forest.reward" = "Tokens 3–8 × estadísticas + gemas 0–2";
-"pet_hunt.zone.forest.risk" = "Seguro: solo heridas leves, sin muertes";
-"pet_hunt.zone.mountain" = "Montaña";
-"pet_hunt.zone.mountain.reward" = "Tokens 8–20 × estadísticas + gemas 1–4";
-"pet_hunt.zone.mountain.risk" = "Arriesgado: heridas frecuentes, muertes raras";
-"pet_hunt.zone.cave" = "Cueva";
-"pet_hunt.zone.cave.reward" = "Tokens 20–50 × estadísticas + gemas 2–7";
-"pet_hunt.zone.cave.risk" = "Para valientes: heridas continuas, riesgo real de muerte";
-/* Pet Hunt: result */
-"pet_hunt.result.success" = "Cacería con éxito";
-"pet_hunt.result.success.body" = "Tu mascota volvió de %@ sin un rasguño.";
-"pet_hunt.result.wound" = "Herida";
-"pet_hunt.result.wound.body" = "Tu mascota resultó herida y bajó un nivel. Ahora está en el nivel %d.";
-"pet_hunt.result.death" = "No volvió";
-"pet_hunt.result.death.body" = "Tu mascota ha caído. La recordaremos en el Memorial.";
-/* Pet Hunt: memorial */
-"pet_hunt.memorial.title" = "Memorial";
-"pet_hunt.memorial.empty.title" = "Todavía no ha caído nadie";
-"pet_hunt.memorial.empty.body" = "Las mascotas que mueran en las cacerías se recordarán aquí.";
-"pet_hunt.memorial.died_in" = "Cayó en %@";
 /* Common */
 "common.continue" = "Continuar";
-"uin_auction.alert.title" = "Subasta";
-"uin_auction.hero.kicker" = "LOTE ACTUAL";
-"uin_auction.tier.legendary" = "Legendario";
-"uin_auction.tier.mid" = "Raro";
-"uin_auction.tier.common" = "Común";
-"uin_auction.soft_close" = "Cierre blando: cualquier puja alarga el reloj 60 s";
-"uin_auction.soft_close.badge" = "CIERRE BLANDO";
-"uin_auction.soft_close.note" = "Cualquier puja nueva alarga el reloj 60 segundos";
-"uin_auction.error.generic" = "No se pudo pujar. Inténtalo de nuevo.";
-"uin_auction.high_bid" = "PUJA MÁS ALTA";
-"uin_auction.no_bids_yet" = "Todavía no hay pujas";
-"uin_auction.you_lead" = "Vas ganando";
-"uin_auction.lead_by" = "Va ganando: %@";
-"uin_auction.min_next" = "MÍNIMO SIGUIENTE";
-"uin_auction.bid_placeholder" = "Mín. %d";
-"uin_auction.cta.bid" = "Pujar";
-"uin_auction.cta.topup" = "Recargar";
-"uin_auction.insufficient_hint" = "No tienes tokens suficientes";
-"uin_auction.need_tokens" = "No tienes tokens suficientes, compra más";
-"uin_auction.history.title" = "HISTORIAL DE PUJAS";
-"uin_auction.history.empty" = "Sé el primero en pujar";
-"uin_auction.waiting.title" = "Preparando el lote siguiente…";
-"uin_auction.waiting.body" = "En unos segundos empieza otra subasta. De vez en cuando salen UIN legendarios: quédate por aquí.";
-"uin_auction.error.bid_too_low" = "La puja mínima es de %d tokens";
-"uin_auction.error.no_amount" = "Escribe primero una cantidad.";
-"uin_auction.error.insufficient" = "Hacen falta %d tokens y tienes %d";
-"uin_auction.error.already_lead" = "Ya vas ganando";
-"uin_auction.error.ended" = "La subasta terminó";
-"uin_auction.outbid_refund" = "Te han superado. Se te devuelven %d tokens.";
-"uin_auction.banner.outbid.title" = "Te superaron en la subasta de UIN";
-"uin_auction.banner.outbid.body" = "Te superaron: se te devuelven %d tokens. Toca para volver a pujar.";
-"uin_auction.recent.title" = "Ganadores recientes";
-"uin_auction.recent.empty" = "Todavía no hay subastas terminadas";
-"uin_auction.recent.won_by" = "Lo ganó %@";
-"uin_auction.owned.title" = "Mis UIN";
-"uin_auction.owned.body" = "UIN ganados en subasta. Activa cualquiera como tu UIN actual: se hace la migración (99 tokens).";
-"uin_auction.owned.empty" = "Todavía no has ganado ningún UIN. ¡Gana una subasta!";
-"uin_auction.owned.activate" = "Activar";
-"uin_auction.owned.sell" = "Vender en el mercado";
-"uin_auction.owned.remove.confirm.title" = "¿Quitar el UIN #%d?";
-"uin_auction.owned.remove.confirm.message" = "Esto no tiene vuelta atrás. El UIN vuelve al fondo común y se le puede dar a otra persona.";
-"uin_auction.owned.remove.confirm.button" = "Quitar";
-"uin_auction.owned.remove.error" = "No se pudo quitar el UIN. Inténtalo dentro de un momento.";
-"uin_auction.owned.confirm.title" = "¿Quedarte con el UIN %d?";
-"uin_auction.owned.confirm.button" = "Activar (%d)";
-"uin_auction.owned.activated" = "Listo. Tu UIN nuevo: %d";
 /* ── Last-seen relative time ────────────────────────────── */
 "last_seen.just_now" = "ahora mismo";
 "last_seen.minute_one" = "hace %d minuto";
@@ -1523,7 +1240,7 @@
 "chat.voice.lock_armed" = "Suelta para bloquear";
 "chat.voice.swipe_hints" = "← cancelar   ↑ bloquear";
 /* Onboarding: reworked pages (anonymity / mesh / security PIN) */
-"onboard.anon.kicker" = "ANÓNIMO";
+"onboard.anon.kicker" = "PRIVADO";
 "onboard.anon.title" = "Sin teléfono ni correo";
 "onboard.anon.body" = "Tu identidad es un número y nada más. No está ligado a ti, y puedes quemarlo y empezar de cero cuando quieras.";
 "onboard.mesh.kicker" = "SIN CONEXIÓN";
@@ -1569,7 +1286,7 @@
 "onboard.server.picker.intro.body" = "Cada servidor RCQ es su propia isla. Tu cuenta, tus contactos y tus mensajes viven solo en el servidor que elijas. Solo puedes escribir a usuarios del mismo servidor.";
 "onboard.server.picker.search" = "Buscar servidores";
 "onboard.server.picker.empty" = "Sin resultados";
-"boot.error.unreachable" = "No se pudo contactar con RCQ. Puede que tu red lo esté bloqueando: prueba con una VPN.";
+"boot.error.unreachable" = "No se pudo contactar con RCQ. Puede que tu red lo esté bloqueando: prueba con otra red o con los relés de RCQ.";
 "boot.error.title" = "No se pudo conectar";
 "boot.error.retrying" = "Reintentando en %ds…";
 "boot.error.retry_now" = "Reintentar ahora";
@@ -1883,6 +1600,7 @@
 "settings.island.rules" = "Reglas de la isla";
 "reg.invite.enter" = "Escribir el código";
 "boot.error.switch_account" = "Otra cuenta";
+"boot.error.choose_island" = "Elegir otra isla";
 
 "invites.title" = "Códigos de acceso";
 "invites.body" = "Un código de acceso se usa una sola vez: quien lo introduzca tendrá una cuenta en esta isla. El siguiente llega solo, uno por período.";
@@ -1912,3 +1630,10 @@
 /* ── La cuenta se mudó a otro número (evento `account_moved`) ── */
 "account.moved.blocked.title" = "Tu cuenta se mudó a un número nuevo";
 "account.moved.blocked.body" = "Tomaste un número nuevo en otro dispositivo y este no pudo seguirlo. No se borró nada: tus chats siguen acá. Volvé a entrar con tu frase de recuperación para continuar en el número nuevo.";
+
+// 14.09 report group / relay offline
+"relay.key.offline.title" = "No se pudo contactar con la isla";
+"relay.key.offline.body" = "La clave quedó guardada, pero no se pudo contactar con la isla para comprobarla. Se volverá a comprobar la próxima vez que la app se conecte.";
+"relay.key.ok.none" = "La clave fue aceptada. Todavía no tiene nodos privados asignados, así que se sigue usando el pool compartido.";
+"chat.menu.report_group" = "Denunciar grupo";
+"report.heading.group" = "Denunciar este grupo";

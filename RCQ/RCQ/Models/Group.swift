@@ -1,6 +1,6 @@
 import Foundation
 
-/// Group of friends, ICQ-style. Mirrors `GroupOut`. Named `RCQGroup` to
+/// Group of friends, classic-messenger style. Mirrors `GroupOut`. Named `RCQGroup` to
 /// avoid collision with SwiftUI's `Group` view container.
 struct RCQGroup: Identifiable, Hashable, Codable {
     /// For a cross-island group (§5c) the client rewrites this to the local

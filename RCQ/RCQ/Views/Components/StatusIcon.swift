@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// PNG status icon from the RCQ in-house status set (replaces the
-/// original ICQ5 set we shipped with at launch). Falls back to a
+/// original third-party set we shipped with at launch). Falls back to a
 /// colored dot if the asset is missing (e.g. dev builds without
 /// the pack copied in).
 struct StatusIcon: View {
