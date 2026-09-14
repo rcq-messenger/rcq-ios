@@ -1,6 +1,6 @@
 {
-  "version": 146,
-  "issued_at": "2026-08-13T10:36:11Z",
+  "version": 147,
+  "issued_at": "2026-09-14T10:32:42Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -166,5 +166,10 @@
       "name": "cfg.northfieldlabs.fyi"
     }
   ],
-  "sig": "5By8lw28P5C1JIZQjXcqzQF/Muco6aCNdFCCP4HjpBoJqq0pKhLmmLDtiy6ERU9GYZHTmkPdzGbxocP2WiWABA=="
+  "islands": [
+    "rcqam.mooo.com",
+    "rcq.chickenkiller.com",
+    "rcq.project26.cc"
+  ],
+  "sig": "xOR8VtIvQSdwt9BzFCv4FPidmJwyDDyJ3eIQ8ViVi9uucDiviVmuOe3TrPaMFeRQ3tpMdfi45cbbvCGg43s/DA=="
 }
