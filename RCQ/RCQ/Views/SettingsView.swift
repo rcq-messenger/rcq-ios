@@ -2253,15 +2253,26 @@ struct BackupIslandView: View {
                     reload()
                 }
             } catch {
+                // #988: never the island's raw answer. The detail used to be
+                // appended in brackets, and on a paid island that put
+                // `HTTP 403: {"detail":{"code":"entry_required"}}` in front of
+                // a person who only flipped a toggle.
                 let message: String
+                var openManual = false
                 switch error {
                 case Multihome.AddError.noIsland: message = "multihome.err.none".localized
-                case Multihome.AddError.network(let detail):
-                    message = "multihome.err.generic".localized + " (\(detail))"
+                case Multihome.AddError.noOpenIsland:
+                    // The sentence points at the manual block below, so that
+                    // block has to be open for it to be true.
+                    message = "multihome.err.no_open".localized
+                    openManual = true
+                // No door sentence here: the auto-pick moves past a refused
+                // door, and an island that refused counts as one that answered.
                 default: message = "multihome.err.generic".localized
                 }
                 await MainActor.run {
                     self.error = message
+                    if openManual { advanced = true }
                     autoBusy = false
                     reload()
                 }
@@ -2302,8 +2313,8 @@ struct BackupIslandView: View {
                     )
                 case Multihome.AddError.primaryIsland: message = "multihome.err.primary".localized
                 case Multihome.AddError.alreadyAdded: message = "multihome.err.already".localized
-                case Multihome.AddError.network(let detail):
-                    message = "multihome.err.generic".localized + " (\(detail))"
+                case Multihome.AddError.doorRefused(let refusal): message = Self.doorMessage(refusal)
+                // No detail in brackets: it was the island's raw HTTP answer (#988).
                 default: message = "multihome.err.generic".localized
                 }
                 await MainActor.run {
@@ -2311,6 +2322,16 @@ struct BackupIslandView: View {
                     busy = false
                 }
             }
+        }
+    }
+
+    /// A typed island that refused us at its door, said the way a person would
+    /// say it. Paid entry and an operator's invite are different errands, so
+    /// they get different sentences.
+    private static func doorMessage(_ refusal: IslandDoorRefusal) -> String {
+        switch refusal {
+        case .entry: return "multihome.err.door_entry".localized
+        case .invite: return "multihome.err.door_invite".localized
         }
     }
 

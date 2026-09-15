@@ -137,6 +137,10 @@
 "multihome.promote.body" = "应用会切换到 %@：你的号码和地址会变成那个岛上的，当前的主岛会变成备份岛。聊天记录留在这台设备上。联系人会看到一次常规的安全码变更提示。";
 "multihome.promote.confirm" = "设为主岛";
 "multihome.err.unreachable" = "岛无法访问。什么都没有改动。";
+"multihome.err.no_open" = "目录中现在没有开放的岛能接收备份。你可以在下方手动添加一个岛。";
+"multihome.err.door_entry" = "这个岛只允许持有入场代码的人加入。请试试别的岛。";
+"multihome.err.door_invite" = "这个岛只允许受邀的人加入。请试试别的岛。";
+"multihome.err.switch_not_done" = "切换没有发生。什么都没有改变。";
 "linkeddevices.hint" = "已连接到你账号的浏览器。要连接一个，请打开 chat.rcq.app，选择“连接手机”，然后用摄像头扫描代码。";
 "linkeddevices.empty" = "没有已连接的浏览器。";
 "linkeddevices.error" = "无法加载已连接设备。";

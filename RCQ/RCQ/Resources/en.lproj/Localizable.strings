@@ -150,6 +150,10 @@
 "multihome.promote.body" = "The app will switch to %@: your number and address become the ones from that island, and the current primary island becomes a backup. Chat history stays on this device. Contacts will see a routine security-code change.";
 "multihome.promote.confirm" = "Make primary";
 "multihome.err.unreachable" = "Island unreachable. Nothing was changed.";
+"multihome.err.no_open" = "No open island in the catalogue can take a backup right now. You can add an island by hand below.";
+"multihome.err.door_entry" = "This island only lets people in with an entry code. Try another island.";
+"multihome.err.door_invite" = "This island only lets people in by invite. Try another island.";
+"multihome.err.switch_not_done" = "The switch did not happen. Nothing changed.";
 "linkeddevices.hint" = "Browsers connected to your account. To connect one, open chat.rcq.app, choose Connect phone, and scan the code with your camera.";
 "linkeddevices.slots.title" = "Device keys";
 "linkeddevices.slots.hint" = "Every install of this account holding its own encryption keys. A recovery-phrase login shows up here.";

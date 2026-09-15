@@ -146,6 +146,10 @@
 "multihome.promote.body" = "La app cambiará a %@: tu número y tu dirección pasan a ser los de esa isla, y la isla principal actual pasa a ser la copia. El historial de chats se queda en este dispositivo. Tus contactos verán un cambio de código de seguridad, algo normal.";
 "multihome.promote.confirm" = "Hacer principal";
 "multihome.err.unreachable" = "La isla no responde. No se cambió nada.";
+"multihome.err.no_open" = "Ahora mismo ninguna isla abierta del catálogo puede guardar una copia. Puedes añadir una isla a mano abajo.";
+"multihome.err.door_entry" = "Esta isla solo deja entrar con un código de entrada. Prueba otra isla.";
+"multihome.err.door_invite" = "Esta isla solo deja entrar con invitación. Prueba otra isla.";
+"multihome.err.switch_not_done" = "El cambio no ocurrió. No cambió nada.";
 "linkeddevices.hint" = "Navegadores conectados a tu cuenta. Para conectar uno, abre chat.rcq.app, elige Conectar teléfono y escanea el código con la cámara.";
 "linkeddevices.empty" = "No hay ningún navegador conectado.";
 "linkeddevices.error" = "No se pudieron cargar los dispositivos vinculados.";

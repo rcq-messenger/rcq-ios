@@ -865,6 +865,36 @@ enum IslandHTTP {
         }
     }
 
+    /// A small look at an island that never grows: the body is read no
+    /// further than `cap` bytes (one past it comes back when there was more,
+    /// so the caller can tell a body that fit from one that did not), and the
+    /// tunnel is never engaged on its behalf. It still rides a tunnel that is
+    /// already up, and still meets the trust rule like every island call.
+    ///
+    /// For the backup auto-pick (#988), whose relay pass is its own decision
+    /// and runs only after every island stayed silent on the route in use.
+    ///
+    /// ⚠ The same body-callback warning as `data(for:delegate:)` above: the
+    /// delegate may refuse redirects, it must not claim the body.
+    static func probe(
+        for request: URLRequest,
+        cap: Int,
+        delegate: URLSessionTaskDelegate,
+    ) async throws -> (Data, URLResponse) {
+        try await run(url: request.url, allowTunnelFallback: false, island: true, transfer: false) { session in
+            let (bytes, response) = try await session.bytes(for: request, delegate: delegate)
+            var body = Data()
+            for try await byte in bytes {
+                body.append(byte)
+                if body.count > cap {
+                    bytes.task.cancel()
+                    break
+                }
+            }
+            return (body, response)
+        }
+    }
+
     static func upload(
         for request: URLRequest,
         from body: Data,
@@ -896,12 +926,18 @@ enum IslandHTTP {
     /// `allowTunnelFallback: false` for hosts that are not islands (the signed
     /// island catalogue on GitHub): route them through an already-running tunnel,
     /// but never turn one ON because a third party is unreachable.
+    ///
+    /// `island` overrides the session choice that otherwise follows
+    /// `allowTunnelFallback`, for an island call that must not engage the
+    /// tunnel on its own (`probe`) and still has to meet the trust rule.
     private static func run<Body>(
         url: URL?,
         allowTunnelFallback: Bool,
+        island: Bool? = nil,
         transfer: Bool,
         _ call: (URLSession) async throws -> (Body, URLResponse),
     ) async throws -> (Body, URLResponse) {
+        let island = island ?? allowTunnelFallback
         // The second chokepoint (see `APIClient.rawRequest`). Everything
         // cross-island goes through here: guest registrations and mailbox
         // drains on visited islands, backup-island polls, §5e profile
@@ -911,10 +947,10 @@ enum IslandHTTP {
         let key = url?.host ?? ""
         if allowTunnelFallback, isKnownBlocked(key),
            await SingBoxTransport.engageForBlockedDestination(key) {
-            return try await call(session(transfer: transfer, island: allowTunnelFallback))
+            return try await call(session(transfer: transfer, island: island))
         }
         do {
-            return try await call(session(transfer: transfer, island: allowTunnelFallback))
+            return try await call(session(transfer: transfer, island: island))
         } catch {
             // A refused certificate is not a blocked route (§5.5): the island
             // answered, and would refuse through every relay too. The tunnel
@@ -935,7 +971,7 @@ enum IslandHTTP {
                   await SingBoxTransport.engageForBlockedDestination(key)
             else { throw error }
             markBlocked(key)
-            return try await call(session(transfer: transfer, island: allowTunnelFallback))
+            return try await call(session(transfer: transfer, island: island))
         }
     }
 

@@ -181,6 +181,15 @@ enum Multihome {
         /// The typed fingerprint disagrees with what this device holds for that
         /// island: the banner on the main screen, nothing dialled.
         case trustRefused
+        /// The island turned the registration away at its door (#988): paid
+        /// entry or an operator's invite. Its own case and never `network`, so
+        /// no screen can end up drawing the island's JSON for it.
+        case doorRefused(IslandDoorRefusal)
+        /// The auto-pick heard back from at least one catalogue island, and
+        /// none of them yielded a backup (#988). `noIsland` is the other end:
+        /// the catalogue unreachable or failing its signature, or not one
+        /// island in it answering, the relay pass included.
+        case noOpenIsland
     }
 
     struct Credentials: Decodable { let uin: Int; let token: String }
@@ -405,53 +414,28 @@ enum Multihome {
         guard !MultihomeStore.shared.list(ownUin: ownUin).contains(where: { $0.host == host }) else {
             throw AddError.alreadyAdded
         }
-        guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
-              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
-              let idBytes = KeychainStore.data(KeychainStore.Keys.identityPriv),
-              let identityPriv = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: idBytes) else {
-            throw AddError.network("no keys")
-        }
+        guard let keys = backupKeys() else { throw AddError.network("no keys") }
         do {
             // Recover-first: registering twice would mint a SECOND uin for the
             // same key on that island (no server-side uniqueness on keys).
             let creds: Credentials
-            if let recovered = try await recoverOn(host: host, signingPriv: signingPriv) {
+            if let recovered = try await recoverOn(host: host, signingPriv: keys.signing) {
                 creds = recovered
             } else {
-                let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
-                // ⚠ The number is only handed out under proof of the signing
-                // key now. Without the signature the island still registers us,
-                // but on a fresh number, and "one number everywhere" quietly
-                // stops being true. An island too old to know the endpoint
-                // 404s and we register the way we always did.
-                struct ChallengeOut: Decodable { let challenge: String }
-                var extra: [String: Any] = ["desired_uin": ownUin]
-                if let chal: ChallengeOut = try? await post(
-                    "https://\(host)/auth/register/challenge", json: ["signing_key": sk]
-                ), let sig = try? RecoveryPhrase.signChallenge(
-                    signingPrivate: signingPriv, challenge: chal.challenge
-                ) {
-                    extra["challenge"] = chal.challenge
-                    extra["signature"] = sig
-                }
-                creds = try await post(
-                    "https://\(host)/auth/register",
-                    json: [
-                        "nickname": nickname,
-                        "identity_key": identityPriv.publicKey.rawRepresentation.base64EncodedString(),
-                        "signing_key": sk,
-                    ],
-                    extra: extra
-                )
+                creds = try await registerBackupCopy(host: host, ownUin: ownUin, nickname: nickname, keys: keys)
             }
-            let home = MultihomeStore.Home(
-                ownUin: ownUin, host: host, uin: creds.uin, jwt: creds.token,
-                addedAt: Date(), auto: auto ? true : nil
-            )
-            MultihomeStore.shared.save(home)
-            return home
+            return adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: auto)
         } catch let e as AddError {
             throw e
+        } catch HttpError.status(let code, let body) {
+            // #988: a door refusal is a fact about the island, not a failed
+            // connection, and the auto-pick moves past it while a typed host
+            // gets a sentence for it. The body stays in here either way: it
+            // is the island's raw JSON, and it used to reach the screen.
+            if let refusal = BackupAutoPick.doorRefusal(status: code, body: body) {
+                throw AddError.doorRefused(refusal)
+            }
+            throw AddError.network("HTTP \(code)")
         } catch {
             throw AddError.network(String(describing: error))
         }
@@ -474,21 +458,125 @@ enum Multihome {
     // because steering a backup mailbox and steering a tunnel are different
     // powers and should not stay welded to one key.
 
-    /// Pick a backup island from the SIGNED island list, minus our own island +
-    /// already-added hosts; the FIRST healthy one in list order wins (the order
-    /// is the project's preference). Returns nil when the list is unreachable,
-    /// the signature fails, or no island responds (fail-safe: never
-    /// auto-register on an unverified island).
-    static func autoPickHost(ownUin: Int) async -> String? {
-        guard let islands = await fetchSignedAutoIslands() else { return nil }
-        let existing = Set(MultihomeStore.shared.list(ownUin: ownUin).map(\.host))
-        for url in islands {
-            // isOwnHost also skips the Cloudflare fronts: a front in the
-            // catalogue would auto-register a "backup" on our own island.
-            guard let host = normalizeHost(url), !isOwnHost(host), !existing.contains(host) else { continue }
-            if await healthy(host) { return host }
+    /// This account's two private keys, the ones every backup copy is made
+    /// with. Nil when this install holds neither (nothing can be added then).
+    private struct BackupKeys {
+        let signing: Curve25519.Signing.PrivateKey
+        let identity: Curve25519.KeyAgreement.PrivateKey
+    }
+
+    private static func backupKeys() -> BackupKeys? {
+        guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signing = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
+              let idBytes = KeychainStore.data(KeychainStore.Keys.identityPriv),
+              let identity = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: idBytes) else {
+            return nil
         }
-        return nil
+        return BackupKeys(signing: signing, identity: identity)
+    }
+
+    /// Register a NEW copy of this account on `host`. Only after a recover
+    /// found none there, and only on an island whose door is open: the auto-
+    /// pick never calls this on a shut one (#988).
+    private static func registerBackupCopy(
+        host: String,
+        ownUin: Int,
+        nickname: String,
+        keys: BackupKeys
+    ) async throws -> Credentials {
+        let sk = keys.signing.publicKey.rawRepresentation.base64EncodedString()
+        // ⚠ The number is only handed out under proof of the signing
+        // key now. Without the signature the island still registers us,
+        // but on a fresh number, and "one number everywhere" quietly
+        // stops being true. An island too old to know the endpoint
+        // 404s and we register the way we always did.
+        struct ChallengeOut: Decodable { let challenge: String }
+        var extra: [String: Any] = ["desired_uin": ownUin]
+        if let chal: ChallengeOut = try? await post(
+            "https://\(host)/auth/register/challenge", json: ["signing_key": sk]
+        ), let sig = try? RecoveryPhrase.signChallenge(
+            signingPrivate: keys.signing, challenge: chal.challenge
+        ) {
+            extra["challenge"] = chal.challenge
+            extra["signature"] = sig
+        }
+        return try await post(
+            "https://\(host)/auth/register",
+            json: [
+                "nickname": nickname,
+                "identity_key": keys.identity.publicKey.rawRepresentation.base64EncodedString(),
+                "signing_key": sk,
+            ],
+            extra: extra
+        )
+    }
+
+    /// File `creds` as this account's backup home on `host`. The same for a
+    /// copy just registered and for one taken back by a recover.
+    @discardableResult
+    private static func adoptBackup(ownUin: Int, host: String, creds: Credentials, auto: Bool) -> MultihomeStore.Home {
+        let home = MultihomeStore.Home(
+            ownUin: ownUin, host: host, uin: creds.uin, jwt: creds.token,
+            addedAt: Date(), auto: auto ? true : nil
+        )
+        MultihomeStore.shared.save(home)
+        return home
+    }
+
+    /// Ask one catalogue island about its door for the auto-pick
+    /// (`BackupAutoPick.classify`): `/health`, then `/server/info`.
+    ///
+    /// ⚠ Fresh every time, on purpose, and not `IslandDoor`: that answer is
+    /// kept for the life of the process, and a door that shut since it was
+    /// read would still look open to the toggle (#988). Every redirect is
+    /// refused (`RefuseRedirects`), so only an island's answer about itself
+    /// counts: a paid island cannot borrow an open island's `/server/info`,
+    /// and a health check cannot pass on somebody else's 200.
+    private static func probeBackupDoor(_ host: String) async -> BackupProbe {
+        // Over relays whenever a tunnel carries island calls right now: the
+        // relay pass, and the first pass too when one was already up.
+        let deadline = BackupAutoPick.probeDeadline(overRelay: SingBoxTransport.proxyDictionary() != nil)
+        let health = await probeGet(host: host, path: "/health", cap: 0, deadline: deadline)
+        // A silent island is not asked a second question.
+        guard BackupAutoPick.healthy(health) else { return .silent }
+        let info = await probeGet(host: host, path: "/server/info", cap: BackupAutoPick.infoBodyCap, deadline: deadline)
+        return BackupAutoPick.classify(health: health, info: info)
+    }
+
+    /// One probe request under an overall deadline covering connect, headers
+    /// and body (`BackupAutoPick.withDeadline`). Past it the request is
+    /// cancelled and the answer is none, which reads as silence.
+    private static func probeGet(host: String, path: String, cap: Int, deadline: TimeInterval) async -> BackupProbeAnswer? {
+        guard let url = URL(string: "https://\(host)\(path)") else { return nil }
+        var req = URLRequest(
+            url: url,
+            cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+            timeoutInterval: deadline
+        )
+        req.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        let request = req
+        return await BackupAutoPick.withDeadline(deadline) {
+            guard let (body, resp) = try? await IslandHTTP.probe(for: request, cap: cap, delegate: RefuseRedirects()),
+                  let http = resp as? HTTPURLResponse else { return nil }
+            return BackupProbeAnswer(status: http.statusCode, body: body)
+        }
+    }
+
+    /// Refuses every redirect: the 3xx itself comes back as the answer, and
+    /// the probe reads that as silence. Only the redirection callback, so the
+    /// body stays with the call and the certificate challenge still reaches
+    /// the session's `IslandTrust`.
+    private final class RefuseRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            completionHandler(nil)
+        }
     }
 
     /// Fetch the signed list + signature and verify Ed25519 over the EXACT
@@ -510,23 +598,88 @@ enum Multihome {
         return (try? JSONDecoder().decode(Doc.self, from: data))?.islands
     }
 
-    private static func healthy(_ host: String) async -> Bool {
-        guard let url = URL(string: "https://\(host)/health") else { return false }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 6
-        guard let (_, resp) = try? await IslandHTTP.data(for: req),
-              let http = resp as? HTTPURLResponse else { return false }
-        return (200..<300).contains(http.statusCode)
-    }
-
-    /// The toggle's ON action: pick a healthy catalogue island and register
-    /// there (recover-first, same keys). Returns the chosen host; throws
-    /// `AddError.noIsland` when nothing is reachable. The caller republishes
-    /// the home-island record.
+    /// The toggle's ON action: walk the SIGNED island list in its own order,
+    /// minus our own island and already-added hosts, under the rule in
+    /// `BackupAutoPick.run` (#988). Returns the host that yielded the backup.
+    /// The caller republishes the home-island record.
+    ///
+    /// Each island is probed fresh (`probeBackupDoor`), one at a time. OPEN:
+    /// recover first, then register, the way every add does; a registration
+    /// refused at the door moves on without a second recover. SHUT: recover
+    /// only, and a copy the island still holds for this key is adopted like a
+    /// normal add. SILENT: nothing dialled.
+    ///
+    /// Throws `AddError.noIsland` when the list is unreachable or its
+    /// signature fails (fail-safe: never auto-register on an unverified list)
+    /// even over the relay pass, and when no island answered either;
+    /// `AddError.noOpenIsland` when an island answered and none yielded a
+    /// backup, or the verified list had no island left to ask.
     static func enableAutoBackup(ownUin: Int, nickname: String) async throws -> String {
-        guard let host = await autoPickHost(ownUin: ownUin) else { throw AddError.noIsland }
-        _ = try await addBackupIsland(ownUin: ownUin, hostInput: host, nickname: nickname, auto: true)
-        return host
+        guard let keys = backupKeys() else { throw AddError.network("no keys") }
+        // A tunnel already up carried the first pass, so there is no second
+        // road to try: the relay pass is the tunnel coming up for islands the
+        // direct route could not reach, the same retry every island call makes.
+        let tunnelWasUp = SingBoxTransport.proxyDictionary() != nil
+        let outcome = await BackupAutoPick.run(
+            catalogue: {
+                guard let islands = await fetchSignedAutoIslands() else { return nil }
+                // isOwnHost also skips the Cloudflare fronts: a front in the
+                // catalogue would auto-register a "backup" on our own island.
+                return BackupAutoPick.candidates(
+                    catalogue: islands,
+                    normalize: { normalizeHost($0) },
+                    isOwn: { isOwnHost($0) },
+                    existing: Set(MultihomeStore.shared.list(ownUin: ownUin).map(\.host))
+                )
+            },
+            probe: { await probeBackupDoor($0) },
+            openRelay: {
+                guard !tunnelWasUp else { return false }
+                return await SingBoxTransport.engageForBlockedDestination("backup auto-pick")
+            },
+            register: { host in
+                do {
+                    // Recover-first: registering twice would mint a SECOND uin
+                    // for the same key on that island. This is the island's one
+                    // recover for the attempt: a door refusal after it means no
+                    // copy here and the door shut, and the walk moves on.
+                    if let creds = try await recoverOn(host: host, signingPriv: keys.signing) {
+                        adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: true)
+                        return .added
+                    }
+                    let creds = try await registerBackupCopy(host: host, ownUin: ownUin, nickname: nickname, keys: keys)
+                    adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: true)
+                    return .added
+                } catch HttpError.status(let code, let body)
+                    where BackupAutoPick.doorRefusal(status: code, body: body) != nil {
+                    return .doorRefused
+                } catch {
+                    return .failed
+                }
+            },
+            recover: { host in
+                do {
+                    // ⚠ Recover, never register: `/auth/recover` does not look
+                    // at the door, so a copy made before the island shut it
+                    // comes back, and nothing new is created on a shut island.
+                    guard let creds = try await recoverOn(host: host, signingPriv: keys.signing) else {
+                        return .noCopy
+                    }
+                    adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: true)
+                    return .adopted
+                } catch {
+                    return .failed
+                }
+            }
+        )
+        switch outcome {
+        case .added(let host):
+            return host
+        case .noOpenIsland:
+            throw AddError.noOpenIsland
+        case .noIslandReachable:
+            throw AddError.noIsland
+        }
     }
 
     /// The toggle's OFF action: forget every auto-picked home (manually-added

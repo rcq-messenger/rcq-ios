@@ -146,6 +146,10 @@
 "multihome.promote.body" = "Uygulama %@ adasına geçer: numaran ve adresin o adadakiler olur, şimdiki ana adan yedeğe düşer. Sohbet geçmişi bu cihazda kalır. Kişilerin sıradan bir güvenlik kodu değişikliği görür.";
 "multihome.promote.confirm" = "Ana yap";
 "multihome.err.unreachable" = "Adaya ulaşılamıyor. Hiçbir şey değişmedi.";
+"multihome.err.no_open" = "Şu anda katalogdaki açık adaların hiçbiri yedek alamıyor. Aşağıdan bir adayı elle ekleyebilirsin.";
+"multihome.err.door_entry" = "Bu ada yalnızca giriş koduyla içeri alıyor. Başka bir ada dene.";
+"multihome.err.door_invite" = "Bu ada yalnızca davetle içeri alıyor. Başka bir ada dene.";
+"multihome.err.switch_not_done" = "Geçiş gerçekleşmedi. Hiçbir şey değişmedi.";
 "linkeddevices.hint" = "Hesabına bağlı tarayıcılar. Bir tanesini bağlamak için chat.rcq.app adresini aç, Telefonu bağla'yı seç ve kodu kameranla tara.";
 "linkeddevices.empty" = "Bağlı tarayıcı yok.";
 "linkeddevices.error" = "Bağlı cihazlar yüklenemedi.";

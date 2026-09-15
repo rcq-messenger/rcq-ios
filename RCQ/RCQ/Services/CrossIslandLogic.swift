@@ -1,8 +1,9 @@
 import Foundation
 
-// Pure rules behind two cross-island features (spec 2026-09-15): the poll of
-// pending contact requests on visited islands (F1) and the burn cascade over
-// this account's copies on other islands (F2).
+// Pure rules behind the cross-island features (spec 2026-09-15): the poll of
+// pending contact requests on visited islands (F1), the burn cascade over
+// this account's copies on other islands (F2), and which catalogue island the
+// backup toggle may register on (report #988, at the bottom).
 //
 // ⚠ Foundation only, on purpose. No keychain, no stores, no `IslandHTTP`, no
 // main actor: every input comes in as a value and every side effect goes out
@@ -464,5 +465,415 @@ enum BurnCascadeMachine {
             lock.unlock()
             c?.resume()
         }
+    }
+}
+
+// MARK: - #988: which catalogue island may take an automatic backup
+
+/// Why an island turned a registration away at its door, read from the
+/// `detail.code` of a 403 on `/auth/register` (`app/routers/auth.py`):
+/// `entry_required` on a paid island, `invite_required` on an invite-only one,
+/// and `invite_invalid` when a code was sent and did not open it.
+enum IslandDoorRefusal: String, Equatable, Sendable {
+    case entry
+    case invite
+}
+
+/// What one catalogue island told the backup toggle about itself. Asked fresh
+/// on every flip of the toggle, never from a cache (#988).
+enum BackupProbe: Equatable, Sendable {
+    /// No usable answer: `/health` not 2xx, a redirect, a timeout, a network
+    /// or trust failure, or a `/server/info` that could not be read. Nothing
+    /// is dialled on a silent island, not even a recover.
+    case silent
+    /// A stranger may register: add a copy the way every add does (recover
+    /// first, then register).
+    case open
+    /// The door is shut: take back a copy this account already has there, and
+    /// never register.
+    case shut
+}
+
+/// One probe answer as it arrived. Redirects are refused, so a 3xx comes back
+/// as itself; nil is no answer at all (timeout, network, trust refusal).
+struct BackupProbeAnswer: Equatable, Sendable {
+    let status: Int
+    let body: Data
+}
+
+/// The backup toggle adds a mailbox on an island nobody chose by hand, so the
+/// island is asked about its door first, and the door decides what the toggle
+/// may do there. The same rule on Android, the web and here.
+///
+/// ⚠ It used to ask `/health` alone (report #988). The signed catalogue lists
+/// the flagship and is2, the flagship's door became paid, and an is2 account
+/// flipping the toggle had the flagship picked, dialled and refused with
+/// `entry_required`, with the island's JSON printed under the switch.
+enum BackupAutoPick {
+    /// The most of `/server/info` that is read. A door answer is a few hundred
+    /// bytes; a body past this is not an island describing itself.
+    static let infoBodyCap = 64 * 1024
+    /// The OVERALL deadline of one probe request on the direct route: connect,
+    /// headers and body together. Short, because the toggle waits on every
+    /// silent island in the catalogue, one after another.
+    static let probeDeadlineDirect: TimeInterval = 6
+    /// The same over relays, which add a hop and a handshake of their own.
+    static let probeDeadlineRelay: TimeInterval = 15
+
+    static func probeDeadline(overRelay: Bool) -> TimeInterval {
+        overRelay ? probeDeadlineRelay : probeDeadlineDirect
+    }
+
+    /// `op` under an overall deadline: its answer when it finishes in time,
+    /// nil when the deadline passes first, and `op` is cancelled then.
+    ///
+    /// ⚠ Not `URLRequest.timeoutInterval`. That one is an idle timeout, reset
+    /// by every byte, so an island trickling its answer a byte at a time
+    /// would hold the toggle for as long as it liked (#988).
+    static func withDeadline<T: Sendable>(
+        _ seconds: TimeInterval,
+        _ op: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await op() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// `/health` answered 2xx, the precondition for asking anything else.
+    static func healthy(_ answer: BackupProbeAnswer?) -> Bool {
+        guard let answer else { return false }
+        return (200..<300).contains(answer.status)
+    }
+
+    /// The probe of one island from its two answers.
+    static func classify(health: BackupProbeAnswer?, info: BackupProbeAnswer?) -> BackupProbe {
+        guard healthy(health),
+              let info, (200..<300).contains(info.status),
+              info.body.count <= infoBodyCap else { return .silent }
+        return door(serverInfo: info.body)
+    }
+
+    /// The door as a `/server/info` body states it.
+    ///
+    /// OPEN when `capabilities.registration_policy` is "open" or absent and
+    /// `capabilities.closed_island` is not true. SHUT on any other policy word
+    /// (paid, invite, one this build has never heard of), on a true
+    /// `closed_island`, and on a field that is present with the wrong type,
+    /// JSON null included. Only a field that is missing altogether is absent:
+    /// an island older than the field, and those were open. A body that is not
+    /// valid UTF-8, not strict JSON, or not an object is SILENT.
+    ///
+    /// ⚠ Read from the raw JSON on purpose, not from `ServerCapabilities`. That
+    /// decoder folds a malformed field into its default ("open", false), which
+    /// is right for a person joining an island they chose and wrong here,
+    /// where nobody chose it and a field we cannot read is a door we do not
+    /// walk through on their behalf.
+    ///
+    /// ⚠ `entry_price_cents` is not part of the rule. An island may sell
+    /// residency while its registration stays open, and the policy is what
+    /// `/auth/register` checks.
+    static func door(serverInfo body: Data) -> BackupProbe {
+        guard let obj = strictObject(body) else { return .silent }
+        guard let rawCaps = obj["capabilities"] else { return .open }
+        guard let caps = rawCaps as? [String: Any] else { return .shut }
+        if let policy = caps["registration_policy"] {
+            guard let word = policy as? String, word == "open" else { return .shut }
+        }
+        if let closed = caps["closed_island"] {
+            guard let flag = jsonBool(closed), !flag else { return .shut }
+        }
+        return .open
+    }
+
+    /// A JSON `true`/`false`, and nothing else: `JSONSerialization` hands a
+    /// number and a boolean back as the same `NSNumber` type, and `1` is not a
+    /// boolean an island meant.
+    private static func jsonBool(_ value: Any) -> Bool? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+        return number.boolValue
+    }
+
+    /// A JSON object read strictly: valid UTF-8 without a byte order mark,
+    /// RFC 8259 grammar with nothing looser, and an object at the top.
+    /// Nil for anything else.
+    ///
+    /// ⚠ `JSONSerialization` alone is not strict: it takes a trailing comma, a
+    /// UTF-8 byte order mark and a UTF-16 body without a word. `StrictJSON`
+    /// checks the grammar first, and `JSONSerialization` only builds the value
+    /// from bytes already known to be clean.
+    static func strictObject(_ data: Data) -> [String: Any]? {
+        guard !data.starts(with: [0xEF, 0xBB, 0xBF]),
+              String(data: data, encoding: .utf8) != nil,
+              StrictJSON.isObjectDocument([UInt8](data)) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// The door refusal carried by an island's error answer, or nil for
+    /// anything else. Exactly an HTTP 403 whose JSON body carries `detail` as
+    /// an object with `code` one of `entry_required`, `invite_required`,
+    /// `invite_invalid`. A bare-string `detail`, another status, or no status
+    /// at all is not a door refusal. Compared exactly, never by substring, the
+    /// same rule as `Multihome.authErrorDetail`: a proxy page that merely
+    /// contains the word is not an island refusing us.
+    static func doorRefusal(status: Int, body: String) -> IslandDoorRefusal? {
+        guard status == 403,
+              let obj = strictObject(Data(body.utf8)),
+              let detail = obj["detail"] as? [String: Any],
+              let code = detail["code"] as? String else { return nil }
+        switch code {
+        case "entry_required": return .entry
+        case "invite_required", "invite_invalid": return .invite
+        default: return nil
+        }
+    }
+
+    /// The catalogue in its own order (the order is the project's
+    /// preference), minus entries that do not parse, our own island under
+    /// any of its names, hosts this account already backs up to, and repeats.
+    static func candidates(
+        catalogue: [String],
+        normalize: (String) -> String?,
+        isOwn: (String) -> Bool,
+        existing: Set<String>
+    ) -> [String] {
+        let taken = Set(existing.map { $0.lowercased() })
+        var seen = Set<String>()
+        var out: [String] = []
+        for entry in catalogue {
+            guard let host = normalize(entry) else { continue }
+            let key = host.lowercased()
+            guard !isOwn(host), !taken.contains(key), seen.insert(key).inserted else { continue }
+            out.append(host)
+        }
+        return out
+    }
+
+    /// How adding a copy on an OPEN island went.
+    enum RegisterAttempt: Equatable, Sendable {
+        case added
+        /// 403 `entry_required` / `invite_required` / `invite_invalid`: the
+        /// door shut between the probe and the registration.
+        case doorRefused
+        case failed
+    }
+
+    /// How taking back an existing copy on a SHUT island went.
+    enum RecoverAttempt: Equatable, Sendable {
+        case adopted
+        /// The island has no copy of this account.
+        case noCopy
+        case failed
+    }
+
+    enum Outcome: Equatable, Sendable {
+        case added(host: String)
+        /// At least one island answered and none of them yielded a backup, or
+        /// the verified catalogue had no island left to ask.
+        case noOpenIsland
+        /// The catalogue could not be fetched or failed verification, or not
+        /// one island in it answered, the relay pass included.
+        case noIslandReachable
+    }
+
+    /// Walk the catalogue's candidates in order, ONE AT A TIME, and stop at
+    /// the first island that yields a backup.
+    ///
+    /// `catalogue` fetches and verifies the signed catalogue and returns the
+    /// candidates left after exclusions (`candidates`), or nil when it could
+    /// not be fetched or failed verification.
+    ///
+    /// - SILENT: skipped, nothing dialled.
+    /// - OPEN: `register`, whose recover-first step is the island's one
+    ///   recover. A door refusal there means no copy and a shut door, and the
+    ///   walk moves on without asking the island again.
+    /// - SHUT: `recover` only, once. `register` is never called on a shut
+    ///   island.
+    /// - Any other failure moves on to the next island.
+    ///
+    /// Each island is dialled at most once per pass, even when the list
+    /// repeats it. The relay pass runs once, and only when everything was
+    /// SILENT: every island, or the catalogue itself. `openRelay` brings the
+    /// relay route up (false when there is none, and then the pass is
+    /// skipped); a catalogue that failed is fetched again over it, and the
+    /// same walk repeats. A verified catalogue with no candidate left is an
+    /// answer, not silence: no relay pass, and the outcome is `noOpenIsland`.
+    static func run(
+        catalogue: () async -> [String]?,
+        probe: (String) async -> BackupProbe,
+        openRelay: () async -> Bool,
+        register: (String) async -> RegisterAttempt,
+        recover: (String) async -> RecoverAttempt
+    ) async -> Outcome {
+        var list: [String]?
+        for relayPass in [false, true] {
+            if relayPass {
+                guard await openRelay() else { break }
+            }
+            if list == nil { list = await catalogue() }
+            guard let candidates = list else { continue }
+            if candidates.isEmpty { return .noOpenIsland }
+            var asked = Set<String>()
+            var answered = false
+            for host in candidates {
+                guard asked.insert(host.lowercased()).inserted else { continue }
+                switch await probe(host) {
+                case .silent:
+                    continue
+                case .open:
+                    answered = true
+                    if await register(host) == .added { return .added(host: host) }
+                case .shut:
+                    answered = true
+                    if await recover(host) == .adopted { return .added(host: host) }
+                }
+            }
+            if answered { return .noOpenIsland }
+        }
+        return .noIslandReachable
+    }
+}
+
+/// An RFC 8259 grammar check over raw bytes, and nothing looser: no trailing
+/// commas, comments, single quotes, bare words, NaN, leading zeros, raw
+/// control characters in strings, or anything after the value. The top value
+/// must be an object. Nesting deeper than `maxDepth` is refused rather than
+/// followed, so a hostile body cannot run the stack out. It builds nothing;
+/// `BackupAutoPick.strictObject` builds the value once the bytes pass.
+struct StrictJSON {
+    static let maxDepth = 128
+
+    private let bytes: [UInt8]
+    private var at = 0
+
+    private init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+    static func isObjectDocument(_ bytes: [UInt8]) -> Bool {
+        var p = StrictJSON(bytes)
+        p.skipSpace()
+        guard p.peek == UInt8(ascii: "{"), p.value(depth: 0) else { return false }
+        p.skipSpace()
+        return p.at == bytes.count
+    }
+
+    private var peek: UInt8? { at < bytes.count ? bytes[at] : nil }
+
+    private mutating func eat(_ c: UInt8) -> Bool {
+        guard peek == c else { return false }
+        at += 1
+        return true
+    }
+
+    private mutating func skipSpace() {
+        while let c = peek, c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D { at += 1 }
+    }
+
+    private mutating func word(_ w: String) -> Bool {
+        for c in w.utf8 {
+            guard eat(c) else { return false }
+        }
+        return true
+    }
+
+    private mutating func value(depth: Int) -> Bool {
+        guard let c = peek else { return false }
+        switch c {
+        case UInt8(ascii: "{"): return depth < Self.maxDepth && object(depth: depth + 1)
+        case UInt8(ascii: "["): return depth < Self.maxDepth && array(depth: depth + 1)
+        case UInt8(ascii: "\""): return string()
+        case UInt8(ascii: "t"): return word("true")
+        case UInt8(ascii: "f"): return word("false")
+        case UInt8(ascii: "n"): return word("null")
+        default: return number()
+        }
+    }
+
+    private mutating func object(depth: Int) -> Bool {
+        at += 1
+        skipSpace()
+        if eat(UInt8(ascii: "}")) { return true }
+        while true {
+            skipSpace()
+            guard string() else { return false }
+            skipSpace()
+            guard eat(UInt8(ascii: ":")) else { return false }
+            skipSpace()
+            guard value(depth: depth) else { return false }
+            skipSpace()
+            if eat(UInt8(ascii: "}")) { return true }
+            guard eat(UInt8(ascii: ",")) else { return false }
+        }
+    }
+
+    private mutating func array(depth: Int) -> Bool {
+        at += 1
+        skipSpace()
+        if eat(UInt8(ascii: "]")) { return true }
+        while true {
+            skipSpace()
+            guard value(depth: depth) else { return false }
+            skipSpace()
+            if eat(UInt8(ascii: "]")) { return true }
+            guard eat(UInt8(ascii: ",")) else { return false }
+        }
+    }
+
+    private mutating func string() -> Bool {
+        guard eat(UInt8(ascii: "\"")) else { return false }
+        while let c = peek {
+            at += 1
+            if c == UInt8(ascii: "\"") { return true }
+            if c < 0x20 { return false }
+            guard c == UInt8(ascii: "\\") else { continue }
+            guard let e = peek else { return false }
+            at += 1
+            switch e {
+            case UInt8(ascii: "\""), UInt8(ascii: "\\"), UInt8(ascii: "/"),
+                 UInt8(ascii: "b"), UInt8(ascii: "f"), UInt8(ascii: "n"),
+                 UInt8(ascii: "r"), UInt8(ascii: "t"):
+                break
+            case UInt8(ascii: "u"):
+                for _ in 0..<4 {
+                    guard let h = peek, Self.isHex(h) else { return false }
+                    at += 1
+                }
+            default:
+                return false
+            }
+        }
+        return false
+    }
+
+    private mutating func number() -> Bool {
+        _ = eat(UInt8(ascii: "-"))
+        guard let first = peek, Self.isDigit(first) else { return false }
+        at += 1
+        if first != UInt8(ascii: "0") { _ = digits() }
+        if eat(UInt8(ascii: ".")) { guard digits() else { return false } }
+        if eat(UInt8(ascii: "e")) || eat(UInt8(ascii: "E")) {
+            if !eat(UInt8(ascii: "+")) { _ = eat(UInt8(ascii: "-")) }
+            guard digits() else { return false }
+        }
+        return true
+    }
+
+    /// At least one digit consumed.
+    private mutating func digits() -> Bool {
+        let start = at
+        while let d = peek, Self.isDigit(d) { at += 1 }
+        return at > start
+    }
+
+    private static func isDigit(_ c: UInt8) -> Bool { c >= 0x30 && c <= 0x39 }
+
+    private static func isHex(_ c: UInt8) -> Bool {
+        isDigit(c) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66)
     }
 }

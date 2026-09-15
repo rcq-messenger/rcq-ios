@@ -2229,23 +2229,34 @@ final class AppState: ObservableObject {
               let oldToken = KeychainStore.string(KeychainStore.Keys.token),
               let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else {
-            return "multihome.err.generic".localized
+            return "multihome.err.switch_not_done".localized
         }
         let oldHost = Multihome.ownHost()
         guard host != oldHost,
               MultihomeStore.shared.list(ownUin: oldUin).contains(where: { $0.host == host }) else {
-            return "multihome.err.generic".localized
+            return "multihome.err.switch_not_done".localized
         }
+        // #988: every failed switch says the same sentence, on every client,
+        // whatever the island answered. Only a door refusal (a 403 carrying
+        // `detail.code`) has sentences of its own. No status, body or error
+        // text reaches the screen.
         let cred: Multihome.Credentials
         do {
             guard let c = try await Multihome.recoverOn(host: host, signingPriv: signingPriv) else {
                 // 404 = this identity never registered there (island wiped us):
                 // nothing to promote onto, and nothing was changed.
-                return "multihome.err.unreachable".localized
+                return "multihome.err.switch_not_done".localized
             }
             cred = c
         } catch {
-            return "multihome.err.unreachable".localized
+            if case Multihome.HttpError.status(let code, let body) = error,
+               let refusal = BackupAutoPick.doorRefusal(status: code, body: body) {
+                switch refusal {
+                case .entry: return "multihome.err.door_entry".localized
+                case .invite: return "multihome.err.door_invite".localized
+                }
+            }
+            return "multihome.err.switch_not_done".localized
         }
 
         // Token in hand — the swap below is pure local bookkeeping.
@@ -3348,8 +3359,21 @@ enum ServerInfoService {
             // `IslandHTTP`, not a bare session: this is the first handshake
             // with an island a person is about to join, so it rides the tunnel
             // when one is up and meets the trust rule like every island call.
-            let (data, resp) = try await IslandHTTP.data(for: req)
-            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            //
+            // ⚠ The answer has to come from `host` itself (#988 review). The
+            // session follows redirects by default, and `IslandDoor` files
+            // whatever lands under the host it asked, so a paid or closed
+            // island whose `/server/info` redirected to an open island's read
+            // as open on its card and at its Use button. (The backup auto-pick
+            // no longer reads this probe: it asks fresh, with every redirect
+            // refused, in `Multihome`.) The per-task guard refuses a redirect to
+            // another island before it is followed (the masquerade token is
+            // never carried there either), which leaves the 3xx as the answer
+            // and fails the 200 check below. The final-URL check is the second
+            // line, for any path that ever loses the guard.
+            let (data, resp) = try await IslandHTTP.data(for: req, delegate: SameIslandRedirects())
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  SameIslandRedirects.sameIsland(url, http.url) else { return nil }
             return try JSONDecoder().decode(ServerInfoResponse.self, from: data)
         } catch {
             return nil
@@ -3370,5 +3394,37 @@ enum ServerInfoService {
         } catch {
             return nil
         }
+    }
+}
+
+/// A per-task delegate for the door probe that follows a redirect only while
+/// it stays on the island that was asked (same host, same port, still https).
+///
+/// ⚠ Only the redirection callback, on purpose. `IslandHTTP.data(for:delegate:)`
+/// warns that a task delegate claiming a body callback steals the body, and
+/// with no challenge method here the certificate challenge still reaches the
+/// session's `IslandTrust`, so the trust rule is untouched.
+final class SameIslandRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        // nil hands back the 3xx itself as the answer, which no caller of the
+        // probe reads as an island's info.
+        completionHandler(Self.sameIsland(task.originalRequest?.url, request.url) ? request : nil)
+    }
+
+    /// Both URLs name the same island: https, and equal on the trust store's
+    /// own `host:port` key, so a spelling difference (case, an explicit :443)
+    /// is not taken for a different island and a different port is.
+    static func sameIsland(_ asked: URL?, _ answered: URL?) -> Bool {
+        guard let asked, let answered,
+              answered.scheme?.lowercased() == "https",
+              let a = IslandTrust.endpoint(fromAddress: asked.absoluteString),
+              let b = IslandTrust.endpoint(fromAddress: answered.absoluteString) else { return false }
+        return a.key == b.key
     }
 }
