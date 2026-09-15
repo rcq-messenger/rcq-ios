@@ -108,6 +108,17 @@ targets:
         # offer "Open in Google Maps" when the user has the app.
         LSApplicationQueriesSchemes:
           - comgooglemaps
+        # The rcq:// scheme we OWN. Without it iOS routes nothing to
+        # `onOpenURL`: rcq://add/<uin>, rcq://r/<uin>, rcq://link and
+        # rcq://server links opened from Safari, a camera or another app land
+        # nowhere, which is why rcq.app/u/<uin> sends iPhones to TestFlight
+        # (IOS_SCHEME_REGISTERED in web/src/appLink.ts). That site flag can only
+        # flip once a build carrying this key is what people have installed.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.rcq.client
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes:
+              - rcq
         # Encryption export compliance. Deliberately ABSENT rather than
         # declared here, and the absence is the decision.
         #

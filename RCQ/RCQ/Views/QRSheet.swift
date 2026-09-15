@@ -402,7 +402,11 @@ struct QRSheet: View {
     /// closed island: what lets us reach them at all. See `GuestCardStore`.
     struct ScannedAddress { let uin: Int; let host: String?; var card: String? = nil }
 
-    static func parseAddURL(_ url: URL) -> ScannedAddress? {
+    /// The `?h=<island>` query and the `#c=<card>` fragment of a contact link,
+    /// read the same way Android's `ContactAddLink.fromUri` reads them. Shared
+    /// by the scanner and `AppState.handle(deepLink:)` so a tapped link and a
+    /// scanned code can never disagree about what a card is.
+    nonisolated static func linkHostAndCard(_ url: URL) -> (host: String?, card: String?) {
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let hostRaw = comps?.queryItems?.first(where: { $0.name == "h" })?.value?
             .trimmingCharacters(in: .whitespaces)
@@ -411,8 +415,8 @@ struct QRSheet: View {
         // the query on purpose: a fragment is never sent to a server, so a link
         // can be pasted anywhere without rcq.app, its CDN or a middlebox ever
         // seeing a live credential. Parsed by hand because `queryItems` cannot
-        // reach it, and bounded because it arrives from a scanned code and
-        // leaves as a request header.
+        // reach it, and bounded because it arrives from a scanned code or a
+        // tapped link and leaves as a request header.
         let card: String? = comps?.fragment?
             .split(separator: "&")
             .first(where: { $0.hasPrefix("c=") })
@@ -420,6 +424,11 @@ struct QRSheet: View {
             .flatMap { $0.removingPercentEncoding ?? $0 }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .flatMap { $0.isEmpty || $0.count > 128 ? nil : $0 }
+        return (host, card)
+    }
+
+    static func parseAddURL(_ url: URL) -> ScannedAddress? {
+        let (host, card) = linkHostAndCard(url)
         // rcq://add/{uin}[?h=host]
         if url.scheme == "rcq", url.host == "add" {
             let seg = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

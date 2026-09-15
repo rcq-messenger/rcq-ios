@@ -10,7 +10,12 @@ import SwiftUI
 final class AppState: ObservableObject {
     static let shared = AppState()
 
-    @Published var booted: Bool = false
+    @Published var booted: Bool = false {
+        // Every way an account comes to life (sign-up, restore, add, switch)
+        // ends here, which makes it the one place a card from a link opened
+        // before that account existed can be filed. See `pendingLinkCard`.
+        didSet { if booted { flushPendingLinkCard() } }
+    }
     @Published var bootError: String? = nil
     @Published var isOffline: Bool = false
     @Published var bootStatus: BootStatus = .connecting
@@ -78,6 +83,13 @@ final class AppState: ObservableObject {
     /// Island host from a contact link's `?h=` (spec §5) — set BEFORE
     /// pendingAddUIN so the observer reads both; nil = same-island link.
     @Published var pendingAddHost: String? = nil
+    /// A guest card from a contact link opened while there was no account to
+    /// file it under (fresh install, onboarding not done). Held here and filed
+    /// once one boots, as Android holds `ContactAddLink.pending` until
+    /// `UiState.Registered`: `GuestCardStore` keys every card by account, so a
+    /// card handed to it now would be dropped on the floor. Memory only, like
+    /// the pending add it travels with.
+    private var pendingLinkCard: (uin: Int, host: String?, card: String)?
     @Published var pendingOpenChatUIN: Int? = nil
     @Published var pendingOpenGroupID: Int? = nil
     /// Set once, by a FRESH registration in onboarding: the recovery phrase is
@@ -220,13 +232,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    private static func queryParam(_ u: URL, _ name: String) -> String? {
-        let v = URLComponents(url: u, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == name })?.value?
-            .trimmingCharacters(in: .whitespaces)
-        return (v?.isEmpty == false) ? v : nil
-    }
-
     /// True when `url` is one of RCQ's own deep-link forms (rcq:// or an
     /// https rcq.app /s/ /r/ /u/ /g/ path) that `handle(deepLink:)` consumes.
     /// The in-app browser uses this to keep deep links out of the web view.
@@ -239,6 +244,20 @@ final class AppState: ObservableObject {
               url.host == "rcq.app",
               url.pathComponents.count >= 3 else { return false }
         return ["s", "r", "u", "g"].contains(url.pathComponents[1])
+    }
+
+    /// Files `pendingLinkCard` once there is an account to file it under, and
+    /// keeps holding it until then. Never in a decoy session, whose account is
+    /// not the one the link was meant for; never for our own number.
+    private func flushPendingLinkCard() {
+        guard let p = pendingLinkCard,
+              !PanicPINService.shared.isDecoy,
+              let own = AuthService.shared.ownUIN,
+              AppGroup.readActiveAccountID() != nil else { return }
+        pendingLinkCard = nil
+        if p.uin != own {
+            GuestCardStore.shared.remember(uin: p.uin, host: p.host, card: p.card)
+        }
     }
 
     func handle(deepLink url: URL) {
@@ -292,39 +311,44 @@ final class AppState: ObservableObject {
             }
             return
         }
-        // Referral link — rcq://r/<uin> or https://rcq.app/r/<uin>.
-        if (url.scheme == "rcq" && url.host == "r"),
-           let last = url.pathComponents.last, let uin = Int(last), uin > 0 {
-            UserDefaults.standard.set(uin, forKey: Self.pendingInviterKey)
-            return
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "r",
-           let uin = Int(url.pathComponents[2]), uin > 0 {
-            UserDefaults.standard.set(uin, forKey: Self.pendingInviterKey)
-            return
-        }
-        if url.scheme == "rcq", url.host == "add" {
-            let uinStr = url.pathComponents.last ?? ""
-            if let uin = Int(uinStr), uin > 0 {
-                // Spec §5: ?h=<island> makes one scan/tap add a cross-island
-                // contact; bare links stay same-island.
-                pendingAddHost = Self.queryParam(url, "h")
-                pendingAddUIN = uin
+        // Contact links, all four spellings of one intent, as Android's
+        // `ContactAddLink.fromUri` claims them: rcq://add/<uin> and
+        // https://rcq.app/u/<uin> are "add this contact", rcq://r/<uin> and
+        // https://rcq.app/r/<uin> are "a friend invited you". Each may carry
+        // spec §5's `?h=<island>` (one tap adds a cross-island contact; bare
+        // links stay same-island) and a closed island's guest card in the
+        // `#c=<card>` fragment.
+        let isRcqContact = url.scheme == "rcq" && (url.host == "add" || url.host == "r")
+        let isWebContact = (url.scheme == "https" || url.scheme == "http")
+            && url.host == "rcq.app"
+            && url.pathComponents.count >= 3
+            && (url.pathComponents[1] == "u" || url.pathComponents[1] == "r")
+        if isRcqContact || isWebContact {
+            let tail = isRcqContact ? (url.pathComponents.last ?? "") : url.pathComponents[2]
+            guard let uin = Int(tail), uin > 0 else { return }
+            let isInvite = isRcqContact ? url.host == "r" : url.pathComponents[1] == "r"
+            let (host, card) = QRSheet.linkHostAndCard(url)
+            let own = AuthService.shared.ownUIN
+            // Referral: registration reads this key, so it is stamped whether or
+            // not anybody is signed in yet.
+            if isInvite {
+                UserDefaults.standard.set(uin, forKey: Self.pendingInviterKey)
             }
-            return
-        }
-        if (url.scheme == "https" || url.scheme == "http"),
-           url.host == "rcq.app",
-           url.pathComponents.count >= 3,
-           url.pathComponents[1] == "u" {
-            let uinStr = url.pathComponents[2]
-            if let uin = Int(uinStr), uin > 0 {
-                pendingAddHost = Self.queryParam(url, "h")
-                pendingAddUIN = uin
+            // ⚠ The card is kept BEFORE the confirm, the moment the link is
+            // opened, exactly as the scanner does: somebody who backs out and
+            // adds them an hour later would otherwise have thrown away the only
+            // way to reach them on a closed island. With no account yet it waits
+            // in `pendingLinkCard` and is filed when one boots.
+            if let card {
+                pendingLinkCard = (uin, host, card)
+                flushPendingLinkCard()
             }
+            // An invite opened with no account yet is a referral and nothing
+            // more; with one, it is the same add as /u/ (tapping your own
+            // invite adds nobody).
+            if isInvite && (own == nil || uin == own) { return }
+            pendingAddHost = host
+            pendingAddUIN = uin
             return
         }
         // Group share — `rcq://group/<id>` (custom scheme from in-app
@@ -2164,6 +2188,7 @@ final class AppState: ObservableObject {
         pendingOpenUserProfile = nil
         pendingAddUIN = nil
         pendingAddHost = nil
+        pendingLinkCard = nil
 
         await AuthService.shared.wipeLocalIdentity()
     }

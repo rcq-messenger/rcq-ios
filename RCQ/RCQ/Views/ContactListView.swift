@@ -536,14 +536,17 @@ struct ContactListView: View {
             .sheet(item: $appState.pendingWebLink) { req in
                 WebLinkSheet(request: req, onClose: { appState.pendingWebLink = nil })
             }
-            .onChange(of: appState.pendingAddUIN) { newValue in
-                if let uin = newValue {
-                    deepLinkAddHost = appState.pendingAddHost
-                    deepLinkAddUIN = uin
-                    appState.pendingAddUIN = nil
-                    appState.pendingAddHost = nil
-                }
-            }
+            .onChange(of: appState.pendingAddUIN) { _ in consumePendingAdd() }
+            // ⚠ A link that STARTED the app set `pendingAddUIN` from `onOpenURL`
+            // long before this view existed (it appears only after boot), and
+            // `onChange` never fires for a value that was already there, so a
+            // tap from a closed app used to land on the contact list with no
+            // confirm. iOS 16 has no `onChange(of:initial:)`.
+            .onAppear { consumePendingAdd() }
+            // The add waits for the recovery phrase on a fresh registration
+            // (both are sheets on this view, and SwiftUI shows one and drops the
+            // other); it is picked up here when the phrase sheet closes.
+            .onChange(of: appState.showPhraseNudge) { _ in consumePendingAdd() }
             // Don't clear pendingOpenChatUIN until navigation succeeds — cold-launch push taps land
             // before vm.contacts populates, so the second onChange retries once the list loads.
             .onChange(of: appState.pendingOpenChatUIN) { _ in
@@ -648,6 +651,17 @@ struct ContactListView: View {
         appState.pendingOpenGroupID = nil
         groupRefreshAttemptedFor.removeAll()
         path.append(group)
+    }
+
+    /// Moves a pending contact link into the add sheet. Called from `onAppear`,
+    /// a change of `pendingAddUIN` and the close of the phrase sheet, because
+    /// no one of them sees every way a link arrives.
+    private func consumePendingAdd() {
+        guard let uin = appState.pendingAddUIN, !appState.showPhraseNudge else { return }
+        deepLinkAddHost = appState.pendingAddHost
+        deepLinkAddUIN = uin
+        appState.pendingAddUIN = nil
+        appState.pendingAddHost = nil
     }
 
     private func tryOpenPendingChat() {

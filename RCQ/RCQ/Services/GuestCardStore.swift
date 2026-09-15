@@ -41,14 +41,19 @@ final class GuestCardStore {
     }
 
     private let defaults: UserDefaults
-    private var account: UUID?
 
     private init() {
         defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
-        account = AppGroup.readActiveAccountID()
     }
 
-    func bind(accountID: UUID?) { account = accountID }
+    /// Read on EVERY use, never captured. ⚠ It used to be read once, when the
+    /// singleton was created, and nothing ever rebound it: a store first touched
+    /// before sign-up (a contact link tapped on a fresh install) sat on nil for
+    /// the life of the process, so every card was dropped and `shareableCard`
+    /// answered nil, and one first touched on account A kept filing account B's
+    /// cards under A after a switch. The read is memoised in `AppGroup` and
+    /// refreshed by every write of the active id, so this costs nothing.
+    private var account: UUID? { AppGroup.readActiveAccountID() }
 
     private func key(_ prefix: String) -> String? {
         guard let a = account else { return nil }
