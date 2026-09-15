@@ -132,6 +132,14 @@ enum KeychainStore {
         return rawData(prefixed).flatMap { String(data: $0, encoding: .utf8) }
     }
 
+    /// Raw bytes of another account's per-account entry, same rules as
+    /// `string(_:forAccount:)`: the prefixed slot only, no active-account
+    /// pointer read or written. The burn uses it to find the accounts on this
+    /// device that carry the SAME signing key (spec F2).
+    static func data(_ key: String, forAccount accountID: UUID) -> Data? {
+        rawData("acct.\(accountID.uuidString).\(key)")
+    }
+
     // MARK: - Per-account migration
 
     /// Copy every per-account legacy unprefixed Keychain entry to the

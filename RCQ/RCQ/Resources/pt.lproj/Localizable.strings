@@ -1229,7 +1229,7 @@
 "panic_pin.decoy.seed.count" = "%d mensagens";
 "panic_pin.decoy.seed.empty" = "Ainda não há conversas de texto para copiar.";
 "panic_pin.wipe.server.toggle" = "Apagar também a conta no servidor";
-"panic_pin.wipe.server.footer" = "Desligado por padrão. Ligado, o PIN de apagamento também pede ao servidor para excluir a própria conta: o número deixa de existir e ninguém consegue escrever para ele. Desligado, só este dispositivo é limpo: a conta continua viva e você pode entrar nela de outro aparelho.";
+"panic_pin.wipe.server.footer" = "Desligado por padrão: o PIN de apagamento limpa só este dispositivo. Ligado, logo depois de apagar o app pede à sua ilha e a todas as ilhas por onde a conta passou que a excluam. O apagamento não espera por elas, mas quem observa a rede pode ver essas conexões. Não dá para desfazer e o número não volta.";
 "panic_pin.wipe.footer.server_where" = "Se o PIN de apagamento também exclui a conta no servidor é escolhido na hora de configurar o PIN. Fica desligado a menos que você ligue, e não dá para mostrar aqui: a opção é selada com o próprio PIN de apagamento, então só digitando ele dá para ler.";
 /* Voice recording: lock + preview */
 "chat.voice.locked" = "Travado";
@@ -1643,3 +1643,40 @@
 "relay.key.ok.none" = "A chave foi aceita. Ainda não há nós privados atribuídos a ela, então o pool compartilhado continua em uso.";
 "chat.menu.report_group" = "Denunciar grupo";
 "report.heading.group" = "Denunciar este grupo";
+
+// Cross-island: requests to guest copies (F1) and burn across islands (F2), spec 2026-09-15
+"ci.server.subtitle" = "Pedido de contato na ilha %@";
+"ci.server.via_group" = "pelo grupo «%@»";
+"ci.server.via_group_more" = "pelo grupo «%@» e mais %d";
+"ci.server.not_in_groups" = "Não está nos seus grupos nesta ilha";
+"ci.server.accept_hint" = "Se aceitar, a pessoa verá seu número principal. Só a ilha %@ garante quem ela é.";
+"ci.server.key_changed" = "A chave dessa pessoa na ilha %@ é diferente da que você viu em um grupo. Confirme com ela antes de aceitar.";
+"ci.server.retrying" = "Não foi possível falar com a ilha %@. Vamos tentar de novo.";
+"ci.server.gave_up" = "A ilha %@ não aceitou a resposta. Tente mais tarde.";
+"burn.islands.body.one" = "Esta conta também tem uma cópia em mais %1$d ilha, onde você entrou em grupos ou mantém um endereço reserva: %2$@. Ela é apagada primeiro, depois a conta na sua ilha.";
+"burn.islands.body.other" = "Esta conta também tem cópias em mais %1$d ilhas, onde você entrou em grupos ou mantém um endereço reserva: %2$@. Elas são apagadas primeiro, depois a conta na sua ilha.";
+"burn.islands.owned_groups" = "Os grupos que você criou lá serão apagados para todos os membros: %@.";
+"burn.sibling" = "A conta %1$@ em %2$@ neste dispositivo usa as mesmas chaves e também será destruída.";
+"burn.not_covered" = "Cópias feitas pelos seus outros dispositivos, ou adicionadas a um grupo pelo dono numa ilha que este dispositivo nunca abriu, não são apagadas daqui.";
+"burn.progress" = "Apagando cópias em outras ilhas…";
+"burn.row.confirmed" = "A ilha confirmou a exclusão";
+"burn.row.already_gone" = "A ilha diz que não há cópia";
+"burn.row.offline" = "Sem conexão";
+"burn.row.timeout" = "A ilha não respondeu a tempo";
+"burn.row.suspended" = "A conta está bloqueada nesta ilha e não pode ser apagada";
+"burn.row.too_old" = "Esta ilha é antiga demais para apagar uma cópia";
+"burn.row.limit" = "Mais cópias do que o esperado, algumas podem ter ficado";
+"burn.row.not_tried" = "Não tentado, o tempo acabou";
+"burn.row.server" = "A ilha recusou o pedido";
+"burn.failures.title.one" = "Não foi possível apagar em %d ilha";
+"burn.failures.title.other" = "Não foi possível apagar em %d ilhas";
+"burn.retry" = "Tentar de novo";
+"burn.anyway" = "Destruir mesmo assim";
+"burn.anyway.hint" = "As cópias nessas ilhas ficam. Sem suas chaves, só poderão ser apagadas com sua frase de recuperação.";
+"burn.cancel.partial" = "A conta continua. As cópias já apagadas em %@ não voltam.";
+"burn.home_failed.partial" = "Não foi possível falar com sua ilha, então a conta lá está intacta. As cópias em outras ilhas já foram apagadas. Tente de novo quando tiver conexão.";
+"burn.done.one" = "Conta destruída na sua ilha e em mais %d ilha.";
+"burn.done.other" = "Conta destruída na sua ilha e em mais %d ilhas.";
+"ci.server.card_unavailable" = "Não foi possível falar com a ilha %@ para verificar quem está pedindo. Nada foi enviado. Tente mais tarde.";
+"burn.sibling_kept" = "A conta %1$@ em %2$@ não pôde ser apagada lá e continua neste dispositivo.";
+"burn.sibling_removed" = "A conta %1$@ em %2$@ foi apagada lá, então também saiu deste dispositivo.";

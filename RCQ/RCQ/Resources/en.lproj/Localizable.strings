@@ -1363,7 +1363,7 @@
 "panic_pin.decoy.seed.none_picked" = "Pick at least one conversation. Saving with none selected would leave the decoy empty.";
 "panic_pin.decoy.seed.failed" = "The decoy could not be filled. Nothing was changed. Try picking the conversations again.";
 "panic_pin.wipe.server.toggle" = "Also delete the account on the server";
-"panic_pin.wipe.server.footer" = "Off by default. When on, the wipe PIN also asks the server to delete the account itself, so the number stops existing and nobody can write to it. When off, only this device is cleared: the account stays alive and you can sign back into it from another device.";
+"panic_pin.wipe.server.footer" = "Off by default: the wipe PIN erases this device only. Turned on, right after the wipe the app also asks your island and every island this account visited to delete it. The wipe does not wait for them, but someone watching the network can see those connections. It cannot be undone, and the number does not come back.";
 "panic_pin.wipe.footer.server_where" = "Whether the wipe PIN also deletes the account on the server is chosen when you set the PIN. It is off unless you turn it on, and it cannot be shown here: the setting is sealed with the wipe PIN itself, so nothing short of entering that PIN can read it.";
 
 /* Voice recording: lock + preview */
@@ -1851,3 +1851,40 @@
 "relay.key.ok.none" = "The key was accepted. No private nodes are assigned to it yet, so the shared pool stays in use.";
 "chat.menu.report_group" = "Report group";
 "report.heading.group" = "Report group";
+
+// Cross-island: requests to guest copies (F1) and burn across islands (F2), spec 2026-09-15
+"ci.server.subtitle" = "Contact request on island %@";
+"ci.server.via_group" = "via group «%@»";
+"ci.server.via_group_more" = "via group «%@» and %d more";
+"ci.server.not_in_groups" = "Not in your groups on this island";
+"ci.server.accept_hint" = "If you accept, they will see your home number. Only island %@ vouches for who they are.";
+"ci.server.key_changed" = "This person's key on island %@ differs from the one you saw in a group. Check with them before accepting.";
+"ci.server.retrying" = "Couldn't reach island %@. We'll try again.";
+"ci.server.gave_up" = "Island %@ didn't take the answer. Try again later.";
+"burn.islands.body.one" = "This account also has a copy on %1$d other island, where you joined groups or keep a backup address: %2$@. It is deleted first, then the account on your island.";
+"burn.islands.body.other" = "This account also has copies on %1$d other islands, where you joined groups or keep a backup address: %2$@. They are deleted first, then the account on your island.";
+"burn.islands.owned_groups" = "Groups you created there will be deleted for all their members: %@.";
+"burn.sibling" = "The account %1$@ on %2$@ on this device uses the same keys and will be burned too.";
+"burn.not_covered" = "Copies made by your other devices, or added to a group by its owner on an island this device never opened, are not deleted from here.";
+"burn.progress" = "Deleting copies on other islands…";
+"burn.row.confirmed" = "Island confirmed deletion";
+"burn.row.already_gone" = "Island reports no copy";
+"burn.row.offline" = "No connection";
+"burn.row.timeout" = "The island did not answer in time";
+"burn.row.suspended" = "The account is blocked on this island and cannot be deleted";
+"burn.row.too_old" = "This island is too old to delete a copy";
+"burn.row.limit" = "More copies than expected, some may remain";
+"burn.row.not_tried" = "Not tried, time ran out";
+"burn.row.server" = "The island refused the request";
+"burn.failures.title.one" = "Could not delete on %d island";
+"burn.failures.title.other" = "Could not delete on %d islands";
+"burn.retry" = "Try again";
+"burn.anyway" = "Burn anyway";
+"burn.anyway.hint" = "The copies on these islands stay. After your keys are gone they can only be deleted with your recovery phrase.";
+"burn.cancel.partial" = "The account stays. Copies already deleted on %@ do not come back.";
+"burn.home_failed.partial" = "Could not reach your island, so the account there is untouched. Copies on other islands were already deleted. Try again when you have a connection.";
+"burn.done.one" = "Account burned on your island and on %d other island.";
+"burn.done.other" = "Account burned on your island and on %d other islands.";
+"ci.server.card_unavailable" = "Couldn't reach island %@ to check who is asking. Nothing was sent. Try again later.";
+"burn.sibling_kept" = "The account %1$@ on %2$@ could not be deleted there and stays on this device.";
+"burn.sibling_removed" = "The account %1$@ on %2$@ was deleted there, so it was removed from this device too.";

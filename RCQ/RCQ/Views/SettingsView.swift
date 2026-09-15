@@ -299,7 +299,6 @@ struct SettingsView: View {
     /// the mark is the fallback on an island older than the field.
     @State private var residentSince: String?
     @State private var isResident = false
-    @State private var burnFailed = false
     @State private var showBlockedUsers = false
     @State private var showRecovery = false
     @State private var showLinkedDevices = false
@@ -442,9 +441,6 @@ struct SettingsView: View {
                 NotificationsSettingsView(highlight: notificationsHighlight)
             }
             .sheet(isPresented: $showMyReports) { MyReportsView() }
-            .alert("settings.account.burn_failed".localized, isPresented: $burnFailed) {
-                Button("common.ok".localized, role: .cancel) {}
-            }
             .sheet(isPresented: $showInvites) {
                 ResidentInvitesSheet(initial: invites) { fresh in invites = fresh }
             }
@@ -485,26 +481,17 @@ struct SettingsView: View {
             } message: {
                 Text("settings.history.confirm.message".localized)
             }
-            .confirmationDialog(
-                burnTitle,
-                isPresented: $confirmBurn,
-                titleVisibility: .visible
-            ) {
-                Button("settings.account.burn.confirm".localized, role: .destructive) {
-                    Task {
-                        burning = true
-                        // The island decides whether anything was erased. If it
-                        // did not answer, nothing local is touched and the
-                        // screen stays open saying so, rather than closing on
-                        // "deleted" over an account that is still there.
-                        let done = await AppState.shared.burnAccount(requireServerErase: true)
-                        burning = false
-                        if done { dismiss() } else { burnFailed = true }
-                    }
+            // Burn across islands (spec 2026-09-15 F2): the copies on other
+            // islands first, a decision on the ones that failed, the home
+            // island last. The island decides whether anything was erased;
+            // if home did not answer, nothing local is touched and the sheet
+            // says so, rather than closing on "deleted" over an account that
+            // is still there.
+            .sheet(isPresented: $confirmBurn) {
+                BurnAccountSheet {
+                    confirmBurn = false
+                    dismiss()
                 }
-                Button("common.cancel".localized, role: .cancel) {}
-            } message: {
-                Text(burnMessage)
             }
         }
         // Apply the active theme to the Settings sheet itself. A
@@ -1311,14 +1298,6 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(.vertical, 4)
-    }
-
-    private var burnTitle: String {
-        "settings.account.burn.title".localized
-    }
-
-    private var burnMessage: String {
-        "settings.account.burn.message".localized
     }
 
     private var appVersion: String { BuildStamp.line() }

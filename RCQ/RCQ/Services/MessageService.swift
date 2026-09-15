@@ -830,9 +830,12 @@ final class MessageService {
     /// files `read` as ephemeral and has always seen it, so this teaches it
     /// nothing. Best effort - a lost ack costs exactly what the bug costs
     /// today, a request still sitting on the other device.
-    func sendCIAck(uin: Int, host: String, act: String, card: CICard? = nil) async {
+    func sendCIAck(uin: Int, host: String, act: String, card: CICard? = nil, srv: CISrv? = nil) async {
         let me = ownUIN
         guard me != 0, uin > 0 else { return }
+        // The decoy speaks for nobody, least of all to the real account's
+        // other devices.
+        if PanicPINService.shared.isDecoy { return }
         guard let mine = try? crypto.bootstrapIdentity() else { return }
         let selfBundle = PeerBundle(uin: me, identityKey: mine.identityKey, signingKey: mine.signingKey)
         // ⚠⚠ Addressed to MYSELF, not to nobody. The answer belongs to no
@@ -842,7 +845,7 @@ final class MessageService {
         // which means never acked: the island would hand the row back on every
         // drain for the thirty days of the queue TTL. To myself it resolves to
         // the self-thread, where an unknown inner kind files nothing.
-        let carbon: Envelope = .carbon(to: me, gid: nil, env: .ciAck(uin: uin, host: host, act: act, card: card))
+        let carbon: Envelope = .carbon(to: me, gid: nil, env: .ciAck(uin: uin, host: host, act: act, card: card, srv: srv))
         guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
         struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
@@ -865,8 +868,17 @@ final class MessageService {
     /// drift apart, silently, on the one peer class where the pinned key IS the
     /// encryption key. A device that already holds the contact keeps what it
     /// has.
-    func applyCIAck(uin: Int, host: String, act: String, card: CICard?) {
+    func applyCIAck(uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil) {
         guard uin > 0 else { return }
+        // F1: the answer settled a pending row on a visited island. Whatever
+        // the act, that row is not to be offered here again. Only the id is
+        // taken: nothing is withdrawn from this device, which may not even
+        // hold a login on that island, and the device that answered has
+        // already done it.
+        if let srv, !PanicPINService.shared.isDecoy,
+           let h = Multihome.normalizeHost(srv.host), srv.id > 0 {
+            CrossIslandRequestsStore.shared.markAnswered(host: h, id: srv.id)
+        }
         switch act {
         case "block":
             CrossIslandRequestsStore.shared.block(uin: uin, host: host)
@@ -2149,9 +2161,9 @@ final class MessageService {
                 // (to and gid are both nil), so the guard below would drop it -
                 // and a dropped row is never acked, so the island would hand it
                 // back on every drain for the queue's whole TTL.
-                if case .ciAck(let aUin, let aHost, let aAct, let aCard) = inner {
+                if case .ciAck(let aUin, let aHost, let aAct, let aCard, let aSrv) = inner {
                     guard signedByMe else { return refused }
-                    applyCIAck(uin: aUin, host: aHost, act: aAct, card: aCard)
+                    applyCIAck(uin: aUin, host: aHost, act: aAct, card: aCard, srv: aSrv)
                     return IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
                 }
                 let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }

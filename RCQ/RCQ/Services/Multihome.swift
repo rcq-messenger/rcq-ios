@@ -599,6 +599,9 @@ enum Multihome {
     /// the loop and it went on polling the first account's homes forever.
     @MainActor
     static func startPolling(ownUin: Int) {
+        // A burn stopped this loop before deleting the copies it drains; the
+        // next drain of the home queue must not bring it back halfway.
+        if BurnCascade.isBurning { return }
         let account = AccountManager.shared.activeAccountID
         if pollTask != nil && pollingFor == ownUin && pollingAccount == account { return }
         pollTask?.cancel()
@@ -622,6 +625,7 @@ enum Multihome {
     /// the network awaits suspend rather than block.
     @MainActor
     static func drainBackupQueues(ownUin: Int) async {
+        guard !BurnCascade.isBurning else { return }
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else { return }
         struct Row: Decodable {
@@ -665,7 +669,8 @@ enum Multihome {
             // no longer the active one, they belong to nobody here.
             guard AccountManager.shared.activeAccountID == accountID,
                   !PanicPINService.shared.isLocked,
-                  !PanicPINService.shared.isDecoy
+                  !PanicPINService.shared.isDecoy,
+                  !BurnCascade.isBurning
             else { return }
             for r in rows {
                 // §5c: a group row in a BACKUP mailbox = that island also hosts
@@ -1206,6 +1211,19 @@ final class GroupSenderKeyStore {
         inn[k] = InChain(gid: gid, senderUin: senderUIN, spub: spub, epoch: epoch, index: index, ck: ck, skipped: [:])
         saveIn(inn)
         return true
+    }
+
+    /// The signing keys `senderUIN` handed this account sender-key chains
+    /// under, in the rooms `gids`. For the F1 prior-key check on a request
+    /// from a guest island: a key this device already verified in a room
+    /// there, before the request arrived.
+    func inboundSigners(ownUin: Int, senderUIN: Int, gids: Set<Int>) -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        let prefix = "\(ownUin):"
+        return loadIn()
+            .filter { $0.key.hasPrefix(prefix) && $0.value.senderUin == senderUIN && gids.contains($0.value.gid) }
+            .map { $0.value.spub }
+            .filter { !$0.isEmpty }
     }
 
     struct InboundKey { let mk: Data; let spub: String; let senderUin: Int }

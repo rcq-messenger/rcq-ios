@@ -1229,7 +1229,7 @@
 "panic_pin.decoy.seed.count" = "%d mensajes";
 "panic_pin.decoy.seed.empty" = "Todavía no hay conversaciones de texto que copiar.";
 "panic_pin.wipe.server.toggle" = "Borrar también la cuenta en el servidor";
-"panic_pin.wipe.server.footer" = "Desactivado por defecto. Si lo activas, el PIN de borrado también le pide al servidor que elimine la cuenta: el número deja de existir y nadie puede escribirle. Si está desactivado, solo se limpia este dispositivo: la cuenta sigue viva y puedes volver a entrar desde otro.";
+"panic_pin.wipe.server.footer" = "Desactivado por defecto: el PIN de borrado solo limpia este dispositivo. Si lo activas, justo después del borrado la app pedirá a tu isla y a todas las islas donde estuvo la cuenta que la eliminen. El borrado no las espera, pero quien vigile la red puede ver esas conexiones. No se puede deshacer y el número no vuelve.";
 "panic_pin.wipe.footer.server_where" = "Si el PIN de borrado elimina además la cuenta en el servidor se elige al poner el PIN. Está desactivado salvo que lo actives, y aquí no se puede mostrar: el ajuste va sellado con el propio PIN de borrado, así que solo escribiéndolo se puede leer.";
 /* Voice recording: lock + preview */
 "chat.voice.locked" = "Bloqueado";
@@ -1643,3 +1643,40 @@
 "relay.key.ok.none" = "La clave fue aceptada. Todavía no tiene nodos privados asignados, así que se sigue usando el pool compartido.";
 "chat.menu.report_group" = "Denunciar grupo";
 "report.heading.group" = "Denunciar este grupo";
+
+// Cross-island: requests to guest copies (F1) and burn across islands (F2), spec 2026-09-15
+"ci.server.subtitle" = "Solicitud de contacto en la isla %@";
+"ci.server.via_group" = "por el grupo «%@»";
+"ci.server.via_group_more" = "por el grupo «%@» y %d más";
+"ci.server.not_in_groups" = "No está en tus grupos de esta isla";
+"ci.server.accept_hint" = "Si aceptas, verá tu número de casa. Solo la isla %@ responde de quién es.";
+"ci.server.key_changed" = "La clave de esta persona en la isla %@ no coincide con la que viste en un grupo. Confírmalo con ella antes de aceptar.";
+"ci.server.retrying" = "No se pudo contactar con la isla %@. Lo intentaremos de nuevo.";
+"ci.server.gave_up" = "La isla %@ no aceptó la respuesta. Inténtalo más tarde.";
+"burn.islands.body.one" = "Esta cuenta también tiene una copia en %1$d isla más, donde te uniste a grupos o tienes una dirección de respaldo: %2$@. Primero se borra esa copia y después la cuenta en tu isla.";
+"burn.islands.body.other" = "Esta cuenta también tiene copias en %1$d islas más, donde te uniste a grupos o tienes una dirección de respaldo: %2$@. Primero se borran esas copias y después la cuenta en tu isla.";
+"burn.islands.owned_groups" = "Los grupos que creaste allí se borrarán para todos sus miembros: %@.";
+"burn.sibling" = "La cuenta %1$@ en %2$@ de este dispositivo usa las mismas claves y también se destruirá.";
+"burn.not_covered" = "Las copias creadas por tus otros dispositivos, o añadidas a un grupo por su dueño en una isla que este dispositivo nunca abrió, no se borran desde aquí.";
+"burn.progress" = "Borrando copias en otras islas…";
+"burn.row.confirmed" = "La isla confirmó el borrado";
+"burn.row.already_gone" = "La isla dice que no hay copia";
+"burn.row.offline" = "Sin conexión";
+"burn.row.timeout" = "La isla no respondió a tiempo";
+"burn.row.suspended" = "La cuenta está bloqueada en esta isla y no se puede borrar";
+"burn.row.too_old" = "Esta isla es demasiado antigua para borrar una copia";
+"burn.row.limit" = "Hay más copias de las esperadas, puede quedar alguna";
+"burn.row.not_tried" = "No se intentó, se acabó el tiempo";
+"burn.row.server" = "La isla rechazó la solicitud";
+"burn.failures.title.one" = "No se pudo borrar en %d isla";
+"burn.failures.title.other" = "No se pudo borrar en %d islas";
+"burn.retry" = "Reintentar";
+"burn.anyway" = "Destruir de todos modos";
+"burn.anyway.hint" = "Las copias en estas islas se quedan. Sin tus claves solo se podrán borrar con tu frase de recuperación.";
+"burn.cancel.partial" = "La cuenta se queda. Las copias ya borradas en %@ no vuelven.";
+"burn.home_failed.partial" = "No se pudo contactar con tu isla, así que la cuenta allí sigue intacta. Las copias en otras islas ya se borraron. Inténtalo de nuevo cuando tengas conexión.";
+"burn.done.one" = "Cuenta destruida en tu isla y en %d isla más.";
+"burn.done.other" = "Cuenta destruida en tu isla y en %d islas más.";
+"ci.server.card_unavailable" = "No se pudo contactar con la isla %@ para comprobar quién escribe. No se envió nada. Inténtalo más tarde.";
+"burn.sibling_kept" = "La cuenta %1$@ en %2$@ no se pudo borrar allí y se queda en este dispositivo.";
+"burn.sibling_removed" = "La cuenta %1$@ en %2$@ se borró allí, así que también se quitó de este dispositivo.";

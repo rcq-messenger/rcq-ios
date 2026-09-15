@@ -145,6 +145,16 @@ struct CICard: Codable, Hashable {
     let status: String?
 }
 
+/// Which server-side pending row an answer settled (spec 2026-09-15 F1): the
+/// island the guest copy lives on and that row's id there. Rides in
+/// `Envelope.ciAck` so another device of this account that polls the same
+/// island hides the row instead of offering the request again. Wire
+/// `{"host": "...", "id": 123}`, the same shape on Android and the web.
+struct CISrv: Codable, Hashable {
+    let host: String
+    let id: Int
+}
+
 
 /// The guest card this account hands out, on a CLOSED island.
 ///
@@ -271,7 +281,10 @@ enum Envelope: Codable, Hashable {
     ///
     /// `card` rides along on an accept so the other devices copy the TOFU the
     /// accepting device did instead of each doing their own.
-    case ciAck(uin: Int, host: String, act: String, card: CICard?)
+    ///
+    /// `srv` names the pending row on a visited island that the answer settled
+    /// (F1). Additive: an older decoder ignores the key.
+    case ciAck(uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil)
     /// Room state key hand-off (stage 6 phase 2, wire "gskey", outer "skdm").
     case gsKey(gid: Int, ver: Int64, key: String)
     /// Room state key ask-back (wire "gsknack", outer "sknack").
@@ -397,7 +410,7 @@ enum Envelope: Codable, Hashable {
         case sizeBytes = "size"
         case lat
         case lng
-        case uin, host, card
+        case uin, host, card, srv
         case pollID = "poll"
         case question = "q"
         case options = "opts"
@@ -528,12 +541,13 @@ enum Envelope: Codable, Hashable {
         case .readMark(let at):
             try c.encode("readmark", forKey: .kind)
             try c.encode(at, forKey: .at)
-        case .ciAck(let uin, let host, let act, let card):
+        case .ciAck(let uin, let host, let act, let card, let srv):
             try c.encode("ciack", forKey: .kind)
             try c.encode(uin, forKey: .uin)
             try c.encode(host, forKey: .host)
             try c.encode(act, forKey: .act)
             if let card { try c.encode(card, forKey: .card) }
+            if let srv { try c.encode(srv, forKey: .srv) }
         case .gsKey(let gid, let ver, let key):
             try c.encode("gskey", forKey: .kind)
             try c.encode(gid, forKey: .gid)
@@ -735,7 +749,9 @@ enum Envelope: Codable, Hashable {
                 uin: try c.decode(Int.self, forKey: .uin),
                 host: try c.decode(String.self, forKey: .host),
                 act: try c.decode(String.self, forKey: .act),
-                card: try c.decodeIfPresent(CICard.self, forKey: .card)
+                card: try c.decodeIfPresent(CICard.self, forKey: .card),
+                // A malformed srv must not cost the ack itself.
+                srv: (try? c.decodeIfPresent(CISrv.self, forKey: .srv)) ?? nil
             )
         case "gskey":
             self = .gsKey(

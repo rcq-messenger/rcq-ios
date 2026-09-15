@@ -431,6 +431,23 @@ struct RootView: View {
         } message: {
             Text("auth.rotated_elsewhere.later".localized)
         }
+        // The result of a burn from Settings (spec 2026-09-15 F2). Shown from
+        // here because the burn screen cannot show it: the wipe reboots the
+        // app, the root swaps to the splash, and Settings goes with it. Same
+        // gate as the notice above.
+        .alert(
+            "settings.account.burn".localized,
+            isPresented: Binding(
+                get: { appState.burnReport != nil && rotatedNoticeMayShow },
+                set: { _ in }
+            )
+        ) {
+            Button("common.ok".localized, role: .cancel) {
+                appState.burnReport = nil
+            }
+        } message: {
+            Text(appState.burnReport?.message ?? "")
+        }
         .task(id: panicPIN.lockState) {
             guard panicPIN.lockState == .unlocked else { return }
             if appState.booted {

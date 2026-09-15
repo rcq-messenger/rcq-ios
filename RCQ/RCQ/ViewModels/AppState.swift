@@ -1170,6 +1170,18 @@ final class AppState: ObservableObject {
     // wipe the caches and re-boot a second time mid-migration.
     private var migratingAccount: Bool = false
 
+    // Suppresses the `.accountBurned` handler on THIS session while a burn
+    // from Settings is between its first island delete and its local wipe
+    // (spec 2026-09-15 F2). The home DELETE fans `account_burned` to this very
+    // socket, and following it would start a second burn in the middle of
+    // the first one, deleting nothing and wiping the stores the first one is
+    // still reading.
+    private var burningAccount: Bool = false
+    /// `burnFinish` is between its home DELETE and the end of the wipe. A
+    /// release arriving then (the sheet torn down under it) must not reopen
+    /// the drains in the middle of the erase.
+    private var burnFinishing: Bool = false
+
     // Re-entrancy guard for `followAccountMove`. One `account_moved` per socket
     // is what the island sends, but a reconnect can replay it and a linked
     // device can produce a second one; a follow already in flight must not be
@@ -1783,6 +1795,278 @@ final class AppState: ObservableObject {
         bootError = nil
         await boot()
         return true
+    }
+
+    // MARK: burn across islands (spec 2026-09-15 F2)
+
+    /// What one burn from Settings will touch, read before anything is
+    /// erased: the copies on other islands, the rooms this account owns there,
+    /// and the accounts on this device that carry the same keys.
+    struct BurnPlan {
+        struct Sibling: Identifiable, Equatable {
+            let id: UUID
+            let uin: Int
+            let host: String
+            /// Its account lives on OUR home island. Its row there is deleted
+            /// in Phase H, after our own, with its own token: the home island
+            /// is never a Phase R target.
+            let onHome: Bool
+        }
+        let copies: [BurnCascade.CopyHost]
+        let ownedGroups: [String]
+        let siblings: [Sibling]
+        var hosts: [String] { copies.map(\.host) }
+        static let empty = BurnPlan(copies: [], ownedGroups: [], siblings: [])
+    }
+
+    /// What a finished burn from Settings has to tell the person once the app
+    /// has started over. Set only after the wipe and the fresh boot, and
+    /// shown by the app root: the burn screen itself is gone by then.
+    struct BurnReport: Equatable {
+        /// Islands other than home that confirmed deleting a copy.
+        let islands: Int
+        /// Same-key accounts on our home island whose delete there did not go
+        /// through: they keep their keys on this device, so the person can
+        /// burn them from that account.
+        let kept: [BurnPlan.Sibling]
+
+        var isEmpty: Bool { islands == 0 && kept.isEmpty }
+
+        var message: String {
+            var lines: [String] = []
+            if islands > 0 {
+                lines.append(String(format: PluralKey.pick("burn.done", islands).localized, islands))
+            }
+            for s in kept {
+                lines.append(String(format: "burn.sibling_kept".localized, String(s.uin), s.host))
+            }
+            return lines.joined(separator: "\n\n")
+        }
+    }
+
+    @Published var burnReport: BurnReport?
+
+    /// Read the plan. Nil while a number move is in flight: the move re-files
+    /// the very stores the plan is read from.
+    ///
+    /// ⚠ In a decoy session the plan is EMPTY, decided before any store is
+    /// read: the burn there burns the decoy (see `burnAccount`), and not even
+    /// the names of the real account's islands may reach that screen.
+    func burnPlan() -> BurnPlan? {
+        if migratingAccount { return nil }
+        if PanicPINService.shared.isDecoy || PanicPINService.shared.isLocked { return .empty }
+        guard let me = AuthService.shared.ownUIN else { return .empty }
+        var list = BurnCascade.CopyList(BurnCascade.remoteCopies(ownUin: me))
+        var siblings: [BurnPlan.Sibling] = []
+        let am = AccountManager.shared
+        // Same-key accounts: another account on this device registered with
+        // this identity (a recovery onto a second island does exactly that).
+        // Burning the identity while leaving one of them would leave the keys
+        // and a live account behind, so they go too, and their island is one
+        // more copy to delete.
+        //
+        // ⚠ An account on OUR home island is not a Phase R copy: the home
+        // island goes last, so its row is deleted in Phase H right after our
+        // own (`burnFinish`). An account elsewhere IS one, so a burn that then
+        // stops short may already have deleted it: `releaseBurn` takes those
+        // off the device as well rather than leave an account that no longer
+        // exists, which the next switch to it would replace with a brand-new
+        // registration.
+        if let mine = KeychainStore.data(KeychainStore.Keys.signingPriv) {
+            for acct in am.accounts where acct.id != am.activeAccountID {
+                guard let theirs = KeychainStore.data(KeychainStore.Keys.signingPriv, forAccount: acct.id),
+                      theirs == mine,
+                      let uin = KeychainStore.string(KeychainStore.Keys.uin, forAccount: acct.id).flatMap({ Int($0) }),
+                      let host = Multihome.normalizeHost(acct.serverURL)?.lowercased()
+                else { continue }
+                let onHome = Multihome.isOwnHost(host)
+                siblings.append(BurnPlan.Sibling(id: acct.id, uin: uin, host: host, onHome: onHome))
+                if !onHome {
+                    list.add(host, token: KeychainStore.string(KeychainStore.Keys.token, forAccount: acct.id))
+                }
+                for v in VisitedIslandsStore.list(accountID: acct.id) { list.add(v.host, token: v.jwt) }
+                // Filed by number, which another account may share: the key
+                // proves these, no token.
+                for h in MultihomeStore.shared.list(ownUin: uin) { list.add(h.host, token: nil) }
+            }
+        }
+        let ownedGroups = GroupService.shared.groups.compactMap { g -> String? in
+            guard let h = g.host, !Multihome.isOwnHost(h),
+                  let creds = CrossIslandGroups.foreignCreds(host: h, ownUIN: me),
+                  g.ownerUIN == creds.uin else { return nil }
+            return g.name
+        }
+        return BurnPlan(copies: list.hosts, ownedGroups: ownedGroups, siblings: siblings)
+    }
+
+    /// Phase R: delete this account's copies on other islands, all at once,
+    /// back within 15 s. `only` narrows a retry to the islands that failed.
+    ///
+    /// Before the first request everything that could write fresh credentials
+    /// for these copies stands down (`holdForBurn`), and stays down until the
+    /// burn wipes the device or `releaseBurn` gives it back.
+    func burnRemote(_ plan: BurnPlan, only: Set<String>? = nil) async -> [String: IslandBurnResult] {
+        guard !PanicPINService.shared.isDecoy, !PanicPINService.shared.isLocked else { return [:] }
+        holdForBurn()
+        // ⏭ F3 (release C2): a pending rotation puts both keys here, in the
+        // order the rotation state says for each island.
+        let key = KeychainStore.data(KeychainStore.Keys.signingPriv)
+        let targets = plan.copies
+            .filter { only?.contains($0.host) ?? true }
+            .map { BurnTarget(host: $0.host, tokens: $0.tokens, keys: key.map { [$0] } ?? []) }
+        return await BurnCascade.run(targets)
+    }
+
+    private func holdForBurn() {
+        burningAccount = true
+        BurnCascade.setBurning(true)
+        Multihome.stopPolling()
+    }
+
+    /// The burn stopped short of the wipe: the person cancelled, or the home
+    /// island did not confirm. The account stays. The islands in `gone`
+    /// confirmed or reported no copy, so their logins are forgotten here
+    /// (a drain would only keep recovering against a row that no longer
+    /// exists), a backup home among them comes off the published record, and
+    /// the drains start again.
+    ///
+    /// ⚠ A same-key account whose own island is in `gone` no longer exists
+    /// there: Phase R deleted every row carrying the key. It is taken off this
+    /// device too and returned, so the screen can say so. Left in place, the
+    /// next switch to it would find `identity_not_found` and boot would
+    /// register a brand-new account in its name.
+    @discardableResult
+    func releaseBurn(_ plan: BurnPlan, forgetting gone: [String]) -> [BurnPlan.Sibling] {
+        guard !burnFinishing else { return [] }
+        burningAccount = false
+        BurnCascade.setBurning(false)
+        guard !PanicPINService.shared.isDecoy, let me = AuthService.shared.ownUIN else { return [] }
+        let goneHosts = Set(gone.map { $0.lowercased() })
+        let removed = plan.siblings.filter { !$0.onHome && goneHosts.contains($0.host.lowercased()) }
+        wipeSameKeyAccounts(removed)
+        defer { if booted { Multihome.startPolling(ownUin: me) } }
+        var backupsChanged = false
+        for host in gone {
+            VisitedIslandsStore.shared.remove(host: host)
+            for home in MultihomeStore.shared.list(ownUin: me) where home.host.lowercased() == host.lowercased() {
+                MultihomeStore.shared.remove(ownUin: me, host: home.host)
+                backupsChanged = true
+            }
+        }
+        if backupsChanged {
+            Task {
+                await AuthService.shared.publishHomeIslandRecord(ownUIN: me)
+                await MessageService.shared.pushHomeRecordToContacts()
+            }
+        }
+        return removed
+    }
+
+    /// Phase H and W: the account on the home island LAST, one retry, then the
+    /// same-key accounts on the home island, then the device. Returns false
+    /// when the home island did not confirm our own account; nothing local has
+    /// been touched then, and the caller releases the burn.
+    ///
+    /// The keys and every store are still readable when the home DELETE
+    /// starts, so a failure here leaves the account whole and able to try
+    /// again.
+    ///
+    /// `confirmedIslands` is what Phase R got confirmed; it goes into the
+    /// report the app root shows after the fresh boot (`burnReport`).
+    func burnFinish(_ plan: BurnPlan, confirmedIslands: Int = 0) async -> Bool {
+        // Same first check as every burn: the decoy burns the decoy.
+        if PanicPINService.shared.isDecoy { return await burnAccount(deleteServerAccount: false) }
+        // Never from behind the lock, and never for a flow whose screen was
+        // torn down: a burn nobody is watching does not go on to the island
+        // that holds the account.
+        guard !PanicPINService.shared.isLocked, !Task.isCancelled else { return false }
+        holdForBurn()
+        burnFinishing = true
+        // The home route as it is now, for the same-key accounts below: the
+        // fresh boot after the wipe may repoint `APIClient`.
+        let homeBase = APIClient.shared.baseURL
+        var serverToken = await APIClient.shared.currentServerToken()
+        if serverToken == nil { serverToken = AccountManager.shared.active?.serverToken }
+        var erased = await AuthService.shared.deleteServerAccount()
+        if !erased {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            erased = await AuthService.shared.deleteServerAccount()
+        }
+        guard erased else {
+            burnFinishing = false
+            return false
+        }
+        let onHome = plan.siblings.filter(\.onHome)
+        let kept = await deleteHomeSiblings(onHome, base: homeBase, serverToken: serverToken)
+        let keptIDs = Set(kept.map(\.id))
+        wipeSameKeyAccounts(plan.siblings.filter { !keptIDs.contains($0.id) })
+        await burnAccount(deleteServerAccount: false)
+        burnFinishing = false
+        burningAccount = false
+        BurnCascade.setBurning(false)
+        let report = BurnReport(islands: confirmedIslands, kept: kept)
+        if !report.isEmpty { burnReport = report }
+        return true
+    }
+
+    /// Phase H for the same-key accounts on OUR home island, right after our
+    /// own row there went: each with its own stored token, then the key for
+    /// whatever is left. Returns the accounts the island did not confirm.
+    ///
+    /// ⚠ Those stay on this device, keys and all, and the report names them.
+    /// Wiping them anyway would leave a live account on the island that
+    /// nothing here can delete any more.
+    private func deleteHomeSiblings(
+        _ siblings: [BurnPlan.Sibling], base: URL, serverToken: String?
+    ) async -> [BurnPlan.Sibling] {
+        guard !siblings.isEmpty else { return [] }
+        let am = AccountManager.shared
+        var left: [BurnPlan.Sibling] = []
+        for s in siblings {
+            guard let token = KeychainStore.string(KeychainStore.Keys.token, forAccount: s.id) else {
+                left.append(s)
+                continue
+            }
+            let theirs = am.accounts.first(where: { $0.id == s.id })?.serverToken ?? serverToken
+            let code = await APIClient.shared.deleteAccountStatus(
+                base: base, bearer: token, serverToken: theirs, timeout: 8
+            )
+            if let code, (200..<300).contains(code) { continue }
+            left.append(s)
+        }
+        guard !left.isEmpty else { return [] }
+        // A stale or missing token: the key proves the rest. Our own row is
+        // gone, so every row it still recovers here is one of these accounts.
+        guard let key = KeychainStore.data(KeychainStore.Keys.signingPriv), let host = base.host else { return left }
+        let authority = base.port.map { "\(host):\($0)" } ?? host
+        let results = await BurnCascadeMachine.run(
+            [BurnTarget(host: authority, tokens: [], keys: [key])],
+            deadline: 15, retry: true,
+            transport: HomeBurnTransport(base: base, serverToken: serverToken, timeout: 8)
+        )
+        return results[authority]?.isSettled == true ? [] : left
+    }
+
+    /// Every local layer of the same-key accounts the plan named, then the
+    /// account itself off the roster. Their islands were in Phase R already.
+    private func wipeSameKeyAccounts(_ siblings: [BurnPlan.Sibling]) {
+        let am = AccountManager.shared
+        for s in siblings where s.id != am.activeAccountID && am.accounts.contains(where: { $0.id == s.id }) {
+            CrossIslandRequestsStore.wipeStored(accountID: s.id)
+            VisitedIslandsStore.wipeStored(accountID: s.id)
+            // Same trap as `eraseLocalAccount`: the backup store is filed by
+            // number, and another account may hold that number elsewhere.
+            let numberShared = AuthService.shared.ownUIN == s.uin || am.accounts.contains {
+                $0.id != s.id && KeychainStore.string(KeychainStore.Keys.uin, forAccount: $0.id) == String(s.uin)
+            }
+            if !numberShared { MultihomeStore.shared.wipeOwn(ownUin: s.uin) }
+            KeychainStore.wipeAccount(s.id)
+            MessageDB.wipe(accountID: s.id)
+            SignalProtocolDB.wipeFiles(accountID: s.id)
+            AccountCardCache.forget(s.id)
+            ServerCapabilitiesCache.forget(s.id)
+            am.remove(s.id)
+        }
     }
 
     /// Does an account on this device OTHER than the active one hold `uin`?
@@ -2565,6 +2849,8 @@ final class AppState: ObservableObject {
             // worse mistake of the two.
             // Suppressed during migration — see `migratingAccount`.
             if migratingAccount { return }
+            // And during this device's own burn: see `burningAccount`.
+            if burningAccount { return }
             // ⚠⚠ And while a key rotation is in flight on this device: no
             // automatic wipe runs then, from any source (rotation spec P0.2).
             // The data stays; an explicit burn from Settings still works.
@@ -2830,6 +3116,12 @@ struct ServerCapabilities: Codable, Equatable {
     // account's `contacts` slot after every roster refresh (see
     // `ContactsVault`); one that does not is left alone. Absent means false.
     var vault: Bool
+    // F1 of the cross-island spec (2026-09-15): the island serves
+    // DELETE /contacts/pending/{id}, so a request to this account's guest copy
+    // there can be withdrawn once it was answered from home. Absent means an
+    // island that cannot: the row is then only hidden on the device, never
+    // declined in its place.
+    var contactPendingWithdraw: Bool
 
     init(
         uinShop: Bool,
@@ -2842,7 +3134,8 @@ struct ServerCapabilities: Codable, Equatable {
         anonKeys: Bool = false,
         depositAuth: Bool = false,
         groupLog: Bool = false,
-        vault: Bool = false
+        vault: Bool = false,
+        contactPendingWithdraw: Bool = false
     ) {
         self.uinShop = uinShop
         self.hallOfFame = hallOfFame
@@ -2855,6 +3148,7 @@ struct ServerCapabilities: Codable, Equatable {
         self.depositAuth = depositAuth
         self.groupLog = groupLog
         self.vault = vault
+        self.contactPendingWithdraw = contactPendingWithdraw
     }
 
     /// ⚠⚠ `uinShop: false`, and it is the ONE capability whose default is not
@@ -2888,6 +3182,7 @@ struct ServerCapabilities: Codable, Equatable {
         case depositAuth = "deposit_auth"
         case groupLog = "group_log"
         case vault
+        case contactPendingWithdraw = "contact_pending_withdraw"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -2926,6 +3221,8 @@ struct ServerCapabilities: Codable, Equatable {
         groupLog = try c.decodeIfPresent(Bool.self, forKey: .groupLog) ?? false
         // Absent means "predates the vault": see the field comment.
         vault = try c.decodeIfPresent(Bool.self, forKey: .vault) ?? false
+        // Absent means "cannot withdraw a pending row": see the field comment.
+        contactPendingWithdraw = ((try? c.decodeIfPresent(Bool.self, forKey: .contactPendingWithdraw)) ?? nil) ?? false
     }
 }
 

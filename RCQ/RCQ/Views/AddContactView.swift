@@ -564,6 +564,19 @@ struct PendingRequestsView: View {
     // Variant A: cross-island "message requests" (consent) — held locally.
     @State private var ciRequests: [CrossIslandRequestsStore.Request] = []
     @State private var ciBusy: String? = nil
+    /// F1: a poll can merge a row or change its state while this screen is
+    /// open, without changing the count.
+    @ObservedObject private var ciStore = CrossIslandRequestsStore.shared
+    /// F1: the row whose accept waits on the key-changed confirmation, with
+    /// the card that was checked. The accept pins that same card.
+    private struct KeyWarning {
+        let request: CrossIslandRequestsStore.Request
+        let card: CrossIslandSender.Card
+    }
+    @State private var keyWarning: KeyWarning? = nil
+    /// F1: the island a card could not be fetched from, so nothing was
+    /// checked and nothing was accepted.
+    @State private var cardUnavailableHost: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -605,7 +618,35 @@ struct PendingRequestsView: View {
             .navigationDestination(for: Int.self) { uin in
                 UserInfoView(uin: uin, isOwn: false)
             }
-            .onAppear { ciRequests = CrossIslandRequestsStore.shared.list() }
+            .onAppear {
+                ciRequests = CrossIslandRequestsStore.shared.list()
+                // F1: ask the visited islands now rather than at their next
+                // turn; the schedule debounces this to once a minute per
+                // island and never overrides a backoff.
+                CrossIslandPendingPoll.pollNow()
+            }
+            .onReceive(ciStore.$revision) { _ in
+                ciRequests = CrossIslandRequestsStore.shared.list()
+            }
+            .alert(
+                "pending.cta.accept".localized,
+                isPresented: Binding(get: { keyWarning != nil }, set: { if !$0 { keyWarning = nil } }),
+                presenting: keyWarning
+            ) { w in
+                Button("pending.cta.accept".localized) { performAccept(w.request, card: w.card) }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: { w in
+                Text(String(format: "ci.server.key_changed".localized, w.request.host))
+            }
+            .alert(
+                "pending.cta.accept".localized,
+                isPresented: Binding(get: { cardUnavailableHost != nil }, set: { if !$0 { cardUnavailableHost = nil } }),
+                presenting: cardUnavailableHost
+            ) { _ in
+                Button("common.ok".localized, role: .cancel) {}
+            } message: { host in
+                Text(String(format: "ci.server.card_unavailable".localized, host))
+            }
         }
         .presentationDetents([.fraction(0.32), .large])
         .presentationDragIndicator(.visible)
@@ -616,7 +657,7 @@ struct PendingRequestsView: View {
             // §5f: a real contact request leads with the sender's self-asserted
             // name; the island tag stays on the line below so a lookalike can't
             // pass as a local contact.
-            if let nick = r.reqNickname, !nick.isEmpty {
+            if let nick = r.displayName, !nick.isEmpty {
                 Text(nick)
                     .font(.body)
                     .foregroundColor(Theme.Color.textPrimary)
@@ -628,10 +669,13 @@ struct PendingRequestsView: View {
             Text(verbatim: r.host.isEmpty ? "\(r.uin)" : "\(r.uin)@\(r.host)")
                 .font(.system(.body, design: .monospaced))
                 .foregroundColor(r.isContactRequest ? Theme.Color.textSecondary : Theme.Color.textPrimary)
-            if r.isContactRequest {
+            if r.hasContactReq {
                 Text("ci.contactreq.subtitle".localized)
                     .font(.caption)
                     .foregroundColor(Theme.Color.textSecondary)
+            }
+            if r.serverRequestID != nil {
+                serverLines(r)
             }
             if let note = r.reqNote, !note.isEmpty {
                 Text(note)
@@ -678,6 +722,40 @@ struct PendingRequestsView: View {
         }
     }
 
+    /// F1: the lines under a row that came from a visited island's pending
+    /// list. The island is named, because the island is who vouches for the
+    /// row: it served the name, the number and the key.
+    @ViewBuilder
+    private func serverLines(_ r: CrossIslandRequestsStore.Request) -> some View {
+        Text(String(format: "ci.server.subtitle".localized, r.host))
+            .font(.caption)
+            .foregroundColor(Theme.Color.textSecondary)
+        if let line = CrossIslandPendingPoll.roomLine(uin: r.uin, host: r.host) {
+            Text(line)
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+        if r.keyChanged == true {
+            Text(String(format: "ci.server.key_changed".localized, r.host))
+                .font(.caption)
+                .foregroundColor(Theme.Color.statusBusy)
+        }
+        let tries = r.srvAcceptTries ?? 0
+        if tries >= PendingRowRule.maxAcceptTries {
+            Text(String(format: "ci.server.gave_up".localized, r.host))
+                .font(.caption)
+                .foregroundColor(Theme.Color.statusBusy)
+        } else if tries > 0 {
+            Text(String(format: "ci.server.retrying".localized, r.host))
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+        } else {
+            Text(String(format: "ci.server.accept_hint".localized, r.host))
+                .font(.caption)
+                .foregroundColor(Theme.Color.textSecondary)
+        }
+    }
+
     private func acceptCI(_ r: CrossIslandRequestsStore.Request) {
         // A SAME-ISLAND stranger (host "" - the opt-in Privacy quarantine):
         // no key card to pin, no §5f dance. Accepting means "let this person
@@ -706,7 +784,50 @@ struct PendingRequestsView: View {
             }
             return
         }
+        guard r.serverRequestID != nil else {
+            performAccept(r)
+            return
+        }
+        // F1: a row from the island's pending list rests on that island's
+        // word about who is asking. Where this device already verified a key
+        // for the same person in a room there, a card that differs now needs
+        // a yes from a person, not a tap.
+        //
+        // ⚠⚠ The card is fetched ONCE, here, and the accept pins and seals to
+        // that very card. A card that cannot be fetched is not "no
+        // difference": nothing was checked, so nothing is accepted.
         ciBusy = r.id
+        let accountID = AccountManager.shared.activeAccountID
+        Task {
+            let check = await CrossIslandPendingPoll.checkCard(uin: r.uin, host: r.host)
+            await MainActor.run {
+                ciBusy = nil
+                guard CrossIslandPendingPoll.sameAccount(accountID) else { return }
+                guard case .card(let card, let differs) = check else {
+                    cardUnavailableHost = r.host
+                    return
+                }
+                if differs { CrossIslandRequestsStore.shared.setKeyChanged(uin: r.uin, host: r.host) }
+                let current = CrossIslandRequestsStore.shared.request(uin: r.uin, host: r.host) ?? r
+                if differs || current.keyChanged == true {
+                    keyWarning = KeyWarning(request: current, card: card)
+                } else {
+                    performAccept(current, card: card)
+                }
+            }
+        }
+    }
+
+    /// `card`: the card already checked for a row from an island's pending
+    /// list, pinned as it is. Nil for a §5f row, whose add fetches its own.
+    private func performAccept(_ r: CrossIslandRequestsStore.Request, card: CrossIslandSender.Card? = nil) {
+        ciBusy = r.id
+        // ⚠ The account that accepted. Every step after an await asks again:
+        // the store calls, the withdraw and the ack all act for whoever is
+        // active when they run, and after a switch they would file this
+        // contact into another account and tell that account's devices about
+        // it, which links the two accounts.
+        let accountID = AccountManager.shared.activeAccountID
         Task {
             // Save the sender as a cross-island contact FIRST, so the held
             // payloads pass the ingest consent-gate (now an accepted contact)
@@ -715,54 +836,104 @@ struct PendingRequestsView: View {
             // §5f: the add now also deposits `act:"accept"` back to the
             // requester's island, so BOTH sides end up holding the other as
             // accepted — the mutual state §5d's call gate already checks.
-            let ok = await ContactService.shared.addCrossIslandContact(
-                uin: r.uin, host: r.host, announce: .accept
-            ).added
+            let outcome: ContactService.CrossIslandAddOutcome
+            if let card {
+                guard CrossIslandPendingPoll.sameAccount(accountID) else {
+                    await MainActor.run { ciBusy = nil }
+                    return
+                }
+                outcome = await ContactService.shared.addCrossIslandContact(
+                    uin: r.uin, host: r.host, card: card, announce: .accept
+                )
+            } else {
+                outcome = await ContactService.shared.addCrossIslandContact(
+                    uin: r.uin, host: r.host, announce: .accept
+                )
+            }
+            guard await MainActor.run(body: { CrossIslandPendingPoll.sameAccount(accountID) }) else {
+                await MainActor.run { ciBusy = nil }
+                return
+            }
+            let srvID = await MainActor.run {
+                CrossIslandRequestsStore.shared.request(uin: r.uin, host: r.host)?.serverRequestID
+            }
+            // F1: on a row from the island's pending list the requester only
+            // learns the answer from the deposit. Added here but not delivered
+            // keeps the row, and the poll deposits the accept again.
+            let delivered = outcome.added && (outcome.announced || srvID == nil)
             await MainActor.run {
-                if ok, let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host) {
-                    for h in held.msgs {
-                        let packet = WebSocketService.EnvelopePacket(
-                            type: "message", payload: h.payload, serverTime: Date(),
-                            offline: true, groupID: nil
-                        )
-                        _ = MessageService.shared.ingest(envelope: packet)
-                    }
+                if delivered, let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host) {
+                    replay(held.msgs)
+                } else if outcome.added, srvID != nil,
+                          let kept = CrossIslandRequestsStore.shared.holdForAcceptRetry(uin: r.uin, host: r.host) {
+                    replay(kept.held)
                 }
                 ciBusy = nil
                 ciRequests = CrossIslandRequestsStore.shared.list()
             }
+            if delivered, let srvID {
+                await CrossIslandPendingPoll.settleAnswered(host: r.host, id: srvID)
+            }
             // ⚠ The card this device just pinned goes with the ack. Without it
             // the other device would accept a second time and re-TOFU the peer,
             // overwriting the very keys every cross-island message to them is
-            // encrypted under.
-            if ok, let c = CrossIslandStore.shared.all().first(where: { $0.uin == r.uin && $0.host == r.host }) {
-                await MessageService.shared.sendCIAck(
-                    uin: r.uin, host: r.host, act: "accept",
-                    card: CICard(nick: c.nickname, ik: c.identityKey, sk: c.signingKey,
-                                 sik: c.signalIdentityKey, gender: c.gender, status: c.statusMessage)
+            // encrypted under. Sent only if the accepting account is still the
+            // active one after the withdraw above.
+            if outcome.added {
+                await CrossIslandPendingPoll.sendAcceptAck(
+                    accountID: accountID, uin: r.uin, host: r.host, srvID: delivered ? srvID : nil
                 )
             }
         }
     }
 
-    /// §5f decline: tell the requester's island, then drop the row. No local
-    /// contact is written and no pinned key is touched.
+    private func replay(_ msgs: [CrossIslandRequestsStore.Held]) {
+        for h in msgs {
+            let packet = WebSocketService.EnvelopePacket(
+                type: "message", payload: h.payload, serverTime: Date(),
+                offline: true, groupID: nil
+            )
+            _ = MessageService.shared.ingest(envelope: packet)
+        }
+    }
+
+    /// Decline: §5f tells the requester's island when a §5f request came with
+    /// the row; a row from a visited island's pending list is declined on that
+    /// island, honestly. Then the row goes. No local contact is written and no
+    /// pinned key is touched.
     private func declineCI(_ r: CrossIslandRequestsStore.Request) {
         ciBusy = r.id
         Task {
-            await CrossIslandSender.depositContactReq(act: "decline", uin: r.uin, host: r.host)
+            if r.hasContactReq {
+                await CrossIslandSender.depositContactReq(act: "decline", uin: r.uin, host: r.host)
+            }
+            if let id = r.serverRequestID {
+                await CrossIslandPendingPoll.declineOnIsland(host: r.host, id: id)
+            }
             await MainActor.run {
                 CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host)
                 ciBusy = nil
                 ciRequests = CrossIslandRequestsStore.shared.list()
             }
-            await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "decline")
+            await MessageService.shared.sendCIAck(
+                uin: r.uin, host: r.host, act: "decline",
+                srv: r.serverRequestID.map { CISrv(host: r.host, id: $0) }
+            )
         }
     }
 
     private func blockCI(_ r: CrossIslandRequestsStore.Request) {
         CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
-        Task { await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "block") }
+        let srv = r.serverRequestID.map { CISrv(host: r.host, id: $0) }
+        Task {
+            // F1: a blocked sender's row is withdrawn from the island (or only
+            // hidden, on an island that cannot), never declined: a decline
+            // tells them something.
+            if let id = r.serverRequestID {
+                await CrossIslandPendingPoll.settleAnswered(host: r.host, id: id)
+            }
+            await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "block", srv: srv)
+        }
         // A same-island stranger (host "") also joins the native block list:
         // that is the set the ingest drop and the Blocked screen (with its
         // unblock affordance) read, and a blocked stranger with no contact

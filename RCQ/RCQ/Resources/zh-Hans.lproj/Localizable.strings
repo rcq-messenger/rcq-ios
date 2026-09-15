@@ -1220,7 +1220,7 @@
 "panic_pin.decoy.seed.count" = "%d 条消息";
 "panic_pin.decoy.seed.empty" = "目前还没有可以复制的文字聊天。";
 "panic_pin.wipe.server.toggle" = "同时删除服务器上的账号";
-"panic_pin.wipe.server.footer" = "默认关闭。打开后，擦除 PIN 还会请求服务器删除账号本身：号码不再存在，谁也写不进来。关闭时只清空本设备：账号仍然存在，你可以在另一台设备上重新登录。";
+"panic_pin.wipe.server.footer" = "默认关闭：擦除 PIN 只清空本设备。打开后，擦除完成后应用会立即请求你的岛以及账号去过的所有岛删除它。擦除不会等待它们，但监视网络的人能看到这些连接。无法撤销，号码也不会回来。";
 "panic_pin.wipe.footer.server_where" = "擦除 PIN 是否同时删除服务器上的账号，是在设置这个 PIN 时选的。默认不删除，而且这里无法显示当前的值：这项设置是用擦除 PIN 本身封起来的，只有输入那个 PIN 才能读出来。";
 /* Voice recording: lock + preview */
 "chat.voice.locked" = "已锁定";
@@ -1634,3 +1634,40 @@
 "relay.key.ok.none" = "密钥已接受。目前还没有分配给它的私有节点，所以仍在使用共享池。";
 "chat.menu.report_group" = "举报群组";
 "report.heading.group" = "举报此群组";
+
+// Cross-island: requests to guest copies (F1) and burn across islands (F2), spec 2026-09-15
+"ci.server.subtitle" = "来自岛 %@ 的联系人请求";
+"ci.server.via_group" = "通过群组「%@」";
+"ci.server.via_group_more" = "通过群组「%@」及另外 %d 个";
+"ci.server.not_in_groups" = "不在你在这个岛上的群组里";
+"ci.server.accept_hint" = "如果接受，对方会看到你的主号码。对方是谁，只有岛 %@ 作保。";
+"ci.server.key_changed" = "此人在岛 %@ 上的密钥与你在群组里看到的不同。接受前请先向对方确认。";
+"ci.server.retrying" = "无法连接岛 %@。我们会再试。";
+"ci.server.gave_up" = "岛 %@ 没有接收这个回复。请稍后再试。";
+"burn.islands.body.one" = "这个账号在另外 %1$d 个岛上还有副本，那里有你加入的群组或备用地址：%2$@。先删除这些副本，再删除你岛上的账号。";
+"burn.islands.body.other" = "这个账号在另外 %1$d 个岛上还有副本，那里有你加入的群组或备用地址：%2$@。先删除这些副本，再删除你岛上的账号。";
+"burn.islands.owned_groups" = "你在那里创建的群组会对所有成员删除：%@。";
+"burn.sibling" = "此设备上 %2$@ 的账号 %1$@ 使用相同的密钥，也会被销毁。";
+"burn.not_covered" = "由你的其他设备创建的副本，或由群主在此设备从未打开过的岛上添加的副本，无法从这里删除。";
+"burn.progress" = "正在删除其他岛上的副本…";
+"burn.row.confirmed" = "岛已确认删除";
+"burn.row.already_gone" = "岛表示没有副本";
+"burn.row.offline" = "没有连接";
+"burn.row.timeout" = "岛没有及时响应";
+"burn.row.suspended" = "账号在这个岛上被封禁，无法删除";
+"burn.row.too_old" = "这个岛版本太旧，无法删除副本";
+"burn.row.limit" = "副本比预期多，可能还有残留";
+"burn.row.not_tried" = "未尝试，时间已到";
+"burn.row.server" = "岛拒绝了请求";
+"burn.failures.title.one" = "有 %d 个岛删除失败";
+"burn.failures.title.other" = "有 %d 个岛删除失败";
+"burn.retry" = "重试";
+"burn.anyway" = "仍然销毁";
+"burn.anyway.hint" = "这些岛上的副本会保留。密钥删除后，只能用恢复短语删除它们。";
+"burn.cancel.partial" = "账号保留。已在 %@ 删除的副本不会恢复。";
+"burn.home_failed.partial" = "无法连接你的岛，那里的账号未受影响。其他岛上的副本已经删除。有网络时请再试。";
+"burn.done.one" = "账号已在你的岛和另外 %d 个岛上销毁。";
+"burn.done.other" = "账号已在你的岛和另外 %d 个岛上销毁。";
+"ci.server.card_unavailable" = "无法连接岛 %@ 来核实请求者。什么都没有发送。请稍后再试。";
+"burn.sibling_kept" = "%2$@ 上的账号 %1$@ 未能在那里删除，仍保留在此设备上。";
+"burn.sibling_removed" = "%2$@ 上的账号 %1$@ 已在那里删除，因此也已从此设备移除。";

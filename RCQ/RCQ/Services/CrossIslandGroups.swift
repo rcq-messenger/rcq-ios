@@ -77,6 +77,31 @@ final class VisitedIslandsStore {
         save(Visited(host: cur.host, uin: uin, jwt: jwt, addedAt: cur.addedAt))
     }
 
+    /// Forget one island's login: a burn deleted our copy there and then
+    /// stopped short of the wipe (spec F2). The alias map stays, so the local
+    /// ids of that island's rooms keep meaning the same rooms.
+    func remove(host: String) {
+        let h = host.lowercased()
+        let next = list().filter { $0.host != h }
+        if let data = try? JSONEncoder().encode(next) { defaults.set(data, forKey: visitedKey) }
+    }
+
+    /// Another account's visited islands, read without binding to it: the
+    /// burn of a same-key account (spec F2) deletes its copies too.
+    static func list(accountID: UUID) -> [Visited] {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        guard let data = d.data(forKey: visitedPrefix + accountID.uuidString),
+              let v = try? JSONDecoder().decode([Visited].self, from: data) else { return [] }
+        return v
+    }
+
+    /// `wipe()` for an account that is not the bound one.
+    static func wipeStored(accountID: UUID) {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        d.removeObject(forKey: visitedPrefix + accountID.uuidString)
+        d.removeObject(forKey: aliasPrefix + accountID.uuidString)
+    }
+
     // MARK: foreign-group alias ids
 
     private func aliases() -> [AliasRef] {
@@ -113,7 +138,7 @@ final class VisitedIslandsStore {
 /// RCQGroups are stamped with the local alias id + host so the rest of the app
 /// keeps working on plain Ints.
 enum CrossIslandGroups {
-    enum CIGError: Error { case noKeys, http(Int) }
+    enum CIGError: Error { case noKeys, http(Int), burning }
 
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -133,6 +158,9 @@ enum CrossIslandGroups {
     /// the multihome mechanic, but PRIVATE (never published). Throws on failure.
     static func ensureGuest(host: String, nickname: String) async throws -> VisitedIslandsStore.Visited {
         guard let h = Multihome.normalizeHost(host) else { throw Multihome.AddError.invalidHost }
+        // A copy registered while a burn deletes the others is a copy nobody
+        // deletes (spec F2, Phase 0).
+        if BurnCascade.isBurning { throw CIGError.burning }
         if let existing = VisitedIslandsStore.shared.get(host: h) { return existing }
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
@@ -194,6 +222,7 @@ enum CrossIslandGroups {
     static func pushNicknameToCopies(_ nickname: String) async {
         // The decoy identity must never speak for the real one.
         if PanicPINService.shared.isDecoy || PanicPINService.shared.isLocked { return }
+        if BurnCascade.isBurning { return }
         let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !nick.isEmpty else { return }
         // Every island below is a round trip, and a switch can land between
@@ -244,6 +273,9 @@ enum CrossIslandGroups {
     /// Refresh an expired guest jwt via the recover handshake. Returns the
     /// updated entry or nil.
     static func refreshGuest(host: String) async -> VisitedIslandsStore.Visited? {
+        // Mid-burn a recover could hand back a token for a copy the burn is
+        // deleting, and the write below would keep it on disk.
+        guard !BurnCascade.isBurning else { return nil }
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
               let c = ((try? await Multihome.recoverOn(host: host, signingPriv: signingPriv)) ?? nil)
@@ -384,6 +416,7 @@ enum CrossIslandGroups {
         // mailbox files as a pending request under the incoming account
         // (founder, 30.08). Same shape as the main drain in `MessageService`.
         let accountID = AccountManager.shared.activeAccountID
+        if BurnCascade.isBurning { return }
         for v in VisitedIslandsStore.shared.list() {
             var jwt = v.jwt
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
@@ -397,7 +430,8 @@ enum CrossIslandGroups {
             // land inside the network call than between two of them.
             guard AccountManager.shared.activeAccountID == accountID,
                   !PanicPINService.shared.isLocked,
-                  !PanicPINService.shared.isDecoy
+                  !PanicPINService.shared.isDecoy,
+                  !BurnCascade.isBurning
             else { return }
             for r in rows {
                 let gid = r.group_id.map { VisitedIslandsStore.shared.aliasFor(host: v.host, remoteId: $0) }
@@ -415,6 +449,12 @@ enum CrossIslandGroups {
                 guard AccountManager.shared.activeAccountID == accountID else { return }
                 await drainGroupLog(host: v.host, jwt: jwt)
             }
+            // F1: contact requests addressed to our copy on this island. Its
+            // own schedule decides (every 5 min or slower), so most passes of
+            // this 30 s loop end here without a request. It re-checks the
+            // account, the decoy, the lock and the burn after every await.
+            guard AccountManager.shared.activeAccountID == accountID else { return }
+            await CrossIslandPendingPoll.pollIfDue(host: v.host, jwt: jwt)
         }
     }
 

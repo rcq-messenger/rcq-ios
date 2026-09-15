@@ -1229,7 +1229,7 @@
 "panic_pin.decoy.seed.count" = "%d mesaj";
 "panic_pin.decoy.seed.empty" = "Henüz kopyalanacak metin sohbeti yok.";
 "panic_pin.wipe.server.toggle" = "Sunucudaki hesabı da sil";
-"panic_pin.wipe.server.footer" = "Varsayılan olarak kapalı. Açıkken silme PIN'i sunucudan hesabın kendisini de silmesini ister: numara var olmaktan çıkar ve kimse ona yazamaz. Kapalıyken yalnızca bu cihaz temizlenir: hesap yaşamaya devam eder ve başka bir cihazdan tekrar girebilirsin.";
+"panic_pin.wipe.server.footer" = "Varsayılan olarak kapalı: silme PIN'i yalnızca bu cihazı temizler. Açarsan, silmenin hemen ardından uygulama adandan ve hesabın bulunduğu tüm adalardan hesabı silmelerini ister. Silme onları beklemez, ama ağı izleyen biri bu bağlantıları görebilir. Geri alınamaz, numara geri gelmez.";
 "panic_pin.wipe.footer.server_where" = "Silme PIN'inin sunucudaki hesabı da silip silmeyeceği, PIN'i kurarken seçilir. Sen açmadıkça kapalıdır ve burada gösterilemez: ayar silme PIN'inin kendisiyle mühürlenir, yani onu girmeden okunamaz.";
 /* Voice recording: lock + preview */
 "chat.voice.locked" = "Kilitli";
@@ -1643,3 +1643,40 @@
 "relay.key.ok.none" = "Anahtar kabul edildi. Henüz ona atanmış özel düğüm yok, bu yüzden ortak havuz kullanılmaya devam ediyor.";
 "chat.menu.report_group" = "Grubu şikayet et";
 "report.heading.group" = "Bu grubu şikayet et";
+
+// Cross-island: requests to guest copies (F1) and burn across islands (F2), spec 2026-09-15
+"ci.server.subtitle" = "%@ adasında kişi isteği";
+"ci.server.via_group" = "«%@» grubu üzerinden";
+"ci.server.via_group_more" = "«%@» grubu ve %d grup daha üzerinden";
+"ci.server.not_in_groups" = "Bu adadaki gruplarından değil";
+"ci.server.accept_hint" = "Kabul edersen ana numaranı görecek. Kim olduğuna yalnızca %@ adası kefil.";
+"ci.server.key_changed" = "Bu kişinin %@ adasındaki anahtarı bir grupta gördüğünden farklı. Kabul etmeden önce kendisine sor.";
+"ci.server.retrying" = "%@ adasına ulaşılamadı. Tekrar deneyeceğiz.";
+"ci.server.gave_up" = "%@ adası yanıtı almadı. Daha sonra tekrar dene.";
+"burn.islands.body.one" = "Bu hesabın, gruplara katıldığın ya da yedek adres tuttuğun %1$d adada daha bir kopyası var: %2$@. Önce o silinir, sonra kendi adandaki hesap.";
+"burn.islands.body.other" = "Bu hesabın, gruplara katıldığın ya da yedek adres tuttuğun %1$d adada daha kopyası var: %2$@. Önce onlar silinir, sonra kendi adandaki hesap.";
+"burn.islands.owned_groups" = "Orada kurduğun gruplar tüm üyeler için silinecek: %@.";
+"burn.sibling" = "Bu cihazdaki %2$@ üzerindeki %1$@ hesabı aynı anahtarları kullanıyor ve o da yakılacak.";
+"burn.not_covered" = "Diğer cihazlarının oluşturduğu ya da bu cihazın hiç açmadığı bir adada grup sahibinin eklediği kopyalar buradan silinmez.";
+"burn.progress" = "Diğer adalardaki kopyalar siliniyor…";
+"burn.row.confirmed" = "Ada silindiğini onayladı";
+"burn.row.already_gone" = "Ada kopya olmadığını bildiriyor";
+"burn.row.offline" = "Bağlantı yok";
+"burn.row.timeout" = "Ada zamanında yanıt vermedi";
+"burn.row.suspended" = "Hesap bu adada engelli, silinemiyor";
+"burn.row.too_old" = "Bu ada kopya silmek için fazla eski";
+"burn.row.limit" = "Beklenenden fazla kopya var, bazıları kalmış olabilir";
+"burn.row.not_tried" = "Denenmedi, süre doldu";
+"burn.row.server" = "Ada isteği reddetti";
+"burn.failures.title.one" = "%d adada silinemedi";
+"burn.failures.title.other" = "%d adada silinemedi";
+"burn.retry" = "Tekrar dene";
+"burn.anyway" = "Yine de yak";
+"burn.anyway.hint" = "Bu adalardaki kopyalar kalır. Anahtarların silindikten sonra onları yalnızca kurtarma ifadesiyle silebilirsin.";
+"burn.cancel.partial" = "Hesap kalıyor. %@ üzerindeki silinmiş kopyalar geri gelmez.";
+"burn.home_failed.partial" = "Adana ulaşılamadı, oradaki hesap duruyor. Diğer adalardaki kopyalar zaten silindi. Bağlantın olduğunda tekrar dene.";
+"burn.done.one" = "Hesap kendi adanda ve %d adada daha yakıldı.";
+"burn.done.other" = "Hesap kendi adanda ve %d adada daha yakıldı.";
+"ci.server.card_unavailable" = "Kimin istediğini doğrulamak için %@ adasına ulaşılamadı. Hiçbir şey gönderilmedi. Daha sonra tekrar dene.";
+"burn.sibling_kept" = "%2$@ üzerindeki %1$@ hesabı orada silinemedi ve bu cihazda kalıyor.";
+"burn.sibling_removed" = "%2$@ üzerindeki %1$@ hesabı orada silindi, bu yüzden bu cihazdan da kaldırıldı.";

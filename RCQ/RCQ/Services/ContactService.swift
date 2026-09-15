@@ -415,6 +415,25 @@ final class ContactService: ObservableObject {
         guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else {
             return CrossIslandAddOutcome(added: false, announced: false)
         }
+        return await addCrossIslandContact(uin: uin, host: host, card: card, announce: announce, note: note)
+    }
+
+    /// The add with a card the caller already fetched and checked (F1: the
+    /// accept of a request from a visited island's pending list). Pins and
+    /// seals to exactly that card, never a second fetch: a second fetch is a
+    /// second chance for the island to hand over a different key than the one
+    /// the caller compared.
+    ///
+    /// No await before the row is saved and the accept is sealed, so the
+    /// caller's own "same account" check still holds when they happen.
+    func addCrossIslandContact(
+        uin: Int, host: String, card: CrossIslandSender.Card,
+        announce: CrossIslandAnnounce?, note: String? = nil
+    ) async -> CrossIslandAddOutcome {
+        if Multihome.isOwnHost(host) {
+            return await addCrossIslandContact(uin: uin, host: host, announce: announce, note: note)
+        }
+        let account = AccountManager.shared.activeAccountID
         // Presence isn't tracked across islands, so don't fake `.online` — show
         // offline/unknown rather than a green dot we can't back up.
         let nick = (card.nickname?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(uin)@\(host)"
@@ -440,7 +459,9 @@ final class ContactService: ObservableObject {
         // whatever their key-card snapshot said and nothing would ever refresh
         // it. A `request` carries our name inside the contactreq already and has
         // no accepted relationship yet, which is the audience §5e is limited to.
-        if sent, announce == .accept {
+        // Only while the account that added is still the active one: the
+        // profile goes out as whoever is active when it is sealed.
+        if sent, announce == .accept, AccountManager.shared.activeAccountID == account {
             await CrossIslandSender.sendProfile(to: c)
         }
         return CrossIslandAddOutcome(added: true, announced: sent)

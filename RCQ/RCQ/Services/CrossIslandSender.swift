@@ -364,6 +364,12 @@ enum CrossIslandSender {
         if PanicPINService.shared.isDecoy { return }
         guard let host = contact.host else { return }
         if CrossIslandRequestsStore.shared.isBlocked(uin: contact.uin, host: host) { return }
+        // Read before the picture round trip, and the account checked again
+        // after it: the envelope is sealed with whoever is active when it is
+        // sent, so a switch during the upload would otherwise hand the new
+        // account's name and key to a contact of the old one.
+        let account = AccountManager.shared.activeAccountID
+        let nickname = AuthService.shared.nickname
         let avatarID = PresenceService.shared.ownAvatarID
         let avatarKey = PresenceService.shared.ownAvatarKey
         let havePicture = (avatarID?.isEmpty == false) && (avatarKey?.isEmpty == false)
@@ -378,8 +384,9 @@ enum CrossIslandSender {
             print("[CrossIslandSender] first-contact profile SKIPPED (avatar not deposited on \(host))")
             return
         }
+        guard AccountManager.shared.activeAccountID == account, !PanicPINService.shared.isDecoy else { return }
         await depositProfile(
-            to: contact, nickname: AuthService.shared.nickname,
+            to: contact, nickname: nickname,
             avatarMediaID: carriesAvatar ? avatarID : nil,
             avatarMediaKey: carriesAvatar ? avatarKey : nil
         )
