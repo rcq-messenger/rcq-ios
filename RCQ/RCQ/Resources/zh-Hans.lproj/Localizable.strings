@@ -1622,6 +1622,12 @@
 "account.moved.blocked.title" = "你的账号已迁移到新号码";
 "account.moved.blocked.body" = "你在另一台设备上换了新号码，这台设备没能跟过去。这里什么都没有被删除，聊天记录仍在。请用恢复短语重新登录，以便在新号码上继续使用。";
 
+/* Keys changed on another device of this account (404 identity_rotated). Never a wipe. */
+"auth.rotated_elsewhere" = "这个账号的密钥已在另一台设备上更换。输入新的恢复短语以继续。";
+"auth.rotated_elsewhere.enter" = "输入新短语";
+"auth.rotated_elsewhere.title" = "密钥已在另一台设备上更换";
+"auth.rotated_elsewhere.later" = "这个账号的密钥已在另一台设备上更换。此设备上的内容都没有被删除。在这里输入新的恢复短语的功能会在之后的应用更新中提供。";
+
 // 14.09 report group / relay offline
 "relay.key.offline.title" = "无法连到岛";
 "relay.key.offline.body" = "密钥已保存，但无法连到岛去校验。下次应用连接时会再次校验。";

@@ -366,6 +366,14 @@ struct RootView: View {
     /// backgroundedAt stays nil for those anyway).
     private static let connectionStaleGrace: TimeInterval = 4
 
+    /// The rotated-elsewhere notice is for the person who unlocked the real
+    /// account, on screen: not over the PIN screen, not in the duress view, and
+    /// not under the panic PIN's privacy cover (app switcher, backgrounding).
+    private var rotatedNoticeMayShow: Bool {
+        !panicPIN.isLocked && !panicPIN.isDecoy
+            && !(panicPIN.isConfigured && scenePhase != .active)
+    }
+
     var body: some View {
         // Root ZStack hosts game mini-bubbles so they persist across nav.
         // The MessageBannerHost is NOT mounted here — it lives in its
@@ -397,6 +405,31 @@ struct RootView: View {
             Button("common.ok".localized, role: .cancel) {}
         } message: {
             Text("account.moved.blocked.body".localized)
+        }
+        // The keys were changed on another device of this account and the
+        // island retired the one this install holds (404 `identity_rotated`).
+        // Not a burn: nothing is deleted, and the person is told so.
+        //
+        // ⚠ Attached HERE, so neither `lock()` nor the swap to the PIN screen
+        // dismisses it: a plain binding kept the notice drawn over the lock
+        // screen and above the privacy cover in the app-switcher snapshot,
+        // telling whoever holds the locked phone that a real account exists.
+        // The binding hides it while locked, in a decoy session and while the
+        // panic PIN's cover is up. Its setter ignores those programmatic
+        // dismissals, so the notice comes back after a real unlock; only the
+        // button clears it.
+        .alert(
+            "auth.rotated_elsewhere.title".localized,
+            isPresented: Binding(
+                get: { appState.rotatedElsewhereNotice && rotatedNoticeMayShow },
+                set: { _ in }
+            )
+        ) {
+            Button("common.ok".localized, role: .cancel) {
+                appState.rotatedElsewhereNotice = false
+            }
+        } message: {
+            Text("auth.rotated_elsewhere.later".localized)
         }
         .task(id: panicPIN.lockState) {
             guard panicPIN.lockState == .unlocked else { return }

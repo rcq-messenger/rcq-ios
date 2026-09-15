@@ -65,6 +65,20 @@ final class MultihomeStore {
         persist(all().filter { !($0.ownUin == ownUin && $0.host == host) })
     }
 
+    /// Burn bookkeeping: forget every backup home filed under `ownUin`.
+    ///
+    /// ⚠ The store lives in the App Group, not under the account's Keychain
+    /// prefix, so nothing else a burn does reaches it. Before this the burn
+    /// only stopped the poll: every backup login (host, per-island uin and a
+    /// live bearer token) outlived the account on disk, and the fresh identity
+    /// the burn mints under the same number started polling those mailboxes
+    /// again on its first boot.
+    func wipeOwn(ownUin: Int) {
+        let current = all()
+        guard current.contains(where: { $0.ownUin == ownUin }) else { return }
+        persist(current.filter { $0.ownUin != ownUin })
+    }
+
     /// Replace the token (and per-island uin) after a /auth/recover refresh.
     func updateCreds(ownUin: Int, host: String, uin: Int, jwt: String) {
         persist(all().map { h in
@@ -171,6 +185,37 @@ enum Multihome {
 
     struct Credentials: Decodable { let uin: Int; let token: String }
 
+    /// A 404 from `/auth/recover` or `/auth/refresh` that is NOT "no such
+    /// identity". Thrown, never returned as nil, because nil is what callers
+    /// read as "gone": boot wipes on it, and the join and backup paths register
+    /// a brand-new row on it.
+    ///
+    /// ⚠⚠ Neither case may lead to a wipe, on any path.
+    /// - `rotated`: the key we proved was retired by a signed key change on
+    ///   another device of this account. The account is alive under new keys;
+    ///   this install needs the new phrase. `uin` is what the island named, for
+    ///   information only.
+    /// - `ambiguous`: the key answers for more than one account and the island
+    ///   refuses to pick one. Recovery goes to a person looking at the screen.
+    enum IdentityRefusal: Error, Equatable {
+        case rotated(uin: Int?)
+        case ambiguous
+    }
+
+    /// `detail.code` (and `detail.uin`) of an island's JSON error body, e.g.
+    /// `{"detail":{"code":"identity_rotated","uin":1234}}`. Both nil for a body
+    /// that is not that shape (a plain-string detail, an HTML error page).
+    ///
+    /// Compared exactly by callers, never by substring: `identity_not_found`
+    /// is the one word that erases data, and a body that merely contains it
+    /// (a proxy page, a future code with the same prefix) must not qualify.
+    static func authErrorDetail(_ body: String) -> (code: String?, uin: Int?) {
+        guard let data = body.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let detail = obj["detail"] as? [String: Any] else { return (nil, nil) }
+        return (detail["code"] as? String, detail["uin"] as? Int)
+    }
+
     /// This account's ISLAND IDENTITY — the host that belongs in a share link
     /// and that peers stamp into their envelopes.
     ///
@@ -222,8 +267,18 @@ enum Multihome {
     }
 
     /// Re-authenticate on `host` by proving possession of the Ed25519 signing
-    /// key (the seed-phrase recovery handshake). Returns nil when this identity
-    /// never registered there (404); throws on other failures.
+    /// key (the seed-phrase recovery handshake). Returns nil ONLY when the
+    /// island answered 404 `identity_not_found`: this key has no account there.
+    /// Throws `IdentityRefusal` for `identity_rotated` / `identity_ambiguous`,
+    /// and the raw status for anything else.
+    ///
+    /// ⚠⚠ This used to map EVERY 404 on the recover step to nil, and nil is
+    /// read as "gone" by boot (wipe and fresh register) and as "never here" by
+    /// the join and backup paths (register a new row). Once islands answer
+    /// `identity_rotated` for a key retired by a signed key change, a sibling
+    /// install holding the old key would have erased a live account on its
+    /// next launch. The code has been in this endpoint's 404 since it shipped
+    /// (2026-06-02), so an exact match costs no island that has the endpoint.
     static func recoverOn(host: String, signingPriv: Curve25519.Signing.PrivateKey) async throws -> Credentials? {
         struct ChallengeOut: Decodable { let challenge: String }
         let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
@@ -236,8 +291,21 @@ enum Multihome {
                 "https://\(host)/auth/recover",
                 json: ["signing_key": sk, "challenge": challenge.challenge, "signature": signature]
             )
-        } catch HttpError.status(404, _) {
-            return nil
+        } catch HttpError.status(404, let body) {
+            let detail = authErrorDetail(body)
+            switch detail.code {
+            case "identity_not_found":
+                return nil
+            case "identity_rotated":
+                throw IdentityRefusal.rotated(uin: detail.uin)
+            case "identity_ambiguous":
+                throw IdentityRefusal.ambiguous
+            default:
+                // A 404 without the code is not an island saying "no such
+                // identity" (a proxy, a decoy page). Unproven, so it goes out
+                // as the failure it is.
+                throw HttpError.status(404, body)
+            }
         }
     }
 
@@ -265,6 +333,8 @@ enum Multihome {
     /// Returns nil when the island refused to name an account for us (404): the
     /// number is taken by somebody else now, or the key is ambiguous. The caller
     /// must treat that as "ask the person", never as "the account is gone".
+    /// Throws `IdentityRefusal` when the 404 says the key was rotated away or is
+    /// ambiguous, so a caller can tell the person which one it is.
     /// Throws on anything else, which is a transient failure worth retrying.
     static func refreshOn(
         host: String,
@@ -295,8 +365,15 @@ enum Multihome {
                 ],
                 extra: ["uin": uin]
             )
-        } catch HttpError.status(404, _) {
-            return nil
+        } catch HttpError.status(404, let body) {
+            switch authErrorDetail(body).code {
+            case "identity_rotated":
+                throw IdentityRefusal.rotated(uin: authErrorDetail(body).uin)
+            case "identity_ambiguous":
+                throw IdentityRefusal.ambiguous
+            default:
+                return nil
+            }
         } catch HttpError.status(401, _) {
             return nil
         } catch HttpError.status(403, _) {

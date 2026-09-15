@@ -50,6 +50,9 @@ enum KeychainStore {
         Keys.identityPriv,
         Keys.signingPriv,
         Keys.recoverySeed,
+        // Per account like the keys it protects: a rotation in flight on one
+        // account says nothing about another account on this device.
+        Keys.rotationPending,
     ]
 
     // MARK: - Public API (auto-routes per-account vs global)
@@ -237,6 +240,19 @@ enum KeychainStore {
         /// accounts (everything registered after v0.4); absent for legacy
         /// accounts whose keys predate seed-derivation, which have no phrase.
         static let recoverySeed = "rcq.recovery.seed"
+        /// A key rotation that has started and not finished (the PendingRotation
+        /// JSON of the cross-island rotation spec, 2026-09-15). Written BEFORE
+        /// the first network call of a rotation and cleared only when every
+        /// island has confirmed.
+        ///
+        /// ⚠⚠ While this exists, NOTHING may wipe the account automatically. In
+        /// the middle of a rotation the island can honestly answer "no such
+        /// identity" to one of the two keys this device holds (the request
+        /// landed and the reply was lost, or it has not landed yet), and the
+        /// old boot path read exactly that answer as a burn: it would erase the
+        /// only copy of the new seed along with everything else. Presence is
+        /// the whole signal; the guards never parse the contents.
+        static let rotationPending = "rcq.rotation.pending"
         static let pinPepper = "rcq.pin.pepper"
         static let pinAttempts = "rcq.pin.attempts"
         /// Stable per-INSTALL id (device-global, NOT per-account). The

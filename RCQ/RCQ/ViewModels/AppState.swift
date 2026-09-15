@@ -31,6 +31,12 @@ final class AppState: ObservableObject {
     // time; concurrent callers are dropped (they retry on their own cadence). No
     // re-run loop (that churned connections → iOS "Cannot allocate memory").
     private var booting = false
+    /// Bumped by the wipe PIN's erase, which does not wait for a boot chain in
+    /// flight. The chain (and `AuthService.bootstrapIfNeeded`) captures it at
+    /// its start and stops at the next checkpoint once it has moved, so a late
+    /// answer never writes into, uploads for or dials the socket of an account
+    /// this device has just erased.
+    private(set) var wipeGeneration = 0
 
     enum BootStatus {
         case connecting
@@ -734,6 +740,9 @@ final class AppState: ObservableObject {
             return
         }
 
+        // See `wipeGeneration`: checked after each network stage below.
+        let generation = wipeGeneration
+
         // Last-known capabilities before the network answers, or the chat
         // list's first frame draws `.defaultLegacy` surfaces the island's
         // operator turned off (the Nearby bar button flashed on every entry).
@@ -825,7 +834,7 @@ final class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: watchdogSeconds * 1_000_000_000)
             guard let self else { return }
             await MainActor.run {
-                guard !self.bootChainDone else { return }
+                guard !self.bootChainDone, self.wipeGeneration == generation else { return }
                 // The view swap makes the bar moot either way; keep its last
                 // frame honest instead of freezing mid-run.
                 self.advanceBoot(to: 1.0)
@@ -945,6 +954,7 @@ final class AppState: ObservableObject {
             if reach == .primary || reach == .proxy, SingBoxTransport.shared.isActive {
                 bootStatus = .stealthActive
             }
+            guard wipeGeneration == generation else { return }
             if reach == .unreachable || reach == .refused {
                 if let uin = cachedUIN, cachedToken != nil {
                     isOffline = true
@@ -992,6 +1002,7 @@ final class AppState: ObservableObject {
             BrokerRelayStore.shared.reportReachabilityInBackground()
             print("[boot] bootstrapIfNeeded… (base=\(APIClient.shared.baseURL.absoluteString))")
             try await AuthService.shared.bootstrapIfNeeded(suggestedNickname: suggestedNickname)
+            guard wipeGeneration == generation else { return }
             advanceBoot(to: 0.60)
             guard let uin = AuthService.shared.ownUIN,
                   let bootToken = KeychainStore.string(KeychainStore.Keys.token) else {
@@ -1022,6 +1033,7 @@ final class AppState: ObservableObject {
             await refreshServerInfo()
             advanceBoot(to: 0.75)
 
+            guard wipeGeneration == generation else { return }
             let baseURL = APIClient.shared.baseURL
             WebSocketService.shared.connect(
                 uin: uin, token: token, baseURL: baseURL,
@@ -1045,6 +1057,7 @@ final class AppState: ObservableObject {
             await ContactService.shared.refresh(joinInFlight: true)
             advanceBoot(to: 0.95)
 
+            guard wipeGeneration == generation else { return }
             print("[boot] complete — booted")
             advanceBoot(to: 1.0)
             booted = true
@@ -1079,6 +1092,8 @@ final class AppState: ObservableObject {
                 await VoIPPushService.shared.refreshTokenSubmission()
             }
         } catch {
+            // A wiped account has no offline mode to fall back to.
+            guard wipeGeneration == generation else { return }
             // If we have a cached identity, fall back to offline-mode
             // boot rather than blocking the UI on a transport error.
             if let uin = cachedUIN, cachedToken != nil {
@@ -1170,6 +1185,37 @@ final class AppState: ObservableObject {
     /// their chats stay on the device — the whole point of the fix is that a
     /// device which cannot follow keeps what it has instead of erasing it.
     @Published var accountMoveNeedsRecovery: Bool = false
+
+    /// Another device of this account changed its keys, and the island told us
+    /// the key this install holds is retired (404 `identity_rotated`). Drives
+    /// the notice that says so.
+    ///
+    /// ⚠⚠ Same promise as `accountMoveNeedsRecovery`: nothing local is touched
+    /// when this goes true. Before 2026-09-15 the boot path could not tell this
+    /// answer from a burn and erased the account.
+    ///
+    /// ⏭ Tell only, in release C0. Taking the new phrase on in place is the
+    /// sibling adoption of the rotation spec (F3, release C2), and it is not
+    /// just a key swap: the sibling has to KEEP its old private keys and prove
+    /// them on every island it visited or backs up to before dropping them, and
+    /// has to put its own device row on the new outer key. A C0 swap that
+    /// overwrote the keys would have left those copies on a key no device
+    /// holds any more, which C2 could then never re-key.
+    @Published var rotatedElsewhereNotice: Bool = false
+    /// The number the notice is about; also marks it shown for this session.
+    private(set) var rotatedElsewhereUIN: Int?
+
+    /// Tell the person, once per session. The socket's 4401 probe re-asks the
+    /// island every ten minutes and would otherwise put the notice back over
+    /// whatever they are doing each time they close it.
+    func presentRotatedElsewhere(uin: Int) {
+        // The duress view has no account to rotate and must not show that the
+        // real one exists.
+        guard !PanicPINService.shared.isDecoy else { return }
+        guard rotatedElsewhereUIN == nil else { return }
+        rotatedElsewhereUIN = uin
+        rotatedElsewhereNotice = true
+    }
 
     /// Migrate the account to a freshly-allocated UIN. Server keeps
     /// profile + contacts + groups; identity + signing keys are
@@ -1618,12 +1664,18 @@ final class AppState: ObservableObject {
                 }
                 await applyMovedIdentity(fromUIN: from, newUIN: creds.uin, token: creds.token)
                 return
-            case .refused:
+            case .refused, .ambiguous:
                 // Deliberate refusal, and the one case the person has to hear
                 // about: their account is somewhere this device cannot follow it
                 // to. Data stays exactly where it is.
                 print("[move] refresh refused - keeping local data, asking for the recovery phrase")
                 accountMoveNeedsRecovery = true
+                return
+            case .rotatedElsewhere(let uin):
+                // The keys changed on another device, not the number. Nothing
+                // to follow and nothing to wipe: tell the person.
+                print("[move] refresh: key rotated elsewhere - keeping local data")
+                presentRotatedElsewhere(uin: uin)
                 return
             case .transient:
                 guard attempt < 2 else {
@@ -1653,8 +1705,20 @@ final class AppState: ObservableObject {
     /// DELETE can only fail.
     ///
     /// Returns false only in the refused case.
+    ///
+    /// `afterLocalWipe` runs once the identity keys are gone and before the
+    /// fresh boot: the one point where a network step may start without
+    /// standing in front of the wipe (the wipe PIN's detached server erase).
+    ///
+    /// `panic` is the wipe PIN (P0.3): erase FIRST, wait for nothing. See the
+    /// branch below for why the ordinary burn cannot simply do the same.
     @discardableResult
-    func burnAccount(deleteServerAccount: Bool = true, requireServerErase: Bool = false) async -> Bool {
+    func burnAccount(
+        deleteServerAccount: Bool = true,
+        requireServerErase: Bool = false,
+        panic: Bool = false,
+        afterLocalWipe: (() -> Void)? = nil
+    ) async -> Bool {
         // ⚠ IN A DECOY SESSION THIS BURNS THE DECOY, NEVER THE REAL ACCOUNT.
         //
         // "Burn account" is a plain destructive row in Settings and a coercer
@@ -1681,7 +1745,60 @@ final class AppState: ObservableObject {
                 return false
             }
         }
-        await settleBoot()
+        // Read before anything is erased: the backup-home rows are filed under it.
+        let burnedUIN = AuthService.shared.ownUIN
+        if panic {
+            // ⚠⚠ THE WIPE PIN NEVER WAITS ON THE NETWORK (founder decision 2).
+            //
+            // The ordinary burn below settles the boot chain first, and that
+            // chain only ends when its requests do: `booting` clears when
+            // `doBoot` returns, and the watchdog cancels nothing. On a slow or
+            // deliberately held network that kept identityPriv, signingPriv,
+            // the seed and the token in the Keychain for as long as a recover,
+            // a tunnel engage or a proxied register took to time out, while the
+            // person under duress watched the lock screen spin.
+            //
+            // So: bump the generation (every checkpoint of the chain in flight
+            // now returns instead of writing, uploading or dialling), erase the
+            // keys and the libsignal store before anything else, then every
+            // store. Only then wait for that chain, and erase once more after
+            // it, because a request that was already out when the generation
+            // moved (the roster fetch, say) files its answer on its way back.
+            wipeGeneration &+= 1
+            let chainInFlight = booting
+            await AuthService.shared.wipeLocalIdentity()
+            await eraseLocalAccount(burnedUIN: burnedUIN)
+            afterLocalWipe?()
+            if chainInFlight {
+                await settleBoot()
+                await eraseLocalAccount(burnedUIN: burnedUIN)
+            }
+        } else {
+            await settleBoot()
+            await eraseLocalAccount(burnedUIN: burnedUIN)
+            afterLocalWipe?()
+        }
+
+        booted = false
+        bootError = nil
+        await boot()
+        return true
+    }
+
+    /// Does an account on this device OTHER than the active one hold `uin`?
+    /// Reads each account's own prefixed slot only; an install old enough to
+    /// keep its number unprefixed has a single account, so it cannot collide.
+    private static func anotherLocalAccountHolds(uin: Int) -> Bool {
+        let am = AccountManager.shared
+        return am.accounts.contains { other in
+            other.id != am.activeAccountID
+                && KeychainStore.string(KeychainStore.Keys.uin, forAccount: other.id) == String(uin)
+        }
+    }
+
+    /// Every local store of the active account, the identity last. Idempotent:
+    /// the wipe PIN runs it twice when a boot chain was in flight.
+    private func eraseLocalAccount(burnedUIN: Int?) async {
         networkReady = false
         WebSocketService.shared.disconnect()
 
@@ -1707,6 +1824,19 @@ final class AppState: ObservableObject {
         CrossIslandRequestsStore.shared.wipe()
         StrangerQuarantine.shared.wipe()
         VisitedIslandsStore.shared.wipe()
+        // The backup-home logins sit in the App Group keyed by the number, not
+        // under the account prefix, so the identity wipe below never reached
+        // them: the tokens outlived the burn and the fresh identity on the same
+        // number polled those mailboxes again.
+        //
+        // ⚠ Skipped when another account on this device holds the SAME number
+        // (two islands numbering independently). The store cannot tell their
+        // rows apart, and wiping would silently take a live account's backups
+        // off its own record. The burned account's rows then stay, which is
+        // the lesser harm; burn cascade (C1) deletes them island-side anyway.
+        if let burnedUIN, !Self.anotherLocalAccountHolds(uin: burnedUIN) {
+            MultihomeStore.shared.wipeOwn(ownUin: burnedUIN)
+        }
         PushDecryptCache.wipe()
         SilenceProbe.shared.reset()
         // Same reason as the probe: the device lists key on bare peer uins.
@@ -1752,11 +1882,6 @@ final class AppState: ObservableObject {
         pendingAddHost = nil
 
         await AuthService.shared.wipeLocalIdentity()
-
-        booted = false
-        bootError = nil
-        await boot()
-        return true
     }
 
     /// The decoy-session half of `burnAccount`. Empties the seeded history and
@@ -2272,11 +2397,26 @@ final class AppState: ObservableObject {
 
     /// `deleteServerAccount` comes out of the WIPE SLOT payload the entered PIN
     /// just opened (default false), never from prefs — see PINVault.SlotPayload.
+    ///
+    /// ⚠⚠ LOCAL FIRST, AND THE NETWORK NEVER IN FRONT OF IT (founder decision 2,
+    /// cross-island spec P0.3). This used to hand `deleteServerAccount` to
+    /// `burnAccount`, which AWAITED the island's DELETE before erasing a single
+    /// key: on a dead network, or a network somebody is holding, the person
+    /// under duress stood at a lock screen with every key still on the phone
+    /// for as long as the request took to time out.
+    ///
+    /// Now: what the erase needs is copied into memory (never disk), the device
+    /// is wiped with no network at all, and only then, when the flag is on,
+    /// one detached 8-second attempt runs from that copy. Flag off: nothing is
+    /// captured and nothing is sent by the wipe.
     func performPanicWipe(deleteServerAccount: Bool) async {
+        let snapshot = deleteServerAccount ? await BurnSnapshot.capture() : nil
         PINVault.destroy()
         MessageDB.destroyDecoyStore()
         DecoySeedStore.destroy()
-        await burnAccount(deleteServerAccount: deleteServerAccount)
+        await burnAccount(deleteServerAccount: false, panic: true, afterLocalWipe: {
+            if let snapshot { BurnCascade.runDetached(snapshot, deadline: 8) }
+        })
         PanicPINService.shared.finishWipe()
     }
 
@@ -2425,6 +2565,10 @@ final class AppState: ObservableObject {
             // worse mistake of the two.
             // Suppressed during migration — see `migratingAccount`.
             if migratingAccount { return }
+            // ⚠⚠ And while a key rotation is in flight on this device: no
+            // automatic wipe runs then, from any source (rotation spec P0.2).
+            // The data stays; an explicit burn from Settings still works.
+            if AuthService.hasPendingRotation { return }
             Task { await self.burnAccount() }
 
         case .accountMoved(let newUIN):

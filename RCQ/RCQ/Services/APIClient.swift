@@ -390,6 +390,25 @@ actor APIClient {
         return true
     }
 
+    /// `DELETE /auth/account` with a bearer the CALLER brings, on a base the
+    /// caller captured. Returns the HTTP status, nil when nothing answered.
+    ///
+    /// For the wipe PIN's detached erase (`BurnCascade.runDetached`), which
+    /// runs after the local wipe while the fresh boot is already putting a NEW
+    /// token into this client: the account being erased is not the one this
+    /// client authenticates as any more, so neither `token` nor `baseURL` may
+    /// be read here. Same session as every other call, so the same route.
+    func deleteAccountStatus(base: URL, bearer: String, serverToken: String?, timeout: TimeInterval) async -> Int? {
+        if DuressGate.isActive { return nil }
+        var req = URLRequest(url: base.appendingPathComponent("/auth/account"))
+        req.httpMethod = "DELETE"
+        req.timeoutInterval = timeout
+        req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        if let serverToken { req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth") }
+        guard let (_, resp) = try? await session.data(for: req) else { return nil }
+        return (resp as? HTTPURLResponse)?.statusCode
+    }
+
     /// `headers` rides on top of the ones set here, never instead of them: it
     /// is for a header the call itself owns (the single-use `X-Deposit-Token`
     /// an anonymous bundle fetch spends), not for overriding the auth pair.

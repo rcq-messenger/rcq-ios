@@ -42,12 +42,19 @@ final class AuthService: ObservableObject {
             ? KeychainStore.string(KeychainStore.Keys.uin)
             : am.activeAccountID.flatMap { KeychainStore.string(KeychainStore.Keys.uin, forAccount: $0) }
         print("[boot] bootstrap: active=\(am.activeAccountID?.uuidString.prefix(8).description ?? "nil") base=\(APIClient.shared.baseURL.absoluteString) legacyOwner=\(legacyOwner) probeUIN=\(probeUIN ?? "nil")")
+        // The wipe this chain started under. A wipe-PIN wipe does not wait for
+        // a boot in flight (P0.3) and bumps the generation instead; every
+        // network answer below is checked against it before anything is
+        // written or uploaded, so a late answer cannot put a token back into a
+        // wiped Keychain or publish a bundle for the erased account.
+        let generation = AppState.shared.wipeGeneration
         if let token = probeToken,
            let uinStr = probeUIN,
            let uin = Int(uinStr) {
             await APIClient.shared.setToken(token)
             do {
                 let me: UserProfile = try await APIClient.shared.request("GET", "/users/\(uin)/info")
+                guard AppState.shared.wipeGeneration == generation else { return }
                 // Kept for the boot: this answer carries the own status,
                 // nickname and picture, and the boot used to ask for the same
                 // profile a second time a moment later to read them.
@@ -94,6 +101,9 @@ final class AuthService: ObservableObject {
                 // Set only when `/auth/refresh` itself answered `moved_from`:
                 // the one proof that lets number-keyed state follow the account.
                 var provenMoveFrom: Int? = nil
+                // A refresh answer that already settles the question, so the
+                // recover handshake below is not asked to re-decide it.
+                var settled: RecoverOutcome? = nil
                 switch await refreshOwnSession(currentUIN: uin) {
                 case .moved(let creds, from: let from):
                     print("[boot] account moved \(from) -> \(creds.uin) while we were away — following it")
@@ -102,15 +112,28 @@ final class AuthService: ObservableObject {
                 case .unchanged(let creds):
                     print("[boot] uin=\(uin) still ours, token re-minted")
                     refreshed = creds
+                case .rotatedElsewhere:
+                    settled = .rotatedElsewhere(uin: uin)
+                case .ambiguous:
+                    // The number is vacant and the key answers for several
+                    // accounts. Recover would just pick the oldest of them,
+                    // which proves nothing about THIS account; keep everything
+                    // and send the person to the phrase, as a live move does.
+                    print("[boot] refresh: key is ambiguous — keeping cached identity")
+                    AppState.shared.accountMoveNeedsRecovery = true
+                    settled = .transient
                 case .refused, .transient:
                     break
                 }
                 let outcome: RecoverOutcome
                 if let creds = refreshed {
                     outcome = .recovered(creds)
+                } else if let settled {
+                    outcome = settled
                 } else {
                     outcome = await recoverOwnSession(expectedUIN: uin)
                 }
+                guard AppState.shared.wipeGeneration == generation else { return }
                 switch outcome {
                 case .recovered(let creds):
                     print("[boot] recovered uin=\(creds.uin) with a fresh token")
@@ -130,6 +153,18 @@ final class AuthService: ObservableObject {
                     try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: creds.uin)
                     await publishHomeIslandRecord(ownUIN: creds.uin)
                     UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
+                    isReady = true
+                    return
+                case .rotatedElsewhere(let rotatedUIN):
+                    // ⚠⚠ NOT a burn. Another device of this account changed its
+                    // keys with a signed request, and the island says so only
+                    // to a holder of the retired key. The account is alive; the
+                    // Keychain, the chats and every store stay exactly as they
+                    // are, and the person is told.
+                    print("[boot] key was rotated on another device — keeping everything")
+                    self.ownUIN = uin
+                    self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
+                    AppState.shared.presentRotatedElsewhere(uin: rotatedUIN)
                     isReady = true
                     return
                 case .identityUnknown:
@@ -235,6 +270,7 @@ final class AuthService: ObservableObject {
             print("[boot] register FAILED @ \(APIClient.shared.baseURL.absoluteString): \(error)")
             throw error
         }
+        guard AppState.shared.wipeGeneration == generation else { return }
         print("[boot] register ok uin=\(out.uin) @ \(APIClient.shared.baseURL.absoluteString)")
         UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)
 
@@ -260,7 +296,22 @@ final class AuthService: ObservableObject {
     enum RecoverOutcome {
         case recovered(Multihome.Credentials)
         case identityUnknown
+        /// The key this install holds was retired by a signed key change made
+        /// on another device (404 `identity_rotated`). Never a wipe: keep the
+        /// Keychain and ask for the new phrase. `uin` is our own local number.
+        case rotatedElsewhere(uin: Int)
         case transient
+    }
+
+    /// A key rotation of the ACTIVE account is in flight on this device
+    /// (`KeychainStore.Keys.rotationPending` exists).
+    ///
+    /// ⚠⚠ Every automatic wipe checks this first and stands down. Mid-rotation
+    /// the island can truthfully answer "no such identity" for one of the two
+    /// keys this install holds, and the wipe would take the only copy of the
+    /// other one with it.
+    static var hasPendingRotation: Bool {
+        KeychainStore.data(KeychainStore.Keys.rotationPending) != nil
     }
 
     /// Challenge-response `/auth/recover` against the ACTIVE base using the
@@ -280,10 +331,18 @@ final class AuthService: ObservableObject {
         }
         do {
             guard let creds = try await Multihome.recoverOn(host: host, signingPriv: signingPriv) else {
-                return .identityUnknown
+                // `recoverOn` is nil only on the exact `identity_not_found`
+                // code now. Still not a wipe while a rotation is in flight:
+                // the key we just proved may be the one the island has not
+                // taken yet, or has already retired.
+                return Self.hasPendingRotation ? .transient : .identityUnknown
             }
             return creds.uin == expectedUIN ? .recovered(creds) : .transient
+        } catch Multihome.IdentityRefusal.rotated {
+            return .rotatedElsewhere(uin: expectedUIN)
         } catch {
+            // `.ambiguous` lands here on purpose: the island will not name an
+            // account for this key, which proves nothing about this one.
             return .transient
         }
     }
@@ -313,6 +372,13 @@ final class AuthService: ObservableObject {
         /// the one caller that shows the person a message got here from an
         /// `account_moved` frame, which no island without `/auth/refresh` sends.
         case refused
+        /// 404 `identity_rotated`: the key we proved was retired by a signed key
+        /// change on another device. The account is alive under new keys.
+        case rotatedElsewhere(uin: Int)
+        /// 404 `identity_ambiguous`: the number is vacant and the key answers
+        /// for more than one account. Same handling as `refused`, but named,
+        /// so no caller falls through to a recover that would pick a winner.
+        case ambiguous
         /// Proved nothing (offline, a malformed answer, the challenge step
         /// itself failing). Worth retrying, never worth acting on.
         case transient
@@ -351,6 +417,10 @@ final class AuthService: ObservableObject {
                 return out.uin == currentUIN ? .unchanged(creds) : .refused
             }
             return .moved(creds, from: from)
+        } catch Multihome.IdentityRefusal.rotated {
+            return .rotatedElsewhere(uin: currentUIN)
+        } catch Multihome.IdentityRefusal.ambiguous {
+            return .ambiguous
         } catch {
             return .transient
         }
@@ -485,6 +555,16 @@ final class AuthService: ObservableObject {
     /// key sync. Returns the NEW 24-word phrase, or nil on failure. For users
     /// who fear key compromise or just want a fresh phrase.
     func reissueKeys() async -> [String]? {
+        // ⚠ A decoy session reads the REAL account's Keychain (see
+        // `recoveryPhrase()`), and `APIClient` still carries the real bearer
+        // token under a coerced view. Unguarded, a coercer tapping "Re-issue
+        // keys" in the duress view replaced the real account's keys on the
+        // island and in the Keychain, and was shown the new phrase. Locked is
+        // refused for the same reason: no person has proven the PIN.
+        guard !PanicPINService.shared.isDecoy, !PanicPINService.shared.isLocked else { return nil }
+        // One rotation at a time: a second seed started over a pending one
+        // would orphan whichever of the two the island ends up holding.
+        guard !Self.hasPendingRotation else { return nil }
         guard ownUIN != nil else { return nil }
         do {
             let newSeed = RecoveryPhrase.newSeed()
@@ -551,6 +631,9 @@ final class AuthService: ObservableObject {
             KeychainStore.Keys.identityPriv,
             KeychainStore.Keys.signingPriv,
             KeychainStore.Keys.recoverySeed,
+            // Holds key material of its own (the old and new private keys of an
+            // unfinished rotation), so it goes with the identity it belongs to.
+            KeychainStore.Keys.rotationPending,
         ] {
             KeychainStore.delete(key)
         }

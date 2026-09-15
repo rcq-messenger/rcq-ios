@@ -1839,6 +1839,12 @@
 "account.moved.blocked.title" = "Your account moved to a new number";
 "account.moved.blocked.body" = "You took a new number on another device, and this one could not follow it there. Nothing has been deleted: your chats are still here. Sign in again with your recovery phrase to continue on the new number.";
 
+/* Keys changed on another device of this account (404 identity_rotated). Never a wipe. */
+"auth.rotated_elsewhere" = "This account's keys were changed on another device. Enter the new recovery phrase to continue.";
+"auth.rotated_elsewhere.enter" = "Enter new phrase";
+"auth.rotated_elsewhere.title" = "Keys changed on another device";
+"auth.rotated_elsewhere.later" = "This account's keys were changed on another device. Nothing on this device was deleted. Entering the new recovery phrase here comes in a later app update.";
+
 // 14.09 report group / relay offline
 "relay.key.offline.title" = "Island not reached";
 "relay.key.offline.body" = "The key is saved, but the island could not be reached to check it. It will be checked again the next time the app connects.";

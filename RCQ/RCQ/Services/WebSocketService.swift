@@ -1047,6 +1047,14 @@ final class WebSocketService: ObservableObject {
                 // best-effort and expected to fail here).
                 AuthService.shared.stashWipedIdentityBackup(uin: expectedUIN)
                 self.events.send(.accountBurned)
+            case .rotatedElsewhere(let uin):
+                // ⚠⚠ NOT a burn, and the one answer that must never reach
+                // `.accountBurned`: another device changed this account's keys
+                // and the island retired the one we hold. Everything stays; the
+                // person is told. Redialling on the old
+                // token is pointless, but harmless: the probe is throttled and
+                // the prompt shows once per session.
+                AppState.shared.presentRotatedElsewhere(uin: uin)
             case .transient:
                 // Could not prove anything (endpoint missing, network error,
                 // the key resolved to a different uin). Keep redialling on

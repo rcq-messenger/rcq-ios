@@ -1631,6 +1631,12 @@
 "account.moved.blocked.title" = "Tu cuenta se mudó a un número nuevo";
 "account.moved.blocked.body" = "Tomaste un número nuevo en otro dispositivo y este no pudo seguirlo. No se borró nada: tus chats siguen acá. Volvé a entrar con tu frase de recuperación para continuar en el número nuevo.";
 
+/* Keys changed on another device of this account (404 identity_rotated). Never a wipe. */
+"auth.rotated_elsewhere" = "Las claves de esta cuenta se cambiaron en otro dispositivo. Escribe la nueva frase de recuperación para continuar.";
+"auth.rotated_elsewhere.enter" = "Escribir la frase nueva";
+"auth.rotated_elsewhere.title" = "Claves cambiadas en otro dispositivo";
+"auth.rotated_elsewhere.later" = "Las claves de esta cuenta se cambiaron en otro dispositivo. No se ha borrado nada en este dispositivo. Podrás escribir aquí la nueva frase de recuperación en una próxima actualización.";
+
 // 14.09 report group / relay offline
 "relay.key.offline.title" = "No se pudo contactar con la isla";
 "relay.key.offline.body" = "La clave quedó guardada, pero no se pudo contactar con la isla para comprobarla. Se volverá a comprobar la próxima vez que la app se conecte.";
