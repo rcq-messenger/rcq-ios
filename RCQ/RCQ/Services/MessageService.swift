@@ -2129,6 +2129,12 @@ final class MessageService {
                 // ratchet session is what vouches for it, as before. Not for a
                 // ciAck, though, which pins keys and is taken only with our own
                 // signature. A refused carbon applies nothing and is acked away.
+                // TODO(strict carbons): the keyless v=2 allowance is transitional.
+                // A missing device id defaults to the primary, so it never
+                // refuses, and anyone holding our prekey bundle can file our own
+                // rows through it. Android 0.194 seals every carbon v=1; once it
+                // has spread, require signedByMe for every kind, together with
+                // web (crossisland-gate.ts) and Android (CrossIslandGate.kt).
                 let signedByMe = isSignedByMe(decrypted)
                 let refused = IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
                 guard signedByMe || (decrypted.senderSigningKey == nil && decrypted.senderDeviceID != nil) else {
