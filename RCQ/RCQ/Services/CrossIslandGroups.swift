@@ -141,8 +141,10 @@ enum CrossIslandGroups {
             throw CIGError.noKeys
         }
         let creds: Multihome.Credentials
+        var recoveredExisting = false
         if let recovered = try await Multihome.recoverOn(host: h, signingPriv: signingPriv) {
             creds = recovered
+            recoveredExisting = true
         } else {
             creds = try await postJSON(
                 "https://\(h)/auth/register",
@@ -156,7 +158,87 @@ enum CrossIslandGroups {
         }
         let v = VisitedIslandsStore.Visited(host: h, uin: creds.uin, jwt: creds.token, addedAt: Date())
         VisitedIslandsStore.shared.save(v)
+        // A recovered row carries whatever name it was registered or
+        // owner-added under, possibly long ago, and nothing on that island
+        // ever refreshes it. Send the current one once, now, so a stale name
+        // corrects itself on joining. A fresh register already carried it.
+        // Detached and best-effort: the join must not wait on a cosmetic write.
+        if recoveredExisting {
+            let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !nick.isEmpty {
+                Task { _ = await putNickname(host: h, jwt: creds.token, nickname: nick) }
+            }
+        }
         return v
+    }
+
+    // MARK: nickname on this account's copies (#985(2))
+
+    /// Push the nickname to every island in this account's OWN visited and
+    /// backup stores, with that island's own token.
+    ///
+    /// ⚠ Nothing else ever reaches them. `PUT /users/me` on the home island
+    /// updates only the home row, and its `contact_renamed` goes only to
+    /// contacts on that island; §5e reaches accepted cross-island contacts
+    /// only. So a room on another island kept showing the name our copy there
+    /// was registered with, for good. Islands talk to no island by design,
+    /// which leaves the client that holds a token for each copy as the only
+    /// party able to repeat the rename.
+    ///
+    /// Only the nickname: that island already shows it to the room, so
+    /// nothing new is disclosed. Only islands this account's own stores hold,
+    /// never one learned from a peer. Best-effort per island: a 401 re-mints
+    /// the token through the recover handshake once, anything else waits for
+    /// the next rename.
+    @MainActor
+    static func pushNicknameToCopies(_ nickname: String) async {
+        // The decoy identity must never speak for the real one.
+        if PanicPINService.shared.isDecoy || PanicPINService.shared.isLocked { return }
+        let nick = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nick.isEmpty else { return }
+        // Every island below is a round trip, and a switch can land between
+        // them; the refreshes write into whichever account's store is bound.
+        let accountID = AccountManager.shared.activeAccountID
+        func stillSameAccount() -> Bool { AccountManager.shared.activeAccountID == accountID }
+
+        for v in VisitedIslandsStore.shared.list() where !Multihome.isOwnHost(v.host) {
+            let code = await putNickname(host: v.host, jwt: v.jwt, nickname: nick)
+            guard stillSameAccount() else { return }
+            if code == 401, let fresh = await refreshGuest(host: v.host) {
+                guard stillSameAccount() else { return }
+                _ = await putNickname(host: v.host, jwt: fresh.jwt, nickname: nick)
+            }
+        }
+
+        guard let me = AuthService.shared.ownUIN else { return }
+        let signingPriv = KeychainStore.data(KeychainStore.Keys.signingPriv)
+            .flatMap { try? Curve25519.Signing.PrivateKey(rawRepresentation: $0) }
+        for home in MultihomeStore.shared.list(ownUin: me) where !Multihome.isOwnHost(home.host) {
+            let code = await putNickname(host: home.host, jwt: home.jwt, nickname: nick)
+            guard stillSameAccount() else { return }
+            guard code == 401, let signingPriv,
+                  let fresh = try? await Multihome.recoverOn(host: home.host, signingPriv: signingPriv)
+            else { continue }
+            guard stillSameAccount() else { return }
+            MultihomeStore.shared.updateCreds(ownUin: me, host: home.host, uin: fresh.uin, jwt: fresh.token)
+            _ = await putNickname(host: home.host, jwt: fresh.token, nickname: nick)
+        }
+    }
+
+    /// `PUT /users/me` with the nickname alone on `host`. Returns the HTTP
+    /// status, 0 when the island could not be reached.
+    private static func putNickname(host: String, jwt: String, nickname: String) async -> Int {
+        guard let url = URL(string: "https://\(host)/users/me"),
+              let body = try? JSONSerialization.data(withJSONObject: ["nickname": nickname])
+        else { return 0 }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+        req.httpBody = body
+        AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
+        guard let (_, resp) = try? await IslandHTTP.data(for: req) else { return 0 }
+        return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
 
     /// Refresh an expired guest jwt via the recover handshake. Returns the

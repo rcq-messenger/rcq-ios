@@ -1858,6 +1858,59 @@ final class MessageService {
         let wasInNSECache: Bool
     }
 
+    /// Kinds the cross-island consent gate HOLDS as a message request; every
+    /// other kind from an unaccepted cross-island sender is dropped there.
+    /// The same content predicate as the same-island stranger quarantine, plus
+    /// `poll`, which files a visible row on this client (the plan's list for
+    /// #985 names it with the content kinds) and so is content, not control.
+    static func isCrossIslandHeldKind(_ env: Envelope) -> Bool {
+        if case .poll = env { return true }
+        return StrangerQuarantine.isContentKind(env)
+    }
+
+    /// The accepted cross-island contact an envelope really comes from, or nil.
+    ///
+    /// Nil unless we hold a row for exactly this (uin, host) AND the key that
+    /// signed the envelope (`spub`, the one thing the v=1 signature proves;
+    /// `from` and `from_host` sit outside it) equals the signing key pinned on
+    /// that row. Compared as bytes, so two base64 spellings of one key agree.
+    /// A nil `spub` (v=2, or a cache entry from before it carried the key)
+    /// never matches: cross-island traffic is v=1 and always carries one.
+    ///
+    /// A mismatch is a stranger using a contact's address, or a contact whose
+    /// key rotated since we pinned it. Either way callers treat it as not
+    /// accepted and never merge it into the contact silently.
+    static func verifiedCrossIslandContact(uin: Int, host: String, spub: String?) -> Contact? {
+        guard let row = CrossIslandStore.shared.all().first(where: { $0.uin == uin && $0.host == host })
+        else { return nil }
+        guard let spub,
+              let got = Data(base64Encoded: spub), !got.isEmpty,
+              let pinned = Data(base64Encoded: row.signingKey), got == pinned
+        else {
+            os_log(
+                "ingest: #%d@%{public}@ is a pinned contact but the envelope is signed by another key - treating as a stranger",
+                log: log, type: .error, uin, host
+            )
+            return nil
+        }
+        return row
+    }
+
+    /// Was this envelope signed by THIS account's own Ed25519 key?
+    ///
+    /// `from` sits outside the v=1 signature, so an envelope naming our own
+    /// uin is ourselves only when its `spub` is our key, compared as bytes. A
+    /// nil `spub` (v=2) never matches; callers that accept a v=2 self-envelope
+    /// say so explicitly.
+    private func isSignedByMe(_ decrypted: DecryptedEnvelope) -> Bool {
+        guard let spub = decrypted.senderSigningKey,
+              let got = Data(base64Encoded: spub), !got.isEmpty,
+              let mineB64 = try? crypto.bootstrapIdentity().signingKey,
+              let mine = Data(base64Encoded: mineB64)
+        else { return false }
+        return got == mine
+    }
+
     /// A short plaintext preview of a quarantined cross-island request message.
     static func requestPreview(for env: Envelope) -> String {
         switch env {
@@ -2062,12 +2115,36 @@ final class MessageService {
             // queue acks it instead of redelivering forever.
             if case .carbon(let cTo, let cGid, let inner) = decrypted.envelope {
                 guard decrypted.senderUIN == ownUIN else { return nil }
+                // ⚠⚠ A `from` naming our own uin is not proof it is us. In v=1
+                // `from` sits outside the signature, so anyone who reads our
+                // open key card can seal a "carbon" to us. One used to be
+                // applied like a real one: a ciAck `accept` pinned the sender's
+                // keys for any uin@host we did not hold yet, and those keys
+                // then passed the verified-sender check on every cross-island
+                // branch; an edit or a delete rewrote our own messages in any
+                // thread. This client and web seal every carbon as v=1, signed
+                // by the account key all our installs share, so a v=1 carbon
+                // must carry exactly that key. Android can send one as v=2 over
+                // its session with a linked install: no `spub` there, the
+                // ratchet session is what vouches for it, as before. Not for a
+                // ciAck, though, which pins keys and is taken only with our own
+                // signature. A refused carbon applies nothing and is acked away.
+                let signedByMe = isSignedByMe(decrypted)
+                let refused = IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
+                guard signedByMe || (decrypted.senderSigningKey == nil && decrypted.senderDeviceID != nil) else {
+                    os_log(
+                        "ingest: carbon claims our uin but is not signed by our key - dropped",
+                        log: Self.log, type: .error
+                    )
+                    return refused
+                }
                 // A cross-island request answered on another of my devices.
                 // Taken BEFORE the thread is resolved: it belongs to no thread
                 // (to and gid are both nil), so the guard below would drop it -
                 // and a dropped row is never acked, so the island would hand it
                 // back on every drain for the queue's whole TTL.
                 if case .ciAck(let aUin, let aHost, let aAct, let aCard) = inner {
+                    guard signedByMe else { return refused }
                     applyCIAck(uin: aUin, host: aHost, act: aAct, card: aCard)
                     return IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
                 }
@@ -2115,8 +2192,13 @@ final class MessageService {
                 guard let fromHost = decrypted.senderHost else {
                     return requeueHostlessControl(ws, decrypted, kind: "call")
                 }
+                // Accepted AND signed by the key we pinned for them: `from` and
+                // `from_host` sit outside the v=1 signature, so the address
+                // alone lets anyone who read a key card ring as our contact.
                 guard !Multihome.isOwnHost(fromHost),
-                      CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost })
+                      Self.verifiedCrossIslandContact(
+                          uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
+                      ) != nil
                 else { return outcome }
                 if sig == "call_offer", Int(Date().timeIntervalSince1970) - ts > 60 {
                     CallService.shared.fileMissedCall(
@@ -2153,8 +2235,16 @@ final class MessageService {
                     || CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: fromHost) {
                     return outcome
                 }
-                let alreadyAccepted = CrossIslandStore.shared.all()
-                    .contains { $0.uin == uin && $0.host == fromHost }
+                // "Already accepted" means the row we hold AND the key it pins.
+                // An envelope that names a contact's address but is signed by
+                // another key is a stranger using that address: its request is
+                // shown as a request, its accept retires nothing and pushes no
+                // profile, its decline clears nothing.
+                let pinnedRow = CrossIslandStore.shared.all()
+                    .first { $0.uin == uin && $0.host == fromHost }
+                let alreadyAccepted = Self.verifiedCrossIslandContact(
+                    uin: uin, host: fromHost, spub: decrypted.senderSigningKey
+                ) != nil
                 switch act {
                 case "request":
                     // Already accepted → no-op, not a second row.
@@ -2193,7 +2283,9 @@ final class MessageService {
                     )
                 case "decline":
                     // Drop our local pending row for them, silently. The pinned
-                    // keys and the local contact row are left alone.
+                    // keys and the local contact row are left alone. When we
+                    // pin a key for this address, only that key may decline.
+                    if pinnedRow != nil && !alreadyAccepted { return outcome }
                     CrossIslandRequestsStore.shared.clear(uin: uin, host: fromHost)
                 default:
                     break
@@ -2228,6 +2320,14 @@ final class MessageService {
                     || RemovedContactsStore.shared.contains(uin) {
                     return outcome
                 }
+                // A rename is applied only when the envelope is signed by the
+                // key pinned for that address. Otherwise anyone who knows a
+                // contact's uin@host and reads our open key card could rename
+                // that contact in our list. A mismatch is a stranger, and a
+                // stranger's profile applies nothing.
+                guard Self.verifiedCrossIslandContact(
+                    uin: uin, host: fromHost, spub: decrypted.senderSigningKey
+                ) != nil else { return outcome }
                 // Drops (returns nil) for a sender we do not hold as an accepted
                 // cross-island contact, and for a `ts` older than the last one we
                 // applied. Persists to the App Group container, which is what the
@@ -2256,13 +2356,45 @@ final class MessageService {
             // QUARANTINED as a "message request" instead of landing in the chat
             // list. Accepted → normal flow. Blocked → hold() no-ops but we still
             // ACK so the queue stops redelivering.
+            //
+            // ⚠ "Accepted" is the row we hold AND the key it pins. `from` and
+            // `from_host` ride outside the v=1 signature, so a sender can claim
+            // any address; the signing key (`spub`) is the one thing the
+            // signature proves. Somebody who knows a contact's uin@host and
+            // reads our open key card used to seal straight into that
+            // contact's thread. A mismatch is handled as a stranger and shown
+            // as a request, never merged into the contact's chat. This gate is
+            // also what keeps the 1:1 store below: nothing cross-island passes
+            // it without the pinned key.
+            //
+            // ⚠⚠ Only CONTENT is held (#985). Everyone on a group's island
+            // stamps that island as `from_host`, so control traffic co-members
+            // send to our guest mailbox there (a `visit` when they open our
+            // card, and the rest) was held too, and each one turned into a
+            // contact request with an empty preview that nobody sent. Every
+            // other kind from an unaccepted sender is DROPPED rather than let
+            // through: a delete, an edit or a secure-screen toggle from someone
+            // we never accepted must never be applied. The key, contactreq,
+            // profile, homerec and call branches above stay above this gate.
+            // Returning an outcome acks the row either way, and neither path
+            // reaches the delivered receipt at the bottom: a held message must
+            // not confirm to a stranger that it landed.
+            //
+            // ⚠ "Ourselves" is exempt only when signed by our own key. A
+            // self-claim under any other key used to skip this gate and land
+            // in Saved Messages as our own message; it is a stranger now.
             if ws.groupID == nil, let fromHost = decrypted.senderHost,
-               !Multihome.isOwnHost(fromHost), decrypted.senderUIN != ownUIN,
-               !CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == fromHost }) {
-                CrossIslandRequestsStore.shared.hold(
-                    uin: decrypted.senderUIN, host: fromHost,
-                    payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope)
-                )
+               !Multihome.isOwnHost(fromHost),
+               !(decrypted.senderUIN == ownUIN && isSignedByMe(decrypted)),
+               Self.verifiedCrossIslandContact(
+                   uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
+               ) == nil {
+                if Self.isCrossIslandHeldKind(decrypted.envelope) {
+                    CrossIslandRequestsStore.shared.hold(
+                        uin: decrypted.senderUIN, host: fromHost,
+                        payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope)
+                    )
+                }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 

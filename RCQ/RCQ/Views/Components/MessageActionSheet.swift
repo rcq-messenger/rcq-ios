@@ -191,6 +191,10 @@ struct ReactionsWhoSheet: View {
     /// other call sites of this sheet keep compiling; without it the rows draw
     /// the plain status flower, which is what they did before.
     var avatarFor: ((Int) -> (id: String?, key: String?, status: UserStatus, host: String?))? = nil
+    /// The island of the room these reactions are in, when it is not ours. A
+    /// reactor there is uin@thatIsland, so their card is opened on that island
+    /// and never looked up on ours (#985(2)).
+    var host: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     /// Non-nil = a reactor's row was tapped; their card is pushed onto this
@@ -253,7 +257,11 @@ struct ReactionsWhoSheet: View {
                 set: { if !$0 { openProfileUIN = nil } }
             )) {
                 if let uin = openProfileUIN {
-                    UserInfoView(uin: uin, isOwn: uin == (AuthService.shared.ownUIN ?? -1))
+                    UserInfoView(
+                        uin: uin,
+                        isOwn: host == nil && uin == (AuthService.shared.ownUIN ?? -1),
+                        host: host
+                    )
                 }
             }
         }

@@ -414,10 +414,20 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
     /// has no navigation stack to push onto.
     private func openProfile(uin: Int) {
         cancelChromeAutoHide()
-        let isOwn = uin == (AuthService.shared.ownUIN ?? -1)
+        // A photo posted in a room on another island was sent by uin@thatIsland,
+        // and the same number on our island is somebody else (#985(2)). The
+        // room's host comes off the message's own thread, so the card is read
+        // from that island and the home number never marks "own" there.
+        var foreignHost: String? = nil
+        if items.indices.contains(currentIndex),
+           case .group(let gid) = items[currentIndex].thread,
+           let h = GroupService.shared.find(gid)?.host, !h.isEmpty, !Multihome.isOwnHost(h) {
+            foreignHost = h
+        }
+        let isOwn = foreignHost == nil && uin == (AuthService.shared.ownUIN ?? -1)
         var sheetRef: UIViewController?
         let sheet = UIHostingController(
-            rootView: AlbumProfileSheet(uin: uin, isOwn: isOwn) { [weak self] in
+            rootView: AlbumProfileSheet(uin: uin, isOwn: isOwn, host: foreignHost) { [weak self] in
                 sheetRef?.dismiss(animated: true) { self?.profileSheetDidClose() }
             }
         )
@@ -758,11 +768,13 @@ private struct AlbumSenderHeader: View {
 private struct AlbumProfileSheet: View {
     let uin: Int
     let isOwn: Bool
+    /// The island of the room the photo is in, when that is not ours.
+    let host: String?
     let onClose: () -> Void
 
     var body: some View {
         NavigationStack {
-            UserInfoView(uin: uin, isOwn: isOwn)
+            UserInfoView(uin: uin, isOwn: isOwn, host: host)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("common.close".localized, action: onClose)

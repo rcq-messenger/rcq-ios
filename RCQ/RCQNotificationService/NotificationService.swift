@@ -115,7 +115,11 @@ class NotificationService: UNNotificationServiceExtension {
         // what tells us whether this push is for the foreground
         // account or a different one in the local roster.
         let activeBeforeRoute = AppGroup.readActiveAccountID()
+        // Whose stores this push is read against, for the pinned-key check
+        // further down: the routed account when there is one, else active.
+        var routedAccountID = activeBeforeRoute
         if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
+            routedAccountID = targetID
             // Push for a non-foreground account: mark the banner so
             // the user can tell at a glance that this message went
             // to one of their OTHER accounts, not the one they're
@@ -253,6 +257,25 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // ⚠⚠ A sender who names a pinned cross-island contact but signed
+            // with another key gets no banner. `from` and `from_host` sit
+            // outside the v=1 signature, so anyone who reads our open key card
+            // can claim uin@host of a contact we accepted. The app holds such
+            // a message as a request, but this process titled the banner with
+            // the contact's name and printed the forger's text on the lock
+            // screen first. Cached above, so the app still files the request.
+            // Only a pinned row is checked: this target cannot tell our own
+            // island from a foreign one, and a row exists only for foreign.
+            if let host = decrypted.senderHost,
+               let pinned = Self.pinnedSigningKey(
+                   uin: decrypted.senderUIN, host: host, accountID: routedAccountID
+               ),
+               !Self.sameKey(decrypted.senderSigningKey, pinned) {
+                os_log("sender claims pinned #%d@%{public}@ under another key - no banner",
+                       log: Self.log, type: .error, decrypted.senderUIN, host)
+                contentHandler(UNNotificationContent())
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
             let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
@@ -322,6 +345,36 @@ class NotificationService: UNNotificationServiceExtension {
             }
             contentHandler(content)
         }
+    }
+
+    /// The signing key pinned for uin@host among this account's cross-island
+    /// contacts, or nil when we hold no row for that address.
+    ///
+    /// Read RAW from the App Group slot `CrossIslandStore` persists (a map
+    /// "uin@lowercased host" -> Contact JSON under
+    /// `rcq.crossisland.contacts.v1.<account>`), because that store is not in
+    /// this target and would drag the federation layer in with it. Keep the
+    /// two in step; CrossIslandStore says so beside its key.
+    private static func pinnedSigningKey(uin: Int, host: String, accountID: UUID?) -> String? {
+        guard let defaults = UserDefaults(suiteName: AppGroup.identifier),
+              let data = defaults.data(
+                  forKey: "rcq.crossisland.contacts.v1." + (accountID?.uuidString ?? "none")
+              ),
+              let map = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let row = map["\(uin)@\(host.lowercased())"] as? [String: Any],
+              let key = row["signing_key"] as? String, !key.isEmpty
+        else { return nil }
+        return key
+    }
+
+    /// Same Ed25519 key, compared as bytes so two base64 spellings agree. A
+    /// nil `spub` (v=2) never matches, the same rule the app applies.
+    private static func sameKey(_ spub: String?, _ pinned: String) -> Bool {
+        guard let spub,
+              let got = Data(base64Encoded: spub), !got.isEmpty,
+              let want = Data(base64Encoded: pinned)
+        else { return false }
+        return got == want
     }
 
     /// Walk the local account roster and return the ID of whichever

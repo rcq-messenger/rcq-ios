@@ -3,6 +3,13 @@ import SwiftUI
 struct UserInfoView: View {
     let uin: Int
     let isOwn: Bool
+    /// The island this person was opened FROM, when that is a room on another
+    /// island (#985(2)). A roster there knows its members only as uin@thatIsland,
+    /// and the same number on our own island is a different person. So with a
+    /// foreign host this screen renders from that island's open key card,
+    /// sends no visit, and adds through the cross-island path; it never asks
+    /// our own island about the number. nil for everything opened from home.
+    var host: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var profile: UserProfile?
@@ -96,7 +103,9 @@ struct UserInfoView: View {
                                 draft?.statusMessage = $0
                             }
                         }
-                        if !isOwn {
+                        // The safety number is for the v=2 conversation with a
+                        // number on OUR island, which a foreign member is not.
+                        if !isOwn, foreignHost == nil {
                             section("profile.section.security".localized) {
                                 Button {
                                     openSafety()
@@ -191,11 +200,11 @@ struct UserInfoView: View {
                 }
             }
             .disabled(!saveEnabled)
-        } else if let p = profile {
+        } else if let p = profile, !isSelfOnForeignHost {
             Menu {
                 // Open the 1:1 chat — shown only when the person is already a
                 // contact (mutually exclusive with Add-to-contacts below).
-                if ContactService.shared.contacts.contains(where: { $0.uin == p.uin }) {
+                if isContactHere(p.uin), canOpenChatByNumber(p.uin) {
                     Button {
                         // Set the intent BEFORE dismissing (the root NavigationStack
                         // consumes pendingOpenChatUIN; dismissing tears this sheet out).
@@ -211,31 +220,43 @@ struct UserInfoView: View {
                 // contact. If the user already sent the same request
                 // earlier and re-taps, the server dedups (returns 400
                 // "already requested") which the catch swallows.
-                if !isOwn,
-                   !ContactService.shared.contacts.contains(where: { $0.uin == p.uin }) {
+                if !isOwn, !isContactHere(p.uin) {
                     Button {
                         Task {
-                            try? await ContactService.shared.sendAddRequest(to: p.uin)
-                            await ContactService.shared.refresh()
+                            if let h = foreignHost {
+                                // A member of a room on another island: the
+                                // §5f add to uin@thatIsland. A request for the
+                                // bare number would go to whoever holds it on
+                                // our island, who learns someone wants them.
+                                _ = await ContactService.shared.addCrossIslandContact(uin: p.uin, host: h)
+                            } else {
+                                try? await ContactService.shared.sendAddRequest(to: p.uin)
+                                await ContactService.shared.refresh()
+                            }
                         }
                     } label: {
                         Label("profile.cta.add_contact".localized, systemImage: "person.badge.plus")
                     }
                 }
-                Divider()
-                Button {
-                    resetSecureSession(uin: p.uin)
-                } label: {
-                    Label("profile.cta.reset_session".localized, systemImage: "key.fill")
+                // Both below act on the bare number on OUR island (its libsignal
+                // sessions, its block and report), which for a foreign member is
+                // somebody else. Not offered there.
+                if foreignHost == nil {
+                    Divider()
+                    Button {
+                        resetSecureSession(uin: p.uin)
+                    } label: {
+                        Label("profile.cta.reset_session".localized, systemImage: "key.fill")
+                    }
+                    Divider()
+                    UserSafetyActions(
+                        targetUIN: p.uin,
+                        targetNickname: p.nickname,
+                        context: "profile",
+                        style: .menu,
+                    )
+                    .tint(.red)
                 }
-                Divider()
-                UserSafetyActions(
-                    targetUIN: p.uin,
-                    targetNickname: p.nickname,
-                    context: "profile",
-                    style: .menu,
-                )
-                .tint(.red)
             } label: {
                 Image(systemName: "ellipsis")
                     .foregroundColor(Theme.Color.textPrimary)
@@ -424,6 +445,92 @@ struct UserInfoView: View {
 
     private var saveEnabled: Bool { isOwn && hasChanges && !saving }
 
+    /// `host` when it names an island other than ours; nil otherwise, so a
+    /// caller handing in our own host changes nothing.
+    private var foreignHost: String? {
+        guard let h = host, !h.isEmpty, !Multihome.isOwnHost(h) else { return nil }
+        return h
+    }
+
+    /// Our own copy on that island, opened from its room: nothing to add,
+    /// report or block.
+    private var isSelfOnForeignHost: Bool {
+        guard let h = foreignHost else { return false }
+        return CrossIslandGroups.foreignCreds(host: h, ownUIN: AuthService.shared.ownUIN)?.uin == uin
+    }
+
+    /// Is this person a contact? For a foreign member only a cross-island row
+    /// for exactly uin@host counts: a contact on our island with the same
+    /// number is a different person.
+    private func isContactHere(_ uin: Int) -> Bool {
+        guard let h = foreignHost else {
+            return ContactService.shared.contacts.contains(where: { $0.uin == uin })
+        }
+        return pinnedForeignRow(uin, host: h) != nil
+    }
+
+    /// The cross-island row we hold for exactly uin@host, read from
+    /// `CrossIslandStore` itself.
+    ///
+    /// ⚠ Not from `ContactService.contacts`: that merged list DROPS a
+    /// cross-island row whenever a contact on our island has the same number,
+    /// which is exactly the collision #985(2) is about. Read there, the pinned
+    /// row was invisible, Add was offered again, and the add re-pinned
+    /// whatever key that island serves today over the one we accepted.
+    private func pinnedForeignRow(_ uin: Int, host h: String) -> Contact? {
+        CrossIslandStore.shared.all().first {
+            $0.uin == uin && $0.host?.lowercased() == h.lowercased()
+        }
+    }
+
+    /// Can "Open chat" reach this person through `pendingOpenChatUIN`?
+    ///
+    /// That intent is resolved by the bare number against the merged list
+    /// (`ContactListView.tryOpenPendingChat`). For a foreign member it reaches
+    /// the pinned row only when no contact on our island shadows the number;
+    /// otherwise it opens that other person's chat, so the item is not offered
+    /// here (the room's member sheet opens the pinned row directly).
+    private func canOpenChatByNumber(_ uin: Int) -> Bool {
+        guard let h = foreignHost else { return true }
+        return ContactService.shared.contacts.first(where: { $0.uin == uin })?
+            .host?.lowercased() == h.lowercased()
+    }
+
+    /// #985(2): a member of a room on another island. Rendered from what that
+    /// island itself serves: our pinned cross-island row for uin@host when we
+    /// hold one, otherwise its open key card. No `/users/{uin}/info` and no
+    /// visit ping: both go to OUR island, where the number is somebody else.
+    private func loadForeignMember(host h: String) async {
+        defer { loading = false }
+        crossIslandHost = h
+        var dict: [String: Any]
+        if let c = pinnedForeignRow(uin, host: h) {
+            dict = [
+                "uin": c.uin, "nickname": c.nickname, "status": "offline", "interests": [],
+                "identity_key": c.identityKey, "signing_key": c.signingKey,
+            ]
+            if let g = c.gender { dict["gender"] = g }
+            if let s = c.statusMessage { dict["status_message"] = s }
+            if let sik = c.signalIdentityKey { dict["signal_identity_key"] = sik }
+        } else if let card = await CrossIslandSender.fetchCard(host: h, uin: uin) {
+            let nick = (card.nickname?.trimmingCharacters(in: .whitespaces))
+                .flatMap { $0.isEmpty ? nil : $0 } ?? "\(uin)@\(h)"
+            dict = [
+                "uin": uin, "nickname": nick, "status": "offline", "interests": [],
+                "identity_key": card.identity_key, "signing_key": card.signing_key,
+            ]
+            if let g = card.gender { dict["gender"] = g }
+            if let s = card.status_message { dict["status_message"] = s }
+            if let sik = card.signal_identity_key { dict["signal_identity_key"] = sik }
+        } else {
+            return
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: dict),
+           let p = try? JSONDecoder().decode(UserProfile.self, from: data) {
+            self.profile = p
+        }
+    }
+
     private func load() async {
         // A decoy session has no island to ask, and asking with the real
         // account's warm token is exactly what must not happen. Render from
@@ -445,6 +552,11 @@ struct UserInfoView: View {
                 self.draft = p
             }
             self.loading = false
+            return
+        }
+        // Opened from a room on another island: never our own island (#985(2)).
+        if !isOwn, let h = foreignHost {
+            await loadForeignMember(host: h)
             return
         }
         // §5c: a cross-island contact's profile lives on ITS island — our own
@@ -523,7 +635,15 @@ struct UserInfoView: View {
             let updated: UserProfile = try await APIClient.shared.request("PUT", "/users/me", body: body)
             self.profile = updated
             self.draft = updated
+            let previousNickname = AuthService.shared.nickname
             AuthService.shared.updateNicknameLocal(updated.nickname)
+            // #985(2): the home island tells only its own residents. Our copies
+            // on visited and backup islands keep the old name unless this
+            // client repeats the rename there with their own tokens.
+            if isOwn, updated.nickname != previousNickname {
+                let nick = updated.nickname
+                Task { await CrossIslandGroups.pushNicknameToCopies(nick) }
+            }
             // §5e: the island broadcasts a rename only to holders ON this island
             // (its contacts table has no host column, so a cross-island holder
             // cannot be in that audience). Push the new name to every accepted

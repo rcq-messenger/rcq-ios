@@ -91,10 +91,14 @@ final class AuthService: ObservableObject {
                 // key left, so refresh 404s, recover 404s, and the wipe below
                 // still happens — which is the direction that must not break.
                 var refreshed: Multihome.Credentials? = nil
+                // Set only when `/auth/refresh` itself answered `moved_from`:
+                // the one proof that lets number-keyed state follow the account.
+                var provenMoveFrom: Int? = nil
                 switch await refreshOwnSession(currentUIN: uin) {
                 case .moved(let creds, from: let from):
                     print("[boot] account moved \(from) -> \(creds.uin) while we were away — following it")
                     refreshed = creds
+                    provenMoveFrom = from
                 case .unchanged(let creds):
                     print("[boot] uin=\(uin) still ours, token re-minted")
                     refreshed = creds
@@ -115,6 +119,14 @@ final class AuthService: ObservableObject {
                     await APIClient.shared.setToken(creds.token)
                     self.ownUIN = creds.uin
                     self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
+                    // The second move handler on this client: a launch that
+                    // slept through a move. Same re-key as `applyMovedIdentity`,
+                    // and for the same reason BEFORE the record publish below,
+                    // which reads the backup homes under the new number. A plain
+                    // recover proves no move and re-keys nothing.
+                    if let from = provenMoveFrom, from != creds.uin {
+                        ProvenMoveRekey.apply(from: from, to: creds.uin)
+                    }
                     try? await SignalIdentityBootstrap.ensureBootstrapped(ownUIN: creds.uin)
                     await publishHomeIslandRecord(ownUIN: creds.uin)
                     UserDefaults.standard.removeObject(forKey: AppState.pendingInviterKey)

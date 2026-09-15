@@ -26,6 +26,16 @@ struct ChatView: View {
         return nil
     }
 
+    /// The island of the open room when that is not ours, else nil. A name in
+    /// such a room names a member THERE; the same number on our island is
+    /// somebody else, so every card opened from this chat carries the host
+    /// (#985(2)).
+    private var foreignGroupHost: String? {
+        guard case .group(let g) = vm.target, let h = g.host, !h.isEmpty,
+              !Multihome.isOwnHost(h) else { return nil }
+        return h
+    }
+
     /// A sender's row in the active group's roster — where their picture lives.
     private func groupMember(_ uin: Int?) -> RCQGroupMember? {
         guard let uin else { return nil }
@@ -1099,6 +1109,7 @@ struct ChatView: View {
                 reactions: msg.reactions,
                 nameFor: { vm.senderNickname($0) },
                 avatarFor: { vm.senderAvatar($0) },
+                host: foreignGroupHost,
             )
         }
         .sheet(item: $pinnedExpansion) { exp in
@@ -1180,7 +1191,15 @@ struct ChatView: View {
             set: { pinnedMemberUIN = $0?.uin }
         )) { t in
             NavigationStack {
-                UserInfoView(uin: t.uin, isOwn: t.uin == (AuthService.shared.ownUIN ?? -1))
+                // In a room on another island our member number is the guest
+                // one there, so the home number never marks "own" and the card
+                // is never read from our island.
+                let foreign = foreignGroupHost
+                UserInfoView(
+                    uin: t.uin,
+                    isOwn: foreign == nil && t.uin == (AuthService.shared.ownUIN ?? -1),
+                    host: foreign
+                )
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("common.close".localized) { pinnedMemberUIN = nil }

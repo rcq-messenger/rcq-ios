@@ -225,7 +225,10 @@ struct GroupInfoView: View {
             set: { viewInfoForUIN = $0?.uin }
         )) { wrap in
             NavigationStack {
-                UserInfoView(uin: wrap.uin, isOwn: false)
+                // The room's island rides along: on a room hosted elsewhere this
+                // number names a member THERE, not the holder of the same
+                // number on ours (#985(2)).
+                UserInfoView(uin: wrap.uin, isOwn: false, host: currentGroup.host)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("common.close".localized) { viewInfoForUIN = nil }
@@ -274,7 +277,7 @@ struct GroupInfoView: View {
                 onMessage: {
                     let uin = m.uin
                     actionMember = nil
-                    messagePeer = contacts.contacts.first(where: { $0.uin == uin })
+                    messagePeer = memberContact(uin, groupHost: currentGroup.host, in: contacts.contacts)
                 },
                 onDismiss: { actionMember = nil },
                 height: $memberSheetHeight,
@@ -825,6 +828,28 @@ private struct MemberSheetHeightKey: PreferenceKey {
 
 // MARK: - Member action sheet
 
+/// The contact row that IS this room member, if any.
+///
+/// ⚠ On a room hosted on another island only a cross-island row for exactly
+/// uin@thatIsland counts. Matching the bare number found whoever holds the
+/// same number on OUR island, so the sheet offered "Message" to a stranger and
+/// hid "Add" from the member (#985(2)). A room on our own island keeps the
+/// number match it always used.
+///
+/// ⚠ The foreign row is read from `CrossIslandStore`, not from `list`. The
+/// merged ContactService list drops a cross-island row whenever a contact on
+/// our island holds the same number, so in exactly that collision the member
+/// looked like a stranger: "Add" came back and re-pinned whatever key their
+/// island serves now over the one we accepted, and "Message" found nothing.
+private func memberContact(_ uin: Int, groupHost: String?, in list: [Contact]) -> Contact? {
+    if let h = groupHost, !h.isEmpty, !Multihome.isOwnHost(h) {
+        return CrossIslandStore.shared.all().first {
+            $0.uin == uin && $0.host?.lowercased() == h.lowercased()
+        }
+    }
+    return list.first { $0.uin == uin }
+}
+
 private struct MemberActionSheet: View {
     let member: RCQGroupMember
     /// Host of a CROSS-ISLAND group — the member lives on that island, not ours,
@@ -882,7 +907,7 @@ private struct MemberActionSheet: View {
             uin: member.uin,
             openable: member.profileOpenable,
             myUIN: AuthService.shared.ownUIN,
-            isContact: contacts.contacts.contains { $0.uin == member.uin }
+            isContact: isAlreadyContact
         )
     }
 
@@ -905,7 +930,7 @@ private struct MemberActionSheet: View {
     }
 
     private var isAlreadyContact: Bool {
-        contacts.contacts.contains(where: { $0.uin == member.uin })
+        memberContact(member.uin, groupHost: groupHost, in: contacts.contacts) != nil
     }
 
     var body: some View {

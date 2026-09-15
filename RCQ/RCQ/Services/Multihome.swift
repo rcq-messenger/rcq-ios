@@ -89,6 +89,37 @@ final class MultihomeStore {
         persist(next)
     }
 
+    /// UIN-move bookkeeping: file this account's backup homes under the NEW
+    /// primary uin. Same shape as `promoteSwap`, minus the promotion: every
+    /// entry keeps its host, its per-island uin and its token, because a move
+    /// changes only the handle on the HOME island and none of the backups
+    /// learned anything about it.
+    ///
+    /// ⚠ Without this a move on the home island orphaned every backup login:
+    /// `list(ownUin:)` came back empty under the new number, so the backup
+    /// drain stopped, a room hosted on a backup island lost its credentials
+    /// (`CrossIslandGroups.foreignCreds`), and the next signed home record
+    /// was published without the backups at all.
+    ///
+    /// Call it ONLY after the island proved the move (the migrate response, or
+    /// `moved_from` from `/auth/refresh`), never on a socket frame: a forged
+    /// frame would otherwise pour one number's logins into another's.
+    ///
+    /// An entry the new uin already holds for the same host wins and the old
+    /// one is dropped; `keepSource` copies instead of moving, for the case of
+    /// another local account still holding the old number.
+    func rekeyOwner(old oldOwnUin: Int, new newOwnUin: Int, keepSource: Bool = false) {
+        guard oldOwnUin != newOwnUin else { return }
+        let current = all()
+        let taken = Set(current.filter { $0.ownUin == newOwnUin }.map { $0.host.lowercased() })
+        var next: [Home] = keepSource ? current : current.filter { $0.ownUin != oldOwnUin }
+        for h in current where h.ownUin == oldOwnUin && !taken.contains(h.host.lowercased()) {
+            next.append(Home(ownUin: newOwnUin, host: h.host, uin: h.uin, jwt: h.jwt,
+                             addedAt: h.addedAt, auto: h.auto))
+        }
+        persist(next)
+    }
+
     private func all() -> [Home] {
         guard let data = defaults.data(forKey: Self.homesKey),
               let list = try? JSONDecoder().decode([Home].self, from: data) else { return [] }
@@ -936,6 +967,93 @@ final class GroupSenderKeyStore {
         defaults.set(l, forKey: Self.ownedKey)
     }
 
+    /// UIN-move bookkeeping: the inbound chains, owned kids and held
+    /// broadcasts filed under `old` are re-filed under `new`. Our own OUTBOUND
+    /// chains are dropped instead (below).
+    ///
+    /// ⚠ The chains of a room on ANOTHER island are filed here under the HOME
+    /// uin too, even though our member number in that room is the guest uin
+    /// there, which a home move does not change. So after a move every
+    /// broadcast from that room showed an unknown kid, was held and asked for
+    /// again, while its senders still counted us as served and never re-sent
+    /// on their own. Rooms with several active senders stayed dark for hours.
+    ///
+    /// ⚠⚠ Outbound chains are NOT carried to the new number. Every receiver
+    /// bound our kid to the uin that sealed its SKDM (`acceptSkdm` stores that
+    /// sender), credits each broadcast to that stored uin, and refuses the same
+    /// kid re-sent from any other uin. The members did not change, so a
+    /// carried chain's `distributed` list still covers all of them:
+    /// `prepareOwnSend` would never rotate, no SKDM would go out under the new
+    /// number, and every post after the move would read as coming from the
+    /// retired one until somebody left the room. With no chain under the new
+    /// uin, the first post rotates to a fresh kid and distributes it sealed
+    /// from the new uin. Foreign rooms lose nothing: this client holds an
+    /// outbound chain only for a room on its own island, because
+    /// `sendGroupEnvelope` sends foreign rooms per member before any chain is
+    /// touched.
+    ///
+    /// Owned kids ARE carried, so an echo of a broadcast sent before the move
+    /// is still recognised as ours instead of asking the room for its key.
+    ///
+    /// Local only and grants nothing: each inbound chain was accepted from a
+    /// signed SKDM and stays bound to the sender key it came with. Call it
+    /// ONLY after the island proved the move, never on a socket frame.
+    ///
+    /// An entry the new uin already holds wins over the one being moved.
+    /// `keepSource` copies instead of moving, for the case of another local
+    /// account still holding the old number; its outbound chains stay put.
+    func rekeyOwner(old: Int, new: Int, keepSource: Bool = false) {
+        guard old != new else { return }
+        lock.lock(); defer { lock.unlock() }
+        let oldPrefix = "\(old):"
+        func rekeyMap<V>(_ m: [String: V]) -> [String: V]? {
+            var out = m
+            var changed = false
+            for (k, v) in m where k.hasPrefix(oldPrefix) {
+                let target = "\(new):" + k.dropFirst(oldPrefix.count)
+                if out[target] == nil { out[target] = v }
+                if !keepSource { out[k] = nil }
+                changed = true
+            }
+            return changed ? out : nil
+        }
+        if let next = rekeyMap(loadIn()) { saveIn(next) }
+        // Dropped, never moved: see above. With `keepSource` they stay with
+        // the other local account that still holds the old number.
+        if !keepSource {
+            let out = loadOut()
+            if out.keys.contains(where: { $0.hasPrefix(oldPrefix) }) {
+                saveOut(out.filter { !$0.key.hasPrefix(oldPrefix) })
+            }
+        }
+
+        let owned = loadOwned()
+        if owned.contains(where: { $0.hasPrefix(oldPrefix) }) {
+            var next: [String] = []
+            for entry in owned {
+                if entry.hasPrefix(oldPrefix) {
+                    let target = "\(new):" + entry.dropFirst(oldPrefix.count)
+                    if keepSource { next.append(entry) }
+                    if !next.contains(target) && !owned.contains(target) { next.append(target) }
+                } else if !next.contains(entry) {
+                    next.append(entry)
+                }
+            }
+            saveOwned(Array(next.prefix(Self.ownedCap)))
+        }
+
+        var held = loadHeld()
+        if let moving = held[String(old)], !moving.isEmpty {
+            var target = held[String(new)] ?? []
+            for h in moving where !target.contains(where: { $0.kid == h.kid && $0.epoch == h.epoch && $0.index == h.index }) {
+                target.append(h)
+            }
+            held[String(new)] = target
+            if !keepSource { held[String(old)] = nil }
+            saveHeld(held)
+        }
+    }
+
     private func outK(_ ownUin: Int, _ gid: Int) -> String { "\(ownUin):\(gid)" }
     private func inK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
     private func ownedK(_ ownUin: Int, _ kid: String) -> String { "\(ownUin):\(kid)" }
@@ -1154,5 +1272,42 @@ final class GroupSenderKeyStore {
         all[String(ownUin)] = rest.isEmpty ? nil : rest
         saveHeld(all)
         return taken
+    }
+}
+
+/// The stores that are keyed by the HOME uin and have to follow the account
+/// onto its new number when that number changes.
+///
+/// ⚠ Island-proven moves only: the migrate/activate response on the device
+/// that made the move, or `moved_from` from `/auth/refresh` on every other
+/// device and on a launch that slept through it. Never the `account_moved`
+/// frame on its own word, or a forged frame could file one number's backup
+/// logins and room chains under another.
+///
+/// Runs BEFORE anything republishes the signed home record, which is built
+/// from `MultihomeStore.list(ownUin:)` under the new number.
+///
+/// ⚠ Our own sender-key chains are dropped rather than moved (see
+/// `GroupSenderKeyStore.rekeyOwner`): on this client they exist only for
+/// rooms on our own island, and receivers there bound each kid to the old
+/// number, so the first post after the move has to mint a fresh one.
+///
+/// Not here on purpose: `CrossIslandRequestsStore` and `VisitedIslandsStore`
+/// are keyed by the local account UUID, which a move does not change, so
+/// there is nothing in them to re-key on this client.
+enum ProvenMoveRekey {
+    @MainActor
+    static func apply(from old: Int, to new: Int) {
+        guard old > 0, new > 0, old != new else { return }
+        // Two local accounts can hold the same number on two islands, and both
+        // stores are keyed by the bare number. When another account on this
+        // device still holds the old one, copy rather than move, so its backup
+        // logins and chains stay where it reads them.
+        let active = AccountManager.shared.activeAccountID
+        let sharedWithAnother = AccountManager.shared.accounts.contains { a in
+            a.id != active && KeychainStore.string(KeychainStore.Keys.uin, forAccount: a.id) == String(old)
+        }
+        MultihomeStore.shared.rekeyOwner(old: old, new: new, keepSource: sharedWithAnother)
+        GroupSenderKeyStore.shared.rekeyOwner(old: old, new: new, keepSource: sharedWithAnother)
     }
 }

@@ -25,6 +25,12 @@ final class CrossIslandStore: ObservableObject {
     // bleed into another (founder report: `911@api` added on the is2 account
     // showed up on the 911 account, where it read as "I added myself"). The
     // old single global key `rcq.crossisland.contacts.v1` is left orphaned.
+    //
+    // ⚠ The notification extension reads this slot RAW (this file is not in
+    // its target): `NotificationService.pinnedSigningKey` looks up
+    // "uin@host" -> `signing_key` here to refuse a banner for a sender signed
+    // by another key. Renaming the key, the map key or that field breaks the
+    // check without a compile error.
     private static let keyPrefix = "rcq.crossisland.contacts.v1."
     /// §5e stale guard: the `ts` of the last profile refresh we APPLIED, per
     /// `uin@host`. Kept beside the rows (same App Group container, same

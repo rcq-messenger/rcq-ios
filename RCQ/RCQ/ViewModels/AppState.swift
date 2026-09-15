@@ -1454,6 +1454,8 @@ final class AppState: ObservableObject {
         _ call: () async throws -> MigrateOut
     ) async -> MigrationResult {
         let resp: MigrateOut
+        // The number the move leaves, read before anything can replace it.
+        let fromUIN = AuthService.shared.ownUIN
         // Must be set before the POST: server fires `account_burned`
         // before the HTTP response unwinds.
         migratingAccount = true
@@ -1473,7 +1475,7 @@ final class AppState: ObservableObject {
             return .other(error.localizedDescription)
         }
 
-        await applyMovedIdentity(newUIN: resp.new_uin, token: resp.token)
+        await applyMovedIdentity(fromUIN: fromUIN, newUIN: resp.new_uin, token: resp.token)
 
         migratingAccount = false
         return .success(newUIN: resp.new_uin)
@@ -1488,10 +1490,24 @@ final class AppState: ObservableObject {
     /// only the server-side handle moved — so chat history, favourites, archive
     /// and per-chat settings all stay valid and must survive. Wiping them here
     /// is exactly the data loss this whole path exists to undo.
-    private func applyMovedIdentity(newUIN: Int, token: String) async {
+    ///
+    /// Both callers hand in a move the ISLAND proved (the migrate response, or
+    /// `moved_from` from `/auth/refresh`), which is what makes it safe to carry
+    /// number-keyed state from `fromUIN` to `newUIN` below.
+    private func applyMovedIdentity(fromUIN: Int?, newUIN: Int, token: String) async {
         await settleBoot()
         networkReady = false
         WebSocketService.shared.disconnect()
+        // Backup logins and sender-key chains are filed under the home number
+        // and nothing else follows them onto the new one (#986a). Moved here,
+        // before `boot()` republishes the signed home record from the backup
+        // store. The backup poll stops first so a pass already in flight does
+        // not file a fresh chain or token under the number being retired; the
+        // next drain starts it again under the new one.
+        if let fromUIN {
+            Multihome.stopPolling()
+            ProvenMoveRekey.apply(from: fromUIN, to: newUIN)
+        }
         ContactService.shared.wipe()
         // The roster on disk goes with the account (a switch keeps it; see RosterSnapshot).
         // The last-known member names stay: group ids and the other members'
@@ -1600,7 +1616,7 @@ final class AppState: ObservableObject {
                 if creds.uin != announced {
                     print("[move] ⚠ frame said \(announced), refresh said \(creds.uin) - trusting the proof")
                 }
-                await applyMovedIdentity(newUIN: creds.uin, token: creds.token)
+                await applyMovedIdentity(fromUIN: from, newUIN: creds.uin, token: creds.token)
                 return
             case .refused:
                 // Deliberate refusal, and the one case the person has to hear
@@ -2296,7 +2312,17 @@ final class AppState: ObservableObject {
         let resolved: UserStatus = (me.status == .offline) ? .online : me.status
         PresenceService.shared.status = resolved
         PresenceService.shared.statusMessage = me.statusMessage
+        let previousNickname = AuthService.shared.nickname
         AuthService.shared.updateNicknameLocal(me.nickname)
+        // A rename made on another device of this account reaches this one
+        // only here. The copies on the islands THIS install visits are held
+        // by this install alone, so it is the one that has to carry the new
+        // name there (#985(2)). An empty previous name is a first read, not
+        // a rename.
+        if !previousNickname.isEmpty, previousNickname != me.nickname {
+            let nick = me.nickname
+            Task { await CrossIslandGroups.pushNicknameToCopies(nick) }
+        }
         // The same response has carried the picture all along and this was
         // throwing it away, which is why the header had nothing to draw.
         PresenceService.shared.setOwnAvatar(id: me.avatarMediaID, key: me.avatarMediaKey)
