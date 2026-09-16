@@ -1684,3 +1684,33 @@
 "ci.server.card_unavailable" = "Kimin istediğini doğrulamak için %@ adasına ulaşılamadı. Hiçbir şey gönderilmedi. Daha sonra tekrar dene.";
 "burn.sibling_kept" = "%2$@ üzerindeki %1$@ hesabı orada silinemedi ve bu cihazda kalıyor.";
 "burn.sibling_removed" = "%2$@ üzerindeki %1$@ hesabı orada silindi, bu yüzden bu cihazdan da kaldırıldı.";
+
+/* Guest copies through a paid or invite door (spec 2026-09-15, 12.5). %@ is the island host. */
+"guest.join.closed" = "%@ başka adalardan insanları içeri almıyor.";
+"guest.join.room_closed" = "Bu grubun sahibi başka adalardan insanları içeri almıyor.";
+"guest.join.room_full" = "Bu grup, başka adalardan insan alamayacak kadar büyük.";
+"guest.join.room_limit" = "Bugün bu gruba başka adalardan çok fazla kişi katıldı. Yarın tekrar dene.";
+"guest.join.rate" = "Çok fazla deneme. Bir saat sonra tekrar dene.";
+"guest.join.group_limit" = "%@ üzerinde çok fazla gruptasın. Buna katılmak için birinden çık.";
+"guest.join.old_paid" = "%@ adasına yalnızca ödeme yapan sakinler girebiliyor ve sunucusu henüz başka adalardan insan kabul edemiyor.";
+"guest.join.old_invite" = "%@ adasına yalnızca davetle giriliyor ve sunucusu henüz başka adalardan insan kabul edemiyor.";
+"guest.unavailable" = "%@ şu anda misafir kabul edemiyor. Daha sonra tekrar dene.";
+"guest.restricted" = "%@ üzerinde misafirsin: gruplarına katılabilirsin, ama özel sohbetler, aramalar ve geri kalan her şey kendi adandan çalışır.";
+"guest.restricted.contacts" = "Bu isteği kendi adandaki hesabından yanıtla.";
+"guest.copy.banner" = "Bu, %@ üzerindeki gruplar için misafir kopyan.";
+"group.add.foreign.limit" = "Bugün başka adalardan çok fazla kişi eklendi. Yarın tekrar dene.";
+"group.add.foreign.seat_limit" = "Bu kişi zaten birkaç gruba davet edildi ve henüz hiçbir daveti kabul etmedi.";
+"group.add.foreign.stale_key" = "Bu kişinin anahtarları yenilenmiş. Yeni bir kişi bağlantısı iste.";
+"group.add.foreign.guest_adder" = "Bu grupta misafirsin, bu yüzden gruba kimseyi ekleyemezsin.";
+"group.member.guest" = "Başka bir adadan";
+"group.member.invited" = "Davet edildi, henüz katılmadı";
+"group.settings.allow_guests" = "Başka adalardan insanları içeri al";
+"group.leave.last_resident" = "%@ üzerinde yaşayan son üye sensin. Çıkarsan grup herkes için silinecek.";
+"guest.settle.action" = "%@ sakini ol";
+"guest.settle.done" = "Artık %@ üzerinde yaşıyorsun.";
+"guest.settle.number_invite" = "Bu davet kendi numarasıyla geliyor ve misafir kopyasında kullanılamaz. Numarasız bir davet iste.";
+"backup.is_guest_copy" = "%@ üzerindeki hesabın bir misafir kopyası, bu yüzden yedek ada olamaz.";
+"group.add.error.contacts_only" = "Bu kullanıcı grup davetlerini yalnızca kişilerinden kabul ediyor.";
+"group.add.error.nobody" = "Bu kullanıcı grup davetlerini kabul etmiyor.";
+"group.transfer.err.target_guest" = "Başka bir adadan gelen bir üye bu grubun sahibi olamaz.";
+"group_join.gone" = "Bu grup artık yok.";

@@ -62,6 +62,15 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// through `GroupService.ensureRoster` first — sending against an empty
     /// roster delivers to nobody while looking like it worked.
     var members: [RCQGroupMember]
+    /// Owner switch (spec 2026-09-15, 2.2): false keeps NEW people from other
+    /// islands out (self-join by link, an add by a plain member); guests
+    /// already inside stay. True on islands older than the field.
+    var allowGuests: Bool = true
+    /// Did the island send `allow_guests` at all? The owner's toggle (D9) is
+    /// drawn only when it did: on an island that has never heard of the field a
+    /// switch would promise a rule nothing enforces. Not on the wire, so it is
+    /// absent from `CodingKeys` and never encoded.
+    var allowGuestsDeclared: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id, name, description
@@ -82,6 +91,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case badge
         case createdAt = "created_at"
         case members
+        case allowGuests = "allow_guests"
     }
 
     init(from decoder: Decoder) throws {
@@ -105,6 +115,10 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         self.badge = try? c.decodeIfPresent(String.self, forKey: .badge)
         self.createdAt = try c.decode(Date.self, forKey: .createdAt)
         self.members = try c.decode([RCQGroupMember].self, forKey: .members)
+        // Absent on islands older than guest copies, and a stored NULL is
+        // served as true by those that know it (spec 2026-09-15, 2.2).
+        self.allowGuests = ((try? c.decodeIfPresent(Bool.self, forKey: .allowGuests)) ?? nil) ?? true
+        self.allowGuestsDeclared = c.contains(.allowGuests)
         // Older islands do not send it; the roster's own size is right there.
         let declared = (try? c.decodeIfPresent(Int.self, forKey: .memberCount)) ?? 0
         self.memberCount = declared > 0 ? declared : self.members.count
@@ -172,6 +186,13 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
     /// no single viewer to answer for. Nil FAILS OPEN and the next roster read
     /// repaints it.
     var profileOpenable: Bool? = nil
+    /// A guest copy from another island (spec 2026-09-15, 2.3): true for a
+    /// proven guest and for an unclaimed seat alike. The roster says "not from
+    /// here" and never which island. False on islands older than the field.
+    var guest: Bool = false
+    /// An unclaimed seat: a member put these public keys in the room and
+    /// nobody holding the private key has opened it yet. Implies `guest`.
+    var invited: Bool = false
 
     var id: Int { uin }
 
@@ -198,10 +219,13 @@ struct RCQGroupMember: Identifiable, Hashable, Codable {
         case avatarMediaKey = "avatar_media_key"
         case profileOpenable = "profile_openable"
         case badge
+        case guest, invited
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.guest = ((try? c.decodeIfPresent(Bool.self, forKey: .guest)) ?? nil) ?? false
+        self.invited = ((try? c.decodeIfPresent(Bool.self, forKey: .invited)) ?? nil) ?? false
         self.uin = try c.decode(Int.self, forKey: .uin)
         self.nickname = try c.decode(String.self, forKey: .nickname)
         self.role = try c.decode(String.self, forKey: .role)

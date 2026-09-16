@@ -1110,6 +1110,7 @@ struct ChatView: View {
                 nameFor: { vm.senderNickname($0) },
                 avatarFor: { vm.senderAvatar($0) },
                 host: foreignGroupHost,
+                groupID: activeGroupID,
             )
         }
         .sheet(item: $pinnedExpansion) { exp in
@@ -1195,10 +1196,15 @@ struct ChatView: View {
                 // one there, so the home number never marks "own" and the card
                 // is never read from our island.
                 let foreign = foreignGroupHost
+                // A mention or a pin names a member of THIS room, so the same
+                // guest guards the roster puts on that member apply here (D5).
+                let flags = GuestRoster.flags(uin: t.uin, groupID: activeGroupID)
                 UserInfoView(
                     uin: t.uin,
                     isOwn: foreign == nil && t.uin == (AuthService.shared.ownUIN ?? -1),
-                    host: foreign
+                    host: foreign,
+                    guestMember: flags.guest,
+                    invitedSeat: flags.invited
                 )
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -1467,7 +1473,12 @@ struct ChatView: View {
                 // enforced server-side on the call_offer.
                 let live = contacts.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
                 let callsEnabled = (live.callable ?? true)
-                if !isPeerBlocked && !isSelfThread && callsEnabled {
+                // D6: our own session is a guest copy on this island, which
+                // means no calls at all here (spec 6.2). Read straight off the
+                // store rather than observed: this body re-runs constantly, and
+                // the verdict is settled at boot before any chat is open.
+                let guestCopy = GuestSession.shared.isPrimaryGuestCopy
+                if !isPeerBlocked && !isSelfThread && callsEnabled && !guestCopy {
                     let busy = calls.state.isActive
                     Button {
                         CallService.shared.start(toContact: live, media: .audio)

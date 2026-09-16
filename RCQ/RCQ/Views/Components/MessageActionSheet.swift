@@ -195,6 +195,10 @@ struct ReactionsWhoSheet: View {
     /// reactor there is uin@thatIsland, so their card is opened on that island
     /// and never looked up on ours (#985(2)).
     var host: String? = nil
+    /// The room the reactions are in, so a reactor who is a guest copy opens
+    /// the same guarded card the roster gives (decision D5). Nil outside a
+    /// room, where nobody is a guest of anything.
+    var groupID: Int? = nil
     @Environment(\.dismiss) private var dismiss
 
     /// Non-nil = a reactor's row was tapped; their card is pushed onto this
@@ -257,10 +261,13 @@ struct ReactionsWhoSheet: View {
                 set: { if !$0 { openProfileUIN = nil } }
             )) {
                 if let uin = openProfileUIN {
+                    let flags = GuestRoster.flags(uin: uin, groupID: groupID)
                     UserInfoView(
                         uin: uin,
                         isOwn: host == nil && uin == (AuthService.shared.ownUIN ?? -1),
-                        host: host
+                        host: host,
+                        guestMember: flags.guest,
+                        invitedSeat: flags.invited
                     )
                 }
             }

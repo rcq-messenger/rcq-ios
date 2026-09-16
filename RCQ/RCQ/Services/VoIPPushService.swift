@@ -40,6 +40,10 @@ final class VoIPPushService: NSObject {
 
     private func submitTokenIfNeeded(force: Bool = false) async {
         guard let token = voipToken else { return }
+        // A guest copy takes no calls at all (spec 6.3: a call to a guest ends
+        // as `unavailable`), so a VoIP token on it is a device registration for
+        // nothing. Same rule as the APNs twin (D6).
+        guard !GuestSession.shared.isPrimaryGuestCopy else { return }
         guard let uin = AuthService.shared.ownUIN else {
             return
         }

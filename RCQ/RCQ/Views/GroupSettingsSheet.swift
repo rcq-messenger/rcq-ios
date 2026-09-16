@@ -325,6 +325,31 @@ struct GroupSettingsSheet: View {
             }
             .tint(Theme.Color.accent)
 
+            // Owner switch of spec 2026-09-15, 2.2 (decision D9).
+            //
+            // ⚠ OWNER ONLY, said here and not left to the section around it
+            // (decision E1). The island gates `allow_guests` behind the same
+            // check `is_closed` uses in `patch_group`, so a member holding the
+            // `info` capability - who may open this whole sheet and edit the
+            // name, the description, the picture and the pin - would get a
+            // refusal and nothing else. A switch that can only fail is worse
+            // than no switch.
+            //
+            // Drawn only when the island actually sent `allow_guests`: on one
+            // that never heard of the field the toggle would promise a rule
+            // nothing enforces. Own-island rooms only, because the PATCH goes
+            // to our island and a foreign room's id here is a local alias.
+            if amOwner && g.allowGuestsDeclared && g.host == nil {
+                Toggle(isOn: Binding(
+                    get: { g.allowGuests },
+                    set: { v in Task { try? await groups.setAllowGuests(groupID: groupID, allowed: v) } }
+                )) {
+                    Text("group.settings.allow_guests".localized)
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
+                .tint(Theme.Color.accent)
+            }
+
             Toggle(isOn: Binding(
                 get: { g.membersHidden },
                 set: { v in Task { try? await groups.setMembersHidden(groupID: groupID, hidden: v) } }

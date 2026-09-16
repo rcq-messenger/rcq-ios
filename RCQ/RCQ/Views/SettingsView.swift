@@ -294,6 +294,10 @@ struct SettingsView: View {
     @State private var islandPeople: Int?
     @State private var showInvites = false
     @State private var showResidency = false
+    /// D6/D7: this session is a guest copy of this island, and the sheet that
+    /// ends that. Observed, because a settle flips it while this screen is up.
+    @ObservedObject private var guestSession = GuestSession.shared
+    @State private var showSettle = false
     /// Owner-only `resident_since` off the own profile, nil for everybody who
     /// did not pay (founder item 5, 12.09). The residency row reads it, and
     /// the mark is the fallback on an island older than the field.
@@ -457,6 +461,9 @@ struct SettingsView: View {
                     if let fresh = out.invites { invites = fresh }
                     else { Task { invites = await ResidentInvitesAPI.mine() } }
                 }
+            }
+            .sheet(isPresented: $showSettle) {
+                GuestSettleSheet(target: .primary)
             }
             .sheet(isPresented: $showIslandRules) {
                 IslandRulesSheet(
@@ -782,7 +789,9 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var uinSection: some View {
-        if shopAllowedHere || heldUINCount > 0 {
+        // D6: a guest copy cannot buy, hold or switch numbers (spec 10), so
+        // neither the shop nor the drawer of held numbers is drawn for one.
+        if !guestSession.isPrimaryGuestCopy, shopAllowedHere || heldUINCount > 0 {
             Section {
                 if shopAllowedHere {
                     Button {
@@ -875,10 +884,35 @@ struct SettingsView: View {
                 }
             }
             islandTrustRow
+            // D6: this account is a guest copy of this island. Said here, on
+            // the one block that is about the island, and followed by the way
+            // out of it (spec 9.1, D7). ⚠ No price and no link: a code may be
+            // typed into the sheet, nothing may be sold on iOS.
+            if guestSession.isPrimaryGuestCopy {
+                Text(String(format: "guest.copy.banner".localized, islandHost))
+                    .font(.footnote)
+                    .foregroundColor(Theme.Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    showSettle = true
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.seal.fill").foregroundColor(Theme.Color.accent)
+                        Text(String(format: "guest.settle.action".localized, islandHost))
+                            .foregroundColor(Theme.Color.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
+                }
+            }
             // Residency, and the invites it pays for, one under the other
             // (founder item 5, 12.09).
             residencyRow
-            if let invites, invites.isVisible {
+            // A guest copy hands out no invites: it is not a resident, and the
+            // island answers its `/invites` with nothing anyway (D6).
+            if let invites, invites.isVisible, !guestSession.isPrimaryGuestCopy {
                 Button {
                     showInvites = true
                 } label: {
@@ -1350,7 +1384,10 @@ struct SettingsView: View {
                 Spacer()
             }
             .settingsSearchRow(.residency, highlight: highlightedRow)
-        } else if appState.serverCapabilities.entryPriceCents > 0 {
+        } else if appState.serverCapabilities.entryPriceCents > 0, !guestSession.isPrimaryGuestCopy {
+            // A guest copy converts through `/auth/guest/settle` and not
+            // through `/residency/redeem` (spec 9.1): its own row is right
+            // above, and two doors to one thing is one door too many.
             Button {
                 showResidency = true
             } label: {
@@ -2314,6 +2351,8 @@ struct BackupIslandView: View {
                 case Multihome.AddError.primaryIsland: message = "multihome.err.primary".localized
                 case Multihome.AddError.alreadyAdded: message = "multihome.err.already".localized
                 case Multihome.AddError.doorRefused(let refusal): message = Self.doorMessage(refusal)
+                case Multihome.AddError.guestCopy(let guestHost):
+                    message = String(format: "backup.is_guest_copy".localized, guestHost)
                 // No detail in brackets: it was the island's raw HTTP answer (#988).
                 default: message = "multihome.err.generic".localized
                 }

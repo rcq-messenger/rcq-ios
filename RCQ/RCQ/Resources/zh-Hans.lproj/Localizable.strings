@@ -1675,3 +1675,33 @@
 "ci.server.card_unavailable" = "无法连接岛 %@ 来核实请求者。什么都没有发送。请稍后再试。";
 "burn.sibling_kept" = "%2$@ 上的账号 %1$@ 未能在那里删除，仍保留在此设备上。";
 "burn.sibling_removed" = "%2$@ 上的账号 %1$@ 已在那里删除，因此也已从此设备移除。";
+
+/* Guest copies through a paid or invite door (spec 2026-09-15, 12.5). %@ is the island host. */
+"guest.join.closed" = "%@ 不接纳来自其他岛的人。";
+"guest.join.room_closed" = "这个群组的群主不接纳来自其他岛的人。";
+"guest.join.room_full" = "这个群组太大，无法再接纳来自其他岛的人。";
+"guest.join.room_limit" = "今天加入这个群组的其他岛的人太多了。请明天再试。";
+"guest.join.rate" = "尝试次数太多。请一小时后再试。";
+"guest.join.group_limit" = "你在 %@ 上加入的群组太多了。退出一个才能加入这个。";
+"guest.join.old_paid" = "只有付费居民才能进入 %@，而它的服务器暂时还不能接纳来自其他岛的人。";
+"guest.join.old_invite" = "%@ 仅限邀请加入，而它的服务器暂时还不能接纳来自其他岛的人。";
+"guest.unavailable" = "%@ 现在无法接纳访客。请稍后再试。";
+"guest.restricted" = "你在 %@ 上是访客：可以参与它的群组，但私聊、通话和其他一切都要从你的家岛使用。";
+"guest.restricted.contacts" = "请用你家岛上的账号回应这个请求。";
+"guest.copy.banner" = "这是你在 %@ 上用于群组的访客副本。";
+"group.add.foreign.limit" = "今天添加的其他岛的人太多了。请明天再试。";
+"group.add.foreign.seat_limit" = "这个人已被邀请进好几个群组，还没有接受任何邀请。";
+"group.add.foreign.stale_key" = "这个联系人的密钥已更新。请向对方要一个新的联系人链接。";
+"group.add.foreign.guest_adder" = "你在这个群组里是访客，不能往群里添加人。";
+"group.member.guest" = "来自其他岛";
+"group.member.invited" = "已邀请，尚未加入";
+"group.settings.allow_guests" = "接纳来自其他岛的人";
+"group.leave.last_resident" = "你是最后一个住在 %@ 上的成员。如果你退出，群组会对所有人删除。";
+"guest.settle.action" = "成为 %@ 的居民";
+"guest.settle.done" = "你现在住在 %@ 上了。";
+"guest.settle.number_invite" = "这个邀请自带号码，不能用于访客副本。请要一个不带号码的邀请。";
+"backup.is_guest_copy" = "你在 %@ 上的账号是访客副本，不能作为备用岛。";
+"group.add.error.contacts_only" = "该用户只接收联系人的群组邀请。";
+"group.add.error.nobody" = "该用户不接收群组邀请。";
+"group.transfer.err.target_guest" = "来自其他岛的成员不能拥有这个群组。";
+"group_join.gone" = "这个群组已经不存在了。";

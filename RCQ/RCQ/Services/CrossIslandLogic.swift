@@ -877,3 +877,694 @@ struct StrictJSON {
         isDigit(c) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66)
     }
 }
+
+// MARK: - C-G: guest copies through a paid or invite door (spec 2026-09-15)
+
+/// Which join and add paths an island gets (spec 12.1, `decideGuestPath`). The
+/// same table on Android, the web and here.
+enum GuestPath: Equatable, Sendable {
+    /// Today's paths: recover-first then `/auth/register` for a self-join,
+    /// `uin-for-key` -> `/auth/register` -> `/members` for an owner-add.
+    case legacy
+    /// `POST /auth/guest/challenge` + `POST /auth/guest` for a self-join,
+    /// `POST /groups/{id}/guests` for an owner-add.
+    case guest
+
+    /// nil (the island did not answer) and anything but true are legacy.
+    static func decide(advertised: Bool?) -> GuestPath {
+        advertised == true ? .guest : .legacy
+    }
+
+    /// From a raw `/server/info` body: `capabilities.guest_accounts_v1` has to
+    /// be exactly JSON `true`. No body, a body that is not strict JSON, a
+    /// missing field, `"true"`, `1` and `null` are all legacy.
+    ///
+    /// ⚠ Legacy on every doubt, on purpose. It is what every island older than
+    /// the field gets, and on an island that does admit guests it fails the
+    /// way it fails today (the door sentence), never by creating anything.
+    static func decide(serverInfo body: Data?) -> GuestPath {
+        guard let body, body.count <= BackupAutoPick.infoBodyCap,
+              let obj = BackupAutoPick.strictObject(body),
+              let caps = obj["capabilities"] as? [String: Any],
+              let flag = caps["guest_accounts_v1"] as? NSNumber,
+              CFGetTypeID(flag) == CFBooleanGetTypeID() else { return .legacy }
+        return flag.boolValue ? .guest : .legacy
+    }
+}
+
+/// The signed bytes of an `rcq-guest-v1` proof (spec 4.3), byte for byte the
+/// island's `app/services/guest_proof.py`. `Tools/GuestProofCheck` pins them
+/// against `fixtures/guest-proof-v1.json`, copied verbatim from rcq-server-ref.
+///
+/// UTF-8, six fields joined by a single 0x0A, no trailing newline:
+///
+///     rcq-guest-v1
+///     <canonical host>   lowercase, ":port" only when not 443
+///     <group id>         decimal ASCII, the room id ON THAT ISLAND
+///     <identity key>     standard padded base64 of the 32 X25519 bytes
+///     <signing key>      standard padded base64 of the 32 Ed25519 bytes
+///     <challenge>        verbatim, as `/auth/guest/challenge` handed it out
+///
+/// The signature itself is made where the private key lives
+/// (`CrossIslandGroups`), with CryptoKit; nothing here holds a key.
+enum GuestProof {
+    static let prefix = "rcq-guest-v1"
+    static let version = 1
+
+    /// `reissue_proof.canonical_host`: trimmed and lowercased, a trailing dot
+    /// dropped, the port kept only when it is not 443, brackets around an IPv6
+    /// literal kept. The island canonicalises the host it was SENT and checks
+    /// the signature over that, so the client has to sign the same spelling.
+    static func canonicalHost(_ value: String) -> String {
+        var host = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var port = ""
+        if host.hasPrefix("[") {
+            if let end = host.firstIndex(of: "]") {
+                let after = host.index(after: end)
+                if after < host.endIndex, host[after] == ":" {
+                    port = String(host[host.index(after: after)...])
+                    host = String(host[...end])
+                }
+            }
+        } else if host.filter({ $0 == ":" }).count == 1, let colon = host.firstIndex(of: ":") {
+            port = String(host[host.index(after: colon)...])
+            host = String(host[..<colon])
+        }
+        while host.hasSuffix(".") { host.removeLast() }
+        if !port.isEmpty && port != "443" { return "\(host):\(port)" }
+        return host
+    }
+
+    /// `reissue_proof.decode_key32`: standard base64 with or without padding,
+    /// exactly 32 bytes, nil for anything else (the URL-safe alphabet too).
+    static func decodeKey32(_ value: String) -> Data? {
+        var raw = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty,
+              raw.utf8.allSatisfy({ isStandardBase64($0) || $0 == UInt8(ascii: "=") }) else { return nil }
+        let rem = raw.utf8.count % 4
+        if rem != 0 { raw += String(repeating: "=", count: 4 - rem) }
+        guard let data = Data(base64Encoded: raw), data.count == 32 else { return nil }
+        return data
+    }
+
+    /// The spelling that is signed: standard padded base64.
+    static func canonicalKey(_ raw: Data) -> String { raw.base64EncodedString() }
+
+    /// The proof bytes, or nil for input that cannot be one line of the
+    /// layout: a room id that is not positive, a key that is not 32 bytes, an
+    /// empty host or challenge, or either carrying a line break (a field with
+    /// one inside would shift every field after it).
+    ///
+    /// ⚠ Line breaks are looked for in the UTF-8 BYTES. In Swift `"\r\n"` is
+    /// one Character, so `String.contains("\n")` answers false for it.
+    static func proofBytes(
+        host: String,
+        groupId: Int,
+        identityKey: Data,
+        signingKey: Data,
+        challenge: String
+    ) -> Data? {
+        guard groupId > 0, identityKey.count == 32, signingKey.count == 32 else { return nil }
+        let hostLine = canonicalHost(host)
+        guard !hostLine.isEmpty, !hasLineBreak(hostLine),
+              !challenge.isEmpty, !hasLineBreak(challenge) else { return nil }
+        let lines = [
+            prefix,
+            hostLine,
+            String(groupId),
+            canonicalKey(identityKey),
+            canonicalKey(signingKey),
+            challenge,
+        ]
+        return Data(lines.joined(separator: "\n").utf8)
+    }
+
+    /// The JSON body of `POST /auth/guest` (spec 4.2). `host` goes as dialled:
+    /// the island canonicalises it and checks it against its own names. No
+    /// `device_id`, like the recover this path replaces, and nothing about the
+    /// home island: the proof carries this island's host, never ours.
+    static func requestBody(
+        host: String,
+        groupId: Int,
+        nickname: String,
+        identityKey: Data,
+        signingKey: Data,
+        challenge: String,
+        signature: Data
+    ) -> [String: Any] {
+        [
+            "v": version,
+            "host": host,
+            "group_id": groupId,
+            "nickname": nickname,
+            "identity_key": canonicalKey(identityKey),
+            "signing_key": canonicalKey(signingKey),
+            "challenge": challenge,
+            "signature": signature.base64EncodedString(),
+        ]
+    }
+
+    private static func hasLineBreak(_ s: String) -> Bool {
+        s.utf8.contains(0x0A) || s.utf8.contains(0x0D)
+    }
+
+    private static func isStandardBase64(_ c: UInt8) -> Bool {
+        (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || (c >= 0x30 && c <= 0x39)
+            || c == UInt8(ascii: "+") || c == UInt8(ascii: "/")
+    }
+}
+
+/// The body of the LEGACY self-join registration, on an island that does not
+/// advertise `guest_accounts_v1`. Two differences from what this client sent
+/// before (spec 12.1): the register challenge and its signature go along when
+/// the island handed out a challenge, and there is never a `desired_uin`, so a
+/// copy is not parked on our home number.
+enum LegacyGuestRegister {
+    static func body(
+        nickname: String,
+        identityKey: String,
+        signingKey: String,
+        challenge: String?,
+        signature: String?
+    ) -> [String: String] {
+        var out = [
+            "nickname": nickname,
+            "identity_key": identityKey,
+            "signing_key": signingKey,
+        ]
+        if let challenge, let signature, !challenge.isEmpty, !signature.isEmpty {
+            out["challenge"] = challenge
+            out["signature"] = signature
+        }
+        return out
+    }
+}
+
+/// An island's refusal as the guest paths read it: the status and
+/// `detail.code`, plus `detail.scope` for `guest_add_limit`. Parsed exactly,
+/// never by substring (spec 12.1, "Errors"): a proxy page that contains a code
+/// word is not the island saying it.
+struct IslandRefusal: Equatable, Sendable {
+    let status: Int
+    let code: String?
+    let scope: String?
+
+    init(status: Int, code: String?, scope: String? = nil) {
+        self.status = status
+        self.code = code
+        self.scope = scope
+    }
+
+    /// A dependency limiter answers `{"detail": {"code": "rate_limited", ...}}`
+    /// too, so one reader covers every refusal on these routes.
+    ///
+    /// A bare-string `detail` counts as a code only when it is spelled like
+    /// one (`island_busy`, the pool-exhaustion answer of every route). FastAPI's
+    /// own "Not Found" and the English prose of `add_member` are not codes:
+    /// reading them as one would turn "this island has no such route" into a
+    /// refusal and skip the legacy fallback.
+    static func parse(status: Int, body: Data) -> IslandRefusal {
+        guard body.count <= BackupAutoPick.infoBodyCap,
+              let obj = BackupAutoPick.strictObject(body) else {
+            return IslandRefusal(status: status, code: nil)
+        }
+        if let bare = obj["detail"] as? String {
+            return IslandRefusal(status: status, code: looksLikeCode(bare) ? bare : nil)
+        }
+        guard let detail = obj["detail"] as? [String: Any] else {
+            return IslandRefusal(status: status, code: nil)
+        }
+        return IslandRefusal(status: status, code: detail["code"] as? String, scope: detail["scope"] as? String)
+    }
+
+    /// `[a-z][a-z0-9_]*`, at most 64 bytes.
+    static func looksLikeCode(_ s: String) -> Bool {
+        let u = Array(s.utf8)
+        guard let first = u.first, u.count <= 64, first >= 0x61, first <= 0x7A else { return false }
+        return u.allSatisfy { ($0 >= 0x61 && $0 <= 0x7A) || ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x5F }
+    }
+}
+
+/// What the self-join does after one answer from `POST /auth/guest` (or its
+/// challenge), in the order of spec 12.1.
+enum GuestJoinStep: Equatable, Sendable {
+    /// Ask for a fresh challenge and try once more.
+    case retryWithFreshChallenge
+    /// The key was retired by a signed key change elsewhere: the
+    /// rotated-elsewhere sentence, and NEVER a wipe (C0, P0.2).
+    case rotated
+    /// The island does not have the route after all (404 or 405 without a
+    /// code): take the legacy path.
+    case legacy
+    /// No answer, or a 5xx: one recover-first attempt, and its credentials if
+    /// it returns any.
+    case recoverFallback
+    /// Terminal. The code picks the sentence (`GuestSentence.join`).
+    case refused(IslandRefusal)
+
+    static let retryableCodes: Set<String> = ["invalid_challenge", "guest_replayed", "guest_busy"]
+
+    /// `refusal` nil means nothing answered at all. `retried` is true once the
+    /// one fresh-challenge retry has been spent.
+    static func after(_ refusal: IslandRefusal?, retried: Bool) -> GuestJoinStep {
+        guard let refusal else { return .recoverFallback }
+        if let code = refusal.code {
+            if code == "identity_rotated" { return .rotated }
+            if retryableCodes.contains(code) { return retried ? .refused(refusal) : .retryWithFreshChallenge }
+            if refusal.status >= 500 { return .recoverFallback }
+            return .refused(refusal)
+        }
+        if refusal.status == 404 || refusal.status == 405 { return .legacy }
+        if refusal.status >= 500 || refusal.status == 0 { return .recoverFallback }
+        return .refused(refusal)
+    }
+}
+
+/// Localisation keys for the refusals of spec 11, mapped as in 12.5. The same
+/// table on Android (`GuestPath.joinSentence` / `addSentence`) and the web
+/// (`guestJoinErrorKey` / `groupAddErrorKey`). Every key takes the island host
+/// as its only `%@` where it names one; formatting a key without one with the
+/// host is harmless. Nil means "no specific sentence": the caller shows its
+/// generic one (`joinGeneric`, `addGeneric`), never the island's own text.
+enum GuestSentence {
+    /// The line for a join that failed with no code this table knows.
+    static let joinGeneric = "group_join.error.generic"
+    /// The line for an add that failed with no code this table knows.
+    static let addGeneric = "group.add.error.forbidden"
+
+    /// Codes that only mean "the island cannot mint right now": a spent or
+    /// stale challenge after the one silent retry, the create lock held, the
+    /// island ceiling in front of the mint, and Redis being down.
+    static let unavailableCodes: Set<String> = [
+        "invalid_challenge", "guest_replayed", "guest_busy", "island_busy", "guest_unavailable",
+    ]
+
+    /// A self-join: `/auth/guest`, the `/groups/{id}/join` right after it, or
+    /// the legacy registration's door.
+    static func join(_ refusal: IslandRefusal) -> String? {
+        if let code = refusal.code, unavailableCodes.contains(code) { return "guest.unavailable" }
+        switch refusal.code {
+        case "guest_closed": return "guest.join.closed"
+        // `allow_guests` off on this room.
+        case "guest_room_closed": return "guest.join.room_closed"
+        // The room member ceiling.
+        case "guest_room_full": return "guest.join.room_full"
+        case "guest_room_limit": return "guest.join.room_limit"
+        case "rate_limited": return "guest.join.rate"
+        case "guest_group_limit": return "guest.join.group_limit"
+        case "guest_restricted": return "guest.restricted"
+        // The legacy path on an island whose door is shut and whose server
+        // cannot take guests yet.
+        case "entry_required": return "guest.join.old_paid"
+        case "invite_required", "invite_invalid": return "guest.join.old_invite"
+        // The existing code and meaning: a closed room needs an add.
+        case "group_closed": return "group_join.closed_hint"
+        case "blocked": return "group_join.error.blocked"
+        // The room is gone. `/auth/guest` answers it for a room id that names
+        // nothing on that island, and so does the room's own self-join. The
+        // web said so from the start and Android named it later; without it
+        // one refusal read as "couldn't join" here and "this group is gone"
+        // there, for the same answer (E2, one table on every client).
+        case "group_not_found": return "group_join.gone"
+        // A self-join mints no seat, so in practice only the owner-add route
+        // answers this. Mapped all the same, so the three tables match one for
+        // one and a code cannot fall through to the generic line on one client
+        // and be named on another.
+        case "guest_key_retired": return "group.add.foreign.stale_key"
+        case "target_guest": return "group.transfer.err.target_guest"
+        // ⚠ NO sentence, on purpose (F2, 16.09). The key was retired by a
+        // signed key change made on another device, and that answer opens the
+        // account's rotated-elsewhere notice, which says the whole thing. A
+        // second sentence beside the notice tells one refusal twice, and the
+        // generic "couldn't join" is worse than that: it reads as something a
+        // retry could fix. Callers ask `noticeOnly` and show nothing at all.
+        // Android stops at the same place (`Session.joinFailureSentence`
+        // returns null for `Sentence.ROTATED`) and the web returns before it
+        // sets an error.
+        case "identity_rotated": return nil
+        default: break
+        }
+        // A limiter that answered in its own shape is still the same wait.
+        if refusal.status == 429 { return "guest.join.rate" }
+        return nil
+    }
+
+    /// A refusal that a notice elsewhere on screen already speaks for: show
+    /// NOTHING beside it, not the mapped sentence and not the generic line
+    /// (F2, 16.09). Only `identity_rotated` is one, because only it opens a
+    /// screen of its own (the rotated-elsewhere notice, P0.2).
+    ///
+    /// ⚠ Asked BEFORE the tables below, by every caller that prints a
+    /// sentence: `join` returning nil for this code would otherwise fall
+    /// through to the caller's generic line, which is the second sentence this
+    /// rule exists to keep off the screen.
+    static func noticeOnly(_ refusal: IslandRefusal) -> Bool {
+        refusal.code == "identity_rotated"
+    }
+
+    /// An owner-add: `POST /groups/{id}/guests`, or the legacy `/members`
+    /// after `uin-for-key` / `/auth/register`. `prose` is the body of a
+    /// refusal that carried no code: a native `add_member` still answers in
+    /// three English sentences, and only a substring can read those.
+    static func add(_ refusal: IslandRefusal, prose: String? = nil) -> String? {
+        switch refusal.code {
+        case "guest_restricted": return "group.add.foreign.guest_adder"
+        case "guest_room_closed": return "guest.join.room_closed"
+        case "guest_closed": return "guest.join.closed"
+        case "guest_room_full": return "guest.join.room_full"
+        case "guest_room_limit": return "guest.join.room_limit"
+        case "guest_group_limit": return "guest.join.group_limit"
+        case "guest_add_limit": return refusal.scope == "seat" ? "group.add.foreign.seat_limit" : "group.add.foreign.limit"
+        case "guest_key_retired": return "group.add.foreign.stale_key"
+        // "Not right now", whichever part of the island said it: the mint is
+        // busy, the island ceiling sits in front of it, or a challenge went
+        // stale. The last two reach an add through the copy's own token
+        // re-mint, and the web names them here too (E2).
+        case "guest_busy", "island_busy", "guest_unavailable", "invalid_challenge", "guest_replayed":
+            return "guest.unavailable"
+        case "target_guest": return "group.transfer.err.target_guest"
+        case "rate_limited": return "guest.join.rate"
+        case "blocked": return "group.add.error.blocked"
+        case "invite_contacts_only": return "group.add.error.contacts_only"
+        case "invite_nobody": return "group.add.error.nobody"
+        default: break
+        }
+        let m = (prose ?? "").lowercased()
+        if m.contains("the group owner has blocked this user") { return "group.add.error.blocked" }
+        if m.contains("only accepts group invites from their contacts") { return "group.add.error.contacts_only" }
+        if m.contains("does not accept group invites") { return "group.add.error.nobody" }
+        // The island has no row for that number at all. Android says so
+        // (`GuestPath` NO_USER) and the web says so, and without this row the
+        // same refusal read "couldn't add this user" here and "this island does
+        // not know them" there (E2, one table on every client). The sentence is
+        // the one the transfer screen already ships in every locale.
+        if m.contains("no such user") { return "group.transfer.err.no_such_user" }
+        if refusal.status == 429 { return "guest.join.rate" }
+        return nil
+    }
+
+    /// `POST /groups/{id}/transfer-owner`: the codes this spec added. The
+    /// older codes keep `GroupService.TransferOwnerError`.
+    static func transfer(_ refusal: IslandRefusal) -> String? {
+        refusal.code == "target_guest" ? "group.transfer.err.target_guest" : nil
+    }
+
+    /// `POST /contacts/respond` refused on a guest copy (spec 10, F1).
+    static func respond(_ refusal: IslandRefusal) -> String? {
+        refusal.code == "guest_restricted" ? "guest.restricted.contacts" : nil
+    }
+}
+
+/// The name a guest copy or an owner-added seat is created under (decision D1).
+///
+/// ⚠⚠ Never the home number. `user-<uin>` is the fallback name other paths
+/// use, and the uin in it is the person's number on their HOME island: the one
+/// thing a guest copy exists not to tell the island it lives on. The island
+/// requires a name (1..64 on `/auth/guest`, `/auth/register` and
+/// `/groups/{id}/guests`), so a missing one becomes a neutral word.
+enum GuestNickname {
+    static let neutral = "Guest"
+
+    /// The name to send, or `neutral` when there is none or it carries one of
+    /// `homeUins` as a run of digits of its own (`user-12345`, `12345`, and a
+    /// recovered account whose name fell back to its number).
+    static func wire(_ nickname: String?, homeUins: [Int]) -> String {
+        guard let real = usable(nickname, homeUins: homeUins) else { return neutral }
+        return real
+    }
+
+    /// The name itself when it may reach another island, nil when it may not.
+    /// A rename of the copies uses this: no name is better than `Guest` there.
+    static func usable(_ nickname: String?, homeUins: [Int]) -> String? {
+        let trimmed = (nickname ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let clamped = String(trimmed.prefix(64))
+        let runs = digitRuns(clamped)
+        for uin in homeUins where uin > 0 && runs.contains(String(uin)) { return nil }
+        return clamped
+    }
+
+    private static func digitRuns(_ s: String) -> Set<String> {
+        var out = Set<String>()
+        var cur = ""
+        for u in s.unicodeScalars {
+            if u.value >= 0x30 && u.value <= 0x39 {
+                cur.unicodeScalars.append(u)
+            } else if !cur.isEmpty {
+                out.insert(cur)
+                cur = ""
+            }
+        }
+        if !cur.isEmpty { out.insert(cur) }
+        // A zero-padded spelling of the number is the number.
+        return Set(out.map { run in
+            let stripped = run.drop { $0 == "0" }
+            return stripped.isEmpty ? "0" : String(stripped)
+        })
+    }
+}
+
+/// Owner-add rules that need no network (spec 12.1, "Owner-add").
+enum GuestAddRule {
+    /// The contact's card, fetched again from their home just before the add,
+    /// names keys other than the ones pinned here: stop, the card we would put
+    /// in the room is stale. Compared as decoded bytes, so the padded and the
+    /// unpadded spelling of one key are the same key. A card key that does not
+    /// decode is a different key.
+    static func cardIsStale(
+        pinnedIdentityKey: String,
+        pinnedSigningKey: String,
+        cardIdentityKey: String,
+        cardSigningKey: String
+    ) -> Bool {
+        !sameKey(pinnedIdentityKey, cardIdentityKey) || !sameKey(pinnedSigningKey, cardSigningKey)
+    }
+
+    private static func sameKey(_ a: String, _ b: String) -> Bool {
+        if let x = GuestProof.decodeKey32(a), let y = GuestProof.decodeKey32(b) { return x == y }
+        return a.trimmingCharacters(in: .whitespacesAndNewlines) == b.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Spec 7: what a frame that arrived as part of a ROOM (a `group_id` on the
+/// queue row, the socket packet or the room log) may carry. Its content renders
+/// only in that room's thread, and the kinds below, which only mean something
+/// between two people, are dropped and acked without being acted on.
+///
+/// ⚠ Why the island cannot do this for us: `/messages/group-sealed` takes any
+/// subset of members and never checks the sender, so a member can put a
+/// payload in front of exactly one other member and the island stores and
+/// wakes it like a room post. A guest copy exists to take part in rooms, and
+/// this is the rule that keeps a room from being used as a 1:1 channel to it.
+///
+/// The list is the same on Android (`GroupFrameRule.oneToOneOnly`) and the web.
+/// Every kind in it travels 1:1 on this client (`/messages/sealed` to one uin,
+/// never `/messages/group-sealed`), which is why dropping it inside a room
+/// frame costs the room nothing:
+/// * `gskey` / `gsknack`: `MessageService.sendRoomKey` / `sendRoomKeyAsk`,
+///   sealed to one member under the `skdm` / `sknack` outer types. Sender keys
+///   proper (`skdm`, `sknack`) DO ride group-sealed and are not in this list.
+/// * `pkey` / `pkeyask`: `ProfileKeyService`, to one contact.
+/// * `carbon` (and the `readmark` and `ciack` inside one): to our own uin.
+/// * `secscreen` / `shot`: per-chat toggles, `sendEnvelope` to one contact.
+/// * `homerec`: `pushHomeRecordToContacts`, to each contact.
+/// * `contactreq`, `call`, `profile`, `visit`: cross-island 1:1 deposits.
+enum GroupFrameRule {
+    /// Inner `kind` names as this client's `Envelope` encodes them, and ⚠ the
+    /// WIRE is what they are read from, never the prose of the spec: the
+    /// screenshot notice travels as `shot` (the `screenshotTaken` case encodes
+    /// and decodes exactly that), and the secure-screen notice as `secscreen`.
+    /// A list naming `screenshot` would compile, pass a table test and drop
+    /// nothing at all. `Tools/GuestProofCheck` pins every name here against
+    /// the encoder and the decoder in `CryptoService.swift` and against the
+    /// ingest switch in `MessageService.swift` (E3, 16.09).
+    static let oneToOneOnlyKinds: Set<String> = [
+        "contactreq", "ciack", "pkey", "pkeyask", "profile", "visit", "call", "carbon",
+        "readmark", "homerec", "gskey", "gsknack", "secscreen", "shot",
+    ]
+
+    static func dropsInGroupFrame(kind: String) -> Bool { oneToOneOnlyKinds.contains(kind) }
+}
+
+// MARK: - what the screens may offer (decisions D5, D6, D8)
+
+/// One roster row, as the guest rules read it. The island sends both flags on
+/// every member (spec 2.3): `guest` for a proven copy AND for an unclaimed
+/// seat, `invited` for the seat alone.
+struct RosterMemberFlags: Equatable, Sendable {
+    let uin: Int
+    let guest: Bool
+    let invited: Bool
+
+    init(uin: Int, guest: Bool, invited: Bool) {
+        self.uin = uin
+        self.guest = guest
+        self.invited = invited
+    }
+
+    /// Not a person who lives on this room's island: a copy, or a seat nobody
+    /// has opened yet.
+    var isCopy: Bool { guest || invited }
+}
+
+/// What a member row from another island may offer (spec 12.1 "Rosters",
+/// decision D5). The same table on Android and the web.
+///
+/// ⚠ The point is not politeness. A copy has no 1:1 anything on this island:
+/// a message to it is dropped, a call to it ends as `unavailable` (spec 6.3),
+/// and a visit ping would tally a view on a mailbox. The one thing that DOES
+/// reach the person is a contact request addressed to the copy, which their
+/// home client picks up through C1 pending polling, so that is the one action
+/// left standing. An unclaimed seat has nobody behind it at all yet, so it
+/// does not even get that.
+enum GuestRosterRule {
+    /// The line under the name, or nil for a member who lives here.
+    static func label(guest: Bool, invited: Bool) -> String? {
+        if invited { return "group.member.invited" }
+        if guest { return "group.member.guest" }
+        return nil
+    }
+
+    static func canMessage(guest: Bool, invited: Bool) -> Bool { !(guest || invited) }
+    static func canCall(guest: Bool, invited: Bool) -> Bool { !(guest || invited) }
+    static func sendsVisitPing(guest: Bool, invited: Bool) -> Bool { !(guest || invited) }
+
+    /// Every other action a profile opened from a room offers (open the chat,
+    /// reset the session, block, report) acts on this number ON THIS ISLAND,
+    /// which for a copy is a room mailbox and not the person.
+    static func hasProfileActions(guest: Bool, invited: Bool) -> Bool { !(guest || invited) }
+
+    /// The one surviving action. False only for an unclaimed seat: there is no
+    /// device holding that key, so the request would sit unread until the seat
+    /// expires.
+    static func canAdd(guest: Bool, invited: Bool) -> Bool { !invited }
+}
+
+/// The app's own session is a guest copy (spec 12.1 "Copy signed in as an
+/// account", decision D6): which surfaces are not drawn, and whether a push
+/// token is handed over.
+enum GuestPrimaryRule {
+    /// Named rather than scattered so the three clients hide the same list and
+    /// a reviewer can read it in one place.
+    static let hiddenSurfaces: Set<String> = [
+        "contact_search", "add_contact", "calls", "random", "audio_rooms",
+        "uin_shop", "invites", "sites", "create_group",
+    ]
+
+    static func hides(_ surface: String, guestCopy: Bool) -> Bool {
+        guestCopy && hiddenSurfaces.contains(surface)
+    }
+
+    /// A guest mailbox never wakes a phone (spec 6.2), so no token is sent.
+    static func registersPush(guestCopy: Bool) -> Bool { !guestCopy }
+
+    /// Re-checked on every boot, recover and refresh. ⚠ Nil is "the island did
+    /// not say", which every island older than the field answers, and it keeps
+    /// what was known instead of quietly promoting a copy to a native account.
+    static func next(current: Bool, answered: Bool?) -> Bool { answered ?? current }
+}
+
+/// Spec 8.1 read from the roster (decision D8): the island DELETES a room the
+/// moment no member who lives on it remains, so the warning has to be shown
+/// before the leave, not after.
+enum LastResidentRule {
+    /// What this roster can say about a leave (decision E4, 16.09).
+    enum LeaveCheck: Equatable, Sendable {
+        /// Somebody who lives on the room's island stays behind, or the leaver
+        /// is a copy and strands nobody.
+        case safe
+        /// The room would be left with no resident, and the island deletes it.
+        case warn
+        /// This roster cannot answer: it is empty, it is only a PAGE of a
+        /// bigger one, or the leaver is not in it. Fetch once and ask again.
+        case needRoster
+    }
+
+    /// The question asked of a roster that may not be whole, in the order
+    /// Android asks it (`GuestPath.leaveCheck`): the evidence that clears a
+    /// leave first, and only then how much of the roster is actually here.
+    ///
+    /// `memberCount` is the size the island declared, which is larger than
+    /// `members` for a room over a hundred people, where the island sends the
+    /// compact form.
+    ///
+    /// ⚠ A page that shows only copies is `needRoster`, NEVER `safe`: it says
+    /// nothing about the members it does not show, and a room that big is
+    /// exactly where a silent leave costs the most. After the one fetch the
+    /// caller warns on anything that is still not `safe`.
+    static func leaveCheck(members: [RosterMemberFlags], leaver: Int, memberCount: Int) -> LeaveCheck {
+        let me = members.first { $0.uin == leaver }
+        // A copy leaving strands nobody: the island deletes the room when the
+        // last RESIDENT goes, and that is not us.
+        if let me, me.isCopy { return .safe }
+        let others = members.filter { $0.uin != leaver }
+        // One visible member who lives on the room's island settles it, however
+        // much of the roster is missing.
+        if others.contains(where: { !$0.isCopy }) { return .safe }
+        // Not in the roster we hold, or holding a page of it: it cannot answer.
+        if me == nil || members.isEmpty || memberCount > members.count { return .needRoster }
+        // Alone in the room: nothing is taken from anybody.
+        if others.isEmpty { return .safe }
+        return .warn
+    }
+
+    /// `members` is the roster as fetched, the leaver included; `leaver` is our
+    /// own number IN THAT ROOM (the copy's number on a foreign island).
+    ///
+    /// ⚠ False on an empty or unfetched roster, and false when the leaver is
+    /// itself a copy: a guest leaving strands nobody, and a warning nobody can
+    /// act on is worse than none.
+    static func lastResident(members: [RosterMemberFlags], leaver: Int) -> Bool {
+        guard members.contains(where: { $0.uin == leaver && !$0.isCopy }) else { return false }
+        let others = members.filter { $0.uin != leaver }
+        guard !others.isEmpty else { return false }
+        return others.allSatisfy { $0.isCopy }
+    }
+}
+
+/// `POST /auth/guest/settle` (spec 9.1, decision D7). The door codes reuse the
+/// sentences the join sheet already has, because they are the same door: an
+/// island that sells entry says so the same way whether somebody is knocking
+/// from outside or settling a copy that is already inside.
+extension GuestSentence {
+    /// The line for a settle that failed with no code this table knows.
+    static let settleGeneric = "residency.error"
+
+    /// ⚠ A refusal that is really a SUCCESS (decision E2, 16.09). The island
+    /// answers `not_a_guest` when the row is native already, which means the
+    /// settle happened somewhere else: another device did it, or the operator
+    /// did. Android (`Sentence.SETTLED`) and the web both run their success
+    /// path for that code, clear the local guest flag and say "you now live on
+    /// %@"; a sheet that painted it red instead told somebody their settle had
+    /// failed and left every guest surface wrong.
+    ///
+    /// Asked BEFORE `settle(_:)`, which keeps a sentence for the code only for
+    /// a caller that has no success path of its own.
+    static func settleAlreadyDone(_ refusal: IslandRefusal) -> Bool {
+        refusal.code == "not_a_guest"
+    }
+
+    static func settle(_ refusal: IslandRefusal) -> String? {
+        switch refusal.code {
+        // Spent before anything was consumed: the code is still good, it is
+        // just a code that carries a number, and this row already has one.
+        case "invite_has_number": return "guest.settle.number_invite"
+        case "entry_required": return "reg.entry.required"
+        case "invite_required": return "reg.invite.required"
+        case "invite_invalid", "voucher_other_island", "voucher_expired", "bad_signature":
+            return "reg.invite.invalid"
+        case "voucher_spent": return "residency.code_spent"
+        // The row is native already: somebody settled it on another device.
+        // ⚠ The settle sheet never reaches this row: `settleAlreadyDone` reads
+        // the code first and finishes the settle as a success (E2). It stays
+        // here as the sentence for a caller that only prints one.
+        case "not_a_guest": return "residency.already"
+        case "guest_unavailable", "island_busy", "guest_busy": return "guest.unavailable"
+        case "rate_limited": return "guest.join.rate"
+        case "guest_restricted": return "guest.restricted"
+        default: break
+        }
+        if refusal.status == 429 { return "guest.join.rate" }
+        return nil
+    }
+}

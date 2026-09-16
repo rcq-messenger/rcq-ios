@@ -31,7 +31,12 @@ final class NotificationService: ObservableObject {
             authorized = false
             return
         }
-        if authorized {
+        // ⚠ A guest copy registers NO push token (spec 2026-09-15, 12.1; D6):
+        // its mailbox never wakes a phone, and a token on it would hand the
+        // island a device for an account that does not live there. Local
+        // notifications still work, which is why the authorisation above is
+        // asked for either way: a room this copy is in still has to ring.
+        if authorized && !GuestSession.shared.isPrimaryGuestCopy {
             UIApplication.shared.registerForRemoteNotifications()
         }
     }
@@ -70,6 +75,10 @@ final class NotificationService: ObservableObject {
 
     private func submitTokenIfNeeded(force: Bool = false) async {
         guard let token = deviceToken else { return }
+        // D6, and re-checked here rather than only at registration: the flag can
+        // flip mid-session (a refresh that says guest, a settle that says not),
+        // and this is the one call that would put the token on the island.
+        guard !GuestSession.shared.isPrimaryGuestCopy else { return }
         guard let uin = AuthService.shared.ownUIN else {
             // Re-submit happens from AppState.boot once auth completes.
             return

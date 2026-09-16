@@ -2132,6 +2132,9 @@ final class AppState: ObservableObject {
         CrossIslandRequestsStore.shared.wipe()
         StrangerQuarantine.shared.wipe()
         VisitedIslandsStore.shared.wipe()
+        // The burned identity's verdict says nothing about the fresh one that
+        // registers under this same account slot a moment from now.
+        GuestSession.shared.clear()
         // The backup-home logins sit in the App Group keyed by the number, not
         // under the account prefix, so the identity wipe below never reached
         // them: the tokens outlived the burn and the fresh identity on the same
@@ -2482,7 +2485,10 @@ final class AppState: ObservableObject {
         struct ChalBody: Encodable { let signing_key: String }
         struct ChalOut: Decodable { let challenge: String }
         struct RecBody: Encodable { let signing_key: String; let challenge: String; let signature: String }
-        struct RecOut: Decodable { let uin: Int; let token: String }
+        // `guest` (spec 2.3): this phrase may open a GUEST COPY on that island,
+        // a row some room there minted for these keys. Optional, because an
+        // island older than the field says nothing (D6).
+        struct RecOut: Decodable { let uin: Int; let token: String; var guest: Bool? = nil }
 
         do {
             let chal: ChalOut = try await APIClient.shared.request(
@@ -2546,6 +2552,11 @@ final class AppState: ObservableObject {
                !p.nickname.isEmpty {
                 nick = p.nickname
             }
+
+            // D6: signing in by phrase is exactly how somebody ends up holding
+            // a guest copy as their whole account here, so the verdict is filed
+            // with the credentials rather than waited for until the next boot.
+            GuestSession.record(guest: rec.guest)
 
             // Persist the recovered identity under the new account's prefix.
             KeychainStore.set(KeychainStore.Keys.identityPriv, keys.identityPriv.rawRepresentation)
@@ -2656,6 +2667,10 @@ final class AppState: ObservableObject {
         // Which sections are folded is per account too: the ids in it are the
         // outgoing account's, and they mean nothing in the incoming one's tree.
         SectionCollapseStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // Whether the session is a guest copy is per account too: the outgoing
+        // account's verdict must not hide the incoming one's surfaces for the
+        // frames before its own boot answers (D6).
+        GuestSession.shared.bind()
         ContactsVault.resetSyncState()
         PushDecryptCache.wipe()
         // Probe timers key on bare peer uins, which mean nothing on the
@@ -3158,6 +3173,13 @@ struct ServerCapabilities: Codable, Equatable {
     // island that cannot: the row is then only hidden on the device, never
     // declined in its place.
     var contactPendingWithdraw: Bool
+    // C-G of the guest-copy spec (2026-09-15): the island serves
+    // /auth/guest/challenge, /auth/guest, /auth/guest/settle and
+    // /groups/{id}/guests AND admits new guests right now. Nil when absent.
+    // Informational only here: the join and add paths never read the cached
+    // value, they ask the island fresh on the tap (`GuestPath`), because a
+    // door the operator shut a minute ago must not be walked into.
+    var guestAccountsV1: Bool? = nil
 
     init(
         uinShop: Bool,
@@ -3219,6 +3241,7 @@ struct ServerCapabilities: Codable, Equatable {
         case groupLog = "group_log"
         case vault
         case contactPendingWithdraw = "contact_pending_withdraw"
+        case guestAccountsV1 = "guest_accounts_v1"
     }
 
     // hall_of_fame is decode-optional (default false) so an old server that
@@ -3259,6 +3282,9 @@ struct ServerCapabilities: Codable, Equatable {
         vault = try c.decodeIfPresent(Bool.self, forKey: .vault) ?? false
         // Absent means "cannot withdraw a pending row": see the field comment.
         contactPendingWithdraw = ((try? c.decodeIfPresent(Bool.self, forKey: .contactPendingWithdraw)) ?? nil) ?? false
+        // A malformed value reads as absent, never as a throw that would drop
+        // the whole capability set to `defaultLegacy`.
+        guestAccountsV1 = (try? c.decodeIfPresent(Bool.self, forKey: .guestAccountsV1)) ?? nil
     }
 }
 

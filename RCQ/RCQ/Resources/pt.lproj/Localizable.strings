@@ -1684,3 +1684,33 @@
 "ci.server.card_unavailable" = "Não foi possível falar com a ilha %@ para verificar quem está pedindo. Nada foi enviado. Tente mais tarde.";
 "burn.sibling_kept" = "A conta %1$@ em %2$@ não pôde ser apagada lá e continua neste dispositivo.";
 "burn.sibling_removed" = "A conta %1$@ em %2$@ foi apagada lá, então também saiu deste dispositivo.";
+
+/* Guest copies through a paid or invite door (spec 2026-09-15, 12.5). %@ is the island host. */
+"guest.join.closed" = "%@ não deixa entrar pessoas de outras ilhas.";
+"guest.join.room_closed" = "O dono deste grupo não deixa entrar pessoas de outras ilhas.";
+"guest.join.room_full" = "Este grupo é grande demais para aceitar pessoas de outras ilhas.";
+"guest.join.room_limit" = "Muitas pessoas de outras ilhas entraram neste grupo hoje. Tente amanhã.";
+"guest.join.rate" = "Tentativas demais. Tente de novo daqui a uma hora.";
+"guest.join.group_limit" = "Você está em grupos demais em %@. Saia de um para entrar neste.";
+"guest.join.old_paid" = "Em %@ só entram residentes que pagaram, e o servidor ainda não aceita pessoas de outras ilhas.";
+"guest.join.old_invite" = "%@ é só por convite, e o servidor ainda não aceita pessoas de outras ilhas.";
+"guest.unavailable" = "%@ não pode receber convidados agora. Tente mais tarde.";
+"guest.restricted" = "Em %@ você é convidado: pode participar dos grupos, mas conversas pessoais, chamadas e todo o resto funcionam a partir da sua ilha de origem.";
+"guest.restricted.contacts" = "Responda a este pedido pela sua conta de origem.";
+"guest.copy.banner" = "Esta é a sua cópia de convidado para os grupos em %@.";
+"group.add.foreign.limit" = "Muitas pessoas de outras ilhas foram adicionadas hoje. Tente amanhã.";
+"group.add.foreign.seat_limit" = "Esta pessoa já foi convidada para vários grupos e ainda não aceitou nenhum convite.";
+"group.add.foreign.stale_key" = "Este contato tem chaves novas. Peça um link de contato novo.";
+"group.add.foreign.guest_adder" = "Você é convidado neste grupo e não pode adicionar pessoas a ele.";
+"group.member.guest" = "De outra ilha";
+"group.member.invited" = "Convidado, ainda não entrou";
+"group.settings.allow_guests" = "Deixar entrar pessoas de outras ilhas";
+"group.leave.last_resident" = "Você é o último membro que mora em %@. Se sair, o grupo será apagado para todos.";
+"guest.settle.action" = "Tornar-se residente de %@";
+"guest.settle.done" = "Agora você mora em %@.";
+"guest.settle.number_invite" = "Este convite vem com um número próprio e não pode ser usado numa cópia de convidado. Peça um convite sem número.";
+"backup.is_guest_copy" = "Sua conta em %@ é uma cópia de convidado, então não pode ser uma ilha de backup.";
+"group.add.error.contacts_only" = "Este usuário só aceita convites de grupo dos contatos dele.";
+"group.add.error.nobody" = "Este usuário não aceita convites de grupo.";
+"group.transfer.err.target_guest" = "Um membro de outra ilha não pode ser dono deste grupo.";
+"group_join.gone" = "Este grupo não existe mais.";

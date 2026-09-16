@@ -1684,3 +1684,33 @@
 "ci.server.card_unavailable" = "No se pudo contactar con la isla %@ para comprobar quién escribe. No se envió nada. Inténtalo más tarde.";
 "burn.sibling_kept" = "La cuenta %1$@ en %2$@ no se pudo borrar allí y se queda en este dispositivo.";
 "burn.sibling_removed" = "La cuenta %1$@ en %2$@ se borró allí, así que también se quitó de este dispositivo.";
+
+/* Guest copies through a paid or invite door (spec 2026-09-15, 12.5). %@ is the island host. */
+"guest.join.closed" = "%@ no deja entrar a gente de otras islas.";
+"guest.join.room_closed" = "El propietario de este grupo no deja entrar a gente de otras islas.";
+"guest.join.room_full" = "Este grupo es demasiado grande para aceptar a gente de otras islas.";
+"guest.join.room_limit" = "Hoy ya ha entrado demasiada gente de otras islas en este grupo. Inténtalo mañana.";
+"guest.join.rate" = "Demasiados intentos. Inténtalo dentro de una hora.";
+"guest.join.group_limit" = "Estás en demasiados grupos de %@. Sal de uno para unirte a este.";
+"guest.join.old_paid" = "En %@ solo entran residentes que han pagado, y su servidor todavía no acepta a gente de otras islas.";
+"guest.join.old_invite" = "%@ es solo por invitación, y su servidor todavía no acepta a gente de otras islas.";
+"guest.unavailable" = "%@ no puede aceptar invitados ahora mismo. Inténtalo más tarde.";
+"guest.restricted" = "En %@ eres invitado: puedes participar en sus grupos, pero los chats personales, las llamadas y todo lo demás funcionan desde tu isla de origen.";
+"guest.restricted.contacts" = "Responde a esta solicitud desde tu cuenta de origen.";
+"guest.copy.banner" = "Esta es tu copia de invitado para los grupos de %@.";
+"group.add.foreign.limit" = "Hoy se ha añadido a demasiada gente de otras islas. Inténtalo mañana.";
+"group.add.foreign.seat_limit" = "A esta persona ya la han invitado a varios grupos y todavía no ha aceptado ninguna invitación.";
+"group.add.foreign.stale_key" = "Este contacto tiene claves nuevas. Pídele un enlace de contacto nuevo.";
+"group.add.foreign.guest_adder" = "En este grupo eres invitado, así que no puedes añadir a gente.";
+"group.member.guest" = "De otra isla";
+"group.member.invited" = "Invitado, aún no ha entrado";
+"group.settings.allow_guests" = "Dejar entrar a gente de otras islas";
+"group.leave.last_resident" = "Eres el último miembro que vive en %@. Si sales, el grupo se borrará para todos.";
+"guest.settle.action" = "Hacerte residente de %@";
+"guest.settle.done" = "Ahora vives en %@.";
+"guest.settle.number_invite" = "Esta invitación trae su propio número y no se puede usar en una copia de invitado. Pide una invitación sin número.";
+"backup.is_guest_copy" = "Tu cuenta en %@ es una copia de invitado, así que no puede ser una isla de respaldo.";
+"group.add.error.contacts_only" = "Este usuario solo acepta invitaciones a grupos de sus contactos.";
+"group.add.error.nobody" = "Este usuario no acepta invitaciones a grupos.";
+"group.transfer.err.target_guest" = "Un miembro de otra isla no puede ser dueño de este grupo.";
+"group_join.gone" = "Este grupo ya no existe.";

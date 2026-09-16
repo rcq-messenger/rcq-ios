@@ -235,6 +235,25 @@ struct ContactListView: View {
             } message: {
                 Text(sectionsErrorText ?? "")
             }
+            // D8: the island deletes a room the moment nobody who lives on it
+            // is left in it (spec 8.1), so leaving as the last such member is
+            // named before it happens and not reported afterwards.
+            .confirmationDialog(
+                "group.confirm.leave".localized,
+                isPresented: Binding(
+                    get: { leaveWarningGroup != nil },
+                    set: { if !$0 { leaveWarningGroup = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: leaveWarningGroup
+            ) { room in
+                Button("group.cta.leave.short".localized, role: .destructive) {
+                    Task { try? await groups.leave(room.id) }
+                }
+                Button("common.cancel".localized, role: .cancel) { leaveWarningGroup = nil }
+            } message: { room in
+                Text(String(format: "group.leave.last_resident".localized, GuestRoster.host(of: room)))
+            }
             // A gate that survives the app going away is not a gate.
             .onChange(of: scenePhase) { phase in
                 if phase != .active {
@@ -334,11 +353,13 @@ struct ContactListView: View {
                 // toolbar rather than becoming a TabView that would lie
                 // about the app's structure.
                 ToolbarItemGroup(placement: .bottomBar) {
-                    Button { showAddContact = true } label: {
-                        Image(systemName: "person.badge.plus")
+                    if !guestCopy {
+                        Button { showAddContact = true } label: {
+                            Image(systemName: "person.badge.plus")
+                        }
+                        .accessibilityLabel("contact_list.bar.add".localized)
+                        Spacer()
                     }
-                    .accessibilityLabel("contact_list.bar.add".localized)
-                    Spacer()
                     Button { showQR = true } label: {
                         Image(systemName: "qrcode.viewfinder")
                     }
@@ -402,6 +423,9 @@ struct ContactListView: View {
             .fullScreenCover(item: $sitesRequest) { SitesView(initial: $0) }
             .sheet(isPresented: $showNearby) { NearbyView() }
             .sheet(isPresented: $showQR) { QRSheet() }
+            .sheet(isPresented: $showGuestSettle) {
+                GuestSettleSheet(target: .primary)
+            }
             .sheet(isPresented: $showCreateGroup) {
                 CreateGroupView { group in
                     showCreateGroup = false
@@ -1023,20 +1047,27 @@ struct ContactListView: View {
     @ViewBuilder
     private var contactListMenu: some View {
         Menu {
-            Button {
-                showAddContact = true
-            } label: {
-                Label("contact_list.menu.add".localized, systemImage: "person.badge.plus")
+            // D6: adding a contact and searching the island are both refused
+            // for a guest copy (spec 6.2: its directory is empty and contact
+            // routes are DENY), so neither is offered.
+            if !guestCopy {
+                Button {
+                    showAddContact = true
+                } label: {
+                    Label("contact_list.menu.add".localized, systemImage: "person.badge.plus")
+                }
             }
             Button {
                 showOutgoing = true
             } label: {
                 Label("contact_list.menu.outgoing".localized, systemImage: "clock")
             }
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) { showSearch = true }
-            } label: {
-                Label("contact_list.menu.search".localized, systemImage: "magnifyingglass")
+            if !guestCopy {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) { showSearch = true }
+                } label: {
+                    Label("contact_list.menu.search".localized, systemImage: "magnifyingglass")
+                }
             }
             Button {
                 showNews = true
@@ -1069,7 +1100,7 @@ struct ContactListView: View {
             // list itself. It lives here now, still behind the operator's
             // `random_chat` flag, so an island that does not run it shows
             // nothing rather than a row that 404s.
-            if appState.serverCapabilities.randomChat {
+            if appState.serverCapabilities.randomChat, !guestCopy {
                 Button {
                     showRandom = true
                 } label: {
@@ -1090,10 +1121,12 @@ struct ContactListView: View {
             // The `.rcq` browser. Here rather than in the bottom bar for the
             // same reason Stranger Mode is: it is a place you go sometimes, not
             // one of the four you reach every day (Android home-menu parity).
-            Button {
-                sitesRequest = AppState.SiteOpenRequest(address: nil, page: nil)
-            } label: {
-                Label("contact_list.menu.sites".localized, systemImage: "globe")
+            if !guestCopy {
+                Button {
+                    sitesRequest = AppState.SiteOpenRequest(address: nil, page: nil)
+                } label: {
+                    Label("contact_list.menu.sites".localized, systemImage: "globe")
+                }
             }
             // RCQ relays engage AUTOMATICALLY when a direct connection is
             // blocked, but auto-detect can be wrong ("connected" yet nothing
@@ -1142,6 +1175,76 @@ struct ContactListView: View {
         }
     }
 
+    /// D6: this session is itself a guest copy of this island (spec 12.1). Held
+    /// as an observed object, not read once, because a settle flips it while
+    /// this screen is the one on top.
+    @ObservedObject private var guestSession = GuestSession.shared
+    private var guestCopy: Bool { guestSession.isPrimaryGuestCopy }
+    @State private var showGuestSettle = false
+    /// The room whose leave is waiting on the last-resident warning (D8).
+    @State private var leaveWarningGroup: RCQGroup?
+    /// Rooms whose last-resident check is in the air (F6). A swipe or a
+    /// long-press leaves no button on screen to grey out, so the re-entry is
+    /// stopped here instead: without it a second tap during the one roster
+    /// fetch starts a second check, and two checks that both come back "no
+    /// warning" send two leaves for one room.
+    @State private var leaveChecking: Set<Int> = []
+
+    /// "This is your guest copy for groups on {host}", with the way out of it
+    /// under the sentence (spec 12.5, 9.1). Sits with the other banners at the
+    /// top of the list, because it explains everything that is missing below.
+    private var guestCopyBanner: some View {
+        Button {
+            showGuestSettle = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .foregroundColor(Theme.Color.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(format: "guest.copy.banner".localized, Multihome.ownHost()))
+                        .font(.footnote)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(String(format: "guest.settle.action".localized, Multihome.ownHost()))
+                        .font(.caption)
+                        .foregroundColor(Theme.Color.accent)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Metrics.rowHPad)
+            .padding(.vertical, 10)
+            .wallpaperSurface(Theme.Color.bgSecondary, wallpaperSurfaceMode)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Leaving a room from the chat list (D8). The warning comes first when the
+    /// roster this client holds says nobody who lives on that island would be
+    /// left, because the island deletes the room in that state (spec 8.1).
+    ///
+    /// ⚠ The chat list is fetched `?members=0`, so the roster this screen holds
+    /// for a room nobody has opened is empty. That used to read as "nothing to
+    /// warn about" and the room went straight out, which is the one case the
+    /// warning exists for. `leaveWarning` fetches the roster first, one
+    /// request, and a roster that still cannot be read asks rather than assumes
+    /// (decision E4).
+    private func requestLeave(_ group: RCQGroup) {
+        guard !leaveChecking.contains(group.id) else { return }
+        leaveChecking.insert(group.id)
+        Task {
+            defer { leaveChecking.remove(group.id) }
+            let live = groups.find(group.id) ?? group
+            if await GuestRoster.leaveWarning(for: live) {
+                leaveWarningGroup = groups.find(group.id) ?? live
+                return
+            }
+            try? await groups.leave(group.id)
+        }
+    }
+
     private var list: some View {
         ScrollView {
             LazyVStack(spacing: 0, pinnedViews: []) {
@@ -1157,6 +1260,11 @@ struct ContactListView: View {
                     ForEach(islandTrust.firstUses) { notice in
                         IslandTrustFirstUseNotice(notice: notice)
                     }
+                }
+                // Never in a decoy session: the duress view has no island of
+                // its own to be a guest of, and the sentence names one.
+                if guestCopy && !panicPIN.isDecoy {
+                    guestCopyBanner
                 }
                 if vm.pendingCount + visibleCIRequests > 0 {
                     pendingBanner
@@ -1182,10 +1290,12 @@ struct ContactListView: View {
                 // around them.
                 let audioAnchor = rendered.first { $0.order >= (Sections.defaultOrder[Sections.sysCI] ?? 0) }?.id
                 ForEach(rendered) { rec in
-                    if rec.id == audioAnchor { audioRoomsSection }
+                    // Audio rooms are one of the surfaces a guest copy does not
+                    // get (D6): the island refuses it a room and a seat alike.
+                    if rec.id == audioAnchor, !guestCopy { audioRoomsSection }
                     sectionView(rec, buckets)
                 }
-                if audioAnchor == nil { audioRoomsSection }
+                if audioAnchor == nil, !guestCopy { audioRoomsSection }
                 Spacer().frame(height: 8)
             }
         }
@@ -1377,9 +1487,11 @@ struct ContactListView: View {
                 ForEach(b.crossLoose) { contactRowItem(for: $0) }
             }
         case Sections.sysGroups:
-            sectionShell(rec, count: b.normalGroups.count, plusAction: { showCreateGroup = true }) {
+            // A guest copy owns no rooms (spec 8.1) and `POST /groups` is DENY
+            // for it, so neither way into "create a group" is drawn (D6).
+            sectionShell(rec, count: b.normalGroups.count, plusAction: guestCopy ? nil : { showCreateGroup = true }) {
                 if b.normalGroups.isEmpty {
-                    createFirstGroupRow
+                    if !guestCopy { createFirstGroupRow }
                 } else {
                     ForEach(b.normalGroups) { groupRowItem(for: $0) }
                 }
@@ -1982,18 +2094,20 @@ struct ContactListView: View {
             .foregroundColor(Theme.Color.textSecondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 32)
-            Button {
-                showAddContact = true
-            } label: {
-                Text("contact_list.empty.cta".localized)
-                    .font(.system(.body, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: 220)
-                    .padding(.vertical, 12)
-                    .background(Theme.Color.accent)
-                    .cornerRadius(8)
+            if !guestCopy {
+                Button {
+                    showAddContact = true
+                } label: {
+                    Text("contact_list.empty.cta".localized)
+                        .font(.system(.body, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: 220)
+                        .padding(.vertical, 12)
+                        .background(Theme.Color.accent)
+                        .cornerRadius(8)
+                }
+                .padding(.top, 6)
             }
-            .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
@@ -2078,7 +2192,7 @@ struct ContactListView: View {
                 title: "contact_list.ctx.leave_group".localized,
                 systemImage: "rectangle.portrait.and.arrow.right",
                 destructive: true
-            ) { Task { try? await groups.leave(group.id) } })
+            ) { requestLeave(group) })
         }
         return out
     }
@@ -2233,7 +2347,7 @@ struct ContactListView: View {
             .tint(.red)
         } else {
             Button(role: .destructive) {
-                Task { try? await groups.leave(group.id) }
+                requestLeave(group)
             } label: {
                 Label("contact_list.ctx.leave_group".localized,
                       systemImage: "rectangle.portrait.and.arrow.right")

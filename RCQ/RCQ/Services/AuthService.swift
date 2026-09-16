@@ -59,6 +59,11 @@ final class AuthService: ObservableObject {
                 // nickname and picture, and the boot used to ask for the same
                 // profile a second time a moment later to read them.
                 self.bootProfile = me
+                // D6: the island's own verdict on THIS row, asked on every
+                // boot. `PublicUser.guest` is filled on the self view (spec
+                // 2.3), so the surfaces a copy does not get are decided before
+                // the first screen is drawn.
+                GuestSession.record(guest: me.guest)
                 self.ownUIN = uin
                 self.nickname = KeychainStore.string(KeychainStore.Keys.nickname) ?? ""
                 // Fire-and-forget Stage 3 top-up. Failure is non-fatal —
@@ -337,6 +342,9 @@ final class AuthService: ObservableObject {
                 // taken yet, or has already retired.
                 return Self.hasPendingRotation ? .transient : .identityUnknown
             }
+            // D6, re-checked on every recover: the same key can be a native
+            // account on one island and a guest copy on the next.
+            if creds.uin == expectedUIN { GuestSession.record(guest: creds.guest) }
             return creds.uin == expectedUIN ? .recovered(creds) : .transient
         } catch Multihome.IdentityRefusal.rotated {
             return .rotatedElsewhere(uin: expectedUIN)
@@ -408,7 +416,10 @@ final class AuthService: ObservableObject {
             ) else {
                 return .refused
             }
-            let creds = Multihome.Credentials(uin: out.uin, token: out.token)
+            let creds = Multihome.Credentials(uin: out.uin, token: out.token, guest: out.guest)
+            // D6: `RefreshOut` carries `guest` too, and this call runs on every
+            // token re-mint, which is the other place the answer can change.
+            GuestSession.record(guest: out.guest)
             // Both halves are checked, not just `moved_from`: an island that
             // answers a DIFFERENT number without saying it moved is not one we
             // follow, and one that says it moved while handing back the number

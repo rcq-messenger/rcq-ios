@@ -14,6 +14,17 @@ struct GroupInfoView: View {
     @State private var messagePeer: Contact?
     @State private var showAddMember = false
     @State private var confirmLeave = false
+    /// Walking out would leave nobody who lives on this room's island in it, so
+    /// the island deletes the room (spec 8.1, decisions D8 and E4). Decided
+    /// BEFORE the dialog opens, on a roster that is fetched when this client
+    /// does not hold a whole one.
+    @State private var leaveStrands = false
+    /// That roster read is one request; the button says so rather than sitting
+    /// dead under the finger.
+    @State private var preparingLeave = false
+    /// The same question for the walk-out offered right after a handover. Its
+    /// own flag on purpose: see `leaveNow`.
+    @State private var confirmHandoverLeave = false
     @State private var error: String?
     @State private var viewInfoForUIN: Int?
     @State private var actionMember: RCQGroupMember?
@@ -23,6 +34,9 @@ struct GroupInfoView: View {
     /// "Report group" (App Review 1.2, B.14): the same sheet the chat header
     /// menu opens, from the one screen that is about the room itself.
     @State private var showReportGroup = false
+    /// Settling the copy we hold on THIS room's island (spec 9.1, decision D7):
+    /// offered from the room that is the reason the copy exists.
+    @State private var showSettleGuest = false
     /// Members past the first N are folded behind a "Show all" disclosure
     /// — on big groups the info screen was unscrollable with every member
     /// rendered eagerly.
@@ -123,11 +137,36 @@ struct GroupInfoView: View {
                             // of an invite the island would have accepted.
                             // Taking someone OUT is the gated half (SPEC 6.6
                             // `members`), and that lives on the member row.
-                            Button {
-                                showAddMember = true
-                            } label: {
-                                Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
+                            // ⚠ Not from a copy (decision E5). In a room on
+                            // another island where our own account is a guest
+                            // there, the island refuses every add from a guest
+                            // (`POST /groups/{id}/members` is DENY, and so is
+                            // the guest add), so the row would open a screen
+                            // whose every tap ends in a refusal. Android and
+                            // the web hide it; this one used to offer it.
+                            if !GuestRoster.weAreGuest(in: currentGroup) {
+                                Button {
+                                    showAddMember = true
+                                } label: {
+                                    Label("group.cta.add_member".localized, systemImage: "person.badge.plus")
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                }
+                            }
+                            // Our copy on this room's island is a guest there
+                            // (spec 9.1, D7): the way to stop being one is
+                            // offered from the room it was made for. Nothing is
+                            // sold here, only a code may be typed in.
+                            if let h = currentGroup.host,
+                               VisitedIslandsStore.shared.get(host: h)?.guest == true {
+                                Button {
+                                    showSettleGuest = true
+                                } label: {
+                                    Label(
+                                        String(format: "guest.settle.action".localized, h),
+                                        systemImage: "checkmark.seal"
+                                    )
                                     .foregroundColor(Theme.Color.textPrimary)
+                                }
                             }
                             // Copy the group's invite link — paste it into a
                             // chat, or into a group's pinned announcement to
@@ -153,18 +192,25 @@ struct GroupInfoView: View {
                     }
                     handoverDoneSection
                     Button(role: .destructive) {
-                        confirmLeave = true
+                        Task { await requestLeave() }
                     } label: {
-                        Label(
-                            amOwner ? "group.cta.delete".localized : "group.cta.leave".localized,
-                            systemImage: "rectangle.portrait.and.arrow.right",
-                        )
+                        Group {
+                            if preparingLeave {
+                                ProgressView().tint(.white)
+                            } else {
+                                Label(
+                                    amOwner ? "group.cta.delete".localized : "group.cta.leave".localized,
+                                    systemImage: "rectangle.portrait.and.arrow.right",
+                                )
+                            }
+                        }
                             .frame(maxWidth: .infinity)
                             .foregroundColor(.white)
                             .padding(.vertical, 12)
                             .background(Theme.Color.statusBusy)
                             .cornerRadius(4)
                     }
+                    .disabled(preparingLeave)
                     reportGroupRow
                     if let error {
                         Text(error).font(.caption).foregroundColor(Theme.Color.statusBusy)
@@ -220,6 +266,9 @@ struct GroupInfoView: View {
         .sheet(isPresented: $showReportGroup) {
             ReportContactSheet.forGroup(currentGroup)
         }
+        .sheet(isPresented: $showSettleGuest) {
+            GuestSettleSheet(target: .visited(host: currentGroup.host ?? Multihome.ownHost()))
+        }
         .sheet(item: Binding(
             get: { viewInfoForUIN.map { ViewInfoUIN(uin: $0) } },
             set: { viewInfoForUIN = $0?.uin }
@@ -227,8 +276,14 @@ struct GroupInfoView: View {
             NavigationStack {
                 // The room's island rides along: on a room hosted elsewhere this
                 // number names a member THERE, not the holder of the same
-                // number on ours (#985(2)).
-                UserInfoView(uin: wrap.uin, isOwn: false, host: currentGroup.host)
+                // number on ours (#985(2)). The roster's guest verdict rides
+                // along with it, so the card offers a copy what a copy can take
+                // (decision D5).
+                let flags = GuestRoster.flags(uin: wrap.uin, groupID: currentGroup.id)
+                UserInfoView(
+                    uin: wrap.uin, isOwn: false, host: currentGroup.host,
+                    guestMember: flags.guest, invitedSeat: flags.invited
+                )
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("common.close".localized) { viewInfoForUIN = nil }
@@ -246,6 +301,9 @@ struct GroupInfoView: View {
                 member: live,
                 // Cross-island group: resolve the member from the group's island.
                 groupHost: currentGroup.host,
+                // Spec 2.3 as the island answered it for THIS room (D5).
+                isGuestCopy: live.guest,
+                isInvitedSeat: live.invited,
                 // SPEC 6.6 `members`: owner, or a member granted the cap.
                 // Never the owner themselves (the island refuses with a 400)
                 // and never me (that is Leave, not a kick).
@@ -306,6 +364,30 @@ struct GroupInfoView: View {
                 Task { await leaveOrDelete() }
             }
             Button("common.cancel".localized, role: .cancel) {}
+        } message: {
+            // ⚠ Said BEFORE the leave, because there is nothing to undo after
+            // it: the island deletes a room the moment no member who lives on
+            // it remains (spec 8.1, decision D8). `requestLeave` has already
+            // fetched the roster when this client did not hold one (E4).
+            if leaveStrands {
+                Text(String(format: "group.leave.last_resident".localized, GuestRoster.host(of: currentGroup)))
+            }
+        }
+        // The walk-out offered after a handover asks the same question, and it
+        // gets its own dialog: routing it through the one above would put the
+        // room one stale `amOwner` read away from being deleted instead of left
+        // (see `leaveNow`).
+        .confirmationDialog(
+            "group.confirm.leave".localized,
+            isPresented: $confirmHandoverLeave,
+            titleVisibility: .visible,
+        ) {
+            Button("group.cta.leave.short".localized, role: .destructive) {
+                Task { await leaveNow() }
+            }
+            Button("common.cancel".localized, role: .cancel) {}
+        } message: {
+            Text(String(format: "group.leave.last_resident".localized, GuestRoster.host(of: currentGroup)))
         }
         // Irreversible from this side, so it is named and spelled out before it
         // is sent: who gets the room, and what the caller is left holding.
@@ -327,6 +409,35 @@ struct GroupInfoView: View {
         } message: { target in
             Text("group.transfer.confirm".localized(target.nickname))
         }
+    }
+
+    /// Open the leave question, with the last-resident warning decided first.
+    ///
+    /// ⚠ The roster decides it, so a room whose roster this client does not
+    /// hold whole is FETCHED here, once, before the dialog opens (decision E4).
+    /// Leaving in silence because nobody had opened the member list is how the
+    /// last person who lives on an island deletes a room for everybody else in
+    /// it without ever being asked.
+    ///
+    /// Only a leaver is asked: the owner's button already says "delete group",
+    /// which is the same ending named plainly.
+    private func requestLeave() async {
+        guard !preparingLeave else { return }
+        preparingLeave = true
+        leaveStrands = amOwner ? false : await GuestRoster.leaveWarning(for: currentGroup)
+        preparingLeave = false
+        confirmLeave = true
+    }
+
+    /// The walk-out after a handover: the same roster question, its own dialog,
+    /// and no dialog at all when there is nothing to warn about (the person has
+    /// already said twice that they are going).
+    private func requestLeaveAfterHandover() async {
+        guard !preparingLeave else { return }
+        preparingLeave = true
+        let strands = await GuestRoster.leaveWarning(for: currentGroup)
+        preparingLeave = false
+        if strands { confirmHandoverLeave = true } else { await leaveNow() }
     }
 
     /// A small text link under the leave button, where Android keeps it. Not
@@ -378,16 +489,28 @@ struct GroupInfoView: View {
                     }
                     .buttonStyle(.plain)
                     Button(role: .destructive) {
-                        Task { await leaveNow() }
+                        Task { await requestLeaveAfterHandover() }
                     } label: {
-                        Text("group.cta.leave.short".localized)
-                            .font(.system(.callout, weight: .semibold))
+                        // ⚠ The roster question runs on the tap, and this
+                        // button must not look answerable while it does (F6):
+                        // the walk-out it commits to is the one the warning
+                        // exists for, and a second tap on a button that still
+                        // reads "Leave" is a leave nobody was asked about.
+                        Group {
+                            if preparingLeave {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("group.cta.leave.short".localized)
+                                    .font(.system(.callout, weight: .semibold))
+                            }
+                        }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(Theme.Color.statusBusy)
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
+                    .disabled(preparingLeave)
                 }
             }
         }
@@ -643,6 +766,14 @@ struct GroupInfoView: View {
                         }
                     }
                     Text(verbatim: "\(m.uin)").font(Theme.Font.monoSmall).foregroundColor(Theme.Color.textMono)
+                    // "From another island" / "Invited, hasn't joined yet"
+                    // (spec 12.5, D5). Never which island: the roster does not
+                    // say, and this row must not guess.
+                    if let key = GuestRosterRule.label(guest: m.guest, invited: m.invited) {
+                        Text(key.localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
                 Spacer()
                 if let tag = roleTag(m) {
@@ -855,6 +986,11 @@ private struct MemberActionSheet: View {
     /// Host of a CROSS-ISLAND group — the member lives on that island, not ours,
     /// so profile-resolution + add must go there. nil for a same-island group.
     var groupHost: String? = nil
+    /// The island's verdict on this row (spec 2.3, decision D5): a guest copy
+    /// from somewhere else, and an unclaimed seat nobody has opened yet. Both
+    /// take part in the room and neither can be messaged, called or pinged.
+    var isGuestCopy: Bool = false
+    var isInvitedSeat: Bool = false
     var canKick: Bool = false
     var onKick: () -> Void = {}
     /// Owner viewing a non-owner, non-self member: may grant/revoke caps.
@@ -994,6 +1130,11 @@ private struct MemberActionSheet: View {
                     Text(verbatim: "\(member.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
+                    if let key = GuestRosterRule.label(guest: isGuestCopy, invited: isInvitedSeat) {
+                        Text(key.localized)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
+                    }
                 }
                 Spacer()
             }
@@ -1006,7 +1147,11 @@ private struct MemberActionSheet: View {
                 // Primary action (Message for a contact, Add for a non-contact)
                 // sits on the SAME row as Open Profile — side by side, not stacked.
                 HStack(spacing: 10) {
-                    if isAlreadyContact, let onMessage {
+                    // No Message to a copy even when a contact row exists for
+                    // that number here: on this island the number is a room
+                    // mailbox, and the thread would go nowhere (D5).
+                    if isAlreadyContact, let onMessage,
+                       GuestRosterRule.canMessage(guest: isGuestCopy, invited: isInvitedSeat) {
                         Button(action: onMessage) {
                             actionPill(
                                 icon: "bubble.left.fill",
@@ -1016,7 +1161,7 @@ private struct MemberActionSheet: View {
                             )
                         }
                         .buttonStyle(.plain)
-                    } else {
+                    } else if GuestRosterRule.canAdd(guest: isGuestCopy, invited: isInvitedSeat) {
                         Button {
                             Task {
                                 if let groupHost {
@@ -1073,16 +1218,22 @@ private struct MemberActionSheet: View {
             }
             .padding(.horizontal, 20)
 
-            Divider().background(Theme.Color.divider)
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
-            VStack(spacing: 0) {
-                UserSafetyActions(
-                    targetUIN: member.uin,
-                    targetNickname: member.nickname,
-                    context: "group",
-                    style: .rows,
-                )
+            // Blocking and reporting act on this number ON THIS ISLAND, which
+            // for a copy is a room mailbox: there is no 1:1 channel to block,
+            // and a report would name the copy rather than the person (D5).
+            // Removing them from the ROOM is a different lever and stays below.
+            if GuestRosterRule.hasProfileActions(guest: isGuestCopy, invited: isInvitedSeat) {
+                Divider().background(Theme.Color.divider)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                VStack(spacing: 0) {
+                    UserSafetyActions(
+                        targetUIN: member.uin,
+                        targetNickname: member.nickname,
+                        context: "group",
+                        style: .rows,
+                    )
+                }
             }
 
             // Owner-only: grant/revoke this member's moderator caps. The owner
@@ -1390,6 +1541,9 @@ private struct AddGroupMemberView: View {
                 // beats a silent success the invitee will never see (A3).
                 addError = String(format: "group.add.warn.link_undelivered".localized, c.nickname)
             }
+        } catch let refused as GroupService.CrossIslandAddError {
+            // Already a whole sentence (spec 12.5), never the island's text.
+            addError = refused.message
         } catch {
             addError = String(format: "group.add.error.generic".localized, error.localizedDescription)
         }
@@ -1432,19 +1586,35 @@ private struct AddGroupMemberView: View {
         do {
             try await GroupService.shared.addMember(groupID: group.id, uin: uin)
             dismiss()
-        } catch APIError.http(403, let body) {
-            // The add-member endpoint returns 403 for THREE different reasons:
-            // the owner blocked the user, OR the invitee's own group-invite
-            // policy ("contacts"/"nobody") refuses the invite. Only the first is
-            // a real block — don't mislabel a policy refusal as "the creator
-            // blocked this user" (which sent the user hunting for a phantom block).
-            let detail = (body ?? "").lowercased()
-            if detail.contains("blocked this user") {
-                addError = "group.add.error.blocked".localized
-            } else if detail.contains("group invites") {
-                addError = "group.add.error.invite_policy".localized
+        } catch APIError.http(let status, let body) {
+            // By CODE first (spec 11, decision D3): the guest paths answer
+            // `detail.code`, and a room that will not take people from other
+            // islands, or an adder who is a guest itself, has its own sentence.
+            // The prose below is the native `add_member`, which still refuses in
+            // three English sentences and can only be read by substring: the
+            // owner blocked the user, OR the invitee's own group-invite policy
+            // ("contacts"/"nobody") refuses. Only the first is a real block, and
+            // mislabelling a policy refusal sent people hunting for a phantom.
+            //
+            // ⚠ EVERY status, not 403 alone (F9, 16.09). The island says "no
+            // such user" with a 404, and the table has that sentence, but this
+            // caught 403 only: the one refusal a person is most likely to hit
+            // from here fell through to "couldn't add: HTTP 404", while Android
+            // and the web both said "this island does not know them".
+            let refusal = IslandRefusal.parse(status: status, body: Data((body ?? "").utf8))
+            if let key = GuestSentence.add(refusal, prose: body) {
+                addError = String(format: key.localized, GuestRoster.host(of: group))
+            } else if status == 403 {
+                if (body ?? "").lowercased().contains("group invites") {
+                    addError = "group.add.error.invite_policy".localized
+                } else {
+                    addError = "group.add.error.forbidden".localized
+                }
             } else {
-                addError = "group.add.error.forbidden".localized
+                addError = String(
+                    format: "group.add.error.generic".localized,
+                    APIError.http(status, body).localizedDescription
+                )
             }
         } catch {
             addError = String(format: "group.add.error.generic".localized, error.localizedDescription)

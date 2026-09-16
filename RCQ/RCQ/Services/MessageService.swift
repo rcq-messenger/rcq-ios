@@ -1762,6 +1762,32 @@ final class MessageService {
         }
     }
 
+    /// The inner kind, named as on the wire, of the envelopes spec 7 keeps out
+    /// of room frames (`GroupFrameRule`, which the check tool drives). Nil for
+    /// every other kind.
+    private static func oneToOneOnlyKind(_ envelope: Envelope) -> String? {
+        switch envelope {
+        case .contactRequest: return "contactreq"
+        case .ciAck: return "ciack"
+        case .pkey: return "pkey"
+        case .pkeyAsk: return "pkeyask"
+        case .visit: return "visit"
+        case .callSignal: return "call"
+        case .profile: return "profile"
+        case .carbon: return "carbon"
+        case .readMark: return "readmark"
+        case .homeRecord: return "homerec"
+        // Room keys travel sealed to ONE member (`sendRoomKey`,
+        // `sendRoomKeyAsk`), never through the room channel, so a room frame
+        // carrying one is not how a member hands it over.
+        case .gsKey: return "gskey"
+        case .gsKnack: return "gsknack"
+        case .secureScreen: return "secscreen"
+        case .screenshotTaken: return "shot"
+        default: return nil
+        }
+    }
+
     // MARK: - profile visits
 
     private var lastVisitFiredAt: [Int: Date] = [:]
@@ -2053,6 +2079,21 @@ final class MessageService {
                 // rest of the list's life. Fire-and-forget into the actor.
                 let from = decrypted.senderUIN
                 Task { await SignalCryptoService.noteInboundDevice(forPeerUIN: from, deviceId: dev) }
+            }
+
+            // ⚠ Spec 2026-09-15, section 7: a frame that came in as part of a
+            // ROOM (`ws.groupID` set by the queue row, the socket packet or the
+            // room log) never carries a kind that only means something between
+            // two people. The island cannot tell a room post from a payload a
+            // member deposited for exactly one other member, and a guest copy
+            // exists to take part in rooms, so this is where a room stops being
+            // a 1:1 channel into it. Acked and applied nowhere. The contact
+            // request, call and profile branches below already gated on
+            // `ws.groupID == nil`; the carbon, the profile-key ask and the visit
+            // ping did not.
+            if ws.groupID != nil, let kind = Self.oneToOneOnlyKind(decrypted.envelope),
+               GroupFrameRule.dropsInGroupFrame(kind: kind) {
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
             // Room state key hand-off / ask-back (stage 6 phase 2): the same

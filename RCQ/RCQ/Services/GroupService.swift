@@ -79,6 +79,21 @@ final class GroupService: ObservableObject {
         }
     }
 
+    /// `POST /groups/{id}/guests` (spec 2026-09-15, section 5): the room as
+    /// `/members` returns it, plus the uin the contact's key landed on. There
+    /// is no token in it, by design.
+    private struct GuestAdded: Decodable {
+        let row: GroupWithRules
+        let addedUin: Int
+
+        private enum CodingKeys: String, CodingKey { case addedUin = "added_uin" }
+
+        init(from decoder: Decoder) throws {
+            self.row = try GroupWithRules(from: decoder)
+            self.addedUin = try decoder.container(keyedBy: CodingKeys.self).decode(Int.self, forKey: .addedUin)
+        }
+    }
+
     private init() {
         // Hydrate from the persisted store on first access so the
         // contact-list group rows show their badges before any
@@ -388,7 +403,39 @@ final class GroupService: ObservableObject {
         }
     }
 
-    enum CrossIslandAddError: Error { case notCrossIsland, unreachable }
+    enum CrossIslandAddError: Error, LocalizedError {
+        case notCrossIsland, unreachable
+        /// Refused, by the island or by the card check before asking it:
+        /// `key` is a spec 12.5 sentence (`GuestSentence.add`), `host` its `%@`.
+        case refused(key: String, host: String)
+
+        var message: String {
+            switch self {
+            case .refused(let key, let host): return String(format: key.localized, host)
+            case .notCrossIsland, .unreachable: return GuestSentence.addGeneric.localized
+            }
+        }
+
+        var errorDescription: String? { message }
+    }
+
+    /// An `APIError` from an add on our own island as a sentence: by
+    /// `detail.code` first, then the prose a native `/members` answers with.
+    /// Anything that is not an HTTP refusal (offline) is passed on unchanged.
+    private static func crossAddRefusal(_ error: Error, host: String) -> Error {
+        guard let api = error as? APIError, case .http(let status, let body) = api else { return error }
+        let refusal = IslandRefusal.parse(status: status, body: Data((body ?? "").utf8))
+        return CrossIslandAddError.refused(key: GuestSentence.add(refusal, prose: body) ?? GuestSentence.addGeneric, host: host)
+    }
+
+    /// Stage 6 phase 2 hand-off of the room state key to a member who just
+    /// landed on the roster. Best-effort, as in `addMember`.
+    private func handRoomKey(groupID: Int, toUin uin: Int, roster: RCQGroup) {
+        guard let held = RoomKeyStore.shared.key(groupID),
+              let member = roster.members.first(where: { $0.uin == uin }),
+              !member.identityKey.isEmpty else { return }
+        Task { await MessageService.shared.sendRoomKey(gid: groupID, held: held, to: member) }
+    }
 
     /// §5c owner-initiated cross-island add: put a contact who lives on ANOTHER
     /// island into a (local) group. The group's island has no account for the
@@ -414,17 +461,98 @@ final class GroupService: ObservableObject {
             try await addMember(groupID: group.id, uin: contact.uin)
             return true
         }
-        let nick = contact.nickname.isEmpty ? "user-\(contact.uin)" : contact.nickname
-        var resolved = await CrossIslandGroups.resolveUinForKey(host: groupHost, signingKeyB64: contact.signingKey)
-        if resolved == nil {
-            resolved = await CrossIslandGroups.registerForeignKeys(
-                host: groupHost, identityKey: contact.identityKey, signingKey: contact.signingKey, nickname: nick
+        // The decoy never puts anything on another island (D10).
+        if PanicPINService.shared.isDecoy || PanicPINService.shared.isLocked { throw CrossIslandAddError.unreachable }
+        // Spec 12.1 owner-add, step 1: where our own session on the ROOM's
+        // island is a guest copy, the island refuses every add from it. Say so
+        // without asking it.
+        //
+        // ⚠ Both islands, not just a foreign one (F8, 16.09). This read the
+        // visited copy alone, so a room on OUR island was treated as always
+        // addable, which is wrong the moment the primary session is itself a
+        // guest copy: the account signed in by phrase onto a row a room here
+        // minted for it is a guest HERE, and every add it sends comes back
+        // `guest_restricted`. `weAreGuest` asks the right session for either
+        // kind of room.
+        if GuestRoster.weAreGuest(in: group) {
+            throw CrossIslandAddError.refused(
+                key: "group.add.foreign.guest_adder", host: GuestRoster.host(of: group)
             )
         }
-        guard let localUin = resolved else { throw CrossIslandAddError.unreachable }
-        // Add the resolved local uin to the roster (group.host == nil → own
-        // island; this is the founder's common case).
-        try await addMember(groupID: group.id, uin: localUin)
+        // Step 2: the contact's card again, from their home, right before
+        // their keys go into a room. A seat minted from a stale card opens for
+        // whoever holds the OLD seed. Unreachable means the pinned card.
+        if let card = await CrossIslandSender.fetchCard(host: contactHost, uin: contact.uin),
+           GuestAddRule.cardIsStale(
+               pinnedIdentityKey: contact.identityKey, pinnedSigningKey: contact.signingKey,
+               cardIdentityKey: card.identity_key, cardSigningKey: card.signing_key
+           ) {
+            throw CrossIslandAddError.refused(key: "group.add.foreign.stale_key", host: groupHost)
+        }
+        // ⚠⚠ D1: the pinned name, never `user-<uin>`. That number is the
+        // contact's HOME number, which the room's island must not learn.
+        let nick = GuestNickname.wire(contact.nickname, homeUins: [contact.uin])
+
+        // Step 3, asked of the room's island at the moment of the add, never
+        // from a cached flag: an operator may have shut the door a minute ago.
+        let path: GuestPath
+        if group.host == nil {
+            path = GuestPath.decide(advertised: await ServerInfoService.fetch(host: groupHost)?.capabilities.guestAccountsV1)
+        } else {
+            path = await CrossIslandGroups.guestPath(host: groupHost)
+        }
+
+        switch path {
+        case .guest:
+            if let roomHost = group.host {
+                try await addGuestOnForeignRoom(group: group, roomHost: roomHost, contact: contact, nickname: nick)
+            } else {
+                // `POST /groups/{id}/guests` with our own token: the island
+                // resolves the key to the row it has, or mints an unclaimed
+                // seat. No token for the contact's copy exists anywhere.
+                struct GuestAddBody: Encodable { let identity_key: String; let signing_key: String; let nickname: String }
+                do {
+                    let out: GuestAdded = try await APIClient.shared.request(
+                        "POST", "/groups/\(group.id)/guests",
+                        body: GuestAddBody(identity_key: contact.identityKey, signing_key: contact.signingKey, nickname: nick)
+                    )
+                    roomRules[group.id] = out.row.rules
+                    upsert(out.row.group)
+                    handRoomKey(groupID: group.id, toUin: out.addedUin, roster: out.row.group)
+                } catch {
+                    throw Self.crossAddRefusal(error, host: groupHost)
+                }
+            }
+        case .legacy:
+            // Resolve (or register) the contact's uin on the group's island,
+            // then the ordinary `/members`.
+            var resolved = await CrossIslandGroups.resolveUinForKey(host: groupHost, signingKeyB64: contact.signingKey)
+            if resolved == nil {
+                do {
+                    resolved = try await CrossIslandGroups.registerForeignKeys(
+                        host: groupHost, identityKey: contact.identityKey, signingKey: contact.signingKey, nickname: nick
+                    )
+                } catch CrossIslandGroups.CIGError.refused(let status, let code) {
+                    // A shut door on an island too old for guests: the old
+                    // paid / old invite sentence, not "unreachable".
+                    let refusal = IslandRefusal(status: status, code: code)
+                    if code == "entry_required" || code == "invite_required", let key = GuestSentence.join(refusal) {
+                        throw CrossIslandAddError.refused(key: key, host: groupHost)
+                    }
+                    throw CrossIslandAddError.refused(key: GuestSentence.add(refusal) ?? GuestSentence.addGeneric, host: groupHost)
+                } catch {
+                    throw CrossIslandAddError.unreachable
+                }
+            }
+            guard let localUin = resolved else { throw CrossIslandAddError.unreachable }
+            // Add the resolved local uin to the roster (group.host == nil →
+            // own island; this is the founder's common case).
+            do {
+                try await addMember(groupID: group.id, uin: localUin)
+            } catch {
+                throw Self.crossAddRefusal(error, host: groupHost)
+            }
+        }
         // Notify the contact via a cross-island 1:1 — the link renders as a join
         // card on their side; tapping it completes the loop.
         let link = "https://rcq.app/g/\(group.id)@\(groupHost)"
@@ -433,6 +561,38 @@ final class GroupService: ObservableObject {
             return true
         } catch {
             return false
+        }
+    }
+
+    /// The guest owner-add for a room on ANOTHER island (alias id): `POST
+    /// /groups/{remoteId}/guests` there with our copy's token, re-minted once
+    /// on a 401. The roster comes back through the next refresh of that room.
+    private func addGuestOnForeignRoom(group: RCQGroup, roomHost: String, contact: Contact, nickname: String) async throws {
+        guard let ref = VisitedIslandsStore.shared.refByAlias(group.id),
+              var jwt = VisitedIslandsStore.shared.get(host: roomHost)?.jwt else {
+            throw CrossIslandAddError.unreachable
+        }
+        var reminted = false
+        while true {
+            do {
+                _ = try await CrossIslandGroups.addGuestMember(
+                    host: roomHost, remoteId: ref.remoteId, jwt: jwt,
+                    identityKey: contact.identityKey, signingKey: contact.signingKey, nickname: nickname
+                )
+                Task { await self.refresh() }
+                return
+            } catch let refused as CrossIslandGroups.GuestAddRefused {
+                if refused.refusal.status == 401, !reminted, let fresh = await CrossIslandGroups.refreshGuest(host: roomHost) {
+                    reminted = true
+                    jwt = fresh.jwt
+                    continue
+                }
+                throw CrossIslandAddError.refused(
+                    key: GuestSentence.add(refused.refusal) ?? GuestSentence.addGeneric, host: roomHost
+                )
+            } catch {
+                throw CrossIslandAddError.unreachable
+            }
         }
     }
 
@@ -527,6 +687,9 @@ final class GroupService: ObservableObject {
         /// 409. The account cannot authenticate at all, so it could not pull a
         /// single owner lever and the room would be left unmanageable.
         case targetSuspended
+        /// 409 `target_guest` (spec 2026-09-15, 8.1): a guest copy or an
+        /// unclaimed seat from another island. Guests never own rooms.
+        case targetGuest
         /// 429, ten per hour. `retryAfter` is the island's own count of
         /// seconds, when it sent one.
         case rateLimited(retryAfter: Int?)
@@ -541,6 +704,7 @@ final class GroupService: ObservableObject {
             case .notAMember:      return "group.transfer.err.not_a_member".localized
             case .noSuchUser:      return "group.transfer.err.no_such_user".localized
             case .targetSuspended: return "group.transfer.err.target_suspended".localized
+            case .targetGuest:     return "group.transfer.err.target_guest".localized
             case .rateLimited(let wait):
                 guard let wait, wait > 0 else { return "group.transfer.err.rate_limited".localized }
                 return "group.transfer.err.rate_limited_in".localized(wait)
@@ -598,6 +762,7 @@ final class GroupService: ObservableObject {
         case "not_a_member":     return .notAMember
         case "no_such_user":     return .noSuchUser
         case "target_suspended": return .targetSuspended
+        case "target_guest":     return .targetGuest
         case "rate_limited":     return .rateLimited(retryAfter: parseInt(body, key: "retry_after"))
         default: break
         }
@@ -742,6 +907,14 @@ final class GroupService: ObservableObject {
     func setIsClosed(groupID: Int, isClosed: Bool) async throws {
         struct Body: Encodable { let is_closed: Bool }
         try await patchGroup(groupID, Body(is_closed: isClosed))
+    }
+
+    /// Owner switch (spec 2026-09-15, 2.2): false keeps NEW people from other
+    /// islands out of this room, by link and by a plain member's add. Guests
+    /// already inside stay. Behind the same gate as `is_closed` on the island.
+    func setAllowGuests(groupID: Int, allowed: Bool) async throws {
+        struct Body: Encodable { let allow_guests: Bool }
+        try await patchGroup(groupID, Body(allow_guests: allowed))
     }
 
     /// Owner-only — hide the member roster in Group Info from

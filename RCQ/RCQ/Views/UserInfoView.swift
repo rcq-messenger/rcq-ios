@@ -10,7 +10,20 @@ struct UserInfoView: View {
     /// sends no visit, and adds through the cross-island path; it never asks
     /// our own island about the number. nil for everything opened from home.
     var host: String? = nil
+    /// The room's island called this member a guest copy (spec 2026-09-15, 2.3;
+    /// decision D5). Everything this screen offers except "Add" acts on the
+    /// number ON THAT ISLAND, where a copy is a room mailbox and not a person:
+    /// the chat is dropped, the call ends as unavailable, a visit ping tallies
+    /// a view on nobody. So the card still opens and says where they are from,
+    /// and the actions go.
+    var guestMember: Bool = false
+    /// An unclaimed seat: keys a member put in the room that nobody has opened
+    /// yet. Not even "Add", because there is no device to receive it.
+    var invitedSeat: Bool = false
     @Environment(\.dismiss) private var dismiss
+
+    /// A row from another island, either kind.
+    private var isCopyMember: Bool { guestMember || invitedSeat }
 
     @State private var profile: UserProfile?
     /// §5c: the peer's island when this is a cross-island contact (gray flower,
@@ -204,7 +217,8 @@ struct UserInfoView: View {
             Menu {
                 // Open the 1:1 chat — shown only when the person is already a
                 // contact (mutually exclusive with Add-to-contacts below).
-                if isContactHere(p.uin), canOpenChatByNumber(p.uin) {
+                if isContactHere(p.uin), canOpenChatByNumber(p.uin),
+                   GuestRosterRule.canMessage(guest: guestMember, invited: invitedSeat) {
                     Button {
                         // Set the intent BEFORE dismissing (the root NavigationStack
                         // consumes pendingOpenChatUIN; dismissing tears this sheet out).
@@ -220,7 +234,12 @@ struct UserInfoView: View {
                 // contact. If the user already sent the same request
                 // earlier and re-taps, the server dedups (returns 400
                 // "already requested") which the catch swallows.
-                if !isOwn, !isContactHere(p.uin) {
+                // For a copy this is the ONE action left (D5), and it is the one
+                // that actually reaches the person: a request addressed to the
+                // copy is picked up by their home client through C1 pending
+                // polling. An unclaimed seat has no such client, so no Add.
+                if !isOwn, !isContactHere(p.uin),
+                   GuestRosterRule.canAdd(guest: guestMember, invited: invitedSeat) {
                     Button {
                         Task {
                             if let h = foreignHost {
@@ -240,8 +259,11 @@ struct UserInfoView: View {
                 }
                 // Both below act on the bare number on OUR island (its libsignal
                 // sessions, its block and report), which for a foreign member is
-                // somebody else. Not offered there.
-                if foreignHost == nil {
+                // somebody else. Not offered there, and not on a guest copy
+                // either: there is no 1:1 session with a copy to reset, and a
+                // block on a room mailbox blocks nothing the room does.
+                if foreignHost == nil,
+                   GuestRosterRule.hasProfileActions(guest: guestMember, invited: invitedSeat) {
                     Divider()
                     Button {
                         resetSecureSession(uin: p.uin)
@@ -292,6 +314,14 @@ struct UserInfoView: View {
                     // Cross-island: show the island (presence doesn't cross islands).
                     if let h = crossIslandHost {
                         Text(verbatim: h).font(Theme.Font.mono).foregroundColor(Theme.Color.textSecondary)
+                    }
+                    // "From another island" / "Invited, hasn't joined yet"
+                    // (spec 12.5). ⚠ Never WHICH island: the roster does not
+                    // say, and this screen must not invent it.
+                    if let key = GuestRosterRule.label(guest: guestMember, invited: invitedSeat) {
+                        Text(key.localized)
+                            .font(.caption)
+                            .foregroundColor(Theme.Color.textSecondary)
                     }
                     if !isOwn {
                         Button(aliasStore.alias(for: p.uin, host: crossIslandHost) == nil
@@ -586,7 +616,10 @@ struct UserInfoView: View {
             // Fire a sealed .visit envelope so the target can tally a
             // "+1 in last 7 days" tally. Throttled per (target, session)
             // inside MessageService.
-            if !isOwn {
+            // ⚠ No visit ping to a copy (D5): it would tally a profile view on
+            // a room mailbox, and the envelope is a 1:1 deposit to a row that
+            // exists for rooms.
+            if !isOwn, GuestRosterRule.sendsVisitPing(guest: guestMember, invited: invitedSeat) {
                 identityChanged = SignalProtocolStores.shared.peerIdentityChanged(uin)
                 Task {
                     await MessageService.shared.sendVisit(

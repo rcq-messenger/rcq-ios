@@ -1892,3 +1892,33 @@
 "ci.server.card_unavailable" = "Couldn't reach island %@ to check who is asking. Nothing was sent. Try again later.";
 "burn.sibling_kept" = "The account %1$@ on %2$@ could not be deleted there and stays on this device.";
 "burn.sibling_removed" = "The account %1$@ on %2$@ was deleted there, so it was removed from this device too.";
+
+/* Guest copies through a paid or invite door (spec 2026-09-15, 12.5). %@ is the island host. */
+"guest.join.closed" = "%@ doesn't let in people from other islands.";
+"guest.join.room_closed" = "The owner of this group doesn't let in people from other islands.";
+"guest.join.room_full" = "This group is too big to take people from other islands.";
+"guest.join.room_limit" = "Too many people from other islands joined this group today. Try again tomorrow.";
+"guest.join.rate" = "Too many attempts. Try again in an hour.";
+"guest.join.group_limit" = "You're in too many groups on %@. Leave one to join this one.";
+"guest.join.old_paid" = "Only paying residents can get into %@, and its server can't take people from other islands yet.";
+"guest.join.old_invite" = "%@ is invite-only, and its server can't take people from other islands yet.";
+"guest.unavailable" = "%@ can't take guests right now. Try again later.";
+"guest.restricted" = "You're a guest on %@: you can take part in its groups, but personal chats, calls and everything else work from your home island.";
+"guest.restricted.contacts" = "Answer this request from your home account.";
+"guest.copy.banner" = "This is your guest copy for groups on %@.";
+"group.add.foreign.limit" = "Too many people from other islands were added today. Try again tomorrow.";
+"group.add.foreign.seat_limit" = "This person has already been invited to several groups and hasn't accepted any invite yet.";
+"group.add.foreign.stale_key" = "This contact has new keys. Ask for a fresh contact link.";
+"group.add.foreign.guest_adder" = "You're a guest in this group, so you can't add people to it.";
+"group.member.guest" = "From another island";
+"group.member.invited" = "Invited, hasn't joined yet";
+"group.settings.allow_guests" = "Let in people from other islands";
+"group.leave.last_resident" = "You're the last member who lives on %@. If you leave, the group will be deleted for everyone.";
+"guest.settle.action" = "Become a resident of %@";
+"guest.settle.done" = "You now live on %@.";
+"guest.settle.number_invite" = "This invite comes with its own number and can't be used on a guest copy. Ask for an invite without a number.";
+"backup.is_guest_copy" = "Your account on %@ is a guest copy, so it can't be a backup island.";
+"group.add.error.contacts_only" = "This user only accepts group invites from their contacts.";
+"group.add.error.nobody" = "This user doesn't accept group invites.";
+"group.transfer.err.target_guest" = "A member from another island can't own this group.";
+"group_join.gone" = "This group no longer exists.";

@@ -419,15 +419,24 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
         // room's host comes off the message's own thread, so the card is read
         // from that island and the home number never marks "own" there.
         var foreignHost: String? = nil
+        var roomID: Int? = nil
         if items.indices.contains(currentIndex),
-           case .group(let gid) = items[currentIndex].thread,
-           let h = GroupService.shared.find(gid)?.host, !h.isEmpty, !Multihome.isOwnHost(h) {
-            foreignHost = h
+           case .group(let gid) = items[currentIndex].thread {
+            roomID = gid
+            if let h = GroupService.shared.find(gid)?.host, !h.isEmpty, !Multihome.isOwnHost(h) {
+                foreignHost = h
+            }
         }
         let isOwn = foreignHost == nil && uin == (AuthService.shared.ownUIN ?? -1)
+        // A photo's sender is a member of that room, so the card opened from it
+        // carries the room's guest verdict like every other entry point (D5).
+        let flags = GuestRoster.flags(uin: uin, groupID: roomID)
         var sheetRef: UIViewController?
         let sheet = UIHostingController(
-            rootView: AlbumProfileSheet(uin: uin, isOwn: isOwn, host: foreignHost) { [weak self] in
+            rootView: AlbumProfileSheet(
+                uin: uin, isOwn: isOwn, host: foreignHost,
+                guestMember: flags.guest, invitedSeat: flags.invited
+            ) { [weak self] in
                 sheetRef?.dismiss(animated: true) { self?.profileSheetDidClose() }
             }
         )
@@ -770,11 +779,17 @@ private struct AlbumProfileSheet: View {
     let isOwn: Bool
     /// The island of the room the photo is in, when that is not ours.
     let host: String?
+    /// The room's guest verdict on this sender (spec 2.3, decision D5).
+    var guestMember: Bool = false
+    var invitedSeat: Bool = false
     let onClose: () -> Void
 
     var body: some View {
         NavigationStack {
-            UserInfoView(uin: uin, isOwn: isOwn, host: host)
+            UserInfoView(
+                uin: uin, isOwn: isOwn, host: host,
+                guestMember: guestMember, invitedSeat: invitedSeat
+            )
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("common.close".localized, action: onClose)

@@ -312,14 +312,21 @@ struct GroupJoinSheet: View {
         defer { joining = false }
         error = nil
         if let h = foreignHost {
-            // §5c: guest-register on the group's island (explicit user action),
-            // join there, hand back the alias-stamped group.
-            let nick = AuthService.shared.nickname.isEmpty ? "user-\(AuthService.shared.ownUIN ?? 0)" : AuthService.shared.nickname
-            if let g = await CrossIslandGroups.joinForeign(host: h, remoteId: groupID, nickname: nick) {
+            // §5c: a copy on the group's island (explicit user action), the
+            // join there, the alias-stamped group back. The name goes as it is;
+            // `ensureGuest` swaps an empty one, or one carrying our home number,
+            // for a neutral word (D1).
+            switch await CrossIslandGroups.joinForeign(host: h, remoteId: groupID, nickname: AuthService.shared.nickname) {
+            case .success(let g):
                 onJoined(g)
                 dismiss()
-            } else {
-                error = "group_join.error.generic".localized
+            case .failure(let failure):
+                // ⚠ Nil is "say nothing", NOT "say the generic line" (F2): a
+                // retired key has already opened the rotated-elsewhere notice,
+                // and a sentence here beside it is the same refusal told twice.
+                // Every other failure comes back carrying its own sentence, the
+                // generic one included.
+                error = CrossIslandGroups.joinSentence(failure, host: h)
             }
             return
         }

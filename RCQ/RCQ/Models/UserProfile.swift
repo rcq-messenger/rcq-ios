@@ -97,8 +97,14 @@ struct UserProfile: Codable, Hashable {
     /// Owner-only: `voucher` | `invite` | `open`, nil on a row older than the
     /// column. Carried for parity with the wire; nothing branches on it yet.
     var enteredVia: String?
+    /// This row is a guest copy from another island (spec 2026-09-15, 2.3).
+    /// Filled on the OWN card and for somebody who shares a room with us; false
+    /// everywhere else, and nil on an island older than the field, which is why
+    /// it is optional: nil is "no answer", not "native", and `GuestSession`
+    /// keeps what it last knew rather than clearing on a silent island.
+    var guest: Bool?
     enum CodingKeys: String, CodingKey {
-        case uin, nickname, badge
+        case uin, nickname, badge, guest
         case firstName = "first_name"
         case lastName = "last_name"
         case age, gender, city, country, about, interests, homepage

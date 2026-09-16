@@ -190,9 +190,24 @@ enum Multihome {
         /// the catalogue unreachable or failing its signature, or not one
         /// island in it answering, the relay pass included.
         case noOpenIsland
+        /// The account this key has on that island is a guest copy (spec
+        /// 2026-09-15, 10): a mailbox for rooms, with no push, no contacts and
+        /// no home record, so it can never be a backup home. Nothing is filed.
+        case guestCopy(host: String)
     }
 
-    struct Credentials: Decodable { let uin: Int; let token: String }
+    struct Credentials: Decodable {
+        let uin: Int
+        let token: String
+        /// The island's `guest` flag on recover, refresh and `/auth/guest`
+        /// (spec 2026-09-15, 2.3): this token opens a GUEST COPY, which takes
+        /// part in rooms there and nothing else. Absent on islands older than
+        /// guest copies, and nil reads as a native account, which is what every
+        /// row on such an island is.
+        var guest: Bool? = nil
+
+        var isGuestCopy: Bool { guest == true }
+    }
 
     /// A 404 from `/auth/recover` or `/auth/refresh` that is NOT "no such
     /// identity". Thrown, never returned as nil, because nil is what callers
@@ -326,6 +341,10 @@ enum Multihome {
         let uin: Int
         let token: String
         let moved_from: Int?
+        /// `RefreshOut` inherits `guest` from `RegisterOut` (spec 2.3): the row
+        /// this token opens is a guest copy. Absent on older islands, which is
+        /// no answer rather than "native" (`GuestSession.record`).
+        var guest: Bool? = nil
     }
 
     /// Re-mint a session token for the uin we ALREADY believe is ours, proving
@@ -420,6 +439,10 @@ enum Multihome {
             // same key on that island (no server-side uniqueness on keys).
             let creds: Credentials
             if let recovered = try await recoverOn(host: host, signingPriv: keys.signing) {
+                // ⚠ Never adopted as a home (spec 12.1, "Backup homes"): the
+                // island would refuse its record, never wake it, and every
+                // contact routed there would land in a room-only mailbox.
+                guard !recovered.isGuestCopy else { throw AddError.guestCopy(host: host) }
                 creds = recovered
             } else {
                 creds = try await registerBackupCopy(host: host, ownUin: ownUin, nickname: nickname, keys: keys)
@@ -644,6 +667,9 @@ enum Multihome {
                     // recover for the attempt: a door refusal after it means no
                     // copy here and the door shut, and the walk moves on.
                     if let creds = try await recoverOn(host: host, signingPriv: keys.signing) {
+                        // A guest copy is not a home; move on without
+                        // registering over it (spec 2026-09-15, 12.1).
+                        guard !creds.isGuestCopy else { return .failed }
                         adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: true)
                         return .added
                     }
@@ -665,6 +691,9 @@ enum Multihome {
                     guard let creds = try await recoverOn(host: host, signingPriv: keys.signing) else {
                         return .noCopy
                     }
+                    // A shut door is exactly where guest copies live. The
+                    // copy stays what it is; this toggle just has no home here.
+                    guard !creds.isGuestCopy else { return .noCopy }
                     adoptBackup(ownUin: ownUin, host: host, creds: creds, auto: true)
                     return .adopted
                 } catch {
