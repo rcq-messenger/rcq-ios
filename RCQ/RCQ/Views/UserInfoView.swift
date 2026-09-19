@@ -584,28 +584,34 @@ struct UserInfoView: View {
             self.loading = false
             return
         }
-        // Opened from a room on another island: never our own island (#985(2)).
-        if !isOwn, let h = foreignHost {
+        // Which island this number means, asked ONCE and in one place
+        // (`PeerIsland.cardHost`, Android's twin is `data/PeerIsland.kt`).
+        //
+        // ⚠⚠ The roster is not the only thing that knows, and taking it as such
+        // was the other half of #1024. A cross-island contact lives in
+        // `CrossIslandStore`; the visible roster only carries a copy of it, and
+        // until that copy is folded in (an accept that arrived from another
+        // device, a roster answering 304) there is no row here to match. The card
+        // then fell through to `GET /users/<uin>/info` on OUR island, drew whoever
+        // holds that number there, and sent them a sealed visit ping: our own
+        // number plus "somebody looked at your profile", delivered to a stranger
+        // we never searched for, on a number we only ever resolved elsewhere.
+        // The store is the LAST word on the host, not the first — see the source
+        // order in `cardHost`, which #433 and #429 are the other half of.
+        let peerHost = isOwn ? nil : PeerIsland.cardHost(
+            callerHost: foreignHost,
+            ourIsland: Multihome.ownHost(),
+            rosterMatched: ContactService.shared.contacts.contains { $0.uin == uin },
+            rosterHost: ContactService.shared.contacts.first { $0.uin == uin }?.host,
+            storeHost: CrossIslandStore.shared.find(uin: uin)?.host
+        )
+        // Opened from a room on another island, or a foreign peer we hold only in
+        // the store: rendered from THAT island and never from ours (#985(2),
+        // #1024). `loadForeignMember` prefers the pinned row and falls back to the
+        // open key card, which is what a store-held peer with no roster copy
+        // needs; it sends no visit ping either way.
+        if let h = peerHost {
             await loadForeignMember(host: h)
-            return
-        }
-        // §5c: a cross-island contact's profile lives on ITS island — our own
-        // /users/{uin}/info 404s. Render from the locally-merged card and skip
-        // the fetch + visit ping (the ping would mis-route to our island).
-        if !isOwn, let c = ContactService.shared.contacts.first(where: { $0.uin == uin && $0.host != nil }) {
-            var dict: [String: Any] = [
-                "uin": c.uin, "nickname": c.nickname, "status": "offline", "interests": [],
-                "identity_key": c.identityKey, "signing_key": c.signingKey,
-            ]
-            if let g = c.gender { dict["gender"] = g }
-            if let s = c.statusMessage { dict["status_message"] = s }
-            if let sik = c.signalIdentityKey { dict["signal_identity_key"] = sik }
-            if let data = try? JSONSerialization.data(withJSONObject: dict),
-               let p = try? JSONDecoder().decode(UserProfile.self, from: data) {
-                self.profile = p
-                self.crossIslandHost = c.host
-            }
-            self.loading = false
             return
         }
         do {

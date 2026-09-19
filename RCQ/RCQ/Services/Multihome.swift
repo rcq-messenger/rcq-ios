@@ -342,8 +342,9 @@ enum Multihome {
         let token: String
         let moved_from: Int?
         /// `RefreshOut` inherits `guest` from `RegisterOut` (spec 2.3): the row
-        /// this token opens is a guest copy. Absent on older islands, which is
-        /// no answer rather than "native" (`GuestSession.record`).
+        /// this token opens is a guest copy. Absent only on an island older than
+        /// guest copies, where no guest row can exist, so it resolves to "not a
+        /// guest" (`GuestFlag`, `GuestSession.record`).
         var guest: Bool? = nil
     }
 

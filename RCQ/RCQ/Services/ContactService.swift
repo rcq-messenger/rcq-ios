@@ -200,6 +200,21 @@ final class ContactService: ObservableObject {
                       !PanicPINService.shared.isLocked else { return }
                 self.pendingRequests = stillPending.filter { !BlockedContactsStore.shared.contains($0.from_uin) }
                 self.outgoingRequests = stillOutgoing
+                // ⚠⚠ ...but the cross-island half is not the island's to change,
+                // and leaving THAT alone here was report #1024. A foreign row
+                // moves nothing on our island, so the ETag never moves, so this
+                // is the branch such an account lives in permanently. The
+                // concrete path is a remote accept: `MessageService`'s ack
+                // writes `CrossIslandStore` and touches this list not at all, so
+                // the contact "adds itself" invisibly and appears only after an
+                // account switch, which is the one thing that clears the ETag.
+                // Local add and remove publish the array themselves, which is
+                // why only that half of the report reproduced on iOS.
+                //
+                // Safe against the presence flicker above: the fold touches only
+                // rows with a non-null host, and presence for those is not served
+                // by this island at all.
+                syncCrossIslandContacts()
                 return
             } else {
                 list = try await APIClient.shared.request("GET", "/contacts")
@@ -238,10 +253,16 @@ final class ContactService: ObservableObject {
                     list[i].statusMessage = msg
                 }
             }
-            // Federation (F2): merge local cross-island contacts (peers on other
-            // islands — not in the server roster) so they show + open a chat.
-            let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
-            self.contacts = list + cross
+            // Federation (F2): the cross-island half, which the server roster
+            // does not carry, folded onto the half it does, so peers on other
+            // islands show and open a chat.
+            //
+            // The SAME rule the 304 branch above runs, and through the same
+            // function on purpose: two spellings of "equalise the foreign half"
+            // is how the two branches drift apart, which is the shape of #1024.
+            self.contacts = CrossIslandRoster.fold(list, store: CrossIslandStore.shared.all()) ?? list
+            // The foreign rows that actually landed, for the nickname map below.
+            let cross = self.contacts.filter { $0.host != nil }
             self.rosterLoaded = true
             self.hydratedFromSnapshot = false
             // #900: the block lives on this device (stage 4b), so the island still
@@ -296,6 +317,33 @@ final class ContactService: ObservableObject {
         } catch {
             // Keep current cached state on failure.
         }
+    }
+
+    /// Make the displayed roster's cross-island half equal `CrossIslandStore`:
+    /// add the store's rows the list is missing, drop the foreign rows the store
+    /// no longer has. The rule is `CrossIslandRoster.fold`, where it is pinned in
+    /// a check; this is only the two lines that read the store and publish.
+    ///
+    /// ⚠ Report #1024. Called from the 304 branch of `refreshNow`, which is
+    /// where an account whose only changes are cross-island lives permanently:
+    /// nothing foreign moves our island's ETag, so nothing else ever re-ran the
+    /// fold and a row written by another device appeared only at an account
+    /// switch. Android's twin is `Session.syncCrossIslandContacts`.
+    ///
+    /// ⚠ The decoy roster is exactly what was seeded and nothing else. The store
+    /// is bound to the decoy namespace so this would find nothing anyway; the
+    /// guard is here because this is the one function whose job is to put real
+    /// people into the visible roster, and it matters MORE than it would have
+    /// for a merge: against an empty store the fold DROPS rows rather than adding
+    /// none.
+    ///
+    /// Publishes nothing when nothing moved, so a presence frame does not wake
+    /// every view that reads the roster.
+    func syncCrossIslandContacts() {
+        if PanicPINService.shared.isDecoy { return }
+        guard let next = CrossIslandRoster.fold(contacts, store: CrossIslandStore.shared.all())
+        else { return }
+        contacts = next
     }
 
     /// Drop cross-island rows that are really OUR OWN island's people.

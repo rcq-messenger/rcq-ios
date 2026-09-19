@@ -137,3 +137,10 @@ struct Contact: Identifiable, Hashable, Codable {
         )
     }
 }
+
+/// The roster rules in `CrossIslandLogic` see a row as a number plus an island,
+/// and nothing else. Declared here rather than in that file so the rules stay
+/// Foundation only and can be compiled and checked without the app around them
+/// (`Tools/CrossIslandRosterCheck`). `uin` and `host` are already exactly what
+/// the protocol asks for, so this is the whole conformance.
+extension Contact: RosterRow {}

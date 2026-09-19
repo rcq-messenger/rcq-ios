@@ -1648,7 +1648,13 @@ enum CrossIslandRoster {
             seen.insert(k)
             kept.append(row)
         }
-        let added = store.filter { !localUINs.contains($0.uin) && !seen.contains(key($0)) }
+        var added: [Row] = []
+        for row in store where !localUINs.contains(row.uin) {
+            let k = key(row)
+            guard !seen.contains(k) else { continue }
+            seen.insert(k)
+            added.append(row)
+        }
         let next = local + kept + added
         return next == current ? nil : next
     }

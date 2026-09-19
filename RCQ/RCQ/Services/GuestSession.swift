@@ -15,13 +15,21 @@ import Foundation
 /// Settings draw on the first frame, and a flat key would paint account A's
 /// verdict over account B for that frame. The island is the source of truth and
 /// this is only what it last said (`record`), re-asked on every boot, recover
-/// and refresh.
+/// and refresh — and every one of those answers can clear it as well as set it,
+/// which is the whole of `GuestFlag`.
 @MainActor
 final class GuestSession: ObservableObject {
     static let shared = GuestSession()
 
     /// The island said this session's row is a guest copy. False for every
     /// native account, and for every island too old to have the field.
+    ///
+    /// ⚠⚠ Only an island that says `guest: true` in as many words can set this,
+    /// and that is a property the push gate depends on: a true stops this device
+    /// registering a push endpoint at all
+    /// (`NotificationService.submitTokenIfNeeded`), so a false positive silences
+    /// an ordinary account's notifications completely with no error on either
+    /// side. See `GuestFlag` for the rule and what it used to be.
     @Published private(set) var isPrimaryGuestCopy: Bool = false
 
     /// The island this copy lives on, for the `%@` of every sentence.
@@ -54,15 +62,23 @@ final class GuestSession: ObservableObject {
     /// What the island answered about OUR row, from `/users/{uin}/info` on the
     /// own card, from `/auth/recover`, `/auth/refresh` or `/auth/guest`.
     ///
-    /// ⚠ Nil is not news. An island older than guest copies sends nothing, and
-    /// reading that as "native" would clear the flag for an account that is a
-    /// copy on an island which simply did not answer this time.
+    /// ⚠⚠ NIL MEANS NOT A GUEST, and it used to mean "no news" here, which is
+    /// the one way a false positive was reachable. A stored true was never
+    /// cleared by a reply that had stopped carrying the field, and the flag gates
+    /// the push-token POST: one flagged row plus an island rolled back to a build
+    /// from before guest copies (is2.rcq.app sat on 2026.09.04.11 for days)
+    /// silenced push for that account permanently and invisibly. An island that
+    /// HAS the feature always sends the key — the server fills it explicitly
+    /// false on register, recover, refresh and the self view — so the only reply
+    /// that omits it comes from an island where no guest row can exist. The rule,
+    /// the reasoning and the opposite mistake it accepts are in `GuestFlag`, and
+    /// Android and the web resolve it the same way.
     ///
     /// Callable from anywhere (the recover handshake runs off the main actor);
     /// the stored value is written at once so the next read is right, and the
     /// published one follows on the main actor.
     nonisolated static func record(guest: Bool?) {
-        guard let guest else { return }
+        let guest = GuestFlag.isGuest(wire: guest)
         let key = defaultsKey
         guard UserDefaults.standard.bool(forKey: key) != guest else { return }
         UserDefaults.standard.set(guest, forKey: key)
