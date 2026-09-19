@@ -472,12 +472,25 @@ enum Multihome {
     // tampered catalogue must not steer that. We verify the signature over the
     // EXACT bytes GitHub served, against the maintainer key already pinned for
     // relay-config. servers.json stays a display-only directory.
-    private static let autoIslandsURL = URL(
-        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json"
-    )!
-    private static let autoIslandsSigURL = URL(
-        string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json.sig"
-    )!
+    //
+    // ⚠⚠ TWO SOURCES, OURS FIRST, and the order is the whole point. GitHub raw
+    // is blocked in a good share of the networks this project exists for, so
+    // the one feature whose purpose is "your island may go away, keep a spare"
+    // failed for exactly the people who need a spare (report #579, fixed on
+    // Android and web then; iOS was still asking a blocked host and nothing
+    // else). rcq.app serves the same two files and is reachable wherever the
+    // app is.
+    //
+    // It grants the mirror nothing. The signature is checked over the EXACT
+    // bytes each source served, against the pinned ISLAND_LIST key, so a
+    // mirror that lies simply fails verification and the next source is tried
+    // — which is also what makes trying a second source safe at all.
+    private static let autoIslandsSources: [(json: URL, sig: URL)] = [
+        (URL(string: "https://rcq.app/auto-islands.json")!,
+         URL(string: "https://rcq.app/auto-islands.json.sig")!),
+        (URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json")!,
+         URL(string: "https://raw.githubusercontent.com/rcq-messenger/rcq-servers/main/auto-islands.json.sig")!),
+    ]
     // Verified against the ISLAND_LIST role in `SigningKeys` — its own role,
     // because steering a backup mailbox and steering a tunnel are different
     // powers and should not stay welded to one key.
@@ -606,9 +619,19 @@ enum Multihome {
     /// Fetch the signed list + signature and verify Ed25519 over the EXACT
     /// bytes against the pinned maintainer key. Returns nil on any failure.
     private static func fetchSignedAutoIslands() async -> [String]? {
-        var jreq = URLRequest(url: autoIslandsURL); jreq.cachePolicy = .reloadIgnoringLocalCacheData
-        var sreq = URLRequest(url: autoIslandsSigURL); sreq.cachePolicy = .reloadIgnoringLocalCacheData
-        // GitHub, not an island: ride an already-running tunnel, but never
+        for source in autoIslandsSources {
+            if let islands = await verifiedIslands(from: source) { return islands }
+        }
+        return nil
+    }
+
+    /// One source, verified. Nil for anything at all: unreachable, a non-200,
+    /// a page a static host served in place of a missing file, a signature
+    /// that does not check out. The caller then tries the next source.
+    private static func verifiedIslands(from source: (json: URL, sig: URL)) async -> [String]? {
+        var jreq = URLRequest(url: source.json); jreq.cachePolicy = .reloadIgnoringLocalCacheData
+        var sreq = URLRequest(url: source.sig); sreq.cachePolicy = .reloadIgnoringLocalCacheData
+        // Neither host is an island: ride an already-running tunnel, but never
         // turn one ON because a third party is unreachable.
         guard let (data, r1) = try? await IslandHTTP.data(for: jreq, allowTunnelFallback: false),
               let (sigData, r2) = try? await IslandHTTP.data(for: sreq, allowTunnelFallback: false),

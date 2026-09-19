@@ -5,11 +5,15 @@ no email, no real name required. End-to-end encrypted via
 [libsignal](https://github.com/signalapp/libsignal) (Double Ratchet
 + X3DH + sealed sender). SwiftUI + iOS 16+.
 
-This repository is the **iOS client only**. The FastAPI backend
-lives in a private repository and is not open-sourced — it carries
-operational secrets (DigitalOcean API tokens, admin credentials,
-APNs signing keys) that we are not in a position to publish. The
-iOS client talks to `https://api.rcq.app`.
+This repository is the **iOS client only**. The FastAPI backend it
+talks to is open source and self-hostable:
+[rcq-server-ref](https://github.com/rcq-messenger/rcq-server-ref)
+(AGPL-3.0), and the desktop and browser client is
+[rcq-desktop](https://github.com/rcq-messenger/rcq-desktop). What
+stays private is the flagship's own deployment — API tokens, admin
+credentials, APNs signing keys — not the server. By default this
+client talks to `https://api.rcq.app`, and it can be pointed at any
+island, including your own.
 
 ---
 
@@ -115,8 +119,11 @@ xcrun simctl spawn booted defaults write app.rcq.client \
 - Vendored libsignal source.
 
 **Not here:**
-- FastAPI backend (private repo, operational secrets).
-- Web landing pages and `chat.rcq.app` web client (separate repo).
+- The flagship's own deployment: API tokens, admin credentials, APNs
+  signing keys. The SERVER itself is
+  [rcq-server-ref](https://github.com/rcq-messenger/rcq-server-ref).
+- The browser and desktop client, which share one source:
+  [rcq-desktop](https://github.com/rcq-messenger/rcq-desktop).
 - App Store provisioning profiles, signing certificates, APNs auth
   key (per-team Apple-issued material).
 - TestFlight / App Store Connect API tokens.
