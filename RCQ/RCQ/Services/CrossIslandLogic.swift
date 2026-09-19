@@ -2,8 +2,12 @@ import Foundation
 
 // Pure rules behind the cross-island features (spec 2026-09-15): the poll of
 // pending contact requests on visited islands (F1), the burn cascade over
-// this account's copies on other islands (F2), and which catalogue island the
-// backup toggle may register on (report #988, at the bottom).
+// this account's copies on other islands (F2), which catalogue island the
+// backup toggle may register on (report #988), and at the bottom the three
+// rules report #1024 and the push reports turned out to be made of — how the
+// cross-island half of the visible roster is folded, which island a number
+// means when a card is about to resolve it, and what an island's reply can say
+// about our own row being a guest copy.
 //
 // ⚠ Foundation only, on purpose. No keychain, no stores, no `IslandHTTP`, no
 // main actor: every input comes in as a value and every side effect goes out
@@ -1566,5 +1570,207 @@ extension GuestSentence {
         }
         if refusal.status == 429 { return "guest.join.rate" }
         return nil
+    }
+}
+
+// MARK: - #1024: the cross-island half of the visible roster
+
+/// The part of a roster row the rules below need: its number, and the island it
+/// lives on with `nil` meaning our own.
+///
+/// ⚠ A protocol rather than `Contact` so this file stays Foundation only (see
+/// the header). `Contact` carries presence, unread counts, a picture and a dozen
+/// island-served flags, none of which any rule here looks at; it conforms in
+/// `ContactService`.
+protocol RosterRow {
+    var uin: Int { get }
+    var host: String? { get }
+}
+
+/// How the cross-island half of the visible roster is made equal to
+/// `CrossIslandStore`. Android's `CrossIslandRoster.fold`, same rule.
+///
+/// ⚠⚠ Report #1024, and the point is that it is a SYNC and not a merge: it adds
+/// the store's rows the list is missing AND drops the list's foreign rows the
+/// store no longer has. Appending was enough only while it ran after every full
+/// roster body, because the body overwrote the list and a dropped store row
+/// simply never came back. The roster is read with a conditional GET now, a 304
+/// returns from `ContactService.refreshNow` before the fold at the end of it
+/// (it has to: re-folding the kept rows repainted presence the websocket had
+/// just painted, report #909), and nothing cross-island moves our island's
+/// ETag. So a 304 is the permanent answer for such an account, and both
+/// directions have to run in that branch or the list only ever changes at an
+/// account switch, which is the one thing that clears the ETag.
+///
+/// ⚠ `host` is the whole of what makes a row ours to manage here. It is
+/// local-only, never served by an island, and the one place that sets it is the
+/// mapper over `CrossIslandStore`. A row with a nil host belongs to the island
+/// and survives untouched, including a same-numbered contact of our own.
+enum CrossIslandRoster {
+
+    /// `current` with its cross-island rows made equal to `store`, or nil when
+    /// that would change nothing.
+    ///
+    /// Nil rather than the same array on purpose: `contacts` is `@Published`, an
+    /// array is a value, and there is no identity to compare afterwards — so the
+    /// "nothing moved" answer has to come from here or every presence frame
+    /// wakes every view that reads the roster.
+    ///
+    /// ⚠ ORDER. Rows already on screen keep their places and genuinely new ones
+    /// go on the end, which is the one deliberate difference from Android.
+    /// There, `CrossIslandStore.list()` is sorted by `addedAt` and the fold can
+    /// simply take the store's order; here `all()` is a dictionary's `values`
+    /// and has no order to inherit, so taking it would let the foreign half of
+    /// somebody's chat list reshuffle itself on a rehash. Keeping screen order
+    /// also makes the fold idempotent, which is what lets the 304 branch run it
+    /// on every frame.
+    ///
+    /// ⚠ A store row whose number a same-island contact already holds is
+    /// skipped, exactly as the old merge did: one number is one thread in the
+    /// message store, so two rows for it would share one history.
+    static func fold<Row: RosterRow & Equatable>(_ current: [Row], store: [Row]) -> [Row]? {
+        let local = current.filter { $0.host == nil }
+        let localUINs = Set(local.map { $0.uin })
+        var held = Set<String>()
+        for row in store {
+            if localUINs.contains(row.uin) { continue }
+            held.insert(key(row))
+        }
+        // The list's own foreign rows the store still has, in the order they are
+        // already drawn in. The row on screen is kept rather than the store's
+        // copy: the displayed fields have their own refresh path and a row
+        // already in front of somebody must not be rebuilt for no reason.
+        var kept: [Row] = []
+        var seen = Set<String>()
+        for row in current where row.host != nil {
+            let k = key(row)
+            guard held.contains(k), !seen.contains(k) else { continue }
+            seen.insert(k)
+            kept.append(row)
+        }
+        let added = store.filter { !localUINs.contains($0.uin) && !seen.contains(key($0)) }
+        let next = local + kept + added
+        return next == current ? nil : next
+    }
+
+    /// `uin@host`, lowercased, because a uin alone does not name a person: two
+    /// islands can both have a #5 and they are two people.
+    private static func key<Row: RosterRow>(_ row: Row) -> String {
+        "\(row.uin)@\((row.host ?? "").lowercased())"
+    }
+}
+
+// MARK: - #1024 / #433 / #429: which island a number means
+
+/// Which island a number means, when a screen is about to resolve a person by
+/// it. Android's `PeerIsland`, same source order.
+///
+/// ⚠⚠ A uin alone does not name a person. Islands number independently, so #134
+/// is a different account on every one of them, and getting this wrong is
+/// silent: an island answers for the number IT holds, so the wrong island does
+/// not fail, it confidently describes somebody else and then gets told we
+/// looked at their profile.
+enum PeerIsland {
+
+    /// The island a peer's card must be read from, or nil for our own.
+    ///
+    /// `callerHost` is the island the caller knows the number means, for callers
+    /// that know: a room's host, for a member tapped inside that room. Nil means
+    /// the caller did not say, which is the 1:1 case, since a thread is opened
+    /// by number alone (`UserInfoView.host`, "nil for everything opened from
+    /// home").
+    ///
+    /// `rosterMatched` and `rosterHost` describe the visible roster's row for
+    /// this number, if the screen matched one; `rosterHost` is nil for a row on
+    /// our own island. `storeHost` is what `CrossIslandStore` holds for the
+    /// number, nil when it holds nothing.
+    ///
+    /// The order is the point:
+    ///
+    ///  - `callerHost` naming our own island is the caller saying "the local
+    ///    one", and it must NOT fall back to anything. That is report #433 (the
+    ///    row said is2, the card showed the api account) and #429.
+    ///  - A caller naming a foreign island is believed next, since it knows
+    ///    something the roster may not hold at all: a room member who is not a
+    ///    contact has no row anywhere.
+    ///  - Then the roster, which is authoritative once it HAS a row. A matched
+    ///    same-island row answers "our island" and is not second-guessed.
+    ///  - Only then the store, and this is the line #1024 needed: a
+    ///    cross-island contact can exist in the store while the visible roster
+    ///    has not folded it in yet (an accept that arrived from another device,
+    ///    a roster still answering 304). Without it the 1:1 card resolved such a
+    ///    person on OUR island, drew whoever holds that number there, and sent
+    ///    them a sealed visit ping for good measure.
+    static func cardHost(
+        callerHost: String?,
+        ourIsland: String?,
+        rosterMatched: Bool,
+        rosterHost: String?,
+        storeHost: String?
+    ) -> String? {
+        if let callerHost {
+            // "Our own island" is an answer, not a missing one.
+            if let ourIsland, callerHost.lowercased() == ourIsland.lowercased() { return nil }
+            return rosterHost ?? callerHost
+        }
+        if rosterMatched { return rosterHost }
+        // ⚠ A store host equal to our own island still resolves to nil: the
+        // question this answers is "somewhere else, and where", and saying
+        // "elsewhere" about our own island would send a local card down the
+        // cross-island path.
+        if let storeHost, let ourIsland, storeHost.lowercased() == ourIsland.lowercased() { return nil }
+        return storeHost
+    }
+}
+
+// MARK: - D6: what a reply can say about our own row being a guest copy
+
+/// The guest flag as an island's reply carries it (spec 2026-09-15, 12.1, "Copy
+/// signed in as an account").
+///
+/// ⚠⚠ Worth a rule of its own because of what the flag DOES rather than what it
+/// is: a true stops this device registering a push endpoint at all
+/// (`NotificationService.submitTokenIfNeeded`), so a false positive silences an
+/// ordinary account's notifications completely, with no error on either side.
+/// That was the first hypothesis for the push reports the day after 0.196
+/// shipped the gate.
+///
+/// ⚠⚠ ABSENT MEANS NOT A GUEST, and this is the direction the three clients now
+/// share (Android `Session.notePrimaryGuest` + `GuestFlagWireTest`, web
+/// `guest-copy.ts`). iOS used to read absent as "no news" and leave a stored
+/// true in place, which is the one way a false positive was reachable: one
+/// flagged row plus an island rolled back to a build without the field (is2 sat
+/// on 2026.09.04.11 for days) silenced push for that account permanently and
+/// invisibly. An island that HAS the feature always sends the key — the server
+/// fills it explicitly false on `/auth/register`, `/auth/recover`,
+/// `/auth/refresh` and the self view — so the only reply that omits it is one
+/// from an island where no guest row can exist at all.
+///
+/// The cost of this direction is the opposite mistake, and it is the cheap one:
+/// a real copy on an island that got rolled back is briefly treated as native,
+/// so it sees surfaces the island then refuses and offers a push token the
+/// island then rejects. Both say so out loud, and the next reply fixes them.
+enum GuestFlag {
+    /// The one shape every reply that can carry the flag shares. Decoding a
+    /// whole reply here is what pins the rule at the wire and not one layer
+    /// above it: an absent key, an explicit null and a wrong-typed value all
+    /// have to land on "not a guest", and only `true` may set it.
+    struct Wire: Decodable {
+        var guest: Bool?
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.guest = try? c.decode(Bool.self, forKey: .guest)
+        }
+
+        enum CodingKeys: String, CodingKey { case guest }
+    }
+
+    /// What an island said about our own row, resolved.
+    static func isGuest(wire: Bool?) -> Bool { wire ?? false }
+
+    /// The same question asked of the reply bytes.
+    static func isGuest(json: Data) -> Bool {
+        isGuest(wire: (try? JSONDecoder().decode(Wire.self, from: json))?.guest)
     }
 }

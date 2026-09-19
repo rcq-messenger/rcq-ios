@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "updated_at": "2026-09-19",
+  "servers": [
+    {
+      "url": "https://api.rcq.app",
+      "name": "RCQ Flagship",
+      "description": "Default backend operated by the RCQ maintainer. AGPL-3.0 source at github.com/rcq-messenger/rcq-server-ref. Hosted in Frankfurt.",
+      "region": "EU",
+      "operator_contact": "hello@rcq.app",
+      "added_at": "2026-05-28",
+      "auto_backup": true,
+      "logo": "https://rcq.app/islands/logos/api.rcq.app.png"
+    },
+    {
+      "url": "https://is2.rcq.app",
+      "name": "RCQ Second Island",
+      "description": "The maintainer's second island, independent of the flagship: its own accounts, its own keys, its own data, and cross-island messaging with api.rcq.app (add somebody as uin@api.rcq.app). No push notifications on this one yet. Hosted in Frankfurt.",
+      "region": "EU",
+      "operator_contact": "hello@rcq.app",
+      "added_at": "2026-06-10",
+      "auto_backup": true
+    },
+    {
+      "url": "https://rcq.project26.cc",
+      "name": "Project26's RCQ",
+      "description": "RCQ island operated by Project26, hosted in Netherlands",
+      "region": "NL",
+      "operator_contact": "veritas@project26.cc",
+      "added_at": "2026-06-11"
+    },
+    {
+      "url": "https://rcqam.mooo.com",
+      "name": "Amsterdam Island",
+      "description": "Public ephemeral RCQ relay in Netherlands. High privacy, automatic message expiration.",
+      "region": "EU",
+      "operator_contact": "ap5858712@gmail.com",
+      "added_at": "2026-06-15"
+    },
+    {
+      "url": "https://rcq.chickenkiller.com",
+      "name": "Singapore Island",
+      "description": "Public ephemeral RCQ relay in Singapore. High privacy, automatic message expiration.",
+      "region": "AP",
+      "operator_contact": "ap5858712@gmail.com",
+      "added_at": "2026-06-15"
+    },
+    {
+      "url": "https://146-190-232-70.sslip.io",
+      "name": "Falcon",
+      "description": "A small private island run out of the US. Open to everyone: no invites, no fees, no ads.",
+      "region": "US",
+      "added_at": "2026-09-15",
+      "auto_backup": true,
+      "operator_contact": ""
+    }
+  ]
+}
