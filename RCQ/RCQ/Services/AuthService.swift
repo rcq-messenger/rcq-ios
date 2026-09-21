@@ -656,6 +656,17 @@ final class AuthService: ObservableObject {
         // them too — re-registered identity must not inherit stale
         // sessions/ratchet state.
         SignalProtocolDB.shared.wipe()
+        // ⚠⚠ AND THE PROFILE KEYS. `ProfileKeyStore` holds two pieces of key
+        // material in plain UserDefaults: the key MY avatar is sealed under,
+        // and the key of every contact whose face I can open. Neither was on
+        // this list, so both survived the erasure of the identity they belong
+        // to: the number registered next inherited the burned account's own
+        // key (so a picture published under the new identity was openable by
+        // everyone who ever held the old one's), and the peer map stayed behind
+        // as a plaintext roster of numbers on a device whose account is gone.
+        // The store has had a `wipe()` for exactly this since it was written;
+        // nothing ever called it.
+        ProfileKeyStore.shared.wipe()
         await APIClient.shared.setToken(nil)
         ownUIN = nil
         nickname = ""

@@ -2121,12 +2121,19 @@ final class MessageService {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             if case .pkeyAsk = decrypted.envelope {
-                // Only the owner can answer this one, so there is no roster
-                // gate: whoever asked either gets my key or nothing.
-                if let mine = ProfileKeyStore.shared.mine {
-                    Task { [weak self] in
-                        await self?.answerProfileKeyAsk(to: decrypted.senderUIN, keyB64: mine)
-                    }
+                // Only the owner can answer this one; [answerProfileKeyAsk]
+                // carries the roster gate, so a stranger gets nothing.
+                // ⚠ Vault-backed, read only: an install that never PICKED a
+                // picture holds nothing locally (a second phone, a restore, a
+                // fresh install), and answering "I have none" there is wrong —
+                // the account HAS a key, this install simply never minted it.
+                // `published()` and NOT `ensureMine()`: the latter mints when
+                // the vault is empty, so a question from anybody could make a
+                // device publish a rival key and break the face for everyone
+                // holding the real one.
+                Task { [weak self] in
+                    guard let mine = await ProfileKeyService.shared.published() else { return }
+                    await self?.answerProfileKeyAsk(to: decrypted.senderUIN, keyB64: mine)
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }

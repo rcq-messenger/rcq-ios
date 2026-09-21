@@ -1191,11 +1191,22 @@ struct SettingsView: View {
         residentSince = p.residentSince
         isResident = p.residentSince != nil || p.badge == "resident"
             || (p.badgesEarned ?? []).contains("resident")
-        PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: p.avatarMediaKey)
+        // ⚠⚠ THE ISLAND DOES NOT HOLD THE KEY TO MY FACE, by design, so
+        // `p.avatarMediaKey` is nil for every picture set under the profile-key
+        // model — and this used to write that nil straight over the key we had
+        // already resolved, in @State and in UserDefaults both. One refresh of
+        // Settings and my own face went blank everywhere that reads the mirror,
+        // until the key was fetched again. Mine comes from my own store, and
+        // from the vault when this install never minted it.
+        var ownKey = p.avatarMediaKey ?? ProfileKeyStore.shared.mine
+        if ownKey == nil, p.avatarMediaID != nil {
+            ownKey = await ProfileKeyService.shared.published()
+        }
+        PresenceService.shared.setOwnAvatar(id: p.avatarMediaID, key: ownKey)
         ownAvatarID = p.avatarMediaID
-        ownAvatarKey = p.avatarMediaKey
+        ownAvatarKey = ownKey
         UserDefaults.standard.set(p.avatarMediaID, forKey: "rcq.ownAvatarID")
-        UserDefaults.standard.set(p.avatarMediaKey, forKey: "rcq.ownAvatarKey")
+        UserDefaults.standard.set(ownKey, forKey: "rcq.ownAvatarKey")
     }
 
     /// Encrypt + upload the picked image, then hand the island the id and key.

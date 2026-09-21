@@ -19,6 +19,36 @@ final class ProfileKeyService {
     /// one, the two installs would hand out different keys and half of one
     /// person's contacts would hold a key that opens nothing. Whoever
     /// published first wins.
+    /// The account's key as it is ALREADY PUBLISHED, read only: never mints,
+    /// never writes to the vault.
+    ///
+    /// ⚠⚠ Why a read-only twin exists. `ensureMine()` is reachable only from
+    /// the avatar picker, so an install that never PICKED a picture has nothing
+    /// in the store: a second phone, a restore, a fresh install of an account
+    /// whose picture was set elsewhere. On those the account's own face stayed
+    /// blank and a `pkeyask` could not be answered. Using `ensureMine()` for
+    /// this would be worse than silence: it MINTS when the vault is empty, so a
+    /// stranger's question — or a refresh of Settings on a flaky connection —
+    /// could make a device publish a rival key and break the face for everyone
+    /// who already holds the real one. Android carries the same read-only twin
+    /// (`ProfileKeyVault.publishedKey`).
+    func published() async -> String? {
+        if let have = ProfileKeyStore.shared.mine, !have.isEmpty { return have }
+        guard !PanicPINService.shared.isDecoy,
+              let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return nil }
+        let slot = Vault.slotId(identityPriv: ik, name: Vault.profileKey)
+        guard let read = try? await VaultClient.get(slot),
+              let blob = read.blob,
+              let raw = Data(base64Encoded: blob),
+              let plain = try? Vault.open(identityPriv: ik, slot: slot, version: read.version, blob: raw),
+              let existing = String(data: plain, encoding: .utf8)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !existing.isEmpty
+        else { return nil }
+        ProfileKeyStore.shared.setMine(existing)
+        return existing
+    }
+
     func ensureMine() async -> String? {
         if let have = ProfileKeyStore.shared.mine, !have.isEmpty { return have }
         guard !PanicPINService.shared.isDecoy,
