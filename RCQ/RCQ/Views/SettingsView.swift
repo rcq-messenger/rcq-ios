@@ -1207,6 +1207,10 @@ struct SettingsView: View {
         ownAvatarKey = ownKey
         UserDefaults.standard.set(p.avatarMediaID, forKey: "rcq.ownAvatarID")
         UserDefaults.standard.set(ownKey, forKey: "rcq.ownAvatarKey")
+        // And, once, move a picture still in the OLD shape off the island's
+        // key. A no-op for an account with no picture or one already moved;
+        // the old picture keeps working until the new one is published.
+        if p.avatarMediaKey != nil { await AvatarMigration.runIfNeeded() }
     }
 
     /// Encrypt + upload the picked image, then hand the island the id and key.
