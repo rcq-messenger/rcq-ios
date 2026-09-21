@@ -106,6 +106,31 @@ final class NotificationService: ObservableObject {
         }
     }
 
+    /// Tell the island to stop waking this device for the account whose
+    /// credentials are loaded right now.
+    ///
+    /// ⚠⚠ THE CALL NOBODY WAS MAKING. A push row is (account, token), and the
+    /// token belongs to the INSTALLATION: a phone that has carried several
+    /// accounts has a row per account pointing at it. When an account LEAVES
+    /// the phone nothing ever removed its row, so the island went on waking the
+    /// device for that account's groups — and the person could not stop it from
+    /// their own account, because it was not their account doing it.
+    /// Reinstalling did not help either: the row is on the server, filed under
+    /// a number they no longer hold. Report #1037, open for months, from an
+    /// iPhone whose token was registered under five numbers, four of them
+    /// abandoned and all four in the group whose messages kept arriving.
+    ///
+    /// ⚠ Must run BEFORE the account's credentials are wiped: the island only
+    /// takes this on that account's own authority.
+    func dropTokenForCurrentAccount() async {
+        guard let token = deviceToken else { return }
+        struct Body: Encodable { let token: String }
+        _ = try? await APIClient.shared.rawRequest(
+            "DELETE", "/users/me/push-token", body: Body(token: token)
+        )
+        UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
+    }
+
     /// `force=true` bypasses the cache so the backend re-receives the
     /// token even when it looks unchanged — covers server-side row loss.
     func refreshTokenSubmission() async {

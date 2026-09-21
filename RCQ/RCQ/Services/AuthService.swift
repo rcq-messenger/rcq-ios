@@ -635,6 +635,13 @@ final class AuthService: ObservableObject {
     }
 
     func wipeLocalIdentity() async {
+        // ⚠ Before the keys go: the island only drops this device's push row on
+        // the authority of the account it belongs to, and in a moment there
+        // will be no credentials to ask with. A row left behind goes on waking
+        // this phone for that account's groups, for ever, and its owner cannot
+        // stop it from any account they still have (#1037).
+        await NotificationService.shared.dropTokenForCurrentAccount()
+        await VoIPPushService.shared.dropTokenForCurrentAccount()
         for key in [
             KeychainStore.Keys.uin,
             KeychainStore.Keys.token,

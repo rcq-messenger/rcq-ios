@@ -32,6 +32,19 @@ final class VoIPPushService: NSObject {
         await submitTokenIfNeeded(force: true)
     }
 
+    /// Tell the island to stop waking this device for the account whose
+    /// credentials are loaded right now. The VoIP twin of
+    /// [NotificationService.dropTokenForCurrentAccount]; see the note there.
+    /// Must run BEFORE the credentials are wiped.
+    func dropTokenForCurrentAccount() async {
+        guard let token = voipToken else { return }
+        struct Body: Encodable { let token: String }
+        _ = try? await APIClient.shared.rawRequest(
+            "DELETE", "/users/me/push-token", body: Body(token: token)
+        )
+        UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
+    }
+
     /// Burn-account hook. Clears the sent-token cache.
     func wipe() {
         UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
