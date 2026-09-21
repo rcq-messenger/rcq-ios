@@ -55,9 +55,19 @@ final class ProfileKeyService {
               let ik = KeychainStore.data(KeychainStore.Keys.identityPriv) else { return nil }
         let slot = Vault.slotId(identityPriv: ik, name: Vault.profileKey)
 
+        // ⚠⚠ A THROW IS NOT AN EMPTY SLOT. `try?` on the read below made a
+        // 5xx, a rate limit and a dead connection indistinguishable from "the
+        // island says there is nothing here", and the code then MINTS. That is
+        // permanent damage: the account already has a key, every contact holds
+        // it, and half of them are left with one that opens nothing. Ask once,
+        // plainly, and give up for now if the island did not answer — a retry
+        // costs one tap. `VaultClient.get` already turns the island's own 404
+        // into a row with a nil blob, so an empty slot still reads as empty and
+        // only a real failure throws.
+        guard let read = try? await VaultClient.get(slot) else { return nil }
+
         // 1. Adopt what a sibling install already published.
-        if let read = try? await VaultClient.get(slot),
-           let blob = read.blob,
+        if let blob = read.blob,
            let raw = Data(base64Encoded: blob),
            let plain = try? Vault.open(identityPriv: ik, slot: slot, version: read.version, blob: raw),
            let existing = String(data: plain, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -71,7 +81,7 @@ final class ProfileKeyService {
         var raw = Data(count: 32)
         _ = raw.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
         let minted = raw.base64EncodedString()
-        let base = (try? await VaultClient.get(slot))?.version ?? 0
+        let base = read.version
         guard let sealed = try? Vault.seal(
             identityPriv: ik, slot: slot, version: base + 1,
             plaintext: Data(minted.utf8)
@@ -100,7 +110,13 @@ final class ProfileKeyService {
     /// contact must not cost the rest their copy — they ask with `pkeyask`.
     func fanOut(keyB64: String) async {
         let roster = ContactService.shared.contacts
-        for c in roster where !c.identityKey.isEmpty {
+        // ⚠ Blocked is not an audience, and a cross-island row is not this
+        // island's. The key never rotates, so one send to somebody blocked
+        // hands them every picture the account will ever publish; and the POST
+        // below addresses OUR island, where the same digits belong to a
+        // different person entirely — a cross-island contact receives the key
+        // in the §5e profile envelope deposited to THEIR island instead.
+        for c in roster where !c.identityKey.isEmpty && !c.blocked && c.host == nil {
             let bundle = PeerBundle(uin: c.uin, identityKey: c.identityKey, signingKey: c.signingKey)
             let env: Envelope = .pkey(key: keyB64)
             guard let crypto = MessageService.shared.crypto,
