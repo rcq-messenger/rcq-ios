@@ -2348,11 +2348,23 @@ final class MessageService {
                         uin: uin, host: fromHost, nickname: nickname, note: note
                     )
                 case "decline":
-                    // Drop our local pending row for them, silently. The pinned
-                    // keys and the local contact row are left alone. When we
+                    // Drop our local pending row for them, silently. When we
                     // pin a key for this address, only that key may decline.
                     if pinnedRow != nil && !alreadyAccepted { return outcome }
                     CrossIslandRequestsStore.shared.clear(uin: uin, host: fromHost)
+                    // ⚠⚠ AND THE CONTACT ROW. It used to be left alone, which
+                    // made receiving a refusal a complete no-op: the side that
+                    // ASKED holds no pending row to clear, so somebody who
+                    // explicitly said no stayed in the contact list for ever,
+                    // looking exactly like somebody who had said yes. That is
+                    // the thing behind #1032 — cross-island has no "waiting"
+                    // state to hide a row in, so the only honest signal it can
+                    // carry is the answer, and the answer was being thrown
+                    // away. The row is a local record, so removing it is ours
+                    // to do; §5d then stops treating them as mutual.
+                    if pinnedRow != nil {
+                        CrossIslandStore.shared.remove(uin: uin, host: fromHost)
+                    }
                 default:
                     break
                 }
