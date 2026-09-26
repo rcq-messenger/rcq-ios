@@ -131,6 +131,13 @@ final class LockedChatsStore: ObservableObject {
         save()
     }
 
+    /// The decoy's locks, when the decoy PIN is removed or a new decoy is
+    /// made: kept, they recorded that a decoy session once existed and came
+    /// back in the next decoy.
+    func forgetDecoy() {
+        forget(accountID: PanicPINService.decoyNamespace)
+    }
+
     /// An account that left the device takes its locks with it.
     func forget(accountID: UUID) {
         guard byAccount.removeValue(forKey: accountID.uuidString) != nil else { return }
@@ -158,7 +165,11 @@ final class LockedChatsStore: ObservableObject {
     func syncExtensionMirror() {
         switch PINVault.configuredState {
         case true?:
-            AppGroup.setLockedChats(byAccount.mapValues { Set($0.map(\.key)) })
+            // Never the decoy's: the extension blanks every push during a
+            // decoy session anyway, and a file anyone can read must not carry
+            // the decoy namespace's fixed id (#1045 review).
+            let decoy = PanicPINService.decoyNamespace.uuidString
+            AppGroup.setLockedChats(byAccount.filter { $0.key != decoy }.mapValues { Set($0.map(\.key)) })
         case false?:
             AppGroup.setLockedChats([:])
         case nil:

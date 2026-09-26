@@ -312,9 +312,21 @@ final class PanicPINService: ObservableObject {
         if let until = lockoutUntil, until > Date() {
             return .lockedOut(until: until)
         }
-        let unlock = await Task.detached(priority: .userInitiated) {
-            PINVault.unlock(pin: pin)
+        // ONE derivation on every path: a second one only when a decoy change
+        // had collided would make a wrong PIN measurably slower afterwards,
+        // and that difference alone would tell the collision apart.
+        let (key, unlock) = await Task.detached(priority: .userInitiated) { () -> (SymmetricKey?, PINVault.Unlock?) in
+            guard let key = PINVault.derivedKey(pin: pin) else { return (nil, nil) }
+            return (key, PINVault.unlock(key: key))
         }.value
+        // A decoy session whose PIN change collided: its new PIN is accepted
+        // here, whatever slot it opens (see `changeDecoyPIN`).
+        if session, mode == .decoy, let alias = decoyAliasKey, let key,
+           key.withUnsafeBytes({ Data($0) }) == alias.withUnsafeBytes({ Data($0) }) {
+            PINVault.clearAttemptState()
+            lockoutUntil = nil
+            return .ok
+        }
         let wanted: PINVault.Mode = (session && mode == .decoy) ? .decoy : .real
         guard let unlock, unlock.payload.mode == wanted else {
             recordFailedAttempt()
@@ -505,14 +517,18 @@ final class PanicPINService: ObservableObject {
     /// real account.
     ///
     /// ⚠⚠ A `pin` that is already another slot's PIN (the real one, the wipe
-    /// one) is NOT refused. It used to be, as "That PIN is already in use", and
-    /// that made this sheet an oracle outside the attempt counter: the coercer
-    /// who was handed the decoy PIN typed candidates here, and the refusal both
-    /// proved a second PIN exists and named it, without the lockout ever
-    /// counting and without the wipe PIN wiping. Now such a change reports
-    /// success and leaves the decoy PIN as it was. Whoever wants to know what
-    /// the candidate opens has to try it at the lock screen, where it counts
-    /// and where the wipe PIN does what it promises.
+    /// one) must look EXACTLY like any other change, now and afterwards
+    /// (#1045 review, twice). Refusing it ("That PIN is already in use") named
+    /// the second PIN; accepting it silently while keeping the old decoy PIN
+    /// was the same answer one step later, because the old PIN still worked
+    /// at the next check. So on a collision the decoy slot is sealed under a
+    /// random key: the old decoy PIN stops opening anything, exactly as after
+    /// a change, and for the rest of this session the new PIN is what the
+    /// session gates accept (`decoyAliasKey`), exactly as after a change.
+    /// What the new PIN opens at the lock screen is only learned there, where
+    /// attempts count and the wipe PIN wipes. The cost falls on nobody but the
+    /// coercer: no PIN opens the decoy slot until the owner sets the decoy PIN
+    /// again from the real session, which keeps the decoy's data key.
     func changeDecoyPIN(_ pin: String) async throws {
         guard pin.count >= Self.minPINLength else { throw PINError.pinTooShort }
         guard mode == .decoy, let payload = decoyPayload, let oldKey = decoySlotKey else {
@@ -524,11 +540,21 @@ final class PanicPINService: ObservableObject {
             PINVault.reSealUnderNewPIN(oldKey: oldKey, payload: payload, newPIN: pin)
         }.value
         switch result {
-        case .changed(let newKey): decoySlotKey = newKey
-        case .collision: return
-        case .failed: throw PINError.vaultMissing
+        case .changed(let newKey):
+            decoySlotKey = newKey
+            decoyAliasKey = nil
+        case .collision(let slotKey, let pinKey):
+            decoySlotKey = slotKey
+            decoyAliasKey = pinKey
+        case .failed:
+            throw PINError.vaultMissing
         }
     }
+
+    /// The PIN a decoy session changed to when it collided with another
+    /// slot's (see `changeDecoyPIN`): accepted by the session gates in the
+    /// decoy slot's place until the session ends. Memory only.
+    private var decoyAliasKey: SymmetricKey?
 
     func unlockWithBiometrics() async -> Bool {
         guard biometricEnabled else { return false }
@@ -574,6 +600,7 @@ final class PanicPINService: ObservableObject {
         realSlotKey = nil
         decoyPayload = nil
         decoySlotKey = nil
+        decoyAliasKey = nil
         mode = .none
         AuthService.shared.restoreRealIdentity()
         MessageDB.shared.configure(decoy: false, dataKey: nil)
@@ -638,6 +665,8 @@ final class PanicPINService: ObservableObject {
         guard !biometricEnabled else { throw PINError.biometricConflict }
         let realSlot = layout.realSlot
         try await ensureNotInUse(pin, ignoringSlot: layout.decoySlot)
+        // A new decoy starts without the old one's chat locks.
+        if layout.decoySlot == nil { LockedChatsStore.shared.forgetDecoy() }
 
         let decoyKeyData = layout.decoyDataKey ?? randomKeyData()
         let decoyUIN = layout.decoyUIN ?? Self.randomDecoyUIN()
@@ -675,6 +704,7 @@ final class PanicPINService: ObservableObject {
         realPayload = payload
         MessageDB.destroyDecoyStore()
         DecoySeedStore.destroy()
+        LockedChatsStore.shared.forgetDecoy()
     }
 
     // MARK: - decoy seeding (real session only)

@@ -838,8 +838,18 @@ struct ChatView: View {
         // The background and not merely inactive: a permission prompt or the
         // control centre makes the scene inactive too, and throwing the
         // person out of the chat mid-sentence for that protects nothing.
+        //
+        // The chat comes back as a first open: the settle runs again (masked,
+        // landing on the new unread line or the bottom). Left spent, the
+        // rebuilt list opened at the top of the loaded window and paged older
+        // history in at once (#1045 review).
         .onChange(of: scenePhase) { phase in
-            if phase == .background, chatIsLocked { chatPinUnlocked = false }
+            if phase == .background, chatIsLocked {
+                chatPinUnlocked = false
+                didSettleOpen = false
+                settleDone = false
+                chatVisible = false
+            }
         }
     }
 

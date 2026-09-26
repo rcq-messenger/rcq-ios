@@ -228,7 +228,17 @@ enum PINVault {
 
     static func unlock(pin: String) -> Unlock? {
         guard let vault = readVault() else { return nil }
-        let key = deriveKey(pin: pin, salt: vault.salt)
+        return unlock(key: deriveKey(pin: pin, salt: vault.salt), in: vault)
+    }
+
+    /// `unlock(pin:)` for a key already derived (`derivedKey(pin:)`), so a
+    /// caller that also compares the key elsewhere pays for ONE derivation.
+    static func unlock(key: SymmetricKey) -> Unlock? {
+        guard let vault = readVault() else { return nil }
+        return unlock(key: key, in: vault)
+    }
+
+    private static func unlock(key: SymmetricKey, in vault: VaultFile) -> Unlock? {
         for slot in vault.slots {
             if let payload = openSlot(slot, key: key) {
                 return Unlock(payload: payload, slotKey: key)
@@ -257,8 +267,13 @@ enum PINVault {
     /// so apart from every other failure: the caller must not show it
     /// (`PanicPINService.changeDecoyPIN`).
     enum ReSeal {
+        /// Sealed under the new PIN's key.
         case changed(SymmetricKey)
-        case collision
+        /// The new PIN opens another slot. The slot was sealed under a RANDOM
+        /// key instead (returned first), so the old PIN stops opening it just
+        /// as after a real change; the second key is the new PIN's, for the
+        /// caller to accept in its place for the rest of the session.
+        case collision(slotKey: SymmetricKey, pinKey: SymmetricKey)
         case failed
     }
 
@@ -266,13 +281,23 @@ enum PINVault {
         guard var vault = readVault() else { return .failed }
         guard let idx = vault.slots.firstIndex(where: { openSlot($0, key: oldKey) != nil }) else { return .failed }
         let newKey = deriveKey(pin: newPIN, salt: vault.salt)
-        for (i, slot) in vault.slots.enumerated() where i != idx {
-            if openSlot(slot, key: newKey) != nil { return .collision }
+        let collides = vault.slots.enumerated().contains { i, slot in
+            i != idx && openSlot(slot, key: newKey) != nil
         }
-        guard let sealed = try? sealSlot(payload, key: newKey) else { return .failed }
+        // Same work either way (one seal, one write), so the time a change
+        // takes says nothing about which branch it took.
+        let sealKey = collides ? SymmetricKey(size: .bits256) : newKey
+        guard let sealed = try? sealSlot(payload, key: sealKey) else { return .failed }
         vault.slots[idx] = sealed
         guard (try? writeVault(vault)) != nil else { return .failed }
-        return .changed(newKey)
+        return collides ? .collision(slotKey: sealKey, pinKey: newKey) : .changed(newKey)
+    }
+
+    /// The key `pin` derives under this vault's salt. For comparing against a
+    /// key held in memory without opening any slot.
+    static func derivedKey(pin: String) -> SymmetricKey? {
+        guard let salt = vaultSalt() else { return nil }
+        return deriveKey(pin: pin, salt: salt)
     }
 
     static func freeSlotIndex(layout: Layout) -> Int? {
