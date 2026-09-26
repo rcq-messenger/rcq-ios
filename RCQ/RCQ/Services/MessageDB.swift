@@ -1,6 +1,7 @@
 import CoreData
 import CryptoKit
 import Foundation
+import UIKit
 
 /// On-device message history. Server never persists plaintext — all
 /// history lives client-side. Programmatic CoreData model (no xcdatamodeld);
@@ -111,13 +112,32 @@ final class MessageDB {
     }
 
     /// Close a write batch, flushing on the way out of the outermost one.
-    func endBatch() {
-        guard batchDepth > 0 else { return }
+    ///
+    /// Returns whether what the batch wrote is ON DISK. A drain acks its rows
+    /// to the island only on true: an ack for a row that never reached the
+    /// store deletes the island's copy of a message this device does not have.
+    @discardableResult
+    func endBatch() -> Bool {
+        guard batchDepth > 0 else { return isPersisting }
         batchDepth -= 1
-        guard batchDepth == 0 else { return }
+        guard batchDepth == 0 else { return isPersisting }
         batchInserted.removeAll()
         flushNow()
+        return isPersisting
     }
+
+    /// A store is attached and the last save reached it.
+    var isPersisting: Bool { isStoreAvailable && !lastSaveFailed }
+
+    /// Whether the container has a store behind it at all. It does not while
+    /// the phone is locked (the file has complete protection) in a process
+    /// that was started then: a push, a VoIP call, a background fetch.
+    var isStoreAvailable: Bool {
+        !container.persistentStoreCoordinator.persistentStores.isEmpty
+    }
+
+    /// Set by a save that threw, cleared by one that went through.
+    private var lastSaveFailed = false
 
     private init() {
         MessageDB.instanceExists = true
@@ -125,7 +145,18 @@ final class MessageDB {
             MessageDB.prewarmedReal = nil
             container = ready
         } else {
-            container = MessageDB.makeContainer(decoy: false)
+            container = MessageDB.makeContainer(
+                decoy: false, protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
+            )
+        }
+        // A process started while the phone was locked has no store (see
+        // `makeContainer`). Open it for real the moment the phone is unlocked,
+        // and read back whatever windows were read against nothing.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+            object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in MessageDB.shared.reopenIfStoreless() }
         }
         // The coalescing window (see `save`) must not outlive the foreground.
         for raw in ["UIApplicationWillResignActiveNotification",
@@ -170,12 +201,21 @@ final class MessageDB {
         let task = await MainActor.run { () -> Task<Void, Never>? in
             if instanceExists || prewarmedReal != nil { return nil }
             if let running = prewarmTask { return running }
+            // ⚠⚠ Not while the phone is locked. `RCQApp.init` calls this on
+            // every process start, PushKit and silent-push launches included,
+            // and a store with complete file protection does not open then.
+            // That failure used to fall through to the reset below and DELETE
+            // the history. The first real touch after the unlock builds it.
+            guard UIApplication.shared.isProtectedDataAvailable else { return nil }
             let t = Task<Void, Never> {
                 let built = await Task.detached(priority: .userInitiated) {
-                    makeContainer(decoy: false)
+                    makeContainer(decoy: false, protectedDataAvailable: true)
                 }.value
                 await MainActor.run {
                     prewarmTask = nil
+                    // Never park a container with no store behind it: the
+                    // singleton would adopt it and write into nothing.
+                    guard !built.persistentStoreCoordinator.persistentStores.isEmpty else { return }
                     if !instanceExists && prewarmedReal == nil { prewarmedReal = built }
                 }
             }
@@ -195,8 +235,21 @@ final class MessageDB {
             // drains), but a stale depth would suppress every save that
             // follows and stale rows would name a dead context.
             abandonBatch()
-            container = MessageDB.makeContainer(decoy: decoy)
+            container = MessageDB.makeContainer(
+                decoy: decoy, protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
+            )
         }
+    }
+
+    /// The phone was unlocked: a container built before that has no store.
+    private func reopenIfStoreless() {
+        guard !isStoreAvailable else { return }
+        abandonBatch()
+        lastSaveFailed = false
+        container = MessageDB.makeContainer(decoy: decoyMode, protectedDataAvailable: true)
+        // Windows read while there was no store read back empty and are marked
+        // loaded; read them again from the file that is there now.
+        if isStoreAvailable { MessageStore.shared.reloadFromDB() }
     }
 
     /// Reopen the persistent container at whatever per-account
@@ -208,7 +261,9 @@ final class MessageDB {
     /// because per-account files are isolated.
     func reload() {
         abandonBatch()
-        container = MessageDB.makeContainer(decoy: decoyMode)
+        container = MessageDB.makeContainer(
+            decoy: decoyMode, protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
+        )
     }
 
     /// Forget an open batch without saving it. Only for the two moments the
@@ -316,11 +371,11 @@ final class MessageDB {
     /// WebSocket write during that window would land in the decoy store.
     nonisolated static func decoyStoreURL() -> URL { storeURL(decoy: true) }
 
-    /// Open a container on `storeURL` with `model`. Returns nil when the store
-    /// would not load, leaving the file untouched for the next attempt.
+    /// Open a container on `storeURL` with `model`. Hands back the load error
+    /// when the store would not load, leaving the file untouched.
     nonisolated private static func openContainer(
         model: NSManagedObjectModel, storeURL: URL
-    ) -> NSPersistentContainer? {
+    ) -> (NSPersistentContainer?, NSError?) {
         let container = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
         let desc = NSPersistentStoreDescription(url: storeURL)
         desc.setOption(FileProtectionType.complete as NSObject, forKey: NSPersistentStoreFileProtectionKey)
@@ -328,23 +383,47 @@ final class MessageDB {
         desc.shouldMigrateStoreAutomatically = true
         desc.shouldInferMappingModelAutomatically = true
         container.persistentStoreDescriptions = [desc]
-        var loadFailed = false
+        var failure: NSError?
         container.loadPersistentStores { _, err in
             if let err {
                 print("[MessageDB] load failed: \(err)")
-                loadFailed = true
+                failure = err as NSError
             }
         }
-        return loadFailed ? nil : container
+        return (failure == nil ? container : nil, failure)
     }
 
-    nonisolated private static func makeContainer(decoy: Bool) -> NSPersistentContainer {
+    /// The model genuinely cannot describe the file: a schema or migration
+    /// error, the one failure a reset can cure. Anything else (no permission,
+    /// the file protected while the phone is locked, I/O) says nothing about
+    /// the data in it.
+    nonisolated static func isModelIncompatibility(_ error: Error?) -> Bool {
+        guard let error = error as NSError?, error.domain == NSCocoaErrorDomain else { return false }
+        return [
+            NSPersistentStoreIncompatibleSchemaError,
+            NSPersistentStoreIncompatibleVersionHashError,
+            NSMigrationError,
+            NSMigrationConstraintViolationError,
+            NSMigrationCancelledError,
+            NSMigrationMissingSourceModelError,
+            NSMigrationMissingMappingModelError,
+            NSMigrationManagerSourceStoreError,
+            NSMigrationManagerDestinationStoreError,
+            NSEntityMigrationPolicyError,
+            NSInferredMappingModelError,
+        ].contains(error.code)
+    }
+
+    nonisolated private static func makeContainer(
+        decoy: Bool, protectedDataAvailable: Bool
+    ) -> NSPersistentContainer {
         let storeURL = MessageDB.storeURL(decoy: decoy)
 
         // Ordinary path: the indexed schema. An existing store from before the
         // indexes migrates in place (adding a fetch index is a CREATE INDEX,
         // which lightweight migration infers).
-        if let container = openContainer(model: model, storeURL: storeURL) {
+        let (indexed, indexedError) = openContainer(model: model, storeURL: storeURL)
+        if let container = indexed {
             container.viewContext.automaticallyMergesChangesFromParent = true
             return container
         }
@@ -353,10 +432,35 @@ final class MessageDB {
         // deleted, try the schema that matches what is already on disk: an
         // account that cannot get its indexes keeps every message it has, and
         // pays only the scan the indexes were meant to remove.
-        if let container = openContainer(model: rescueModel, storeURL: storeURL) {
+        let (rescued, rescueError) = openContainer(model: rescueModel, storeURL: storeURL)
+        if let container = rescued {
             print("[MessageDB] index migration refused; running on the pre-index schema")
             container.viewContext.automaticallyMergesChangesFromParent = true
             return container
+        }
+
+        // ⚠⚠⚠ NOT A RESET UNLESS THE MODEL IS WHAT FAILED. This branch used to
+        // delete the file on ANY failure, and the commonest failure is not a
+        // broken schema at all: a process started by a push or a VoIP call
+        // while the phone is locked cannot open a file with complete
+        // protection, so both attempts above fail, and the whole history was
+        // deleted before the person had touched the phone. The deletion does
+        // not need the file's key; recreating it does, so the process then ran
+        // with no store, its saves failing silently while the drains acked
+        // their rows to the island: every message it "kept" was gone too.
+        //
+        // So: only a schema/migration error, only with the phone unlocked.
+        // Anything else leaves the file alone and hands back a container with
+        // no store, which `isStoreAvailable` reports, the drains refuse to
+        // ack against, and `reopenIfStoreless` replaces once the phone opens.
+        guard protectedDataAvailable,
+              isModelIncompatibility(indexedError),
+              isModelIncompatibility(rescueError)
+        else {
+            print("[MessageDB] store not opened, left in place: \(String(describing: indexedError))")
+            let storeless = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
+            storeless.viewContext.automaticallyMergesChangesFromParent = true
+            return storeless
         }
 
         // Neither schema could open it. If lightweight migration choked
@@ -946,7 +1050,13 @@ final class MessageDB {
 
     private func flush() {
         guard ctx.hasChanges else { return }
-        do { try ctx.save() } catch { print("[MessageDB] save failed: \(error)") }
+        do {
+            try ctx.save()
+            lastSaveFailed = false
+        } catch {
+            lastSaveFailed = true
+            print("[MessageDB] save failed: \(error)")
+        }
     }
 
     private func apply(_ msg: Message, to row: MessageRecord) {

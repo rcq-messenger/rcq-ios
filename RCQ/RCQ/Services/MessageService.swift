@@ -3310,6 +3310,10 @@ final class MessageService {
 
     private func drainQueueThenLog() async {
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
+        // ⚠ Nothing to keep the rows in, so nothing to ack them for: a process
+        // started while the phone is locked has no store until it is unlocked
+        // (MessageDB.makeContainer). The island keeps them for the next drain.
+        guard MessageDB.shared.isStoreAvailable else { return }
         // Multihoming v1: make sure the backup-island poll is running (no-op
         // without backup homes; idempotent). Independent of the primary fetch
         // below: when the primary island is down, that loop IS delivery.
@@ -3503,7 +3507,14 @@ final class MessageService {
                     // rather than applied per row. See `noteDrainedContent`.
                     noteDrainedContent(outcome)
                 }
-                MessageDB.shared.endBatch()
+                // ⚠ The ack below covers these rows, so they had better be on
+                // disk. A save that did not land (no store, a failed write)
+                // ends the drain with nothing acked; the island serves them
+                // again.
+                guard MessageDB.shared.endBatch() else {
+                    discardDrainBatch(ownsBatch)
+                    return
+                }
                 // The counters and the receipts for the rows that just went to
                 // disk, before anything can interrupt the walk. Batched over
                 // the chunk (one roster publish, one icon write, one receipt
@@ -3836,7 +3847,12 @@ final class MessageService {
                 }
                 if let outcome, outcome.isNewContent { noteDrainedContent(outcome) }
             }
-            MessageDB.shared.endBatch()
+            // Acked by the caller from `result`: rows that did not reach the
+            // disk must not be in it.
+            guard MessageDB.shared.endBatch() else {
+                discardDrainBatch(ownsBatch)
+                return GroupLogIngest()
+            }
             flushDrainBatch(ownsBatch)
             guard cursor < rows.count else { break }
             await Task.yield()

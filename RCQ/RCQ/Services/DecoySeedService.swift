@@ -307,6 +307,12 @@ enum DecoySeeder {
 
         let (container, failure) = open()
         guard let failure else { return container }
+        // Only a store the model cannot describe is cleared (same rule as
+        // MessageDB.makeContainer): a file that is merely unreadable right now
+        // says nothing about what is in it.
+        guard MessageDB.isModelIncompatibility(failure) else {
+            throw SeedError.storeUnavailable(String(describing: failure))
+        }
 
         // Nothing is lost by clearing it: the only reader of a decoy store that
         // will not open is a duress session that would find it unopenable too.

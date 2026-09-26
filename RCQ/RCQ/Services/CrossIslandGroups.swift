@@ -939,6 +939,9 @@ enum CrossIslandGroups {
         // (founder, 30.08). Same shape as the main drain in `MessageService`.
         let accountID = AccountManager.shared.activeAccountID
         if BurnCascade.isBurning { return }
+        // These mailboxes advance on fetch: rows read with no store to keep
+        // them in (phone locked, see MessageDB.makeContainer) would be gone.
+        guard MessageDB.shared.isStoreAvailable else { return }
         for v in VisitedIslandsStore.shared.list() {
             var jwt = v.jwt
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
