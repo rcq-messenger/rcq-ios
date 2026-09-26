@@ -79,10 +79,11 @@ final class MessageStore: ObservableObject {
 
     /// Every thread in the database, windowed. Only for readers that genuinely
     /// search across all chats (the search overlay); nothing on the launch path
-    /// may call this.
-    func ensureAllLoaded() {
+    /// may call this. `skipping` names threads the reader may not show and so
+    /// has no business decrypting into memory (chats behind a PIN, #1045).
+    func ensureAllLoaded(skipping: (ThreadID) -> Bool = { _ in false }) {
         guard PanicPINService.shared.lockState == .unlocked else { return }
-        for t in MessageDB.shared.fetchThreadIDs() where !loadedThreads.contains(t) {
+        for t in MessageDB.shared.fetchThreadIDs() where !loadedThreads.contains(t) && !skipping(t) {
             loadWindow(t)
         }
     }

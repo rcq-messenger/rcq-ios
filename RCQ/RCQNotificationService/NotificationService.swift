@@ -118,8 +118,14 @@ class NotificationService: UNNotificationServiceExtension {
         // Whose stores this push is read against, for the pinned-key check
         // further down: the routed account when there is one, else active.
         var routedAccountID = activeBeforeRoute
+        // The account whose chat locks judge this push (#1045): only one the
+        // push itself named. Falling back to the active account would judge
+        // another account's chat by the wrong locks, so without an owner the
+        // lock check takes every account's (see `AppGroup.lockedChats`).
+        var lockOwnerID: UUID?
         if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
             routedAccountID = targetID
+            lockOwnerID = targetID
             // Push for a non-foreground account: mark the banner so
             // the user can tell at a glance that this message went
             // to one of their OTHER accounts, not the one they're
@@ -292,7 +298,7 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
-            apply(decrypted: decrypted, to: content)
+            apply(decrypted: decrypted, to: content, lockOwner: lockOwnerID)
             os_log("modified: title=%{public}@ body=%{public}@",
                    log: Self.log, type: .default,
                    content.title, content.body)
@@ -450,7 +456,11 @@ class NotificationService: UNNotificationServiceExtension {
         return try? content.updating(from: intent)
     }
 
-    private func apply(decrypted: DecryptedEnvelope, to content: UNMutableNotificationContent) {
+    private func apply(
+        decrypted: DecryptedEnvelope,
+        to content: UNMutableNotificationContent,
+        lockOwner: UUID?
+    ) {
         // Sender's name. The main app pushes a `uin → nickname` cache
         // into the App Group on every contact-list refresh, so we have
         // a recent value here in most cases. Falls back to a `#UIN`
@@ -492,13 +502,13 @@ class NotificationService: UNNotificationServiceExtension {
         // ⚠ A chat that asks for a PIN says who wrote and nothing of what
         // (#1045): its words on the lock screen would walk round the gate the
         // chat is behind. The app hands us the locks in force through the App
-        // Group (`LockedChatsStore.syncExtensionMirror`); the set is per device,
-        // not per account, so a peer uin locked under another account on this
-        // phone errs towards hiding. Only what a person wrote is replaced; a
-        // call keeps saying it is a call. Same rule as the in-app banner.
+        // Group (`LockedChatsStore.syncExtensionMirror`), per account: the
+        // account this push was addressed to, or every account's when it named
+        // none we know. Only what a person wrote is replaced; a call keeps
+        // saying it is a call. Same rule as the in-app banner.
         let lockKey = groupID.map { "group:\($0)" } ?? "peer:\(decrypted.senderUIN)"
         let chatLocked = Self.envelopeIsUserVisible(decrypted.envelope)
-            && AppGroup.lockedChats().contains(lockKey)
+            && AppGroup.lockedChats(accountID: lockOwner).contains(lockKey)
 
         switch decrypted.envelope {
         case _ where chatLocked:

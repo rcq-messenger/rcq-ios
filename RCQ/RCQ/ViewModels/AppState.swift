@@ -2161,10 +2161,11 @@ final class AppState: ObservableObject {
         VoIPPushService.shared.wipe()
         FavoritesStore.shared.wipe()
         ArchiveStore.shared.wipe()
-        // Its "burn-account hook" was never called, so a burned account's
-        // locks outlived it on the device (and, since #1045, in the copy the
-        // notification extension reads).
-        LockedChatsStore.shared.wipe()
+        // The burned account's chat locks, and ONLY its own: the store is per
+        // account, because a burn asks for no PIN (and an island can order
+        // one), so a wipe of the whole store here took the locks off every
+        // other account on the phone (#1045 review).
+        LockedChatsStore.shared.wipeActiveAccount()
         SectionsStore.shared.wipe()
         SectionCollapseStore.shared.wipe()
         ContactSoundStore.shared.wipe()
@@ -2751,6 +2752,9 @@ final class AppState: ObservableObject {
     func performPanicWipe(deleteServerAccount: Bool) async {
         let snapshot = deleteServerAccount ? await BurnSnapshot.capture() : nil
         PINVault.destroy()
+        // The PIN is gone, so every chat lock goes with it, the same as when
+        // the PIN is removed in settings (#1045).
+        LockedChatsStore.shared.wipe()
         MessageDB.destroyDecoyStore()
         DecoySeedStore.destroy()
         await burnAccount(deleteServerAccount: false, panic: true, afterLocalWipe: {

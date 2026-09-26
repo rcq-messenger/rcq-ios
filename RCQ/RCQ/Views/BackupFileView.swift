@@ -22,7 +22,7 @@ struct BackupFileView: View {
     /// one is set: exporting is the cheapest way to walk history out of a locked
     /// app, and importing is the cheapest way to overwrite it.
     ///
-    /// ⚠ Verified against the REAL PIN (PINVerifySheet → verifyRealPIN), so a
+    /// ⚠ Verified against the REAL PIN (PINVerifySheet, `check: .real`), so a
     /// duress PIN cannot reach the true archive. That is the whole point of
     /// having a duress PIN, and a gate that any PIN opens would undo it.
     @State private var pinGate: PendingBackupAction?

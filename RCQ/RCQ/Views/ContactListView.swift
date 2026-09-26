@@ -343,7 +343,8 @@ struct ContactListView: View {
                         onSelectGroup: { group in
                             withAnimation(.easeInOut(duration: 0.18)) { showSearch = false }
                             path.append(group)
-                        }
+                        },
+                        hiddenChats: chatsBehindShutSections()
                     )
                     .transition(.opacity)
                     .zIndex(100)
@@ -1527,6 +1528,53 @@ struct ContactListView: View {
         default:
             userSection(rec, b)
         }
+    }
+
+    /// The chats of one section, as `sectionView` draws them.
+    ///
+    /// ⚠ Keep in step with `sectionView`: this is what search leaves out while
+    /// the section is shut, and a chat drawn there but missing here would be
+    /// found by search behind the section's PIN.
+    private func sectionMembers(_ id: String, _ b: HomeBuckets) -> Set<ThreadID> {
+        let groups: [RCQGroup]
+        let contacts: [Contact]
+        switch id {
+        case Sections.sysFav:
+            groups = b.favGroups; contacts = vm.favoriteContacts
+        case Sections.sysCI:
+            groups = []; contacts = b.crossLoose
+        case Sections.sysGroups:
+            groups = b.normalGroups; contacts = []
+        case Sections.sysOnline:
+            groups = []; contacts = vm.online
+        case Sections.sysOffline:
+            groups = []; contacts = vm.offline
+        case Sections.sysArchive:
+            groups = b.archivedGroups; contacts = vm.archivedContacts
+        default:
+            groups = b.filedGroups[id] ?? []
+            contacts = (vm.filedContacts[id] ?? []) + (b.filedCross[id] ?? [])
+        }
+        return Set(groups.map { ThreadID.group(id: $0.id) } + contacts.map { ThreadID.peer(uin: $0.uin) })
+    }
+
+    /// Chats that the list shows ONLY inside a section whose PIN has not been
+    /// answered on this screen, for search to leave out (#1045 review). A chat
+    /// that also sits in an open section (a favourite group is in Groups too)
+    /// is on screen anyway and stays findable.
+    private func chatsBehindShutSections() -> Set<ThreadID> {
+        let b = homeBuckets()
+        var shut = Set<ThreadID>()
+        var open = Set<ThreadID>()
+        for rec in renderedSections(b) {
+            let members = sectionMembers(rec.id, b)
+            if sectionPinned(rec.id) && !unlockedSections.contains(rec.id) {
+                shut.formUnion(members)
+            } else {
+                open.formUnion(members)
+            }
+        }
+        return shut.subtracting(open)
     }
 
     @ViewBuilder

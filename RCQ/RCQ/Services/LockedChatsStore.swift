@@ -1,14 +1,21 @@
 import Combine
 import Foundation
 
-/// Per-device set of chats the user locked behind the app PIN. Opening a locked
-/// chat prompts for the PIN that opened this session first
-/// (PanicPINService.verifySessionPIN — never the wipe PIN, so it never wipes).
+/// Chats the user locked behind the app PIN, per local account. Opening a
+/// locked chat prompts for the PIN that opened this session first
+/// (PanicPINService.verifyThrottled — never the wipe PIN, so it never wipes).
 /// Only meaningful when a PIN is configured; the lock toggle is only offered
-/// then. Mirrors `ArchiveStore`.
+/// then.
 ///
 /// ⚠ Turning a lock OFF goes through the PIN (#1045), turning it ON does not.
 /// Callers use `set(_:locked:)` for the off half, after the PIN sheet.
+///
+/// ⚠ PER ACCOUNT, not per device. The set used to be one device-wide list of
+/// "peer:<uin>" / "group:<id>", so the burn of ANY account (which asks for no
+/// PIN, and which an island can also order with `account_burned`) had a
+/// choice between leaving a dead account's locks behind and taking every
+/// other account's off with it; the first cut of #1045 did the second. Each
+/// account now owns its slot, and a burn empties only its own.
 @MainActor
 final class LockedChatsStore: ObservableObject {
     static let shared = LockedChatsStore()
@@ -37,9 +44,21 @@ final class LockedChatsStore: ObservableObject {
         }
     }
 
-    @Published private(set) var entries: Set<Entry> = []
+    /// Every account's locks, keyed by account id (`uuidString`).
+    @Published private var byAccount: [String: Set<Entry>] = [:]
 
-    private static let storageKey = "rcq.locked_chats"
+    /// The active account's locks. Read through the account pointer at every
+    /// call rather than bound on switch, so no switch path can leave the
+    /// outgoing account's set standing in front of the incoming one's chats.
+    var entries: Set<Entry> { byAccount[Self.activeKey] ?? [] }
+
+    private static let storageKey = "rcq.locked_chats.v2"
+    /// One device-wide list, before locks were per account.
+    private static let legacyKey = "rcq.locked_chats"
+
+    private static var activeKey: String {
+        AccountManager.shared.activeAccountID?.uuidString ?? "none"
+    }
 
     private init() {
         load()
@@ -53,13 +72,20 @@ final class LockedChatsStore: ObservableObject {
 
     /// Whether `thread`'s lock is in force: the flag is set AND there is a PIN
     /// to ask for. The same two conditions ChatView's gate checks, so what the
-    /// gate hides, the long-press preview and the banners do not show (#1045).
+    /// gate hides, the long-press preview, search and the banners do not show
+    /// (#1045).
+    ///
+    /// ⚠ A PIN state that cannot be read counts as a PIN. A process started
+    /// while the device is locked cannot open the vault file (it is written
+    /// with complete protection), and reading that as "no PIN" took every
+    /// gate down for the life of the process.
     func holds(_ thread: ThreadID) -> Bool {
-        guard PINVault.isConfigured else { return false }
+        let flagged: Bool
         switch thread {
-        case .peer(let uin): return contains(peer: uin)
-        case .group(let id): return contains(group: id)
+        case .peer(let uin): flagged = contains(peer: uin)
+        case .group(let id): flagged = contains(group: id)
         }
+        return flagged && PINVault.configuredState != false
     }
 
     /// Set, not flip. There used to be a `toggle` here, and a toggle was what
@@ -68,36 +94,92 @@ final class LockedChatsStore: ObservableObject {
     /// would lock the chat again if anything had already unlocked it while the
     /// sheet was up.
     func set(_ entry: Entry, locked: Bool) {
-        guard entries.contains(entry) != locked else { return }
-        if locked { entries.insert(entry) } else { entries.remove(entry) }
+        let key = Self.activeKey
+        var set = byAccount[key] ?? []
+        guard set.contains(entry) != locked else { return }
+        if locked { set.insert(entry) } else { set.remove(entry) }
+        byAccount[key] = set.isEmpty ? nil : set
         save()
     }
 
-    /// Burn-account hook, and removing the app PIN (#1045): a lock with no PIN
-    /// to ask for is not enforced, so it goes with the PIN rather than lying
-    /// dormant and coming back the day a new PIN is set.
+    /// Burn hook: the active account's locks and nobody else's. A burn mints
+    /// a fresh identity under the same account id, and the chats these locks
+    /// named are gone with the burned one.
+    func wipeActiveAccount() {
+        guard byAccount.removeValue(forKey: Self.activeKey) != nil else { return }
+        save()
+    }
+
+    /// An account that left the device takes its locks with it.
+    func forget(accountID: UUID) {
+        guard byAccount.removeValue(forKey: accountID.uuidString) != nil else { return }
+        save()
+    }
+
+    /// Every account's locks. Only where the PIN itself goes (removing it,
+    /// the wipe PIN): a lock with no PIN to ask for is not enforced, and left
+    /// in place it would come back without a word the day a new PIN is set.
     func wipe() {
-        entries.removeAll()
+        byAccount.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.storageKey)
+        UserDefaults.standard.removeObject(forKey: Self.legacyKey)
         syncExtensionMirror()
     }
 
-    /// Hand the notification extension the locks that are in force (#1045).
-    /// Also called from `PanicPINService` on every PIN state change, because
-    /// "in force" depends on a PIN existing.
+    /// Hand the notification extension the locks that are in force (#1045),
+    /// every account's, so a push for an account that is not the active one
+    /// is judged by that account's locks. Also called from `PanicPINService`
+    /// on every PIN state change, because "in force" depends on a PIN existing.
+    ///
+    /// ⚠ Leaves the file alone when the PIN state cannot be read (see
+    /// `holds`): deleting it on a guess is how a locked chat's words reached
+    /// the lock screen after a background launch.
     func syncExtensionMirror() {
-        AppGroup.setLockedChats(PINVault.isConfigured ? Set(entries.map(\.key)) : [])
+        switch PINVault.configuredState {
+        case true?:
+            AppGroup.setLockedChats(byAccount.mapValues { Set($0.map(\.key)) })
+        case false?:
+            AppGroup.setLockedChats([:])
+        case nil:
+            return
+        }
     }
 
     // MARK: - persistence
 
     private func load() {
-        let raw = (UserDefaults.standard.array(forKey: Self.storageKey) as? [String]) ?? []
-        entries = Set(raw.compactMap(Entry.decode))
+        var out: [String: Set<Entry>] = [:]
+        if let raw = UserDefaults.standard.dictionary(forKey: Self.storageKey) as? [String: [String]] {
+            for (account, keys) in raw {
+                let set = Set(keys.compactMap(Entry.decode))
+                if !set.isEmpty { out[account] = set }
+            }
+        }
+        // The device-wide list goes to EVERY account on the device: it was in
+        // force on whichever account was active, so this loses no lock. Left
+        // where it is while there is no account to give it to.
+        let accounts = AccountManager.shared.accounts.map(\.id.uuidString)
+        if let legacy = UserDefaults.standard.array(forKey: Self.legacyKey) as? [String],
+           !accounts.isEmpty {
+            let set = Set(legacy.compactMap(Entry.decode))
+            if !set.isEmpty {
+                for account in accounts { out[account, default: []].formUnion(set) }
+            }
+            byAccount = out
+            save()
+            UserDefaults.standard.removeObject(forKey: Self.legacyKey)
+            return
+        }
+        byAccount = out
     }
 
     private func save() {
-        UserDefaults.standard.set(entries.map(\.key), forKey: Self.storageKey)
+        let raw = byAccount.mapValues { $0.map(\.key) }
+        if raw.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.storageKey)
+        } else {
+            UserDefaults.standard.set(raw, forKey: Self.storageKey)
+        }
         syncExtensionMirror()
     }
 }

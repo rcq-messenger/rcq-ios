@@ -17,12 +17,23 @@ struct PINVerifySheet: View {
 
     let title: String
     var check: Check = .real
+    /// Drawn in place as a screen's own content (the locked chat) rather than
+    /// presented. Cancel still leaves (`dismiss` pops the screen); a right PIN
+    /// leaves the screen standing, since it is the thing being opened.
+    var inline: Bool = false
     var onVerified: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var panicPIN = PanicPINService.shared
     @State private var pin = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var now = Date()
+
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// The lock screen's lockout, which a wrong PIN here earns as well.
+    private var lockedOut: Bool { (panicPIN.lockoutUntil ?? .distantPast) > now }
 
     var body: some View {
         ZStack {
@@ -41,7 +52,17 @@ struct PINVerifySheet: View {
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(Theme.Color.textPrimary)
                     .multilineTextAlignment(.center)
-                if let error {
+                if lockedOut, let until = panicPIN.lockoutUntil {
+                    // Same two lines the lock screen shows for the same state.
+                    VStack(spacing: 4) {
+                        Text("panic_pin.lock.locked_out".localized)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        Text(countdown(to: until))
+                            .font(.system(.body, design: .monospaced).weight(.semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                    }
+                } else if let error {
                     Text(error)
                         .font(.caption)
                         .foregroundColor(.red)
@@ -51,7 +72,7 @@ struct PINVerifySheet: View {
                         .foregroundColor(Theme.Color.textSecondary)
                 }
                 Spacer()
-                PINPad(pin: $pin, busy: busy) {
+                PINPad(pin: $pin, busy: busy, disabled: lockedOut) {
                     Task { await verify() }
                 }
                 Spacer()
@@ -59,20 +80,24 @@ struct PINVerifySheet: View {
             .padding(.horizontal, 32)
             .padding(.top, 16)
         }
+        .onReceive(ticker) { now = $0 }
+    }
+
+    private func countdown(to deadline: Date) -> String {
+        let secs = max(0, Int(deadline.timeIntervalSince(now).rounded(.up)))
+        return String(format: "%d:%02d", secs / 60, secs % 60)
     }
 
     private func verify() async {
         busy = true
-        let ok: Bool
-        switch check {
-        case .real: ok = await PanicPINService.shared.verifyRealPIN(pin)
-        case .session: ok = await PanicPINService.shared.verifySessionPIN(pin)
-        }
+        let result = await PanicPINService.shared.verifyThrottled(pin, session: check == .session)
         busy = false
-        if ok {
+        now = Date()
+        switch result {
+        case .ok:
             onVerified()
-            dismiss()
-        } else {
+            if !inline { dismiss() }
+        case .wrong, .lockedOut:
             error = "pin_verify.wrong".localized
             pin = ""
             UINotificationFeedbackGenerator().notificationOccurred(.error)

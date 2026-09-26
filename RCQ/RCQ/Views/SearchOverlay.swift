@@ -14,6 +14,10 @@ struct SearchOverlay: View {
     let onClose: () -> Void
     let onSelectContact: (Contact) -> Void
     let onSelectGroup: (RCQGroup) -> Void
+    /// Chats the list is keeping behind a section's PIN right now, which search
+    /// must not surface either, by name or by what was said in them. Only the
+    /// list knows which sections are open, so it hands them in.
+    var hiddenChats: Set<ThreadID> = []
 
     @StateObject private var contactSvc = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
@@ -44,7 +48,7 @@ struct SearchOverlay: View {
             // This is the one reader that genuinely wants every thread, so it
             // pays for them here, when the user asks to search, instead of
             // making every cold start pay for a search that may never happen.
-            MessageStore.shared.ensureAllLoaded()
+            MessageStore.shared.ensureAllLoaded(skipping: concealed)
             // Pop the keyboard on the next runloop tick so the
             // overlay's transition is finished before we ask for
             // first responder — avoids the rare "TextField
@@ -91,13 +95,27 @@ struct SearchOverlay: View {
 
     // MARK: - results
 
+    /// ⚠⚠ Nothing of a chat behind a PIN (#1045 review). Search read every
+    /// thread and printed the matching lines of a locked chat, two lines each
+    /// and labelled with whose chat it was: one common letter in the field
+    /// read the chat the lock was keeping, with no PIN asked. The same held
+    /// for a chat inside a section behind a PIN, which search listed by name
+    /// as well while the list kept the section shut (the web had the same).
+    ///
+    /// A chat with its own lock keeps its NAME in search, as its row in the
+    /// list does; only its messages go. A section's PIN hides the chat itself.
+    private func concealed(_ thread: ThreadID) -> Bool {
+        hiddenChats.contains(thread) || LockedChatsStore.shared.holds(thread)
+    }
+
     private var contactHits: [Contact] {
         let q = normalized
         guard !q.isEmpty else { return [] }
         return contactSvc.contacts.filter { contact in
+            guard !hiddenChats.contains(.peer(uin: contact.uin)) else { return false }
             // Search my own name for them too: renaming someone and then not
             // finding them by that name is the obvious next complaint.
-            contact.nickname.lowercased().contains(q)
+            return contact.nickname.lowercased().contains(q)
                 || (ContactAliasStore.shared.alias(for: contact.uin)?.lowercased().contains(q) ?? false)
                 || String(contact.uin).contains(q)
         }
@@ -106,7 +124,9 @@ struct SearchOverlay: View {
     private var groupHits: [RCQGroup] {
         let q = normalized
         guard !q.isEmpty else { return [] }
-        return groupSvc.groups.filter { $0.name.lowercased().contains(q) }
+        return groupSvc.groups.filter {
+            !hiddenChats.contains(.group(id: $0.id)) && $0.name.lowercased().contains(q)
+        }
     }
 
     /// Search hits across every persisted message, paired with
@@ -118,7 +138,7 @@ struct SearchOverlay: View {
         let q = normalized
         guard !q.isEmpty else { return [] }
         var out: [MessageHit] = []
-        for (thread, msgs) in messageStore.threads {
+        for (thread, msgs) in messageStore.threads where !concealed(thread) {
             for m in msgs where m.kind == .text {
                 if m.text.lowercased().contains(q) {
                     out.append(MessageHit(thread: thread, message: m))

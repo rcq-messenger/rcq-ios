@@ -183,12 +183,7 @@ final class PanicPINService: ObservableObject {
             PINVault.unlock(pin: pin)
         }.value
         guard let unlock else {
-            var state = PINVault.loadAttemptState()
-            state.failedCount += 1
-            let delay = Self.lockoutDuration(forFailedCount: state.failedCount)
-            state.lockoutUntil = delay > 0 ? Date().addingTimeInterval(delay) : nil
-            PINVault.saveAttemptState(state)
-            lockoutUntil = state.lockoutUntil
+            recordFailedAttempt()
             return .wrong
         }
         PINVault.clearAttemptState()
@@ -250,23 +245,57 @@ final class PanicPINService: ObservableObject {
         }
     }
 
-    func verifyRealPIN(_ pin: String) async -> Bool {
-        let unlock = await Task.detached(priority: .userInitiated) {
-            PINVault.unlock(pin: pin)
-        }.value
-        return unlock?.payload.mode == .real
+    /// One wrong PIN, wherever it was typed: the counter and the escalating
+    /// lockout the lock screen has always kept, shared with the in-app gates.
+    private func recordFailedAttempt() {
+        var state = PINVault.loadAttemptState()
+        state.failedCount += 1
+        let delay = Self.lockoutDuration(forFailedCount: state.failedCount)
+        state.lockoutUntil = delay > 0 ? Date().addingTimeInterval(delay) : nil
+        PINVault.saveAttemptState(state)
+        lockoutUntil = state.lockoutUntil
     }
 
-    /// Verify the pin for the CURRENT session: the real pin in a real session,
-    /// the decoy pin in a decoy session. Used to re-gate PIN settings so a
-    /// coercer in the decoy view can re-enter their (decoy) pin plausibly
-    /// instead of it failing as "wrong" — which would betray a second pin.
-    func verifySessionPIN(_ pin: String) async -> Bool {
+    enum VerifyResult: Equatable {
+        case ok
+        case wrong
+        case lockedOut(until: Date)
+    }
+
+    /// The check behind every in-app PIN gate (a locked chat, turning its lock
+    /// off, sections, the recovery phrase, a backup, the PIN settings).
+    ///
+    /// ⚠ Throttled like the lock screen, on the SAME counter (#1045 review).
+    /// The checks this replaced (`verifyRealPIN`, `verifySessionPIN`) answered
+    /// as often as they were asked, so anyone holding the unlocked phone could
+    /// walk all 10,000 four-digit PINs through a chat gate at no cost but
+    /// typing, and the PIN they found opened the lock screen too. A wrong PIN
+    /// here counts exactly as one at the lock screen, and the lockout it earns
+    /// holds there as well.
+    ///
+    /// `session`: accept the PIN that opened THIS session, the real PIN in a
+    /// real session and the decoy PIN in a decoy one. A coercer in the decoy
+    /// view re-entering their (decoy) PIN must not see it fail as "wrong",
+    /// which would betray a second PIN (report #237). Anything that hands over
+    /// the real account passes false. A wipe PIN is simply wrong here and wipes
+    /// nothing: these gates are not the lock screen, and the lock screen has no
+    /// wipe-after-N of its own to share.
+    func verifyThrottled(_ pin: String, session: Bool) async -> VerifyResult {
+        if let until = lockoutUntil, until > Date() {
+            return .lockedOut(until: until)
+        }
         let unlock = await Task.detached(priority: .userInitiated) {
             PINVault.unlock(pin: pin)
         }.value
-        guard let unlock else { return false }
-        return mode == .decoy ? unlock.payload.mode == .decoy : unlock.payload.mode == .real
+        let wanted: PINVault.Mode = (session && mode == .decoy) ? .decoy : .real
+        guard let unlock, unlock.payload.mode == wanted else {
+            recordFailedAttempt()
+            if let until = lockoutUntil, until > Date() { return .lockedOut(until: until) }
+            return .wrong
+        }
+        PINVault.clearAttemptState()
+        lockoutUntil = nil
+        return .ok
     }
 
     /// True while unlocked into the decoy (duress) view.

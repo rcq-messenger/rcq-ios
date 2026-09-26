@@ -28,6 +28,11 @@ struct PINSettingsView: View {
     @State private var reauthPIN = ""
     @State private var reauthBusy = false
     @State private var reauthError: String?
+    @State private var now = Date()
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// The lock screen's lockout, which a wrong PIN here earns as well.
+    private var lockedOut: Bool { (panicPIN.lockoutUntil ?? .distantPast) > now }
 
     private var needsReauth: Bool { panicPIN.isConfigured && !reauthDone }
 
@@ -115,7 +120,16 @@ struct PINSettingsView: View {
             Text("panic_pin.reauth.title".localized)
                 .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundColor(Theme.Color.textPrimary)
-            if let reauthError {
+            if lockedOut, let until = panicPIN.lockoutUntil {
+                VStack(spacing: 4) {
+                    Text("panic_pin.lock.locked_out".localized)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                    Text(countdown(to: until))
+                        .font(.system(.body, design: .monospaced).weight(.semibold))
+                        .foregroundColor(Theme.Color.textPrimary)
+                }
+            } else if let reauthError {
                 Text(reauthError)
                     .font(.caption)
                     .foregroundColor(.red)
@@ -125,20 +139,29 @@ struct PINSettingsView: View {
                     .foregroundColor(Theme.Color.textSecondary)
             }
             Spacer()
-            PINPad(pin: $reauthPIN, busy: reauthBusy) {
+            PINPad(pin: $reauthPIN, busy: reauthBusy, disabled: lockedOut) {
                 Task { await verifyReauth() }
             }
             Spacer()
         }
         .padding(.horizontal, 32)
+        .onReceive(ticker) { now = $0 }
+    }
+
+    private func countdown(to deadline: Date) -> String {
+        let secs = max(0, Int(deadline.timeIntervalSince(now).rounded(.up)))
+        return String(format: "%d:%02d", secs / 60, secs % 60)
     }
 
     private func verifyReauth() async {
         reauthBusy = true
         // Session-aware: the decoy pin re-auths in a decoy session, so a
         // coercer's pin doesn't fail here and betray a second pin (report #237).
-        let ok = await panicPIN.verifySessionPIN(reauthPIN)
+        // Throttled on the lock screen's counter (#1045 review): this gate
+        // guards removing the PIN itself.
+        let ok = await panicPIN.verifyThrottled(reauthPIN, session: true) == .ok
         reauthBusy = false
+        now = Date()
         if ok {
             reauthError = nil
             reauthDone = true

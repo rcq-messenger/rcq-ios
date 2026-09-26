@@ -796,18 +796,40 @@ struct ChatView: View {
         _vm = StateObject(wrappedValue: ChatViewModel(target: .peer(contact)))
     }
 
-    // Per-chat PIN lock: when this chat is locked + a PIN is set, the content is
-    // hidden behind a PIN gate until the session's PIN is entered (cancel pops
-    // back). `LockedChatsStore.holds` is the one definition of "locked", shared
-    // with the long-press preview and the banners (#1045).
+    // Per-chat PIN lock: when this chat is locked + a PIN is set, the screen IS
+    // the PIN gate until the session's PIN is entered (cancel pops back).
+    // `LockedChatsStore.holds` is the one definition of "locked", shared with
+    // the long-press preview, search and the banners (#1045).
     @State private var chatPinUnlocked = false
-    @State private var showChatLockGate = false
     private var chatIsLocked: Bool {
         if case .randomPeer = vm.target { return false }
         return LockedChatsStore.shared.holds(vm.target.thread)
     }
 
+    // ⚠⚠ The gate REPLACES the chat; it is not drawn over it (#1045 review).
+    // It used to be a colour overlay plus a fullScreenCover raised in onAppear,
+    // once, with nothing trying again. A chat pushed while a sheet was up (a
+    // banner tap over Settings, "Open chat" on a profile as it closes) could
+    // not present the cover, and what stood then was the chat with a coloured
+    // rectangle on it: the navigation bar live ("All media" in its menu), the
+    // rows under the rectangle still read by VoiceOver. And the chat's own
+    // onAppear had already run, so Cancel left the thread marked read and the
+    // peer holding read receipts for messages nobody had been let to see.
+    // Here nothing of the chat exists until the PIN is in: no rows, no
+    // toolbar, no composer, and none of its appear/change hooks.
     var body: some View {
+        if chatIsLocked && !chatPinUnlocked {
+            PINVerifySheet(title: "pin_verify.title.chat".localized, check: .session, inline: true) {
+                chatPinUnlocked = true
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .enableSwipeBack()
+        } else {
+            chatBody
+        }
+    }
+
+    private var chatBody: some View {
         ZStack(alignment: .top) {
             Theme.Color.bgPrimary.ignoresSafeArea()
             // Global chat wallpaper behind the messages (Android parity). Renders
@@ -1020,22 +1042,6 @@ struct ChatView: View {
         } message: {
             Text("chat.voice.permission.body".localized)
         }
-        // Per-chat PIN: cover the content + present the gate until unlocked.
-        .overlay {
-            if chatIsLocked && !chatPinUnlocked {
-                Theme.Color.bgPrimary.ignoresSafeArea()
-            }
-        }
-        .fullScreenCover(isPresented: $showChatLockGate, onDismiss: {
-            if !chatPinUnlocked { dismiss() }   // cancelled → leave the chat
-        }) {
-            // Session-aware (#1045): in a decoy session the decoy PIN opens a
-            // locked chat, and the real PIN opens nothing. It used to take the
-            // real PIN only, so a coerced person's PIN failed here.
-            PINVerifySheet(title: "pin_verify.title.chat".localized, check: .session) {
-                chatPinUnlocked = true
-            }
-        }
         .task {
             // The chat list is fetched without rosters, and this screen needs
             // one for more than sending: an author's name, an @mention, and a
@@ -1045,7 +1051,6 @@ struct ChatView: View {
             if let gid = activeGroupID { await groupSvc.ensureRoster(gid) }
         }
         .onAppear {
-            if chatIsLocked && !chatPinUnlocked { showChatLockGate = true }
             // The unread-below badge counter is seeded in ChatViewModel.init
             // (#15) — onAppear is too late, rows realize before it runs.
             vm.onAppear()

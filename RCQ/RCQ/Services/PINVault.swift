@@ -77,6 +77,22 @@ enum PINVault {
         return answer
     }
 
+    /// `isConfigured`, or nil when it cannot be told right now: the vault file
+    /// is there but will not read. That is what a process launched into the
+    /// background while the device is locked sees (the file has complete
+    /// protection), and `isConfigured` reads it as "no PIN" and caches that
+    /// for the life of the process.
+    ///
+    /// For callers that would take protection DOWN on a "no" (the chat locks,
+    /// #1045 review): they treat nil as "there is a PIN". Existence is asked
+    /// separately because a file's metadata stays readable when its contents
+    /// do not.
+    static var configuredState: Bool? {
+        if isConfigured { return true }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+        return readVault() != nil ? true : nil
+    }
+
     static func vaultSalt() -> Data? {
         readVault()?.salt
     }

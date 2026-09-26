@@ -159,6 +159,9 @@ final class AccountManager: ObservableObject {
     func remove(_ id: UUID) {
         accounts.removeAll(where: { $0.id == id })
         RosterSnapshot.delete(accountID: id)
+        // Its chat locks are filed under its id (#1045) and mean nothing once
+        // it has left the device.
+        LockedChatsStore.shared.forget(accountID: id)
         if activeAccountID == id {
             activeAccountID = accounts.first?.id
         }

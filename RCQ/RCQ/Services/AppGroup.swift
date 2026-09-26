@@ -206,8 +206,9 @@ enum AppGroup {
         }
     }
 
-    /// Chats whose "ask for a PIN" is in force, one `LockedChatsStore` key per
-    /// line ("peer:<uin>", "group:<id>"), for the notification extension.
+    /// Chats whose "ask for a PIN" is in force, for the notification extension:
+    /// a JSON object from account id (`uuidString`) to that account's
+    /// `LockedChatsStore` keys ("peer:<uin>", "group:<id>").
     ///
     /// #1045: the extension printed a locked chat's words on the lock screen
     /// while the chat itself sat behind the PIN, so the gate in front of it
@@ -215,30 +216,34 @@ enum AppGroup {
     /// a separate process and cannot see `LockedChatsStore` (plain
     /// UserDefaults), so the app writes the set here.
     ///
-    /// Written only while an app PIN exists: a lock with no PIN to ask for is
-    /// not a lock, and the chat opens without one. Same flat-file reasoning as
-    /// `pushQuietFileURL`.
+    /// Per account, because the store is: a uin locked under one account says
+    /// nothing about the same number on another island. Written only while an
+    /// app PIN exists: a lock with no PIN to ask for is not a lock, and the
+    /// chat opens without one. Same flat-file reasoning as `pushQuietFileURL`.
     static var lockedChatsFileURL: URL {
-        containerURL.appendingPathComponent("locked-chats.txt")
+        containerURL.appendingPathComponent("locked-chats.json")
     }
 
-    /// Absent file → empty set: nothing is locked, which is also what a build
-    /// that predates the mirror means.
-    static func lockedChats() -> Set<String> {
+    /// The locks `accountID` holds. With no account (the push named none this
+    /// device knows, or an older backend sent no `to_uin`) it is every
+    /// account's locks together: the extension cannot tell whose chat it is,
+    /// and hiding one message too many costs less than printing a locked one.
+    /// Absent file → empty: nothing is locked.
+    static func lockedChats(accountID: UUID?) -> Set<String> {
         guard let data = try? Data(contentsOf: lockedChatsFileURL),
-              let text = String(data: data, encoding: .utf8)
+              let map = try? JSONDecoder().decode([String: [String]].self, from: data)
         else { return [] }
-        return Set(text.split(separator: "\n").map {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.filter { !$0.isEmpty })
+        if let accountID { return Set(map[accountID.uuidString] ?? []) }
+        return Set(map.values.joined())
     }
 
-    static func setLockedChats(_ keys: Set<String>) {
+    static func setLockedChats(_ byAccount: [String: Set<String>]) {
         let url = lockedChatsFileURL
-        if keys.isEmpty {
+        let nonEmpty = byAccount.filter { !$0.value.isEmpty }.mapValues { $0.sorted() }
+        if nonEmpty.isEmpty {
             try? FileManager.default.removeItem(at: url)
-        } else {
-            try? Data(keys.sorted().joined(separator: "\n").utf8).write(to: url, options: .atomic)
+        } else if let data = try? JSONEncoder().encode(nonEmpty) {
+            try? data.write(to: url, options: .atomic)
         }
     }
 
