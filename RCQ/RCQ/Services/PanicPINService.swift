@@ -88,9 +88,11 @@ final class PanicPINService: ObservableObject {
         case vaultMissing
         case biometricConflict
         case biometricFailed
+        case lockedOut
 
         var errorDescription: String? {
             switch self {
+            case .lockedOut:         return "panic_pin.lock.locked_out".localized
             case .notRealSession:    return "Not in a real session."
             case .pinInUse:          return "panic_pin.error.in_use".localized
             case .pinTooShort:       return "panic_pin.error.too_short".localized
@@ -492,19 +494,34 @@ final class PanicPINService: ObservableObject {
 
     /// Change the PIN from within a decoy session: re-seal the DECOY slot under
     /// `pin`. The real slot is untouched, so the hidden real identity stays
-    /// hidden and its pin unchanged. Rejects a `pin` that collides with another
-    /// slot. Report #237: a coercer given the decoy pin can change "their" pin
-    /// without it ever exposing — or hinting at — the real account.
+    /// hidden and its pin unchanged. Report #237: a coercer given the decoy pin
+    /// can change "their" pin without it ever exposing — or hinting at — the
+    /// real account.
+    ///
+    /// ⚠⚠ A `pin` that is already another slot's PIN (the real one, the wipe
+    /// one) is NOT refused. It used to be, as "That PIN is already in use", and
+    /// that made this sheet an oracle outside the attempt counter: the coercer
+    /// who was handed the decoy PIN typed candidates here, and the refusal both
+    /// proved a second PIN exists and named it, without the lockout ever
+    /// counting and without the wipe PIN wiping. Now such a change reports
+    /// success and leaves the decoy PIN as it was. Whoever wants to know what
+    /// the candidate opens has to try it at the lock screen, where it counts
+    /// and where the wipe PIN does what it promises.
     func changeDecoyPIN(_ pin: String) async throws {
         guard pin.count >= Self.minPINLength else { throw PINError.pinTooShort }
         guard mode == .decoy, let payload = decoyPayload, let oldKey = decoySlotKey else {
             throw PINError.notRealSession
         }
-        let newKey = await Task.detached(priority: .userInitiated) {
+        // The lock screen's lockout holds here too: no key is derived during it.
+        if let until = lockoutUntil, until > Date() { throw PINError.lockedOut }
+        let result = await Task.detached(priority: .userInitiated) {
             PINVault.reSealUnderNewPIN(oldKey: oldKey, payload: payload, newPIN: pin)
         }.value
-        guard let newKey else { throw PINError.pinInUse }
-        decoySlotKey = newKey
+        switch result {
+        case .changed(let newKey): decoySlotKey = newKey
+        case .collision: return
+        case .failed: throw PINError.vaultMissing
+        }
     }
 
     func unlockWithBiometrics() async -> Bool {
