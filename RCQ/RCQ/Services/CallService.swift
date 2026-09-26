@@ -351,15 +351,30 @@ final class CallService: ObservableObject {
     /// socket carries in (messages stay in the queue for the real session).
     /// A duress session never gets here: `DuressGate` ends such a push before
     /// it rings.
+    ///
+    /// ⚠⚠ The TOKEN goes to the API client too, not only to the socket. The
+    /// relay credentials are an authenticated fetch, and a process that never
+    /// booted has no token in APIClient: the fetch 401'd, the call ran with no
+    /// TURN, not relay-only although "always relay" is on by default, and the
+    /// caller received this phone's LAN and public addresses. The relay path
+    /// is warmed while it still rings, so relay-only is known before the
+    /// answer, and `strictRelay` refuses to fall back to direct candidates.
     private func openSignalingWhileLocked() {
         guard !WebSocketService.shared.isConnected,
               let uin = KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init),
               let token = KeychainStore.string(KeychainStore.Keys.token)
         else { return }
         lockedSignaling = true
+        WebRTCManager.shared.strictRelay = true
+        let serverToken = AccountManager.shared.active?.serverToken
+        Task { @MainActor in
+            await APIClient.shared.setToken(token)
+            await APIClient.shared.setServerToken(serverToken)
+            await WebRTCManager.shared.prewarmRelayPath()
+        }
         WebSocketService.shared.connect(
             uin: uin, token: token, baseURL: APIClient.shared.baseURL,
-            serverToken: AccountManager.shared.active?.serverToken
+            serverToken: serverToken
         )
     }
 
@@ -1051,7 +1066,13 @@ final class CallService: ObservableObject {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard let self, self.lockedSignaling, !self.state.isActive else { return }
             self.lockedSignaling = false
-            if PanicPINService.shared.isLocked { WebSocketService.shared.disconnect() }
+            WebRTCManager.shared.strictRelay = false
+            if PanicPINService.shared.isLocked {
+                WebSocketService.shared.disconnect()
+                // The token went to the API client for this call only; a locked
+                // process holds no credentials in memory after it.
+                Task { await APIClient.shared.setToken(nil) }
+            }
         }
     }
 

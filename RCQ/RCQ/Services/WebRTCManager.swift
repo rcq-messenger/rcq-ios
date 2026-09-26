@@ -448,6 +448,10 @@ final class WebRTCManager: NSObject, ObservableObject {
 
     // MARK: - internals
 
+    /// Set by `CallService` for a call that rang while the app PIN was up:
+    /// relay-only whenever "always relay" is on, TURN or no TURN.
+    var strictRelay = false
+
     private func makePeerConnection() throws -> RTCPeerConnection {
         let config = RTCConfiguration()
         var servers: [RTCIceServer] = []
@@ -484,7 +488,14 @@ final class WebRTCManager: NSObject, ObservableObject {
         // worse failure than one that leaks an address.
         // ⚠⚠ ...and only while the user still wants it. This used to be
         // unconditional, which is the right default and was the wrong rule.
-        if cachedTurn?.server != nil, Self.relayReachable == true, CallPrivacy.alwaysRelay {
+        //
+        // ⚠⚠ Except a call taken from behind the app PIN (`strictRelay`): there
+        // the relay is missing only if this process failed to get it, and a
+        // lock-screen call is the one the person least expects to hand out
+        // their address. With "always relay" on it is relay or nothing: no
+        // TURN means no candidates and a call that fails, never a leak.
+        if CallPrivacy.alwaysRelay,
+           strictRelay || (cachedTurn?.server != nil && Self.relayReachable == true) {
             config.iceTransportPolicy = .relay
         }
 
