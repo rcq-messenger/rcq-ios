@@ -68,29 +68,52 @@ enum PINVault {
     /// state, scene phase all re-run it), and the uncached answer was a
     /// synchronous vault-file read each time. The two mutation points below
     /// (`writeVault`, `destroy`) keep it honest; nothing else touches the file.
+    ///
+    /// ⚠ Only an answer that was actually READ is cached (see `probe`).
     nonisolated(unsafe) private static var configuredCache: Bool?
 
+    /// Whether an app PIN exists. A vault file that is there but cannot be
+    /// read counts as YES, and is asked again next time.
+    ///
+    /// ⚠⚠ THE APP UNLOCKED ITSELF ON A BACKGROUND LAUNCH (#1045 review). The
+    /// vault is written with complete file protection, so a process started by
+    /// a push, a VoIP call or a background fetch while the phone is locked
+    /// cannot read it. That failed read used to answer "no PIN" and was cached
+    /// for the life of the process: `PanicPINService` came up `.unlocked`, the
+    /// extension was told to print every name and message again, the app booted
+    /// with no data key (new rows landed on disk unsealed) and, when the owner
+    /// later opened it, it opened with no PIN asked at all.
     static var isConfigured: Bool {
         if let cached = configuredCache { return cached }
-        let answer = readVault() != nil
-        configuredCache = answer
-        return answer
+        switch probe() {
+        case .present: configuredCache = true; return true
+        case .absent: configuredCache = false; return false
+        case .unreadable: return true
+        }
     }
 
-    /// `isConfigured`, or nil when it cannot be told right now: the vault file
-    /// is there but will not read. That is what a process launched into the
-    /// background while the device is locked sees (the file has complete
-    /// protection), and `isConfigured` reads it as "no PIN" and caches that
-    /// for the life of the process.
-    ///
-    /// For callers that would take protection DOWN on a "no" (the chat locks,
-    /// #1045 review): they treat nil as "there is a PIN". Existence is asked
-    /// separately because a file's metadata stays readable when its contents
-    /// do not.
+    /// `isConfigured` with the unreadable case told apart: nil when the vault
+    /// file is there but will not read right now. For a caller that must not
+    /// act on a guess either way (the extension's copy of the chat locks is
+    /// neither rewritten nor deleted on one).
     static var configuredState: Bool? {
-        if isConfigured { return true }
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        return readVault() != nil ? true : nil
+        if let cached = configuredCache { return cached }
+        switch probe() {
+        case .present: configuredCache = true; return true
+        case .absent: configuredCache = false; return false
+        case .unreadable: return nil
+        }
+    }
+
+    private enum Probe { case present, absent, unreadable }
+
+    /// Existence first, because a file's metadata stays readable when its
+    /// contents are protected. A file that reads but does not parse is treated
+    /// as no vault, as it always was: nothing could ever open it.
+    private static func probe() -> Probe {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return .absent }
+        guard let raw = try? Data(contentsOf: fileURL) else { return .unreadable }
+        return parseVault(raw) != nil ? .present : .absent
     }
 
     static func vaultSalt() -> Data? {
@@ -160,6 +183,10 @@ enum PINVault {
 
     private static func readVault() -> VaultFile? {
         guard let raw = try? Data(contentsOf: fileURL) else { return nil }
+        return parseVault(raw)
+    }
+
+    private static func parseVault(_ raw: Data) -> VaultFile? {
         let expected = 1 + saltLen + slotCount * slotLen
         guard raw.count == expected, raw[raw.startIndex] == version else { return nil }
         var off = raw.startIndex + 1

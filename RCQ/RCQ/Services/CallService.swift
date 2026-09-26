@@ -68,6 +68,10 @@ final class CallService: ObservableObject {
     // call, never carried across one.
     private var answered = false
 
+    /// The socket was opened for this call from behind the app PIN
+    /// (`openSignalingWhileLocked`) and is closed again when the call ends.
+    private var lockedSignaling = false
+
     // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
     // — only the original caller restarts); the callee waits for that re-offer
     // and ends the call if it never recovers.
@@ -330,6 +334,33 @@ final class CallService: ObservableObject {
         answered = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
+        if PanicPINService.shared.isLocked { openSignalingWhileLocked() }
+    }
+
+    /// ⚠ A call answered from the lock screen while the APP PIN is up (#1045
+    /// review). CallKit rings from the VoIP push alone, but the answer, the ICE
+    /// and the hang-up ride the socket, and the socket only ever came up with
+    /// the boot that follows an unlock. A process the PIN keeps locked had
+    /// none: the answer went nowhere and the call died on the connect timeout.
+    /// Where answering from a cold start did work, it was because the process
+    /// the push woke had wrongly come up unlocked (see `PINVault.isConfigured`)
+    /// and booted with no data key; with that fixed, the call needs this.
+    ///
+    /// So the call opens the socket itself, for itself: nothing unlocks, the
+    /// PIN screen stays, and while it does AppState lets nothing else the
+    /// socket carries in (messages stay in the queue for the real session).
+    /// A duress session never gets here: `DuressGate` ends such a push before
+    /// it rings.
+    private func openSignalingWhileLocked() {
+        guard !WebSocketService.shared.isConnected,
+              let uin = KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init),
+              let token = KeychainStore.string(KeychainStore.Keys.token)
+        else { return }
+        lockedSignaling = true
+        WebSocketService.shared.connect(
+            uin: uin, token: token, baseURL: APIClient.shared.baseURL,
+            serverToken: AccountManager.shared.active?.serverToken
+        )
     }
 
     func clearEnded() {
@@ -1010,6 +1041,20 @@ final class CallService: ObservableObject {
         )
     }
 
+    /// The socket a call opened from behind the PIN goes with the call, every
+    /// way a call can end. Not at once: the `call_end` that ended it was handed
+    /// to the socket a moment ago and has to leave first. If the app was
+    /// unlocked meanwhile, the boot owns the socket now and it stays.
+    private func closeLockedSignalingSoon() {
+        guard lockedSignaling else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, self.lockedSignaling, !self.state.isActive else { return }
+            self.lockedSignaling = false
+            if PanicPINService.shared.isLocked { WebSocketService.shared.disconnect() }
+        }
+    }
+
     private func scheduleEndedClear() {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
@@ -1043,6 +1088,7 @@ final class CallService: ObservableObject {
             // stamp lives in onIceConnected().
             break
         case .ended(let call, let reason):
+            closeLockedSignalingSoon()
             if old.isEnded { return }
             let duration = connectedAt.map { Date().timeIntervalSince($0) }
             lastCallDuration = duration
@@ -1050,6 +1096,7 @@ final class CallService: ObservableObject {
             isMinimized = false
             logCallEnded(call: call, reason: reason, duration: duration)
         case .idle:
+            closeLockedSignalingSoon()
             connectedAt = nil
             isMinimized = false
         default:

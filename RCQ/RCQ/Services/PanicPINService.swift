@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import SwiftUI
+import UIKit
 import UserNotifications
 
 /// One process-wide latch: "a duress session is up, no request may leave this
@@ -143,6 +144,12 @@ final class PanicPINService: ObservableObject {
     private var decoySlotKey: SymmetricKey?
 
     private init() {
+        // THE decision "show the PIN screen" for the whole process: RootView
+        // draws PINLockView on `.locked` and nothing else ever locks a process
+        // that starts unlocked (the scene-phase relock needs `isConfigured` too).
+        // ⚠ A vault that cannot be read yet (background launch, phone locked)
+        // counts as a PIN: see `PINVault.isConfigured`. Reading it as "no PIN"
+        // was how a push-woken process came up unlocked.
         lockState = PINVault.isConfigured ? .locked : .unlocked
         // ⚠ NOT BiometricUnlock.isEnabled here. That getter builds an
         // LAContext, and LAContext's init does a synchronous XPC to the
@@ -170,6 +177,25 @@ final class PanicPINService: ObservableObject {
         // has to be established here or the extension keeps rendering names and
         // bodies on the lock screen of a locked app.
         AppGroup.setPushQuiet(lockState == .locked)
+        // The one guess above that could be wrong in the SAFE direction: a
+        // vault that would not read may turn out, once the phone is unlocked,
+        // to be no vault at all (a file that never parsed). Ask again then,
+        // rather than hold a phone with no PIN at a PIN screen nothing opens.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+            object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in PanicPINService.shared.recheckAfterProtectedData() }
+        }
+    }
+
+    /// A launch that could not read the vault locked on the guess that a PIN
+    /// exists. With the file readable again, a definite "no PIN" unlocks; a
+    /// PIN that does exist changes nothing, the screen already asks for it.
+    private func recheckAfterProtectedData() {
+        guard lockState == .locked, PINVault.configuredState == false else { return }
+        lockState = .unlocked
+        syncPushPrivacy()
     }
 
     // MARK: - unlock / lock

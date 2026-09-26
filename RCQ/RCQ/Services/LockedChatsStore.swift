@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import UIKit
 
 /// Chats the user locked behind the app PIN, per local account. Opening a
 /// locked chat prompts for the PIN that opened this session first
@@ -65,6 +66,19 @@ final class LockedChatsStore: ObservableObject {
         // Brings the extension's copy in line on every launch, including the
         // first launch of a build that introduced it (#1045).
         syncExtensionMirror()
+        // A process woken before the first unlock after a reboot reads empty
+        // prefs, and would hold "nothing is locked" for the rest of its life.
+        // Read again once the phone has been unlocked.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+            object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in
+                let store = LockedChatsStore.shared
+                store.load()
+                store.syncExtensionMirror()
+            }
+        }
     }
 
     func contains(peer uin: Int) -> Bool { entries.contains(.peer(uin: uin)) }

@@ -2847,6 +2847,15 @@ final class AppState: ObservableObject {
     }
 
     private func handle(_ event: WebSocketService.Event) {
+        // ⚠ Behind the app PIN the socket exists for one reason: a call rang
+        // from the lock screen (`CallService.openSignalingWhileLocked`), and the
+        // call service reads its own frames. Nothing else it carries is let in:
+        // there is no data key to seal a message with, and every envelope is
+        // still in the island's queue for the drain after the real unlock.
+        if PanicPINService.shared.isLocked {
+            if case .opened = event, isOffline { isOffline = false }
+            return
+        }
         switch event {
         case .opened:
             // A live realtime socket is the definitive "we're online" signal —
