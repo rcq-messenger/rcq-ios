@@ -470,7 +470,7 @@ final class PanicPINService: ObservableObject {
     /// Put the per-account stores back on the real account. Called from
     /// `lock()` and from both real-unlock paths, so a decoy session can never
     /// leave the app pointed at the decoy namespace.
-    private static func leaveDecoySession() {
+    private static func leaveDecoySession(restoringToken: Bool = true) {
         let id = AccountManager.shared.activeAccountID
         CrossIslandStore.shared.bind(accountID: id)
         CrossIslandRequestsStore.shared.bind(accountID: id)
@@ -487,7 +487,7 @@ final class PanicPINService: ObservableObject {
         // until the next full boot.
         if let token = stashedAPIToken {
             stashedAPIToken = nil
-            Task { await APIClient.shared.setToken(token) }
+            if restoringToken { Task { await APIClient.shared.setToken(token) } }
         }
     }
 
@@ -594,7 +594,15 @@ final class PanicPINService: ObservableObject {
         }
         // Leaving a decoy session: the per-account stores go back to the real
         // account. Harmless in a real session (it rebinds to the same id).
-        Self.leaveDecoySession()
+        //
+        // ⚠ A decoy session that BOOTED this process leaves no real boot
+        // behind it: the next real unlock boots in full (AppState
+        // .forgetDecoyBoot), and the token stashed at its entry is not put
+        // back. It was never a boot's: nil at a cold start, or the one a
+        // lock-screen call lent the API client, which a process under the PIN
+        // must not keep (#1045 review, round 4).
+        let decoyBooted = mode == .decoy && AppState.shared.forgetDecoyBoot()
+        Self.leaveDecoySession(restoringToken: !decoyBooted)
         dataKey = nil
         realPayload = nil
         realSlotKey = nil

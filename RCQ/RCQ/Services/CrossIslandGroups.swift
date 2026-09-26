@@ -944,6 +944,10 @@ enum CrossIslandGroups {
         // MessageDB.isWritable), would be gone.
         guard MessageDB.shared.isWritable else { return }
         for v in VisitedIslandsStore.shared.list() {
+            // Before EACH island, not once for the pass: every island before
+            // this one was a network wait, and this fetch deletes what it
+            // hands back (#1045 review, round 4).
+            guard MessageDB.shared.isWritable else { return }
             var jwt = v.jwt
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
             if rows == nil, let fresh = await refreshGuest(host: v.host) {

@@ -141,9 +141,26 @@ final class MessageDB {
     /// but ~10 s later the file (complete protection) refuses every write.
     /// Every drain and the live socket path ask this before they open a
     /// single row (#1045 review).
+    ///
+    /// ⚠ And the last save went through. One that failed with the phone
+    /// unlocked (a full disk, an I/O error) is tried once more here; until one
+    /// lands, nothing more is opened into a context that cannot be written.
+    /// The rows opened live were shown from memory and gone at the next
+    /// launch, their ratchet steps spent (#1045 review, round 4).
     var isWritable: Bool {
-        isStoreAvailable && UIApplication.shared.isProtectedDataAvailable
+        guard isStoreAvailable, UIApplication.shared.isProtectedDataAvailable else { return false }
+        guard lastSaveFailed else { return true }
+        // Never inside an open batch: flushing there would land half a chunk.
+        guard batchDepth == 0 else { return false }
+        flushNow()
+        return !lastSaveFailed
     }
+
+    /// Moves every time the context is thrown away with what it held (an
+    /// account switch, the decoy store coming or going). Work scheduled
+    /// against one context compares it before acting on "saved": after a
+    /// swap `isPersisting` is true of a context that never held those rows.
+    private(set) var generation = 0
 
     /// Set by a save that threw, cleared by one that went through or by
     /// finding nothing left to save.
@@ -153,19 +170,25 @@ final class MessageDB {
     /// removal of the decrypted copies a drain read from PushDecryptCache.
     /// Dropped, not run, when the context goes away unsaved (the copies are
     /// then what the next drain reads the rows from).
-    private var afterPersist: [() -> Void] = []
+    private var afterPersist: [@MainActor () -> Void] = []
 
     /// Run `work` once everything written so far reaches the disk.
-    func whenPersisted(_ work: @escaping () -> Void) {
+    func whenPersisted(_ work: @escaping @MainActor () -> Void) {
         afterPersist.append(work)
     }
 
-    /// Everything that throws the current context away goes through here.
-    private func replaceContainer(_ next: NSPersistentContainer) {
+    /// Everything that replaces the current context goes through here.
+    /// `carrying`: the caller moved what the old context held into `next`
+    /// (see `adopt`), so the work waiting on those rows reaching the disk
+    /// waits on the new context instead of being dropped.
+    private func replaceContainer(_ next: NSPersistentContainer, carrying: Bool = false) {
         abandonBatch()
         pendingFlush?.cancel()
         pendingFlush = nil
-        afterPersist.removeAll()
+        if !carrying {
+            afterPersist.removeAll()
+            generation += 1
+        }
         lastSaveFailed = false
         container = next
     }
@@ -313,7 +336,26 @@ final class MessageDB {
     private var lastReopenAttempt: Date?
 
     private func adopt(_ built: NSPersistentContainer) {
-        replaceContainer(built)
+        // ⚠ What the storeless context was holding goes along. `flush` keeps
+        // it rather than crash, and it is not nothing: a call from the lock
+        // screen, missed or taken, writes its call-log row while there is no
+        // store, and dropping the context here lost the row the moment the
+        // phone was unlocked (#1045 review, round 4). Rows only: a storeless
+        // context has nothing to update or delete, since it never read any.
+        // The fields are sealed under the same data key the new context uses.
+        let next = built.viewContext
+        for case let row as MessageRecord in ctx.insertedObjects where !row.isDeleted {
+            let known = NSFetchRequest<MessageRecord>(entityName: "MessageRecord")
+            known.predicate = NSPredicate(format: "id == %@", row.id as CVarArg)
+            known.fetchLimit = 1
+            if let n = try? next.count(for: known), n > 0 { continue }
+            let copy = NSEntityDescription.insertNewObject(forEntityName: "MessageRecord", into: next)
+            for name in row.entity.attributesByName.keys {
+                copy.setValue(row.value(forKey: name), forKey: name)
+            }
+        }
+        replaceContainer(built, carrying: true)
+        flushNow()
         // Windows read while there was no store read back empty and are marked
         // loaded; read them again from the file that is there now.
         MessageStore.shared.reloadFromDB()

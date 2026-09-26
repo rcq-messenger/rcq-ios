@@ -214,7 +214,10 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
-            PushDecryptCache.store(ciphertextB64: envB64, decrypted: decrypted)
+            // Filed under the account whose keys just opened it: its entry is
+            // that account's only decoder until the account is next drained,
+            // and a switch to another account must not take it (#1045 review).
+            PushDecryptCache.store(ciphertextB64: envB64, decrypted: decrypted, accountID: routedAccountID)
             // ⚠ THE DURESS / LOCKED CASE. This process cannot see
             // `PanicPINService` — it is a separate binary in a separate
             // process — so until now it rendered the real sender's name, their

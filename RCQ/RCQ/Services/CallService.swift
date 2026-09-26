@@ -59,6 +59,24 @@ final class CallService: ObservableObject {
     // seen on the wire. Cleared on connect / decline / teardown / new call.
     private var answering = false
 
+    /// The person pressed End in CallKit while the answer was being prepared
+    /// behind the app PIN (see `endFromCallKit`). Applied once the handshake
+    /// comes back, instead of connecting a call nobody can see or end.
+    private var endRequestedDuringAnswer = false
+
+    /// Offers already acted on, by call id, for ten minutes. See
+    /// `handleIncomingOffer`.
+    private var seenOfferIDs: [String: Date] = [:]
+
+    /// True the first time `callID` is seen.
+    private func noteOfferSeen(_ callID: String) -> Bool {
+        let now = Date()
+        seenOfferIDs = seenOfferIDs.filter { now.timeIntervalSince($0.value) < 600 }
+        guard seenOfferIDs[callID] == nil else { return false }
+        seenOfferIDs[callID] = now
+        return true
+    }
+
     // ⚠ Durable, unlike `answering`: it survives the handshake so the history
     // row can tell "nobody picked up" from "we picked up and it fell over".
     // Without it a call the user answered, which then died before media flowed,
@@ -263,6 +281,29 @@ final class CallService: ObservableObject {
                     remoteSdp: offerSdp,
                     media: call.media
                 )
+                // ⚠ Still the call that was answered, and still wanted. The
+                // answer can wait seconds on the relay probe behind the PIN
+                // (WebRTCManager.handleOffer); meanwhile the caller may have
+                // cancelled, or the person pressed End. Connected regardless,
+                // the call answered a caller who had gone, or connected one
+                // with no CallKit screen to end it from (#1045 review, round 4).
+                guard case .incomingRinging(let current) = state, current.id == call.id else {
+                    print("[CallService] handleOffer came back for a call that is gone (callID=\(call.id))")
+                    answering = false
+                    WebRTCManager.shared.close()
+                    return
+                }
+                if endRequestedDuringAnswer {
+                    print("[CallService] End pressed while the answer waited, declining (callID=\(call.id))")
+                    answering = false
+                    endRequestedDuringAnswer = false
+                    sendEnd(call: call, reason: "declined")
+                    state = .ended(call, reason: "declined")
+                    CallProvider.shared.reportEnded(callID: call.id, reason: .declinedElsewhere)
+                    teardownAfterEnd()
+                    scheduleEndedClear()
+                    return
+                }
                 print("[CallService] handleOffer OK, going connected, sending answer (\(answerSdp.count)ch)")
                 answering = false
                 state = .connected(call)
@@ -278,6 +319,11 @@ final class CallService: ObservableObject {
             } catch {
                 print("[CallService] handleOffer failed: \(error)")
                 answering = false
+                // Gone meanwhile: nothing of it is left to fail.
+                guard case .incomingRinging(let current) = state, current.id == call.id else {
+                    WebRTCManager.shared.close()
+                    return
+                }
                 sendEnd(call: call, reason: "setup_failed")
                 state = .ended(call, reason: "setup_failed")
                 CallProvider.shared.reportEnded(callID: call.id, reason: .failed)
@@ -295,6 +341,19 @@ final class CallService: ObservableObject {
         // not declining — swallow this stray end so we don't ship a bogus
         // "declined" to the caller and kill the call the handshake is completing.
         if answering {
+            // ⚠ Except behind the app PIN. There CallKit's screen is the only
+            // way to end the call at all, the answer can wait seconds on the
+            // relay probe, and a swallowed End connected a call with no screen
+            // left to end it from: silence both ways until the caller gave up
+            // (#1045 review, round 4). Whichever sent it, it ends the answer
+            // there, once the handshake comes back; anywhere else the stray
+            // end is swallowed as before.
+            if PanicPINService.shared.isLocked {
+                print("[CallService] endFromCallKit during a locked answer — declining after the handshake (callID=\(c.id))")
+                endRequestedDuringAnswer = true
+                WebRTCManager.shared.cancelRelayProbeWait()
+                return
+            }
             print("[CallService] endFromCallKit IGNORED — answer in flight (callID=\(c.id))")
             return
         }
@@ -338,10 +397,12 @@ final class CallService: ObservableObject {
             media: media,
             direction: .incoming
         )
+        _ = noteOfferSeen(callID)
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         answering = false
         answered = false
+        endRequestedDuringAnswer = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
         WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
@@ -371,6 +432,14 @@ final class CallService: ObservableObject {
     /// is warmed while it still rings, so relay-only is known before the
     /// answer, and `strictRelay` refuses to fall back to direct candidates.
     private func openSignalingWhileLocked(callID: String) {
+        // ⚠ Still up from the call before, inside that call's 3 s tail: the
+        // socket is THIS call's now. Left naming the old call, the old tail
+        // closed it under this one, sometimes a moment after this call's
+        // own "declined" had been queued on it (#1045 review, round 4).
+        if lockedSignaling, WebSocketService.shared.isConnected {
+            lockedSignalingCallID = callID
+            return
+        }
         guard !WebSocketService.shared.isConnected,
               let uin = KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init),
               let token = KeychainStore.string(KeychainStore.Keys.token)
@@ -813,6 +882,14 @@ final class CallService: ObservableObject {
         if CallProvider.shared.placeholderIsPending(placeholder) {
             await MessageService.shared.fetchOfflineQueue()
         }
+        // ⚠ The drain above runs only into a store it can write, and the
+        // phone this rang is usually locked: the offer stayed in the queue
+        // and the ring came down unanswered (#1045 review, round 4). This pass
+        // reads the queue without acking or keeping anything and acts on the
+        // call signals alone; the drain after the unlock still owns the rows.
+        if CallProvider.shared.placeholderIsPending(placeholder) {
+            await MessageService.shared.actOnQueuedCallSignals()
+        }
         // Nothing claimed it: not an offer, not from an accepted contact, or it
         // never opened. Take the ring back down rather than leave the user
         // staring at a call that answers into nothing.
@@ -984,6 +1061,16 @@ final class CallService: ObservableObject {
 
     private func handleIncomingOffer(from: Int, nickname: String, callID: String, media: CallMedia, sdp: String) {
         print("[CallService] WS callOffer callID=\(callID) from=\(from) nick=\(nickname) media=\(media) sdp=\(sdp.count)ch")
+        // ⚠ An offer seen before. A §5d offer is queued even when the island
+        // delivered it live, and the queue is read again: by the drain, and
+        // now by the sealed wake's pass that acks nothing. Taken as new, it
+        // answered our own ringing or connected call "busy" under ITS OWN
+        // call id, ending it for the caller, or rang again for a call already
+        // declined (#1045 review, round 4).
+        guard noteOfferSeen(callID) else {
+            print("[CallService] offer \(callID) already seen, ignored")
+            return
+        }
         if state.isActive {
             print("[CallService] busy, auto-declining incoming")
             WebSocketService.shared.sendCallSignal(
@@ -1007,9 +1094,13 @@ final class CallService: ObservableObject {
         pendingRemoteIce.removeAll()
         answering = false
         answered = false
+        endRequestedDuringAnswer = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
         WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
+        // Rang on a socket kept for an earlier call behind the PIN: the
+        // socket is this call's from here (see `openSignalingWhileLocked`).
+        if lockedSignaling { lockedSignalingCallID = call.id }
         #if targetEnvironment(simulator)
         // CallKit can't present an incoming call on the simulator (it
         // reportNewIncomingCall-OKs then instantly fires CXEndCallAction). The
@@ -1053,6 +1144,7 @@ final class CallService: ObservableObject {
 
     private func teardownAfterEnd() {
         answering = false
+        endRequestedDuringAnswer = false
         // ⚠ Safe to clear here: assigning `state = .ended` runs logCallEnded
         // synchronously, so the history row is already written by now.
         answered = false
@@ -1152,6 +1244,7 @@ final class CallService: ObservableObject {
         resetRecoveryState()
         connectedAt = nil
         answered = false
+        endRequestedDuringAnswer = false
         lastCallDuration = nil
         isMinimized = false
         // A socket kept for a call is not carried into what comes next (an

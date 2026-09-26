@@ -1963,6 +1963,52 @@ final class MessageService {
         }
     }
 
+    enum CrossIslandCallRoute { case done, hostless }
+
+    /// §5d: the gates every cross-island call signal passes, wherever it came
+    /// in. `ingest` (live socket, queue drain, sealed wake with the envelope
+    /// inline) and the two paths that must not keep anything: the live socket
+    /// while the store cannot be written (`announceWithoutKeeping`) and the
+    /// sealed wake's queue pass (`actOnQueuedCallSignals`). A signal writes
+    /// nothing to the history and a cross-island one is a v=1 seal, which
+    /// opens without stepping anything, so neither needs the store. Filing a
+    /// stale offer as a missed call does: `mayFileMissed` is false where the
+    /// row cannot be kept, and the drain after the unlock files it.
+    /// `mayRing` is false behind the app PIN: a new cross-island call does not
+    /// ring there (see `CallService.handleSealedWake`), while the signals of a
+    /// call already up still reach it.
+    func routeCrossIslandCallSignal(
+        _ decrypted: DecryptedEnvelope, groupID: Int?, mayRing: Bool, mayFileMissed: Bool
+    ) -> CrossIslandCallRoute {
+        guard case .callSignal(_, let sig, let cid, let ts, let data) = decrypted.envelope,
+              groupID == nil
+        else { return .done }
+        guard let fromHost = decrypted.senderHost else { return .hostless }
+        // Accepted AND signed by the key we pinned for them: `from` and
+        // `from_host` sit outside the v=1 signature, so the address alone lets
+        // anyone who read a key card ring as our contact.
+        guard !Multihome.isOwnHost(fromHost),
+              Self.verifiedCrossIslandContact(
+                  uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
+              ) != nil
+        else { return .done }
+        if sig == "call_offer" {
+            if Int(Date().timeIntervalSince1970) - ts > 60 {
+                if mayFileMissed {
+                    CallService.shared.fileMissedCall(
+                        fromUIN: decrypted.senderUIN,
+                        fromHost: fromHost,
+                        media: CallMedia(rawValue: data["media"] ?? "video") ?? .video
+                    )
+                }
+                return .done
+            }
+            guard mayRing else { return .done }
+        }
+        CallService.shared.handleCrossIslandSignal(sig: sig, fromUIN: decrypted.senderUIN, callID: cid, data: data)
+        return .done
+    }
+
     /// §5d/§5e/§5f arrive with no host: KEEP THE ROW, don't ACK it.
     ///
     /// The sender's island is the whole identity of a cross-island peer, and a
@@ -1986,7 +2032,9 @@ final class MessageService {
             "ingest: %{public}@ envelope from #%d has no from_host — NOT acking, leaving it queued",
             log: Self.log, type: .error, kind, decrypted.senderUIN
         )
-        PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted)
+        PushDecryptCache.store(
+            ciphertextB64: ws.payload, decrypted: decrypted, accountID: AccountManager.shared.activeAccountID
+        )
         wantedRequeue = true
         return nil
     }
@@ -2045,10 +2093,13 @@ final class MessageService {
                     return nil
                 }
                 fromNSE = false
-            } else if let cached = PushDecryptCache.read(ciphertextB64: ws.payload) {
+            } else if let cached = PushDecryptCache.read(
+                ciphertextB64: ws.payload, accountID: AccountManager.shared.activeAccountID
+            ) {
                 // Deleted once the row is on disk, not now (see `read`).
                 let key = ws.payload
-                MessageDB.shared.whenPersisted { PushDecryptCache.remove(ciphertextB64: key) }
+                let owner = AccountManager.shared.activeAccountID
+                MessageDB.shared.whenPersisted { PushDecryptCache.remove(ciphertextB64: key, accountID: owner) }
                 decrypted = cached
                 fromNSE = true
             } else {
@@ -2254,32 +2305,16 @@ final class MessageService {
             // (old `ts` — offline-queue drains deliver hours-old rows) files a
             // missed-call row instead of ringing. ACK every branch so the
             // queue stops redelivering.
-            if case .callSignal(_, let sig, let cid, let ts, let data) = decrypted.envelope {
+            if case .callSignal = decrypted.envelope {
                 let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
-                guard ws.groupID == nil else { return outcome }
-                // No host = we cannot tell whose call this is. Re-deliverable,
-                // never acked — see `requeueHostlessControl`.
-                guard let fromHost = decrypted.senderHost else {
+                switch routeCrossIslandCallSignal(decrypted, groupID: ws.groupID, mayRing: true, mayFileMissed: true) {
+                case .hostless:
+                    // No host = we cannot tell whose call this is. Re-deliverable,
+                    // never acked — see `requeueHostlessControl`.
                     return requeueHostlessControl(ws, decrypted, kind: "call")
-                }
-                // Accepted AND signed by the key we pinned for them: `from` and
-                // `from_host` sit outside the v=1 signature, so the address
-                // alone lets anyone who read a key card ring as our contact.
-                guard !Multihome.isOwnHost(fromHost),
-                      Self.verifiedCrossIslandContact(
-                          uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
-                      ) != nil
-                else { return outcome }
-                if sig == "call_offer", Int(Date().timeIntervalSince1970) - ts > 60 {
-                    CallService.shared.fileMissedCall(
-                        fromUIN: decrypted.senderUIN,
-                        fromHost: fromHost,
-                        media: CallMedia(rawValue: data["media"] ?? "video") ?? .video
-                    )
+                case .done:
                     return outcome
                 }
-                CallService.shared.handleCrossIslandSignal(sig: sig, fromUIN: decrypted.senderUIN, callID: cid, data: data)
-                return outcome
             }
 
             // §5f cross-island CONTACT REQUEST (kind "contactreq"). Adding a peer
@@ -3264,10 +3299,28 @@ final class MessageService {
         drainBatch = nil
     }
 
+    /// A chunk whose save failed. Its rows stay in the context, and the next
+    /// save that goes through (the unlock's flush, any later write) puts them
+    /// on disk; the island then serves them again as duplicates, which carry
+    /// no bookkeeping. Discarded here, their unread counts, icon bumps and
+    /// delivered receipts were never made (#1045 review, round 4). So they
+    /// wait for that save instead, and go with the context if it is thrown
+    /// away unsaved (an account switch): then so do the rows, which come back
+    /// as new.
+    private func deferDrainBatch(_ owns: Bool) {
+        guard owns, let batch = drainBatch else { return }
+        drainBatch = nil
+        MessageDB.shared.whenPersisted { [weak self] in self?.applyDrainBatch(batch) }
+    }
+
     /// Apply everything the page accumulated, in one pass each.
     private func flushDrainBatch(_ owns: Bool) {
         guard owns, let batch = drainBatch else { return }
         drainBatch = nil
+        applyDrainBatch(batch)
+    }
+
+    private func applyDrainBatch(_ batch: DrainBatch) {
         ContactService.shared.applyUnreadDeltas(batch.peerUnread)
         GroupService.shared.applyUnreadDeltas(batch.groupUnread)
         if !batch.badge.isEmpty {
@@ -3326,34 +3379,68 @@ final class MessageService {
     ///
     /// With the app PIN up, or for a chat that asks for one, the notification
     /// says only that a message came.
-    func announceWithoutKeeping(_ ws: WebSocketService.EnvelopePacket) {
+    ///
+    /// ⚠ A cross-island CALL SIGNAL is acted on here, not announced. It rides
+    /// an ordinary sealed envelope, and `ingest` is its only road to the call
+    /// state machine, so parking it cut a call off the moment the phone had
+    /// been locked ~10 s: the answer, the ICE, the hang-up and the ICE restart
+    /// of the other side went nowhere (#1045 review, round 4). It writes
+    /// nothing to the store, so it goes through the same gates `ingest` uses.
+    ///
+    /// `notify` false: parked and routed, never shown. For a socket whose
+    /// frames reach a MessageService still set up for another identity (the
+    /// unlock after a decoy session that booted the process, AppState).
+    func announceWithoutKeeping(_ ws: WebSocketService.EnvelopePacket, notify: Bool = true) {
         if let to = ws.toDeviceID, to != SignalProtocolStores.shared.localDeviceId { return }
         let pinUp = PanicPINService.shared.isLocked
         let threadKey: String
         var title = "RCQ"
         var body = "chat.banner.new_message".localized
+        // A group row counts on the icon when the drain keeps it: it cannot be
+        // parked for the drain to recognise, so counting it here as well
+        // counted it twice (#1045 review, round 4).
+        var bumpsBadge = true
         if ws.type == "gmsg" {
-            guard let gid = ws.groupID, !MutedStore.shared.isGroupMuted(gid),
+            guard notify, let gid = ws.groupID, !MutedStore.shared.isGroupMuted(gid),
                   !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
             threadKey = BadgeCounter.threadKey(groupID: gid)
+            bumpsBadge = false
             if !pinUp, !LockedChatsStore.shared.holds(.group(id: gid)),
                let name = GroupNameCache.name(for: gid) {
                 title = name
             }
         } else {
-            guard !PushDecryptCache.contains(ciphertextB64: ws.payload),
+            let owner = AccountManager.shared.activeAccountID
+            guard !PushDecryptCache.contains(ciphertextB64: ws.payload, accountID: owner),
                   let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0),
                   let decrypted = try? crypto.decrypt(envelopeB64: ws.payload)
             else { return }
-            PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted)
+            if case .callSignal = decrypted.envelope {
+                // Stale offers are left to the drain that can file them.
+                _ = routeCrossIslandCallSignal(decrypted, groupID: ws.groupID, mayRing: !pinUp, mayFileMissed: false)
+                if Self.isStatelessSeal(ws.payload) { return }
+            }
+            PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted, accountID: owner)
+            guard notify else { return }
             let me = ownUIN != 0 ? ownUIN : KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init)
             guard Self.isSomethingSaid(decrypted.envelope),
                   decrypted.senderUIN != me,
-                  !RemovedContactsStore.shared.contains(decrypted.senderUIN)
+                  !RemovedContactsStore.shared.contains(decrypted.senderUIN),
+                  // The extension's rules, the same ones for the same banner:
+                  // an ended random chat never shows the stranger's number,
+                  // and an envelope naming a pinned cross-island contact under
+                  // another key never shows that contact's name over the
+                  // forger's words (`from`/`from_host` sit outside the v=1
+                  // signature).
+                  !RandomChatService.shared.isFinishedStranger(decrypted.senderUIN),
+                  !Self.claimsPinnedContactUnderAnotherKey(decrypted)
             else { return }
             let thread: ThreadID
             if let gid = ws.groupID {
-                guard !MutedStore.shared.isGroupMuted(gid), !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
+                guard !MutedStore.shared.isGroupMuted(gid) else { return }
+                if MutedStore.shared.isGroupMentionsOnly(gid) {
+                    guard case .text(_, let text, _, _, _, _) = decrypted.envelope, bodyMentionsMe(text) else { return }
+                }
                 threadKey = BadgeCounter.threadKey(groupID: gid)
                 thread = .group(id: gid)
             } else {
@@ -3377,10 +3464,81 @@ final class MessageService {
         content.title = title
         content.body = body
         content.sound = .default
-        content.badge = NSNumber(value: BadgeCounter.increment(threadKey: threadKey))
+        if bumpsBadge {
+            content.badge = NSNumber(value: BadgeCounter.increment(threadKey: threadKey))
+        }
+        content.threadIdentifier = threadKey
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         ) { _ in }
+    }
+
+    /// A sender naming a cross-island contact we pinned, signed by another
+    /// key. The extension gives such a push no banner; so does this path.
+    private static func claimsPinnedContactUnderAnotherKey(_ decrypted: DecryptedEnvelope) -> Bool {
+        guard let host = decrypted.senderHost, !Multihome.isOwnHost(host),
+              CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == host })
+        else { return false }
+        return verifiedCrossIslandContact(uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey) == nil
+    }
+
+    /// A v=1 seal: opens with the identity key alone and steps nothing, so it
+    /// can be opened again later without a parked copy. A v=2 one steps its
+    /// ratchet on every open and can be opened once.
+    static func isStatelessSeal(_ payload: String) -> Bool {
+        guard let data = Data(base64Encoded: payload),
+              let wire = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return (wire["v"] as? Int) == 1
+    }
+
+    /// §5d, for a sealed call wake that found the history store unwritable
+    /// (the phone locked, no app PIN needed): the offer was too big to ride
+    /// the push (the island inlines it up to 3500 characters, and a sealed
+    /// SDP offer is almost always more), and the drain that used to fetch it
+    /// now waits for a store it can write, so the ring was taken down and
+    /// the call never rang (#1045 review, round 4).
+    ///
+    /// Reads the queue WITHOUT acking a single row and acts only on
+    /// cross-island call signals in it. Only v=1 seals are opened (they step
+    /// nothing); every other row is left unopened. The drain after the unlock
+    /// still owns every row; it files a stale offer as missed, and a live one
+    /// it sees again is recognised by its call id (CallService).
+    func actOnQueuedCallSignals() async {
+        guard !PanicPINService.shared.isLocked, !PanicPINService.shared.isDecoy,
+              servesSignedInAccount
+        else { return }
+        struct Row: Decodable {
+            let envelope_type: String
+            let payload: String
+            let group_id: Int?
+            let to_device_id: Int?
+        }
+        let myDeviceId = SignalProtocolStores.shared.localDeviceId
+        let accountID = AccountManager.shared.activeAccountID
+        guard let rows: [Row] = try? await APIClient.shared.request(
+            "GET", "/messages/queue", query: ["ack": "1", "dev": String(myDeviceId)]
+        ),
+            AccountManager.shared.activeAccountID == accountID,
+            !PanicPINService.shared.isLocked, !PanicPINService.shared.isDecoy,
+            let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0)
+        else { return }
+        for r in rows where r.group_id == nil && r.envelope_type != "gmsg" {
+            if let to = r.to_device_id, to != myDeviceId { continue }
+            guard Self.isStatelessSeal(r.payload),
+                  let decrypted = try? crypto.decrypt(envelopeB64: r.payload),
+                  case .callSignal = decrypted.envelope
+            else { continue }
+            _ = routeCrossIslandCallSignal(decrypted, groupID: nil, mayRing: true, mayFileMissed: false)
+        }
+    }
+
+    /// Set up for the identity that is signed in. Not so between the unlock
+    /// that follows a decoy session which booted this process and the boot it
+    /// triggers: configured then for the decoy number, a drain would drop our
+    /// own carbons as somebody else's and ack them away (#1045 review, round 4).
+    var servesSignedInAccount: Bool {
+        ownUIN != 0 && ownUIN == AuthService.shared.ownUIN
     }
 
     /// The kinds a person wrote, the ones a push would have announced. The
@@ -3401,6 +3559,10 @@ final class MessageService {
 
     private func drainQueueThenLog() async {
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
+        // Not for an identity other than the one signed in. See
+        // `servesSignedInAccount`: every check below compares this service's
+        // own number with itself, so none of them would catch it.
+        guard servesSignedInAccount else { return }
         // ⚠ Nothing to keep the rows in, so nothing to read them for, BEFORE a
         // single row is fetched or opened: a process started while the phone
         // is locked has no store until it is unlocked (MessageDB.makeContainer),
@@ -3483,10 +3645,17 @@ final class MessageService {
             // who is signed in now, they belong to nobody here. Dropping them
             // costs nothing: without an ACK the island holds them, and the
             // account that owns them collects them on its own next drain.
+            //
+            // ⚠ And the store is asked again. The gate above ran before the
+            // fetch, the longest pause in the function, and the phone can
+            // lock inside it; the first chunk was then opened into a store
+            // that refused it (#1045 review, round 4). Later chunks are asked
+            // at the bottom of the loop.
             guard ownUIN == account,
                   AccountManager.shared.activeAccountID == accountID,
                   !PanicPINService.shared.isLocked,
-                  !PanicPINService.shared.isDecoy
+                  !PanicPINService.shared.isDecoy,
+                  MessageDB.shared.isWritable
             else { return }
             var sawUnknownPeer = false
             // Track which rows landed locally so we can ACK them. Two
@@ -3609,7 +3778,7 @@ final class MessageService {
                 // ends the drain with nothing acked; the island serves them
                 // again.
                 guard MessageDB.shared.endBatch() else {
-                    discardDrainBatch(ownsBatch)
+                    deferDrainBatch(ownsBatch)
                     return
                 }
                 // The counters and the receipts for the rows that just went to
@@ -3818,6 +3987,10 @@ final class MessageService {
         var passes = 0
         while passes < 20 {
             passes += 1
+            // Several round trips behind the queue drain's gate. The rows are
+            // not opened here (see `ingestGroupLogRows`), but a page that
+            // cannot be kept is not worth fetching.
+            guard MessageDB.shared.isWritable else { return }
             let out: FetchOut
             do {
                 out = try await APIClient.shared.request(
@@ -3907,6 +4080,16 @@ final class MessageService {
         let accountID = AccountManager.shared.activeAccountID
         var cursor = 0
         while cursor < rows.count {
+            // ⚠ Before every chunk, the first one included: the page was
+            // fetched across a network pause (for a host's log, a wait on the
+            // drain chain too), and a gmsg opened into a store that cannot be
+            // written has spent its chain position for good (#1045 review,
+            // round 4). Nothing handled, so the caller acks nothing.
+            guard MessageDB.shared.isWritable else {
+                var stopped = GroupLogIngest()
+                stopped.failed = true
+                return stopped
+            }
             // Per chunk, flushed as soon as the chunk is on disk. See the
             // queue drain and `discardDrainBatch`. Clock-bounded like the
             // queue drain (D3): the cursor moves at the top so `continue`
@@ -3957,7 +4140,7 @@ final class MessageService {
             // Acked by the caller from `result`: rows that did not reach the
             // disk must not be in it.
             guard MessageDB.shared.endBatch() else {
-                discardDrainBatch(ownsBatch)
+                deferDrainBatch(ownsBatch)
                 var failed = GroupLogIngest()
                 failed.failed = true
                 return failed
@@ -4091,11 +4274,26 @@ final class MessageService {
         groupLogAcked[gid] = seq
         pendingLiveAcks[gid] = max(pendingLiveAcks[gid] ?? 0, seq)
         liveAckFlush?.cancel()
+        // Whose rows these are, and which context holds them. After a swap
+        // (`MessageDB.reload` on a switch) the new context has nothing
+        // pending and `isPersisting` is true of rows it never held, and the
+        // token by then can be another account's, whose forward-only cursor
+        // in a shared room would jump past rows it has not read (#1045
+        // review, round 4).
+        let account = ownUIN
+        let accountID = AccountManager.shared.activeAccountID
+        let generation = MessageDB.shared.generation
         liveAckFlush = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard !Task.isCancelled, let self else { return }
             let acks = self.pendingLiveAcks
             self.pendingLiveAcks = [:]
+            guard self.ownUIN == account,
+                  AccountManager.shared.activeAccountID == accountID,
+                  MessageDB.shared.generation == generation,
+                  !PanicPINService.shared.isLocked,
+                  !PanicPINService.shared.isDecoy
+            else { return }
             // ⚠ Acked only once the rows are ON DISK (#1045 review). The row
             // went to a save that is coalesced 40 ms later and can fail (the
             // phone locked meanwhile); the island's cursor moves forward with
@@ -4108,5 +4306,14 @@ final class MessageService {
             }
             _ = await self.ackGroupLog(acks)
         }
+    }
+
+    /// The live acks still waiting, dropped. First thing on an account
+    /// switch, before the store is re-pointed: they belong to the outgoing
+    /// account and to the context that is about to go.
+    func cancelLiveAcks() {
+        liveAckFlush?.cancel()
+        liveAckFlush = nil
+        pendingLiveAcks = [:]
     }
 }

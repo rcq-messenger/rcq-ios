@@ -463,11 +463,23 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// after a first cut forced relay even on islands with no TURN at all).
     var strictRelay = false
 
+    /// Cut short when the call it waits for is gone (the caller cancelled:
+    /// teardown clears `strictRelay`) or the person pressed End
+    /// (`cancelRelayProbeWait`). It used to sleep its 4.5 s out regardless
+    /// and then build the connection for a call nobody wanted any more
+    /// (#1045 review, round 4).
     private func waitForRelayProbe(timeout: TimeInterval) async {
+        probeWaitCancelled = false
         let deadline = Date().addingTimeInterval(timeout)
-        while Self.relayReachable == nil, Date() < deadline {
+        while Self.relayReachable == nil, Date() < deadline, strictRelay, !probeWaitCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
+    }
+
+    private var probeWaitCancelled = false
+
+    func cancelRelayProbeWait() {
+        probeWaitCancelled = true
     }
 
     private func makePeerConnection() throws -> RTCPeerConnection {

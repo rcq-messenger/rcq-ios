@@ -181,12 +181,19 @@ final class LockedChatsStore: ObservableObject {
 
     private func load() {
         var out: [String: Set<Entry>] = [:]
+        let decoy = PanicPINService.decoyNamespace.uuidString
+        var storedDecoy = false
         if let raw = UserDefaults.standard.dictionary(forKey: Self.storageKey) as? [String: [String]] {
             for (account, keys) in raw {
+                // Written by a build that still kept the decoy's locks on disk.
+                if account == decoy { storedDecoy = true; continue }
                 let set = Set(keys.compactMap(Entry.decode))
                 if !set.isEmpty { out[account] = set }
             }
         }
+        // The decoy's locks live in memory only (see `save`); a reload (the
+        // first unlock after a background launch) must not drop them.
+        if let held = byAccount[decoy] { out[decoy] = held }
         // The device-wide list goes to EVERY account on the device: it was in
         // force on whichever account was active, so this loses no lock. Left
         // where it is while there is no account to give it to, or while it
@@ -213,10 +220,18 @@ final class LockedChatsStore: ObservableObject {
             return
         }
         byAccount = out
+        if storedDecoy { save() }
     }
 
+    /// ⚠ Never the decoy's slot. Its key is the decoy namespace's fixed id,
+    /// and on disk it says that a decoy session existed and locked a chat;
+    /// the App Group mirror was already kept clear of it, this plist was
+    /// not (#1045 review, round 4). A decoy's locks last as long as the
+    /// process: the decoy is a throwaway view, and a relaunch showing its
+    /// chats unlocked gives nothing away that the locks were keeping.
     private func save() {
-        let raw = byAccount.mapValues { $0.map(\.key) }
+        let decoy = PanicPINService.decoyNamespace.uuidString
+        let raw = byAccount.filter { $0.key != decoy }.mapValues { $0.map(\.key) }
         if raw.isEmpty {
             UserDefaults.standard.removeObject(forKey: Self.storageKey)
         } else {

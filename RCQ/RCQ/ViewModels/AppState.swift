@@ -736,6 +736,26 @@ final class AppState: ObservableObject {
         if value > bootProgress { bootProgress = value }
     }
 
+    /// This process booted INTO a decoy session: a cold start whose first PIN
+    /// was the decoy one. Such a boot sets `booted` with MessageService set up
+    /// for the decoy number and no network session at all.
+    private(set) var bootedAsDecoy = false
+
+    /// The relock that ends a decoy session which booted this process. Says
+    /// whether it did, and if so makes the next real unlock a full boot
+    /// instead of `resumeAfterUnlock`, which only redials: with the decoy's
+    /// setup left standing, the real session drained with the decoy number,
+    /// dropped our own carbons as somebody else's and acked them away (#1045
+    /// review, round 4). Also what tells a lock-screen call's cleanup that
+    /// no real boot owns the token it put in the API client.
+    func forgetDecoyBoot() -> Bool {
+        guard bootedAsDecoy else { return false }
+        bootedAsDecoy = false
+        booted = false
+        networkReady = false
+        return true
+    }
+
     /// Wait for a boot chain in flight to reach its end. For the paths that
     /// replace the account under the app (switch, burn, migration).
     func settleBoot() async {
@@ -760,9 +780,11 @@ final class AppState: ObservableObject {
             isOffline = false
             MessageService.shared.configure(ownUIN: AuthService.shared.ownUIN ?? 0)
             advanceBoot(to: 1.0)
+            bootedAsDecoy = true
             booted = true
             return
         }
+        bootedAsDecoy = false
 
         // See `wipeGeneration`: checked after each network stage below.
         let generation = wipeGeneration
@@ -1604,7 +1626,9 @@ final class AppState: ObservableObject {
         RosterSnapshot.deleteActive(kinds: [.contacts, .groups, .rooms])
         GroupService.shared.wipe()
         AudioRoomService.shared.wipe()
-        PushDecryptCache.wipe()
+        // The push cache stays: the identity is the same, so its entries still
+        // open this account's queued rows, and the extension files them per
+        // account, so no other account's are in reach (#1045 review, round 4).
         NotificationPrefsService.shared.wipe()
         // A UIN move REUSES the same identity (only the server-side handle
         // changes), so chat history (peer-keyed), favourites, archive and
@@ -2155,7 +2179,14 @@ final class AppState: ObservableObject {
         if let burnedUIN, !Self.anotherLocalAccountHolds(uin: burnedUIN) {
             MultihomeStore.shared.wipeOwn(ownUin: burnedUIN)
         }
-        PushDecryptCache.wipe()
+        // The burned identity's decrypts and nobody else's: the other accounts'
+        // entries are the only decoders of what was pushed to them (#1045
+        // review, round 4). Entries from before the per-account folders go
+        // only where there is no other account for them to belong to.
+        PushDecryptCache.wipe(
+            accountID: AccountManager.shared.activeAccountID,
+            includingUnfiled: AccountManager.shared.accounts.count <= 1
+        )
         SilenceProbe.shared.reset()
         // Same reason as the probe: the device lists key on bare peer uins.
         await PeerDeviceCache.shared.invalidateAll()
@@ -2685,7 +2716,12 @@ final class AppState: ObservableObject {
         // frames before its own boot answers (D6).
         GuestSession.shared.bind()
         ContactsVault.resetSyncState()
-        PushDecryptCache.wipe()
+        // ⚠ The push cache is NOT wiped here any more. The extension opens
+        // pushes for every account on the device, and the entry it leaves is
+        // that account's only decoder: wiped just before the switched-to
+        // account's first drain, each such message failed as a duplicate and
+        // was acked away, the banner having shown its text (#1045 review,
+        // round 4). Entries are filed per account, so none crosses over.
         // Probe timers key on bare peer uins, which mean nothing on the
         // account we are switching to. The cached device lists key on the
         // same uins: uin 777 on the island we are leaving and uin 777 on the
@@ -2727,6 +2763,9 @@ final class AppState: ObservableObject {
         pendingAddUIN = nil
         pendingAddHost = nil
 
+        // The outgoing account's live room acks, before the store they wait
+        // on is re-pointed (see `MessageService.noteLiveGroupLogRow`).
+        MessageService.shared.cancelLiveAcks()
         MessageDB.shared.reload()
         SignalProtocolDB.shared.reload()
         // Re-point the in-memory store at the NEW account's SQLite file. The
@@ -2773,6 +2812,13 @@ final class AppState: ObservableObject {
 
     func resumeAfterUnlock() async {
         guard booted, !PanicPINService.shared.isDecoy else { return }
+        // Set up for another number than the one now signed in: a boot, not a
+        // redial (see `forgetDecoyBoot`, which normally gets here first).
+        if !MessageService.shared.servesSignedInAccount {
+            booted = false
+            await boot()
+            return
+        }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
         // Belt and braces for the API client: nothing else puts its token back
@@ -2887,6 +2933,15 @@ final class AppState: ObservableObject {
         // kept, and its ratchet step could not be undone (#1045 review).
         if case .envelope(let env) = event, !MessageDB.shared.isWritable {
             MessageService.shared.announceWithoutKeeping(env)
+            return
+        }
+        // Set up for another number than the one signed in (the unlock after
+        // a decoy session that booted this process, until the boot it starts
+        // reconfigures): opened now, our own carbons read as somebody else's.
+        // Parked for that boot's drain, call signals still routed, nothing
+        // shown (#1045 review, round 4).
+        if case .envelope(let env) = event, !MessageService.shared.servesSignedInAccount {
+            MessageService.shared.announceWithoutKeeping(env, notify: false)
             return
         }
         switch event {

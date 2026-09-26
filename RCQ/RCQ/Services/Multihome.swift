@@ -864,6 +864,10 @@ enum Multihome {
             // advances that cursor with no ack. Rows it takes never reach the
             // ack-protected main drain. Never drain through a front.
             if isOwnHost(home.host) { continue }
+            // Before EACH home, not once for the pass: the homes before this
+            // one were network waits, and this fetch advances the cursor past
+            // what it hands back (#1045 review, round 4).
+            guard MessageDB.shared.isWritable else { return }
             var jwt = home.jwt
             var rows: [Row]? = try? await getQueue(host: home.host, jwt: jwt)
             if rows == nil {

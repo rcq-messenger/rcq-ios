@@ -15,7 +15,8 @@ import Foundation
 /// checks the cache before calling `crypto.decrypt`. `consume`
 /// deletes on read so WS re-delivery can't double-spend.
 ///
-/// Storage: one JSON file per envelope under `<app-group>/push-cache/<sha256-hex>.json`.
+/// Storage: one JSON file per envelope under
+/// `<app-group>/push-cache/<account-uuid>/<sha256-hex>.json` (see `accountDir`).
 enum PushDecryptCache {
     // 30 days. Entries here are the ONLY decoder for v=2 envelopes the
     // NSE already stepped the ratchet on, so a TTL shorter than the
@@ -56,13 +57,37 @@ enum PushDecryptCache {
         return dir
     }
 
+    /// ⚠ One folder PER ACCOUNT (#1045 review, round 4). The extension opens
+    /// pushes for accounts that are not the active one too (it swaps in the
+    /// owner of `to_uin`), and the entry it leaves is that account's only
+    /// decoder until the account is next drained. With every entry in one
+    /// folder, the wipe an account switch ran deleted them just before the
+    /// switched-to account's first drain: every v=2 message it had been
+    /// pushed failed as a duplicate and was acked away, while its banner had
+    /// shown the text. Entries written before this sit in the folder itself;
+    /// they are still read, and age out with the sweep.
+    private static func accountDir(_ accountID: UUID?) -> URL {
+        guard let accountID else { return cacheDir }
+        let dir = cacheDir.appendingPathComponent(accountID.uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
     private static func key(for ciphertextB64: String) -> String {
         let digest = SHA256.hash(data: Data(ciphertextB64.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func fileURL(for ciphertextB64: String) -> URL {
-        cacheDir.appendingPathComponent("\(key(for: ciphertextB64)).json")
+    private static func fileURL(for ciphertextB64: String, in dir: URL) -> URL {
+        dir.appendingPathComponent("\(key(for: ciphertextB64)).json")
+    }
+
+    /// Where an entry for this ciphertext may be: the account's folder, then
+    /// the folder itself for one written before folders were per account.
+    private static func candidates(for ciphertextB64: String, accountID: UUID?) -> [URL] {
+        var urls = [fileURL(for: ciphertextB64, in: accountDir(accountID))]
+        if accountID != nil { urls.append(fileURL(for: ciphertextB64, in: cacheDir)) }
+        return urls
     }
 
     /// Idempotent — overwrites any existing entry for the same ciphertext.
@@ -71,7 +96,9 @@ enum PushDecryptCache {
     /// sender's island and signing key are as much a part of "who sent this"
     /// as the uin, and every cross-island control branch in `ingest` is gated
     /// on them.
-    static func store(ciphertextB64: String, decrypted: DecryptedEnvelope) {
+    /// `accountID`: the account whose keys opened it (nil only where no
+    /// account can be named, which files it in the shared folder).
+    static func store(ciphertextB64: String, decrypted: DecryptedEnvelope, accountID: UUID?) {
         sweepIfNeeded()
         let entry = CacheEntry(
             senderUIN: decrypted.senderUIN,
@@ -84,7 +111,7 @@ enum PushDecryptCache {
         guard let data = try? JSONEncoder().encode(entry) else { return }
         // Sealed before it touches the disk. See `seal` below for why.
         guard let box = seal(data) else { return }
-        try? box.write(to: fileURL(for: ciphertextB64), options: .atomic)
+        try? box.write(to: fileURL(for: ciphertextB64, in: accountDir(accountID)), options: .atomic)
     }
 
     // MARK: - At-rest sealing
@@ -124,22 +151,25 @@ enum PushDecryptCache {
     }
 
     /// Whether an entry exists for this ciphertext, without consuming it.
-    static func contains(ciphertextB64: String) -> Bool {
-        FileManager.default.fileExists(atPath: fileURL(for: ciphertextB64).path)
+    static func contains(ciphertextB64: String, accountID: UUID?) -> Bool {
+        candidates(for: ciphertextB64, accountID: accountID)
+            .contains { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     /// Returns cached plaintext + sender if the NSE got here first, and
     /// deletes the entry.
-    static func consume(ciphertextB64: String) -> DecryptedEnvelope? {
-        let found = read(ciphertextB64: ciphertextB64)
-        remove(ciphertextB64: ciphertextB64)
+    static func consume(ciphertextB64: String, accountID: UUID?) -> DecryptedEnvelope? {
+        let found = read(ciphertextB64: ciphertextB64, accountID: accountID)
+        remove(ciphertextB64: ciphertextB64, accountID: accountID)
         return found
     }
 
     /// Delete one entry. For a drain that read it with `read` and has now got
     /// the row on disk.
-    static func remove(ciphertextB64: String) {
-        try? FileManager.default.removeItem(at: fileURL(for: ciphertextB64))
+    static func remove(ciphertextB64: String, accountID: UUID?) {
+        for url in candidates(for: ciphertextB64, accountID: accountID) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Returns cached plaintext + sender WITHOUT deleting the entry.
@@ -149,9 +179,11 @@ enum PushDecryptCache {
     /// the save after it failed (the phone locked mid-drain): the ratchet had
     /// moved on, so the island's copy, served again, no longer opened, and
     /// this entry was its only decoder (#1045 review).
-    static func read(ciphertextB64: String) -> DecryptedEnvelope? {
-        let url = fileURL(for: ciphertextB64)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+    static func read(ciphertextB64: String, accountID: UUID?) -> DecryptedEnvelope? {
+        guard let found = candidates(for: ciphertextB64, accountID: accountID).lazy
+            .compactMap({ url in (try? Data(contentsOf: url)).map { (url, $0) } }).first
+        else { return nil }
+        let (url, data) = found
         // Sealed first, plain second: an entry written by a build older than
         // this one is the only decoder its envelope has left.
         let json = open(data) ?? data
@@ -169,26 +201,41 @@ enum PushDecryptCache {
         )
     }
 
-    /// Burn-account hook — fresh identity must not inherit prior decrypts.
-    static func wipe() {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: cacheDir, includingPropertiesForKeys: nil
-        ) else { return }
-        for url in urls {
-            try? FileManager.default.removeItem(at: url)
+    /// Burn-account hook: the burned identity's decrypts, and nobody else's.
+    /// A switch and a number move wipe nothing any more (see `accountDir`).
+    /// `includingUnfiled`: also the entries written before folders were per
+    /// account, which cannot be told apart; for a device with no other
+    /// account, where they can only be this one's.
+    static func wipe(accountID: UUID?, includingUnfiled: Bool) {
+        if let accountID {
+            try? FileManager.default.removeItem(
+                at: cacheDir.appendingPathComponent(accountID.uuidString, isDirectory: true)
+            )
         }
+        guard includingUnfiled || accountID == nil else { return }
+        for url in files(in: cacheDir) { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// The entry files directly in `dir`, not the account folders.
+    private static func files(in dir: URL) -> [URL] {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]
+        )) ?? []
+        return urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true }
     }
 
     private static func sweepIfNeeded() {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: cacheDir, includingPropertiesForKeys: [.contentModificationDateKey]
-        ) else { return }
         let cutoff = Date().addingTimeInterval(-maxAgeSec)
-        for url in urls {
-            let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate) ?? .distantPast
-            if mtime < cutoff {
-                try? FileManager.default.removeItem(at: url)
+        let folders = ((try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: [.isDirectoryKey]
+        )) ?? []).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        for dir in [cacheDir] + folders {
+            for url in files(in: dir) {
+                let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate) ?? .distantPast
+                if mtime < cutoff {
+                    try? FileManager.default.removeItem(at: url)
+                }
             }
         }
     }
