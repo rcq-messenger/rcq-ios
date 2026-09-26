@@ -206,6 +206,42 @@ enum AppGroup {
         }
     }
 
+    /// Chats whose "ask for a PIN" is in force, one `LockedChatsStore` key per
+    /// line ("peer:<uin>", "group:<id>"), for the notification extension.
+    ///
+    /// #1045: the extension printed a locked chat's words on the lock screen
+    /// while the chat itself sat behind the PIN, so the gate in front of it
+    /// was worth nothing to anyone who could read the shade. The extension is
+    /// a separate process and cannot see `LockedChatsStore` (plain
+    /// UserDefaults), so the app writes the set here.
+    ///
+    /// Written only while an app PIN exists: a lock with no PIN to ask for is
+    /// not a lock, and the chat opens without one. Same flat-file reasoning as
+    /// `pushQuietFileURL`.
+    static var lockedChatsFileURL: URL {
+        containerURL.appendingPathComponent("locked-chats.txt")
+    }
+
+    /// Absent file → empty set: nothing is locked, which is also what a build
+    /// that predates the mirror means.
+    static func lockedChats() -> Set<String> {
+        guard let data = try? Data(contentsOf: lockedChatsFileURL),
+              let text = String(data: data, encoding: .utf8)
+        else { return [] }
+        return Set(text.split(separator: "\n").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })
+    }
+
+    static func setLockedChats(_ keys: Set<String>) {
+        let url = lockedChatsFileURL
+        if keys.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+        } else {
+            try? Data(keys.sorted().joined(separator: "\n").utf8).write(to: url, options: .atomic)
+        }
+    }
+
     /// Atomically writes the account ID list to the App Group file.
     /// AccountManager calls this from save() so the on-disk file
     /// always matches the in-memory roster.

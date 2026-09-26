@@ -489,7 +489,21 @@ class NotificationService: UNNotificationServiceExtension {
             content.badge = NSNumber(value: total)
         }
 
+        // ⚠ A chat that asks for a PIN says who wrote and nothing of what
+        // (#1045): its words on the lock screen would walk round the gate the
+        // chat is behind. The app hands us the locks in force through the App
+        // Group (`LockedChatsStore.syncExtensionMirror`); the set is per device,
+        // not per account, so a peer uin locked under another account on this
+        // phone errs towards hiding. Only what a person wrote is replaced; a
+        // call keeps saying it is a call. Same rule as the in-app banner.
+        let lockKey = groupID.map { "group:\($0)" } ?? "peer:\(decrypted.senderUIN)"
+        let chatLocked = Self.envelopeIsUserVisible(decrypted.envelope)
+            && AppGroup.lockedChats().contains(lockKey)
+
         switch decrypted.envelope {
+        case _ where chatLocked:
+            let localized = Self.pushLocalized("push.locked_chat.body")
+            content.body = (localized.isEmpty || localized == "push.locked_chat.body") ? "Message" : localized
         case .text(_, let text, _, _, _, _):
             content.body = text.isEmpty ? "Message" : text
         case .photo(_, _, _, let caption, _, _, _, _, _, _):

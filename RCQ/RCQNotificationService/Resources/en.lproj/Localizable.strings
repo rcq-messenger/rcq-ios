@@ -18,3 +18,6 @@
    says nothing about who wrote or what they wrote. */
 "push.quiet.title" = "RCQ";
 "push.quiet.body" = "New message";
+/* Body of a push from a chat the user locked behind the app PIN (#1045). The
+   title still says who wrote; the words stay behind the PIN. */
+"push.locked_chat.body" = "New message";

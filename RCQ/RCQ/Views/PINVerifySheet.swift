@@ -1,7 +1,22 @@
 import SwiftUI
 
 struct PINVerifySheet: View {
+    /// Which PIN this sheet accepts.
+    enum Check {
+        /// The real PIN only, as every caller asked before #1045. For anything
+        /// that hands over the REAL account (the recovery phrase, a backup).
+        case real
+        /// The PIN that opened this session: the real one in a real session,
+        /// the decoy one in a decoy session. For the gates that guard the chat
+        /// lock itself (#1045). A person made to open the app with the decoy
+        /// PIN is then asked for "the PIN" again, and the only PIN they have
+        /// given failing in front of whoever is watching is exactly the tell a
+        /// decoy exists to avoid (report #237, same rule as PINSettingsView).
+        case session
+    }
+
     let title: String
+    var check: Check = .real
     var onVerified: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -48,7 +63,11 @@ struct PINVerifySheet: View {
 
     private func verify() async {
         busy = true
-        let ok = await PanicPINService.shared.verifyRealPIN(pin)
+        let ok: Bool
+        switch check {
+        case .real: ok = await PanicPINService.shared.verifyRealPIN(pin)
+        case .session: ok = await PanicPINService.shared.verifySessionPIN(pin)
+        }
         busy = false
         if ok {
             onVerified()

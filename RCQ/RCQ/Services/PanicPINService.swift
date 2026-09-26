@@ -429,6 +429,10 @@ final class PanicPINService: ObservableObject {
     /// cold launch onto the PIN screen never calls `lock()`.
     private func syncPushPrivacy() {
         AppGroup.setPushQuiet(lockState == .locked || mode == .decoy)
+        // Whether a chat lock is in force depends on a PIN existing, so the
+        // extension's copy of the locked chats follows every PIN change too
+        // (#1045): the first PIN set arms them, removing it disarms them.
+        LockedChatsStore.shared.syncExtensionMirror()
     }
 
     /// Change the PIN from within a decoy session: re-seal the DECOY slot under
@@ -696,6 +700,11 @@ final class PanicPINService: ObservableObject {
         MessageDB.destroyDecoyStore()
         DecoySeedStore.destroy()
         PINVault.destroy()
+        // Every chat lock goes with the PIN (#1045, Android parity): a lock
+        // with no PIN to ask for is not enforced, and left in place it would
+        // come back without a word the day a new PIN is set. Reaching here
+        // takes the PIN already (PINSettingsView re-auth).
+        LockedChatsStore.shared.wipe()
         BiometricUnlock.disable()
         biometricEnabled = false
         realPayload = nil

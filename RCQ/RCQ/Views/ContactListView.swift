@@ -130,6 +130,9 @@ struct ContactListView: View {
     /// staying armed for the session (see tryOpenPendingGroup).
     @State private var groupRefreshAttemptedFor: Set<Int> = []
     @State private var reportContact: Contact?
+    /// The chat whose "ask for a PIN" is being switched off. The switch waits
+    /// for the PIN (#1045).
+    @State private var chatUnlockPrompt: LockedChatsStore.Entry?
     @AppStorage("rcq.singbox.activePort") private var singboxActivePort: Int = 0
 
     var body: some View {
@@ -153,7 +156,8 @@ struct ContactListView: View {
     }
 
     /// Everything the sections feature presents: the PIN gate, the picker, and
-    /// the four small dialogs behind the header menu.
+    /// the four small dialogs behind the header menu. Also the chat lock's PIN
+    /// sheet (#1045), which is the same gate in front of a different door.
     @ViewBuilder
     private func sectionSurfaces<V: View>(_ content: V) -> some View {
         content
@@ -171,6 +175,17 @@ struct ContactListView: View {
                     withAnimation(Self.foldAnimation) {
                         _ = unlockedSections.insert(wrap.id)
                     }
+                }
+            }
+            // ⚠⚠ Turning a chat's lock OFF asks for the PIN first (#1045). It
+            // was one tap in the long-press menu, "Don't require PIN", with no
+            // check at all: anyone holding the unlocked phone took the lock off
+            // and walked in, which made the lock a sticker. Turning it ON stays
+            // one tap, the way the section gate treats it: closing a door needs
+            // no key. Session-aware, like the chat gate it switches off.
+            .sheet(item: $chatUnlockPrompt) { entry in
+                PINVerifySheet(title: "pin_verify.title.chat_unlock".localized, check: .session) {
+                    LockedChatsStore.shared.set(entry, locked: false)
                 }
             }
             .sheet(item: Binding(
@@ -2179,7 +2194,7 @@ struct ContactListView: View {
                         ? "contact_list.ctx.unlock"
                         : "contact_list.ctx.lock").localized,
                 systemImage: LockedChatsStore.shared.contains(group: group.id) ? "lock.open" : "lock"
-            ) { LockedChatsStore.shared.toggle(group: group.id) })
+            ) { requestLockChange(.group(id: group.id)) })
         }
         if group.ownerUIN == AuthService.shared.ownUIN {
             out.append(ContextAction(
@@ -2242,7 +2257,7 @@ struct ContactListView: View {
                         ? "contact_list.ctx.unlock"
                         : "contact_list.ctx.lock").localized,
                 systemImage: LockedChatsStore.shared.contains(peer: contact.uin) ? "lock.open" : "lock"
-            ) { LockedChatsStore.shared.toggle(peer: contact.uin) })
+            ) { requestLockChange(.peer(uin: contact.uin)) })
         }
         out.append(ContextAction(
             title: (contact.blocked
@@ -2262,6 +2277,17 @@ struct ContactListView: View {
             destructive: true
         ) { Task { await vm.remove(contact.uin) } })
         return out
+    }
+
+    /// The lock item of every long-press menu. ON is immediate; OFF waits for
+    /// the PIN sheet (#1045), which is the only place a lock comes off.
+    private func requestLockChange(_ entry: LockedChatsStore.Entry) {
+        let locks = LockedChatsStore.shared
+        if locks.entries.contains(entry) {
+            chatUnlockPrompt = entry
+        } else {
+            locks.set(entry, locked: true)
+        }
     }
 
     /// Resolve the action list for the overlay's currently-open target
@@ -2330,7 +2356,7 @@ struct ContactListView: View {
                   systemImage: archive.contains(group: group.id) ? "tray.and.arrow.up" : "archivebox")
         }
         if PanicPINService.shared.isConfigured {
-            Button { LockedChatsStore.shared.toggle(group: group.id) } label: {
+            Button { requestLockChange(.group(id: group.id)) } label: {
                 Label((LockedChatsStore.shared.contains(group: group.id)
                         ? "contact_list.ctx.unlock"
                         : "contact_list.ctx.lock").localized,
@@ -2389,7 +2415,7 @@ struct ContactListView: View {
                   systemImage: archive.contains(peer: contact.uin) ? "tray.and.arrow.up" : "archivebox")
         }
         if PanicPINService.shared.isConfigured {
-            Button { LockedChatsStore.shared.toggle(peer: contact.uin) } label: {
+            Button { requestLockChange(.peer(uin: contact.uin)) } label: {
                 Label((LockedChatsStore.shared.contains(peer: contact.uin)
                         ? "contact_list.ctx.unlock"
                         : "contact_list.ctx.lock").localized,

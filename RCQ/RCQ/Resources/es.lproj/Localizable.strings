@@ -473,6 +473,9 @@
 "contact_list.ctx.lock" = "Pedir PIN";
 "contact_list.ctx.unlock" = "No pedir PIN";
 "pin_verify.title.chat" = "Desbloquear el chat";
+/* #1045: the PIN sheet in front of switching a chat's lock off, and what the long-press preview of a locked chat shows instead of its messages. */
+"pin_verify.title.chat_unlock" = "Desactivar el PIN de este chat";
+"chat.preview.locked" = "Chat bloqueado";
 "contact_list.ctx.unarchive" = "Desarchivar";
 "contact_list.ctx.delete_group" = "Eliminar el grupo";
 "contact_list.ctx.leave_group" = "Salir del grupo";

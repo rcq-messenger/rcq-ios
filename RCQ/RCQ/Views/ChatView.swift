@@ -797,16 +797,14 @@ struct ChatView: View {
     }
 
     // Per-chat PIN lock: when this chat is locked + a PIN is set, the content is
-    // hidden behind a PIN gate until the real PIN is entered (cancel pops back).
+    // hidden behind a PIN gate until the session's PIN is entered (cancel pops
+    // back). `LockedChatsStore.holds` is the one definition of "locked", shared
+    // with the long-press preview and the banners (#1045).
     @State private var chatPinUnlocked = false
     @State private var showChatLockGate = false
     private var chatIsLocked: Bool {
-        guard PanicPINService.shared.isConfigured else { return false }
-        switch vm.target {
-        case .peer(let c): return LockedChatsStore.shared.contains(peer: c.uin)
-        case .group(let g): return LockedChatsStore.shared.contains(group: g.id)
-        case .randomPeer: return false
-        }
+        if case .randomPeer = vm.target { return false }
+        return LockedChatsStore.shared.holds(vm.target.thread)
     }
 
     var body: some View {
@@ -1031,7 +1029,12 @@ struct ChatView: View {
         .fullScreenCover(isPresented: $showChatLockGate, onDismiss: {
             if !chatPinUnlocked { dismiss() }   // cancelled → leave the chat
         }) {
-            PINVerifySheet(title: "pin_verify.title.chat".localized) { chatPinUnlocked = true }
+            // Session-aware (#1045): in a decoy session the decoy PIN opens a
+            // locked chat, and the real PIN opens nothing. It used to take the
+            // real PIN only, so a coerced person's PIN failed here.
+            PINVerifySheet(title: "pin_verify.title.chat".localized, check: .session) {
+                chatPinUnlocked = true
+            }
         }
         .task {
             // The chat list is fetched without rosters, and this screen needs

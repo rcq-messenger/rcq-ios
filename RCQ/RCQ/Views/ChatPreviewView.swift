@@ -16,7 +16,17 @@ struct ChatPreviewView: View {
     @StateObject private var store = MessageStore.shared
     @StateObject private var contacts = ContactService.shared
     @StateObject private var groupSvc = GroupService.shared
+    @ObservedObject private var locks = LockedChatsStore.shared
     @State private var bottomVisible: Bool = true
+
+    /// ⚠⚠ NOTHING of a locked chat (#1045). The long-press that carries the
+    /// lock switch used to open on the last fifty messages of the chat it
+    /// protects, so the gate in front of the chat was a formality: holding the
+    /// row read it. The capsule still names the chat, as the row itself does.
+    private var locked: Bool {
+        if case .randomPeer = target { return false }
+        return locks.holds(target.thread)
+    }
 
     var body: some View {
         // ⚠ `safeAreaInset`, not a ZStack overlay. Overlaid, the pill floated on
@@ -29,14 +39,14 @@ struct ChatPreviewView: View {
         // needed.
         Group {
             if compact {
-                messages.safeAreaInset(edge: .top, spacing: 0) {
+                content.safeAreaInset(edge: .top, spacing: 0) {
                     floatingIdentity
                         .padding(.top, 12)
                         .padding(.bottom, 6)
                         .frame(maxWidth: .infinity)
                 }
             } else {
-                messages
+                content
             }
         }
         .modifier(PreviewFrame(compact: compact, maxHeight: maxHeight))
@@ -53,7 +63,28 @@ struct ChatPreviewView: View {
         // `onAppear` rather than inside `messages`: the preview is built while
         // the menu is presented, and mutating a published store from a body is
         // how "Publishing changes from within view updates" happens.
-        .onAppear { MessageStore.shared.ensureLoaded(target.thread) }
+        //
+        // Not for a locked chat: nothing of it is drawn, so nothing of it needs
+        // decrypting into memory either.
+        .onAppear { if !locked { MessageStore.shared.ensureLoaded(target.thread) } }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if locked { lockedNotice } else { messages }
+    }
+
+    private var lockedNotice: some View {
+        VStack(spacing: 6) {
+            Spacer()
+            Image(systemName: "lock.fill")
+                .font(.system(size: 18))
+            Text("chat.preview.locked".localized)
+                .font(.caption)
+            Spacer()
+        }
+        .foregroundColor(Theme.Color.textSecondary)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder

@@ -2161,6 +2161,10 @@ final class AppState: ObservableObject {
         VoIPPushService.shared.wipe()
         FavoritesStore.shared.wipe()
         ArchiveStore.shared.wipe()
+        // Its "burn-account hook" was never called, so a burned account's
+        // locks outlived it on the device (and, since #1045, in the copy the
+        // notification extension reads).
+        LockedChatsStore.shared.wipe()
         SectionsStore.shared.wipe()
         SectionCollapseStore.shared.wipe()
         ContactSoundStore.shared.wipe()
@@ -2965,7 +2969,14 @@ final class AppState: ObservableObject {
             // reason the thread is empty (control envelope that
             // somehow flagged isNewContent — defensive).
             let latest = MessageStore.shared.messages(for: thread).last
-            let preview = latest?.previewSnippet ?? "chat.banner.new_message".localized
+            // A chat that asks for a PIN says a message came and who from, not
+            // what it says (#1045): its words in the banner or in the shade
+            // would walk round the gate the chat is behind. Same rule as the
+            // extension for pushes. The mention check below still reads the
+            // text; it decides whether to alert, it draws nothing.
+            let preview = LockedChatsStore.shared.holds(thread)
+                ? "chat.banner.new_message".localized
+                : latest?.previewSnippet ?? "chat.banner.new_message".localized
             let title: String
             let viewing = MessageBannerService.shared.isViewing(thread)
             switch thread {

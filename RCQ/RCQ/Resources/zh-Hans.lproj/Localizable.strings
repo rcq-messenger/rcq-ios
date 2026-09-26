@@ -464,6 +464,9 @@
 "contact_list.ctx.lock" = "需要 PIN";
 "contact_list.ctx.unlock" = "不需要 PIN";
 "pin_verify.title.chat" = "解锁聊天";
+/* #1045: the PIN sheet in front of switching a chat's lock off, and what the long-press preview of a locked chat shows instead of its messages. */
+"pin_verify.title.chat_unlock" = "关闭此聊天的 PIN";
+"chat.preview.locked" = "聊天已锁定";
 "contact_list.ctx.unarchive" = "取消归档";
 "contact_list.ctx.delete_group" = "删除群组";
 "contact_list.ctx.leave_group" = "退出群组";
