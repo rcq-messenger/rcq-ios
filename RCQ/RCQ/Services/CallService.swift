@@ -73,9 +73,12 @@ final class CallService: ObservableObject {
     /// mid-call (`keepSocketThroughLock`), and is closed again when the call
     /// ends if the app is still locked then.
     private var lockedSignaling = false
-    /// The API client's token was put there for this call only, by a process
-    /// that never booted. Taken back out with the socket; one the boot put
-    /// there stays.
+    /// The call the socket is kept for. A later call inside the 3 s tail is
+    /// not this one, and must not have the socket closed under it.
+    private var lockedSignalingCallID: String?
+    /// The API client's token was put there for this call only, because the
+    /// API client had none (a process that never booted). Taken back out with
+    /// the socket; one the boot put there, before or during the call, stays.
     private var lockedSignalingToken = false
 
     // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
@@ -115,6 +118,7 @@ final class CallService: ObservableObject {
 
     func start(toContact contact: Contact, media: CallMedia = .video) {
         guard !state.isActive else { return }
+        WebRTCManager.shared.strictRelay = false
         let call = Call(
             peerUIN: contact.uin,
             peerNickname: contact.nickname,
@@ -340,7 +344,8 @@ final class CallService: ObservableObject {
         answered = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
-        if PanicPINService.shared.isLocked { openSignalingWhileLocked() }
+        WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
+        if PanicPINService.shared.isLocked { openSignalingWhileLocked(callID: call.id) }
     }
 
     /// ⚠ A call answered from the lock screen while the APP PIN is up (#1045
@@ -365,18 +370,24 @@ final class CallService: ObservableObject {
     /// caller received this phone's LAN and public addresses. The relay path
     /// is warmed while it still rings, so relay-only is known before the
     /// answer, and `strictRelay` refuses to fall back to direct candidates.
-    private func openSignalingWhileLocked() {
+    private func openSignalingWhileLocked(callID: String) {
         guard !WebSocketService.shared.isConnected,
               let uin = KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init),
               let token = KeychainStore.string(KeychainStore.Keys.token)
         else { return }
         lockedSignaling = true
-        lockedSignalingToken = true
-        WebRTCManager.shared.strictRelay = true
+        lockedSignalingCallID = callID
         let serverToken = AccountManager.shared.active?.serverToken
         Task { @MainActor in
-            await APIClient.shared.setToken(token)
-            await APIClient.shared.setServerToken(serverToken)
+            // ⚠ Only into an EMPTY API client, and remembered as ours only
+            // then. A process that booted earlier and was relocked still holds
+            // the boot's token; taking that one out after the call left every
+            // REST request unauthenticated after the unlock (#1045 review).
+            if await APIClient.shared.currentToken() == nil {
+                await APIClient.shared.setToken(token)
+                await APIClient.shared.setServerToken(serverToken)
+                self.lockedSignalingToken = true
+            }
             await WebRTCManager.shared.prewarmRelayPath()
         }
         WebSocketService.shared.connect(
@@ -998,6 +1009,7 @@ final class CallService: ObservableObject {
         answered = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
+        WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
         #if targetEnvironment(simulator)
         // CallKit can't present an incoming call on the simulator (it
         // reportNewIncomingCall-OKs then instantly fires CXEndCallAction). The
@@ -1052,6 +1064,8 @@ final class CallService: ObservableObject {
         incomingVideoUpgrade = false
         outgoingVideoUpgradePending = false
         resetRecoveryState()
+        // Per call: the next one decides for itself whether it rang locked.
+        WebRTCManager.shared.strictRelay = false
     }
 
     private func sendEnd(call: Call, reason: String) {
@@ -1068,19 +1082,28 @@ final class CallService: ObservableObject {
     /// to the socket a moment ago and has to leave first. If the app was
     /// unlocked meanwhile, the boot owns the socket now and it stays.
     private func closeLockedSignalingSoon() {
-        guard lockedSignaling else { return }
+        guard lockedSignaling, let callID = lockedSignalingCallID else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            guard let self, self.lockedSignaling, !self.state.isActive else { return }
+            // Only for the call it was kept for: a new call in the tail owns
+            // the socket now.
+            guard let self, self.lockedSignaling, self.lockedSignalingCallID == callID,
+                  !self.state.isActive else { return }
             self.lockedSignaling = false
+            self.lockedSignalingCallID = nil
             let tokenWasOurs = self.lockedSignalingToken
             self.lockedSignalingToken = false
-            WebRTCManager.shared.strictRelay = false
-            if PanicPINService.shared.isLocked {
+            let pin = PanicPINService.shared
+            // Closed while the app PIN is up, and always in a decoy session:
+            // this is the REAL account's socket (#1045 review).
+            if pin.isLocked || pin.isDecoy {
                 WebSocketService.shared.disconnect()
-                // The token went to the API client for this call only; a locked
-                // process holds no credentials in memory after it.
-                if tokenWasOurs { Task { await APIClient.shared.setToken(nil) } }
+            }
+            // The token went to the API client for this call only; a locked
+            // process holds no credentials in memory after it. Not if a boot
+            // ran meanwhile: the token is the boot's now.
+            if tokenWasOurs, pin.isLocked, !AppState.shared.booted {
+                Task { await APIClient.shared.setToken(nil) }
             }
         }
     }
@@ -1091,8 +1114,9 @@ final class CallService: ObservableObject {
     /// "peer disconnected", and our own hang-up and ICE restarts went nowhere.
     /// Returns whether the socket is now the call's, closed when it ends.
     func keepSocketThroughLock() -> Bool {
-        guard state.isActive else { return false }
+        guard state.isActive, let call = state.call else { return false }
         lockedSignaling = true
+        lockedSignalingCallID = call.id
         return true
     }
 
@@ -1100,6 +1124,15 @@ final class CallService: ObservableObject {
     /// after an unlock mid-call: redialling would drop the frames the call is
     /// waiting for (ICE, renegotiation, the other side's hang-up).
     var holdsSocket: Bool { state.isActive && WebSocketService.shared.isConnected }
+
+    /// An account switch closed the socket a call was keeping: whatever
+    /// connects next is the other account's, and the end-of-call tail must
+    /// not close it or take its token back (#1045 review).
+    func releaseLockedSignaling() {
+        lockedSignaling = false
+        lockedSignalingCallID = nil
+        lockedSignalingToken = false
+    }
 
     private func scheduleEndedClear() {
         Task { @MainActor [weak self] in
@@ -1121,6 +1154,13 @@ final class CallService: ObservableObject {
         answered = false
         lastCallDuration = nil
         isMinimized = false
+        // A socket kept for a call is not carried into what comes next (an
+        // account switch, a decoy session): those close or rebind it
+        // themselves, and the tail must not act on them.
+        lockedSignaling = false
+        lockedSignalingCallID = nil
+        lockedSignalingToken = false
+        WebRTCManager.shared.strictRelay = false
         state = .idle
     }
 

@@ -213,6 +213,9 @@ final class WebRTCManager: NSObject, ObservableObject {
     func handleOffer(remoteSdp: String, media: CallMedia) async throws -> String {
         configureAudioSession(speaker: media == .video, activateNow: false)
         await refreshTurnIfNeeded()
+        if strictRelay, cachedTurn?.server != nil, Self.relayReachable == nil, CallPrivacy.alwaysRelay {
+            await waitForRelayProbe(timeout: 4.5)
+        }
         let pc = try makePeerConnection()
         peerConnection = pc
 
@@ -448,9 +451,24 @@ final class WebRTCManager: NSObject, ObservableObject {
 
     // MARK: - internals
 
-    /// Set by `CallService` for a call that rang while the app PIN was up:
-    /// relay-only whenever "always relay" is on, TURN or no TURN.
+    /// Set by `CallService` for a call that rang while the app PIN was up.
+    ///
+    /// Such a call is answered in a process that may have fetched the relay
+    /// credentials only seconds ago, so the reachability probe has not
+    /// answered yet, and the rule above falls back to direct candidates while
+    /// it is unknown: the callee's addresses went to the caller. The answer
+    /// waits for the probe instead (up to its own 4 s limit), and then the
+    /// ordinary rule decides: relay-only exactly where an unlocked call would
+    /// be, and never a failure an unlocked call would not have (#1045 review,
+    /// after a first cut forced relay even on islands with no TURN at all).
     var strictRelay = false
+
+    private func waitForRelayProbe(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Self.relayReachable == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
 
     private func makePeerConnection() throws -> RTCPeerConnection {
         let config = RTCConfiguration()
@@ -489,13 +507,9 @@ final class WebRTCManager: NSObject, ObservableObject {
         // ⚠⚠ ...and only while the user still wants it. This used to be
         // unconditional, which is the right default and was the wrong rule.
         //
-        // ⚠⚠ Except a call taken from behind the app PIN (`strictRelay`): there
-        // the relay is missing only if this process failed to get it, and a
-        // lock-screen call is the one the person least expects to hand out
-        // their address. With "always relay" on it is relay or nothing: no
-        // TURN means no candidates and a call that fails, never a leak.
-        if CallPrivacy.alwaysRelay,
-           strictRelay || (cachedTurn?.server != nil && Self.relayReachable == true) {
+        // A call taken from behind the app PIN follows the same rule; what it
+        // lacked was the answer to it (see `strictRelay` in `handleOffer`).
+        if cachedTurn?.server != nil, Self.relayReachable == true, CallPrivacy.alwaysRelay {
             config.iceTransportPolicy = .relay
         }
 

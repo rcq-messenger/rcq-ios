@@ -429,6 +429,12 @@ final class PanicPINService: ObservableObject {
         VisitStore.shared.clearForDecoy()
         NearbyService.shared.wipe()
         RandomChatService.shared.wipe()
+        // ⚠ The socket first. A decoy session never opens it, so one still
+        // open is the REAL account's, kept through a relock for a call (or
+        // opened for a lock-screen call): left up, its envelopes opened under
+        // the real keys and landed in the decoy store (#1045 review). The
+        // call it served ends with it.
+        WebSocketService.shared.disconnect()
         CallService.shared.wipe()
         AudioRoomService.shared.wipe()
         NotificationService.shared.wipe()

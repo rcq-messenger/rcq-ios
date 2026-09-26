@@ -2620,6 +2620,7 @@ final class AppState: ObservableObject {
         await settleBoot()
         networkReady = false
         WebSocketService.shared.disconnect()
+        CallService.shared.releaseLockedSignaling()
         // Drop AuthService's in-memory snapshot of the OLD active
         // account FIRST so any view that re-renders during the
         // booted=false → booted=true window (BootSplash etc.) reads
@@ -2774,6 +2775,14 @@ final class AppState: ObservableObject {
         guard booted, !PanicPINService.shared.isDecoy else { return }
         guard let uin = AuthService.shared.ownUIN,
               let token = KeychainStore.string(KeychainStore.Keys.token) else { return }
+        // Belt and braces for the API client: nothing else puts its token back
+        // between a relock and this unlock, and a process that lost it (a
+        // lock-screen call cleaned up after itself) would otherwise send every
+        // REST request unauthenticated until relaunch (#1045 review).
+        if await APIClient.shared.currentToken() == nil {
+            await APIClient.shared.setToken(token)
+            await APIClient.shared.setServerToken(AccountManager.shared.active?.serverToken)
+        }
         isOffline = false
         if !WebSocketService.shared.isConnected {
             WebSocketService.shared.connect(
