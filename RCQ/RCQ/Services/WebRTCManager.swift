@@ -211,11 +211,19 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// Callee side. Don't activate the session here — CallKit's didActivate
     /// owns that, racing it drops the call.
     func handleOffer(remoteSdp: String, media: CallMedia) async throws -> String {
+        let strict = strictRelay
         configureAudioSession(speaker: media == .video, activateNow: false)
         await refreshTurnIfNeeded()
-        if strictRelay, cachedTurn?.server != nil, Self.relayReachable == nil, CallPrivacy.alwaysRelay {
+        if strict, cachedTurn?.server != nil, Self.relayReachable == nil, CallPrivacy.alwaysRelay {
             await waitForRelayProbe(timeout: 4.5)
         }
+        // ⚠ Cancelled meanwhile (End pressed behind the PIN, or the caller
+        // gone: teardown clears `strictRelay`): nothing is built. The wait
+        // ended early exactly because the probe had not answered, so a
+        // connection built now would not be relay-only, and its first
+        // candidates went to the caller before the teardown closed it
+        // (#1045 review).
+        if answerCancelled || (strict && !strictRelay) { throw CancellationError() }
         let pc = try makePeerConnection()
         peerConnection = pc
 
@@ -469,17 +477,23 @@ final class WebRTCManager: NSObject, ObservableObject {
     /// and then build the connection for a call nobody wanted any more
     /// (#1045 review, round 4).
     private func waitForRelayProbe(timeout: TimeInterval) async {
-        probeWaitCancelled = false
         let deadline = Date().addingTimeInterval(timeout)
-        while Self.relayReachable == nil, Date() < deadline, strictRelay, !probeWaitCancelled {
+        while Self.relayReachable == nil, Date() < deadline, strictRelay, !answerCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
-    private var probeWaitCancelled = false
+    /// Set by `cancelRelayProbeWait` for the answer in progress, cleared by
+    /// `beginAnswer` when the next one starts. Not cleared at the wait: an
+    /// End pressed during the TURN refresh before it is just as final.
+    private var answerCancelled = false
+
+    func beginAnswer() {
+        answerCancelled = false
+    }
 
     func cancelRelayProbeWait() {
-        probeWaitCancelled = true
+        answerCancelled = true
     }
 
     private func makePeerConnection() throws -> RTCPeerConnection {

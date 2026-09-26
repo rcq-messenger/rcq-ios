@@ -57,9 +57,13 @@ final class CallProvider: NSObject, @unchecked Sendable {
     // the delivery handler returns — so the ring starts on a neutral handle and
     // the real offer, once the envelope opens, ADOPTS this uuid instead of
     // reporting a second call.
-    private var _placeholderUUID: UUID?
-    private var _placeholderAt: Date = .distantPast
-    /// Past this the slot is dead — a same-island offer minutes later must not
+    //
+    // ⚠ One entry PER WAKE, not one slot. A second wake arriving while the
+    // first was still looking for its offer overwrote the slot, the first
+    // wake's discard then found somebody else's uuid in it, and the first
+    // ring sounded until someone answered it into nothing (#1045 review).
+    private var _placeholders: [UUID: Date] = [:]
+    /// Past this a placeholder is dead — a same-island offer minutes later must not
     /// adopt a uuid CallKit has already torn down, which would ring nothing.
     private static let placeholderMaxAge: TimeInterval = 20
 
@@ -189,8 +193,7 @@ final class CallProvider: NSObject, @unchecked Sendable {
     func reportIncomingPlaceholder(hasVideo: Bool = false) -> UUID {
         let uuid = UUID()
         mappingLock.lock()
-        _placeholderUUID = uuid
-        _placeholderAt = Date()
+        _placeholders[uuid] = Date()
         mappingLock.unlock()
 
         let name = "call.incoming.unknown_caller".localized
@@ -215,7 +218,7 @@ final class CallProvider: NSObject, @unchecked Sendable {
     func placeholderIsPending(_ uuid: UUID) -> Bool {
         mappingLock.lock()
         defer { mappingLock.unlock() }
-        return _placeholderUUID == uuid
+        return _placeholders[uuid] != nil
     }
 
     /// End a placeholder no offer ever claimed — the envelope failed to open,
@@ -224,22 +227,25 @@ final class CallProvider: NSObject, @unchecked Sendable {
     /// there.
     func discardPlaceholderIfUnadopted(_ uuid: UUID, reason: CXCallEndedReason = .failed) {
         mappingLock.lock()
-        guard _placeholderUUID == uuid else { mappingLock.unlock(); return }
-        _placeholderUUID = nil
+        guard _placeholders.removeValue(forKey: uuid) != nil else { mappingLock.unlock(); return }
         mappingLock.unlock()
         print("[CallProvider] discarding unadopted placeholder uuid=\(uuid)")
         provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
     }
 
-    /// Takes the pending placeholder if it is fresh, clearing the slot either
-    /// way so a stale uuid can never be adopted twice.
+    /// Takes the newest fresh placeholder. A stale one is never adopted (a
+    /// same-island offer minutes later must not rename a ring CallKit tore
+    /// down); it stays listed for its own wake to discard.
     private func claimPlaceholder() -> UUID? {
         mappingLock.lock()
         defer { mappingLock.unlock() }
-        guard let pending = _placeholderUUID else { return nil }
-        _placeholderUUID = nil
-        guard Date().timeIntervalSince(_placeholderAt) < Self.placeholderMaxAge else { return nil }
-        return pending
+        let now = Date()
+        guard let newest = _placeholders
+            .filter({ now.timeIntervalSince($0.value) < Self.placeholderMaxAge })
+            .max(by: { $0.value < $1.value })?.key
+        else { return nil }
+        _placeholders.removeValue(forKey: newest)
+        return newest
     }
 
     func reportEnded(callID: String, reason: CXCallEndedReason) {

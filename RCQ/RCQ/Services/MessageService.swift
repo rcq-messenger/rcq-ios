@@ -1994,7 +1994,11 @@ final class MessageService {
         else { return .done }
         if sig == "call_offer" {
             if Int(Date().timeIntervalSince1970) - ts > 60 {
-                if mayFileMissed {
+                // Not for an offer that already rang here (or was filed): the
+                // paths that ring without keeping leave it queued, and the
+                // call wrote its own row when it ended (see HandledCallIDs).
+                if mayFileMissed, !HandledCallIDs.contains(cid) {
+                    HandledCallIDs.insert(cid)
                     CallService.shared.fileMissedCall(
                         fromUIN: decrypted.senderUIN,
                         fromHost: fromHost,
@@ -2103,6 +2107,10 @@ final class MessageService {
                 decrypted = cached
                 fromNSE = true
             } else {
+                // A process nobody has set up yet (a VoIP wake before any
+                // boot) has no crypto at all: the unwrap trapped inside the
+                // PushKit handler. Not a decrypt failure, so nothing acks it.
+                guard let crypto else { throw MessageServiceNotReady() }
                 decrypted = try crypto.decrypt(envelopeB64: ws.payload)
                 fromNSE = false
             }
@@ -3502,8 +3510,10 @@ final class MessageService {
     /// Reads the queue WITHOUT acking a single row and acts only on
     /// cross-island call signals in it. Only v=1 seals are opened (they step
     /// nothing); every other row is left unopened. The drain after the unlock
-    /// still owns every row; it files a stale offer as missed, and a live one
-    /// it sees again is recognised by its call id (CallService).
+    /// still owns every row. An offer that rang here is known to it by call
+    /// id (`HandledCallIDs`): not rung again, and not filed as missed next to
+    /// the row the call wrote itself. Restarts and renegotiations already
+    /// applied are known by their SDP (CallService).
     func actOnQueuedCallSignals() async {
         guard !PanicPINService.shared.isLocked, !PanicPINService.shared.isDecoy,
               servesSignedInAccount
@@ -3519,6 +3529,9 @@ final class MessageService {
         guard let rows: [Row] = try? await APIClient.shared.request(
             "GET", "/messages/queue", query: ["ack": "1", "dev": String(myDeviceId)]
         ),
+            // Given up on by the wake (it bounds this pass): a late answer
+            // must not ring after the neutral ring came down.
+            !Task.isCancelled,
             AccountManager.shared.activeAccountID == accountID,
             !PanicPINService.shared.isLocked, !PanicPINService.shared.isDecoy,
             let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0)
@@ -3531,6 +3544,32 @@ final class MessageService {
             else { continue }
             _ = routeCrossIslandCallSignal(decrypted, groupID: nil, mayRing: true, mayFileMissed: false)
         }
+    }
+
+    /// The envelope a sealed call wake carried inline. Says whether it opened.
+    ///
+    /// Through `ingest` in a process that is set up for the account. In one
+    /// that is not (a wake before any boot: no crypto, no number), only a v=1
+    /// call signal is opened, with the identity key alone, and goes through
+    /// the call-signal gates, which need neither; anything else is left in
+    /// the queue for the drain (#1045 review).
+    func openSealedWake(_ envelopeB64: String) -> Bool {
+        let packet = WebSocketService.EnvelopePacket(
+            type: "call", payload: envelopeB64,
+            serverTime: Date(), offline: false, groupID: nil
+        )
+        if crypto != nil, servesSignedInAccount {
+            var error: Error?
+            ingest(envelope: packet, decryptError: &error)
+            return error == nil
+        }
+        guard Self.isStatelessSeal(envelopeB64),
+              let opener = SignalCryptoService.loadFromKeychain(ownUIN: 0),
+              let decrypted = try? opener.decrypt(envelopeB64: envelopeB64),
+              case .callSignal = decrypted.envelope
+        else { return false }
+        _ = routeCrossIslandCallSignal(decrypted, groupID: nil, mayRing: true, mayFileMissed: false)
+        return true
     }
 
     /// Set up for the identity that is signed in. Not so between the unlock
@@ -4317,3 +4356,7 @@ final class MessageService {
         pendingLiveAcks = [:]
     }
 }
+
+/// `ingest` ran in a process with no crypto set up yet. Not a decrypt
+/// failure: the row stays queued for a drain that can open it.
+struct MessageServiceNotReady: Error {}

@@ -2118,6 +2118,9 @@ final class AppState: ObservableObject {
             KeychainStore.wipeAccount(s.id)
             MessageDB.wipe(accountID: s.id)
             SignalProtocolDB.wipeFiles(accountID: s.id)
+            // Its push decrypts too: filed under its own folder now, and the
+            // key that seals them outlives the burn (#1045 review).
+            PushDecryptCache.wipe(accountID: s.id, includingUnfiled: false)
             AccountCardCache.forget(s.id)
             ServerCapabilitiesCache.forget(s.id)
             am.remove(s.id)

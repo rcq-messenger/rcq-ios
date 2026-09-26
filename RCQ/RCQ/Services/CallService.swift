@@ -1,5 +1,6 @@
 import CallKit
 import Combine
+import CryptoKit
 import Foundation
 
 /// Call state machine. Bridges WS signalling, WebRTC media, and CallKit.
@@ -68,12 +69,30 @@ final class CallService: ObservableObject {
     /// `handleIncomingOffer`.
     private var seenOfferIDs: [String: Date] = [:]
 
-    /// True the first time `callID` is seen.
+    /// True the first time `callID` is seen in this process and never rang in
+    /// an earlier one (`HandledCallIDs`).
     private func noteOfferSeen(_ callID: String) -> Bool {
         let now = Date()
         seenOfferIDs = seenOfferIDs.filter { now.timeIntervalSince($0.value) < 600 }
-        guard seenOfferIDs[callID] == nil else { return false }
+        guard seenOfferIDs[callID] == nil, !HandledCallIDs.contains(callID) else { return false }
         seenOfferIDs[callID] = now
+        return true
+    }
+
+    /// Restarts and renegotiations already applied, by call id, kind and SDP.
+    /// The queue keeps every signal of a call (live frames are never acked),
+    /// and the sealed wake's queue pass hands them all back: an old ICE
+    /// restart applied again sent the peer an answer nobody asked for and
+    /// moved the call onto credentials the peer had dropped (#1045 review).
+    private var appliedSignalFingerprints: [String: Date] = [:]
+
+    private func firstApplication(sig: String, callID: String, sdp: String) -> Bool {
+        let now = Date()
+        appliedSignalFingerprints = appliedSignalFingerprints.filter { now.timeIntervalSince($0.value) < 3600 }
+        let digest = SHA256.hash(data: Data(sdp.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        let key = "\(sig)|\(callID)|\(digest)"
+        guard appliedSignalFingerprints[key] == nil else { return false }
+        appliedSignalFingerprints[key] = now
         return true
     }
 
@@ -275,6 +294,7 @@ final class CallService: ObservableObject {
         answered = true
         let call = c
         print("[CallService] performAnswerHandshake running handleOffer (callID=\(call.id))")
+        WebRTCManager.shared.beginAnswer()
         Task {
             do {
                 let answerSdp = try await WebRTCManager.shared.handleOffer(
@@ -294,14 +314,7 @@ final class CallService: ObservableObject {
                     return
                 }
                 if endRequestedDuringAnswer {
-                    print("[CallService] End pressed while the answer waited, declining (callID=\(call.id))")
-                    answering = false
-                    endRequestedDuringAnswer = false
-                    sendEnd(call: call, reason: "declined")
-                    state = .ended(call, reason: "declined")
-                    CallProvider.shared.reportEnded(callID: call.id, reason: .declinedElsewhere)
-                    teardownAfterEnd()
-                    scheduleEndedClear()
+                    declineAfterLockedEnd(call)
                     return
                 }
                 print("[CallService] handleOffer OK, going connected, sending answer (\(answerSdp.count)ch)")
@@ -324,6 +337,12 @@ final class CallService: ObservableObject {
                     WebRTCManager.shared.close()
                     return
                 }
+                // The End that cut the answer short (WebRTCManager built
+                // nothing after it): a decline, not a failure.
+                if endRequestedDuringAnswer {
+                    declineAfterLockedEnd(call)
+                    return
+                }
                 sendEnd(call: call, reason: "setup_failed")
                 state = .ended(call, reason: "setup_failed")
                 CallProvider.shared.reportEnded(callID: call.id, reason: .failed)
@@ -331,6 +350,19 @@ final class CallService: ObservableObject {
                 scheduleEndedClear()
             }
         }
+    }
+
+    /// The End pressed behind the app PIN while the answer was prepared
+    /// (see `endFromCallKit`), applied once the handshake came back.
+    private func declineAfterLockedEnd(_ call: Call) {
+        print("[CallService] End pressed while the answer waited, declining (callID=\(call.id))")
+        answering = false
+        endRequestedDuringAnswer = false
+        sendEnd(call: call, reason: "declined")
+        state = .ended(call, reason: "declined")
+        CallProvider.shared.reportEnded(callID: call.id, reason: .declinedElsewhere)
+        teardownAfterEnd()
+        scheduleEndedClear()
     }
 
     /// CXEndCallAction handler; reportEnded is implicit in the action fulfilment.
@@ -398,6 +430,7 @@ final class CallService: ObservableObject {
             direction: .incoming
         )
         _ = noteOfferSeen(callID)
+        HandledCallIDs.insert(callID)
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         answering = false
@@ -814,6 +847,13 @@ final class CallService: ObservableObject {
     /// on the peer being a CrossIslandStore contact.
     func handleCrossIslandSignal(sig: String, fromUIN: Int, callID: String, data: [String: String]) {
         let sdp = data["sdp"] ?? ""
+        let replayable: Set<String> = [
+            "call_ice_restart", "call_ice_restart_answer", "call_renegotiate", "call_renegotiate_answer",
+        ]
+        if replayable.contains(sig), !firstApplication(sig: sig, callID: callID, sdp: sdp) {
+            print("[CallService] \(sig) for \(callID) already applied, ignored")
+            return
+        }
         switch sig {
         case "call_offer":
             let media = CallMedia(rawValue: data["media"] ?? "video") ?? .video
@@ -872,14 +912,16 @@ final class CallService: ObservableObject {
             CallProvider.shared.discardPlaceholderIfUnadopted(placeholder)
             return
         }
+        // The inline copy, when the island could fit it. Opened, it has done
+        // all there is to do: an offer from an accepted contact has taken the
+        // ring over, and anything else (a hang-up above all, which always
+        // rides inline) leaves nothing to look for, so the ring comes down at
+        // once instead of sounding through a queue fetch (#1045 review).
+        var opened = false
         if let envelopeB64, !envelopeB64.isEmpty {
-            let packet = WebSocketService.EnvelopePacket(
-                type: "call", payload: envelopeB64,
-                serverTime: Date(), offline: false, groupID: nil
-            )
-            MessageService.shared.ingest(envelope: packet)
+            opened = MessageService.shared.openSealedWake(envelopeB64)
         }
-        if CallProvider.shared.placeholderIsPending(placeholder) {
+        if !opened, CallProvider.shared.placeholderIsPending(placeholder) {
             await MessageService.shared.fetchOfflineQueue()
         }
         // ⚠ The drain above runs only into a store it can write, and the
@@ -887,14 +929,25 @@ final class CallService: ObservableObject {
         // and the ring came down unanswered (#1045 review, round 4). This pass
         // reads the queue without acking or keeping anything and acts on the
         // call signals alone; the drain after the unlock still owns the rows.
-        if CallProvider.shared.placeholderIsPending(placeholder) {
-            await MessageService.shared.actOnQueuedCallSignals()
+        // Bounded: the ring is a neutral "incoming call" until it finds the
+        // offer, and a caller who has hung up meanwhile must not leave it
+        // sounding for as long as a slow network takes.
+        if !opened, CallProvider.shared.placeholderIsPending(placeholder) {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await MessageService.shared.actOnQueuedCallSignals() }
+                group.addTask { try? await Task.sleep(nanoseconds: Self.sealedWakePeekLimitNs) }
+                _ = await group.next()
+                group.cancelAll()
+            }
         }
         // Nothing claimed it: not an offer, not from an accepted contact, or it
         // never opened. Take the ring back down rather than leave the user
         // staring at a call that answers into nothing.
         CallProvider.shared.discardPlaceholderIfUnadopted(placeholder)
     }
+
+    /// How long the sealed wake's queue pass may hold the neutral ring.
+    private static let sealedWakePeekLimitNs: UInt64 = 6_000_000_000
 
     /// §5d: a STALE cross-island offer (offline-queue drains deliver
     /// hours-old rows) never rings — file the missed-call row directly.
@@ -1096,6 +1149,10 @@ final class CallService: ObservableObject {
         answered = false
         endRequestedDuringAnswer = false
         state = .incomingRinging(call)
+        // It rings: whatever ends it writes its row, so the drain must not
+        // file the queued offer as missed later. Not before the busy check
+        // above: an offer turned away busy has no row but the drain's.
+        HandledCallIDs.insert(callID)
         armRingTimeout(callID: call.id)
         WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
         // Rang on a socket kept for an earlier call behind the PIN: the
@@ -1133,7 +1190,16 @@ final class CallService: ObservableObject {
     }
 
     private func shipLocalIce(candidateJSON: String) {
-        guard let c = state.call else { return }
+        // Only for a call still up. Candidates gathered by a connection that
+        // is being torn down (an answer cancelled behind the PIN) are queued
+        // on the main queue and land here after the end: shipped then, they
+        // handed the caller this phone's addresses for a call nobody took
+        // (#1045 review).
+        let c: Call
+        switch state {
+        case .incomingRinging(let live), .outgoingRinging(let live), .connected(let live): c = live
+        default: return
+        }
         WebSocketService.shared.sendCallSignal(
             type: "call_ice",
             toUIN: c.peerUIN,
@@ -1349,5 +1415,39 @@ final class CallService: ObservableObject {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+/// Offers this device has already rung for or filed, kept across launches.
+///
+/// ⚠ A §5d offer stays in the island's queue until a drain acks it, and two
+/// paths now ring from it without acking: the live socket while the store
+/// cannot be written, and the sealed wake's queue pass. The drain after the
+/// unlock then met the same offer, old by then, and filed it as missed next
+/// to the row the call had already written ("Incoming · 3:00" and then
+/// "Missed"); a process killed after a decline rang it again (#1045 review).
+/// The drain asks this before filing, and the ring path before ringing.
+///
+/// Only a digest of each id, in arrival order, the newest 200: enough to
+/// outlast the wait for the next drain, and nothing about who called or when.
+enum HandledCallIDs {
+    private static let key = "rcq.calls.handled.v1"
+    private static let limit = 200
+
+    private static func tag(_ callID: String) -> String {
+        SHA256.hash(data: Data(callID.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func contains(_ callID: String) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(tag(callID))
+    }
+
+    static func insert(_ callID: String) {
+        let t = tag(callID)
+        var list = UserDefaults.standard.stringArray(forKey: key) ?? []
+        guard !list.contains(t) else { return }
+        list.append(t)
+        if list.count > limit { list.removeFirst(list.count - limit) }
+        UserDefaults.standard.set(list, forKey: key)
     }
 }
