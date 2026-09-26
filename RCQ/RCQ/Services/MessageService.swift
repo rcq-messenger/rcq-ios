@@ -2045,7 +2045,10 @@ final class MessageService {
                     return nil
                 }
                 fromNSE = false
-            } else if let cached = PushDecryptCache.consume(ciphertextB64: ws.payload) {
+            } else if let cached = PushDecryptCache.read(ciphertextB64: ws.payload) {
+                // Deleted once the row is on disk, not now (see `read`).
+                let key = ws.payload
+                MessageDB.shared.whenPersisted { PushDecryptCache.remove(ciphertextB64: key) }
                 decrypted = cached
                 fromNSE = true
             } else {
@@ -3305,28 +3308,38 @@ final class MessageService {
 
     /// Drain this island's mailbox: the legacy queue, then (Stage 5) the
     /// room log on an island that keeps one. Serialised; see above.
-    /// A message that reached the socket a call opened from behind the app PIN
-    /// (CallService.openSignalingWhileLocked). The island counts that socket
-    /// as an online device, so it neither pushes the message nor wakes the
-    /// phone for a group row, and AppState refuses every event while locked:
-    /// messages during a lock-screen call arrived with no banner, no sound and
-    /// no badge, before or after (#1045 review).
+    /// A message that reached the socket while it cannot be kept: the app PIN
+    /// is up (the socket is a lock-screen call's, CallService
+    /// .openSignalingWhileLocked), or the phone is locked and the history
+    /// store cannot be written (a call or background audio keeps the process
+    /// and its socket alive). The island counts the socket as an online
+    /// device, so it neither pushes the message nor wakes the phone for a
+    /// group row: without this, nothing announced it (#1045 review).
     ///
-    /// Treated the way the notification extension treats a push while the
-    /// app is locked: opened only to know whether it is something a person
-    /// wrote, the plaintext parked in PushDecryptCache (so the drain after the
-    /// real unlock reads it instead of stepping the ratchet twice), nothing
-    /// written to the store, and a notification that says a message came and
-    /// nothing else. The row itself stays in the island's queue.
-    func notifyWhileLocked(_ ws: WebSocketService.EnvelopePacket) {
+    /// Treated the way the notification extension treats a push: opened only
+    /// to know whether it is something a person wrote, the plaintext parked in
+    /// PushDecryptCache (so the drain that later keeps it reads it there
+    /// instead of stepping the ratchet twice), NOTHING written to the store,
+    /// no receipt, no ack: the row stays in the island's queue. A sender-keys
+    /// row is not opened at all (its chain would move with nowhere to keep
+    /// the text) and is announced like one the extension cannot open.
+    ///
+    /// With the app PIN up, or for a chat that asks for one, the notification
+    /// says only that a message came.
+    func announceWithoutKeeping(_ ws: WebSocketService.EnvelopePacket) {
         if let to = ws.toDeviceID, to != SignalProtocolStores.shared.localDeviceId { return }
+        let pinUp = PanicPINService.shared.isLocked
         let threadKey: String
+        var title = "RCQ"
+        var body = "chat.banner.new_message".localized
         if ws.type == "gmsg" {
-            // A sender-keys row cannot be opened here; the extension shows the
-            // same generic line for one it cannot open.
             guard let gid = ws.groupID, !MutedStore.shared.isGroupMuted(gid),
                   !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
             threadKey = BadgeCounter.threadKey(groupID: gid)
+            if !pinUp, !LockedChatsStore.shared.holds(.group(id: gid)),
+               let name = GroupNameCache.name(for: gid) {
+                title = name
+            }
         } else {
             guard !PushDecryptCache.contains(ciphertextB64: ws.payload),
                   let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0),
@@ -3338,17 +3351,31 @@ final class MessageService {
                   decrypted.senderUIN != me,
                   !RemovedContactsStore.shared.contains(decrypted.senderUIN)
             else { return }
+            let thread: ThreadID
             if let gid = ws.groupID {
                 guard !MutedStore.shared.isGroupMuted(gid), !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
                 threadKey = BadgeCounter.threadKey(groupID: gid)
+                thread = .group(id: gid)
             } else {
                 guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
                 threadKey = BadgeCounter.threadKey(peerUIN: decrypted.senderUIN)
+                thread = .peer(uin: decrypted.senderUIN)
+            }
+            if !pinUp, !LockedChatsStore.shared.holds(thread) {
+                let sender = NicknameCache.nickname(for: decrypted.senderUIN) ?? "\(decrypted.senderUIN)"
+                if let gid = ws.groupID {
+                    title = GroupNameCache.name(for: gid) ?? sender
+                } else {
+                    title = sender
+                }
+                if case .text(_, let text, _, _, _, _) = decrypted.envelope, !text.isEmpty {
+                    body = ws.groupID == nil ? text : "\(sender): \(text)"
+                }
             }
         }
         let content = UNMutableNotificationContent()
-        content.title = "RCQ"
-        content.body = "chat.banner.new_message".localized
+        content.title = title
+        content.body = body
         content.sound = .default
         content.badge = NSNumber(value: BadgeCounter.increment(threadKey: threadKey))
         UNUserNotificationCenter.current().add(
@@ -3374,10 +3401,16 @@ final class MessageService {
 
     private func drainQueueThenLog() async {
         if PanicPINService.shared.isLocked || PanicPINService.shared.isDecoy { return }
-        // ⚠ Nothing to keep the rows in, so nothing to ack them for: a process
-        // started while the phone is locked has no store until it is unlocked
-        // (MessageDB.makeContainer). The island keeps them for the next drain.
-        guard MessageDB.shared.isStoreAvailable else { return }
+        // ⚠ Nothing to keep the rows in, so nothing to read them for, BEFORE a
+        // single row is fetched or opened: a process started while the phone
+        // is locked has no store until it is unlocked (MessageDB.makeContainer),
+        // and one started unlocked keeps its store attached after the phone
+        // locks but cannot write it ~10 s later. Opening rows then steps the
+        // ratchet and the sender-key chains for good while their text lands
+        // nowhere, and the island's copy no longer opens (#1045 review). The
+        // island keeps them for the drain after the unlock.
+        MessageDB.shared.reopenIfStoreless()
+        guard MessageDB.shared.isWritable else { return }
         // Multihoming v1: make sure the backup-island poll is running (no-op
         // without backup homes; idempotent). Independent of the primary fetch
         // below: when the primary island is down, that loop IS delivery.
@@ -3615,7 +3648,8 @@ final class MessageService {
                 guard ownUIN == account,
                       AccountManager.shared.activeAccountID == accountID,
                       !PanicPINService.shared.isLocked,
-                      !PanicPINService.shared.isDecoy
+                      !PanicPINService.shared.isDecoy,
+                      MessageDB.shared.isWritable
                 else { return }
             }
             // Send the ACK. Best-effort: if it fails (network blip,
@@ -3733,6 +3767,9 @@ final class MessageService {
     struct GroupLogIngest {
         var upto: [Int: Int] = [:]
         var blocked = Set<Int>()
+        /// The page did not reach the disk (or the session changed under it):
+        /// nothing it covered may be acked or marked.
+        var failed = false
     }
 
     /// The room log alone, on the same chain as the full drain and never
@@ -3797,6 +3834,12 @@ final class MessageService {
             // The walk above can now be interrupted by an account switch, and
             // the marks and acks below are per account.
             guard ownUIN == account else { return }
+            // ⚠ A page that did not reach the disk moves nothing: not the
+            // cursor, and not the marks below either. Marked up to the heads,
+            // the next live row past a head would be acked, and the island's
+            // cursor (forward-only, no gap check) would jump over every row of
+            // this page (#1045 review).
+            guard !got.failed else { return }
             blockedRooms.formUnion(got.blocked)
             let advancing = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
             if !advancing.isEmpty {
@@ -3915,7 +3958,9 @@ final class MessageService {
             // disk must not be in it.
             guard MessageDB.shared.endBatch() else {
                 discardDrainBatch(ownsBatch)
-                return GroupLogIngest()
+                var failed = GroupLogIngest()
+                failed.failed = true
+                return failed
             }
             flushDrainBatch(ownsBatch)
             guard cursor < rows.count else { break }
@@ -3928,8 +3973,13 @@ final class MessageService {
             guard ownUIN == account,
                   AccountManager.shared.activeAccountID == accountID,
                   !PanicPINService.shared.isLocked,
-                  !PanicPINService.shared.isDecoy
-            else { return GroupLogIngest() }
+                  !PanicPINService.shared.isDecoy,
+                  MessageDB.shared.isWritable
+            else {
+                var stopped = GroupLogIngest()
+                stopped.failed = true
+                return stopped
+            }
         }
         // A room whose page went through whole has nothing in front of its
         // cursor any more: whatever was counted against it opened, or the
@@ -4046,6 +4096,16 @@ final class MessageService {
             guard !Task.isCancelled, let self else { return }
             let acks = self.pendingLiveAcks
             self.pendingLiveAcks = [:]
+            // ⚠ Acked only once the rows are ON DISK (#1045 review). The row
+            // went to a save that is coalesced 40 ms later and can fail (the
+            // phone locked meanwhile); the island's cursor moves forward with
+            // no gap check. Not on disk: the marks go back to "unknown", the
+            // next drain reads the room from the island's cursor again.
+            MessageDB.shared.flushNow()
+            guard MessageDB.shared.isPersisting else {
+                for gid in acks.keys { self.groupLogAcked[gid] = nil }
+                return
+            }
             _ = await self.ackGroupLog(acks)
         }
     }

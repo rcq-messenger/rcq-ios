@@ -2861,8 +2861,23 @@ final class AppState: ObservableObject {
         // still in the island's queue for the drain after the real unlock.
         if PanicPINService.shared.isLocked {
             if case .opened = event, isOffline { isOffline = false }
-            // Announced, not ingested: see `notifyWhileLocked`.
-            if case .envelope(let env) = event { MessageService.shared.notifyWhileLocked(env) }
+            // Announced, not ingested: see `announceWithoutKeeping`.
+            if case .envelope(let env) = event { MessageService.shared.announceWithoutKeeping(env) }
+            return
+        }
+        // ⚠⚠ A decoy session never opens this socket, so one that is open is
+        // the REAL account's (a call kept it through a relock, #1045 review):
+        // its envelopes would open under the real keys and land in the decoy
+        // store. Closed, and nothing it carried is looked at.
+        if PanicPINService.shared.isDecoy {
+            WebSocketService.shared.disconnect()
+            return
+        }
+        // The phone is locked (or the store is not there) with the process
+        // kept alive by a call or audio: a message opened now could not be
+        // kept, and its ratchet step could not be undone (#1045 review).
+        if case .envelope(let env) = event, !MessageDB.shared.isWritable {
+            MessageService.shared.announceWithoutKeeping(env)
             return
         }
         switch event {

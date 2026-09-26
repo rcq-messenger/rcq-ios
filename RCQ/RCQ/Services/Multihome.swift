@@ -833,8 +833,9 @@ enum Multihome {
     static func drainBackupQueues(ownUin: Int) async {
         guard !BurnCascade.isBurning else { return }
         // The server advances this cursor on fetch: rows read with no store to
-        // keep them in (phone locked, see MessageDB.makeContainer) would be gone.
-        guard MessageDB.shared.isStoreAvailable else { return }
+        // keep them in, or one the locked phone will not let be written (see
+        // MessageDB.isWritable), would be gone.
+        guard MessageDB.shared.isWritable else { return }
         guard let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
               let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes) else { return }
         struct Row: Decodable {

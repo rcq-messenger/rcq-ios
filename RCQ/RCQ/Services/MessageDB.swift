@@ -136,8 +136,39 @@ final class MessageDB {
         !container.persistentStoreCoordinator.persistentStores.isEmpty
     }
 
-    /// Set by a save that threw, cleared by one that went through.
+    /// A store is attached AND the phone lets it be written. A process that
+    /// was started unlocked keeps its store attached after the phone locks,
+    /// but ~10 s later the file (complete protection) refuses every write.
+    /// Every drain and the live socket path ask this before they open a
+    /// single row (#1045 review).
+    var isWritable: Bool {
+        isStoreAvailable && UIApplication.shared.isProtectedDataAvailable
+    }
+
+    /// Set by a save that threw, cleared by one that went through or by
+    /// finding nothing left to save.
     private var lastSaveFailed = false
+
+    /// Work that may run only once what was written so far is on disk: the
+    /// removal of the decrypted copies a drain read from PushDecryptCache.
+    /// Dropped, not run, when the context goes away unsaved (the copies are
+    /// then what the next drain reads the rows from).
+    private var afterPersist: [() -> Void] = []
+
+    /// Run `work` once everything written so far reaches the disk.
+    func whenPersisted(_ work: @escaping () -> Void) {
+        afterPersist.append(work)
+    }
+
+    /// Everything that throws the current context away goes through here.
+    private func replaceContainer(_ next: NSPersistentContainer) {
+        abandonBatch()
+        pendingFlush?.cancel()
+        pendingFlush = nil
+        afterPersist.removeAll()
+        lastSaveFailed = false
+        container = next
+    }
 
     private init() {
         MessageDB.instanceExists = true
@@ -152,11 +183,14 @@ final class MessageDB {
         // A process started while the phone was locked has no store (see
         // `makeContainer`). Open it for real the moment the phone is unlocked,
         // and read back whatever windows were read against nothing.
+        //
+        // A process whose store stayed attached while it could not be written
+        // gets its held-back saves written and its drains run again.
         NotificationCenter.default.addObserver(
             forName: UIApplication.protectedDataDidBecomeAvailableNotification,
             object: nil, queue: .main
         ) { _ in
-            Task { @MainActor in MessageDB.shared.reopenIfStoreless() }
+            Task { @MainActor in await MessageDB.shared.protectedDataCameBack() }
         }
         // The coalescing window (see `save`) must not outlive the foreground.
         for raw in ["UIApplicationWillResignActiveNotification",
@@ -234,22 +268,55 @@ final class MessageDB {
             // across a suspension point, and both of these run between
             // drains), but a stale depth would suppress every save that
             // follows and stale rows would name a dead context.
-            abandonBatch()
-            container = MessageDB.makeContainer(
+            replaceContainer(MessageDB.makeContainer(
                 decoy: decoy, protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
-            )
+            ))
         }
     }
 
-    /// The phone was unlocked: a container built before that has no store.
-    private func reopenIfStoreless() {
-        guard !isStoreAvailable else { return }
-        abandonBatch()
-        lastSaveFailed = false
-        container = MessageDB.makeContainer(decoy: decoyMode, protectedDataAvailable: true)
+    /// The phone was unlocked. A container built before that has no store:
+    /// it is opened for real, OFF the main thread (the same open prewarm keeps
+    /// off it). One that had its store all along writes what it held back.
+    /// Either way the drains run again: nothing restarted them before, so
+    /// rows that arrived while locked stayed on the island until the next
+    /// socket open (#1045 review).
+    private func protectedDataCameBack() async {
+        if isStoreAvailable {
+            flushNow()
+        } else {
+            let decoy = decoyMode
+            let built = await Task.detached(priority: .userInitiated) {
+                MessageDB.makeContainer(decoy: decoy, protectedDataAvailable: true)
+            }.value
+            guard !isStoreAvailable, decoy == decoyMode,
+                  !built.persistentStoreCoordinator.persistentStores.isEmpty else { return }
+            adopt(built)
+        }
+        if AppState.shared.booted {
+            await MessageService.shared.fetchOfflineQueue()
+        }
+    }
+
+    /// A storeless container while the phone IS unlocked: the open failed for
+    /// a reason that is not the lock (a full disk, an I/O error). Tried again
+    /// from the start of each drain, at most every 30 s, rather than only at
+    /// the next launch. Synchronous: the drain it guards needs the answer.
+    func reopenIfStoreless() {
+        guard !isStoreAvailable, UIApplication.shared.isProtectedDataAvailable else { return }
+        if let last = lastReopenAttempt, Date().timeIntervalSince(last) < 30 { return }
+        lastReopenAttempt = Date()
+        let built = MessageDB.makeContainer(decoy: decoyMode, protectedDataAvailable: true)
+        guard !built.persistentStoreCoordinator.persistentStores.isEmpty else { return }
+        adopt(built)
+    }
+
+    private var lastReopenAttempt: Date?
+
+    private func adopt(_ built: NSPersistentContainer) {
+        replaceContainer(built)
         // Windows read while there was no store read back empty and are marked
         // loaded; read them again from the file that is there now.
-        if isStoreAvailable { MessageStore.shared.reloadFromDB() }
+        MessageStore.shared.reloadFromDB()
     }
 
     /// Reopen the persistent container at whatever per-account
@@ -260,10 +327,9 @@ final class MessageDB {
     /// container is dropped; its file stays on disk untouched
     /// because per-account files are isolated.
     func reload() {
-        abandonBatch()
-        container = MessageDB.makeContainer(
+        replaceContainer(MessageDB.makeContainer(
             decoy: decoyMode, protectedDataAvailable: UIApplication.shared.isProtectedDataAvailable
-        )
+        ))
     }
 
     /// Forget an open batch without saving it. Only for the two moments the
@@ -399,6 +465,10 @@ final class MessageDB {
     /// the data in it.
     nonisolated static func isModelIncompatibility(_ error: Error?) -> Bool {
         guard let error = error as NSError?, error.domain == NSCocoaErrorDomain else { return false }
+        // ⚠ A migration error can WRAP a disk or lock failure (a full disk
+        // mid-migration comes back as 134110 around SQLITE_FULL). That is not
+        // the model, and deleting the history over it is not a cure.
+        if isTransientStoreError(error) { return false }
         return [
             NSPersistentStoreIncompatibleSchemaError,
             NSPersistentStoreIncompatibleVersionHashError,
@@ -412,6 +482,53 @@ final class MessageDB {
             NSEntityMigrationPolicyError,
             NSInferredMappingModelError,
         ].contains(error.code)
+    }
+
+    /// Every (domain, code) in an error and the errors it wraps, with the
+    /// SQLite result code Core Data files under the "NSSQLiteErrorDomain" key.
+    nonisolated private static func errorChain(_ error: NSError) -> [(String, Int)] {
+        var out: [(String, Int)] = []
+        var queue: [NSError] = [error]
+        var seen = 0
+        while let e = queue.first, seen < 16 {
+            queue.removeFirst()
+            seen += 1
+            out.append((e.domain, e.code))
+            if let sqlite = e.userInfo["NSSQLiteErrorDomain"] as? NSNumber {
+                out.append(("NSSQLiteErrorDomain", sqlite.intValue))
+            }
+            if let under = e.userInfo[NSUnderlyingErrorKey] as? NSError { queue.append(under) }
+            if let detailed = e.userInfo[NSDetailedErrorsKey] as? [NSError] { queue.append(contentsOf: detailed) }
+        }
+        return out
+    }
+
+    /// The file could not be reached or written right now: locked, busy, full,
+    /// no permission, I/O. Says nothing about what is in it.
+    nonisolated static func isTransientStoreError(_ error: Error?) -> Bool {
+        guard let error = error as NSError? else { return false }
+        return errorChain(error).contains { domain, code in
+            switch domain {
+            // BUSY, LOCKED, READONLY, IOERR, FULL, CANTOPEN, AUTH, PERM
+            case "NSSQLiteErrorDomain": return [3, 5, 6, 8, 10, 13, 14, 23].contains(code & 0xFF)
+            // EPERM, EIO, EACCES, ENOSPC, EROFS
+            case NSPOSIXErrorDomain: return [1, 5, 13, 28, 30].contains(code)
+            case NSCocoaErrorDomain:
+                return [NSFileReadUnknownError, NSFileReadNoPermissionError,
+                        NSFileWriteNoPermissionError, NSFileWriteOutOfSpaceError,
+                        NSFileWriteVolumeReadOnlyError, NSFileLockingError].contains(code)
+            default: return false
+            }
+        }
+    }
+
+    /// SQLite says the file is not a database or is corrupt (CORRUPT, NOTADB).
+    nonisolated static func isCorruptStore(_ error: Error?) -> Bool {
+        guard let error = error as NSError? else { return false }
+        if isTransientStoreError(error) { return false }
+        return errorChain(error).contains { domain, code in
+            domain == "NSSQLiteErrorDomain" && [11, 26].contains(code & 0xFF)
+        }
     }
 
     nonisolated private static func makeContainer(
@@ -453,9 +570,17 @@ final class MessageDB {
         // Anything else leaves the file alone and hands back a container with
         // no store, which `isStoreAvailable` reports, the drains refuse to
         // ack against, and `reopenIfStoreless` replaces once the phone opens.
+        //
+        // A file SQLite calls corrupt or not a database is set aside the same
+        // way (it opens the same way on every launch otherwise, and the app
+        // would run storeless for good), and so is a decoy store that will not
+        // open while the phone is unlocked: a decoy history is not worth a
+        // decoy session showing seeded names over nothing.
+        let unopenable: (Error?) -> Bool = { isModelIncompatibility($0) || isCorruptStore($0) }
+        let decoyBroken = decoy
+            && !isTransientStoreError(indexedError) && !isTransientStoreError(rescueError)
         guard protectedDataAvailable,
-              isModelIncompatibility(indexedError),
-              isModelIncompatibility(rescueError)
+              decoyBroken || (unopenable(indexedError) && unopenable(rescueError))
         else {
             print("[MessageDB] store not opened, left in place: \(String(describing: indexedError))")
             let storeless = NSPersistentContainer(name: "RCQHistoryV2", managedObjectModel: model)
@@ -473,11 +598,22 @@ final class MessageDB {
         do {
             let dir = storeURL.deletingLastPathComponent()
             let base = storeURL.lastPathComponent
-            // SQLite also writes -shm and -wal sidecars; ditch all three
-            // so the next attempt doesn't try to re-attach a half-broken
-            // journal.
+            // SQLite also writes -shm and -wal sidecars; all three go so the
+            // next attempt doesn't try to re-attach a half-broken journal.
+            //
+            // ⚠ The real history is MOVED ASIDE, not deleted: a rename costs no
+            // space on a full disk, and a file that a later build (or a person
+            // helping) could still open is not thrown away over a guess. One
+            // set-aside copy per store; an older one makes room for it.
             for name in [base, base + "-shm", base + "-wal"] {
-                try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+                let from = dir.appendingPathComponent(name)
+                if decoy {
+                    try? FileManager.default.removeItem(at: from)
+                } else {
+                    let aside = dir.appendingPathComponent(name + ".aside")
+                    try? FileManager.default.removeItem(at: aside)
+                    try? FileManager.default.moveItem(at: from, to: aside)
+                }
             }
             // ⚠⚠ THE DECOY ROSTER GOES WITH IT. The decoy's contact list lives
             // in a SEPARATE file that this reset never touched, so clearing the
@@ -912,6 +1048,7 @@ final class MessageDB {
         // `NSBatchDeleteRequest` runs against the store and cannot see rows
         // still pending in the context, so a batch left open by a drain would
         // re-save them right after the delete. Land them first.
+        guard isStoreAvailable else { return }
         flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         req.predicate = NSPredicate(
@@ -924,6 +1061,7 @@ final class MessageDB {
     }
 
     func deleteAll() {
+        guard isStoreAvailable else { return }
         flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         let delete = NSBatchDeleteRequest(fetchRequest: req)
@@ -1049,14 +1187,40 @@ final class MessageDB {
     }
 
     private func flush() {
-        guard ctx.hasChanges else { return }
+        guard ctx.hasChanges else {
+            // Nothing held back: whatever was written earlier either reached
+            // the disk or went with a context that was thrown away. Left set,
+            // a failure from before an account switch made every later chunk
+            // that changed nothing look unsaved, and its drain stall.
+            if isStoreAvailable {
+                lastSaveFailed = false
+                runAfterPersist()
+            }
+            return
+        }
+        // ⚠ A coordinator with no store does not throw on save, it raises an
+        // Objective-C exception that no catch here sees and the process dies
+        // (a storeless container is ordinary since the phone-locked launch
+        // stopped deleting the history). Held until a store is there.
+        guard isStoreAvailable else {
+            lastSaveFailed = true
+            return
+        }
         do {
             try ctx.save()
             lastSaveFailed = false
+            runAfterPersist()
         } catch {
             lastSaveFailed = true
             print("[MessageDB] save failed: \(error)")
         }
+    }
+
+    private func runAfterPersist() {
+        guard !afterPersist.isEmpty else { return }
+        let work = afterPersist
+        afterPersist.removeAll()
+        for w in work { w() }
     }
 
     private func apply(_ msg: Message, to row: MessageRecord) {

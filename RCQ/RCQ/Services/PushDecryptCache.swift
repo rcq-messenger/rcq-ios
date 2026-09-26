@@ -128,16 +128,36 @@ enum PushDecryptCache {
         FileManager.default.fileExists(atPath: fileURL(for: ciphertextB64).path)
     }
 
-    /// Returns cached plaintext + sender if the NSE got here first.
-    /// Deletes the entry on read so WS re-delivery decrypts normally.
+    /// Returns cached plaintext + sender if the NSE got here first, and
+    /// deletes the entry.
     static func consume(ciphertextB64: String) -> DecryptedEnvelope? {
+        let found = read(ciphertextB64: ciphertextB64)
+        remove(ciphertextB64: ciphertextB64)
+        return found
+    }
+
+    /// Delete one entry. For a drain that read it with `read` and has now got
+    /// the row on disk.
+    static func remove(ciphertextB64: String) {
+        try? FileManager.default.removeItem(at: fileURL(for: ciphertextB64))
+    }
+
+    /// Returns cached plaintext + sender WITHOUT deleting the entry.
+    ///
+    /// ⚠ The drains read with this and delete only once the row is on disk
+    /// (MessageDB.whenPersisted). Deleting on read lost the message whenever
+    /// the save after it failed (the phone locked mid-drain): the ratchet had
+    /// moved on, so the island's copy, served again, no longer opened, and
+    /// this entry was its only decoder (#1045 review).
+    static func read(ciphertextB64: String) -> DecryptedEnvelope? {
         let url = fileURL(for: ciphertextB64)
         guard let data = try? Data(contentsOf: url) else { return nil }
-        defer { try? FileManager.default.removeItem(at: url) }
         // Sealed first, plain second: an entry written by a build older than
         // this one is the only decoder its envelope has left.
         let json = open(data) ?? data
         guard let entry = try? JSONDecoder().decode(CacheEntry.self, from: json) else {
+            // Nothing can ever read it: out of the way of the decrypt.
+            try? FileManager.default.removeItem(at: url)
             return nil
         }
         return DecryptedEnvelope(

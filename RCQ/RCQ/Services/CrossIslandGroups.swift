@@ -940,8 +940,9 @@ enum CrossIslandGroups {
         let accountID = AccountManager.shared.activeAccountID
         if BurnCascade.isBurning { return }
         // These mailboxes advance on fetch: rows read with no store to keep
-        // them in (phone locked, see MessageDB.makeContainer) would be gone.
-        guard MessageDB.shared.isStoreAvailable else { return }
+        // them in, or one the locked phone will not let be written (see
+        // MessageDB.isWritable), would be gone.
+        guard MessageDB.shared.isWritable else { return }
         for v in VisitedIslandsStore.shared.list() {
             var jwt = v.jwt
             var rows: [Row]? = try? await getJSON("https://\(v.host)/messages/queue", jwt: jwt)
@@ -1026,6 +1027,9 @@ enum CrossIslandGroups {
         struct AckRoom: Encodable { let gid: Int; let upto: Int }
         struct AckIn: Encodable { let rooms: [AckRoom] }
         struct AckOut: Decodable { let deleted: Int }
+        // Not while the store cannot be written: the rows would open (their
+        // sender-key chains moving for good) with nowhere to keep the text.
+        guard MessageDB.shared.isWritable else { return }
         let drain = MessageService.shared.beginGroupLogDrain()
         var passes = 0
         repeat {
