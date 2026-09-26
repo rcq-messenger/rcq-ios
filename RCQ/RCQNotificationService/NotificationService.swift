@@ -125,7 +125,11 @@ class NotificationService: UNNotificationServiceExtension {
         var lockOwnerID: UUID?
         if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
             routedAccountID = targetID
-            lockOwnerID = targetID
+            // Only an owner that is the ONLY one: numbers are per island, and
+            // one key restored onto two islands makes two accounts with the
+            // same number here. Judged by the wrong one's locks, a locked
+            // chat's words would print; by all of them, one line too few.
+            lockOwnerID = accountsOwning(uin: toUIN) == 1 ? targetID : nil
             // Push for a non-foreground account: mark the banner so
             // the user can tell at a glance that this message went
             // to one of their OTHER accounts, not the one they're
@@ -388,6 +392,13 @@ class NotificationService: UNNotificationServiceExtension {
     /// router above. Returns nil if no account matches (push for an
     /// account that's been removed from the device, or for a fresh
     /// install that hasn't run AccountManager yet).
+    private func accountsOwning(uin: Int) -> Int {
+        let target = String(uin)
+        return AppGroup.readAccountIDs().filter {
+            KeychainStore.string(KeychainStore.Keys.uin, forAccount: $0) == target
+        }.count
+    }
+
     private func findAccountOwning(uin: Int) -> UUID? {
         let target = String(uin)
         for accountID in AppGroup.readAccountIDs() {

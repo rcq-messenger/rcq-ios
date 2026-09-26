@@ -1059,10 +1059,17 @@ final class AppState: ObservableObject {
 
             guard wipeGeneration == generation else { return }
             let baseURL = APIClient.shared.baseURL
-            WebSocketService.shared.connect(
-                uin: uin, token: token, baseURL: baseURL,
-                serverToken: AccountManager.shared.active?.serverToken
-            )
+            // ⚠ Not over a call's socket. A call answered from the lock screen
+            // opened its own (CallService.openSignalingWhileLocked), and this
+            // boot is the PIN being entered mid-call: redialling drops every
+            // frame the call waits for in that second (ICE, renegotiation, the
+            // other side's hang-up), which the island relays live only.
+            if !CallService.shared.holdsSocket {
+                WebSocketService.shared.connect(
+                    uin: uin, token: token, baseURL: baseURL,
+                    serverToken: AccountManager.shared.active?.serverToken
+                )
+            }
             // Dial issued, not awaited: `booted` keys on the roster fetch, and
             // the header's dot owns the link truth from here.
             advanceBoot(to: 0.80)
@@ -2854,6 +2861,8 @@ final class AppState: ObservableObject {
         // still in the island's queue for the drain after the real unlock.
         if PanicPINService.shared.isLocked {
             if case .opened = event, isOffline { isOffline = false }
+            // Announced, not ingested: see `notifyWhileLocked`.
+            if case .envelope(let env) = event { MessageService.shared.notifyWhileLocked(env) }
             return
         }
         switch event {

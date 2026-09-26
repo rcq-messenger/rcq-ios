@@ -801,6 +801,14 @@ final class ChatViewModel: ObservableObject {
     /// Snapshot the unread count. Runs at init — onAppear is too late: the
     /// LazyVStack rows can realize (and call sawRow) before the root
     /// onAppear fires, and markThreadSeen() clears the source counters.
+    /// The chat was behind its PIN pad since this model was made (the model
+    /// is built with the screen, the pad is the screen until the PIN is in):
+    /// whatever arrived meanwhile belongs to the unread count the chat opens on.
+    func recaptureUnread() {
+        didCaptureUnread = false
+        captureUnreadIfNeeded()
+    }
+
     private func captureUnreadIfNeeded() {
         guard !didCaptureUnread else { return }
         didCaptureUnread = true

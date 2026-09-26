@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 import LibSignalClient
 import os.log
 import UIKit
@@ -3304,6 +3305,69 @@ final class MessageService {
 
     /// Drain this island's mailbox: the legacy queue, then (Stage 5) the
     /// room log on an island that keeps one. Serialised; see above.
+    /// A message that reached the socket a call opened from behind the app PIN
+    /// (CallService.openSignalingWhileLocked). The island counts that socket
+    /// as an online device, so it neither pushes the message nor wakes the
+    /// phone for a group row, and AppState refuses every event while locked:
+    /// messages during a lock-screen call arrived with no banner, no sound and
+    /// no badge, before or after (#1045 review).
+    ///
+    /// Treated the way the notification extension treats a push while the
+    /// app is locked: opened only to know whether it is something a person
+    /// wrote, the plaintext parked in PushDecryptCache (so the drain after the
+    /// real unlock reads it instead of stepping the ratchet twice), nothing
+    /// written to the store, and a notification that says a message came and
+    /// nothing else. The row itself stays in the island's queue.
+    func notifyWhileLocked(_ ws: WebSocketService.EnvelopePacket) {
+        if let to = ws.toDeviceID, to != SignalProtocolStores.shared.localDeviceId { return }
+        let threadKey: String
+        if ws.type == "gmsg" {
+            // A sender-keys row cannot be opened here; the extension shows the
+            // same generic line for one it cannot open.
+            guard let gid = ws.groupID, !MutedStore.shared.isGroupMuted(gid),
+                  !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
+            threadKey = BadgeCounter.threadKey(groupID: gid)
+        } else {
+            guard !PushDecryptCache.contains(ciphertextB64: ws.payload),
+                  let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0),
+                  let decrypted = try? crypto.decrypt(envelopeB64: ws.payload)
+            else { return }
+            PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted)
+            let me = ownUIN != 0 ? ownUIN : KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init)
+            guard Self.isSomethingSaid(decrypted.envelope),
+                  decrypted.senderUIN != me,
+                  !RemovedContactsStore.shared.contains(decrypted.senderUIN)
+            else { return }
+            if let gid = ws.groupID {
+                guard !MutedStore.shared.isGroupMuted(gid), !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
+                threadKey = BadgeCounter.threadKey(groupID: gid)
+            } else {
+                guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
+                threadKey = BadgeCounter.threadKey(peerUIN: decrypted.senderUIN)
+            }
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "RCQ"
+        content.body = "chat.banner.new_message".localized
+        content.sound = .default
+        content.badge = NSNumber(value: BadgeCounter.increment(threadKey: threadKey))
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        ) { _ in }
+    }
+
+    /// The kinds a person wrote, the ones a push would have announced. The
+    /// notification extension keeps the same list (`envelopeIsUserVisible`).
+    private static func isSomethingSaid(_ envelope: Envelope) -> Bool {
+        switch envelope {
+        case .text, .photo, .video, .voice, .file, .location,
+             .systemNotice, .poll, .screenshotTaken, .relayShare:
+            return true
+        default:
+            return false
+        }
+    }
+
     func fetchOfflineQueue() async {
         await serialisedDrain { await self.drainQueueThenLog() }
     }

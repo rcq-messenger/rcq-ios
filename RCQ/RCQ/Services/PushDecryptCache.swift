@@ -123,6 +123,11 @@ enum PushDecryptCache {
         return plain
     }
 
+    /// Whether an entry exists for this ciphertext, without consuming it.
+    static func contains(ciphertextB64: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(for: ciphertextB64).path)
+    }
+
     /// Returns cached plaintext + sender if the NSE got here first.
     /// Deletes the entry on read so WS re-delivery decrypts normally.
     static func consume(ciphertextB64: String) -> DecryptedEnvelope? {

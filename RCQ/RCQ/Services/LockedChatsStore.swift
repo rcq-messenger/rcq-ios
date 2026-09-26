@@ -57,8 +57,15 @@ final class LockedChatsStore: ObservableObject {
     /// One device-wide list, before locks were per account.
     private static let legacyKey = "rcq.locked_chats"
 
+    /// ⚠ The decoy session has a slot of its own (the same fixed namespace
+    /// SectionsStore and the other per-account stores move to). The active
+    /// account id stays the REAL one during duress, so a lock set there was
+    /// filed beside the real account's, tying the decoy's invented number to
+    /// the real slot, and a real lock on a colliding number could be taken
+    /// off with the decoy PIN.
     private static var activeKey: String {
-        AccountManager.shared.activeAccountID?.uuidString ?? "none"
+        if PanicPINService.shared.isDecoy { return PanicPINService.decoyNamespace.uuidString }
+        return AccountManager.shared.activeAccountID?.uuidString ?? "none"
     }
 
     private init() {
@@ -171,10 +178,20 @@ final class LockedChatsStore: ObservableObject {
         }
         // The device-wide list goes to EVERY account on the device: it was in
         // force on whichever account was active, so this loses no lock. Left
-        // where it is while there is no account to give it to.
+        // where it is while there is no account to give it to, or while it
+        // cannot be told whether a PIN exists.
+        //
+        // ⚠ With no PIN it is dropped, not carried: an older build did not clear
+        // it when the PIN was removed, so it can hold locks nobody has seen in
+        // months, and copied over they would all come back, on every account,
+        // the day a new PIN is set.
         let accounts = AccountManager.shared.accounts.map(\.id.uuidString)
+        if UserDefaults.standard.object(forKey: Self.legacyKey) != nil,
+           PINVault.configuredState == false {
+            UserDefaults.standard.removeObject(forKey: Self.legacyKey)
+        }
         if let legacy = UserDefaults.standard.array(forKey: Self.legacyKey) as? [String],
-           !accounts.isEmpty {
+           !accounts.isEmpty, PINVault.configuredState == true {
             let set = Set(legacy.compactMap(Entry.decode))
             if !set.isEmpty {
                 for account in accounts { out[account, default: []].formUnion(set) }

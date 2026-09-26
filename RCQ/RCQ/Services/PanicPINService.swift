@@ -341,7 +341,7 @@ final class PanicPINService: ObservableObject {
     /// real state that must survive the duress session intact, so a decoy
     /// session reads and writes an EMPTY namespace and the real slots are
     /// untouched on disk. `leaveDecoySession` puts them back.
-    private static let decoyNamespace = UUID(uuidString: "8F3C1A64-2D5B-4E07-9A18-C6B0D7E42F95")!
+    static let decoyNamespace = UUID(uuidString: "8F3C1A64-2D5B-4E07-9A18-C6B0D7E42F95")!
 
     /// Everything a decoy session must not be able to show, done before the
     /// duress view is drawn.
@@ -555,7 +555,11 @@ final class PanicPINService: ObservableObject {
 
     func lock() {
         guard isConfigured, lockState == .unlocked else { return }
-        WebSocketService.shared.disconnect()
+        // A call in progress keeps the socket and closes it when it ends
+        // (#1045 review); everything else it carries is refused while locked.
+        if !CallService.shared.keepSocketThroughLock() {
+            WebSocketService.shared.disconnect()
+        }
         // Leaving a decoy session: the per-account stores go back to the real
         // account. Harmless in a real session (it rebinds to the same id).
         Self.leaveDecoySession()

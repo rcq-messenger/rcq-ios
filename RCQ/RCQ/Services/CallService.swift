@@ -69,8 +69,14 @@ final class CallService: ObservableObject {
     private var answered = false
 
     /// The socket was opened for this call from behind the app PIN
-    /// (`openSignalingWhileLocked`) and is closed again when the call ends.
+    /// (`openSignalingWhileLocked`), or kept for it when the app relocked
+    /// mid-call (`keepSocketThroughLock`), and is closed again when the call
+    /// ends if the app is still locked then.
     private var lockedSignaling = false
+    /// The API client's token was put there for this call only, by a process
+    /// that never booted. Taken back out with the socket; one the boot put
+    /// there stays.
+    private var lockedSignalingToken = false
 
     // ICE-recovery state. On a hard ICE drop the caller re-offers (glare-avoided
     // — only the original caller restarts); the callee waits for that re-offer
@@ -365,6 +371,7 @@ final class CallService: ObservableObject {
               let token = KeychainStore.string(KeychainStore.Keys.token)
         else { return }
         lockedSignaling = true
+        lockedSignalingToken = true
         WebRTCManager.shared.strictRelay = true
         let serverToken = AccountManager.shared.active?.serverToken
         Task { @MainActor in
@@ -1066,15 +1073,33 @@ final class CallService: ObservableObject {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard let self, self.lockedSignaling, !self.state.isActive else { return }
             self.lockedSignaling = false
+            let tokenWasOurs = self.lockedSignalingToken
+            self.lockedSignalingToken = false
             WebRTCManager.shared.strictRelay = false
             if PanicPINService.shared.isLocked {
                 WebSocketService.shared.disconnect()
                 // The token went to the API client for this call only; a locked
                 // process holds no credentials in memory after it.
-                Task { await APIClient.shared.setToken(nil) }
+                if tokenWasOurs { Task { await APIClient.shared.setToken(nil) } }
             }
         }
     }
+
+    /// The app is relocking (`PanicPINService.lock`). A call in progress keeps
+    /// its socket: `lock()` used to close it unconditionally, the island then
+    /// timed the device out and ended the call for the other side as
+    /// "peer disconnected", and our own hang-up and ICE restarts went nowhere.
+    /// Returns whether the socket is now the call's, closed when it ends.
+    func keepSocketThroughLock() -> Bool {
+        guard state.isActive else { return false }
+        lockedSignaling = true
+        return true
+    }
+
+    /// Whether a call is using the socket right now, for the boot that runs
+    /// after an unlock mid-call: redialling would drop the frames the call is
+    /// waiting for (ICE, renegotiation, the other side's hang-up).
+    var holdsSocket: Bool { state.isActive && WebSocketService.shared.isConnected }
 
     private func scheduleEndedClear() {
         Task { @MainActor [weak self] in

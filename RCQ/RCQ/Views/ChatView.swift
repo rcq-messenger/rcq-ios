@@ -801,6 +801,7 @@ struct ChatView: View {
     // `LockedChatsStore.holds` is the one definition of "locked", shared with
     // the long-press preview, search and the banners (#1045).
     @State private var chatPinUnlocked = false
+    @Environment(\.scenePhase) private var scenePhase
     private var chatIsLocked: Bool {
         if case .randomPeer = vm.target { return false }
         return LockedChatsStore.shared.holds(vm.target.thread)
@@ -818,14 +819,27 @@ struct ChatView: View {
     // Here nothing of the chat exists until the PIN is in: no rows, no
     // toolbar, no composer, and none of its appear/change hooks.
     var body: some View {
-        if chatIsLocked && !chatPinUnlocked {
-            PINVerifySheet(title: "pin_verify.title.chat".localized, check: .session, inline: true) {
-                chatPinUnlocked = true
+        Group {
+            if chatIsLocked && !chatPinUnlocked {
+                PINVerifySheet(title: "pin_verify.title.chat".localized, check: .session, inline: true) {
+                    vm.recaptureUnread()
+                    chatPinUnlocked = true
+                }
+                .toolbar(.hidden, for: .navigationBar)
+                .enableSwipeBack()
+            } else {
+                chatBody
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .enableSwipeBack()
-        } else {
-            chatBody
+        }
+        // A locked chat left open is locked again when the app goes to the
+        // background, as a PIN section is (#1045 review): the app PIN comes
+        // back only after its timeout, up to 15 minutes, and in that window
+        // anyone who could unlock the phone walked straight into the chat.
+        // The background and not merely inactive: a permission prompt or the
+        // control centre makes the scene inactive too, and throwing the
+        // person out of the chat mid-sentence for that protects nothing.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background, chatIsLocked { chatPinUnlocked = false }
         }
     }
 
