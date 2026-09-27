@@ -79,6 +79,17 @@ final class CallService: ObservableObject {
         return true
     }
 
+    /// Offers whose history row this process has written or will write: it
+    /// rang here, or a drain filed it. Until that row is on disk this is all
+    /// that stops a drain filing the same offer again (see `HandledCallIDs`,
+    /// written only once the row has landed).
+    private var callIDsWithRow: Set<String> = []
+
+    /// Whether an offer already has, or will get, its history row.
+    func hasHistoryRow(forCallID callID: String) -> Bool {
+        callIDsWithRow.contains(callID) || HandledCallIDs.contains(callID)
+    }
+
     /// Restarts and renegotiations already applied, by call id, kind and SDP.
     /// The queue keeps every signal of a call (live frames are never acked),
     /// and the sealed wake's queue pass hands them all back: an old ICE
@@ -430,7 +441,7 @@ final class CallService: ObservableObject {
             direction: .incoming
         )
         _ = noteOfferSeen(callID)
-        HandledCallIDs.insert(callID)
+        callIDsWithRow.insert(callID)
         pendingRemoteOffer = sdp
         pendingRemoteIce.removeAll()
         answering = false
@@ -921,7 +932,7 @@ final class CallService: ObservableObject {
         if let envelopeB64, !envelopeB64.isEmpty {
             opened = MessageService.shared.openSealedWake(envelopeB64)
         }
-        if !opened, CallProvider.shared.placeholderIsPending(placeholder) {
+        if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
             await MessageService.shared.fetchOfflineQueue()
         }
         // ⚠ The drain above runs only into a store it can write, and the
@@ -932,7 +943,7 @@ final class CallService: ObservableObject {
         // Bounded: the ring is a neutral "incoming call" until it finds the
         // offer, and a caller who has hung up meanwhile must not leave it
         // sounding for as long as a slow network takes.
-        if !opened, CallProvider.shared.placeholderIsPending(placeholder) {
+        if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await MessageService.shared.actOnQueuedCallSignals() }
                 group.addTask { try? await Task.sleep(nanoseconds: Self.sealedWakePeekLimitNs) }
@@ -959,7 +970,7 @@ final class CallService: ObservableObject {
     /// exists to close, printed into the call log instead of onto the wire.
     /// The nameless fallback carries the island for the same reason — a bare
     /// `1234` is how a local number is written everywhere else in the app.
-    func fileMissedCall(fromUIN: Int, fromHost: String?, media: CallMedia) {
+    func fileMissedCall(fromUIN: Int, fromHost: String?, media: CallMedia, callID: String? = nil) {
         let nickname: String
         if let fromHost {
             let row = CrossIslandStore.shared.all()
@@ -970,7 +981,10 @@ final class CallService: ObservableObject {
             nickname = ContactService.shared.contacts
                 .first(where: { $0.uin == fromUIN })?.nickname ?? String(fromUIN)
         }
-        let call = Call(peerUIN: fromUIN, peerNickname: nickname, media: media, direction: .incoming)
+        let call = callID.map {
+            Call(id: $0, peerUIN: fromUIN, peerNickname: nickname, media: media, direction: .incoming)
+        } ?? Call(peerUIN: fromUIN, peerNickname: nickname, media: media, direction: .incoming)
+        if let callID { callIDsWithRow.insert(callID) }
         logCallEnded(call: call, reason: "expired", duration: nil)
     }
 
@@ -1152,7 +1166,7 @@ final class CallService: ObservableObject {
         // It rings: whatever ends it writes its row, so the drain must not
         // file the queued offer as missed later. Not before the busy check
         // above: an offer turned away busy has no row but the drain's.
-        HandledCallIDs.insert(callID)
+        callIDsWithRow.insert(callID)
         armRingTimeout(callID: call.id)
         WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
         // Rang on a socket kept for an earlier call behind the PIN: the
@@ -1165,6 +1179,26 @@ final class CallService: ObservableObject {
         // Answer/Decline instead, so the sim can actually receive calls.
         print("[CallService] simulator: in-app incoming UI, skipping CallKit (callID=\(callID))")
         #else
+        // The person already acted on the neutral ring this offer belongs to
+        // (a §5d wake that had to look for it): that decision stands. See
+        // `CallProvider.PlaceholderDecision`.
+        if let decided = CallProvider.shared.takePlaceholderDecision() {
+            switch decided.decision {
+            case .ended:
+                print("[CallService] offer \(callID) found after its ring was ended, declining")
+                sendEnd(call: call, reason: "declined")
+                state = .ended(call, reason: "declined")
+                teardownAfterEnd()
+                scheduleEndedClear()
+            case .answered:
+                print("[CallService] offer \(callID) found after its ring was answered, answering")
+                CallProvider.shared.adoptAnsweredPlaceholder(
+                    decided.uuid, callID: callID, peerName: displayName, hasVideo: media == .video
+                )
+                performAnswerHandshake()
+            }
+            return
+        }
         CallProvider.shared.reportIncoming(
             callID: callID,
             peerName: displayName,
@@ -1406,6 +1440,14 @@ final class CallService: ObservableObject {
             deliveryState: .delivered
         )
         MessageStore.shared.append(entry)
+        // ⚠ Recorded once the row is ON DISK, not when the call rang. A process
+        // woken on a locked phone has no store: the row waits in memory for
+        // the unlock, and one killed before it lost the row while the id,
+        // written at the ring, still told the next drain the call was logged.
+        // The call vanished from the history (#1045 review). Not recorded,
+        // the drain files it as missed, which is at least a row.
+        let callID = call.id
+        MessageDB.shared.whenPersisted { HandledCallIDs.insert(callID) }
     }
 
     /// "M:SS" — same format as the live duration label rendered inside
@@ -1418,15 +1460,19 @@ final class CallService: ObservableObject {
     }
 }
 
-/// Offers this device has already rung for or filed, kept across launches.
+/// Calls whose history row is on disk, kept across launches.
 ///
 /// ⚠ A §5d offer stays in the island's queue until a drain acks it, and two
-/// paths now ring from it without acking: the live socket while the store
-/// cannot be written, and the sealed wake's queue pass. The drain after the
-/// unlock then met the same offer, old by then, and filed it as missed next
-/// to the row the call had already written ("Incoming · 3:00" and then
-/// "Missed"); a process killed after a decline rang it again (#1045 review).
-/// The drain asks this before filing, and the ring path before ringing.
+/// paths ring from it without acking: the live socket while the store cannot
+/// be written, and the sealed wake's queue pass. The drain after the unlock
+/// then met the same offer, old by then, and filed it as missed next to the
+/// row the call had already written ("Incoming · 3:00" and then "Missed");
+/// a process killed after a decline rang it again (#1045 review). The drain
+/// asks this before filing (with `CallService.callIDsWithRow` for a row
+/// still on its way), and the ring path before ringing.
+///
+/// Written when the row lands (`logCallEnded`), never at the ring: a row
+/// that died with a storeless process must still be filed by the drain.
 ///
 /// Only a digest of each id, in arrival order, the newest 200: enough to
 /// outlast the wait for the next drain, and nothing about who called or when.

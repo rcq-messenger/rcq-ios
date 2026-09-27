@@ -1997,12 +1997,12 @@ final class MessageService {
                 // Not for an offer that already rang here (or was filed): the
                 // paths that ring without keeping leave it queued, and the
                 // call wrote its own row when it ended (see HandledCallIDs).
-                if mayFileMissed, !HandledCallIDs.contains(cid) {
-                    HandledCallIDs.insert(cid)
+                if mayFileMissed, !CallService.shared.hasHistoryRow(forCallID: cid) {
                     CallService.shared.fileMissedCall(
                         fromUIN: decrypted.senderUIN,
                         fromHost: fromHost,
-                        media: CallMedia(rawValue: data["media"] ?? "video") ?? .video
+                        media: CallMedia(rawValue: data["media"] ?? "video") ?? .video,
+                        callID: cid
                     )
                 }
                 return .done

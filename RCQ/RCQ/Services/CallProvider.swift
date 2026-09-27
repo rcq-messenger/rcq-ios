@@ -63,9 +63,25 @@ final class CallProvider: NSObject, @unchecked Sendable {
     // wake's discard then found somebody else's uuid in it, and the first
     // ring sounded until someone answered it into nothing (#1045 review).
     private var _placeholders: [UUID: Date] = [:]
+
+    /// What the person did to a neutral ring before its offer was found.
+    enum PlaceholderDecision { case answered, ended }
+
+    /// ⚠ Placeholders the person answered or ended while they were still
+    /// neutral. CallKit fulfils the action either way, and CallService had no
+    /// call to apply it to, so it was dropped: the offer found a moment later
+    /// adopted the same uuid, and an answer became a call that never
+    /// connected (silence here, ringback there, "missed" after a minute),
+    /// an End a call that rang on unseen (#1045 review). Kept here instead,
+    /// out of `_placeholders`, for the offer to honour.
+    private var _decided: [UUID: (decision: PlaceholderDecision, at: Date)] = [:]
     /// Past this a placeholder is dead — a same-island offer minutes later must not
     /// adopt a uuid CallKit has already torn down, which would ring nothing.
     private static let placeholderMaxAge: TimeInterval = 20
+    /// A decision waits for its offer as long as its wake may still be
+    /// looking (the drain, then the bounded queue pass); the wake discards
+    /// it when it gives up.
+    private static let decidedMaxAge: TimeInterval = 60
 
     private override init() {
         let config = CXProviderConfiguration()
@@ -214,23 +230,64 @@ final class CallProvider: NSObject, @unchecked Sendable {
         return uuid
     }
 
-    /// True while `uuid` is still the pending placeholder (nothing adopted it).
-    func placeholderIsPending(_ uuid: UUID) -> Bool {
-        mappingLock.lock()
-        defer { mappingLock.unlock() }
-        return _placeholders[uuid] != nil
-    }
-
     /// End a placeholder no offer ever claimed — the envelope failed to open,
     /// the sender is not an accepted contact, or the signal was not an offer.
     /// Without this the phone rings until the user answers a call that is not
     /// there.
     func discardPlaceholderIfUnadopted(_ uuid: UUID, reason: CXCallEndedReason = .failed) {
         mappingLock.lock()
-        guard _placeholders.removeValue(forKey: uuid) != nil else { mappingLock.unlock(); return }
+        let pending = _placeholders.removeValue(forKey: uuid) != nil
+        let decided = _decided.removeValue(forKey: uuid)
         mappingLock.unlock()
+        // Answered, and no offer ever came: CallKit shows a call in progress
+        // with nobody on it. Ended: CallKit has already let it go.
+        guard pending || decided?.decision == .answered else { return }
         print("[CallProvider] discarding unadopted placeholder uuid=\(uuid)")
         provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
+    }
+
+    /// Whether `uuid` is still looking for its offer: neutral, or answered or
+    /// ended by the person before it was found.
+    func placeholderAwaitsOffer(_ uuid: UUID) -> Bool {
+        mappingLock.lock()
+        defer { mappingLock.unlock() }
+        return _placeholders[uuid] != nil || _decided[uuid] != nil
+    }
+
+    /// The person's answer or End on a neutral ring, for the offer that has
+    /// just been found (the newest, made within `decidedMaxAge`).
+    func takePlaceholderDecision() -> (uuid: UUID, decision: PlaceholderDecision)? {
+        mappingLock.lock()
+        defer { mappingLock.unlock() }
+        let now = Date()
+        guard let newest = _decided
+            .filter({ now.timeIntervalSince($0.value.at) < Self.decidedMaxAge })
+            .max(by: { $0.value.at < $1.value.at })
+        else { return nil }
+        _decided.removeValue(forKey: newest.key)
+        return (newest.key, newest.value.decision)
+    }
+
+    /// An answered placeholder becomes the call: its uuid now stands for
+    /// `callID`, and it takes the caller's name.
+    func adoptAnsweredPlaceholder(_ uuid: UUID, callID: String, peerName: String, hasVideo: Bool) {
+        register(uuid: uuid, callID: callID)
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: peerName)
+        update.localizedCallerName = peerName
+        update.hasVideo = hasVideo
+        provider.reportCall(with: uuid, updated: update)
+    }
+
+    /// Moves a neutral ring the person acted on out of the pending set; an
+    /// End after an answer (still before the offer) replaces the answer.
+    /// Returns false when `uuid` is not a neutral ring (an ordinary call).
+    fileprivate func decidePlaceholder(_ uuid: UUID, _ decision: PlaceholderDecision) -> Bool {
+        mappingLock.lock()
+        defer { mappingLock.unlock() }
+        guard _placeholders.removeValue(forKey: uuid) != nil || _decided[uuid] != nil else { return false }
+        _decided[uuid] = (decision, Date())
+        return true
     }
 
     /// Takes the newest fresh placeholder. A stale one is never adopted (a
@@ -315,6 +372,9 @@ extension CallProvider: CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         print("[CallProvider] perform CXAnswerCallAction uuid=\(action.callUUID)")
         action.fulfill()
+        // A neutral ring: nothing to answer yet. The offer, once found,
+        // answers straight away (`CallService.handleIncomingOffer`).
+        if decidePlaceholder(action.callUUID, .answered) { return }
         Task { @MainActor in
             CallService.shared.acceptFromCallKit(uuid: action.callUUID)
         }
@@ -323,6 +383,8 @@ extension CallProvider: CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         print("[CallProvider] perform CXEndCallAction uuid=\(action.callUUID)")
         action.fulfill()
+        // A neutral ring: the offer, once found, is declined without ringing.
+        if decidePlaceholder(action.callUUID, .ended) { return }
         Task { @MainActor in
             CallService.shared.endFromCallKit(uuid: action.callUUID)
         }
