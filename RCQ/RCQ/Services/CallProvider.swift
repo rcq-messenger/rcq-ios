@@ -78,10 +78,9 @@ final class CallProvider: NSObject, @unchecked Sendable {
     /// Past this a placeholder is dead — a same-island offer minutes later must not
     /// adopt a uuid CallKit has already torn down, which would ring nothing.
     private static let placeholderMaxAge: TimeInterval = 20
-    /// A decision waits for its offer as long as its wake may still be
-    /// looking (the drain, then the bounded queue pass); the wake discards
-    /// it when it gives up.
-    private static let decidedMaxAge: TimeInterval = 60
+    // A decision waits for its offer as long as its wake is looking (the
+    // drain, then the bounded queue pass); the wake discards it when it gives
+    // up, so it needs no clock of its own.
 
     private override init() {
         let config = CXProviderConfiguration()
@@ -165,11 +164,14 @@ final class CallProvider: NSObject, @unchecked Sendable {
 
     // Synchronous: PushKit requires `reportNewIncomingCall` before delivery handler returns.
     @discardableResult
-    func reportIncoming(callID: String, peerName: String, hasVideo: Bool) -> UUID {
+    func reportIncoming(
+        callID: String, peerName: String, hasVideo: Bool, preferringPlaceholder wake: UUID? = nil
+    ) -> UUID {
         // Adopt a §5d placeholder if one is still waiting. Reporting a second
         // incoming call would leave TWO entries on the lock screen for one
-        // call, and only one of them wired to anything.
-        let adopted = claimPlaceholder()
+        // call, and only one of them wired to anything. The wake that found
+        // this offer names its own; otherwise the newest fresh one.
+        let adopted = claimPlaceholder(preferring: wake)
         let uuid = adopted ?? UUID()
         register(uuid: uuid, callID: callID)
         print("[CallProvider] reportIncoming callID=\(callID) uuid=\(uuid) peer=\(peerName) video=\(hasVideo) adopted=\(adopted != nil)")
@@ -254,18 +256,14 @@ final class CallProvider: NSObject, @unchecked Sendable {
         return _placeholders[uuid] != nil || _decided[uuid] != nil
     }
 
-    /// The person's answer or End on a neutral ring, for the offer that has
-    /// just been found (the newest, made within `decidedMaxAge`).
-    func takePlaceholderDecision() -> (uuid: UUID, decision: PlaceholderDecision)? {
+    /// The person's answer or End on the neutral ring of the wake `uuid`,
+    /// for the offer that wake has just found. Only that wake's own: the
+    /// newest decision of any wake went to whatever offer came next, a
+    /// same-island call on the live socket included (#1045 review).
+    func takePlaceholderDecision(for uuid: UUID) -> PlaceholderDecision? {
         mappingLock.lock()
         defer { mappingLock.unlock() }
-        let now = Date()
-        guard let newest = _decided
-            .filter({ now.timeIntervalSince($0.value.at) < Self.decidedMaxAge })
-            .max(by: { $0.value.at < $1.value.at })
-        else { return nil }
-        _decided.removeValue(forKey: newest.key)
-        return (newest.key, newest.value.decision)
+        return _decided.removeValue(forKey: uuid)?.decision
     }
 
     /// An answered placeholder becomes the call: its uuid now stands for
@@ -293,9 +291,10 @@ final class CallProvider: NSObject, @unchecked Sendable {
     /// Takes the newest fresh placeholder. A stale one is never adopted (a
     /// same-island offer minutes later must not rename a ring CallKit tore
     /// down); it stays listed for its own wake to discard.
-    private func claimPlaceholder() -> UUID? {
+    private func claimPlaceholder(preferring wake: UUID? = nil) -> UUID? {
         mappingLock.lock()
         defer { mappingLock.unlock() }
+        if let wake, _placeholders.removeValue(forKey: wake) != nil { return wake }
         let now = Date()
         guard let newest = _placeholders
             .filter({ now.timeIntervalSince($0.value) < Self.placeholderMaxAge })

@@ -65,6 +65,11 @@ final class CallService: ObservableObject {
     /// comes back, instead of connecting a call nobody can see or end.
     private var endRequestedDuringAnswer = false
 
+    /// This call's offer was answered on a neutral ring before it was found
+    /// (`CallProvider.PlaceholderDecision.answered`). The person is on the
+    /// CallKit screen already, so an End during the handshake is theirs.
+    private var answeredViaPlaceholder = false
+
     /// Offers already acted on, by call id, for ten minutes. See
     /// `handleIncomingOffer`.
     private var seenOfferIDs: [String: Date] = [:]
@@ -369,6 +374,8 @@ final class CallService: ObservableObject {
         print("[CallService] End pressed while the answer waited, declining (callID=\(call.id))")
         answering = false
         endRequestedDuringAnswer = false
+        // Never connected: the history says declined, not "failed".
+        answered = false
         sendEnd(call: call, reason: "declined")
         state = .ended(call, reason: "declined")
         CallProvider.shared.reportEnded(callID: call.id, reason: .declinedElsewhere)
@@ -391,8 +398,11 @@ final class CallService: ObservableObject {
             // (#1045 review, round 4). Whichever sent it, it ends the answer
             // there, once the handshake comes back; anywhere else the stray
             // end is swallowed as before.
-            if PanicPINService.shared.isLocked {
-                print("[CallService] endFromCallKit during a locked answer — declining after the handshake (callID=\(c.id))")
+            // Also for a call answered on a neutral ring: the person has been on
+            // its CallKit screen for seconds, and a swallowed End left a
+            // connected call with no screen and no sound (#1045 review).
+            if PanicPINService.shared.isLocked || answeredViaPlaceholder {
+                print("[CallService] endFromCallKit during a locked or placeholder answer — declining after the handshake (callID=\(c.id))")
                 endRequestedDuringAnswer = true
                 WebRTCManager.shared.cancelRelayProbeWait()
                 return
@@ -447,6 +457,7 @@ final class CallService: ObservableObject {
         answering = false
         answered = false
         endRequestedDuringAnswer = false
+        answeredViaPlaceholder = false
         state = .incomingRinging(call)
         armRingTimeout(callID: call.id)
         WebRTCManager.shared.strictRelay = PanicPINService.shared.isLocked
@@ -928,27 +939,34 @@ final class CallService: ObservableObject {
         // ring over, and anything else (a hang-up above all, which always
         // rides inline) leaves nothing to look for, so the ring comes down at
         // once instead of sounding through a queue fetch (#1045 review).
-        var opened = false
-        if let envelopeB64, !envelopeB64.isEmpty {
-            opened = MessageService.shared.openSealedWake(envelopeB64)
-        }
-        if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
-            await MessageService.shared.fetchOfflineQueue()
-        }
-        // ⚠ The drain above runs only into a store it can write, and the
-        // phone this rang is usually locked: the offer stayed in the queue
-        // and the ring came down unanswered (#1045 review, round 4). This pass
-        // reads the queue without acking or keeping anything and acts on the
-        // call signals alone; the drain after the unlock still owns the rows.
-        // Bounded: the ring is a neutral "incoming call" until it finds the
-        // offer, and a caller who has hung up meanwhile must not leave it
-        // sounding for as long as a slow network takes.
-        if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await MessageService.shared.actOnQueuedCallSignals() }
-                group.addTask { try? await Task.sleep(nanoseconds: Self.sealedWakePeekLimitNs) }
-                _ = await group.next()
-                group.cancelAll()
+        // ⚠ Everything this wake does to find its offer runs inside its scope,
+        // and only an offer found there may carry out what the person did to
+        // the neutral ring. An offer from any other road (the live socket, a
+        // same-island call, another drain) never inherits it: it was one of
+        // those that got declined or answered in its place (#1045 review).
+        await SealedWakeScope.$placeholder.withValue(placeholder) {
+            var opened = false
+            if let envelopeB64, !envelopeB64.isEmpty {
+                opened = MessageService.shared.openSealedWake(envelopeB64)
+            }
+            if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
+                await MessageService.shared.fetchOfflineQueue()
+            }
+            // ⚠ The drain above runs only into a store it can write, and the
+            // phone this rang is usually locked: the offer stayed in the queue
+            // and the ring came down unanswered (#1045 review, round 4). This pass
+            // reads the queue without acking or keeping anything and acts on the
+            // call signals alone; the drain after the unlock still owns the rows.
+            // Bounded: the ring is a neutral "incoming call" until it finds the
+            // offer, and a caller who has hung up meanwhile must not leave it
+            // sounding for as long as a slow network takes.
+            if !opened, CallProvider.shared.placeholderAwaitsOffer(placeholder) {
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { await MessageService.shared.actOnQueuedCallSignals() }
+                    group.addTask { try? await Task.sleep(nanoseconds: Self.sealedWakePeekLimitNs) }
+                    _ = await group.next()
+                    group.cancelAll()
+                }
             }
         }
         // Nothing claimed it: not an offer, not from an accepted contact, or it
@@ -1100,6 +1118,10 @@ final class CallService: ObservableObject {
         // no ended card: skip `.ended` entirely and drop to `.idle`, same as
         // web. CallKit still gets the report so its incoming UI comes down.
         if reason == "answered_elsewhere" {
+            // No row, by design: so none will ever tell the drain this call
+            // is accounted for, and its queued offer came back as "missed"
+            // after a restart (#1045 review).
+            HandledCallIDs.insert(callID)
             if let c = state.call, c.id == callID {
                 state = .idle
                 teardownAfterEnd()
@@ -1162,6 +1184,7 @@ final class CallService: ObservableObject {
         answering = false
         answered = false
         endRequestedDuringAnswer = false
+        answeredViaPlaceholder = false
         state = .incomingRinging(call)
         // It rings: whatever ends it writes its row, so the drain must not
         // file the queued offer as missed later. Not before the busy check
@@ -1182,8 +1205,9 @@ final class CallService: ObservableObject {
         // The person already acted on the neutral ring this offer belongs to
         // (a §5d wake that had to look for it): that decision stands. See
         // `CallProvider.PlaceholderDecision`.
-        if let decided = CallProvider.shared.takePlaceholderDecision() {
-            switch decided.decision {
+        if let wake = SealedWakeScope.placeholder,
+           let decision = CallProvider.shared.takePlaceholderDecision(for: wake) {
+            switch decision {
             case .ended:
                 print("[CallService] offer \(callID) found after its ring was ended, declining")
                 sendEnd(call: call, reason: "declined")
@@ -1193,8 +1217,9 @@ final class CallService: ObservableObject {
             case .answered:
                 print("[CallService] offer \(callID) found after its ring was answered, answering")
                 CallProvider.shared.adoptAnsweredPlaceholder(
-                    decided.uuid, callID: callID, peerName: displayName, hasVideo: media == .video
+                    wake, callID: callID, peerName: displayName, hasVideo: media == .video
                 )
+                answeredViaPlaceholder = true
                 performAnswerHandshake()
             }
             return
@@ -1202,7 +1227,8 @@ final class CallService: ObservableObject {
         CallProvider.shared.reportIncoming(
             callID: callID,
             peerName: displayName,
-            hasVideo: media == .video
+            hasVideo: media == .video,
+            preferringPlaceholder: SealedWakeScope.placeholder
         )
         #endif
     }
@@ -1245,6 +1271,7 @@ final class CallService: ObservableObject {
     private func teardownAfterEnd() {
         answering = false
         endRequestedDuringAnswer = false
+        answeredViaPlaceholder = false
         // ⚠ Safe to clear here: assigning `state = .ended` runs logCallEnded
         // synchronously, so the history row is already written by now.
         answered = false
@@ -1335,6 +1362,9 @@ final class CallService: ObservableObject {
 
     /// Burn-account hook; drops any in-flight call without signalling the peer.
     func wipe() {
+        // A call cut off here writes no row (it goes to `.idle`, not
+        // `.ended`); accounted for all the same (see `HandledCallIDs`).
+        if let c = state.call, !state.isEnded { HandledCallIDs.insert(c.id) }
         WebRTCManager.shared.close()
         pendingRemoteOffer = nil
         pendingRemoteIce.removeAll()
@@ -1345,6 +1375,7 @@ final class CallService: ObservableObject {
         connectedAt = nil
         answered = false
         endRequestedDuringAnswer = false
+        answeredViaPlaceholder = false
         lastCallDuration = nil
         isMinimized = false
         // A socket kept for a call is not carried into what comes next (an
@@ -1384,7 +1415,12 @@ final class CallService: ObservableObject {
     }
 
     private func logCallEnded(call: Call, reason: String, duration: TimeInterval?) {
-        if RandomChatService.shared.activePeer != nil { return }
+        // No row during a random chat; accounted for all the same (see
+        // `HandledCallIDs`).
+        if RandomChatService.shared.activePeer != nil {
+            HandledCallIDs.insert(call.id)
+            return
+        }
 
         let directionLabel = (call.direction == .outgoing
             ? "chat.call.outgoing" : "chat.call.incoming").localized
@@ -1496,4 +1532,11 @@ enum HandledCallIDs {
         if list.count > limit { list.removeFirst(list.count - limit) }
         UserDefaults.standard.set(list, forKey: key)
     }
+}
+
+/// The sealed wake whose own search for its offer is running in this task:
+/// its inline envelope, the drain it starts and its queue pass all inherit
+/// it, and nothing else does. See `CallService.handleSealedWake`.
+enum SealedWakeScope {
+    @TaskLocal static var placeholder: UUID?
 }
