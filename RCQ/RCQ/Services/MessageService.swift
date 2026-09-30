@@ -637,6 +637,9 @@ final class MessageService {
     /// message on the other side for good while this phone showed it deleted.
     func deleteForEveryone(message: Message, to contact: Contact) async throws {
         MessageStore.shared.deleteLocal(messageID: message.id, thread: .peer(uin: contact.uin))
+        // The account that deleted, read before the send's await: a switch
+        // during it must not file this retraction under the next account.
+        let key = retractionsKey
         do {
             try await sendEnvelope(
                 .deleteForEveryone(targetID: message.id),
@@ -644,7 +647,7 @@ final class MessageService {
                 localID: nil
             )
         } catch {
-            queueRetraction(target: message.id, peer: contact.uin)
+            queueRetraction(target: message.id, peer: contact.uin, key: key)
             throw error
         }
     }
@@ -662,24 +665,25 @@ final class MessageService {
         "rcq.retractions.v1." + (AccountManager.shared.activeAccountID?.uuidString ?? "none")
     }
 
-    private func loadRetractions() -> [PendingRetraction] {
-        guard let data = UserDefaults.standard.data(forKey: retractionsKey),
+    private func loadRetractions(_ key: String? = nil) -> [PendingRetraction] {
+        guard let data = UserDefaults.standard.data(forKey: key ?? retractionsKey),
               let list = try? JSONDecoder().decode([PendingRetraction].self, from: data) else { return [] }
         return list
     }
 
-    private func saveRetractions(_ list: [PendingRetraction]) {
+    private func saveRetractions(_ list: [PendingRetraction], key: String? = nil) {
+        let k = key ?? retractionsKey
         if list.isEmpty {
-            UserDefaults.standard.removeObject(forKey: retractionsKey)
+            UserDefaults.standard.removeObject(forKey: k)
         } else if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: retractionsKey)
+            UserDefaults.standard.set(data, forKey: k)
         }
     }
 
-    private func queueRetraction(target: UUID, peer: Int) {
-        var list = loadRetractions().filter { $0.target != target }
+    private func queueRetraction(target: UUID, peer: Int, key: String) {
+        var list = loadRetractions(key).filter { $0.target != target }
         list.append(PendingRetraction(target: target, peer: peer, at: Date().timeIntervalSince1970))
-        saveRetractions(Array(list.suffix(200)))
+        saveRetractions(Array(list.suffix(200)), key: key)
     }
 
     private var flushingRetractions = false
@@ -689,9 +693,11 @@ final class MessageService {
     func flushPendingRetractions() async {
         guard !flushingRetractions, !PanicPINService.shared.isDecoy else { return }
         let account = AccountManager.shared.activeAccountID
+        let key = retractionsKey
         let now = Date().timeIntervalSince1970
-        let pending = loadRetractions().filter { now - $0.at < 7 * 86_400 }
-        guard !pending.isEmpty else { saveRetractions([]); return }
+        let all = loadRetractions(key)
+        let pending = all.filter { now - $0.at < 7 * 86_400 }
+        guard !pending.isEmpty else { saveRetractions([], key: key); return }
         flushingRetractions = true
         defer { flushingRetractions = false }
         var left: [PendingRetraction] = []
@@ -707,10 +713,10 @@ final class MessageService {
                 left.append(r)
             }
         }
-        guard AccountManager.shared.activeAccountID == account else { return }
-        // Merge with anything queued while this ran.
-        let queuedMeanwhile = loadRetractions().filter { q in !pending.contains { $0.target == q.target } }
-        saveRetractions(left + queuedMeanwhile)
+        // Merge with anything queued while this ran (against everything read at
+        // the start, the expired included, so those finally go).
+        let queuedMeanwhile = loadRetractions(key).filter { q in !all.contains { $0.target == q.target } }
+        saveRetractions(left + queuedMeanwhile, key: key)
     }
 
     func deleteForEveryone(message: Message, toRandom peer: RandomPeer) async throws {
@@ -2019,9 +2025,10 @@ final class MessageService {
     /// A mismatch is a stranger using a contact's address, or a contact whose
     /// key rotated since we pinned it. Either way callers treat it as not
     /// accepted and never merge it into the contact silently.
-    static func verifiedCrossIslandContact(uin: Int, host: String, spub: String?) -> Contact? {
+    static func verifiedCrossIslandContact(uin: Int, host: String, spub: String?, exactAddress: Bool = false) -> Contact? {
         guard let row = CrossIslandStore.shared.all().first(where: { $0.uin == uin && $0.host == host })
         else {
+            if exactAddress { return nil }
             // The same person writing from another of their islands: a row
             // for this number under the SAME pinned key. The key is who they
             // are, the address only where the row came from: a backup made
@@ -2099,9 +2106,14 @@ final class MessageService {
         // Accepted AND signed by the key we pinned for them: `from` and
         // `from_host` sit outside the v=1 signature, so the address alone lets
         // anyone who read a key card ring as our contact.
+        //
+        // ⚠ The exact address only, not the same key on another of their
+        // islands (third review): the answer, ICE and hang-up go back to the
+        // address the contact is filed under, so a call from their other home
+        // would ring and then hang on "connecting".
         guard !Multihome.isOwnHost(fromHost),
               Self.verifiedCrossIslandContact(
-                  uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
+                  uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey, exactAddress: true
               ) != nil
         else { return .done }
         if sig == "call_offer" {
