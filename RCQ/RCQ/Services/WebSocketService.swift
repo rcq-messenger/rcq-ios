@@ -577,7 +577,21 @@ final class WebSocketService: ObservableObject {
                     // backoff continues either way: a transient mis-refusal
                     // must cost nothing.
                     let code = issuedTask.closeCode.rawValue
-                    if code == 4401 { self.probeAuthRejection() }
+                    // ⚠ The refusal that DOES arrive: a stale token is turned
+                    // away before the upgrade, as a plain HTTP 401/403 on the
+                    // handshake. Nothing read it, so after a phrase change on
+                    // another device, a number move or a copy turned resident,
+                    // the app redialled the dead token forever and sat on
+                    // "connecting" until a cold launch (Android fa8a62f).
+                    // It asks, but it never erases on this evidence: a 403 is
+                    // also what a gateway or a confused proxy answers.
+                    let refused = self.linkUp == false
+                        && [401, 403].contains((issuedTask.response as? HTTPURLResponse)?.statusCode ?? 0)
+                    if code == 4401 {
+                        self.probeAuthRejection(allowErase: true)
+                    } else if refused {
+                        self.probeAuthRejection(allowErase: false)
+                    }
                     self.handleDisconnect(superseded: code == 4000)
                 case .success(let msg):
                     self.handle(msg)
@@ -1016,7 +1030,7 @@ final class WebSocketService: ObservableObject {
     /// 4401 off and redials forever keeps sending sealed messages from an
     /// erased account, Android's #655). Mirrors Session.onSocketAuthRejected;
     /// web and the CLI just stop redialling. Never blocks the backoff.
-    private func probeAuthRejection() {
+    private func probeAuthRejection(allowErase: Bool) {
         // Never from a decoy session: the recover handshake signs with the
         // REAL account's Ed25519 key, and .identityUnknown below burns local
         // state; a coerced session must trigger neither. A decoy boot never
@@ -1028,8 +1042,15 @@ final class WebSocketService: ObservableObject {
         // Stamped before the await so redials inside the window skip cleanly
         // and two probes can never overlap.
         lastAuthProbeAt = Date()
+        // Whose token this is. The probe is a network wait, and a switch in
+        // the middle would otherwise write this account's fresh token into
+        // the NEXT account's Keychain slot (the Android review found exactly
+        // that): everything after the await asks again.
+        let account = AccountManager.shared.activeAccountID
         Task { @MainActor in
-            switch await AuthService.shared.recoverOwnSession(expectedUIN: expectedUIN) {
+            let answer = await AuthService.shared.recoverOwnSession(expectedUIN: expectedUIN)
+            guard AccountManager.shared.activeAccountID == account, self.lastUIN == expectedUIN else { return }
+            switch answer {
             case .recovered(let creds):
                 // Same persist as the boot-time recover branch: per-account
                 // Keychain slots (setString auto-routes), the HTTP layer, then
@@ -1041,6 +1062,11 @@ final class WebSocketService: ObservableObject {
                 if self.shouldStayConnected, let base = self.lastBaseURL {
                     self.connect(uin: creds.uin, token: creds.token, baseURL: base, serverToken: self.lastServerToken)
                 }
+            case .identityUnknown where !allowErase:
+                // A refused handshake is not the island saying the account is
+                // gone. Keep everything; the next 4401, if one ever comes, is
+                // the only thing allowed to decide that.
+                break
             case .identityUnknown:
                 // A real island completed the challenge handshake and then
                 // answered "identity unknown": the account is gone (burned
