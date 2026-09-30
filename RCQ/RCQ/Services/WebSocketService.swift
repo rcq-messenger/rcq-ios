@@ -368,6 +368,10 @@ final class WebSocketService: ObservableObject {
             Task { @MainActor in
                 guard let self, self.task === issuedTask else { return }
                 if error != nil {
+                    // The ping fails on a refused handshake too, and may be
+                    // the first to notice: the receive side then finds the
+                    // task gone and never looks (second review).
+                    self.noteRefusedHandshake(issuedTask)
                     self.handleDisconnect()
                 } else if !self.viaProxy {
                     self.lastFrameAt = Date()
@@ -587,12 +591,10 @@ final class WebSocketService: ObservableObject {
                     // "connecting" until a cold launch (Android fa8a62f).
                     // It asks, but it never erases on this evidence: a 403 is
                     // also what a gateway or a confused proxy answers.
-                    let refused = self.linkUp == false
-                        && [401, 403].contains((issuedTask.response as? HTTPURLResponse)?.statusCode ?? 0)
                     if code == 4401 {
                         self.probeAuthRejection(allowErase: true)
-                    } else if refused {
-                        self.probeAuthRejection(allowErase: false)
+                    } else {
+                        self.noteRefusedHandshake(issuedTask)
                     }
                     self.handleDisconnect(superseded: code == 4000)
                 case .success(let msg):
@@ -1032,6 +1034,16 @@ final class WebSocketService: ObservableObject {
     /// 4401 off and redials forever keeps sending sealed messages from an
     /// erased account, Android's #655). Mirrors Session.onSocketAuthRejected;
     /// web and the CLI just stop redialling. Never blocks the backoff.
+    /// A handshake the island turned away with HTTP 401/403 (a stale token is
+    /// refused before the upgrade): ask once, never erase on it. Throttled by
+    /// `probeAuthRejection`, so the two failure paths that may both see it
+    /// cost one probe.
+    private func noteRefusedHandshake(_ t: URLSessionWebSocketTask) {
+        guard !linkUp, let status = (t.response as? HTTPURLResponse)?.statusCode,
+              status == 401 || status == 403 else { return }
+        probeAuthRejection(allowErase: false)
+    }
+
     private func probeAuthRejection(allowErase: Bool) {
         // Never from a decoy session: the recover handshake signs with the
         // REAL account's Ed25519 key, and .identityUnknown below burns local

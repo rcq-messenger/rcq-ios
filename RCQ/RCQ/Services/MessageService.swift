@@ -2021,7 +2021,19 @@ final class MessageService {
     /// accepted and never merge it into the contact silently.
     static func verifiedCrossIslandContact(uin: Int, host: String, spub: String?) -> Contact? {
         guard let row = CrossIslandStore.shared.all().first(where: { $0.uin == uin && $0.host == host })
-        else { return nil }
+        else {
+            // The same person writing from another of their islands: a row
+            // for this number under the SAME pinned key. The key is who they
+            // are, the address only where the row came from: a backup made
+            // primary writes from its new home, and the row kept after
+            // collapsing duplicates may be their other home (#1061 review).
+            // Without this their mail went to requests and the accept was
+            // refused as a number already held.
+            guard let spub, let got = Data(base64Encoded: spub), !got.isEmpty else { return nil }
+            return CrossIslandStore.shared.all().first {
+                $0.uin == uin && Data(base64Encoded: $0.signingKey) == got
+            }
+        }
         guard let spub,
               let got = Data(base64Encoded: spub), !got.isEmpty,
               let pinned = Data(base64Encoded: row.signingKey), got == pinned

@@ -160,7 +160,15 @@ final class CrossIslandStore: ObservableObject {
         let groups = Dictionary(grouping: cache) { "\($0.value.uin)|\($0.value.signingKey)" }
         let drop = groups.values
             .filter { $0.count > 1 }
-            .flatMap { same in same.sorted { (addedAt[$0.key] ?? 0) < (addedAt[$1.key] ?? 0) }.dropFirst() }
+            // Ties broken by address, the same way on every client: rows
+            // stamped in one go share a time, and two devices keeping
+            // different rows would bury both between them.
+            .flatMap { same in
+                same.sorted {
+                    let a = addedAt[$0.key] ?? 0, b = addedAt[$1.key] ?? 0
+                    return a != b ? a < b : $0.key < $1.key
+                }.dropFirst()
+            }
         guard !drop.isEmpty else { return }
         let now = Date().timeIntervalSince1970 * 1000
         for (key, _) in drop {
