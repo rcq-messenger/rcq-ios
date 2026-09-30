@@ -1317,7 +1317,9 @@ final class MessageService {
                 // Cross-island contact: deposit to their home(s) (gossip-aware).
                 var homes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: c.uin, peerSigningKey: c.signingKey)
                 if homes.isEmpty { homes = [RcqFederation.Home(host: host, uin: c.uin)] }
-                for h in homes { _ = await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: blob) }
+                // Typed like the same-island branch below: as a "message" it
+                // woke their phone with a "New message" for a record nobody reads.
+                for h in homes { _ = await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: blob, envelopeType: "homerec") }
             } else {
                 // Flagship contact: non-pushable type so it doesn't buzz them.
                 _ = try? await APIClient.shared.request(

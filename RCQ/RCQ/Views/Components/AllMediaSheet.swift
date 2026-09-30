@@ -36,8 +36,11 @@ struct AllMediaSheet: View {
                             ForEach(Array(mediaItems.enumerated()), id: \.element.id) { idx, m in
                                 MediaThumbCell(message: m)
                                     .onTapGesture {
+                                        // The grid pages through every photo
+                                        // and video of the chat, spoilers the
+                                        // person never opened included.
                                         AlbumViewerPresenter.present(
-                                            items: mediaItems, initialIndex: idx
+                                            items: mediaItems, initialIndex: idx, coverSpoilers: true
                                         )
                                     }
                             }
@@ -77,7 +80,7 @@ private struct MediaThumbCell: View {
             } else {
                 ProgressView().tint(Theme.Color.textSecondary)
             }
-            if isVideo {
+            if isVideo && !message.isSpoiler {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 22))
                     .foregroundColor(.white.opacity(0.9))
@@ -86,6 +89,9 @@ private struct MediaThumbCell: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
+        // A spoiler tile stays blurred here: the tap opens the viewer, where
+        // the page asks to be revealed on its own.
+        .modifier(SpoilerCover(active: message.isSpoiler, tapToReveal: false) {})
         .contentShape(Rectangle())
         .task(id: message.id) { await load() }
     }

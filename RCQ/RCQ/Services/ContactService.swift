@@ -437,6 +437,9 @@ final class ContactService: ObservableObject {
     /// by number would take whichever row came first (#1061).
     func numberHeldElsewhere(uin: Int, host: String) -> Bool {
         let want = Self.canonHost(host)
+        // Our own number over there is somebody else under the number Saved
+        // Messages is filed by, and every row they send reads as forged.
+        if uin == MessageService.shared.ownUIN { return true }
         if contacts.contains(where: { $0.uin == uin && ($0.host.map { Multihome.isOwnHost($0) } ?? true) }) { return true }
         return CrossIslandStore.shared.all().contains { $0.uin == uin && Self.canonHost($0.host ?? "") != want }
     }

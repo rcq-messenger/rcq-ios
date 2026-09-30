@@ -885,7 +885,10 @@ enum Multihome {
         // account's rows with the crypto object it still holds and file them,
         // `contactreq` included, under the incoming one (founder, 30.08).
         let accountID = AccountManager.shared.activeAccountID
-        await refreshFailover(ownUin: ownUin, accountID: accountID)
+        // Beside the drain, not before it: while the primary is down (the one
+        // time this loop matters) the probe waits out its timeout, and the
+        // backup's mail should not wait with it.
+        Task { @MainActor in await refreshFailover(ownUin: ownUin, accountID: accountID) }
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
             // ⚠ A phantom front home is OUR OWN island: draining it hits the
             // account's real queue through the front with an unnamed recover

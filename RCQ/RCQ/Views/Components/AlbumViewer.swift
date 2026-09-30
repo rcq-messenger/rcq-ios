@@ -11,7 +11,11 @@ import UIKit
 /// dismisses (suppressed while zoomed).
 @MainActor
 enum AlbumViewerPresenter {
-    static func present(items: [Message], initialIndex: Int, onClose: @escaping () -> Void = {}) {
+    /// `coverSpoilers`: start every spoiler page covered, for a pager that
+    /// reaches media the person never revealed (the all-media grid). A bubble
+    /// opens the viewer only once its spoiler was revealed, so it leaves this
+    /// off.
+    static func present(items: [Message], initialIndex: Int, coverSpoilers: Bool = false, onClose: @escaping () -> Void = {}) {
         guard let top = topViewController() else {
             onClose()
             return
@@ -20,6 +24,7 @@ enum AlbumViewerPresenter {
         let vc = AlbumViewerVC(
             items: items,
             initialIndex: initialIndex,
+            coverSpoilers: coverSpoilers,
             onDismiss: {
                 hostRef?.dismiss(animated: false) { onClose() }
             }
@@ -54,6 +59,7 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
 
     private let items: [Message]
     private let initialIndex: Int
+    private let coverSpoilers: Bool
     private let onDismiss: () -> Void
 
     private let scrollView = UIScrollView()
@@ -84,8 +90,9 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
     private var dismissAxis: DismissAxis?
     private enum DismissAxis { case vertical, horizontal }
 
-    init(items: [Message], initialIndex: Int, onDismiss: @escaping () -> Void) {
+    init(items: [Message], initialIndex: Int, coverSpoilers: Bool = false, onDismiss: @escaping () -> Void) {
         self.items = items
+        self.coverSpoilers = coverSpoilers
         self.initialIndex = max(0, min(initialIndex, items.count - 1))
         self.currentIndex = self.initialIndex
         self.onDismiss = onDismiss
@@ -296,6 +303,7 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
     private func makePage(message: Message, index: Int) -> AlbumPage {
         AlbumPage(
             message: message,
+            coverSpoiler: coverSpoilers && message.isSpoiler,
             isCurrent: index == currentIndex,
             chromeVisible: !chromeHidden,
             bottomInset: videoControlsInset,
@@ -657,6 +665,9 @@ final class AlbumViewerVC: UIViewController, UIScrollViewDelegate, UIGestureReco
 /// layer with our own transport.
 struct AlbumPage: View {
     let message: Message
+    /// A spoiler nobody revealed yet: nothing of it is drawn, and a video
+    /// neither loads nor plays, until the page itself is tapped.
+    var coverSpoiler: Bool = false
     let isCurrent: Bool
     /// Drives the video transport's fade so it rises and falls with the
     /// close / save / sender chrome instead of on its own schedule.
@@ -666,8 +677,32 @@ struct AlbumPage: View {
     let onTap: () -> Void
     let onInteraction: () -> Void
     let onZoomChanged: (Bool) -> Void
+    /// Survives `refreshPages` (same view identity, new inputs), so a page
+    /// revealed once stays revealed while the viewer is open.
+    @State private var revealed = false
 
     var body: some View {
+        if coverSpoiler && !revealed {
+            ZStack {
+                Color.black
+                VStack(spacing: 10) {
+                    Image(systemName: "eye.slash.fill")
+                        .font(.system(size: 30))
+                    Text("chat.spoiler.reveal".localized)
+                        .font(.callout)
+                }
+                .foregroundColor(.white.opacity(0.85))
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.25)) { revealed = true } }
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch message.kind {
         case .photo:
             AlbumImagePage(message: message, onTap: onTap, onZoomChanged: onZoomChanged)
