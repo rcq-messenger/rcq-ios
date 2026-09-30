@@ -431,6 +431,19 @@ final class ContactService: ObservableObject {
         var clash = false
     }
 
+    /// Add the person a backup copy belongs to, at their real address (#1054).
+    /// Nil when their home's card does not hold the copy's own signing key:
+    /// anybody can sign "my home is X" about X, so the copy's word alone never
+    /// picks whom to add.
+    func addBackupCopyHome(_ home: HomeRef, copySigningKey: String) async -> CrossIslandAddOutcome? {
+        guard let card = await CrossIslandSender.fetchCard(host: home.host, uin: home.uin) else {
+            return CrossIslandAddOutcome(added: false, announced: false)
+        }
+        guard let a = Data(base64Encoded: card.signing_key), let b = Data(base64Encoded: copySigningKey),
+              !a.isEmpty, a == b else { return nil }
+        return await addCrossIslandContact(uin: home.uin, host: home.host, card: card, announce: .request)
+    }
+
     /// Is `uin` already a contact on an island other than `host` (our own
     /// included)? A conversation is keyed by the bare number, so `N@a` next to
     /// `N@b` or next to our own `N` would share one history, and every lookup

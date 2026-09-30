@@ -1593,6 +1593,9 @@
 
 "ci.closed_island" = "Esta isla es cerrada. Para escribirle a alguien de ahí hace falta un enlace suyo: que comparta su contacto, o que te escriba primero.";
 "ci.number_clash" = "Ya tienes un contacto con el número %1$@ en otra isla. Una conversación se archiva solo por el número, así que un segundo %1$@ compartiría ese historial. No se ha añadido.";
+"ci.backup.copy_of" = "Copia de respaldo de la cuenta %1$@";
+"ci.backup.add_home" = "Añadir %1$@";
+"ci.backup.key_mismatch" = "No añadido: la cuenta en esa dirección tiene una clave distinta a la de esta copia de respaldo, así que la copia puede no ser suya.";
 
 "island.entry.price" = "%@ una vez";
 "island.entry.closed" = "Club cerrado";

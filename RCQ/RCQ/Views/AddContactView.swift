@@ -484,6 +484,12 @@ private struct AddDetailView: View {
     @State private var sending = false
     @State private var sent = false
     @State private var errorMessage: String? = nil
+    /// The island refused the request because this is somebody's backup copy
+    /// (a card from before `home` was served, or a record published a moment
+    /// ago). Read together with the card's own `home`.
+    @State private var refusedHome: HomeRef? = nil
+
+    private var copyHome: HomeRef? { user.home ?? refusedHome }
 
     private var alreadyInList: Bool {
         contacts.contacts.contains(where: { $0.uin == user.uin })
@@ -512,10 +518,21 @@ private struct AddDetailView: View {
                     Text(about).font(.body).foregroundColor(Theme.Color.textSecondary)
                         .multilineTextAlignment(.center).padding(.horizontal, 24)
                 }
+                if let home = copyHome, !alreadyInList {
+                    // A backup copy is a mailbox, not a person (#1054): say
+                    // whose it is and add the person at that address instead.
+                    Text(String(format: "ci.backup.copy_of".localized, "\(home.uin)@\(home.host)"))
+                        .font(.footnote).foregroundColor(Theme.Color.textSecondary)
+                        .multilineTextAlignment(.center).padding(.horizontal, 24)
+                }
                 Button {
-                    Task { await sendRequest() }
+                    Task {
+                        if let home = copyHome, !alreadyInList { await addHome(home) } else { await sendRequest() }
+                    }
                 } label: {
-                    Text(buttonState.text)
+                    Text(copyHome != nil && !alreadyInList && !(sent || alreadySent) && !sending
+                         ? String(format: "ci.backup.add_home".localized, "\(copyHome!.uin)@\(copyHome!.host)")
+                         : buttonState.text)
                         .font(.system(.body, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -554,9 +571,41 @@ private struct AddDetailView: View {
         } catch let APIError.http(code, _) where code == 409 {
             errorMessage = "add.error.duplicate".localized
             await ContactService.shared.refresh()
+        } catch let APIError.http(code, body) where code == 403 && Self.backupCopyHome(body) != nil {
+            // A backup copy (#1054): the card now offers the real address.
+            refusedHome = Self.backupCopyHome(body)
         } catch {
             errorMessage = String(format: "add.error.generic".localized, error.localizedDescription)
         }
+    }
+
+    private func addHome(_ home: HomeRef) async {
+        sending = true
+        errorMessage = nil
+        defer { sending = false }
+        guard let r = await ContactService.shared.addBackupCopyHome(home, copySigningKey: user.signingKey) else {
+            errorMessage = "ci.backup.key_mismatch".localized
+            return
+        }
+        if r.clash {
+            errorMessage = String(format: "ci.number_clash".localized, "\(home.uin)")
+        } else if r.added {
+            onSent()
+            sent = true
+            if !r.announced { errorMessage = "ci.request_not_sent".localized }
+        } else {
+            errorMessage = String(format: "add.error.generic".localized, "\(home.uin)@\(home.host)")
+        }
+    }
+
+    /// `{"detail": {"code": "backup_copy", "home_host": …, "home_uin": …}}`.
+    static func backupCopyHome(_ body: String?) -> HomeRef? {
+        guard let data = body?.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let d = obj["detail"] as? [String: Any], d["code"] as? String == "backup_copy",
+              let host = d["home_host"] as? String, !host.isEmpty,
+              let uin = (d["home_uin"] as? Int) ?? (d["home_uin"] as? String).flatMap(Int.init) else { return nil }
+        return HomeRef(host: host, uin: uin)
     }
 }
 

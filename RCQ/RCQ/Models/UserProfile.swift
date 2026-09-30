@@ -1,7 +1,17 @@
 import Foundation
 
+/// Where a backup copy's owner lives (#1054): the island marks a copy with
+/// its owner's home address on search, profiles and outgoing requests.
+struct HomeRef: Codable, Hashable {
+    let host: String
+    let uin: Int
+}
+
 struct UserProfile: Codable, Hashable {
     var uin: Int
+    /// Set when this account is somebody's backup copy: a mailbox, not a
+    /// person. A request to it is never read; the person is at `home`.
+    var home: HomeRef? = nil
     var nickname: String
     var firstName: String?
     var lastName: String?
@@ -104,7 +114,7 @@ struct UserProfile: Codable, Hashable {
     /// keeps what it last knew rather than clearing on a silent island.
     var guest: Bool?
     enum CodingKeys: String, CodingKey {
-        case uin, nickname, badge, guest
+        case uin, nickname, badge, guest, home
         case firstName = "first_name"
         case lastName = "last_name"
         case age, gender, city, country, about, interests, homepage

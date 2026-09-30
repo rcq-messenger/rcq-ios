@@ -1584,6 +1584,9 @@
 
 "ci.closed_island" = "这个岛屿是封闭的。要给那里的人写信，需要他本人给你的链接：他分享联系方式，或者先给你写信。";
 "ci.number_clash" = "你在另一个岛上已经有一个号码为 %1$@ 的联系人。会话目前仅按号码归档，第二个 %1$@ 会和它共用同一段聊天记录。未添加。";
+"ci.backup.copy_of" = "账号 %1$@ 的备份副本";
+"ci.backup.add_home" = "添加 %1$@";
+"ci.backup.key_mismatch" = "未添加：那个地址上的账号与这个备份副本的密钥不同，这个副本可能不属于对方。";
 
 "island.entry.price" = "一次性 %@";
 "island.entry.closed" = "封闭俱乐部";
