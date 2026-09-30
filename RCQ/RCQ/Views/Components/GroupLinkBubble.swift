@@ -268,6 +268,14 @@ struct PinnedGroupChip: View {
 
     @State private var preview: GroupService.GroupPreview?
 
+    /// The name this device already holds for a room the reader is in, drawn
+    /// while the card loads or when it cannot be fetched (#1051, as Android):
+    /// a bare number in the pinned bar says nothing.
+    private var localName: String? {
+        guard foreignHost == nil else { return nil }
+        return GroupService.shared.groups.first(where: { $0.id == groupID && $0.host == nil })?.name
+    }
+
     private var foreignHost: String? {
         guard let host, !Multihome.isOwnHost(host) else { return nil }
         return host
@@ -283,7 +291,7 @@ struct PinnedGroupChip: View {
                 )
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(preview?.name ?? (foreignHost != nil ? "group_join.island".localized : "\(groupID)"))
+                    Text(preview?.name ?? localName ?? (foreignHost != nil ? "group_join.island".localized : "\(groupID)"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(Theme.Color.textPrimary)
                         .lineLimit(1)
@@ -324,11 +332,20 @@ struct PinnedGroupChip: View {
                 preview = cached
                 return
             }
-            let fetched: GroupService.GroupPreview?
-            if let foreignHost {
-                fetched = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
-            } else {
-                fetched = await GroupService.shared.fetchPreview(groupID: groupID)
+            // A failed card is asked again twice, a little later each time: a
+            // pin with several links opened in a burst can meet the preview
+            // limit, and a placeholder that never fills in stays for the life
+            // of the banner (#1051). Cancelled with the view.
+            var fetched: GroupService.GroupPreview? = nil
+            for delay in [0, 2, 6] as [UInt64] {
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
+                if Task.isCancelled { return }
+                if let foreignHost {
+                    fetched = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
+                } else {
+                    fetched = await GroupService.shared.fetchPreview(groupID: groupID)
+                }
+                if fetched != nil { break }
             }
             if let fetched {
                 PinnedGroupPreviewCache.put(fetched, host: foreignHost, groupID: groupID)
