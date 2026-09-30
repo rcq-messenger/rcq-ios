@@ -46,6 +46,12 @@ final class CrossIslandRequestsStore: ObservableObject {
         let payload: String
         let preview: String
         var sentAt: Date? = nil
+        /// The held message's id and the key that sealed it (base64; "" for a
+        /// same-island row, whose ratchet vouches for the sender), so its
+        /// author can take it back with a delete for everyone. Nil on rows
+        /// held before.
+        var id: String? = nil
+        var spub: String? = nil
     }
 
     struct Request: Codable, Identifiable {
@@ -178,11 +184,14 @@ final class CrossIslandRequestsStore: ObservableObject {
     /// from the opt-in stranger quarantine).
     /// Returns false (caller drops it) when the sender is blocked.
     @discardableResult
-    func hold(uin: Int, host: String, payload: String, preview: String, sentAt: Date? = nil) -> Bool {
+    func hold(
+        uin: Int, host: String, payload: String, preview: String, sentAt: Date? = nil,
+        id: String? = nil, spub: String? = nil
+    ) -> Bool {
         if isBlocked(uin: uin, host: host) { return false }
         let k = reqKey(uin, host)
         var r = cache[k] ?? Request(uin: uin, host: host, firstAt: Date(), msgs: [])
-        r.msgs.append(Held(payload: payload, preview: preview, sentAt: sentAt))
+        r.msgs.append(Held(payload: payload, preview: preview, sentAt: sentAt, id: id, spub: spub))
         if r.msgs.count > Self.maxHeld { r.msgs = Array(r.msgs.suffix(Self.maxHeld)) }
         cache[k] = r
         persist()
@@ -355,6 +364,32 @@ final class CrossIslandRequestsStore: ObservableObject {
     func list() -> [Request] { cache.values.sorted { $0.firstAt > $1.firstAt } }
 
     func count() -> Int { cache.count }
+
+    /// The sender deleted a held message for everyone before we answered. A
+    /// control from somebody not yet accepted is dropped at the gate, so the
+    /// message used to stay and the accept replayed what its author had taken
+    /// back. Only the key that sealed the held message can retract it. A row
+    /// left with nothing in it goes too, unless it is an explicit contact
+    /// request or stands for one on an island's pending list.
+    @discardableResult
+    func retract(uin: Int, host: String, targetID: UUID, spub: String) -> Bool {
+        let k = reqKey(uin, host)
+        guard var r = cache[k] else { return false }
+        let before = r.msgs.count
+        r.msgs.removeAll { held in
+            guard let id = held.id.flatMap(UUID.init(uuidString:)), id == targetID else { return false }
+            return held.spub == spub
+        }
+        guard r.msgs.count != before else { return false }
+        if r.msgs.isEmpty && !r.isContactRequest && r.serverRequestID == nil {
+            cache[k] = nil
+        } else {
+            cache[k] = r
+        }
+        persist()
+        changed()
+        return true
+    }
 
     /// Drop a request and return it (after Accept replays its messages).
     @discardableResult

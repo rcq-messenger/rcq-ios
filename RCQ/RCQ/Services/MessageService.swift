@@ -1915,6 +1915,16 @@ final class MessageService {
     /// The same content predicate as the same-island stranger quarantine, plus
     /// `poll`, which files a visible row on this client (the plan's list for
     /// #985 names it with the content kinds) and so is content, not control.
+    /// The id a delete would name for a held content envelope, read off its
+    /// wire form (every content kind carries one), else nil.
+    static func heldMessageID(_ env: Envelope) -> String? {
+        guard let data = try? JSONEncoder().encode(env),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = obj["id"] as? String,
+              let uuid = UUID(uuidString: id) else { return nil }
+        return uuid.uuidString
+    }
+
     static func isCrossIslandHeldKind(_ env: Envelope) -> Bool {
         if case .poll = env { return true }
         return StrangerQuarantine.isContentKind(env)
@@ -2530,7 +2540,15 @@ final class MessageService {
                 if Self.isCrossIslandHeldKind(decrypted.envelope) {
                     CrossIslandRequestsStore.shared.hold(
                         uin: decrypted.senderUIN, host: fromHost,
-                        payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope)
+                        payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope),
+                        id: Self.heldMessageID(decrypted.envelope), spub: decrypted.senderSigningKey ?? ""
+                    )
+                } else if case .deleteForEveryone(let target) = decrypted.envelope {
+                    // Dropped, except for what it says about a message we hold
+                    // from them: the accept would replay it otherwise.
+                    CrossIslandRequestsStore.shared.retract(
+                        uin: decrypted.senderUIN, host: fromHost, targetID: target,
+                        spub: decrypted.senderSigningKey ?? ""
                     )
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
@@ -2741,9 +2759,16 @@ final class MessageService {
                     uin: decrypted.senderUIN, host: "",
                     payload: String(decoding: plain, as: UTF8.self),
                     preview: Self.requestPreview(for: decrypted.envelope),
-                    sentAt: ws.serverTime
+                    sentAt: ws.serverTime,
+                    id: Self.heldMessageID(decrypted.envelope), spub: ""
                 )
                 // Held and persisted - ACK the queue row; no badge, no banner.
+                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+            // A stranger deleting for everyone a message we still hold.
+            if ws.groupID == nil, Multihome.isOwnHost(decrypted.senderHost),
+               case .deleteForEveryone(let target) = decrypted.envelope,
+               CrossIslandRequestsStore.shared.retract(uin: decrypted.senderUIN, host: "", targetID: target, spub: "") {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             // Sealed sender lets anyone-message-anyone. If the sender
