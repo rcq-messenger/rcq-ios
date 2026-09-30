@@ -146,6 +146,7 @@
 "multihome.err.already" = "This island is already added.";
 "multihome.err.generic" = "Could not connect to the island.";
 "multihome.promote" = "Make primary";
+"multihome.via_backup" = "Your island is not answering. Messages are arriving through your backup island. Tap to make it your primary island and send from it too.";
 "multihome.promote.title" = "Make this island primary?";
 "multihome.promote.body" = "The app will switch to %@: your number and address become the ones from that island, and the current primary island becomes a backup. Chat history stays on this device. Contacts will see a routine security-code change.";
 "multihome.promote.confirm" = "Make primary";

@@ -2157,14 +2157,28 @@ struct BackupIslandView: View {
                                 ProgressView().scaleEffect(0.7)
                             }
                         }
+                        // Promotable like a manual row (#1060): the automatic backup
+                        // is the only one most people have, and "make it primary"
+                        // is the one way to send during an outage. Same safety as a
+                        // manual row (recover first, nothing changes on a failure,
+                        // the old primary stays as a backup). No "remove": the
+                        // toggle above is how an automatic backup goes away.
                         ForEach(autoHomes) { h in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(h.host)
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundColor(Theme.Color.textPrimary)
-                                Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
-                                    .font(.caption)
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(h.host)
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                                Spacer()
+                                Button("multihome.promote".localized) { promoteTarget = h }
+                                    .font(.callout)
                                     .foregroundColor(Theme.Color.textSecondary)
+                                    .buttonStyle(.borderless)
+                                    .disabled(busy)
                             }
                         }
                         if let error {
@@ -2279,7 +2293,13 @@ struct BackupIslandView: View {
             let err = await appState.promoteBackupToPrimary(host: home.host)
             await MainActor.run {
                 busy = false
-                if let err { error = err } else { reload() }
+                if let err { error = err } else {
+                    reload()
+                    // The old primary comes back as a MANUAL backup, listed in
+                    // the block that starts closed for anyone who never added
+                    // one by hand: open it, or the island just left is nowhere.
+                    advanced = true
+                }
             }
         }
     }

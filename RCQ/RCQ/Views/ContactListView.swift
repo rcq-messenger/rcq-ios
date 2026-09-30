@@ -442,6 +442,7 @@ struct ContactListView: View {
             .sheet(isPresented: $showGuestSettle) {
                 GuestSettleSheet(target: .primary)
             }
+            .sheet(isPresented: $showBackupIsland) { BackupIslandView().environmentObject(appState) }
             .sheet(isPresented: $showCreateGroup) {
                 CreateGroupView { group in
                     showCreateGroup = false
@@ -1197,6 +1198,9 @@ struct ContactListView: View {
     @ObservedObject private var guestSession = GuestSession.shared
     private var guestCopy: Bool { guestSession.isPrimaryGuestCopy }
     @State private var showGuestSettle = false
+    /// "Your island is not answering" (Android's banner of the same words).
+    @ObservedObject private var failover = BackupFailover.shared
+    @State private var showBackupIsland = false
     /// The room whose leave is waiting on the last-resident warning (D8).
     @State private var leaveWarningGroup: RCQGroup?
     /// Rooms whose last-resident check is in the air (F6). A swipe or a
@@ -1205,6 +1209,30 @@ struct ContactListView: View {
     /// fetch starts a second check, and two checks that both come back "no
     /// warning" send two leaves for one room.
     @State private var leaveChecking: Set<Int> = []
+
+    /// The primary island does not answer and mail arrives through the
+    /// backup. A tap opens Backup island, where either backup can be made
+    /// primary: the sentence promises exactly that, so it goes there itself.
+    private var viaBackupBanner: some View {
+        Button {
+            showBackupIsland = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundColor(Theme.Color.statusBusy)
+                Text("multihome.via_backup".localized)
+                    .font(.footnote)
+                    .foregroundColor(Theme.Color.statusBusy)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Metrics.rowHPad)
+            .padding(.vertical, 10)
+            .wallpaperSurface(Theme.Color.bgSecondary, wallpaperSurfaceMode)
+        }
+        .buttonStyle(.plain)
+    }
 
     /// "This is your guest copy for groups on {host}", with the way out of it
     /// under the sentence (spec 12.5, 9.1). Sits with the other banners at the
@@ -1279,6 +1307,11 @@ struct ContactListView: View {
                 }
                 // Never in a decoy session: the duress view has no island of
                 // its own to be a guest of, and the sentence names one.
+                // Never in a decoy session either: it says the real account
+                // keeps a backup on another island.
+                if failover.receivingViaBackup && !panicPIN.isDecoy {
+                    viaBackupBanner
+                }
                 if guestCopy && !panicPIN.isDecoy {
                     guestCopyBanner
                 }

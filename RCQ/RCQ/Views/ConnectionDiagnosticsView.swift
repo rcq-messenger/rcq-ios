@@ -111,14 +111,21 @@ struct ConnectionDiagnosticsView: View {
                 .foregroundColor(Theme.Color.textSecondary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 12) {
-                Button(copied ? "audit.copied".localized : "audit.copy".localized) {
+            // Icons, like Android (#1059): copy and share beside the line.
+            HStack(spacing: 16) {
+                Spacer()
+                Button {
                     UIPasteboard.general.string = a.compact
                     copied = true
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 }
-                ShareLink(item: a.compact) { Text("common.share".localized) }
+                .accessibilityLabel(copied ? "audit.copied".localized : "audit.copy".localized)
+                ShareLink(item: a.compact) { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel("common.share".localized)
             }
-            .font(.callout)
+            .font(.body)
+            .foregroundColor(Theme.Color.accent)
         }
         }
     }

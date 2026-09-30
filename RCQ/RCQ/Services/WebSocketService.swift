@@ -208,6 +208,10 @@ final class WebSocketService: ObservableObject {
         guard which === task else { return }
         lastFrameAt = Date()
         linkUp = true
+        // The primary answered: whatever the backup poll thought, this is not
+        // a failover any more. Guarded so an upgrade does not publish a change
+        // to the chat list for nothing.
+        if BackupFailover.shared.receivingViaBackup { BackupFailover.shared.receivingViaBackup = false }
         // ⚠ The vault's nudge is pub/sub with NO REPLAY: a slot another device
         // wrote while this socket was down is never announced again. A
         // reconnect is exactly the moment that gap closes, so one `GET /vault`

@@ -1173,14 +1173,25 @@ final class MessageService {
             // address we have when nothing verifies anywhere.
             var ciHomes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: contact.uin, peerSigningKey: contact.signingKey)
             if ciHomes.isEmpty { ciHomes = [RcqFederation.Home(host: host, uin: contact.uin)] }
+            // ⚠ The envelope's own outer type, as on the same-island path below.
+            // Every cross-island deposit went out as "message", so a receipt,
+            // an edit, a delete or a reaction to somebody on another island was
+            // pushed to them as a "New message" that led nowhere (#1047's
+            // phantom wake, across islands).
+            let ciEnvType = envelopeType(for: envelope)
             for h in ciHomes {
                 // F3: attach an anonymous deposit token (mintToken) on the
                 // cross-island 1:1 message path — the permissionless-spam vector.
-                if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob, mintToken: true) { ok = true }
+                if await CrossIslandSender.deposit(host: h.host, uin: h.uin, payload: ciBlob, mintToken: true, envelopeType: ciEnvType) { ok = true }
             }
             if let localID {
                 MessageStore.shared.updateState(messageID: localID, thread: .peer(uin: contact.uin), state: ok ? .sent : .failed)
             }
+            // ⚠ Mirror it to our other devices, like the same-island path below
+            // (#1056). This branch returned before the carbon, so a message sent
+            // from the iPhone to somebody on another island never showed on the
+            // desktop, the web or the other phone of the same account.
+            if ok { await sendMessageCarbon(envelope, toPeer: contact.uin, toGroup: nil) }
             playSentSound(for: envelope)
             return
         }

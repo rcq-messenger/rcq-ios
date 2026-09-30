@@ -142,6 +142,7 @@
 "multihome.err.already" = "Esta ilha já foi adicionada.";
 "multihome.err.generic" = "Não foi possível conectar à ilha.";
 "multihome.promote" = "Tornar principal";
+"multihome.via_backup" = "Sua ilha não está respondendo. As mensagens estão chegando pela ilha de backup. Toque para torná-la a principal e enviar por ela também.";
 "multihome.promote.title" = "Tornar esta ilha a principal?";
 "multihome.promote.body" = "O app vai passar para %@: seu número e seu endereço passam a ser os daquela ilha, e a principal de agora vira backup. O histórico continua neste dispositivo. Seus contatos vão ver um aviso normal de troca de código de segurança.";
 "multihome.promote.confirm" = "Tornar principal";

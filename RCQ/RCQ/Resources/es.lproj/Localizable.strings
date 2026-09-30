@@ -142,6 +142,7 @@
 "multihome.err.already" = "Esta isla ya está añadida.";
 "multihome.err.generic" = "No se pudo conectar con la isla.";
 "multihome.promote" = "Hacer principal";
+"multihome.via_backup" = "Tu isla no responde. Los mensajes llegan por tu isla de reserva. Toca para hacerla la principal y enviar también desde ella.";
 "multihome.promote.title" = "¿Hacer principal esta isla?";
 "multihome.promote.body" = "La app cambiará a %@: tu número y tu dirección pasan a ser los de esa isla, y la isla principal actual pasa a ser la copia. El historial de chats se queda en este dispositivo. Tus contactos verán un cambio de código de seguridad, algo normal.";
 "multihome.promote.confirm" = "Hacer principal";

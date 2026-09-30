@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Combine
 
 /// Multihoming (federation v1) — this account also lives on N BACKUP islands,
 /// registered with the SAME X25519+Ed25519 keypair (identity is the key; the
@@ -791,6 +792,8 @@ enum Multihome {
     static func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
+        // Whatever the last pass decided was about the account being left.
+        BackupFailover.shared.receivingViaBackup = false
         pollingFor = 0
         pollingAccount = nil
     }
@@ -822,6 +825,31 @@ enum Multihome {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
             }
         }
+    }
+
+    /// Raise or clear the home-screen line "your island is not answering, mail
+    /// arrives through the backup" (Android's `receivingViaBackup`). Only a
+    /// pass that has a backup to drain AND finds the primary silent over the
+    /// live route raises it. Never while the phone is offline: nothing arrives
+    /// through anything then, and the line would say two untrue things at once
+    /// (Android #674). A socket that has proved itself answers the question
+    /// without a probe.
+    @MainActor
+    private static func refreshFailover(ownUin: Int, accountID: UUID?) async {
+        let failover = BackupFailover.shared
+        let hasBackup = MultihomeStore.shared.list(ownUin: ownUin).contains { !isOwnHost($0.host) }
+        if !hasBackup || AppState.shared.isOffline || WebSocketService.shared.linkUp {
+            failover.receivingViaBackup = false
+            return
+        }
+        let answers = await APIClient.shared.liveRouteReachable()
+        // The probe was a network wait: the account may have changed under it,
+        // and the socket may have come up in the meantime.
+        guard AccountManager.shared.activeAccountID == accountID, !WebSocketService.shared.linkUp else {
+            failover.receivingViaBackup = false
+            return
+        }
+        failover.receivingViaBackup = !answers
     }
 
     /// Drain every backup mailbox into the normal ingest path (legacy fetch —
@@ -857,6 +885,7 @@ enum Multihome {
         // account's rows with the crypto object it still holds and file them,
         // `contactreq` included, under the incoming one (founder, 30.08).
         let accountID = AccountManager.shared.activeAccountID
+        await refreshFailover(ownUin: ownUin, accountID: accountID)
         for home in MultihomeStore.shared.list(ownUin: ownUin) {
             // ⚠ A phantom front home is OUR OWN island: draining it hits the
             // account's real queue through the front with an unnamed recover
@@ -1619,4 +1648,13 @@ enum ProvenMoveRekey {
         MultihomeStore.shared.rekeyOwner(old: old, new: new, keepSource: sharedWithAnother)
         GroupSenderKeyStore.shared.rekeyOwner(old: old, new: new, keepSource: sharedWithAnother)
     }
+}
+
+/// The primary island does not answer and the backup poll is what delivers
+/// (Android's `receivingViaBackup`). Set by `Multihome.refreshFailover`,
+/// cleared the moment the primary socket proves itself.
+@MainActor
+final class BackupFailover: ObservableObject {
+    static let shared = BackupFailover()
+    @Published var receivingViaBackup = false
 }

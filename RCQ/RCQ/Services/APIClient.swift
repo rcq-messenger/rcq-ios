@@ -294,6 +294,16 @@ actor APIClient {
         return .unreachable
     }
 
+    /// Does the island answer `/health` over the route requests take right
+    /// now (the front or the tunnel when engaged, direct otherwise)? Asked by
+    /// the backup poll before it says "your island is not answering": a backup
+    /// drain on a healthy primary is the usual extra copy, not a failover.
+    func liveRouteReachable() async -> Bool {
+        var base = baseURL.absoluteString
+        while base.hasSuffix("/") { base.removeLast() }
+        return await probe(base) == .reachable
+    }
+
     private func probe(_ base: String) async -> Reachability {
         guard let url = URL(string: base + "/health") else { return .unreachable }
         var req = URLRequest(url: url)
