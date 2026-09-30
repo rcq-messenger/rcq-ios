@@ -31,6 +31,8 @@ struct GroupInfoView: View {
     @State private var showSettings = false
     @State private var showFullAvatar = false
     @State private var linkCopied = false
+    @State private var resettingLink = false
+    @State private var linkResetNote: String? = nil
     /// "Report group" (App Review 1.2, B.14): the same sheet the chat header
     /// menu opens, from the one screen that is about the room itself.
     @State private var showReportGroup = false
@@ -101,6 +103,17 @@ struct GroupInfoView: View {
     /// gated at all: any member may do it, in an open group and a closed one
     /// alike (`add_member` only checks membership), which is why the add row
     /// below is not behind this.
+    /// POST /groups/{id}/share-token: a new key, the old one stops opening the
+    /// room (#990 step 2). The island refuses anyone who may not manage members.
+    private func resetLink() async {
+        resettingLink = true
+        defer { resettingLink = false }
+        let ok = await GroupService.shared.resetShareToken(groupID: currentGroup.id)
+        linkResetNote = (ok ? "group.share.reset_done" : "group.share.reset_failed").localized
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        linkResetNote = nil
+    }
+
     private var canManageMembers: Bool {
         guard let me = AuthService.shared.ownUIN else { return false }
         if currentGroup.ownerUIN == me { return true }
@@ -173,11 +186,12 @@ struct GroupInfoView: View {
                             // surface it as a tappable group card.
                             Button {
                                 UIPasteboard.general.string = {
+                                    // With the room's key when the island served it (#990 step 2).
                                     if let h = currentGroup.host {
                                         let rid = VisitedIslandsStore.shared.refByAlias(currentGroup.id)?.remoteId ?? currentGroup.id
-                                        return GroupLinkParser.canonicalURL(forGroupID: rid, host: h).absoluteString
+                                        return GroupLinkParser.canonicalURL(forGroupID: rid, host: h, k: currentGroup.shareToken).absoluteString
                                     }
-                                    return GroupLinkParser.canonicalURL(forGroupID: currentGroup.id, host: Multihome.ownHost()).absoluteString
+                                    return GroupLinkParser.canonicalURL(forGroupID: currentGroup.id, host: Multihome.ownHost(), k: currentGroup.shareToken).absoluteString
                                 }()
                                 linkCopied = true
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { linkCopied = false }
@@ -187,6 +201,17 @@ struct GroupInfoView: View {
                                     systemImage: linkCopied ? "checkmark" : "link",
                                 )
                                 .foregroundColor(linkCopied ? Theme.Color.accent : Theme.Color.textPrimary)
+                            }
+                            // A new link (#990 step 2): the old one stops opening
+                            // the room once its island asks for the key.
+                            if canManageMembers && currentGroup.host == nil {
+                                Button {
+                                    Task { await resetLink() }
+                                } label: {
+                                    Label(linkResetNote ?? "group.share.reset".localized, systemImage: "arrow.clockwise")
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                }
+                                .disabled(resettingLink)
                             }
                         }
                     }

@@ -71,6 +71,9 @@ struct RCQGroup: Identifiable, Hashable, Codable {
     /// switch would promise a rule nothing enforces. Not on the wire, so it is
     /// absent from `CodingKeys` and never encoded.
     var allowGuestsDeclared: Bool = false
+    /// The room link's key (#990 step 2), served to members: what a shared
+    /// link carries so a room outside the catalogue opens for its invitee.
+    var shareToken: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name, description
@@ -92,6 +95,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         case createdAt = "created_at"
         case members
         case allowGuests = "allow_guests"
+        case shareToken = "share_token"
     }
 
     init(from decoder: Decoder) throws {
@@ -119,6 +123,7 @@ struct RCQGroup: Identifiable, Hashable, Codable {
         // served as true by those that know it (spec 2026-09-15, 2.2).
         self.allowGuests = ((try? c.decodeIfPresent(Bool.self, forKey: .allowGuests)) ?? nil) ?? true
         self.allowGuestsDeclared = c.contains(.allowGuests)
+        self.shareToken = try? c.decodeIfPresent(String.self, forKey: .shareToken)
         // Older islands do not send it; the roster's own size is right there.
         let declared = (try? c.decodeIfPresent(Int.self, forKey: .memberCount)) ?? 0
         self.memberCount = declared > 0 ? declared : self.members.count

@@ -195,6 +195,42 @@ struct GroupLinkBubble: View {
 
 /// Parse a chat body for a single group-share URL. §5c: the id segment may
 /// carry the group's host island as `<id>@<host>`; a bare id = own island.
+/// Room link keys seen in links this process parsed (#990 step 2), by island
+/// and room. The preview, the join and the guest entry look here, so a key
+/// rides from the link to the island without every screen carrying it. Memory
+/// only: a link parsed again (the bubble, the pin, a tap) puts it back.
+enum RoomLinkKeys {
+    private static var keys: [String: String] = [:]
+    private static let lock = NSLock()
+    static func isKey(_ k: String) -> Bool {
+        (8...64).contains(k.count) && k.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
+    }
+    private static func slot(_ host: String?, _ id: Int) -> String { "\((host ?? "").lowercased())#\(id)" }
+    static func remember(host: String?, id: Int, k: String) {
+        guard isKey(k) else { return }
+        lock.lock(); keys[slot(host, id)] = k; lock.unlock()
+    }
+    /// `hosts`: every name the room's island goes by here; for our own island
+    /// that is nil (a bare id) and its host.
+    static func find(id: Int, hosts: [String?]) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        for h in hosts { if let k = keys[slot(h, id)] { return k } }
+        return nil
+    }
+    /// `?k=<key>` for a path, or "".
+    static func query(id: Int, hosts: [String?]) -> String {
+        guard let k = find(id: id, hosts: hosts),
+              let e = k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return "" }
+        return "?k=\(e)"
+    }
+    /// The key a link carries in `?k=`, remembered for (host, id).
+    static func note(url: URL, host: String?, id: Int) {
+        if let k = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "k" })?.value {
+            remember(host: host, id: id, k: k)
+        }
+    }
+}
+
 enum GroupLinkParser {
     /// Split a `<id>` or `<id>@<host>` path segment.
     private static func splitSeg(_ seg: String) -> (id: Int, host: String?)? {
@@ -216,6 +252,7 @@ enum GroupLinkParser {
         guard let url = URL(string: trimmed) else { return nil }
         if url.scheme == "rcq" && url.host == "group" {
             if let last = url.pathComponents.last, let s = splitSeg(last) {
+                RoomLinkKeys.note(url: url, host: s.host, id: s.id)
                 return (s.id, s.host, url)
             }
         }
@@ -224,6 +261,7 @@ enum GroupLinkParser {
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "g",
            let s = splitSeg(url.pathComponents[2]) {
+            RoomLinkKeys.note(url: url, host: s.host, id: s.id)
             return (s.id, s.host, url)
         }
         return nil
@@ -250,8 +288,11 @@ enum GroupLinkParser {
 
     /// Canonical URL for a fresh share — new shares ALWAYS carry the host so
     /// the link works from any island (§5c).
-    static func canonicalURL(forGroupID gid: Int, host: String) -> URL {
-        URL(string: "https://rcq.app/g/\(gid)@\(host)")!
+    /// With the room's key when we hold it (#990 step 2): a room outside the
+    /// catalogue opens only with it once its island asks for it.
+    static func canonicalURL(forGroupID gid: Int, host: String, k: String? = nil) -> URL {
+        let q = k.flatMap { RoomLinkKeys.isKey($0) ? "?k=\($0)" : nil } ?? ""
+        return URL(string: "https://rcq.app/g/\(gid)@\(host)\(q)")!
     }
 }
 

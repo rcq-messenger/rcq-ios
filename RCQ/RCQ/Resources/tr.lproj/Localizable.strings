@@ -1593,6 +1593,10 @@
 
 "ci.closed_island" = "Bu ada kapalı. Oradaki birine yazmak için kişinin kendisinden bir bağlantı gerekir: kişiyi paylaşması ya da size önce yazması.";
 "ci.number_clash" = "Başka bir adada %1$@ numaralı bir kişin zaten var. Bir sohbet yalnızca numaraya göre saklandığından ikinci bir %1$@ o geçmişi paylaşırdı. Eklenmedi.";
+"group_join.link_invalid" = "Bu oda bağlantısı eksik ya da eski. Sana verenden yenisini iste.";
+"group.share.reset" = "Bağlantıyı sıfırla";
+"group.share.reset_done" = "Bağlantı sıfırlandı. Eskisi artık odayı açmayacak.";
+"group.share.reset_failed" = "Bağlantı sıfırlanamadı.";
 "ci.backup.copy_of" = "%1$@ hesabının yedek kopyası";
 "ci.backup.add_home" = "%1$@ ekle";
 "ci.backup.key_mismatch" = "Eklenmedi: o adresteki hesabın anahtarı bu yedek kopyanınkinden farklı, yani kopya ona ait olmayabilir.";

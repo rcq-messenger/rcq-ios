@@ -1721,7 +1721,7 @@ struct ChatView: View {
             // Send the canonical share URL as plain text. The
             // receiving client's `GroupLinkParser` upgrades the
             // bubble into a `GroupLinkBubble` card automatically.
-            let url = GroupLinkParser.canonicalURL(forGroupID: picked.host != nil ? (VisitedIslandsStore.shared.refByAlias(picked.id)?.remoteId ?? picked.id) : picked.id, host: picked.host ?? Multihome.ownHost())
+            let url = GroupLinkParser.canonicalURL(forGroupID: picked.host != nil ? (VisitedIslandsStore.shared.refByAlias(picked.id)?.remoteId ?? picked.id) : picked.id, host: picked.host ?? Multihome.ownHost(), k: picked.shareToken)
             // An invite IS a link: a room with links off means all of them.
             if roomRulesBlockSend(text: url.absoluteString) { return }
             armSlowmode()

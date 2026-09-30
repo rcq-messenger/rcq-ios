@@ -339,6 +339,8 @@ struct GroupJoinSheet: View {
             error = "group_join.error.blocked".localized
         case .closed:
             error = "group_join.closed_hint".localized
+        case .linkInvalid:
+            error = "group_join.link_invalid".localized
         case .other(let msg):
             error = msg
         }

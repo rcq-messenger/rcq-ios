@@ -409,6 +409,8 @@ struct JoinGroupSheet: View {
             alertMessage = "join_group.error.blocked".localized
         case .closed:
             alertMessage = "group_join.closed_hint".localized
+        case .linkInvalid:
+            alertMessage = "group_join.link_invalid".localized
         case .other(let m):
             alertMessage = m.isEmpty ? "join_group.error.generic".localized : m
         }

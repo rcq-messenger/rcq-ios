@@ -1593,6 +1593,10 @@
 
 "ci.closed_island" = "Esta ilha é fechada. Para escrever a alguém de lá é preciso um link da própria pessoa: ela compartilha o contato, ou escreve para você primeiro.";
 "ci.number_clash" = "Você já tem um contato com o número %1$@ em outra ilha. A conversa continua sendo guardada só pelo número, então um segundo %1$@ dividiria esse histórico. Não foi adicionado.";
+"group_join.link_invalid" = "Este link de sala está incompleto ou desatualizado. Peça um novo a quem o enviou.";
+"group.share.reset" = "Redefinir link";
+"group.share.reset_done" = "Link redefinido. O antigo não abrirá mais a sala.";
+"group.share.reset_failed" = "Não foi possível redefinir o link.";
 "ci.backup.copy_of" = "Cópia de reserva da conta %1$@";
 "ci.backup.add_home" = "Adicionar %1$@";
 "ci.backup.key_mismatch" = "Não adicionado: a conta nesse endereço tem uma chave diferente desta cópia de reserva, então a cópia pode não ser dela.";

@@ -340,10 +340,12 @@ enum CrossIslandGroups {
                     host: h, groupId: groupId, identityKey: ik, signingKey: sk, challenge: chal.challenge
                 ) else { throw CIGError.refused(status: 0, code: nil) }
                 let signature = try signingPriv.signature(for: bytes)
-                let body = GuestProof.requestBody(
+                var body = GuestProof.requestBody(
                     host: h, groupId: groupId, nickname: nickname,
                     identityKey: ik, signingKey: sk, challenge: chal.challenge, signature: signature
                 )
+                // The room link's key (#990 step 2), outside the proof on purpose.
+                if let k = RoomLinkKeys.find(id: groupId, hosts: [h]) { body["k"] = k }
                 let out: GuestOut = try await postJSON(
                     "https://\(h)/auth/guest", data: try JSONSerialization.data(withJSONObject: body), jwt: nil
                 )
@@ -721,7 +723,7 @@ enum CrossIslandGroups {
         // no copy's token is sent, and the island is not asked at all.
         guard !(await decoyOrLocked()) else { return nil }
         let jwt = VisitedIslandsStore.shared.get(host: host)?.jwt
-        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview", jwt: jwt)
+        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview" + RoomLinkKeys.query(id: remoteId, hosts: [host]), jwt: jwt)
     }
 
     /// §5c join: a copy on the group's island (explicit user action, seeing a
@@ -736,7 +738,7 @@ enum CrossIslandGroups {
             let v = try await ensureGuest(host: host, nickname: nickname, groupId: remoteId)
             var g: RCQGroup
             do {
-                g = try await postJSON("https://\(host)/groups/\(remoteId)/join", json: [:], jwt: v.jwt)
+                g = try await postJSON("https://\(host)/groups/\(remoteId)/join" + RoomLinkKeys.query(id: remoteId, hosts: [host]), json: [:], jwt: v.jwt)
             } catch CIGError.refused(401, _) {
                 // A copy on file whose token went stale: re-mint it once.
                 //
@@ -753,7 +755,7 @@ enum CrossIslandGroups {
                 // `rotatedThrows: true`, and both rethrow it.
                 switch await refreshGuestOutcome(host: host) {
                 case .minted(let fresh):
-                    g = try await postJSON("https://\(host)/groups/\(remoteId)/join", json: [:], jwt: fresh.jwt)
+                    g = try await postJSON("https://\(host)/groups/\(remoteId)/join" + RoomLinkKeys.query(id: remoteId, hosts: [host]), json: [:], jwt: fresh.jwt)
                 case .rotated:
                     throw CIGError.rotated
                 case .failed:

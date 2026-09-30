@@ -367,6 +367,7 @@ final class AppState: ObservableObject {
         }
         if url.scheme == "rcq", url.host == "group" {
             if let last = url.pathComponents.last { setJoin(last) }
+            if let gid = pendingJoinGroupID { RoomLinkKeys.note(url: url, host: pendingJoinGroupHost, id: gid) }
             return
         }
         if (url.scheme == "https" || url.scheme == "http"),
@@ -374,6 +375,7 @@ final class AppState: ObservableObject {
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "g" {
             setJoin(url.pathComponents[2])
+            if let gid = pendingJoinGroupID { RoomLinkKeys.note(url: url, host: pendingJoinGroupHost, id: gid) }
             return
         }
     }

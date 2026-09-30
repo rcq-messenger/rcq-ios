@@ -555,7 +555,7 @@ final class GroupService: ObservableObject {
         }
         // Notify the contact via a cross-island 1:1 — the link renders as a join
         // card on their side; tapping it completes the loop.
-        let link = "https://rcq.app/g/\(group.id)@\(groupHost)"
+        let link = GroupLinkParser.canonicalURL(forGroupID: group.id, host: groupHost, k: group.shareToken).absoluteString
         do {
             try await MessageService.shared.send(text: link, to: contact)
             return true
@@ -1054,6 +1054,8 @@ final class GroupService: ObservableObject {
     /// Self-join. Server adds the caller as a member of an open group.
     enum JoinResult {
         case success(RCQGroup)
+        /// The link lacked the room's key, or it was reset (#990 step 2).
+        case linkInvalid
         case blocked
         /// Group is closed — share-to-friend recipients can preview
         /// but not self-join. Owner has to invite them explicitly.
@@ -1090,7 +1092,7 @@ final class GroupService: ObservableObject {
     func join(groupID: Int) async -> JoinResult {
         do {
             let row: GroupWithRules = try await APIClient.shared.request(
-                "POST", "/groups/\(groupID)/join",
+                "POST", "/groups/\(groupID)/join" + RoomLinkKeys.query(id: groupID, hosts: [nil, Multihome.ownHost()]),
             )
             roomRules[groupID] = row.rules
             upsert(row.group)
@@ -1104,16 +1106,33 @@ final class GroupService: ObservableObject {
             if (body ?? "").contains("group_closed") {
                 return .closed
             }
+            if (body ?? "").contains("room_link_invalid") {
+                return .linkInvalid
+            }
             return .blocked
         } catch {
             return .other(error.localizedDescription)
         }
     }
 
+    /// A new share link for a room on our island (#990 step 2). The island
+    /// answers with the room, new key included; it is kept for the next copy.
+    func resetShareToken(groupID: Int) async -> Bool {
+        do {
+            let g: RCQGroup = try await APIClient.shared.request("POST", "/groups/\(groupID)/share-token")
+            if let i = groups.firstIndex(where: { $0.id == groupID }) {
+                groups[i].shareToken = g.shareToken
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func fetchPreview(groupID: Int) async -> GroupPreview? {
         do {
             let out: GroupPreview = try await APIClient.shared.request(
-                "GET", "/groups/\(groupID)/preview"
+                "GET", "/groups/\(groupID)/preview" + RoomLinkKeys.query(id: groupID, hosts: [nil, Multihome.ownHost()])
             )
             return out
         } catch {
