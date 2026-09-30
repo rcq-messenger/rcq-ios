@@ -141,6 +141,35 @@ struct EmoticonText: View {
         options: [.caseInsensitive]
     )
 
+    /// `uin@island` in prose (#1053, Android's ProfileLinks): digits, `@`, a
+    /// dotted host and an optional port, nothing word-like on either side. It
+    /// is what the app puts in the clipboard when a number is copied, so it is
+    /// what people paste to hand a contact on; it was plain text here, or the
+    /// `is2.rcq` inside it was offered as a site.
+    private static let profileRegex = try! NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{N}_.+\-@:/=%#])(\d{1,10})@((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}(?::\d{1,5})?)(?![\p{L}\p{N}_@-]|\.[\p{L}\p{N}])"#,
+        options: [.caseInsensitive]
+    )
+
+    /// Mailboxes that are certainly not islands: a tap on `12345@qq.com` must
+    /// not ask a mail provider for an island card. Same list as Android.
+    private static let mailHosts: Set<String> = [
+        "gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com",
+        "icloud.com", "me.com", "proton.me", "protonmail.com", "aol.com", "gmx.com", "gmx.de",
+        "mail.ru", "bk.ru", "list.ru", "inbox.ru", "internet.ru", "yandex.ru", "ya.ru", "yandex.com",
+        "rambler.ru", "ukr.net", "qq.com", "163.com", "126.com", "naver.com",
+    ]
+
+    /// A digit right before an `@`: the cheap gate in front of the regex.
+    private static func mayHoldProfile(_ s: String) -> Bool {
+        var prev: Character? = nil
+        for ch in s {
+            if ch == "@", let p = prev, p.isASCII, p.isNumber { return true }
+            prev = ch
+        }
+        return false
+    }
+
     static func linkify(_ s: String) -> AttributedString {
         var attr = AttributedString(s)
         guard !s.isEmpty else { return attr }
@@ -153,7 +182,8 @@ struct EmoticonText: View {
         // site in it.
         let urlish = s.contains("://") || s.contains("www.")
         let siteish = s.range(of: ".rcq", options: .caseInsensitive) != nil
-        guard urlish || siteish else { return attr }
+        let profileish = mayHoldProfile(s)
+        guard urlish || siteish || profileish else { return attr }
 
         var taken: [Range<String.Index>] = []
         func mark(_ r: Range<String.Index>, _ url: URL) {
@@ -172,6 +202,23 @@ struct EmoticonText: View {
             detector.enumerateMatches(in: s, options: [], range: nsRange) { match, _, _ in
                 guard let match, let url = match.url,
                       let r = Range(match.range, in: s) else { return }
+                mark(r, url)
+            }
+        }
+        // People before sites: `834@is2.rcq.app` is a person, and the site pass
+        // below would otherwise take the `is2.rcq` inside it. A tap goes
+        // through the ordinary contact link, which opens the add card and
+        // checks the number like the Add sheet does.
+        if profileish {
+            for m in profileRegex.matches(in: s, options: [], range: nsRange) {
+                guard let r = Range(m.range, in: s), !taken.contains(where: { $0.overlaps(r) }),
+                      let uinR = Range(m.range(at: 1), in: s), let hostR = Range(m.range(at: 2), in: s),
+                      let uin = Int(s[uinR]), uin > 0 else { continue }
+                let host = String(s[hostR]).lowercased()
+                let bare = host.split(separator: ":").first.map(String.init) ?? host
+                guard !mailHosts.contains(bare),
+                      let h = host.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                      let url = URL(string: "rcq://add/\(uin)?h=\(h)") else { continue }
                 mark(r, url)
             }
         }
