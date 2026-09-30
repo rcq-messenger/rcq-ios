@@ -1801,6 +1801,7 @@
 "reg.invite.invalid" = "That code was not accepted. It may be used up, expired, or meant for another island.";
 
 "ci.closed_island" = "This island is closed. To write to somebody there you need a link from them: a shared contact, or a message they sent you first.";
+"ci.number_clash" = "You already have a contact numbered %1$@ on another island. A conversation is still filed by number alone, so a second %1$@ would share that history. Not added.";
 
 "island.entry.price" = "%@ once";
 "island.entry.closed" = "Closed club";

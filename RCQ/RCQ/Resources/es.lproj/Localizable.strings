@@ -1592,6 +1592,7 @@
 "reg.invite.invalid" = "Ese código no fue aceptado. Puede estar usado, vencido o ser de otra isla.";
 
 "ci.closed_island" = "Esta isla es cerrada. Para escribirle a alguien de ahí hace falta un enlace suyo: que comparta su contacto, o que te escriba primero.";
+"ci.number_clash" = "Ya tienes un contacto con el número %1$@ en otra isla. Una conversación se archiva solo por el número, así que un segundo %1$@ compartiría ese historial. No se ha añadido.";
 
 "island.entry.price" = "%@ una vez";
 "island.entry.closed" = "Club cerrado";

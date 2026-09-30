@@ -165,7 +165,9 @@ struct AddContactView: View {
                                                 uin: ci.uin, host: ci.host, announce: .request
                                             )
                                             ciBusy = false
-                                            if r.added && r.announced {
+                                            if r.clash {
+                                                ciTokenErr = String(format: "ci.number_clash".localized, "\(ci.uin)")
+                                            } else if r.added && r.announced {
                                                 dismiss()
                                             } else if r.added {
                                                 ciTokenErr = "ci.request_not_sent".localized
@@ -577,6 +579,8 @@ struct PendingRequestsView: View {
     /// F1: the island a card could not be fetched from, so nothing was
     /// checked and nothing was accepted.
     @State private var cardUnavailableHost: String? = nil
+    /// An accept refused because the number is already a contact elsewhere.
+    @State private var clashUin: Int? = nil
 
     var body: some View {
         NavigationStack {
@@ -646,6 +650,15 @@ struct PendingRequestsView: View {
                 Button("common.ok".localized, role: .cancel) {}
             } message: { host in
                 Text(String(format: "ci.server.card_unavailable".localized, host))
+            }
+            .alert(
+                "pending.cta.accept".localized,
+                isPresented: Binding(get: { clashUin != nil }, set: { if !$0 { clashUin = nil } }),
+                presenting: clashUin
+            ) { _ in
+                Button("common.ok".localized, role: .cancel) {}
+            } message: { uin in
+                Text(String(format: "ci.number_clash".localized, "\(uin)"))
             }
         }
         .presentationDetents([.fraction(0.32), .large])
@@ -852,6 +865,15 @@ struct PendingRequestsView: View {
             }
             guard await MainActor.run(body: { CrossIslandPendingPoll.sameAccount(accountID) }) else {
                 await MainActor.run { ciBusy = nil }
+                return
+            }
+            // The number is already a contact elsewhere (#1061): nothing was
+            // added, the request stays where it is.
+            if outcome.clash {
+                await MainActor.run {
+                    ciBusy = nil
+                    clashUin = r.uin
+                }
                 return
             }
             let srvID = await MainActor.run {

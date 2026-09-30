@@ -80,6 +80,7 @@ final class CrossIslandStore: ObservableObject {
         graves = (defaults.dictionary(forKey: gravesKey) as? [String: Double]) ?? [:]
         contactsSnapshot = Array(cache.values)
         stampMissingAddedAt()
+        dedupeSamePerson()
     }
 
     private static func keyFor(_ id: UUID?) -> String {
@@ -144,6 +145,36 @@ final class CrossIslandStore: ObservableObject {
         pruneOwnIsland()
         contactsSnapshot = Array(cache.values)
         stampMissingAddedAt()
+        dedupeSamePerson()
+    }
+
+    /// The same person twice under one number (#1061): a contact and their
+    /// backup copy on a third island, which gets the same number where it can,
+    /// both added before the add path refused a number held elsewhere. A
+    /// thread is keyed by the bare number, so the two rows fed one history and
+    /// every lookup by number (`find(uin:)`) took whichever came first. Same
+    /// number AND the same pinned signing key is one person: the row added
+    /// first stays, the rest are buried so a vault sync does not bring them
+    /// back. Same number under another key is two people and is left alone.
+    private func dedupeSamePerson() {
+        let groups = Dictionary(grouping: cache) { "\($0.value.uin)|\($0.value.signingKey)" }
+        let drop = groups.values
+            .filter { $0.count > 1 }
+            .flatMap { same in same.sorted { (addedAt[$0.key] ?? 0) < (addedAt[$1.key] ?? 0) }.dropFirst() }
+        guard !drop.isEmpty else { return }
+        let now = Date().timeIntervalSince1970 * 1000
+        for (key, _) in drop {
+            cache.removeValue(forKey: key)
+            profileTS.removeValue(forKey: key)
+            addedAt.removeValue(forKey: key)
+            graves[key] = now
+        }
+        defaults.set(profileTS, forKey: profileTSKey)
+        defaults.set(addedAt, forKey: addedAtKey)
+        defaults.set(graves, forKey: gravesKey)
+        persist()
+        contactsSnapshot = Array(cache.values)
+        onChange?()
     }
 
     /// Forget every cross-island contact of the active account (burn only).

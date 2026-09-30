@@ -427,6 +427,27 @@ final class ContactService: ObservableObject {
     struct CrossIslandAddOutcome {
         let added: Bool
         let announced: Bool
+        /// Refused: the number is already a contact somewhere else (#1061).
+        var clash = false
+    }
+
+    /// Is `uin` already a contact on an island other than `host` (our own
+    /// included)? A conversation is keyed by the bare number, so `N@a` next to
+    /// `N@b` or next to our own `N` would share one history, and every lookup
+    /// by number would take whichever row came first (#1061).
+    func numberHeldElsewhere(uin: Int, host: String) -> Bool {
+        let want = Self.canonHost(host)
+        if contacts.contains(where: { $0.uin == uin && ($0.host.map { Multihome.isOwnHost($0) } ?? true) }) { return true }
+        return CrossIslandStore.shared.all().contains { $0.uin == uin && Self.canonHost($0.host ?? "") != want }
+    }
+
+    /// One spelling of an island address: lower case, no default HTTPS port,
+    /// no trailing dot.
+    private static func canonHost(_ host: String) -> String {
+        var h = host.trimmingCharacters(in: .whitespaces).lowercased()
+        if h.hasSuffix(":443") { h.removeLast(4) }
+        while h.hasSuffix(".") { h.removeLast() }
+        return h
     }
 
     /// Federation (F2): add a cross-island contact `uin@host` — fetch their
@@ -460,6 +481,9 @@ final class ContactService: ObservableObject {
                 return CrossIslandAddOutcome(added: true, announced: true)
             }
         }
+        if numberHeldElsewhere(uin: uin, host: host) {
+            return CrossIslandAddOutcome(added: false, announced: false, clash: true)
+        }
         guard let card = await CrossIslandSender.fetchCard(host: host, uin: uin) else {
             return CrossIslandAddOutcome(added: false, announced: false)
         }
@@ -480,6 +504,9 @@ final class ContactService: ObservableObject {
     ) async -> CrossIslandAddOutcome {
         if Multihome.isOwnHost(host) {
             return await addCrossIslandContact(uin: uin, host: host, announce: announce, note: note)
+        }
+        if numberHeldElsewhere(uin: uin, host: host) {
+            return CrossIslandAddOutcome(added: false, announced: false, clash: true)
         }
         let account = AccountManager.shared.activeAccountID
         // Presence isn't tracked across islands, so don't fake `.online` — show
