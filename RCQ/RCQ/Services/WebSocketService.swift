@@ -212,6 +212,8 @@ final class WebSocketService: ObservableObject {
         // a failover any more. Guarded so an upgrade does not publish a change
         // to the chat list for nothing.
         if BackupFailover.shared.receivingViaBackup { BackupFailover.shared.receivingViaBackup = false }
+        // Deletes for everyone that could not go out while we were away.
+        Task { @MainActor in await MessageService.shared.flushPendingRetractions() }
         // ⚠ The vault's nudge is pub/sub with NO REPLAY: a slot another device
         // wrote while this socket was down is never announced again. A
         // reconnect is exactly the moment that gap closes, so one `GET /vault`

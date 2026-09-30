@@ -631,13 +631,86 @@ final class MessageService {
     }
 
     /// Drop the local row first so the fade fires on tap; ship envelope after.
+    ///
+    /// ⚠ A retraction that does not go out is kept, not swallowed (Android
+    /// 87f2ead). The row is already gone here, so a failure used to leave the
+    /// message on the other side for good while this phone showed it deleted.
     func deleteForEveryone(message: Message, to contact: Contact) async throws {
         MessageStore.shared.deleteLocal(messageID: message.id, thread: .peer(uin: contact.uin))
-        try await sendEnvelope(
-            .deleteForEveryone(targetID: message.id),
-            to: contact,
-            localID: nil
-        )
+        do {
+            try await sendEnvelope(
+                .deleteForEveryone(targetID: message.id),
+                to: contact,
+                localID: nil
+            )
+        } catch {
+            queueRetraction(target: message.id, peer: contact.uin)
+            throw error
+        }
+    }
+
+    // MARK: - retractions that did not go out
+
+    private struct PendingRetraction: Codable {
+        let target: UUID
+        let peer: Int
+        let at: Double
+    }
+
+    /// Per account: a retraction belongs to whoever deleted the message.
+    private var retractionsKey: String {
+        "rcq.retractions.v1." + (AccountManager.shared.activeAccountID?.uuidString ?? "none")
+    }
+
+    private func loadRetractions() -> [PendingRetraction] {
+        guard let data = UserDefaults.standard.data(forKey: retractionsKey),
+              let list = try? JSONDecoder().decode([PendingRetraction].self, from: data) else { return [] }
+        return list
+    }
+
+    private func saveRetractions(_ list: [PendingRetraction]) {
+        if list.isEmpty {
+            UserDefaults.standard.removeObject(forKey: retractionsKey)
+        } else if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: retractionsKey)
+        }
+    }
+
+    private func queueRetraction(target: UUID, peer: Int) {
+        var list = loadRetractions().filter { $0.target != target }
+        list.append(PendingRetraction(target: target, peer: peer, at: Date().timeIntervalSince1970))
+        saveRetractions(Array(list.suffix(200)))
+    }
+
+    private var flushingRetractions = false
+
+    /// Try the kept retractions again. Called when the socket comes up; a
+    /// week old is given up on (the other side's copy has long been read).
+    func flushPendingRetractions() async {
+        guard !flushingRetractions, !PanicPINService.shared.isDecoy else { return }
+        let account = AccountManager.shared.activeAccountID
+        let now = Date().timeIntervalSince1970
+        let pending = loadRetractions().filter { now - $0.at < 7 * 86_400 }
+        guard !pending.isEmpty else { saveRetractions([]); return }
+        flushingRetractions = true
+        defer { flushingRetractions = false }
+        var left: [PendingRetraction] = []
+        for r in pending {
+            guard AccountManager.shared.activeAccountID == account else { return }
+            guard let contact = ContactService.shared.contacts.first(where: { $0.uin == r.peer }) else {
+                left.append(r)
+                continue
+            }
+            do {
+                try await sendEnvelope(.deleteForEveryone(targetID: r.target), to: contact, localID: nil)
+            } catch {
+                left.append(r)
+            }
+        }
+        guard AccountManager.shared.activeAccountID == account else { return }
+        // Merge with anything queued while this ran.
+        let queuedMeanwhile = loadRetractions().filter { q in !pending.contains { $0.target == q.target } }
+        saveRetractions(left + queuedMeanwhile)
     }
 
     func deleteForEveryone(message: Message, toRandom peer: RandomPeer) async throws {
@@ -1192,6 +1265,10 @@ final class MessageService {
             // from the iPhone to somebody on another island never showed on the
             // desktop, the web or the other phone of the same account.
             if ok { await sendMessageCarbon(envelope, toPeer: contact.uin, toGroup: nil) }
+            // A control that reached nobody says so, like the same-island
+            // path does: a delete for everyone that did not go out is kept
+            // and tried again (`deleteForEveryone(message:to:)`).
+            if !ok, localID == nil { throw URLError(.cannotConnectToHost) }
             playSentSound(for: envelope)
             return
         }
