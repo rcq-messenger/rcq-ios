@@ -1162,8 +1162,10 @@ struct ChatView: View {
                                     .tint(Theme.Color.accent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
-                            case .group(let gid, let ghost):
+                            case .group(let gid, let ghost, let k):
                                 PinnedGroupChip(groupID: gid, host: ghost) { tappedGID in
+                                    // The pin's own key wins over a link for the same room drawn later.
+                                    if let k { RoomLinkKeys.remember(host: ghost, id: gid, k: k, chosen: true) }
                                     pinnedExpansion = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         appState.pendingJoinGroupHost = Multihome.isOwnHost(ghost) ? nil : ghost
@@ -1209,6 +1211,7 @@ struct ChatView: View {
                     return .handled
                 }
                 if let hit = GroupLinkParser.parse(url.absoluteString) {
+                    RoomLinkKeys.note(url: hit.url, host: hit.host, id: hit.groupID, chosen: true)
                     pinnedExpansion = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         appState.pendingJoinGroupHost = Multihome.isOwnHost(hit.host) ? nil : hit.host
@@ -2786,8 +2789,9 @@ struct ChatView: View {
                                     .foregroundColor(Theme.Color.textPrimary)
                                     .lineLimit(3)
                                     .fixedSize(horizontal: false, vertical: true)
-                            case .group(let gid, let ghost):
+                            case .group(let gid, let ghost, let k):
                                 PinnedGroupChip(groupID: gid, host: ghost) { tapped in
+                                    if let k { RoomLinkKeys.remember(host: ghost, id: gid, k: k, chosen: true) }
                                     appState.pendingJoinGroupHost = Multihome.isOwnHost(ghost) ? nil : ghost
                                     appState.pendingJoinGroupID = tapped
                                 }
@@ -2842,9 +2846,11 @@ struct ChatView: View {
     /// Those links render as tappable group chips (see `PinnedGroupChip`),
     /// so leaving the raw `rcq.app/g/<id>` URL in the text too is just
     /// noise. Collapses the whitespace/blank lines the removal leaves.
+    /// The `@host` and the `?k=` key go with the link, or they would sit in
+    /// the banner as a stray tail.
     private func pinnedDisplayText(_ text: String) -> String {
         var s = text.replacingOccurrences(
-            of: "(?:https?://rcq\\.app/g/\\d+|rcq://group/\\d+)",
+            of: "(?:https?://rcq\\.app/g/\\d+|rcq://group/\\d+)(?:@[a-z0-9.-]+)?(?:\\?[A-Za-z0-9_=&%-]*)?",
             with: "", options: [.regularExpression, .caseInsensitive]
         )
         s = s.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
@@ -2856,9 +2862,10 @@ struct ChatView: View {
     /// group-share link (rendered as a card). Used to lay the pin out
     /// IN DOCUMENT ORDER so each group card sits directly under the line
     /// that introduced it, instead of all cards bunched at the bottom.
+    /// A group carries the room link's key when the link had one (#990 step 2).
     enum PinSegment {
         case text(String)
-        case group(Int, String?)
+        case group(Int, String?, String?)
     }
 
     private func pinnedSegments(_ text: String, defaultHost: String? = nil) -> [PinSegment] {
@@ -2867,7 +2874,9 @@ struct ChatView: View {
         // link there is. Web drops the same card behind `linksAllowed`.
         guard linksAllowed else { return [.text(text)] }
         guard let rx = try? NSRegularExpression(
-            pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)", options: [.caseInsensitive]
+            // The trailing `?k=...` is part of the link: it is the room's key.
+            // No `.` or `)` in it, so a full stop after the link stays text.
+            pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)(?:\\?[A-Za-z0-9_=&%-]*)?", options: [.caseInsensitive]
         ) else { return [.text(text)] }
         let ns = text as NSString
         let matches = rx.matches(in: text, range: NSRange(location: 0, length: ns.length))
@@ -2886,7 +2895,14 @@ struct ChatView: View {
                 : (g3.location != NSNotFound ? ns.substring(with: g3) : "")
             let hostRange = g1.location != NSNotFound ? g2 : g4
             let host: String? = hostRange.location != NSNotFound ? ns.substring(with: hostRange).lowercased() : defaultHost
-            if let gid = Int(idStr), gid > 0 { out.append(.group(gid, host)) }
+            if let gid = Int(idStr), gid > 0 {
+                // Remembered under the host the chip resolves (the pin's room
+                // island for a bare link), before its preview or the join asks.
+                let url = URL(string: ns.substring(with: m.range))
+                let k = url.flatMap { RoomLinkKeys.key(in: $0) }.flatMap { RoomLinkKeys.isKey($0) ? $0 : nil }
+                if let k { RoomLinkKeys.remember(host: host, id: gid, k: k) }
+                out.append(.group(gid, host, k))
+            }
             cursor = m.range.location + m.range.length
         }
         if cursor < ns.length {

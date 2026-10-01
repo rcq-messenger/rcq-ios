@@ -230,6 +230,7 @@ for code in ["invalid_challenge", "guest_replayed", "guest_busy", "island_busy"]
 }
 check("invite_invalid on legacy", j("invite_invalid") == "guest.join.old_invite")
 check("group_closed: closed hint", j("group_closed") == "group_join.closed_hint")
+check("room_link_invalid: ask for a new link", j("room_link_invalid") == "group_join.link_invalid")
 check("blocked on join", j("blocked") == "group_join.error.blocked")
 check("429 without a code: rate", GuestSentence.join(IslandRefusal(status: 429, code: nil)) == "guest.join.rate")
 // F2 (16.09): the rotated-elsewhere notice is the entire answer. No sentence of

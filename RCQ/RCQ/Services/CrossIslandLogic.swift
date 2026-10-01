@@ -1183,6 +1183,10 @@ enum GuestSentence {
         case "invite_required", "invite_invalid": return "guest.join.old_invite"
         // The existing code and meaning: a closed room needs an add.
         case "group_closed": return "group_join.closed_hint"
+        // The link lacked the room's key, or the key was reset (#990 step 2):
+        // `/auth/guest` and the room's own self-join both answer it. The web
+        // (`guestJoinErrorKey`) and Android (`joinFailureSentence`) name it too.
+        case "room_link_invalid": return "group_join.link_invalid"
         case "blocked": return "group_join.error.blocked"
         // The room is gone. `/auth/guest` answers it for a room id that names
         // nothing on that island, and so does the room's own self-join. The

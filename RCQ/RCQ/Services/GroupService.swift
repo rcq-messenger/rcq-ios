@@ -1091,8 +1091,13 @@ final class GroupService: ObservableObject {
 
     func join(groupID: Int) async -> JoinResult {
         do {
+            // The room link's key (#990 step 2) as a real query item: glued
+            // onto the path, `appendingPathComponent` sends the `?` as %3F
+            // and the island answers 404.
+            let k = RoomLinkKeys.find(id: groupID, hosts: [nil, Multihome.ownHost()])
             let row: GroupWithRules = try await APIClient.shared.request(
-                "POST", "/groups/\(groupID)/join" + RoomLinkKeys.query(id: groupID, hosts: [nil, Multihome.ownHost()]),
+                "POST", "/groups/\(groupID)/join",
+                query: k.map { ["k": $0] } ?? [:]
             )
             roomRules[groupID] = row.rules
             upsert(row.group)
@@ -1131,8 +1136,11 @@ final class GroupService: ObservableObject {
 
     func fetchPreview(groupID: Int) async -> GroupPreview? {
         do {
+            // Same as `join`: the key goes in `query:`, never on the path.
+            let k = RoomLinkKeys.find(id: groupID, hosts: [nil, Multihome.ownHost()])
             let out: GroupPreview = try await APIClient.shared.request(
-                "GET", "/groups/\(groupID)/preview" + RoomLinkKeys.query(id: groupID, hosts: [nil, Multihome.ownHost()])
+                "GET", "/groups/\(groupID)/preview",
+                query: k.map { ["k": $0] } ?? [:]
             )
             return out
         } catch {

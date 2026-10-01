@@ -357,25 +357,28 @@ final class AppState: ObservableObject {
         // `pendingJoinGroupID`; the JoinSheet handles already-member
         // by jumping the user straight into the group chat instead.
         // §5c: the id segment may carry the group's island as `<id>@<host>`.
-        func setJoin(_ seg: String) {
+        // The link's key (#990 step 2) is noted only for the room THIS link
+        // names: a link whose id does not parse leaves the room already
+        // pending, and its key with it, alone.
+        func setJoin(_ seg: String, _ url: URL) {
             let at = seg.firstIndex(of: "@")
             let idPart = at.map { String(seg[seg.startIndex..<$0]) } ?? seg
             let hostPart = at.map { String(seg[seg.index(after: $0)...]) }
             guard let gid = Int(idPart), gid > 0 else { return }
+            let host = (hostPart?.isEmpty == false) ? hostPart?.lowercased() : nil
+            RoomLinkKeys.note(url: url, host: host, id: gid, chosen: true)
             pendingJoinGroupID = gid
-            pendingJoinGroupHost = (hostPart?.isEmpty == false) ? hostPart?.lowercased() : nil
+            pendingJoinGroupHost = host
         }
         if url.scheme == "rcq", url.host == "group" {
-            if let last = url.pathComponents.last { setJoin(last) }
-            if let gid = pendingJoinGroupID { RoomLinkKeys.note(url: url, host: pendingJoinGroupHost, id: gid) }
+            if let last = url.pathComponents.last { setJoin(last, url) }
             return
         }
         if (url.scheme == "https" || url.scheme == "http"),
            url.host == "rcq.app",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "g" {
-            setJoin(url.pathComponents[2])
-            if let gid = pendingJoinGroupID { RoomLinkKeys.note(url: url, host: pendingJoinGroupHost, id: gid) }
+            setJoin(url.pathComponents[2], url)
             return
         }
     }

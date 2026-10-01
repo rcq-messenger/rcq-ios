@@ -23,6 +23,9 @@ struct GroupLinkBubble: View {
     }
 
     private func openJoin() {
+        // The key of the link the user tapped wins over any other link for
+        // the same room drawn later (#990 step 2). Same raw host `parse` used.
+        RoomLinkKeys.note(url: rawURL, host: host, id: groupID, chosen: true)
         appState.pendingJoinGroupHost = foreignHost
         appState.pendingJoinGroupID = groupID
     }
@@ -199,35 +202,50 @@ struct GroupLinkBubble: View {
 /// and room. The preview, the join and the guest entry look here, so a key
 /// rides from the link to the island without every screen carrying it. Memory
 /// only: a link parsed again (the bubble, the pin, a tap) puts it back.
+///
+/// Two maps. Every render parses every visible link, so a passive key is
+/// whichever link for the room was drawn last: an old link from before a
+/// reset, or a junk `?k=` a member posted below the real one. A key the user
+/// OPENED (a tap on the card or the pin, a deep link) goes in `chosen` too,
+/// and `find` asks that map first, so a later render cannot swap it.
 enum RoomLinkKeys {
     private static var keys: [String: String] = [:]
+    private static var chosen: [String: String] = [:]
     private static let lock = NSLock()
     static func isKey(_ k: String) -> Bool {
         (8...64).contains(k.count) && k.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
     }
     private static func slot(_ host: String?, _ id: Int) -> String { "\((host ?? "").lowercased())#\(id)" }
-    static func remember(host: String?, id: Int, k: String) {
+    static func remember(host: String?, id: Int, k: String, chosen pick: Bool = false) {
         guard isKey(k) else { return }
-        lock.lock(); keys[slot(host, id)] = k; lock.unlock()
+        lock.lock(); defer { lock.unlock() }
+        keys[slot(host, id)] = k
+        if pick { chosen[slot(host, id)] = k }
     }
     /// `hosts`: every name the room's island goes by here; for our own island
     /// that is nil (a bare id) and its host.
     static func find(id: Int, hosts: [String?]) -> String? {
         lock.lock(); defer { lock.unlock() }
+        for h in hosts { if let k = chosen[slot(h, id)] { return k } }
         for h in hosts { if let k = keys[slot(h, id)] { return k } }
         return nil
     }
-    /// `?k=<key>` for a path, or "".
+    /// `?k=<key>` for a URL built as a STRING (the calls to another island),
+    /// or "". ⚠ Never for an `APIClient` path: `appendingPathComponent` sends
+    /// the `?` as %3F and the island answers 404. Those pass `find` in `query:`.
     static func query(id: Int, hosts: [String?]) -> String {
         guard let k = find(id: id, hosts: hosts),
               let e = k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return "" }
         return "?k=\(e)"
     }
-    /// The key a link carries in `?k=`, remembered for (host, id).
-    static func note(url: URL, host: String?, id: Int) {
-        if let k = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "k" })?.value {
-            remember(host: host, id: id, k: k)
-        }
+    /// The key a link carries in `?k=`, remembered for (host, id). `chosen`:
+    /// the user opened this very link, so its key wins over any rendered later.
+    static func note(url: URL, host: String?, id: Int, chosen pick: Bool = false) {
+        if let k = key(in: url) { remember(host: host, id: id, k: k, chosen: pick) }
+    }
+    /// The `?k=` of a link, or nil.
+    static func key(in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "k" })?.value
     }
 }
 
