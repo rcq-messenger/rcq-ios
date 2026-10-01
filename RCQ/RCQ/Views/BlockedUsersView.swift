@@ -6,35 +6,30 @@ import SwiftUI
 /// inspect + manage their block list from a discoverable place;
 /// this is the surface for that.
 ///
-/// Source of truth is `ContactService.shared.contacts.filter
-/// { $0.blocked }` — same `Contact` rows the rest of the app uses,
-/// just filtered down. Unblock fires the existing
-/// `ContactService.toggleBlock(_:)` endpoint, which the rest of the
-/// app already trusts.
+/// Source of truth is `ContactService.blockedPeople()`: every block record
+/// of the account, one row per person. Our own island's people show their
+/// number; somebody on another island shows `uin@host`, because the number
+/// alone names a different person on every island (report 1065). Unblock
+/// lifts exactly that row's block (`ContactService.setBlocked`).
+///
+/// A block made from a request on another island is listed too. Nothing
+/// showed it before and nothing could lift it, so that person's messages
+/// were dropped for good (report 1064).
 struct BlockedUsersView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var contacts = ContactService.shared
-    @State private var pendingUnblock: Int?
+    @ObservedObject private var requests = CrossIslandRequestsStore.shared
+    @State private var pendingUnblock: ContactService.BlockedPerson?
     @State private var refreshTick = 0
 
-    private var blocked: [Contact] {
+    private var blocked: [ContactService.BlockedPerson] {
         _ = refreshTick  // recompute after a local blocked-set change (stranger unblock)
-        // `BlockedContactsStore` is device-global, not per-account, so a decoy
-        // session read the REAL blocked set straight out of it — a list of real
-        // uins, and an Unblock button that would really unblock them on the
-        // real account. The store is left exactly as it is (it is safety state
-        // the real session must keep); the duress view simply has no blocked
-        // users, which is what an account with a handful of seeded chats looks
-        // like anyway.
+        _ = requests.revision  // and after a cross-island block lands from another device
+        // A decoy session has no blocked users (`blockedPeople` says so too):
+        // the list and its Unblock buttons are the real account's safety
+        // state, and an account with a handful of seeded chats has none.
         if PanicPINService.shared.isDecoy { return [] }
-        let byUin = Dictionary(contacts.contacts.map { ($0.uin, $0) }, uniquingKeysWith: { a, _ in a })
-        // Union of server-blocked contacts + the LOCAL blocked set (covers
-        // blocked strangers with no contact row, shown as #uin stubs).
-        let uins = Set(BlockedContactsStore.shared.all())
-            .union(contacts.contacts.filter { $0.blocked }.map { $0.uin })
-        return uins
-            .map { byUin[$0] ?? Contact.blockedStub(uin: $0) }
-            .sorted { $0.nickname.localizedCaseInsensitiveCompare($1.nickname) == .orderedAscending }
+        return contacts.blockedPeople()
     }
 
     var body: some View {
@@ -62,12 +57,12 @@ struct BlockedUsersView: View {
                 ),
                 titleVisibility: .visible
             ) {
-                if let uin = pendingUnblock {
+                if let person = pendingUnblock {
                     Button("blocked_users.unblock.confirm.cta".localized) {
-                        let u = uin
+                        let p = person
                         pendingUnblock = nil
                         Task { @MainActor in
-                            try? await contacts.toggleBlock(u)
+                            await contacts.setBlocked(false, uin: p.uin, host: p.host)
                             refreshTick += 1
                         }
                     }
@@ -76,11 +71,10 @@ struct BlockedUsersView: View {
                     }
                 }
             } message: {
-                if let uin = pendingUnblock,
-                   let contact = blocked.first(where: { $0.uin == uin }) {
+                if let person = pendingUnblock {
                     Text(String(
                         format: "blocked_users.unblock.confirm.body".localized,
-                        contact.nickname
+                        person.name
                     ))
                 }
             }
@@ -90,20 +84,20 @@ struct BlockedUsersView: View {
     private var list: some View {
         List {
             Section {
-                ForEach(blocked) { contact in
+                ForEach(blocked) { person in
                     HStack(spacing: 12) {
-                        StatusIcon(status: contact.status, size: 32)
+                        StatusIcon(status: person.status, size: 32)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(contact.nickname)
+                            Text(person.name)
                                 .font(.system(.body, weight: .medium))
                                 .foregroundColor(Theme.Color.textPrimary)
-                            Text(verbatim: "\(contact.uin)")
+                            Text(verbatim: person.address)
                                 .font(.system(.caption, design: .monospaced))
                                 .foregroundColor(Theme.Color.textSecondary)
                         }
                         Spacer()
                         Button {
-                            pendingUnblock = contact.uin
+                            pendingUnblock = person
                         } label: {
                             Text("blocked_users.unblock".localized)
                                 .font(.system(.caption, weight: .semibold))

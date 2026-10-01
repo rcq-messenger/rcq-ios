@@ -1784,3 +1784,76 @@ enum GuestFlag {
         isGuest(wire: (try? JSONDecoder().decode(Wire.self, from: json))?.guest)
     }
 }
+
+// MARK: - #990: room links in a pinned announcement
+
+/// The room links a pinned announcement turns into cards, as one pattern for
+/// the split into cards and for the strip that keeps the raw link out of the
+/// banner. Groups: 1 = the https id, 2 = its island, 3 = the rcq:// id, 4 = its
+/// island.
+///
+/// - The island may carry a port (`island.example:8443`): `Multihome
+///   .normalizeHost` keeps one and `GroupLinkParser.canonicalURL` mints it.
+///   Without it the card went to the wrong port with no key, and `:8443?k=…`
+///   stayed in the banner as text.
+/// - The query is the room's key (`?k=…`) and needs at least one character,
+///   so "did you join https://rcq.app/g/42?" keeps its question mark.
+/// - The query takes no `.` or `)`, so a full stop after a link stays text.
+enum PinnedRoomLink {
+    static let pattern =
+        "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+(?::\\d+)?))?"
+        + "|rcq://group/(\\d+)(?:@([a-z0-9.-]+(?::\\d+)?))?)"
+        + "(?:\\?[A-Za-z0-9_=&%-]+)?"
+}
+
+// MARK: - reports 1064, 1065: whom a block names
+
+/// Whom a block names, and whether a row's sender is one of them.
+///
+/// A person is a number on an island plus the key they sign with; the island
+/// is only the route. So a block names a number on our own island (`host`
+/// nil) or `uin@host` on another one, and carries the key of the person it was
+/// written for whenever a roster row or a pinned cross-island row says what
+/// that key is. A bare number used to be the whole block: blocking 134@is2
+/// silenced every 134 on every island, our own included, and the Blocked list
+/// could only ever say "134" (report 1065).
+///
+/// ⚠ `anyIsland` is a block an older build wrote as a bare number. It keeps
+/// meaning what it meant then, every island, so updating the app unblocks
+/// nobody; it is shown as the number it is, and lifting a block on that number
+/// from anywhere lifts it, exactly as the old Unblock did.
+enum BlockRule {
+    struct Entry: Equatable {
+        let uin: Int
+        /// The island, lower case; nil for our own.
+        let host: String?
+        let anyIsland: Bool
+        /// The blocked person's Ed25519 signing key (raw bytes), when known.
+        let key: Data?
+
+        init(uin: Int, host: String?, anyIsland: Bool = false, key: Data? = nil) {
+            self.uin = uin
+            self.host = host.map { $0.lowercased() }
+            self.anyIsland = anyIsland
+            self.key = (key?.isEmpty ?? true) ? nil : key
+        }
+    }
+
+    /// Does a row from `uin` on `host` (nil: our own island), signed by `key`,
+    /// come from somebody these entries block?
+    ///
+    /// The key matches on any address: a blocked contact whose backup island
+    /// became their home writes from there under the key we pinned, and is
+    /// still the person who was blocked. The caller keeps our own key out of
+    /// it (our own carbons are signed with it).
+    static func blocks(_ entries: [Entry], uin: Int, host: String?, key: Data?) -> Bool {
+        let h = host?.lowercased()
+        let k = (key?.isEmpty ?? true) ? nil : key
+        for e in entries {
+            if let ek = e.key, let k, ek == k { return true }
+            guard e.uin == uin else { continue }
+            if e.anyIsland || e.host == h { return true }
+        }
+        return false
+    }
+}

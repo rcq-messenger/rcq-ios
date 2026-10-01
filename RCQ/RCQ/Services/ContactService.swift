@@ -14,6 +14,12 @@ final class ContactService: ObservableObject {
     /// roster ever loaded, "not a contact" is a guess, and the gate fails
     /// OPEN rather than eat messages blind.
     private(set) var rosterLoaded = false
+    /// Own-island numbers whose roster row the island served with `blocked`
+    /// set (a block made on another device or on web). Kept apart from the
+    /// rows' own `blocked`, which `withBlockFlags` recomputes from every
+    /// source, so lifting a local block cannot leave a row claiming the
+    /// island's flag.
+    private var serverBlocked: Set<Int> = []
     @Published private(set) var pendingRequests: [PendingRequest] = []
     /// Requests WE sent that are still pending or were declined by the
     /// recipient (declined surface here because no push tells the sender).
@@ -72,7 +78,8 @@ final class ContactService: ObservableObject {
         }
         list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
         let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
-        contacts = list + cross
+        serverBlocked = Set(list.filter { $0.blocked }.map(\.uin))
+        contacts = withBlockFlags(list + cross)
         pendingRequests = snap.pending
         outgoingRequests = snap.outgoing
         hydratedFromSnapshot = !contacts.isEmpty
@@ -84,7 +91,13 @@ final class ContactService: ObservableObject {
     /// set or removed, so the file changes its sealing with the history.
     func saveSnapshot() {
         guard rosterLoaded else { return }
-        let own = contacts.filter { $0.host == nil }
+        // The island's own flag goes to disk, not the merged one, so the next
+        // cold start reads back what the island said (see `serverBlocked`).
+        let own = contacts.filter { $0.host == nil }.map { c -> Contact in
+            var m = c
+            m.blocked = serverBlocked.contains(c.uin)
+            return m
+        }
         RosterSnapshot.save(Snapshot(contacts: own, pending: pendingRequests, outgoing: outgoingRequests), as: .contacts, accountID: rosterAccount)
     }
 
@@ -260,7 +273,8 @@ final class ContactService: ObservableObject {
             // The SAME rule the 304 branch above runs, and through the same
             // function on purpose: two spellings of "equalise the foreign half"
             // is how the two branches drift apart, which is the shape of #1024.
-            self.contacts = CrossIslandRoster.fold(list, store: CrossIslandStore.shared.all()) ?? list
+            self.serverBlocked = Set(list.filter { $0.blocked }.map(\.uin))
+            self.contacts = withBlockFlags(CrossIslandRoster.fold(list, store: CrossIslandStore.shared.all()) ?? list)
             // The foreign rows that actually landed, for the nickname map below.
             let cross = self.contacts.filter { $0.host != nil }
             self.rosterLoaded = true
@@ -343,7 +357,7 @@ final class ContactService: ObservableObject {
         if PanicPINService.shared.isDecoy { return }
         guard let next = CrossIslandRoster.fold(contacts, store: CrossIslandStore.shared.all())
         else { return }
-        contacts = next
+        contacts = withBlockFlags(next)
     }
 
     /// Drop cross-island rows that are really OUR OWN island's people.
@@ -535,7 +549,7 @@ final class ContactService: ObservableObject {
         )
         c.host = host
         CrossIslandStore.shared.save(c)
-        if !contacts.contains(where: { $0.uin == uin }) { contacts.append(c) }
+        if !contacts.contains(where: { $0.uin == uin }) { contacts.append(contentsOf: withBlockFlags([c])) }
         // §5f — the half that was missing. Deposit the contactreq to the peer's
         // PRIMARY island so they actually learn about us. Never touches the row
         // above; a failed deposit leaves the local add intact and the caller
@@ -628,7 +642,13 @@ final class ContactService: ObservableObject {
             UnreadStore.shared.clearPeer(uin)
             BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
             BadgeCounter.syncIcon()
-            RemovedContactsStore.shared.add(uin)
+            // ⚠ NOT into RemovedContactsStore (report 1064, Android's #1055):
+            // that list is bare numbers of our own island, and this number
+            // named whoever holds it here too. Nothing took it off again, so a
+            // removed foreign contact was silenced for good, along with our
+            // own island's namesake. Out of CrossIslandStore they are a
+            // stranger to the cross-island gate, which holds what they write
+            // as a request.
             // The only pruning the sections slot ever gets: an explicit local
             // removal. Never because a chat failed to render.
             SectionsVault.forgetSectionMember(Sections.peerKey(uin, host: host))
@@ -723,19 +743,180 @@ final class ContactService: ObservableObject {
         }
     }
 
-    func toggleBlock(_ uin: Int) async throws {
-        // The local store is the source of truth: it works for non-contacts /
-        // strangers (the server endpoint 404s for those) and drives ingest
-        // filtering + the Blocked list. Flip it first, then best-effort sync the
-        // server's contact `blocked` flag (the endpoint toggles it for real
-        // contacts; 404s for strangers, swallowed).
-        let nowBlocked = !BlockedContactsStore.shared.contains(uin)
-        BlockedContactsStore.shared.set(uin, blocked: nowBlocked)
-        if let idx = contacts.firstIndex(where: { $0.uin == uin }) {
-            contacts[idx].blocked = nowBlocked
+    // MARK: blocking (reports 1064, 1065)
+
+    /// Is this person blocked: `uin` on `host`, nil (or one of our own names)
+    /// for our own island. What the Block / Unblock labels show, from the same
+    /// records the ingest drop reads (`blockEntries`).
+    ///
+    /// Our island: the local set, the island's flag on the roster row (a block
+    /// made on another device), and a stranger blocked from the request
+    /// quarantine. Another island: that address in `CrossIslandRequestsStore`.
+    /// Either way an older build's any-island block of the number.
+    func isBlocked(uin: Int, host: String?) -> Bool {
+        if let h = Self.foreignHost(host) {
+            return CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: h)
+                || BlockedContactsStore.shared.blocksOnEveryIsland(uin)
         }
+        return BlockedContactsStore.shared.contains(uin)
+            || serverBlocked.contains(uin)
+            || CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: "")
+    }
+
+    func toggleBlock(_ uin: Int, host: String? = nil) async {
+        await setBlocked(!isBlocked(uin: uin, host: host), uin: uin, host: host)
+    }
+
+    /// Block or unblock exactly one person.
+    ///
+    /// ⚠ Another island's person is never sent to OUR island: its
+    /// `/contacts/{uin}/block` toggles the flag on our own island's row for
+    /// that number, which is somebody else, and tells our island a number
+    /// from another one besides. Their block lives in `CrossIslandRequestsStore`
+    /// by address, and our other devices hear of it through a `ciack`.
+    ///
+    /// Our own island: the local set is the truth (the island 404s for a
+    /// stranger), and the roster row's flag is SET, not toggled. The island
+    /// toggles whatever the body says, so the answer is read and a flip that
+    /// went the wrong way (the flag was already where we wanted it, set from
+    /// another device) is sent once more. A toggle used to block somebody the
+    /// label said it would unblock.
+    func setBlocked(_ on: Bool, uin: Int, host: String?) async {
+        if let h = Self.foreignHost(host) {
+            if on {
+                CrossIslandRequestsStore.shared.block(uin: uin, host: h)
+            } else {
+                CrossIslandRequestsStore.shared.unblock(uin: uin, host: h)
+                BlockedContactsStore.shared.liftEveryIslandBlock(uin)
+            }
+            refreshBlockedFlags()
+            await MessageService.shared.sendCIAck(uin: uin, host: h.lowercased(), act: on ? "block" : "unblock")
+            return
+        }
+        BlockedContactsStore.shared.set(uin, blocked: on)
+        // A stranger blocked from the request quarantine has an entry there
+        // too, and the devices that blocked with it heard a `ciack` for "".
+        if !on, CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: "") {
+            CrossIslandRequestsStore.shared.unblock(uin: uin, host: "")
+            Task { await MessageService.shared.sendCIAck(uin: uin, host: "", act: "unblock") }
+        }
+        refreshBlockedFlags()
+        // Only a roster row can carry the island's flag; a stranger 404s.
+        guard contacts.contains(where: { $0.uin == uin && $0.host == nil }) || serverBlocked.contains(uin)
+        else { return }
+        struct Body: Encodable { let blocked: Bool }
         struct Out: Decodable { let blocked: Bool }
-        let _: Out? = try? await APIClient.shared.request("POST", "/contacts/\(uin)/block")
+        do {
+            var out: Out = try await APIClient.shared.request(
+                "POST", "/contacts/\(uin)/block", body: Body(blocked: on)
+            )
+            if out.blocked != on {
+                out = try await APIClient.shared.request(
+                    "POST", "/contacts/\(uin)/block", body: Body(blocked: on)
+                )
+            }
+            if out.blocked { serverBlocked.insert(uin) } else { serverBlocked.remove(uin) }
+        } catch APIError.http(404, _) {
+            // No row on the island, so no flag there.
+            serverBlocked.remove(uin)
+        } catch {
+            // Offline: the local set already says it, and the label shows the
+            // island's flag too, so an unblock that did not reach it shows as
+            // not done rather than pretending.
+        }
+        refreshBlockedFlags()
+    }
+
+    /// Recompute every row's `blocked` from the block records and publish
+    /// when one moved: after a block or unblock here, and after a `ciack` from
+    /// another device.
+    func refreshBlockedFlags() {
+        let next = withBlockFlags(contacts)
+        if next != contacts { contacts = next }
+    }
+
+    private func withBlockFlags(_ rows: [Contact]) -> [Contact] {
+        rows.map { c in
+            var m = c
+            m.blocked = isBlocked(uin: c.uin, host: c.host)
+            return m
+        }
+    }
+
+    /// Nil for our own island under any of its names.
+    private static func foreignHost(_ host: String?) -> String? {
+        guard let host, !host.isEmpty, !Multihome.isOwnHost(host) else { return nil }
+        return host
+    }
+
+    /// Every block of this account as `BlockRule` reads it, each with the key
+    /// of the person it names when a roster or pinned row says what it is.
+    ///
+    /// Read for every row a drain takes in, so the roster is searched only
+    /// for the handful of blocked numbers, not indexed whole each time.
+    func blockEntries() -> [BlockRule.Entry] {
+        let local = BlockedContactsStore.shared
+        let ownBlocked = Set(local.all()).union(serverBlocked)
+        let addresses = CrossIslandRequestsStore.shared.blockedAddresses()
+        if ownBlocked.isEmpty && addresses.isEmpty { return [] }
+        func ownKey(_ uin: Int) -> Data? {
+            contacts.first { $0.uin == uin && $0.host == nil }.flatMap { Data(base64Encoded: $0.signingKey) }
+        }
+        var out: [BlockRule.Entry] = []
+        for uin in ownBlocked {
+            out.append(BlockRule.Entry(uin: uin, host: nil, anyIsland: local.blocksOnEveryIsland(uin), key: ownKey(uin)))
+        }
+        let pinned = addresses.isEmpty ? [] : CrossIslandStore.shared.all()
+        for a in addresses {
+            if let h = Self.foreignHost(a.host) {
+                let row = pinned.first { $0.uin == a.uin && ($0.host ?? "").lowercased() == h.lowercased() }
+                out.append(BlockRule.Entry(uin: a.uin, host: h, key: row.flatMap { Data(base64Encoded: $0.signingKey) }))
+            } else {
+                out.append(BlockRule.Entry(uin: a.uin, host: nil, key: ownKey(a.uin)))
+            }
+        }
+        return out
+    }
+
+    /// One row of the Blocked list.
+    struct BlockedPerson: Identifiable, Hashable {
+        let uin: Int
+        /// Nil for our own island.
+        let host: String?
+        let name: String
+        var status: UserStatus = .offline
+        var id: String { "\(uin)@\(host ?? "")" }
+        /// `uin@host` for another island, the bare number for ours.
+        var address: String { host.map { "\(uin)@\($0)" } ?? "\(uin)" }
+    }
+
+    /// Everybody this account blocked, our own island and every other, one
+    /// row per person. A block made from a request on another island is here
+    /// as uin@host with its Unblock; before, nothing showed it and nothing
+    /// could lift it (report 1064).
+    func blockedPeople() -> [BlockedPerson] {
+        if PanicPINService.shared.isDecoy { return [] }
+        let local = BlockedContactsStore.shared
+        var own = Set(local.all()).union(serverBlocked)
+        var foreign: [(Int, String)] = []
+        for a in CrossIslandRequestsStore.shared.blockedAddresses() {
+            if let h = Self.foreignHost(a.host) { foreign.append((a.uin, h)) } else { own.insert(a.uin) }
+        }
+        let ownRows = Dictionary(
+            contacts.filter { $0.host == nil }.map { ($0.uin, $0) }, uniquingKeysWith: { a, _ in a }
+        )
+        let pinned = CrossIslandStore.shared.all()
+        var out: [BlockedPerson] = own.map { uin in
+            let row = ownRows[uin]
+            let name = row.map { ContactAliasStore.shared.displayName(for: uin, fallback: $0.nickname) }
+            return BlockedPerson(uin: uin, host: nil, name: name ?? "\(uin)", status: row?.status ?? .offline)
+        }
+        for (uin, h) in foreign {
+            let row = pinned.first { $0.uin == uin && ($0.host ?? "").lowercased() == h.lowercased() }
+            let name = row.map { ContactAliasStore.shared.displayName(for: uin, fallback: $0.nickname, host: $0.host) }
+            out.append(BlockedPerson(uin: uin, host: h, name: name ?? "\(uin)@\(h)"))
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func incrementUnread(for uin: Int) {
@@ -797,6 +978,7 @@ final class ContactService: ObservableObject {
         rosterAccount = nil
         refreshInFlight = nil
         contacts = []
+        serverBlocked = []
         rosterLoaded = false
         hydratedFromSnapshot = false
         pendingRequests = []
@@ -812,6 +994,7 @@ final class ContactService: ObservableObject {
         rosterServedData = nil
         refreshInFlight = nil
         contacts = []
+        serverBlocked = []
         rosterLoaded = false
         hydratedFromSnapshot = false
         pendingRequests = []

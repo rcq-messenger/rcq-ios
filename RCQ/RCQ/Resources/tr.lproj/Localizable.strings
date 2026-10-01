@@ -931,7 +931,7 @@
 "pending.cta.accept" = "Kabul et";
 "ci.section" = "Mesaj istekleri";
 "ci.block" = "Engelle";
-"ci.contactreq.subtitle" = "Seni kişilerine eklemek istiyor";
+"ci.contactreq.subtitle" = "Seninle yazışmak istiyor";
 "ci.request_not_sent" = "Eklendi, ama adası kişi isteğini almadı. Henüz görmeyecek.";
 "ci.add_row.subtitle" = "Adalar arası kişi (başka bir RCQ adası)";
 "ci.add_self" = "Bu sensin, bu adadaki hesabın";

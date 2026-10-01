@@ -1134,10 +1134,13 @@ final class GroupService: ObservableObject {
         }
     }
 
-    func fetchPreview(groupID: Int) async -> GroupPreview? {
+    /// `linkKey`: the key of the link the card is drawn for. A card asks with
+    /// its own link's key; only a caller with no link of its own (the join
+    /// sheet) falls back to the key the user opened.
+    func fetchPreview(groupID: Int, linkKey: String? = nil) async -> GroupPreview? {
         do {
             // Same as `join`: the key goes in `query:`, never on the path.
-            let k = RoomLinkKeys.find(id: groupID, hosts: [nil, Multihome.ownHost()])
+            let k = linkKey ?? RoomLinkKeys.find(id: groupID, hosts: [nil, Multihome.ownHost()])
             let out: GroupPreview = try await APIClient.shared.request(
                 "GET", "/groups/\(groupID)/preview",
                 query: k.map { ["k": $0] } ?? [:]

@@ -922,7 +922,7 @@
 "pending.cta.accept" = "接受";
 "ci.section" = "消息请求";
 "ci.block" = "拉黑";
-"ci.contactreq.subtitle" = "想把你加为联系人";
+"ci.contactreq.subtitle" = "想和你聊天";
 "ci.request_not_sent" = "已添加，但他所在的岛没有接收这条联系人请求。他暂时看不到。";
 "ci.add_row.subtitle" = "跨岛联系人（另一个 RCQ 岛）";
 "ci.add_self" = "这是你，你在本岛的账号";

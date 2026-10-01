@@ -963,6 +963,18 @@ final class MessageService {
         case "block":
             CrossIslandRequestsStore.shared.block(uin: uin, host: host)
             if host.isEmpty { BlockedContactsStore.shared.set(uin, blocked: true) }
+            ContactService.shared.refreshBlockedFlags()
+        case "unblock":
+            // Lifted on another device (report 1064): the same one address,
+            // and for a stranger of our own island ("") the number too, which
+            // the block put on both lists. Older builds ignore the act.
+            CrossIslandRequestsStore.shared.unblock(uin: uin, host: host)
+            if host.isEmpty {
+                BlockedContactsStore.shared.set(uin, blocked: false)
+            } else {
+                BlockedContactsStore.shared.liftEveryIslandBlock(uin)
+            }
+            ContactService.shared.refreshBlockedFlags()
         case "decline":
             CrossIslandRequestsStore.shared.clear(uin: uin, host: host)
         case "accept":
@@ -2054,6 +2066,52 @@ final class MessageService {
         return row
     }
 
+    /// The island a row's sender number belongs to, nil for our own. A room
+    /// row is numbered by its room's island (members of a room on another
+    /// island seal with that island as `from_host` too); anything else by its
+    /// `from_host`.
+    func senderIsland(_ decrypted: DecryptedEnvelope, groupID: Int?) -> String? {
+        var host = decrypted.senderHost
+        if let gid = groupID, let g = GroupService.shared.groups.first(where: { $0.id == gid }) {
+            host = g.host
+        }
+        return Multihome.isOwnHost(host) ? nil : host
+    }
+
+    /// Did this account block whoever sent a row (reports 1064, 1065)?
+    ///
+    /// By the person, not the number: our own island's blocks match a number
+    /// from our own island only, another island's match that exact uin@host,
+    /// and either matches the key of the person it was written for wherever
+    /// they write from (`BlockRule`). The bare number used to decide alone,
+    /// before the host was even looked at: blocking 134@is2 dropped every 134
+    /// on every island, and a block of an accepted contact on another island
+    /// stopped nothing at all.
+    ///
+    /// Never ourselves: our own uin on our own island is a carbon, and our own
+    /// key signs every one (see the drop in `ingest`).
+    func isBlockedSender(uin: Int, island: String?, spub: String?) -> Bool {
+        if island == nil && uin == ownUIN { return false }
+        let entries = ContactService.shared.blockEntries()
+        guard !entries.isEmpty else { return false }
+        let key = spub.flatMap { Data(base64Encoded: $0) }
+        if let key, !key.isEmpty,
+           let mineB64 = (try? crypto?.bootstrapIdentity())?.signingKey,
+           let mine = Data(base64Encoded: mineB64),
+           key == mine {
+            return false
+        }
+        return BlockRule.blocks(entries, uin: uin, host: island, key: key)
+    }
+
+    /// The removed list is bare numbers of our own island and speaks for that
+    /// island only (report 1064, the iOS twin of Android's #1055). A sender
+    /// from another island who holds the same number is somebody else, and
+    /// goes through the cross-island gate like any stranger.
+    func droppedAsRemoved(uin: Int, island: String?) -> Bool {
+        island == nil && uin != ownUIN && RemovedContactsStore.shared.contains(uin)
+    }
+
     /// Was this envelope signed by THIS account's own Ed25519 key?
     ///
     /// `from` sits outside the v=1 signature, so an envelope naming our own
@@ -2114,7 +2172,10 @@ final class MessageService {
         guard !Multihome.isOwnHost(fromHost),
               Self.verifiedCrossIslandContact(
                   uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey, exactAddress: true
-              ) != nil
+              ) != nil,
+              // A contact we blocked does not ring (reports 1064, 1065): the
+              // block used to stop nothing a cross-island contact sent.
+              !isBlockedSender(uin: decrypted.senderUIN, island: fromHost, spub: decrypted.senderSigningKey)
         else { return .done }
         if sig == "call_offer" {
             if Int(Date().timeIntervalSince1970) - ts > 60 {
@@ -2465,11 +2526,12 @@ final class MessageService {
                 }
                 guard !Multihome.isOwnHost(fromHost) else { return outcome }
                 let uin = decrypted.senderUIN
-                // Same-island rule, unchanged: a blocked or removed sender's
-                // request is dropped silently.
-                if BlockedContactsStore.shared.contains(uin)
-                    || RemovedContactsStore.shared.contains(uin)
-                    || CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: fromHost) {
+                // A blocked sender's request is dropped silently: this address,
+                // or the key of somebody blocked elsewhere. Not our own
+                // island's lists by bare number (report 1064): those name our
+                // island's holder of the number, and a removed foreign contact
+                // asking again must be able to (Android's #1055).
+                if isBlockedSender(uin: uin, island: fromHost, spub: decrypted.senderSigningKey) {
                     return outcome
                 }
                 // "Already accepted" means the row we hold AND the key it pins.
@@ -2565,8 +2627,9 @@ final class MessageService {
                 }
                 guard !Multihome.isOwnHost(fromHost) else { return outcome }
                 let uin = decrypted.senderUIN
-                if BlockedContactsStore.shared.contains(uin)
-                    || RemovedContactsStore.shared.contains(uin) {
+                // Somebody we blocked renames nothing, by address or by key;
+                // our own island's lists by bare number say nothing about them.
+                if isBlockedSender(uin: uin, island: fromHost, spub: decrypted.senderSigningKey) {
                     return outcome
                 }
                 // A rename is applied only when the envelope is signed by the
@@ -2638,6 +2701,12 @@ final class MessageService {
                Self.verifiedCrossIslandContact(
                    uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
                ) == nil {
+                // Blocked, at this address or by key from wherever they write
+                // now: dropped, acked, never shown as a request. `hold` alone
+                // knew only the exact address.
+                if isBlockedSender(uin: decrypted.senderUIN, island: fromHost, spub: decrypted.senderSigningKey) {
+                    return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                }
                 if Self.isCrossIslandHeldKind(decrypted.envelope) {
                     CrossIslandRequestsStore.shared.hold(
                         uin: decrypted.senderUIN, host: fromHost,
@@ -2806,13 +2875,16 @@ final class MessageService {
             }
 
             // Block-list enforcement is client-side only under sealed sender.
-            // The local BlockedContactsStore is the source of truth — it covers
-            // strangers / non-contacts and group senders (the server can't block
-            // a non-contact and can't filter sealed messages); the server
-            // `blocked` contact flag is also honored. Bounce a tombstone for a
-            // blocked CONTACT (their bubble flips to .failed); a blocked stranger
-            // (no contact row) is just dropped silently. Runs before the 1:1 gate
-            // so it covers group messages too.
+            // The local block records are the source of truth (BlockedContactsStore
+            // for our own island, CrossIslandRequestsStore by address for every
+            // other one) - they cover strangers / non-contacts and group senders
+            // (the server can't block a non-contact and can't filter sealed
+            // messages); the server `blocked` contact flag is also honored. Bounce
+            // a tombstone for a blocked CONTACT (their bubble flips to .failed); a
+            // blocked stranger (no contact row) is just dropped silently. Runs
+            // before the same-island quarantine and covers group messages too;
+            // a blocked contact from another island passes the cross-island gate
+            // above (it is accepted) and is stopped here.
             let senderContact = ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN })
             // ⚠⚠ Never ourselves, in either gate. A carbon of a message sent
             // from the user's other device arrives FROM the user's own uin, so
@@ -2822,10 +2894,22 @@ final class MessageService {
             // screen to explain it and no way back. Android had exactly this
             // hole and it is the other half of #835.
             let isSelf = decrypted.senderUIN == ownUIN
+            // Whose number this is: our island's, or the room's / sender's
+            // island. The block and the removed list are both decided by it
+            // (reports 1064, 1065), never by the bare number alone.
+            let island = senderIsland(decrypted, groupID: ws.groupID)
             let isBlocked = !isSelf
-                && (BlockedContactsStore.shared.contains(decrypted.senderUIN) || (senderContact?.blocked ?? false))
+                && isBlockedSender(uin: decrypted.senderUIN, island: island, spub: decrypted.senderSigningKey)
             if isBlocked {
-                if let messageID = Self.messageID(in: decrypted.envelope), let contact = senderContact {
+                // The bounce goes to the person who wrote, found the same way:
+                // our island's row for the number, or the pinned row their key
+                // opens. The first row with the number could be somebody else.
+                let bounceTo: Contact? = island == nil
+                    ? ContactService.shared.contacts.first(where: { $0.uin == decrypted.senderUIN && $0.host == nil })
+                    : island.flatMap {
+                        Self.verifiedCrossIslandContact(uin: decrypted.senderUIN, host: $0, spub: decrypted.senderSigningKey)
+                    }
+                if let messageID = Self.messageID(in: decrypted.envelope), let contact = bounceTo {
                     Task { try? await self.sendEnvelope(.bounce(targetID: messageID), to: contact, localID: nil) }
                 }
                 return nil
@@ -2833,7 +2917,8 @@ final class MessageService {
             // User removed this contact (classic mutual delete). Server
             // can't filter sealed messages by sender; we silently drop on
             // ingest so no banner, no sound, no chat-list reappearance.
-            if !isSelf, RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+            // Our own island's numbers only: see `droppedAsRemoved`.
+            if !isSelf, droppedAsRemoved(uin: decrypted.senderUIN, island: island) {
                 return nil
             }
             // Same-island opt-in stranger quarantine (Privacy -> strangers to
@@ -3570,9 +3655,13 @@ final class MessageService {
             PushDecryptCache.store(ciphertextB64: ws.payload, decrypted: decrypted, accountID: owner)
             guard notify else { return }
             let me = ownUIN != 0 ? ownUIN : KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init)
+            let island = senderIsland(decrypted, groupID: ws.groupID)
             guard Self.isSomethingSaid(decrypted.envelope),
                   decrypted.senderUIN != me,
-                  !RemovedContactsStore.shared.contains(decrypted.senderUIN),
+                  // The drop `ingest` will make, by the same rules: removed
+                  // (our own island's numbers only) and blocked (by person).
+                  !droppedAsRemoved(uin: decrypted.senderUIN, island: island),
+                  !isBlockedSender(uin: decrypted.senderUIN, island: island, spub: decrypted.senderSigningKey),
                   // The extension's rules, the same ones for the same banner:
                   // an ended random chat never shows the stranger's number,
                   // and an envelope naming a pinned cross-island contact under

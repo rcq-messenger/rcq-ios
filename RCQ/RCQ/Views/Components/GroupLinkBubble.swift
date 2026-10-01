@@ -180,15 +180,19 @@ struct GroupLinkBubble: View {
 
     private func load() async {
         if preview != nil { return }
+        // The card asks with THIS link's key, not the one the user opened
+        // last: a stale key that was tapped once must not turn the owner's
+        // fresh link into a raw URL (#990 review). The join keeps `chosen`.
+        let ownKey = RoomLinkKeys.key(in: rawURL).flatMap { RoomLinkKeys.isKey($0) ? $0 : nil }
         // Foreign island: only query one we've already VISITED (privacy). An
         // unvisited island renders `islandCard` and is left untouched.
         if let foreignHost {
-            if let snap = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID) {
+            if let snap = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID, linkKey: ownKey) {
                 preview = snap
             }
             return
         }
-        if let snap = await GroupService.shared.fetchPreview(groupID: groupID) {
+        if let snap = await GroupService.shared.fetchPreview(groupID: groupID, linkKey: ownKey) {
             preview = snap
         } else {
             loadFailed = true
@@ -207,7 +211,9 @@ struct GroupLinkBubble: View {
 /// whichever link for the room was drawn last: an old link from before a
 /// reset, or a junk `?k=` a member posted below the real one. A key the user
 /// OPENED (a tap on the card or the pin, a deep link) goes in `chosen` too,
-/// and `find` asks that map first, so a later render cannot swap it.
+/// and `find` asks that map first, so a later render cannot swap it. That is
+/// for the join and the guest entry: a card on screen asks with its own
+/// link's key (`linkKey` on the two preview calls).
 enum RoomLinkKeys {
     private static var keys: [String: String] = [:]
     private static var chosen: [String: String] = [:]
@@ -215,19 +221,28 @@ enum RoomLinkKeys {
     static func isKey(_ k: String) -> Bool {
         (8...64).contains(k.count) && k.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
     }
-    private static func slot(_ host: String?, _ id: Int) -> String { "\((host ?? "").lowercased())#\(id)" }
+    /// Our own island has ONE slot per room, whatever name the link used (a
+    /// bare id, our host, a front name). With one slot per spelling the bare
+    /// link's key was always asked first, so tapping `…/g/42@<our host>`
+    /// later still joined with the bare link's key (#990 review).
+    private static func slot(_ host: String?, _ id: Int) -> String {
+        let h = Multihome.isOwnHost(host) ? "" : (host ?? "").lowercased()
+        return "\(h)#\(id)"
+    }
     static func remember(host: String?, id: Int, k: String, chosen pick: Bool = false) {
         guard isKey(k) else { return }
+        let s = slot(host, id)
         lock.lock(); defer { lock.unlock() }
-        keys[slot(host, id)] = k
-        if pick { chosen[slot(host, id)] = k }
+        keys[s] = k
+        if pick { chosen[s] = k }
     }
     /// `hosts`: every name the room's island goes by here; for our own island
-    /// that is nil (a bare id) and its host.
+    /// that is nil (a bare id) and its host, which share a slot.
     static func find(id: Int, hosts: [String?]) -> String? {
+        let slots = hosts.map { slot($0, id) }
         lock.lock(); defer { lock.unlock() }
-        for h in hosts { if let k = chosen[slot(h, id)] { return k } }
-        for h in hosts { if let k = keys[slot(h, id)] { return k } }
+        for s in slots { if let k = chosen[s] { return k } }
+        for s in slots { if let k = keys[s] { return k } }
         return nil
     }
     /// `?k=<key>` for a URL built as a STRING (the calls to another island),
@@ -323,6 +338,9 @@ enum GroupLinkParser {
 struct PinnedGroupChip: View {
     let groupID: Int
     var host: String? = nil
+    /// The key the pinned link itself carries, which is what the card asks
+    /// with (#990 review); the tap marks it chosen for the join.
+    var linkKey: String? = nil
     let onOpen: (Int) -> Void
 
     @State private var preview: GroupService.GroupPreview?
@@ -400,9 +418,9 @@ struct PinnedGroupChip: View {
                 if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
                 if Task.isCancelled { return }
                 if let foreignHost {
-                    fetched = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID)
+                    fetched = await CrossIslandGroups.previewForeign(host: foreignHost, remoteId: groupID, linkKey: linkKey)
                 } else {
-                    fetched = await GroupService.shared.fetchPreview(groupID: groupID)
+                    fetched = await GroupService.shared.fetchPreview(groupID: groupID, linkKey: linkKey)
                 }
                 if fetched != nil { break }
             }

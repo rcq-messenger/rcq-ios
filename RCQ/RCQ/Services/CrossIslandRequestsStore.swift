@@ -403,10 +403,31 @@ final class CrossIslandRequestsStore: ObservableObject {
     }
 
     /// Block a sender: drop the request + remember so future deposits are dropped.
+    /// Also the block of an accepted contact on another island (the card, the
+    /// chat menu, a room on that island): one address, one entry (report 1065).
     func block(uin: Int, host: String) {
         clear(uin: uin, host: host)
         blocked.insert(reqKey(uin, host))
         persistBlocked()
+        changed()
+    }
+
+    /// Lift the block of exactly this address (report 1064). There was no way
+    /// to: Unblock only took the bare number off the other list, and this entry
+    /// went on dropping everything from them, after the ack, for good.
+    func unblock(uin: Int, host: String) {
+        guard blocked.remove(reqKey(uin, host)) != nil else { return }
+        persistBlocked()
+        changed()
+    }
+
+    /// Every blocked address, for the Blocked list. `host` is "" for a stranger
+    /// on our own island blocked from the request quarantine.
+    func blockedAddresses() -> [(uin: Int, host: String)] {
+        blocked.compactMap { k in
+            guard let at = k.firstIndex(of: "@"), let uin = Int(k[k.startIndex..<at]) else { return nil }
+            return (uin, String(k[k.index(after: at)...]))
+        }
     }
 
     private func changed() {

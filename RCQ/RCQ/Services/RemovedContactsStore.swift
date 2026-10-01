@@ -6,6 +6,13 @@ import Foundation
 /// any UIN in this set are dropped on ingest (no banner, no sound,
 /// no thread row) and the NSE skips alert rewrites for them.
 ///
+/// ⚠ Numbers of OUR OWN island only, written and read (report 1064, the
+/// iOS twin of Android's #1055). The number names nobody on another
+/// island: removing 134@is2 used to land here as a bare 134 and drop
+/// everything from every 134 for good, with nothing to take it off again.
+/// A removed contact from another island goes through the cross-island
+/// gate like any stranger (their messages wait in Requests).
+///
 /// Persisted in UserDefaults so the filter survives app relaunch /
 /// background unload. App-group-scoped (`group.app.rcq.shared`) so
 /// the NSE shares the same view of the set.
@@ -47,43 +54,139 @@ final class RemovedContactsStore {
     }
 }
 
-/// Local "I blocked this UIN" set. Like [RemovedContactsStore] but for the
-/// explicit Block action — and it is the SOURCE OF TRUTH, because the server's
-/// `/contacts/{uin}/block` 404s for non-contacts (so you can't block a stranger
-/// group member there) and group messages are sealed-sender (the server can't
-/// filter). Drives ingest filtering + the Blocked list. App-group-scoped so the
-/// NSE can suppress a blocked sender's push too. Mirrors Android's local
-/// blocked set.
+/// Local "I blocked this number" set: numbers on THIS ACCOUNT'S OWN island.
+/// Like [RemovedContactsStore] but for the explicit Block action, and it is
+/// the SOURCE OF TRUTH, because the server's `/contacts/{uin}/block` 404s for
+/// non-contacts (so you can't block a stranger group member there) and group
+/// messages are sealed-sender (the server can't filter). Drives ingest
+/// filtering + the Blocked list. Somebody on another island is blocked by
+/// address in `CrossIslandRequestsStore`, never here (reports 1064, 1065).
+///
+/// ⚠ Per account. It used to be one device-wide set of bare numbers, so a
+/// block in one account blocked that number in every other account on the
+/// phone, and a block of 134@is2 silenced our own island's 134 too.
+///
+/// ⚠ `everyIsland` is what that old set held, copied into every account by
+/// `migrateLegacyIfNeeded`. Those blocks keep meaning "this number on every
+/// island" (`BlockRule`), so updating the app unblocks nobody. Nothing new is
+/// ever written there; unblocking the number removes it.
+///
+/// App-group-scoped so the notification extension can keep a blocked sender
+/// off the lock screen (the static readers at the bottom).
 final class BlockedContactsStore {
     static let shared = BlockedContactsStore()
 
-    private static let key = "rcq.blocked_contacts"
+    /// The device-wide set older builds kept. Read until migrated.
+    private static let legacyKey = "rcq.blocked_contacts"
+    private static let ownPrefix = "rcq.blocked_contacts.own.v2."
+    private static let everyIslandPrefix = "rcq.blocked_contacts.any.v2."
     private static let appGroup = "group.app.rcq.shared"
 
     private let defaults: UserDefaults
-    private var cache: Set<Int>
+    private var ownKey: String
+    private var everyIslandKey: String
+    private var own: Set<Int>
+    private var everyIsland: Set<Int>
 
     private init() {
         let suite = UserDefaults(suiteName: Self.appGroup) ?? .standard
         self.defaults = suite
-        self.cache = Set((suite.array(forKey: Self.key) as? [Int]) ?? [])
+        // The extension only reads (the statics below): a migration there could
+        // land under an app process that already holds the old set in memory.
+        if !Self.inExtension { Self.migrateLegacyIfNeeded() }
+        let id = AppGroup.readActiveAccountID()
+        ownKey = Self.ownPrefix + (id?.uuidString ?? "none")
+        everyIslandKey = Self.everyIslandPrefix + (id?.uuidString ?? "none")
+        own = Self.load(suite, ownKey)
+        everyIsland = Self.load(suite, everyIslandKey).union(Self.load(suite, Self.legacyKey))
     }
 
-    func contains(_ uin: Int) -> Bool { cache.contains(uin) }
-    func all() -> [Int] { Array(cache) }
+    /// Re-point at the active account on every account switch and on entering
+    /// or leaving a decoy session, like `CrossIslandRequestsStore.bind`.
+    func bind(accountID: UUID?) {
+        Self.migrateLegacyIfNeeded()
+        ownKey = Self.ownPrefix + (accountID?.uuidString ?? "none")
+        everyIslandKey = Self.everyIslandPrefix + (accountID?.uuidString ?? "none")
+        own = Self.load(defaults, ownKey)
+        everyIsland = Self.load(defaults, everyIslandKey).union(Self.load(defaults, Self.legacyKey))
+    }
 
+    /// Is this number on our own island blocked (by a block made here, or by an
+    /// older build's any-island one)?
+    func contains(_ uin: Int) -> Bool { own.contains(uin) || everyIsland.contains(uin) }
+    /// An older build's block of this number, which covers every island.
+    func blocksOnEveryIsland(_ uin: Int) -> Bool { everyIsland.contains(uin) }
+    func all() -> [Int] { Array(own.union(everyIsland)) }
+
+    /// Unblocking also lifts an older build's any-island block of the number:
+    /// that was the only record those builds kept, and their Unblock lifted it.
     func set(_ uin: Int, blocked: Bool) {
+        Self.migrateLegacyIfNeeded()
         if blocked {
-            guard cache.insert(uin).inserted else { return }
+            guard own.insert(uin).inserted else { return }
+            defaults.set(Array(own), forKey: ownKey)
         } else {
-            guard cache.remove(uin) != nil else { return }
+            let a = own.remove(uin) != nil
+            let b = everyIsland.remove(uin) != nil
+            if a { defaults.set(Array(own), forKey: ownKey) }
+            if b { defaults.set(Array(everyIsland), forKey: everyIslandKey) }
         }
-        defaults.set(Array(cache), forKey: Self.key)
+    }
+
+    /// Only an older build's any-island block of `uin` (the person unblocked
+    /// was on another island; our own island's block, if any, stays).
+    func liftEveryIslandBlock(_ uin: Int) {
+        Self.migrateLegacyIfNeeded()
+        guard everyIsland.remove(uin) != nil else { return }
+        defaults.set(Array(everyIsland), forKey: everyIslandKey)
     }
 
     func wipe() {
-        cache.removeAll()
-        defaults.removeObject(forKey: Self.key)
+        own.removeAll()
+        everyIsland.removeAll()
+        defaults.removeObject(forKey: ownKey)
+        defaults.removeObject(forKey: everyIslandKey)
+    }
+
+    private static var inExtension: Bool { Bundle.main.bundlePath.hasSuffix(".appex") }
+
+    private static func load(_ d: UserDefaults, _ key: String) -> Set<Int> {
+        Set((d.array(forKey: key) as? [Int]) ?? [])
+    }
+
+    /// Copy the device-wide set older builds kept into EVERY account's
+    /// any-island set, then drop it. Every account, not a guess at whose: the
+    /// set never said, and a wrong guess would unblock somebody. Waits while
+    /// no account is listed yet, so a block cannot land under no account.
+    static func migrateLegacyIfNeeded() {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        guard let legacy = d.array(forKey: legacyKey) as? [Int] else { return }
+        var ids = AppGroup.readAccountIDs()
+        if let active = AppGroup.readActiveAccountID(), !ids.contains(active) { ids.append(active) }
+        if legacy.isEmpty { d.removeObject(forKey: legacyKey); return }
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            let k = everyIslandPrefix + id.uuidString
+            d.set(Array(load(d, k).union(legacy)), forKey: k)
+        }
+        d.removeObject(forKey: legacyKey)
+    }
+
+    // MARK: read-only, for the notification extension
+
+    /// The account's own-island blocks, read from disk (another process wrote
+    /// them). Includes an older build's set until the app has migrated it.
+    static func storedOwnIsland(accountID: UUID?) -> Set<Int> {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        let id = accountID?.uuidString ?? "none"
+        return load(d, ownPrefix + id).union(storedEveryIsland(accountID: accountID))
+    }
+
+    /// The account's any-island blocks (an older build's), read from disk.
+    static func storedEveryIsland(accountID: UUID?) -> Set<Int> {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        let id = accountID?.uuidString ?? "none"
+        return load(d, everyIslandPrefix + id).union(load(d, legacyKey))
     }
 }
 

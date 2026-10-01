@@ -1163,7 +1163,7 @@ struct ChatView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                             case .group(let gid, let ghost, let k):
-                                PinnedGroupChip(groupID: gid, host: ghost) { tappedGID in
+                                PinnedGroupChip(groupID: gid, host: ghost, linkKey: k) { tappedGID in
                                     // The pin's own key wins over a link for the same room drawn later.
                                     if let k { RoomLinkKeys.remember(host: ghost, id: gid, k: k, chosen: true) }
                                     pinnedExpansion = nil
@@ -1556,6 +1556,7 @@ struct ChatView: View {
                         targetNickname: snapshot.nickname,
                         context: "chat",
                         style: .menu,
+                        targetHost: snapshot.host,
                     )
                     // .tint cascades into the Menu's icon SF symbols — .foregroundStyle on the Label is ignored.
                     .tint(.red)
@@ -1786,7 +1787,7 @@ struct ChatView: View {
 
     private var isPeerBlocked: Bool {
         guard case .peer(let snapshot) = vm.target else { return false }
-        return contacts.contacts.first(where: { $0.uin == snapshot.uin })?.blocked ?? false
+        return contacts.isBlocked(uin: snapshot.uin, host: snapshot.host)
     }
 
 
@@ -2790,7 +2791,7 @@ struct ChatView: View {
                                     .lineLimit(3)
                                     .fixedSize(horizontal: false, vertical: true)
                             case .group(let gid, let ghost, let k):
-                                PinnedGroupChip(groupID: gid, host: ghost) { tapped in
+                                PinnedGroupChip(groupID: gid, host: ghost, linkKey: k) { tapped in
                                     if let k { RoomLinkKeys.remember(host: ghost, id: gid, k: k, chosen: true) }
                                     appState.pendingJoinGroupHost = Multihome.isOwnHost(ghost) ? nil : ghost
                                     appState.pendingJoinGroupID = tapped
@@ -2850,7 +2851,7 @@ struct ChatView: View {
     /// the banner as a stray tail.
     private func pinnedDisplayText(_ text: String) -> String {
         var s = text.replacingOccurrences(
-            of: "(?:https?://rcq\\.app/g/\\d+|rcq://group/\\d+)(?:@[a-z0-9.-]+)?(?:\\?[A-Za-z0-9_=&%-]*)?",
+            of: PinnedRoomLink.pattern,
             with: "", options: [.regularExpression, .caseInsensitive]
         )
         s = s.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
@@ -2875,8 +2876,8 @@ struct ChatView: View {
         guard linksAllowed else { return [.text(text)] }
         guard let rx = try? NSRegularExpression(
             // The trailing `?k=...` is part of the link: it is the room's key.
-            // No `.` or `)` in it, so a full stop after the link stays text.
-            pattern: "(?:https?://rcq\\.app/g/(\\d+)(?:@([a-z0-9.-]+))?|rcq://group/(\\d+)(?:@([a-z0-9.-]+))?)(?:\\?[A-Za-z0-9_=&%-]*)?", options: [.caseInsensitive]
+            // An island may carry a port. See `PinnedRoomLink`.
+            pattern: PinnedRoomLink.pattern, options: [.caseInsensitive]
         ) else { return [.text(text)] }
         let ns = text as NSString
         let matches = rx.matches(in: text, range: NSRange(location: 0, length: ns.length))

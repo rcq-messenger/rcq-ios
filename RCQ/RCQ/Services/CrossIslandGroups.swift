@@ -718,12 +718,18 @@ enum CrossIslandGroups {
     /// — the server's /groups/{id}/preview is optional-auth. Sends the guest token
     /// when we have one (visited), otherwise unauthenticated. So a received
     /// cross-island invite shows the real group, not a blank card.
-    static func previewForeign(host: String, remoteId: Int) async -> GroupService.GroupPreview? {
+    ///
+    /// `linkKey`: the key of the link the card is drawn for, which wins over
+    /// the one the user last opened (see `GroupService.fetchPreview`).
+    static func previewForeign(host: String, remoteId: Int, linkKey: String? = nil) async -> GroupService.GroupPreview? {
         // Under the decoy the sheet draws the minimal island card instead:
         // no copy's token is sent, and the island is not asked at all.
         guard !(await decoyOrLocked()) else { return nil }
         let jwt = VisitedIslandsStore.shared.get(host: host)?.jwt
-        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview" + RoomLinkKeys.query(id: remoteId, hosts: [host]), jwt: jwt)
+        let q = linkKey.flatMap { k in
+            k.addingPercentEncoding(withAllowedCharacters: .alphanumerics).map { "?k=\($0)" }
+        } ?? RoomLinkKeys.query(id: remoteId, hosts: [host])
+        return try? await getJSON("https://\(host)/groups/\(remoteId)/preview" + q, jwt: jwt)
     }
 
     /// §5c join: a copy on the group's island (explicit user action, seeing a

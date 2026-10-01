@@ -1014,6 +1014,9 @@ struct PendingRequestsView: View {
         if r.host.isEmpty {
             BlockedContactsStore.shared.set(r.uin, blocked: true)
         }
+        // A row for them in the list (a contact who also asked) now says so.
+        // The block is listed in Settings -> Blocked users, where it lifts.
+        ContactService.shared.refreshBlockedFlags()
         ciRequests = CrossIslandRequestsStore.shared.list()
     }
 

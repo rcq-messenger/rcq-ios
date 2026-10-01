@@ -931,7 +931,7 @@
 "pending.cta.accept" = "Aceitar";
 "ci.section" = "Solicitações de mensagem";
 "ci.block" = "Bloquear";
-"ci.contactreq.subtitle" = "Quer adicionar você aos contatos";
+"ci.contactreq.subtitle" = "Quer conversar com você";
 "ci.request_not_sent" = "Adicionado, mas a ilha dele não aceitou o pedido. Ele ainda não vai ver.";
 "ci.add_row.subtitle" = "Contato de outra ilha (outra ilha RCQ)";
 "ci.add_self" = "Este é você: sua conta nesta ilha";

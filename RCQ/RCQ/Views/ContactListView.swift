@@ -2346,7 +2346,7 @@ struct ContactListView: View {
                     : "contact_list.ctx.block").localized,
             systemImage: contact.blocked ? "hand.raised.slash" : "hand.raised",
             destructive: !contact.blocked
-        ) { Task { await vm.toggleBlock(contact.uin) } })
+        ) { Task { await vm.toggleBlock(contact.uin, host: contact.host) } })
         out.append(ContextAction(
             title: "contact_list.ctx.report".localized,
             systemImage: "exclamationmark.shield",
@@ -2505,7 +2505,7 @@ struct ContactListView: View {
         }
         Divider()
         Button(role: contact.blocked ? .none : .destructive) {
-            Task { await vm.toggleBlock(contact.uin) }
+            Task { await vm.toggleBlock(contact.uin, host: contact.host) }
         } label: {
             Label((contact.blocked
                     ? "contact_list.ctx.unblock"

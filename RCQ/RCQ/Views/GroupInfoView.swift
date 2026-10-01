@@ -1257,6 +1257,8 @@ private struct MemberActionSheet: View {
                         targetNickname: member.nickname,
                         context: "group",
                         style: .rows,
+                        // A room on another island numbers its members there.
+                        targetHost: groupHost,
                     )
                 }
             }

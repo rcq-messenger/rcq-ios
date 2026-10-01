@@ -405,6 +405,7 @@ final class PanicPINService: ObservableObject {
         // Nothing is deleted; the real account's rows stay on disk.
         CrossIslandStore.shared.bind(accountID: decoyNamespace)
         CrossIslandRequestsStore.shared.bind(accountID: decoyNamespace)
+        BlockedContactsStore.shared.bind(accountID: decoyNamespace)
         StrangerQuarantine.shared.bind(accountID: decoyNamespace)
         VisitedIslandsStore.shared.bind(accountID: decoyNamespace)
         // The sections tree names the user's own buckets and every chat filed
@@ -474,6 +475,7 @@ final class PanicPINService: ObservableObject {
         let id = AccountManager.shared.activeAccountID
         CrossIslandStore.shared.bind(accountID: id)
         CrossIslandRequestsStore.shared.bind(accountID: id)
+        BlockedContactsStore.shared.bind(accountID: id)
         StrangerQuarantine.shared.bind(accountID: id)
         VisitedIslandsStore.shared.bind(accountID: id)
         SectionsStore.shared.bind(accountID: id)

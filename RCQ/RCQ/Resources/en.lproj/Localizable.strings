@@ -1011,7 +1011,7 @@
 "pending.cta.accept" = "Accept";
 "ci.section" = "Message requests";
 "ci.block" = "Block";
-"ci.contactreq.subtitle" = "Wants to add you as a contact";
+"ci.contactreq.subtitle" = "Wants to chat with you";
 "ci.request_not_sent" = "Added, but their island did not take the contact request. They will not see it yet.";
 "ci.add_row.subtitle" = "Cross-island contact (another RCQ island)";
 "ci.add_self" = "This is you: your account on this island";

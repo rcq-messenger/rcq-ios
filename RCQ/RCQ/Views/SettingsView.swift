@@ -723,7 +723,8 @@ struct SettingsView: View {
                     Text("settings.blocked_users".localized)
                         .foregroundColor(Theme.Color.textPrimary)
                     Spacer()
-                    let count = ContactService.shared.contacts.filter { $0.blocked }.count
+                    // Every block, cross-island ones included (report 1064).
+                    let count = ContactService.shared.blockedPeople().count
                     if count > 0 {
                         Text(verbatim: "\(count)")
                             .font(.caption.monospacedDigit())

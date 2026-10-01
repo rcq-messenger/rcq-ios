@@ -317,9 +317,12 @@ enum CrossIslandSender {
         if PanicPINService.shared.isDecoy { return }
         // Someone we blocked does not get handed our current name and face.
         // Same filter web applies to this broadcast.
+        // An older build's block of the bare number counts too (it covered
+        // every island, see `BlockRule`).
         let peers = CrossIslandStore.shared.all().filter { c in
             guard let h = c.host else { return false }
             return !CrossIslandRequestsStore.shared.isBlocked(uin: c.uin, host: h)
+                && !BlockedContactsStore.shared.blocksOnEveryIsland(c.uin)
         }
         guard !peers.isEmpty else { return }
         let nickname = AuthService.shared.nickname
@@ -363,7 +366,8 @@ enum CrossIslandSender {
     static func sendProfile(to contact: Contact) async {
         if PanicPINService.shared.isDecoy { return }
         guard let host = contact.host else { return }
-        if CrossIslandRequestsStore.shared.isBlocked(uin: contact.uin, host: host) { return }
+        if CrossIslandRequestsStore.shared.isBlocked(uin: contact.uin, host: host)
+            || BlockedContactsStore.shared.blocksOnEveryIsland(contact.uin) { return }
         // Read before the picture round trip, and the account checked again
         // after it: the envelope is sealed with whoever is active when it is
         // sent, so a switch during the upload would otherwise hand the new

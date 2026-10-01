@@ -194,7 +194,13 @@ class NotificationService: UNNotificationServiceExtension {
             // contact, silently suppress the push. PushDecryptCache stays
             // un-touched so the main app's MessageService.ingest can also
             // re-evaluate (and double-drop) when it sees the envelope.
-            if RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+            //
+            // ⚠ The list is our own island's numbers (report 1064): a pinned
+            // contact on another island who holds the same number is somebody
+            // else, and the app files what they write. This process cannot
+            // name our island, so "ours" is any address without such a row.
+            if RemovedContactsStore.shared.contains(decrypted.senderUIN),
+               !Self.isPinnedForeign(uin: decrypted.senderUIN, host: decrypted.senderHost, accountID: routedAccountID) {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -245,6 +251,19 @@ class NotificationService: UNNotificationServiceExtension {
             // own message. (iOS group sends already skip self; this also
             // covers other clients that don't.)
             if let toUIN, decrypted.senderUIN == toUIN {
+                contentHandler(UNNotificationContent())
+                return
+            }
+            // Somebody this account blocked: no banner (reports 1064, 1065).
+            // Cached above, so the app still takes the row in and drops it
+            // (and bounces it to a blocked contact) by its own rules. Nothing
+            // here used to look at a block at all, so a blocked person's words
+            // reached the lock screen before the app ever ran.
+            if Self.senderBlocked(
+                uin: decrypted.senderUIN, host: decrypted.senderHost,
+                spub: decrypted.senderSigningKey, accountID: routedAccountID
+            ) {
+                os_log("sender #%d is blocked - no banner", log: Self.log, type: .default, decrypted.senderUIN)
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -378,6 +397,53 @@ class NotificationService: UNNotificationServiceExtension {
               let key = row["signing_key"] as? String, !key.isEmpty
         else { return nil }
         return key
+    }
+
+    /// Does this account hold a pinned cross-island contact at `uin@host`? The
+    /// one way this process can tell a number from another island apart from
+    /// ours: it has no list of our island's names, and a row exists only for
+    /// a foreign address.
+    private static func isPinnedForeign(uin: Int, host: String?, accountID: UUID?) -> Bool {
+        guard let host else { return false }
+        return pinnedSigningKey(uin: uin, host: host, accountID: accountID) != nil
+    }
+
+    /// Did the account this push belongs to block its sender (reports 1064,
+    /// 1065)? The app's rules (`BlockRule`) as far as this process can follow
+    /// them, read raw from the App Group like `pinnedSigningKey`:
+    ///
+    /// - a number of our own island (`BlockedContactsStore`), for any sender
+    ///   not at a pinned foreign address (see `isPinnedForeign`);
+    /// - an older build's block of the number, which covers every island;
+    /// - uin@host blocked on another island (`CrossIslandRequestsStore`, the
+    ///   set under `rcq.ci-blocked.v1.<account>`, "uin@lowercased host");
+    /// - the key pinned for a blocked address, from wherever it writes now.
+    ///
+    /// Wrong only toward silence for a stranger on another island who holds a
+    /// number blocked on ours: no banner, and the app still files the row.
+    private static func senderBlocked(uin: Int, host: String?, spub: String?, accountID: UUID?) -> Bool {
+        if !isPinnedForeign(uin: uin, host: host, accountID: accountID),
+           BlockedContactsStore.storedOwnIsland(accountID: accountID).contains(uin) {
+            return true
+        }
+        if BlockedContactsStore.storedEveryIsland(accountID: accountID).contains(uin) { return true }
+        guard let defaults = UserDefaults(suiteName: AppGroup.identifier) else { return false }
+        let id = accountID?.uuidString ?? "none"
+        guard let data = defaults.data(forKey: "rcq.ci-blocked.v1." + id),
+              let blocked = (try? JSONSerialization.jsonObject(with: data)) as? [String],
+              !blocked.isEmpty
+        else { return false }
+        if let host, blocked.contains("\(uin)@\(host.lowercased())") { return true }
+        guard let spub, let got = Data(base64Encoded: spub), !got.isEmpty,
+              let rows = defaults.data(forKey: "rcq.crossisland.contacts.v1." + id),
+              let map = (try? JSONSerialization.jsonObject(with: rows)) as? [String: Any]
+        else { return false }
+        return blocked.contains { address in
+            guard let row = map[address] as? [String: Any],
+                  let key = row["signing_key"] as? String,
+                  let pinned = Data(base64Encoded: key) else { return false }
+            return pinned == got
+        }
     }
 
     /// Same Ed25519 key, compared as bytes so two base64 spellings agree. A

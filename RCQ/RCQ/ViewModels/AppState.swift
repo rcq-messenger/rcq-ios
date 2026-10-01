@@ -2711,6 +2711,9 @@ final class AppState: ObservableObject {
         // others (founder report).
         CrossIslandStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         CrossIslandRequestsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // Blocks of our own island are per account too (report 1065): one
+        // account's block used to block the number in every account here.
+        BlockedContactsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         StrangerQuarantine.shared.bind(accountID: AccountManager.shared.activeAccountID)
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         // The sections tree is per account and holds section names plus the uin

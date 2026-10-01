@@ -10,17 +10,26 @@ struct UserSafetyActions: View {
 
     enum Style { case menu, rows }
     let style: Style
+    /// The island the number belongs to: a cross-island contact's, or a room's
+    /// on another island. Nil for our own. The block names `uin@host` there,
+    /// never the bare number (reports 1064, 1065).
+    var targetHost: String? = nil
 
     @State private var showBlockConfirm: Bool = false
     @State private var showReportSheet: Bool = false
     @State private var blocking: Bool = false
-    @State private var nowBlocked: Bool = false
+    /// Redraws after a block or unblock of somebody with no roster row, whose
+    /// state lives only in the block stores.
+    @State private var tick = 0
 
     @StateObject private var contacts = ContactService.shared
 
+    /// Read from the block records, not the roster row: a stranger has no row,
+    /// and a row's flag said nothing about a cross-island block, so the label
+    /// and the action used to disagree.
     private var isBlocked: Bool {
-        if nowBlocked { return true }
-        return contacts.contacts.first(where: { $0.uin == targetUIN })?.blocked ?? false
+        _ = tick
+        return contacts.isBlocked(uin: targetUIN, host: targetHost)
     }
 
     var body: some View {
@@ -122,11 +131,7 @@ struct UserSafetyActions: View {
         guard !blocking else { return }
         blocking = true
         defer { blocking = false }
-        do {
-            try await contacts.toggleBlock(targetUIN)
-            nowBlocked = !isBlocked
-        } catch {
-            // Silent on failure — state doesn't flip; user can re-tap.
-        }
+        await contacts.toggleBlock(targetUIN, host: targetHost)
+        tick += 1
     }
 }
