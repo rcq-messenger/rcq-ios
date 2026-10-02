@@ -1,6 +1,6 @@
 {
-  "version": 147,
-  "issued_at": "2026-09-14T10:32:42Z",
+  "version": 148,
+  "issued_at": "2026-10-02T03:50:34Z",
   "relays": [
     {
       "obfs_password": "jXfGkLToOkTihpeJzDiNf8Bb",
@@ -95,18 +95,6 @@
     {
       "flow": "xtls-rprx-vision",
       "port": 443,
-      "priority": 8,
-      "proto": "vless",
-      "public_key": "yrARhKJ0ICe2wVf9J5uk5O2dHvWhE_I8Vx_904zwQGM",
-      "server": "139.180.194.73",
-      "short_id": "b264d5f88bc0589c",
-      "sni": "nrt1.vultrobjects.com",
-      "tag": "relay-vultr-nrt",
-      "uuid": "9bafd931-cbb8-4d67-b448-0495a8e325bd"
-    },
-    {
-      "flow": "xtls-rprx-vision",
-      "port": 443,
       "priority": 9,
       "proto": "vless",
       "public_key": "mYfGMTa0mgxLm06jf2_HTum9U5gUk6AIcMCSzIuRsXQ",
@@ -137,16 +125,6 @@
       "tag": "relay-vultr-sto-hy2"
     },
     {
-      "obfs_password": "lXRUg2N6BQztKtho87GJmmos",
-      "password": "End6wDZP7I3A1VQfCIdNezbP",
-      "port": 443,
-      "priority": 12,
-      "proto": "hysteria2",
-      "server": "139.180.194.73",
-      "sni": "nrt1.vultrobjects.com",
-      "tag": "relay-vultr-nrt-hy2"
-    },
-    {
       "obfs_password": "W50oij0htTu06KYbhVEVtpfU",
       "password": "7CGkcQoLzH8piLuhTsO7P7za",
       "port": 443,
@@ -171,5 +149,5 @@
     "rcq.chickenkiller.com",
     "rcq.project26.cc"
   ],
-  "sig": "xOR8VtIvQSdwt9BzFCv4FPidmJwyDDyJ3eIQ8ViVi9uucDiviVmuOe3TrPaMFeRQ3tpMdfi45cbbvCGg43s/DA=="
+  "sig": "JENPnjQZt+Cv+36utGafskIctJl4Yr1foySWJsoqovUpIIdhdEkdXFnBFUGBMaOPU/Zl4HJgkFvnal+AENCBBA=="
 }
