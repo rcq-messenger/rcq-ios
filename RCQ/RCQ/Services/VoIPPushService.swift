@@ -45,6 +45,14 @@ final class VoIPPushService: NSObject {
         UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
     }
 
+    /// This install's VoIP token, this launch's or the last one registered.
+    /// The twin of `NotificationService.installToken`; see the note there.
+    var installToken: String? {
+        voipToken ?? NotificationService.token(
+            fromSentKey: UserDefaults.standard.string(forKey: Self.lastSentTokenKey)
+        )
+    }
+
     /// Burn-account hook. Clears the sent-token cache.
     func wipe() {
         UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
@@ -68,11 +76,19 @@ final class VoIPPushService: NSObject {
         if !force && !aged && UserDefaults.standard.string(forKey: Self.lastSentTokenKey) == cacheKey {
             return
         }
-        struct Body: Encodable { let token: String; let platform: String; let device_id: String }
+        struct Body: Encodable {
+            let token: String; let platform: String; let device_id: String
+            let accounts_here: [Int]?
+        }
         do {
             let _: EmptyResponse = try await APIClient.shared.request(
                 "POST", "/users/me/push-token",
-                body: Body(token: token, platform: "ios-voip", device_id: KeychainStore.deviceID())
+                body: Body(
+                    token: token, platform: "ios-voip", device_id: KeychainStore.deviceID(),
+                    // The VoIP rows are pruned by their own token: the same
+                    // list, or a deleted account kept ringing (report 1066).
+                    accounts_here: NotificationService.accountsHere(ownUIN: uin)
+                )
             )
             UserDefaults.standard.set(cacheKey, forKey: Self.lastSentTokenKey)
             UserDefaults.standard.set(now, forKey: Self.lastSentAtKey)
@@ -98,6 +114,14 @@ extension VoIPPushService: PKPushRegistryDelegate {
         }
     }
 
+    /// `to_uin` of a call push, whichever way the JSON number arrived.
+    nonisolated private static func recipientUIN(_ dict: [AnyHashable: Any]) -> Int? {
+        if let v = dict["to_uin"] as? Int { return v }
+        if let n = dict["to_uin"] as? NSNumber { return n.intValue }
+        if let s = dict["to_uin"] as? String { return Int(s) }
+        return nil
+    }
+
     nonisolated func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
         Task { @MainActor [weak self] in
             self?.voipToken = nil
@@ -113,6 +137,25 @@ extension VoIPPushService: PKPushRegistryDelegate {
         completion: @escaping () -> Void
     ) {
         let dict = payload.dictionaryPayload
+
+        // A call for an account this phone no longer holds (report 1066): its
+        // push row can outlive the account on the island, and nothing here
+        // looked at the recipient, so it rang through CallKit for a number
+        // that was gone. Report-then-end on a throwaway UUID, the same escape
+        // hatch as duress and malformed below: PushKit kills the app for a
+        // push that reports no call.
+        //
+        // ⚠ Only a payload that NAMES its recipient: the sealed cross-island
+        // wake does, the flat same-island call payload does not yet, and for
+        // that one the island dropping the row is the whole fix.
+        if let toUIN = Self.recipientUIN(dict), KeychainStore.noLocalAccountHolds(uin: toUIN) {
+            let throwaway = UUID()
+            let update = CXCallUpdate()
+            update.remoteHandle = CXHandle(type: .generic, value: "")
+            CallProvider.shared.reportIncomingMalformed(uuid: throwaway, update: update)
+            completion()
+            return
+        }
 
         // kind=end fallback (caller cancel during WS gap). Still must report-then-end on a throwaway UUID.
         if let kind = dict["kind"] as? String, kind == "end",

@@ -419,6 +419,25 @@ actor APIClient {
         return (resp as? HTTPURLResponse)?.statusCode
     }
 
+    /// `DELETE /users/me/push-token` on the island this client is pointed at,
+    /// as an account the CALLER names by its bearer: an account being deleted
+    /// from the phone, which need not be the active one (report 1066, see
+    /// `NotificationService.releasePushRows`). Same session as every other
+    /// call, so the same route. Returns the HTTP status, nil when nothing
+    /// answered.
+    func deletePushToken(_ pushToken: String, bearer: String, serverToken: String?) async -> Int? {
+        if DuressGate.isActive { return nil }
+        var req = URLRequest(url: baseURL.appendingPathComponent("/users/me/push-token"))
+        req.httpMethod = "DELETE"
+        req.timeoutInterval = 15
+        req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        if let serverToken { req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth") }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["token": pushToken])
+        guard let (_, resp) = try? await session.data(for: req) else { return nil }
+        return (resp as? HTTPURLResponse)?.statusCode
+    }
+
     /// `headers` rides on top of the ones set here, never instead of them: it
     /// is for a header the call itself owns (the single-use `X-Deposit-Token`
     /// an anonymous bundle fetch spends), not for overriding the auth pair.

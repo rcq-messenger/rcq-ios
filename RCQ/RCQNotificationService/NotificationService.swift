@@ -43,6 +43,29 @@ class NotificationService: UNNotificationServiceExtension {
 
         let userInfo = request.content.userInfo
 
+        // The recipient, in plain on every push from an island new enough to
+        // route (see the multi-account routing below).
+        let toUIN: Int? = {
+            if let v = userInfo["to_uin"] as? Int { return v }
+            if let n = userInfo["to_uin"] as? NSNumber { return n.intValue }
+            return nil
+        }()
+
+        // ⚠ A push for an account this phone no longer holds shows NOTHING
+        // (report 1066). Deleting an account could leave its push row on the
+        // island, and every push for it then fell through to the active
+        // account below: no key opened it, so the generic "New message" went
+        // up with a sound for a number that is gone. First, before the quiet
+        // and mute gates, because no rule of any account here applies to it
+        // and none of them should print anything for it either. Nothing is
+        // cached: no account here could ever read it.
+        if let toUIN, KeychainStore.noLocalAccountHolds(uin: toUIN) {
+            os_log("push for an account not on this device - no banner",
+                   log: Self.log, type: .default)
+            contentHandler(UNNotificationContent())
+            return
+        }
+
         // ⚠ BEFORE anything is rendered, and before the routing below installs
         // a per-account Keychain override. A non-sealed push (contact request,
         // accepted request, trade) carries the SENDER'S NICKNAME in the
@@ -102,14 +125,11 @@ class NotificationService: UNNotificationServiceExtension {
         // to the generic "New message" banner.
         //
         // Falls back to the active account if `to_uin` is missing
-        // (older backend that doesn't include the field) or no local
-        // account owns the value — preserves the pre-multi-account
-        // behaviour for any push the lookup can't route.
-        let toUIN: Int? = {
-            if let v = userInfo["to_uin"] as? Int { return v }
-            if let n = userInfo["to_uin"] as? NSNumber { return n.intValue }
-            return nil
-        }()
+        // (older backend that doesn't include the field) or the roster
+        // could not say whose it is — preserves the pre-multi-account
+        // behaviour for any push the lookup can't route. A recipient the
+        // roster proves absent never gets here (report 1066, top of this
+        // method).
         // Capture active before we (possibly) install a per-account
         // override below — comparing target vs original active is
         // what tells us whether this push is for the foreground

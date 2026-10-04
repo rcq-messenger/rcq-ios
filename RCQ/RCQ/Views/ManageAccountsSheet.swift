@@ -374,7 +374,8 @@ struct ManageAccountsSheet: View {
     /// Server-side identity (UIN, prekeys, queued offline messages)
     /// stays alive — the user can do a full server-side delete by
     /// switching to the account and using Burn account in Privacy &
-    /// Network.
+    /// Network. The one thing asked of the island is to stop waking this
+    /// phone for the account.
     private func performDelete(_ account: Account) async {
         defer { pendingDelete = nil }
         // Refuse to delete the active account — by precondition the
@@ -383,6 +384,12 @@ struct ManageAccountsSheet: View {
         // caller bypasses the UI.
         guard account.id != accountManager.activeAccountID else { return }
 
+        // ⚠ BEFORE the Keychain goes: the island drops a push row only on the
+        // account's own authority, and its bearer is in there. Without this the
+        // island went on waking this phone for the deleted account, banner,
+        // sound and CallKit ring, for good (report 1066). Reads what it needs
+        // now and sends on its own, so nothing here waits for the network.
+        NotificationService.releasePushRows(of: account)
         KeychainStore.wipeAccount(account.id)
         MessageDB.wipe(accountID: account.id)
         SignalProtocolDB.wipeFiles(accountID: account.id)

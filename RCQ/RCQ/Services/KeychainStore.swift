@@ -140,6 +140,32 @@ enum KeychainStore {
         rawData("acct.\(accountID.uuidString).\(key)")
     }
 
+    /// Is `uin`, the recipient a push names, provably held by NO account on
+    /// this device? Report 1066: the island keeps a push row per (number,
+    /// install) and an account deleted from the phone could leave its row
+    /// behind, so pushes kept arriving for a number the phone no longer
+    /// holds. The extension then fell back to the active account, failed the
+    /// decrypt and showed "New message" with a sound; PushKit rang a call.
+    ///
+    /// True only when the roster is readable AND every account's number read
+    /// back: an empty roster (an install that predates it, or one with no
+    /// account yet) or a number that does not read (a Keychain still locked
+    /// before the first unlock, an account half way through registering)
+    /// proves nothing, and those pushes keep the old behaviour.
+    ///
+    /// ⚠ A push names a number and no island, so the same number held on
+    /// another island still counts as held: it cannot be told apart here.
+    static func noLocalAccountHolds(uin: Int) -> Bool {
+        let ids = AppGroup.readAccountIDs()
+        guard !ids.isEmpty else { return false }
+        let target = String(uin)
+        for id in ids {
+            guard let held = string(Keys.uin, forAccount: id) else { return false }
+            if held == target { return false }
+        }
+        return true
+    }
+
     // MARK: - Per-account migration
 
     /// Copy every per-account legacy unprefixed Keychain entry to the

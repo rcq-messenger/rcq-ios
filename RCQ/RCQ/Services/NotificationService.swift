@@ -93,11 +93,17 @@ final class NotificationService: ObservableObject {
         if !force && !aged && UserDefaults.standard.string(forKey: Self.lastSentTokenKey) == cacheKey {
             return
         }
-        struct Body: Encodable { let token: String; let platform: String; let device_id: String }
+        struct Body: Encodable {
+            let token: String; let platform: String; let device_id: String
+            let accounts_here: [Int]?
+        }
         do {
             let _: EmptyResponse = try await APIClient.shared.request(
                 "POST", "/users/me/push-token",
-                body: Body(token: token, platform: "ios", device_id: KeychainStore.deviceID())
+                body: Body(
+                    token: token, platform: "ios", device_id: KeychainStore.deviceID(),
+                    accounts_here: Self.accountsHere(ownUIN: uin)
+                )
             )
             UserDefaults.standard.set(cacheKey, forKey: Self.lastSentTokenKey)
             UserDefaults.standard.set(now, forKey: Self.lastSentAtKey)
@@ -129,6 +135,121 @@ final class NotificationService: ObservableObject {
             "DELETE", "/users/me/push-token", body: Body(token: token)
         )
         UserDefaults.standard.removeObject(forKey: Self.lastSentTokenKey)
+    }
+
+    /// This install's APNs token: the one APNs handed over this launch, else
+    /// the one last registered. The token belongs to the install and not to an
+    /// account, so the sent-cache ("uin:token") still names it on a launch
+    /// where APNs has not called back yet, or where alerts were switched off
+    /// after rows were already registered.
+    var installToken: String? {
+        deviceToken ?? Self.token(fromSentKey: UserDefaults.standard.string(forKey: Self.lastSentTokenKey))
+    }
+
+    /// The token half of a sent-cache key "uin:token".
+    nonisolated static func token(fromSentKey key: String?) -> String? {
+        guard let key, let colon = key.firstIndex(of: ":") else { return nil }
+        let token = String(key[key.index(after: colon)...])
+        return token.isEmpty ? nil : token
+    }
+
+    /// `accounts_here` for a token registration (report 1066): every number
+    /// this install holds on the island the registration goes to, `ownUIN`
+    /// (the caller) included. The island drops this install's rows for any
+    /// other number, which is how the row of an account deleted from the
+    /// phone goes away without that account's credentials.
+    ///
+    /// nil means "do not send the field", and it is nil whenever the list
+    /// could be short, because a number missing from it loses its pushes:
+    /// an account on this island whose number does not read back, or more
+    /// numbers than the island takes (64). An account counts as on this
+    /// island when its address is one of ours by any name (`isOwnHost`) or
+    /// canonicalises to the active account's; one too many costs nothing,
+    /// the island only spares its row. Every account of the roster counts,
+    /// with a token or without one, guest copies too.
+    static func accountsHere(ownUIN: Int) -> [Int]? {
+        let am = AccountManager.shared
+        guard let active = am.active,
+              let home = Multihome.normalizeHost(active.serverURL).map(GuestProof.canonicalHost)
+        else { return nil }
+        var numbers: Set<Int> = [ownUIN]
+        for account in am.accounts where account.id != active.id {
+            let host = Multihome.normalizeHost(account.serverURL).map(GuestProof.canonicalHost)
+            // Unparseable counts as here: the cost of guessing wrong that way
+            // is a row kept, the other way a row lost.
+            if let host, host != home, !Multihome.isOwnHost(host) { continue }
+            guard let raw = KeychainStore.string(KeychainStore.Keys.uin, forAccount: account.id),
+                  let number = Int(raw) else { return nil }
+            numbers.insert(number)
+        }
+        return numbers.count <= 64 ? numbers.sorted() : nil
+    }
+
+    /// Ask `account`'s island to stop waking this install for it: one
+    /// `DELETE /users/me/push-token` per token this install registers (APNs
+    /// and VoIP), with that account's own bearer (report 1066).
+    ///
+    /// For an account being deleted from the phone, which may not be the
+    /// active one: `dropTokenForCurrentAccount` speaks for the active account
+    /// only, so deleting any other account left its rows on the island for
+    /// good, waking this phone for a number it no longer held. Everything is
+    /// read HERE, synchronously, so the caller can wipe the Keychain the
+    /// moment this returns; the requests then go out on their own.
+    ///
+    /// Best effort, like the twin above. A row that survives (no network, an
+    /// island that refuses the old bearer) is shed by the next registration
+    /// on that island through `accountsHere`, and the extension shows nothing
+    /// for it meanwhile. Nothing is kept for a retry: it would be a bearer of
+    /// an account the person removed, left on the phone.
+    static func releasePushRows(of account: Account) {
+        if DuressGate.isActive { return }
+        let am = AccountManager.shared
+        guard let bearer = KeychainStore.string(KeychainStore.Keys.token, forAccount: account.id),
+              let uin = KeychainStore.string(KeychainStore.Keys.uin, forAccount: account.id),
+              let host = Multihome.normalizeHost(account.serverURL),
+              let url = URL(string: "https://\(host)/users/me/push-token")
+        else { return }
+        // The same number on the same island under another account here is
+        // the same account on the island, and the row is that account's too.
+        let island = GuestProof.canonicalHost(host)
+        let shared = am.accounts.contains { other in
+            other.id != account.id
+                && KeychainStore.string(KeychainStore.Keys.uin, forAccount: other.id) == uin
+                && Multihome.normalizeHost(other.serverURL).map(GuestProof.canonicalHost) == island
+        }
+        if shared { return }
+        let tokens = [NotificationService.shared.installToken, VoIPPushService.shared.installToken]
+            .compactMap { $0 }
+        guard !tokens.isEmpty else { return }
+        let masquerade = account.serverToken
+        let viaHome = Multihome.isOwnHost(host)
+        Task.detached(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for token in tokens {
+                    group.addTask {
+                        if viaHome {
+                            // Our own island: the route the app reaches it by
+                            // right now, which may be a front or a relay.
+                            var gate = masquerade
+                            if gate == nil { gate = await APIClient.shared.currentServerToken() }
+                            _ = await APIClient.shared.deletePushToken(token, bearer: bearer, serverToken: gate)
+                        } else {
+                            var req = URLRequest(url: url)
+                            req.httpMethod = "DELETE"
+                            req.timeoutInterval = 15
+                            req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+                            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                            req.httpBody = try? JSONSerialization.data(withJSONObject: ["token": token])
+                            if let masquerade, !masquerade.isEmpty {
+                                req.setValue(masquerade, forHTTPHeaderField: "X-RCQ-Auth")
+                            }
+                            AccessTokenStore.stamp(&req)   // closed-island gate (foreign host)
+                            _ = try? await IslandHTTP.data(for: req)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// `force=true` bypasses the cache so the backend re-receives the

@@ -136,6 +136,15 @@ final class RCQAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
                 completionHandler([])
                 return
             }
+            // For an account no longer on this phone (report 1066): the
+            // extension already blanked it, this covers a push it never
+            // touched. The alert is the island's generic one.
+            let userInfo = notification.request.content.userInfo
+            if let toUIN = (userInfo["to_uin"] as? Int) ?? (userInfo["to_uin"] as? String).flatMap({ Int($0) }),
+               KeychainStore.noLocalAccountHolds(uin: toUIN) {
+                completionHandler([])
+                return
+            }
             await MessageService.shared.fetchOfflineQueue()
             // Empty content = NSE-suppressed (removed/muted) — no banner/sound.
             if notification.request.content.body.isEmpty {
