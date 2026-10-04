@@ -642,6 +642,7 @@
 "notifs.muted.footer" = "От этих контактов пуши не приходят (и обмены тоже). Заглушать/возвращать звук: через долгое нажатие на чат в списке.";
 "notifs.unmute" = "Включить звук";
 "chat.forwarded_from" = "Переслано от %@";
+"chat.forwarded_from.someone" = "Кто-то";
 "chat.received_while_away" = "Пришло пока вас не было: %@";
 "chat.random.add_request_sent" = "Заявка отправлена";
 "chat.random.add_request" = "Добавить в контакты";

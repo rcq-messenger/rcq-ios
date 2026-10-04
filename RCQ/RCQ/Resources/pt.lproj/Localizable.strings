@@ -608,6 +608,7 @@
 "notifs.muted.footer" = "Os pushes desses contatos (e as ofertas de troca deles) não acordam seu celular. Silencie ou reative um contato pelo menu de toque longo na lista de conversas.";
 "notifs.unmute" = "Ativar som";
 "chat.forwarded_from" = "Encaminhado de %@";
+"chat.forwarded_from.someone" = "Alguém";
 "chat.received_while_away" = "Chegou enquanto você estava fora: %@";
 "chat.random.add_request_sent" = "Solicitação enviada";
 "chat.random.add_request" = "Adicionar aos contatos";

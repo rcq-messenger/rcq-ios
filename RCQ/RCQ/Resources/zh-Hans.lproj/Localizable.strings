@@ -599,6 +599,7 @@
 "notifs.muted.footer" = "这些联系人的推送（以及他们的交易请求）不会唤醒手机。在聊天列表里长按可以静音或取消静音。";
 "notifs.unmute" = "取消静音";
 "chat.forwarded_from" = "转发自 %@";
+"chat.forwarded_from.someone" = "某人";
 "chat.received_while_away" = "你不在时收到，%@";
 "chat.random.add_request_sent" = "请求已发送";
 "chat.random.add_request" = "添加为联系人";

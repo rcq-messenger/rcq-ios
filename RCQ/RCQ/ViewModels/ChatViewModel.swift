@@ -1356,7 +1356,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func forward(_ message: Message, toContact contact: Contact) async {
-        let originalAuthor = senderNickname(message.senderUIN)
+        let originalAuthor = forwardCredit(for: message)
         do {
             try await MessageService.shared.forward(
                 message: message,
@@ -1367,7 +1367,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func forward(_ message: Message, toGroup group: RCQGroup) async {
-        let originalAuthor = senderNickname(message.senderUIN)
+        let originalAuthor = forwardCredit(for: message)
         do {
             try await MessageService.shared.forward(
                 message: message,
@@ -1375,6 +1375,58 @@ final class ChatViewModel: ObservableObject {
                 toGroup: group
             )
         } catch { }
+    }
+
+    /// The author name a forward carries (`fwdName`). It rides INSIDE the
+    /// envelope to every recipient, so it is the name the author CHOSE
+    /// (`wireNickname`), never my alias for them and never their number.
+    ///
+    /// ⚠ This used `senderNickname`: my private alias for the person, or their
+    /// bare number when I had no name, went to everyone I forwarded to,
+    /// against "the original UIN is never propagated" in
+    /// `MessageService.forward` (report 1063). A name known only as a number
+    /// goes out as a neutral word instead, the rule planned for Android too.
+    ///
+    /// A forward of a forward keeps the ORIGINAL author's credit, not the
+    /// forwarder's. One I forwarded myself on an older build may carry my
+    /// alias, so such a credit that matches one of my aliases is not passed on.
+    func forwardCredit(for message: Message) -> String {
+        let someone = "chat.forwarded_from.someone".localized
+        if let earlier = Self.cleanForwardCredit(message.forwardedFromName) {
+            if message.isFromMe, ContactAliasStore.shared.aliases.values.contains(earlier) {
+                return someone
+            }
+            return earlier
+        }
+        // In a 1:1 chat the author of what came in IS the peer, island and
+        // all, so their own row names them; `wireNickname` looks a bare
+        // number up, which on another island is somebody else.
+        if !message.isFromMe, case .peer(let peer) = target {
+            let live = ContactService.shared.contacts.first { $0.uin == peer.uin && $0.host == peer.host }
+            return Self.cleanForwardCredit((live ?? peer).nickname) ?? someone
+        }
+        let me = AuthService.shared.ownUIN
+        let author = message.isFromMe ? (me ?? message.senderUIN) : message.senderUIN
+        return Self.cleanForwardCredit(wireNickname(author)) ?? someone
+    }
+
+    /// A credit fit for the wire: one line, at most 64 characters, and nil
+    /// when nothing is left or all that is left is a number (with or without
+    /// "#"), which is how a missing name reads everywhere in this app.
+    static func cleanForwardCredit(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let oneLine = String(String.UnicodeScalarView(raw.unicodeScalars.map {
+            CharacterSet.controlCharacters.contains($0) ? " " : $0
+        }))
+        var name = oneLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.count > 64 {
+            name = String(name.prefix(64)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let bare = name.hasPrefix("#") ? String(name.dropFirst()) : name
+        guard !bare.isEmpty,
+              !bare.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) })
+        else { return nil }
+        return name
     }
 
     // MARK: - Multi-select

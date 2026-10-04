@@ -655,6 +655,7 @@
 "notifs.muted.footer" = "Pushes from these contacts (and trade offers from them) won't wake your phone. Mute or unmute a contact from the chat list's long-press menu.";
 "notifs.unmute" = "Unmute";
 "chat.forwarded_from" = "Forwarded from %@";
+"chat.forwarded_from.someone" = "Someone";
 "chat.received_while_away" = "Received while you were away: %@";
 "chat.random.add_request_sent" = "Request sent";
 "chat.random.add_request" = "Add as contact";

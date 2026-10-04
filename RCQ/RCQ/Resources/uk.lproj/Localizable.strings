@@ -608,6 +608,7 @@
 "notifs.muted.footer" = "Пуші від цих контактів (і їхні пропозиції обміну) не будитимуть телефон. Вимкнути чи повернути звук контакту можна в меню довгого натискання у списку чатів.";
 "notifs.unmute" = "Зі звуком";
 "chat.forwarded_from" = "Переслано від %@";
+"chat.forwarded_from.someone" = "Хтось";
 "chat.received_while_away" = "Отримано, поки тебе не було: %@";
 "chat.random.add_request_sent" = "Запит надіслано";
 "chat.random.add_request" = "Додати в контакти";

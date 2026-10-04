@@ -608,6 +608,7 @@
 "notifs.muted.footer" = "Los avisos de estos contactos (y sus ofertas de intercambio) no encenderán tu teléfono. Silencia o quita el silencio a un contacto desde el menú de pulsación larga en la lista de chats.";
 "notifs.unmute" = "Quitar el silencio";
 "chat.forwarded_from" = "Reenviado de %@";
+"chat.forwarded_from.someone" = "Alguien";
 "chat.received_while_away" = "Recibido mientras no estabas: %@";
 "chat.random.add_request_sent" = "Solicitud enviada";
 "chat.random.add_request" = "Añadir a contactos";

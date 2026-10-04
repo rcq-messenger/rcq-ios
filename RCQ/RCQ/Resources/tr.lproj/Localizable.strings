@@ -608,6 +608,7 @@
 "notifs.muted.footer" = "Bu kişilerden gelen push'lar (ve onlardan gelen takas teklifleri) telefonunu uyandırmaz. Bir kişiyi sohbet listesindeki uzun basma menüsünden susturabilir ya da sesini açabilirsin.";
 "notifs.unmute" = "Sesi aç";
 "chat.forwarded_from" = "%@ kişisinden iletildi";
+"chat.forwarded_from.someone" = "Biri";
 "chat.received_while_away" = "Sen yokken geldi: %@";
 "chat.random.add_request_sent" = "İstek gitti";
 "chat.random.add_request" = "Kişi olarak ekle";
