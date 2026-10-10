@@ -910,7 +910,17 @@ final class MessageService {
     /// files `read` as ephemeral and has always seen it, so this teaches it
     /// nothing. Best effort - a lost ack costs exactly what the bug costs
     /// today, a request still sitting on the other device.
-    func sendCIAck(uin: Int, host: String, act: String, card: CICard? = nil, srv: CISrv? = nil) async {
+    ///
+    /// Every ack carries `ts` (`CIAckRule`): `at` is when a block or an
+    /// unblock was decided here (the time the store dated it), now for
+    /// anything else. Without it Android read an iPhone's unblock as older
+    /// than any block and never lifted one. `keys` are the signing keys of the
+    /// person a block names, so the other devices block them, not only the
+    /// address.
+    func sendCIAck(
+        uin: Int, host: String, act: String, card: CICard? = nil, srv: CISrv? = nil,
+        at: Int64? = nil, keys: [String] = []
+    ) async {
         let me = ownUIN
         guard me != 0, uin > 0 else { return }
         // The decoy speaks for nobody, least of all to the real account's
@@ -925,7 +935,13 @@ final class MessageService {
         // which means never acked: the island would hand the row back on every
         // drain for the thirty days of the queue TTL. To myself it resolves to
         // the self-thread, where an unknown inner kind files nothing.
-        let carbon: Envelope = .carbon(to: me, gid: nil, env: .ciAck(uin: uin, host: host, act: act, card: card, srv: srv))
+        let fields = CIAckFields(
+            ts: at ?? Int64(Date().timeIntervalSince1970 * 1000),
+            keys: Array(keys.filter { !$0.isEmpty }.prefix(CIAckRule.maxKeys))
+        )
+        let carbon: Envelope = .carbon(
+            to: me, gid: nil, env: .ciAck(uin: uin, host: host, act: act, card: card, srv: srv, fields: fields)
+        )
         guard let blob = try? crypto.encrypt(envelope: carbon, for: selfBundle) else { return }
         struct Body: Encodable { let to_uin: Int; let envelope_type: String; let cls: Int; let payload: String }
         struct Out: Decodable { let delivered: Bool; let queued: Bool }
@@ -948,8 +964,22 @@ final class MessageService {
     /// drift apart, silently, on the one peer class where the pinned key IS the
     /// encryption key. A device that already holds the contact keeps what it
     /// has.
-    func applyCIAck(uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil) {
+    ///
+    /// A block or an unblock is a dated decision (`CIAckRule`): its `ts`, else
+    /// `at`, else `depositedAt` (the island's stamp of the row; an iPhone build
+    /// before this one sends no time). Only a strictly newer one changes what
+    /// this device holds for the address, so the echo of my own older block,
+    /// drained after I unblocked, does not block again.
+    func applyCIAck(
+        uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil,
+        fields: CIAckFields = CIAckFields(), depositedAt: Date? = nil
+    ) {
         guard uin > 0 else { return }
+        // Whom a block or unblock names. A scope this build does not know is
+        // from a newer one: the act is ignored whole, never read as the address.
+        let on = CIAckRule.blocks(act)
+        let scope = on == nil ? nil : CIAckRule.scope(act: act, scope: fields.scope, keyOnly: fields.keyOnly)
+        if on != nil && scope == nil { return }
         // F1: the answer settled a pending row on a visited island. Whatever
         // the act, that row is not to be offered here again. Only the id is
         // taken: nothing is withdrawn from this device, which may not even
@@ -959,19 +989,38 @@ final class MessageService {
            let h = Multihome.normalizeHost(srv.host), srv.id > 0 {
             CrossIslandRequestsStore.shared.markAnswered(host: h, id: srv.id)
         }
+        if scope == .key {
+            // ⚠⚠ A request that came under a contact's address with ANOTHER key
+            // (the web blocks it "by key only"). The address is the real
+            // contact's: blocking it silenced them in 1:1 and in rooms. This
+            // build keeps no key-only blocks, so a block only settles the
+            // request it answered, as Android does, and an unblock has nothing
+            // here to lift.
+            if on == true { CrossIslandRequestsStore.shared.clear(uin: uin, host: host) }
+            return
+        }
         switch act {
-        case "block":
-            CrossIslandRequestsStore.shared.block(uin: uin, host: host)
-            if host.isEmpty { BlockedContactsStore.shared.set(uin, blocked: true) }
-            ContactService.shared.refreshBlockedFlags()
-        case "unblock":
-            // Lifted on another device (report 1064): the same one address,
-            // and for a stranger of our own island ("") the number too, which
-            // the block put on both lists. Older builds ignore the act.
-            CrossIslandRequestsStore.shared.unblock(uin: uin, host: host)
-            if host.isEmpty {
-                BlockedContactsStore.shared.set(uin, blocked: false)
-            } else {
+        case "block", "unblock":
+            let blocking = act == "block"
+            // Our own island under any of its names is "", where a stranger
+            // blocked from the request quarantine is kept; a sibling build may
+            // file one under the island's own name.
+            let own = host.isEmpty || Multihome.isOwnHost(host)
+            let h = own ? "" : host.lowercased()
+            let at = CIAckRule.decisionAt(
+                stamp: fields.ts,
+                depositedAt: depositedAt.map { Int64($0.timeIntervalSince1970 * 1000) },
+                now: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+            guard CrossIslandRequestsStore.shared.applyRemote(blocking, uin: uin, host: h, at: at) else { return }
+            if own {
+                // The number on our own island goes on, or comes off, the list
+                // the ingest drop and the Blocked screen read.
+                BlockedContactsStore.shared.set(uin, blocked: blocking)
+            } else if !blocking {
+                // Lifted on another device (report 1064): the same one address,
+                // and an older build's any-island block of the number with it,
+                // as Unblock here does. Older builds ignore the act.
                 BlockedContactsStore.shared.liftEveryIslandBlock(uin)
             }
             ContactService.shared.refreshBlockedFlags()
@@ -1262,7 +1311,13 @@ final class MessageService {
             // their own island is blocked or dead (the seal above already uses
             // the local identity key — no live card fetch). Floor to the single
             // address we have when nothing verifies anywhere.
-            var ciHomes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: contact.uin, peerSigningKey: contact.signingKey)
+            //
+            // ⚠ Not for a contact their island says is gone (report 1067): the
+            // lookup reads our island's gossip mirror, and every read keeps the
+            // burned person's routing record alive there. A retry goes to the
+            // address alone, and fails the way the first send did.
+            let markedGone = PeerLivenessStore.shared.isGone(uin: contact.uin, host: host)
+            var ciHomes = markedGone ? [] : await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: contact.uin, peerSigningKey: contact.signingKey)
             if ciHomes.isEmpty { ciHomes = [RcqFederation.Home(host: host, uin: contact.uin)] }
             // ⚠ The envelope's own outer type, as on the same-island path below.
             // Every cross-island deposit went out as "message", so a receipt,
@@ -1283,6 +1338,14 @@ final class MessageService {
             // from the iPhone to somebody on another island never showed on the
             // desktop, the web or the other phone of the same account.
             if ok { await sendMessageCarbon(envelope, toPeer: contact.uin, toGroup: nil) }
+            // No island took it: ask theirs whether the account still exists
+            // (report 1067). Before, the bubble went red and nothing ever said
+            // why; a burned contact is now marked, and the chat says so. Not
+            // awaited: the answer is for the banner, not for this send.
+            if !ok {
+                let peerUin = contact.uin
+                Task { await PeerLivenessProbe.probe(uin: peerUin, host: host, trigger: .failure) }
+            }
             // A control that reached nobody says so, like the same-island
             // path does: a delete for everyone that did not go out is kept
             // and tried again (`deleteForEveryone(message:to:)`).
@@ -1409,6 +1472,9 @@ final class MessageService {
             let bundle = PeerBundle(uin: c.uin, identityKey: c.identityKey, signingKey: c.signingKey)
             guard let blob = try? crypto.encrypt(envelope: env, for: bundle) else { continue }  // v=1
             if let host = c.host {
+                // Nobody to tell where we live, and resolving their homes would
+                // keep a burned person's record warm in our mirror (report 1067).
+                if PeerLivenessStore.shared.isGone(uin: c.uin, host: host) { continue }
                 // Cross-island contact: deposit to their home(s) (gossip-aware).
                 var homes = await Multihome.resolveAndMirrorHomes(peerHost: host, peerUin: c.uin, peerSigningKey: c.signingKey)
                 if homes.isEmpty { homes = [RcqFederation.Home(host: host, uin: c.uin)] }
@@ -2457,9 +2523,12 @@ final class MessageService {
                 // (to and gid are both nil), so the guard below would drop it -
                 // and a dropped row is never acked, so the island would hand it
                 // back on every drain for the queue's whole TTL.
-                if case .ciAck(let aUin, let aHost, let aAct, let aCard, let aSrv) = inner {
+                if case .ciAck(let aUin, let aHost, let aAct, let aCard, let aSrv, let aFields) = inner {
                     guard signedByMe else { return refused }
-                    applyCIAck(uin: aUin, host: aHost, act: aAct, card: aCard, srv: aSrv)
+                    applyCIAck(
+                        uin: aUin, host: aHost, act: aAct, card: aCard, srv: aSrv,
+                        fields: aFields, depositedAt: ws.serverTime
+                    )
                     return IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
                 }
                 let dest: ThreadID? = cGid.map { .group(id: $0) } ?? cTo.map { .peer(uin: $0) }
@@ -2722,6 +2791,22 @@ final class MessageService {
                     )
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+            }
+
+            // Past the gate, a 1:1 envelope from another island is verified under
+            // the key pinned for that contact: they are there, whatever a probe
+            // concluded about the address (report 1067). The one place an
+            // "account deleted" mark comes off, and never on the number alone:
+            // a reissued number writes under another key and was held as a
+            // stranger just above. The marks are asked first, so the common
+            // case (nobody marked) costs no second lookup of the row.
+            if ws.groupID == nil, PeerLivenessStore.shared.hasGoneMarks,
+               let fromHost = decrypted.senderHost, !Multihome.isOwnHost(fromHost),
+               let row = Self.verifiedCrossIslandContact(
+                   uin: decrypted.senderUIN, host: fromHost, spub: decrypted.senderSigningKey
+               ),
+               let rowHost = row.host {
+                PeerLivenessStore.shared.noteHeardFrom(uin: row.uin, host: rowHost, depositedAt: ws.serverTime)
             }
 
             // ⚠⚠ A MESSAGE FROM A STRANGER WHOSE SESSION IS OVER IS DROPPED.

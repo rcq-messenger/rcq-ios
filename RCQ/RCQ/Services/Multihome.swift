@@ -538,6 +538,13 @@ enum Multihome {
             extra["challenge"] = chal.challenge
             extra["signature"] = sig
         }
+        // For a short or patterned number the island also wants to know
+        // where we already answer to it (report 1069): our signed record,
+        // naming the primary home only. An island that predates the field
+        // ignores it; without a record we register as before.
+        if let record = await AuthService.shared.buildPrimaryHomeRecordDoc(ownUIN: ownUin) {
+            extra["home_record"] = record
+        }
         return try await post(
             "https://\(host)/auth/register",
             json: [

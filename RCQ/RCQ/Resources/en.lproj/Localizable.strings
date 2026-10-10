@@ -131,10 +131,11 @@
 "multihome.title" = "Your backup";
 "multihome.body" = "Automatic backup, not a second login. You never switch or sign in there. While your main island works, a copy of each incoming message is also dropped on the backup. If your main island is blocked or goes down, the app keeps receiving from the backup on its own. Your number on a backup island may be a different one (islands number independently); your main number never changes.";
 "multihome.row_uin" = "your number there: #%@";
-"multihome.auto.title" = "Keep a backup on another island";
-"multihome.auto.sub" = "The island is picked automatically from the public catalogue";
+"multihome.row_uin_diff" = "mailbox on this island: #%1$@ (islands number independently, so it differs from your #%2$@)";
+"multihome.auto.title" = "Backup on an automatically picked island";
+"multihome.auto.sub" = "The app picks an island from the public catalogue. Islands you added by hand are not affected by this switch.";
 "multihome.auto.busy" = "Picking an island…";
-"multihome.advanced" = "Advanced: add an island manually";
+"multihome.manual.title" = "Add an island manually";
 "multihome.err.none" = "No reachable backup island right now. Try again later, or add one manually.";
 "multihome.host_hint" = "Island host, e.g. is2.rcq.app";
 "multihome.add" = "Add backup island";
@@ -1016,6 +1017,12 @@
 "ci.request_not_sent" = "Added, but their island did not take the contact request. They will not see it yet.";
 "ci.add_row.subtitle" = "Cross-island contact (another RCQ island)";
 "ci.add_self" = "This is you: your account on this island";
+"ci.gone.banner" = "This account no longer exists: their island says there is no such number. Messages will not be delivered.";
+"ci.key_changed.banner" = "Their island now shows this address under a different key. Your messages stay sealed to the key you added, so nobody else can read them, but they may not reach this person. If they reset their account, remove the contact and add them again.";
+"ci.gone.remove" = "Remove contact";
+"ci.gone.remove.confirm.title" = "Remove this contact?";
+"ci.gone.remove.confirm.body" = "The chat history stays on this device.";
+"ci.gone.row" = "Account deleted";
 "contact_list.section.cross_island" = "Other islands";
 "pending.cta.decline" = "Decline";
 

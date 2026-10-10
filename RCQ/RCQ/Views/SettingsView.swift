@@ -2112,13 +2112,25 @@ struct BackupIslandView: View {
     @State private var host = ""
     @State private var busy = false
     @State private var autoBusy = false
-    @State private var advanced = false
     @State private var error: String? = nil
     // §5a.5 promote: confirm-first — the number and connected island change.
     @State private var promoteTarget: MultihomeStore.Home? = nil
 
     private var autoHomes: [MultihomeStore.Home] { homes.filter { $0.auto == true } }
     private var manualHomes: [MultihomeStore.Home] { homes.filter { $0.auto != true } }
+
+    /// The per-island number under a backup row (report 1069). Islands number
+    /// independently, so a copy's number differing from ours says nothing
+    /// about why: a copy made before the app asked for our number, a short
+    /// number the island wanted proof for, our own number changed since. The
+    /// row says only what is true, and never that ours is taken there.
+    private func numberLine(_ h: MultihomeStore.Home) -> String {
+        let own = MessageService.shared.ownUIN
+        guard own != 0, h.uin != own else {
+            return String(format: "multihome.row_uin".localized, "\(h.uin)")
+        }
+        return String(format: "multihome.row_uin_diff".localized, "\(h.uin)", "\(own)")
+    }
 
     var body: some View {
         NavigationStack {
@@ -2170,7 +2182,7 @@ struct BackupIslandView: View {
                                     Text(h.host)
                                         .font(.system(.body, design: .monospaced))
                                         .foregroundColor(Theme.Color.textPrimary)
-                                    Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
+                                    Text(numberLine(h))
                                         .font(.caption)
                                         .foregroundColor(Theme.Color.textSecondary)
                                 }
@@ -2190,59 +2202,56 @@ struct BackupIslandView: View {
                     }
                     .listRowBackground(Theme.Color.bgSecondary)
 
-                    // Manual host entry stays for self-hosters, tucked away.
+                    // Islands added by hand, always on show (report 1069). The
+                    // block used to sit folded under "Advanced", so the old
+                    // primary after "Make primary" vanished into it, and the
+                    // switch above read as the one control over every backup.
                     Section {
+                        ForEach(manualHomes) { h in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(h.host)
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundColor(Theme.Color.textPrimary)
+                                    Text(numberLine(h))
+                                        .font(.caption)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                }
+                                Spacer()
+                                // Two buttons in one Form row need .borderless
+                                // or a row tap fires BOTH.
+                                VStack(alignment: .trailing, spacing: 6) {
+                                    Button("multihome.remove".localized) { remove(h) }
+                                        .font(.callout)
+                                        .foregroundColor(Theme.Color.accent)
+                                        .buttonStyle(.borderless)
+                                        .disabled(busy)
+                                    Button("multihome.promote".localized) { promoteTarget = h }
+                                        .font(.callout)
+                                        .foregroundColor(Theme.Color.textSecondary)
+                                        .buttonStyle(.borderless)
+                                        .disabled(busy)
+                                }
+                            }
+                        }
+                        TextField("multihome.host_hint".localized, text: $host)
+                            .font(.system(.body, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
                         Button {
-                            advanced.toggle()
+                            add()
                         } label: {
-                            Text((advanced ? "▾ " : "▸ ") + "multihome.advanced".localized)
-                                .font(.footnote)
-                                .foregroundColor(Theme.Color.textSecondary)
-                        }
-                        if advanced {
-                            ForEach(manualHomes) { h in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(h.host)
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundColor(Theme.Color.textPrimary)
-                                        Text(String(format: "multihome.row_uin".localized, "\(h.uin)"))
-                                            .font(.caption)
-                                            .foregroundColor(Theme.Color.textSecondary)
-                                    }
-                                    Spacer()
-                                    // Two buttons in one Form row need .borderless
-                                    // or a row tap fires BOTH.
-                                    VStack(alignment: .trailing, spacing: 6) {
-                                        Button("multihome.remove".localized) { remove(h) }
-                                            .font(.callout)
-                                            .foregroundColor(Theme.Color.accent)
-                                            .buttonStyle(.borderless)
-                                            .disabled(busy)
-                                        Button("multihome.promote".localized) { promoteTarget = h }
-                                            .font(.callout)
-                                            .foregroundColor(Theme.Color.textSecondary)
-                                            .buttonStyle(.borderless)
-                                            .disabled(busy)
-                                    }
-                                }
+                            HStack {
+                                Text((busy ? "multihome.busy" : "multihome.add").localized)
+                                Spacer()
+                                if busy { ProgressView().scaleEffect(0.7) }
                             }
-                            TextField("multihome.host_hint".localized, text: $host)
-                                .font(.system(.body, design: .monospaced))
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                            Button {
-                                add()
-                            } label: {
-                                HStack {
-                                    Text((busy ? "multihome.busy" : "multihome.add").localized)
-                                    Spacer()
-                                    if busy { ProgressView().scaleEffect(0.7) }
-                                }
-                            }
-                            .disabled(busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
+                        .disabled(busy || host.trimmingCharacters(in: .whitespaces).isEmpty)
+                    } header: {
+                        Text("multihome.manual.title".localized)
+                            .foregroundColor(Theme.Color.textSecondary)
                     } footer: {
                         Text("multihome.footer".localized)
                             .foregroundColor(Theme.Color.textSecondary)
@@ -2258,12 +2267,7 @@ struct BackupIslandView: View {
                     Button("common.close".localized) { dismiss() }
                 }
             }
-            .onAppear {
-                reload()
-                // Open the manual block for self-hosters who already added an
-                // island by hand; everyone else sees just the toggle.
-                if !manualHomes.isEmpty { advanced = true }
-            }
+            .onAppear { reload() }
             .alert(
                 "multihome.promote.title".localized,
                 isPresented: Binding(
@@ -2294,13 +2298,9 @@ struct BackupIslandView: View {
             let err = await appState.promoteBackupToPrimary(host: home.host)
             await MainActor.run {
                 busy = false
-                if let err { error = err } else {
-                    reload()
-                    // The old primary comes back as a MANUAL backup, listed in
-                    // the block that starts closed for anyone who never added
-                    // one by hand: open it, or the island just left is nowhere.
-                    advanced = true
-                }
+                // The old primary comes back as a MANUAL backup, in the
+                // block under the switch that is always on show.
+                if let err { error = err } else { reload() }
             }
         }
     }
@@ -2331,21 +2331,18 @@ struct BackupIslandView: View {
                 // `HTTP 403: {"detail":{"code":"entry_required"}}` in front of
                 // a person who only flipped a toggle.
                 let message: String
-                var openManual = false
                 switch error {
                 case Multihome.AddError.noIsland: message = "multihome.err.none".localized
                 case Multihome.AddError.noOpenIsland:
-                    // The sentence points at the manual block below, so that
-                    // block has to be open for it to be true.
+                    // Points at the manual block, which sits right under this
+                    // sentence and is always shown.
                     message = "multihome.err.no_open".localized
-                    openManual = true
                 // No door sentence here: the auto-pick moves past a refused
                 // door, and an island that refused counts as one that answered.
                 default: message = "multihome.err.generic".localized
                 }
                 await MainActor.run {
                     self.error = message
-                    if openManual { advanced = true }
                     autoBusy = false
                     reload()
                 }

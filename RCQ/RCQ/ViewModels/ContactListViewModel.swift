@@ -282,7 +282,9 @@ final class ContactListViewModel: ObservableObject {
         await service.refresh(joinInFlight: true)
         hasLoadedOnce = true
     }
-    func remove(_ uin: Int) async { try? await service.remove(uin) }
+    /// `host`: the row's island (nil for ours). The number alone named our own
+    /// island's namesake when there was one.
+    func remove(_ uin: Int, host: String?) async { try? await service.remove(uin, host: host) }
     /// `host`: the row's island (nil for ours). A uin alone names nobody on
     /// another island (report 1065).
     func toggleBlock(_ uin: Int, host: String?) async { await service.toggleBlock(uin, host: host) }

@@ -68,6 +68,47 @@ print("nothing blocked")
 check("an empty list blocks nobody",
       !BlockRule.blocks([], uin: 134, host: nil, key: keyA))
 
+// The ciack wire, shared with Android 0.213 and the web: when a block or an
+// unblock from another device was decided, and whether it names the address.
+print("ciack: what a block or unblock names")
+typealias A = CIAckRule
+check("a plain block names the address", A.scope(act: "block", scope: nil, keyOnly: false) == .address)
+check("\"scope\": \"address\" names the address", A.scope(act: "unblock", scope: "address", keyOnly: false) == .address)
+check("blockkey names the key", A.scope(act: "blockkey", scope: "key", keyOnly: false) == .key)
+check("blockkey with no scope still names only the key", A.scope(act: "blockkey", scope: nil, keyOnly: false) == .key)
+check("a plain block carrying \"scope\": \"key\" names only the key",
+      A.scope(act: "block", scope: "key", keyOnly: false) == .key)
+check("the web's keyOnly: true names only the key", A.scope(act: "unblock", scope: nil, keyOnly: true) == .key)
+check("a scope this build does not know is ignored, never read as the address",
+      A.scope(act: "block", scope: "person", keyOnly: false) == nil)
+check("a key act claiming the address scope is ignored",
+      A.scope(act: "unblockkey", scope: "address", keyOnly: false) == nil)
+check("accept and decline have no scope", A.scope(act: "accept", scope: "key", keyOnly: false) == nil)
+check("block and blockkey block, unblock and unblockkey lift, accept is neither",
+      A.blocks("block") == true && A.blocks("blockkey") == true
+        && A.blocks("unblock") == false && A.blocks("unblockkey") == false && A.blocks("accept") == nil)
+
+print("ciack: when it was decided")
+check("ts first", A.stamp(ts: 50, at: 40) == 50)
+check("at when there is no ts (the web's first builds)", A.stamp(ts: nil, at: 40) == 40)
+check("a zero ts is no ts", A.stamp(ts: 0, at: 40) == 40)
+check("neither: no stamp", A.stamp(ts: nil, at: 0) == nil)
+check("a stamp is the decision time", A.decisionAt(stamp: 50, depositedAt: 70, now: 90) == 50)
+check("a timeless act counts from its deposit", A.decisionAt(stamp: nil, depositedAt: 70, now: 90) == 70)
+check("a timeless live act counts from now", A.decisionAt(stamp: nil, depositedAt: nil, now: 90) == 90)
+
+print("ciack: which decision wins")
+let blockedAt100 = A.Decision(on: true, at: 100)
+check("nothing held: any decision lands", A.lands(nil, at: 1))
+check("a newer unblock lifts a block", A.lands(blockedAt100, at: 101))
+check("an unblock at the same time keeps the block", !A.lands(blockedAt100, at: 100))
+check("the late echo of an older block does not undo a newer unblock",
+      !A.lands(A.Decision(on: false, at: 200), at: 150))
+check("a tap here is dated now", A.localAt(blockedAt100, now: 500) == 500)
+check("a tap here lands past a decision dated ahead by a fast clock",
+      A.localAt(A.Decision(on: true, at: 900), now: 500) == 901)
+check("a tap here with nothing held is now", A.localAt(nil, now: 500) == 500)
+
 if failures > 0 {
     print("\(failures) FAILED")
     exit(1)

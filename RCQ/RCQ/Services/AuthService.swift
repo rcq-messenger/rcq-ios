@@ -525,6 +525,35 @@ final class AuthService: ObservableObject {
         return try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: homes, ts: ts)
     }
 
+    /// Our signed record naming ONLY the primary home, offered as `home_record`
+    /// when a backup copy registers (report 1069). For a short or patterned
+    /// number the island grants `desired_uin` only to someone who already
+    /// answers to it elsewhere, and the record is what tells it where to ask.
+    /// Without it a copy made again after a delete came back on a random
+    /// number, even with ours free there.
+    ///
+    /// ⚠ The primary alone, never every home: the record goes to an island
+    /// that may still refuse us at its door, and it needs nothing past the
+    /// home it is asked about. Register does not store it, so it cannot
+    /// unpublish a backup either.
+    func buildPrimaryHomeRecordDoc(ownUIN: Int) -> [String: Any]? {
+        guard ownUIN > 0,
+              let sigBytes = KeychainStore.data(KeychainStore.Keys.signingPriv),
+              let signingPriv = try? Curve25519.Signing.PrivateKey(rawRepresentation: sigBytes),
+              let local = try? SignalProtocolStores.shared.loadLocalIdentity() else { return nil }
+        let sk = signingPriv.publicKey.rawRepresentation.base64EncodedString()
+        let ik = local.identityKeyPair.publicKey.serialize().base64EncodedString()
+        // ownHost(), never the transport: see `buildOwnRecordDoc`.
+        let home = RcqFederation.Home(host: Multihome.ownHost(), uin: ownUIN)
+        // ⚠ Dated at the epoch on purpose, like the web. The island reads this
+        // only as a pointer and never looks at `ts`, while an open gossip
+        // mirror orders records by it: signed "now", this one-home record could
+        // be PUT by the island we hand it to over our real, older-dated record
+        // in every mirror, hiding our backups exactly when contacts fall back
+        // to the mirror. At ts 1 it loses to any record we ever published.
+        return try? RcqFederation.buildRecord(ik: ik, sk: sk, signingPriv: signingPriv, homes: [home], ts: 1)
+    }
+
     /// The active account's 24-word recovery phrase, or nil for a legacy
     /// account whose keys predate seed-derivation (nothing to back up). The
     /// caller gates the Settings UI on nil to show a "not available" notice.

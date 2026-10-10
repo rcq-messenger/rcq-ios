@@ -1857,3 +1857,410 @@ enum BlockRule {
         return false
     }
 }
+
+// MARK: - the ciack wire: when a block was decided, and whom it names
+
+/// How a `ciack` (a request answered, or a block or an unblock made, on
+/// another device of this account) dates and scopes a block. One wire for the
+/// three clients, shipped on Android 0.213 and the web first:
+///
+/// * The decision time is `ts`, ms since the epoch. Readers take `ts`, then
+///   `at` (the web's first builds), and an act carrying neither (an iOS build
+///   before this one) counts from when it reached us: the island's deposit
+///   stamp of the row, else now. Every `ciack` written here carries `ts`.
+/// * Per address, the strictly newer decision wins; at the same time the state
+///   held stays. A carbon can arrive late (served again from the queue, or the
+///   echo of an older block drained after the person was unblocked here), and
+///   "whatever arrives last wins" let it block again. A decision made on THIS
+///   device is dated past the one held, so a tap always takes.
+/// * A block "by key only" (an impostor writing under a contact's address with
+///   another key) travels as `blockkey` / `unblockkey` with `sk` and
+///   `"scope": "key"`; a plain `block` / `unblock` with `"scope": "key"` (or
+///   the web's short-lived `keyOnly: true`) means the same. ⚠⚠ It never names
+///   the address, which is the real contact's: blocking it silenced them. This
+///   build keeps no key-only blocks, so such a block only settles the request
+///   it answered and such an unblock has nothing here to lift. A scope this
+///   build does not know is ignored whole, never guessed into an address block.
+enum CIAckRule {
+    enum Scope: Equatable { case address, key }
+
+    /// What a block or unblock act names; nil for a scope this build does not
+    /// know (ignore the act), and for an act that is not about blocking.
+    static func scope(act: String, scope: String?, keyOnly: Bool) -> Scope? {
+        let keyAct = act == "blockkey" || act == "unblockkey"
+        guard keyAct || act == "block" || act == "unblock" else { return nil }
+        guard let scope, !scope.isEmpty else { return keyAct || keyOnly ? .key : .address }
+        if scope == "key" { return .key }
+        if scope == "address" && !keyAct { return .address }
+        return nil
+    }
+
+    /// A block (true), an unblock (false), or neither (nil).
+    static func blocks(_ act: String) -> Bool? {
+        switch act {
+        case "block", "blockkey": return true
+        case "unblock", "unblockkey": return false
+        default: return nil
+        }
+    }
+
+    /// The act's own stamp: `ts`, else `at`; nil when neither is positive.
+    static func stamp(ts: Int64?, at: Int64?) -> Int64? {
+        if let ts, ts > 0 { return ts }
+        if let at, at > 0 { return at }
+        return nil
+    }
+
+    /// When a decision from another device was made: its own stamp, else the
+    /// island's deposit stamp of the row (it cannot be later than that), else
+    /// now (ms since the epoch, all three).
+    static func decisionAt(stamp: Int64?, depositedAt: Int64?, now: Int64) -> Int64 {
+        if let stamp, stamp > 0 { return stamp }
+        if let depositedAt, depositedAt > 0 { return depositedAt }
+        return now
+    }
+
+    /// The decision held for one address: blocked or lifted, and when.
+    struct Decision: Codable, Equatable {
+        let on: Bool
+        let at: Int64
+    }
+
+    /// Does a decision from another device dated `at` change what is held?
+    /// Strictly newer only. Nothing held (no decision yet, or a block an older
+    /// build wrote without a time) loses to any dated one.
+    static func lands(_ held: Decision?, at: Int64) -> Bool {
+        guard let held else { return true }
+        return at > held.at
+    }
+
+    /// The time of a decision made on this device: now, or just past the one
+    /// held when that one is dated ahead (another device's clock runs fast),
+    /// so the tap takes here and on every device that hears of it.
+    static func localAt(_ held: Decision?, now: Int64) -> Int64 {
+        max(now, (held?.at ?? 0) + 1)
+    }
+
+    /// Keys written on, or read off, one `ciack`. A person rarely has more
+    /// than a couple; the rest is headroom, not a target.
+    static let maxKeys = 8
+    /// Lifted decisions kept. They only settle a late carbon against an
+    /// unblock, which arrives within the queue's thirty days or not at all; the
+    /// oldest go first.
+    static let maxTombstones = 200
+}
+
+// MARK: - report 1067: is a contact on another island still there
+
+/// Whether a contact on another island still exists, read off what their
+/// island answers about the number and the key we pinned for them. The rules
+/// only: the marks live in `PeerLivenessStore` and the requests go out from
+/// `PeerLivenessProbe` (Services/PeerLiveness.swift). The web runs the same
+/// rules (`peer-liveness-rules.ts`).
+///
+/// When somebody burns their account, their own island drops the contact rows
+/// on both sides. A contact on ANOTHER island hears nothing: that contact lives
+/// only on this device, the burned person's island does not know we hold them,
+/// and no client tells its contacts on the way out. So the one island that
+/// knows is asked, lazily: after a send to them failed, and when their chat or
+/// card is opened (once a day per address). Never in the background for the
+/// whole roster, which is exactly the traffic pattern sealed sender avoids.
+///
+/// 1. `GET /federation/keys/{uin}`: the pinned keys, alive; other keys, key
+///    changed; the island's own "no such user", go on.
+/// 2. `GET /federation/uin-for-key?signing_key=<pinned>` on the same island:
+///    another number, moved (not marked); "no account for key", go on.
+/// 3. `GET /federation/gossip-record?sk=<pinned>` on OUR island: their signed
+///    record of homes, verified under the pinned key, naming another home is a
+///    person who lives on elsewhere (a contact pinned on a backup copy that was
+///    deleted or swept since). The island's own "no record", or a record that
+///    names only this address: gone.
+///
+/// ⚠⚠ Every answer that is not a clean, specific one is `unknown`, and unknown
+/// changes nothing. A bare 404 means little on the open internet: a masquerade
+/// island answers a caller without its gateway key with a decoy site, a parked
+/// domain answers anything with its own page, a self-host older than
+/// `/federation/uin-for-key` answers FastAPI's "Not Found". Reading any of those
+/// as "deleted" would mark every contact of such an island deleted the first
+/// time one of their chats opened, so the island has to say, in JSON, the exact
+/// words its code says for this case. 403 `island_closed` is decided before the
+/// number is looked up and says nothing about the person either.
+enum PeerLiveness {
+    enum Verdict: String, Equatable, Sendable {
+        /// The island serves this number under the pinned keys.
+        case alive
+        /// No such number there, no account under the pinned key there, and the
+        /// person's own signed record names no other home.
+        case gone
+        /// The pinned key lives on: under another number on that island, or at
+        /// another home their record names. Not deleted, so not marked.
+        case moved
+        /// The island serves this number under ANOTHER key. Whoever holds it now
+        /// is not the person we pinned, or not provably so.
+        case keyChanged
+        /// Refused, unreachable, not JSON, not the words.
+        case unknown
+    }
+
+    enum Trigger: Equatable, Sendable { case open, failure }
+
+    /// One answer from an island, as it arrived. Nil where one is expected
+    /// means no answer at all (timeout, network, trust refusal).
+    struct Reply: Equatable, Sendable {
+        let status: Int
+        let body: Data
+        /// The island's own clock when it answered (its `Date` header, ms since
+        /// the epoch), nil when it sent none.
+        var islandNow: Double? = nil
+    }
+
+    struct Home: Equatable, Sendable {
+        let host: String
+        let uin: Int
+    }
+
+    /// The island's own words for the answers that count
+    /// (`routers/federation.py` raises exactly these; nothing on the way does).
+    static let noSuchUser = "no such user"
+    static let noAccountForKey = "no account for key"
+    /// `GET /federation/gossip-record` for a key the island holds no record of.
+    static let noRecord = "no record"
+
+    /// The open probe runs at most this often per address (ms).
+    static let openEvery: Double = 24 * 3600 * 1000
+    /// A failed send asks again sooner, but not on every retry: each retry
+    /// already talked to their island and the answer does not change that fast.
+    static let failureEvery: Double = 5 * 60 * 1000
+
+    enum CardStep: Equatable, Sendable { case alive, keyChanged, absent, unknown }
+    enum OwnerStep: Equatable, Sendable { case moved, absent, unknown }
+    /// Step 3 has the same three answers as step 2.
+    typealias RecordStep = OwnerStep
+
+    /// Step 1. The signing key is compared only when one was pinned: a row that
+    /// never had one is anchored by its identity key alone, as it always was.
+    static func cardStep(_ reply: Reply?, pinnedIdentityKey: String, pinnedSigningKey: String) -> CardStep {
+        guard let reply else { return .unknown }
+        if reply.status == 200 {
+            guard let card = jsonObject(reply.body),
+                  let ik = card["identity_key"] as? String, !ik.isEmpty,
+                  let sk = card["signing_key"] as? String, !sk.isEmpty else { return .unknown }
+            let same = sameKey(ik, pinnedIdentityKey)
+                && (pinnedSigningKey.isEmpty || sameKey(sk, pinnedSigningKey))
+            return same ? .alive : .keyChanged
+        }
+        if reply.status == 404 && detail(reply.body) == noSuchUser { return .absent }
+        return .unknown
+    }
+
+    /// Step 2. Another number under the pinned key is a person who moved to a
+    /// new number there. The same number back contradicts step 1 a moment ago,
+    /// so it proves nothing either way.
+    static func ownerStep(_ reply: Reply?, uin: Int) -> OwnerStep {
+        guard let reply else { return .unknown }
+        if reply.status == 200 {
+            guard let n = jsonObject(reply.body)?["uin"] as? Int, n > 0 else { return .unknown }
+            return n != uin ? .moved : .unknown
+        }
+        if reply.status == 404 && detail(reply.body) == noAccountForKey { return .absent }
+        return .unknown
+    }
+
+    /// Step 3, over our own island's answer for their record. `verify` checks
+    /// a served record under the pinned key and hands back the homes it names,
+    /// nil when it does not verify.
+    ///
+    /// ⚠⚠ Absent only for the island's own "no record", or a record verified
+    /// under the pinned key that names no other home. A refused, failed or
+    /// unverifiable read (a 429, a 5xx while the pool is stuck, a connection
+    /// dropped between two requests) is unknown: read as "no record", it
+    /// marked a person alive at their primary deleted, for good (the web's
+    /// review of the same probe).
+    static func recordStep(_ reply: Reply?, host: String, uin: Int, verify: (Data) -> [Home]?) -> RecordStep {
+        guard let reply else { return .unknown }
+        if reply.status == 200 {
+            guard let homes = verify(reply.body) else { return .unknown }
+            return livesElsewhere(homes: homes, host: host, uin: uin) ? .moved : .absent
+        }
+        if reply.status == 404 && detail(reply.body) == noRecord { return .absent }
+        return .unknown
+    }
+
+    /// Does a verified record name any home other than this address?
+    static func livesElsewhere(homes: [Home], host: String, uin: Int) -> Bool {
+        homes.contains { !(sameIslandHost($0.host, host) && $0.uin == uin) }
+    }
+
+    static func ownerPath(signingKey: String) -> String {
+        "/federation/uin-for-key?signing_key=\(queryValue(signingKey))"
+    }
+
+    static func recordPath(signingKey: String) -> String {
+        "/federation/gossip-record?sk=\(queryValue(signingKey))"
+    }
+
+    private static func queryValue(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? s
+    }
+
+    /// The whole probe. `get` asks THEIR island for a path; `record` asks OUR
+    /// island for their record and reads it (`recordStep`). Each step is asked
+    /// only when the one before said "absent".
+    static func classify(
+        uin: Int,
+        host: String,
+        pinnedIdentityKey: String,
+        pinnedSigningKey: String,
+        get: (String) async -> Reply?,
+        record: () async -> RecordStep
+    ) async -> Verdict {
+        switch cardStep(
+            await get("/federation/keys/\(uin)"),
+            pinnedIdentityKey: pinnedIdentityKey, pinnedSigningKey: pinnedSigningKey
+        ) {
+        case .alive: return .alive
+        case .keyChanged: return .keyChanged
+        case .unknown: return .unknown
+        case .absent: break
+        }
+        switch ownerStep(await get(ownerPath(signingKey: pinnedSigningKey)), uin: uin) {
+        case .moved: return .moved
+        case .unknown: return .unknown
+        case .absent: break
+        }
+        switch await record() {
+        case .moved: return .moved
+        case .unknown: return .unknown
+        case .absent: return .gone
+        }
+    }
+
+    /// What the device keeps about one address. Times are ms since the epoch.
+    struct Mark: Codable, Equatable, Sendable {
+        /// The pinned signing key this record is about.
+        var sk: String
+        /// When a probe found the account gone.
+        var gone: Double?
+        /// The same moment on OUR island's clock (the `Date` of its answer to
+        /// step 3), which is the clock its deposit stamps are on: a phone whose
+        /// clock runs an hour fast read every message of the next hour as old
+        /// mail, and one an hour slow let old mail lift a mark set since. Nil
+        /// when the island sent no date; `gone` stands in.
+        var goneOnIsland: Double?
+        /// When a card under another key was seen at this address. Lifted by
+        /// the next probe that finds the pinned keys again.
+        var keyChanged: Double?
+        /// When the last probe started, for the once-a-day rule.
+        var probedAt: Double?
+        /// When the last probe after a FAILED send started. Its own stamp: a
+        /// send that fails a minute after the chat was opened (and found them
+        /// alive) is exactly when to ask again.
+        var failProbeAt: Double?
+
+        init(sk: String, gone: Double? = nil, goneOnIsland: Double? = nil, keyChanged: Double? = nil,
+             probedAt: Double? = nil, failProbeAt: Double? = nil) {
+            self.sk = sk
+            self.gone = gone
+            self.goneOnIsland = goneOnIsland
+            self.keyChanged = keyChanged
+            self.probedAt = probedAt
+            self.failProbeAt = failProbeAt
+        }
+
+        /// Nothing but the key: not worth a row.
+        var isEmpty: Bool { gone == nil && keyChanged == nil && probedAt == nil && failProbeAt == nil }
+    }
+
+    /// Does mark `m` still speak about the contact pinned at its address now?
+    /// The same signing key, and not older than the row: a contact removed and
+    /// added again starts clean, whichever device did the removing. Identity is
+    /// the number AND the key; the address is only where to deliver.
+    static func holds(_ m: Mark, rowSigningKey: String?, rowAddedAt: Double) -> Bool {
+        guard let rk = rowSigningKey, !rk.isEmpty, sameKey(m.sk, rk) else { return false }
+        let markedAt = max(m.gone ?? 0, m.keyChanged ?? 0)
+        return markedAt == 0 || rowAddedAt <= markedAt
+    }
+
+    /// May a probe run now, given when the last one of this kind started?
+    static func mayProbe(_ trigger: Trigger, last: Double?, now: Double) -> Bool {
+        guard let last else { return true }
+        let since = now - last
+        // A clock that went backwards reads as "long ago", not as "never again".
+        if since < 0 { return true }
+        return since >= (trigger == .open ? openEvery : failureEvery)
+    }
+
+    /// The mark after a probe said `verdict`. Moved and unknown say nothing.
+    /// `islandNow`: our own island's clock at its last answer, if it gave one.
+    static func applying(_ verdict: Verdict, to m: Mark, now: Double, islandNow: Double? = nil) -> Mark {
+        var m = m
+        switch verdict {
+        case .gone:
+            if m.gone == nil {
+                m.gone = now
+                m.goneOnIsland = islandNow
+            }
+            // A 404 for the number is no card at all, under any key.
+            m.keyChanged = nil
+        case .keyChanged:
+            if m.keyChanged == nil { m.keyChanged = now }
+        case .alive:
+            m.keyChanged = nil
+        case .moved, .unknown:
+            break
+        }
+        return m
+    }
+
+    /// Does a message verified under the pinned key lift the "gone" mark?
+    ///
+    /// ⚠ The ONLY way it comes off. Not a later probe answering otherwise, and
+    /// not a message from the same number under another key: a reissued number
+    /// writing to us must not bring the old contact back. A copy deposited
+    /// BEFORE the mark is old mail arriving late (a backup mailbox, a queue
+    /// drained after a long time offline), not a sign of life. The deposit
+    /// stamp is our island's clock, so it is held against the mark on that
+    /// clock when the island said what its clock was.
+    static func heardFromLifts(_ m: Mark, depositedAt: Double?) -> Bool {
+        guard let gone = m.gone else { return false }
+        guard let at = depositedAt else { return true }
+        return at >= (m.goneOnIsland ?? gone)
+    }
+
+    /// An HTTP `Date` header ("Sun, 11 Oct 2026 01:22:03 GMT") as ms since the
+    /// epoch, nil when it is absent or not that shape.
+    static func httpDate(_ value: String?) -> Double? {
+        guard let value, !value.isEmpty else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return f.date(from: value).map { $0.timeIntervalSince1970 * 1000 }
+    }
+
+    /// One spelling of an island address for comparing two of them.
+    static func sameIslandHost(_ a: String, _ b: String) -> Bool {
+        func canon(_ h: String) -> String {
+            var s = h.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if s.hasSuffix(":443") { s.removeLast(4) }
+            while s.hasSuffix(".") { s.removeLast() }
+            return s
+        }
+        return canon(a) == canon(b)
+    }
+
+    /// Two base64 keys compared as bytes, so the padded and the unpadded
+    /// spelling of one key are the same key.
+    static func sameKey(_ a: String, _ b: String) -> Bool {
+        if let x = GuestProof.decodeKey32(a), let y = GuestProof.decodeKey32(b) { return x == y }
+        return a.trimmingCharacters(in: .whitespacesAndNewlines) == b.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func jsonObject(_ data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func detail(_ data: Data) -> String? {
+        jsonObject(data)?["detail"] as? String
+    }
+}

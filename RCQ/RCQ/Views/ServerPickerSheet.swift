@@ -311,7 +311,11 @@ struct IslandCardView: View {
     /// ever wrote house rules. One answer for both, asked once per island per
     /// launch by `IslandDoor` and shared with the entry line below the host.
     @State private var status: IslandDoorStatus?
-    @State private var showRules = false
+    /// The reading page open over the card: the house rules, or the island's
+    /// whole description with the rules under it.
+    @State private var page: IslandReadingPage?
+    /// The description shows less than all of itself at three lines.
+    @State private var descriptionClipped = false
 
     /// ⚠ Hand-written because of the `@State` above. A private stored property
     /// makes the SYNTHESIZED memberwise initializer private too, and this view
@@ -368,7 +372,7 @@ struct IslandCardView: View {
                 // left the welcome blank is the ordinary case, and a button
                 // that opens an empty page is worse than no button.
                 if let rules = status?.welcome, !rules.isEmpty {
-                    Button { showRules = true } label: {
+                    Button { page = .rules } label: {
                         Image(systemName: "text.book.closed.fill")
                             .font(.caption)
                             .foregroundColor(Theme.Color.accent)
@@ -393,13 +397,22 @@ struct IslandCardView: View {
             if !entry.description.isEmpty {
                 // Capped. is2's blurb is a paragraph, and unbounded it ran
                 // straight through the page dots under the deck (founder,
-                // 24.08). Three lines say what kind of island it is; the rest
-                // is for the catalogue page, not for a card being swiped.
+                // 24.08). Three lines say what kind of island it is.
+                //
+                // ⚠ And the rest is a tap away (report 1069): capped with
+                // nothing behind it, a description cut mid-sentence could not
+                // be read anywhere in the app. Only a cut one answers the tap,
+                // and the card keeps its height, so swiping does not jump.
                 Text(entry.description)
                     .font(.caption)
                     .foregroundColor(Theme.Color.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
+                    .background(ClampProbe(text: entry.description))
+                    .onPreferenceChange(ClampProbe.Clipped.self) { descriptionClipped = $0 }
+                    .contentShape(Rectangle())
+                    .onTapGesture { if descriptionClipped { page = .about } }
+                    .accessibilityAddTraits(descriptionClipped ? .isButton : [])
                     .padding(.horizontal, 14)
             }
             Spacer(minLength: 0)
@@ -413,8 +426,45 @@ struct IslandCardView: View {
         .task(id: entry.displayHost) {
             status = await IslandDoor.status(host: entry.displayHost)
         }
-        .sheet(isPresented: $showRules) {
-            IslandHouseRules(title: displayName, rules: status?.welcome ?? "")
+        // One sheet for both pages: two sheet modifiers on one view fight.
+        .sheet(item: $page) { p in
+            IslandHouseRules(
+                title: displayName,
+                rules: status?.welcome ?? "",
+                about: p == .about ? entry.description : nil
+            )
+        }
+    }
+}
+
+/// Which reading page an island card has open.
+enum IslandReadingPage: String, Identifiable {
+    case rules, about
+    var id: String { rawValue }
+}
+
+/// Does a three-line caption show less than all of itself? Lays the same text
+/// out unclamped at the clamped width, hidden, and compares the heights. Sits
+/// in the caption's background, so it takes no space and moves nothing.
+private struct ClampProbe: View {
+    let text: String
+
+    struct Clipped: PreferenceKey {
+        static var defaultValue = false
+        static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+    }
+
+    var body: some View {
+        GeometryReader { box in
+            Text(text)
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: box.size.width)
+                .hidden()
+                .background(GeometryReader { full in
+                    Color.clear.preference(key: Clipped.self, value: full.size.height > box.size.height + 1)
+                })
         }
     }
 }
@@ -432,6 +482,9 @@ struct IslandCardView: View {
 struct IslandHouseRules: View {
     let title: String
     let rules: String
+    /// The island's whole description, read from its card (report 1069). When
+    /// set it leads the page and the rules, if any, follow under their name.
+    var about: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -439,12 +492,28 @@ struct IslandHouseRules: View {
             ZStack {
                 Theme.Color.bgPrimary.ignoresSafeArea()
                 ScrollView {
-                    Text(rules)
-                        .font(.callout)
-                        .foregroundColor(Theme.Color.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(16)
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let about, !about.isEmpty {
+                            Text(about)
+                                .font(.callout)
+                                .foregroundColor(Theme.Color.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                            if !rules.isEmpty {
+                                Text("settings.island.rules".localized)
+                                    .font(.headline)
+                                    .foregroundColor(Theme.Color.textPrimary)
+                            }
+                        }
+                        if !rules.isEmpty {
+                            Text(rules)
+                                .font(.callout)
+                                .foregroundColor(Theme.Color.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(16)
                 }
             }
             .navigationTitle(title)

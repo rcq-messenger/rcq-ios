@@ -127,10 +127,11 @@
 "multihome.title" = "Tu copia de seguridad";
 "multihome.body" = "Copia automática, no un segundo inicio de sesión. Nunca cambias de cuenta ni entras ahí. Mientras tu isla principal funciona, una copia de cada mensaje entrante también cae en la isla de copia. Si tu isla principal se bloquea o se cae, la app sigue recibiendo desde la copia por su cuenta. Tu número en una isla de copia puede ser otro (cada isla numera por su cuenta); tu número principal no cambia nunca.";
 "multihome.row_uin" = "tu número allí: #%@";
-"multihome.auto.title" = "Mantener una copia en otra isla";
-"multihome.auto.sub" = "La isla se elige sola del catálogo público";
+"multihome.row_uin_diff" = "buzón en esta isla: #%1$@ (cada isla numera por su cuenta, así que no coincide con tu #%2$@)";
+"multihome.auto.title" = "Copia en una isla elegida automáticamente";
+"multihome.auto.sub" = "La app elige una isla del catálogo público. Las islas que añadiste a mano no cambian con este interruptor.";
 "multihome.auto.busy" = "Eligiendo una isla…";
-"multihome.advanced" = "Avanzado: añadir una isla a mano";
+"multihome.manual.title" = "Añadir una isla a mano";
 "multihome.err.none" = "Ahora mismo no hay ninguna isla de copia accesible. Inténtalo más tarde o añade una a mano.";
 "multihome.host_hint" = "Host de la isla, p. ej. is2.rcq.app";
 "multihome.add" = "Añadir isla de copia";
@@ -936,6 +937,12 @@
 "ci.request_not_sent" = "Añadido, pero su isla no aceptó la solicitud. Todavía no la verá.";
 "ci.add_row.subtitle" = "Contacto de otra isla (otra isla de RCQ)";
 "ci.add_self" = "Eres tú: tu cuenta en esta isla";
+"ci.gone.banner" = "Esta cuenta ya no existe: su isla dice que no hay tal número. Los mensajes no se entregarán.";
+"ci.key_changed.banner" = "Su isla ahora muestra esta dirección con otra clave. Tus mensajes siguen sellados con la clave que añadiste, así que nadie más puede leerlos, pero puede que no lleguen a esta persona. Si restableció su cuenta, elimina el contacto y agrégalo de nuevo.";
+"ci.gone.remove" = "Eliminar contacto";
+"ci.gone.remove.confirm.title" = "¿Eliminar este contacto?";
+"ci.gone.remove.confirm.body" = "El historial del chat se queda en este dispositivo.";
+"ci.gone.row" = "Cuenta eliminada";
 "contact_list.section.cross_island" = "Otras islas";
 "pending.cta.decline" = "Rechazar";
 "settings.privacy.relay_calls" = "Llamadas siempre por relay";

@@ -127,10 +127,11 @@
 "multihome.title" = "Seu backup";
 "multihome.body" = "Backup automático, não um segundo login. Você nunca troca nem entra por lá. Enquanto sua ilha principal funciona, uma cópia de cada mensagem que chega também é deixada no backup. Se a ilha principal for bloqueada ou cair, o app continua recebendo do backup sozinho. Seu número numa ilha de backup pode ser outro (cada ilha numera do seu jeito); seu número principal nunca muda.";
 "multihome.row_uin" = "seu número lá: #%@";
-"multihome.auto.title" = "Manter um backup em outra ilha";
-"multihome.auto.sub" = "A ilha é escolhida automaticamente no catálogo público";
+"multihome.row_uin_diff" = "caixa nesta ilha: #%1$@ (cada ilha numera por conta própria, então não coincide com o seu #%2$@)";
+"multihome.auto.title" = "Backup numa ilha escolhida automaticamente";
+"multihome.auto.sub" = "O app escolhe uma ilha do catálogo público. As ilhas que você adicionou manualmente não mudam com esta chave.";
 "multihome.auto.busy" = "Escolhendo uma ilha…";
-"multihome.advanced" = "Avançado: adicionar uma ilha manualmente";
+"multihome.manual.title" = "Adicionar uma ilha manualmente";
 "multihome.err.none" = "Nenhuma ilha de backup acessível agora. Tente mais tarde, ou adicione uma manualmente.";
 "multihome.host_hint" = "Host da ilha, ex.: is2.rcq.app";
 "multihome.add" = "Adicionar ilha de backup";
@@ -936,6 +937,12 @@
 "ci.request_not_sent" = "Adicionado, mas a ilha dele não aceitou o pedido. Ele ainda não vai ver.";
 "ci.add_row.subtitle" = "Contato de outra ilha (outra ilha RCQ)";
 "ci.add_self" = "Este é você: sua conta nesta ilha";
+"ci.gone.banner" = "Esta conta não existe mais: a ilha dessa pessoa diz que esse número não existe. As mensagens não serão entregues.";
+"ci.key_changed.banner" = "A ilha dessa pessoa agora mostra este endereço com outra chave. Suas mensagens continuam seladas com a chave que você adicionou, então ninguém mais consegue lê-las, mas elas podem não chegar a essa pessoa. Se ela redefiniu a conta, remova o contato e adicione de novo.";
+"ci.gone.remove" = "Remover contato";
+"ci.gone.remove.confirm.title" = "Remover este contato?";
+"ci.gone.remove.confirm.body" = "O histórico da conversa fica neste dispositivo.";
+"ci.gone.row" = "Conta excluída";
 "contact_list.section.cross_island" = "Outras ilhas";
 "pending.cta.decline" = "Recusar";
 "settings.privacy.relay_calls" = "Sempre passar chamadas por relay";

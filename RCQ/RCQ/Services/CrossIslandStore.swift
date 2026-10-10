@@ -264,6 +264,10 @@ final class CrossIslandStore: ObservableObject {
     /// All stored cross-island contacts (each has `host` set).
     func all() -> [Contact] { Array(cache.values) }
 
+    /// The row pinned at exactly `uin@host`, or nil. A dictionary read, for
+    /// the callers that ask per row while a list draws (report 1067).
+    func row(uin: Int, host: String) -> Contact? { cache[ciKey(uin, host)] }
+
     /// Map an incoming sealed message's senderUIN back to a cross-island contact.
     /// Per-island uins can collide in theory; returns the first match.
     func find(uin: Int) -> Contact? { cache.values.first { $0.uin == uin } }

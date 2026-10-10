@@ -2113,6 +2113,7 @@ final class AppState: ObservableObject {
         let am = AccountManager.shared
         for s in siblings where s.id != am.activeAccountID && am.accounts.contains(where: { $0.id == s.id }) {
             CrossIslandRequestsStore.wipeStored(accountID: s.id)
+            PeerLivenessStore.wipeStored(accountID: s.id)
             VisitedIslandsStore.wipeStored(accountID: s.id)
             // Same trap as `eraseLocalAccount`: the backup store is filed by
             // number, and another account may hold that number elsewhere.
@@ -2168,6 +2169,7 @@ final class AppState: ObservableObject {
         // these instead; only a burn erases them.
         Multihome.stopPolling()
         CrossIslandStore.shared.wipe()
+        PeerLivenessStore.shared.wipe()
         CrossIslandRequestsStore.shared.wipe()
         StrangerQuarantine.shared.wipe()
         VisitedIslandsStore.shared.wipe()
@@ -2714,6 +2716,8 @@ final class AppState: ObservableObject {
         // Blocks of our own island are per account too (report 1065): one
         // account's block used to block the number in every account here.
         BlockedContactsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // "Account deleted" marks name contacts of one account (report 1067).
+        PeerLivenessStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         StrangerQuarantine.shared.bind(accountID: AccountManager.shared.activeAccountID)
         VisitedIslandsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         // The sections tree is per account and holds section names plus the uin

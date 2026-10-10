@@ -101,6 +101,7 @@ final class CrossIslandRequestsStore: ObservableObject {
     private static let prefix = "rcq.ci-requests.v1."
     private static let blockedPrefix = "rcq.ci-blocked.v1."
     private static let answeredPrefix = "rcq.ci-answered.v1."
+    private static let decisionsPrefix = "rcq.ci-block-at.v1."
     private static let maxHeld = 20
     /// §5f anti-abuse: the deposit is open, so a stranger's request costs one
     /// HTTP call. Bound the list so a flood fills a fixed number of rows rather
@@ -120,9 +121,16 @@ final class CrossIslandRequestsStore: ObservableObject {
     private var key: String
     private var blockedKey: String
     private var answeredKey: String
+    private var decisionsKey: String
     private var cache: [String: Request]
     private var blocked: Set<String>
     private var answered: [String]
+    /// When each address was last blocked or unblocked, here or on another
+    /// device of this account, keyed like `blocked` (`CIAckRule`). An unblock
+    /// stays as a dated tombstone, so the late echo of an older block finds it
+    /// and changes nothing. A block written before decisions were dated has no
+    /// entry, and any dated decision is newer than it.
+    private var decisions: [String: CIAckRule.Decision]
 
     private init() {
         defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
@@ -130,9 +138,11 @@ final class CrossIslandRequestsStore: ObservableObject {
         key = Self.prefix + (id?.uuidString ?? "none")
         blockedKey = Self.blockedPrefix + (id?.uuidString ?? "none")
         answeredKey = Self.answeredPrefix + (id?.uuidString ?? "none")
+        decisionsKey = Self.decisionsPrefix + (id?.uuidString ?? "none")
         cache = Self.loadRequests(defaults, key)
         blocked = Self.loadBlocked(defaults, blockedKey)
         answered = Self.loadAnswered(defaults, answeredKey)
+        decisions = Self.loadDecisions(defaults, decisionsKey)
         requestCount = cache.count
     }
 
@@ -141,9 +151,11 @@ final class CrossIslandRequestsStore: ObservableObject {
         key = Self.prefix + (accountID?.uuidString ?? "none")
         blockedKey = Self.blockedPrefix + (accountID?.uuidString ?? "none")
         answeredKey = Self.answeredPrefix + (accountID?.uuidString ?? "none")
+        decisionsKey = Self.decisionsPrefix + (accountID?.uuidString ?? "none")
         cache = Self.loadRequests(defaults, key)
         blocked = Self.loadBlocked(defaults, blockedKey)
         answered = Self.loadAnswered(defaults, answeredKey)
+        decisions = Self.loadDecisions(defaults, decisionsKey)
         changed()
     }
 
@@ -157,9 +169,11 @@ final class CrossIslandRequestsStore: ObservableObject {
         defaults.removeObject(forKey: key)
         defaults.removeObject(forKey: blockedKey)
         defaults.removeObject(forKey: answeredKey)
+        defaults.removeObject(forKey: decisionsKey)
         cache = [:]
         blocked = []
         answered = []
+        decisions = [:]
         changed()
     }
 
@@ -168,7 +182,7 @@ final class CrossIslandRequestsStore: ObservableObject {
     /// into the bound account's slots.
     static func wipeStored(accountID: UUID) {
         let d = UserDefaults(suiteName: appGroup) ?? .standard
-        for p in [prefix, blockedPrefix, answeredPrefix] {
+        for p in [prefix, blockedPrefix, answeredPrefix, decisionsPrefix] {
             d.removeObject(forKey: p + accountID.uuidString)
         }
     }
@@ -405,21 +419,67 @@ final class CrossIslandRequestsStore: ObservableObject {
     /// Block a sender: drop the request + remember so future deposits are dropped.
     /// Also the block of an accepted contact on another island (the card, the
     /// chat menu, a room on that island): one address, one entry (report 1065).
-    func block(uin: Int, host: String) {
-        clear(uin: uin, host: host)
-        blocked.insert(reqKey(uin, host))
-        persistBlocked()
-        changed()
+    ///
+    /// Decided on THIS device: dated past whatever is held, so it takes. The
+    /// time goes into the `ciack` that tells the account's other devices.
+    @discardableResult
+    func block(uin: Int, host: String) -> Int64 {
+        let at = CIAckRule.localAt(decisions[reqKey(uin, host)], now: Self.nowMs)
+        set(true, uin: uin, host: host, at: at)
+        return at
     }
 
     /// Lift the block of exactly this address (report 1064). There was no way
     /// to: Unblock only took the bare number off the other list, and this entry
     /// went on dropping everything from them, after the ack, for good.
-    func unblock(uin: Int, host: String) {
-        guard blocked.remove(reqKey(uin, host)) != nil else { return }
+    ///
+    /// Decided here, like `block`, and kept as a dated tombstone even when
+    /// nothing was blocked: the echo of an older block may still be on its way.
+    @discardableResult
+    func unblock(uin: Int, host: String) -> Int64 {
+        let at = CIAckRule.localAt(decisions[reqKey(uin, host)], now: Self.nowMs)
+        set(false, uin: uin, host: host, at: at)
+        return at
+    }
+
+    /// Date a block or unblock made on this device that lives on another list
+    /// (our own island's, `BlockedContactsStore`), so a late `ciack` from
+    /// another device cannot undo it. Changes no block here.
+    @discardableResult
+    func noteDecidedHere(_ on: Bool, uin: Int, host: String) -> Int64 {
+        let k = reqKey(uin, host)
+        let at = CIAckRule.localAt(decisions[k], now: Self.nowMs)
+        decisions[k] = CIAckRule.Decision(on: on, at: at)
+        persistDecisions()
+        return at
+    }
+
+    /// A block or unblock decided on another device of this account at `at`
+    /// (`CIAckRule.decisionAt`). Applies only when strictly newer than the
+    /// decision held for the address; returns whether it did.
+    @discardableResult
+    func applyRemote(_ on: Bool, uin: Int, host: String, at: Int64) -> Bool {
+        guard CIAckRule.lands(decisions[reqKey(uin, host)], at: at) else { return false }
+        set(on, uin: uin, host: host, at: at)
+        return true
+    }
+
+    private func set(_ on: Bool, uin: Int, host: String, at: Int64) {
+        let k = reqKey(uin, host)
+        if on {
+            cache[k] = nil
+            persist()
+            blocked.insert(k)
+        } else {
+            blocked.remove(k)
+        }
+        decisions[k] = CIAckRule.Decision(on: on, at: at)
         persistBlocked()
+        persistDecisions()
         changed()
     }
+
+    private static var nowMs: Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
     /// Every blocked address, for the Blocked list. `host` is "" for a stranger
     /// on our own island blocked from the request quarantine.
@@ -449,6 +509,12 @@ final class CrossIslandRequestsStore: ObservableObject {
         return s
     }
 
+    private static func loadDecisions(_ d: UserDefaults, _ key: String) -> [String: CIAckRule.Decision] {
+        guard let data = d.data(forKey: key),
+              let m = try? JSONDecoder().decode([String: CIAckRule.Decision].self, from: data) else { return [:] }
+        return m
+    }
+
     private static func loadAnswered(_ d: UserDefaults, _ key: String) -> [String] {
         guard let data = d.data(forKey: key),
               let s = try? JSONDecoder().decode([String].self, from: data) else { return [] }
@@ -461,6 +527,18 @@ final class CrossIslandRequestsStore: ObservableObject {
 
     private func persistBlocked() {
         if let data = try? JSONEncoder().encode(blocked) { defaults.set(data, forKey: blockedKey) }
+    }
+
+    /// Lifted decisions beyond the cap go oldest first; a block in force is
+    /// never dropped, its time is what orders the next unblock.
+    private func persistDecisions() {
+        let lifted = decisions.filter { !$0.value.on }
+        if lifted.count > CIAckRule.maxTombstones {
+            for (k, _) in lifted.sorted(by: { $0.value.at < $1.value.at }).prefix(lifted.count - CIAckRule.maxTombstones) {
+                decisions[k] = nil
+            }
+        }
+        if let data = try? JSONEncoder().encode(decisions) { defaults.set(data, forKey: decisionsKey) }
     }
 
     private func persistAnswered() {

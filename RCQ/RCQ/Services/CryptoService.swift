@@ -155,6 +155,26 @@ struct CISrv: Codable, Hashable {
     let id: Int
 }
 
+/// The parts of a `ciack` that date a block or an unblock and say whom it
+/// names (`CIAckRule` in CrossIslandLogic.swift has the rules). The same wire
+/// on Android and the web; every field optional, since older senders write
+/// none of them.
+struct CIAckFields: Hashable {
+    /// When the answer was given, ms since the epoch. Read from `ts`, else
+    /// from `at`, where the web's first builds put it.
+    var ts: Int64? = nil
+    /// "address" (also when absent) or "key"; anything else is from a newer
+    /// build, and the act is ignored rather than guessed at.
+    var scope: String? = nil
+    /// On a key-scoped act: the one key it names, base64.
+    var sk: String? = nil
+    /// On a block: the blocked person's signing keys, base64.
+    var keys: [String] = []
+    /// The web's first key-only builds said `keyOnly: true` instead of a
+    /// scope, with the key in `keys`. Read, never written.
+    var keyOnly: Bool = false
+}
+
 
 /// The guest card this account hands out, on a CLOSED island.
 ///
@@ -284,7 +304,10 @@ enum Envelope: Codable, Hashable {
     ///
     /// `srv` names the pending row on a visited island that the answer settled
     /// (F1). Additive: an older decoder ignores the key.
-    case ciAck(uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil)
+    ///
+    /// `fields` dates a block or an unblock (`ts`) and says whether it names
+    /// the address or only a key (`CIAckFields`). Additive the same way.
+    case ciAck(uin: Int, host: String, act: String, card: CICard?, srv: CISrv? = nil, fields: CIAckFields = CIAckFields())
     /// Room state key hand-off (stage 6 phase 2, wire "gskey", outer "skdm").
     case gsKey(gid: Int, ver: Int64, key: String)
     /// Room state key ask-back (wire "gsknack", outer "sknack").
@@ -411,6 +434,7 @@ enum Envelope: Codable, Hashable {
         case lat
         case lng
         case uin, host, card, srv
+        case scope, sk, keys, keyOnly
         case pollID = "poll"
         case question = "q"
         case options = "opts"
@@ -541,13 +565,22 @@ enum Envelope: Codable, Hashable {
         case .readMark(let at):
             try c.encode("readmark", forKey: .kind)
             try c.encode(at, forKey: .at)
-        case .ciAck(let uin, let host, let act, let card, let srv):
+        case .ciAck(let uin, let host, let act, let card, let srv, let fields):
             try c.encode("ciack", forKey: .kind)
             try c.encode(uin, forKey: .uin)
             try c.encode(host, forKey: .host)
             try c.encode(act, forKey: .act)
             if let card { try c.encode(card, forKey: .card) }
             if let srv { try c.encode(srv, forKey: .srv) }
+            if let ts = fields.ts {
+                // `ts` is what every client reads; `at` is the same value for
+                // the web builds that predate it.
+                try c.encode(ts, forKey: .ts)
+                try c.encode(ts, forKey: .at)
+            }
+            if let scope = fields.scope { try c.encode(scope, forKey: .scope) }
+            if let sk = fields.sk { try c.encode(sk, forKey: .sk) }
+            if !fields.keys.isEmpty { try c.encode(fields.keys, forKey: .keys) }
         case .gsKey(let gid, let ver, let key):
             try c.encode("gskey", forKey: .kind)
             try c.encode(gid, forKey: .gid)
@@ -745,13 +778,41 @@ enum Envelope: Codable, Hashable {
         case "readmark":
             self = .readMark(at: try c.decode(Int64.self, forKey: .at))
         case "ciack":
+            // A positive whole number of ms, whichever way the sender's JSON
+            // spelled it; anything else is no stamp.
+            func millis(_ k: K) -> Int64? {
+                if let v = (try? c.decodeIfPresent(Int64.self, forKey: k)) ?? nil { return v > 0 ? v : nil }
+                if let d = (try? c.decodeIfPresent(Double.self, forKey: k)) ?? nil, d.isFinite, d >= 1, d < 9e15 {
+                    return Int64(d)
+                }
+                return nil
+            }
+            func text(_ k: K) -> String? {
+                guard let s = (try? c.decodeIfPresent(String.self, forKey: k)) ?? nil else { return nil }
+                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                return t.isEmpty ? nil : t
+            }
+            // Bounded: the list is not a place to pour an unbounded array into.
+            let keys = (((try? c.decodeIfPresent([String].self, forKey: .keys)) ?? nil) ?? [])
+                .filter { !$0.isEmpty && $0.count <= 128 }
+                .prefix(8)
+            let keyOnly = ((try? c.decodeIfPresent(Bool.self, forKey: .keyOnly)) ?? nil) == true
             self = .ciAck(
                 uin: try c.decode(Int.self, forKey: .uin),
                 host: try c.decode(String.self, forKey: .host),
                 act: try c.decode(String.self, forKey: .act),
                 card: try c.decodeIfPresent(CICard.self, forKey: .card),
                 // A malformed srv must not cost the ack itself.
-                srv: (try? c.decodeIfPresent(CISrv.self, forKey: .srv)) ?? nil
+                srv: (try? c.decodeIfPresent(CISrv.self, forKey: .srv)) ?? nil,
+                // Nor a malformed stamp, scope or key list.
+                fields: CIAckFields(
+                    ts: millis(.ts) ?? millis(.at),
+                    scope: text(.scope),
+                    // The web's keyOnly builds carried the key in `keys`.
+                    sk: text(.sk) ?? (keyOnly ? keys.first : nil),
+                    keys: Array(keys),
+                    keyOnly: keyOnly
+                )
             )
         case "gskey":
             self = .gsKey(

@@ -27,6 +27,10 @@ struct ContactListView: View {
     // Cross-island contacts render from the store directly: the merged
     // ContactService list drops them when a same-uin LOCAL contact exists.
     @ObservedObject private var ciStore = CrossIslandStore.shared
+    /// Contacts on another island whose island says the account is gone sink
+    /// to the end of their section (report 1067), so a mark set by a probe in
+    /// an open chat has to re-sort this list.
+    @ObservedObject private var liveness = PeerLivenessStore.shared
     // Duress view: the sections below that read a STORE rather than
     // `ContactService` have to be gated here as well. The stores are rebound to
     // an empty decoy namespace on entry, so this is the second line — but it is
@@ -1447,6 +1451,21 @@ struct ContactListView: View {
                 out.crossLoose.append(contact)
             }
         }
+        // An account its island says is gone (report 1067) goes to the end of
+        // its section, muted, rather than vanishing: a false "gone" exists (an
+        // island restored from an old database, a number that moved), and the
+        // history stays one tap away. Name order holds within each half.
+        if liveness.hasGoneMarks {
+            func goneLast(_ list: [Contact]) -> [Contact] {
+                let flagged = list.map { c in (c, c.host.map { liveness.isGone(uin: c.uin, host: $0) } ?? false) }
+                guard flagged.contains(where: { $0.1 }) else { return list }
+                return flagged.filter { !$0.1 }.map(\.0) + flagged.filter { $0.1 }.map(\.0)
+            }
+            out.crossLoose = goneLast(out.crossLoose)
+            for sid in Array(out.filedCross.keys) {
+                out.filedCross[sid] = goneLast(out.filedCross[sid] ?? [])
+            }
+        }
         return out
     }
 
@@ -2356,7 +2375,7 @@ struct ContactListView: View {
             title: "contact_list.ctx.remove".localized,
             systemImage: "person.crop.circle.badge.xmark",
             destructive: true
-        ) { Task { await vm.remove(contact.uin) } })
+        ) { Task { await vm.remove(contact.uin, host: contact.host) } })
         return out
     }
 
@@ -2519,7 +2538,7 @@ struct ContactListView: View {
         // Previews but doesn't repaint the system menu icon.
         .tint(contact.blocked ? Theme.Color.accent : .red)
         Button(role: .destructive) {
-            Task { await vm.remove(contact.uin) }
+            Task { await vm.remove(contact.uin, host: contact.host) }
         } label: {
             Label("contact_list.ctx.remove".localized,
                   systemImage: "person.crop.circle.badge.xmark")
@@ -2563,9 +2582,17 @@ private struct ContactRow: View {
     @ObservedObject private var reactionInbox = ReactionInboxStore.shared
     @ObservedObject private var mentionInbox = MentionInboxStore.shared
     @ObservedObject private var aliasStore = ContactAliasStore.shared
+    @ObservedObject private var liveness = PeerLivenessStore.shared
 
     private var isMuted: Bool {
         sound.isMuted(thread: .peer(uin: contact.uin))
+    }
+
+    /// Their island says this account no longer exists (report 1067). Only a
+    /// contact on another island is ever asked, and only by its address.
+    private var accountGone: Bool {
+        guard let h = contact.host else { return false }
+        return liveness.isGone(uin: contact.uin, host: h)
     }
 
     private var hasReaction: Bool {
@@ -2609,7 +2636,7 @@ private struct ContactRow: View {
                     // (device-only, see ContactAliasStore).
                     Text(aliasStore.displayName(for: contact.uin, fallback: contact.nickname, host: contact.host))
                         .font(Theme.Font.nickname)
-                        .foregroundColor(contact.status == .offline ? Theme.Color.textSecondary : Theme.Color.textPrimary)
+                        .foregroundColor(contact.status == .offline || accountGone ? Theme.Color.textSecondary : Theme.Color.textPrimary)
                     BadgeMark(kind: contact.badge)
                     GenderIcon(gender: contact.gender)
                     if contact.blocked {
@@ -2625,7 +2652,15 @@ private struct ContactRow: View {
                     Text(verbatim: "\(contact.uin)")
                         .font(Theme.Font.monoSmall)
                         .foregroundColor(Theme.Color.textMono)
-                    if let h = contact.host {
+                    if accountGone {
+                        // Said where the island would be, and nothing after it:
+                        // a status message from an account that is gone is not
+                        // news (report 1067).
+                        Text("· " + "ci.gone.row".localized)
+                            .font(.caption2)
+                            .foregroundColor(Theme.Color.textSecondary)
+                            .lineLimit(1)
+                    } else if let h = contact.host {
                         // §5c: a cross-island peer shows its island (presence /
                         // last_seen don't cross islands), then any status.
                         Text(verbatim: "· \(h)")

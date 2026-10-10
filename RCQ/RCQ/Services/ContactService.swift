@@ -631,27 +631,19 @@ final class ContactService: ObservableObject {
         }
     }
 
-    func remove(_ uin: Int) async throws {
+    /// Remove a contact. `host` is the row's island, nil for our own.
+    ///
+    /// ⚠ The island has to come from the row. This took the number alone and
+    /// looked it up in the merged list, which keeps only ONE row per number:
+    /// with 134 on our island and 134@is2 both in the list, "remove" on the
+    /// foreign row deleted our own island's 134 (report 1067 review).
+    func remove(_ uin: Int, host: String?) async throws {
         // Cross-island contacts live ONLY in CrossIslandStore (on-device), not
         // in the server-side /contacts list, so a DELETE /contacts/{uin} did
         // nothing and they couldn't be removed (founder report). Remove them
         // locally instead.
-        if let c = contacts.first(where: { $0.uin == uin }), let host = c.host {
-            CrossIslandStore.shared.remove(uin: uin, host: host)
-            contacts.removeAll { $0.uin == uin }
-            UnreadStore.shared.clearPeer(uin)
-            BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
-            BadgeCounter.syncIcon()
-            // ⚠ NOT into RemovedContactsStore (report 1064, Android's #1055):
-            // that list is bare numbers of our own island, and this number
-            // named whoever holds it here too. Nothing took it off again, so a
-            // removed foreign contact was silenced for good, along with our
-            // own island's namesake. Out of CrossIslandStore they are a
-            // stranger to the cross-island gate, which holds what they write
-            // as a request.
-            // The only pruning the sections slot ever gets: an explicit local
-            // removal. Never because a chat failed to render.
-            SectionsVault.forgetSectionMember(Sections.peerKey(uin, host: host))
+        if let host, !Multihome.isOwnHost(host) {
+            removeCrossIsland(uin: uin, host: host)
             return
         }
         do {
@@ -683,6 +675,31 @@ final class ContactService: ObservableObject {
         // account's second, rarely-written slot would say "that uin was in one
         // of their sections". See the note on `forgetSectionMember`.
         SectionsVault.forgetSectionMember(Sections.peerKey(uin))
+    }
+
+    /// Remove the contact pinned at `uin@host` on another island. Local only:
+    /// the row lives on this device and in the vault, which the store's removal
+    /// buries so another device does not bring it back on its next sync. The
+    /// chat history stays.
+    func removeCrossIsland(uin: Int, host: String) {
+        CrossIslandStore.shared.remove(uin: uin, host: host)
+        contacts.removeAll { $0.uin == uin && $0.host?.lowercased() == host.lowercased() }
+        UnreadStore.shared.clearPeer(uin)
+        BadgeCounter.reset(threadKey: BadgeCounter.threadKey(peerUIN: uin))
+        BadgeCounter.syncIcon()
+        // ⚠ NOT into RemovedContactsStore (report 1064, Android's #1055):
+        // that list is bare numbers of our own island, and this number
+        // named whoever holds it here too. Nothing took it off again, so a
+        // removed foreign contact was silenced for good, along with our
+        // own island's namesake. Out of CrossIslandStore they are a
+        // stranger to the cross-island gate, which holds what they write
+        // as a request.
+        // The only pruning the sections slot ever gets: an explicit local
+        // removal. Never because a chat failed to render.
+        SectionsVault.forgetSectionMember(Sections.peerKey(uin, host: host))
+        // Whatever was known about the address goes with the contact (report
+        // 1067); somebody added there again starts clean.
+        PeerLivenessStore.shared.forget(uin: uin, host: host)
     }
 
     /// Drop a UIN from the local cache only — used when the peer side
@@ -783,22 +800,37 @@ final class ContactService: ObservableObject {
     /// label said it would unblock.
     func setBlocked(_ on: Bool, uin: Int, host: String?) async {
         if let h = Self.foreignHost(host) {
+            // Dated here (`CIAckRule`), and the same time goes to the other
+            // devices, so a late echo of an older answer cannot undo this one.
+            let at: Int64
+            var keys: [String] = []
             if on {
-                CrossIslandRequestsStore.shared.block(uin: uin, host: h)
+                at = CrossIslandRequestsStore.shared.block(uin: uin, host: h)
+                // The key pinned for them, so the other devices block the
+                // person wherever they write from, not only the address.
+                if let k = CrossIslandStore.shared.row(uin: uin, host: h)?.signingKey, !k.isEmpty { keys = [k] }
             } else {
-                CrossIslandRequestsStore.shared.unblock(uin: uin, host: h)
+                at = CrossIslandRequestsStore.shared.unblock(uin: uin, host: h)
                 BlockedContactsStore.shared.liftEveryIslandBlock(uin)
             }
             refreshBlockedFlags()
-            await MessageService.shared.sendCIAck(uin: uin, host: h.lowercased(), act: on ? "block" : "unblock")
+            await MessageService.shared.sendCIAck(
+                uin: uin, host: h.lowercased(), act: on ? "block" : "unblock", at: at, keys: keys
+            )
             return
         }
         BlockedContactsStore.shared.set(uin, blocked: on)
-        // A stranger blocked from the request quarantine has an entry there
-        // too, and the devices that blocked with it heard a `ciack` for "".
-        if !on, CrossIslandRequestsStore.shared.isBlocked(uin: uin, host: "") {
-            CrossIslandRequestsStore.shared.unblock(uin: uin, host: "")
-            Task { await MessageService.shared.sendCIAck(uin: uin, host: "", act: "unblock") }
+        if on {
+            // Dated, so a late `ciack` unblock from another device that is
+            // older than this tap cannot lift it.
+            CrossIslandRequestsStore.shared.noteDecidedHere(true, uin: uin, host: "")
+        } else {
+            // A stranger blocked from the request quarantine has an entry there
+            // too, and the devices that blocked with it heard a `ciack` for "".
+            // Told every time, as Android does: a block made on another device
+            // from its request list is lifted there as well.
+            let at = CrossIslandRequestsStore.shared.unblock(uin: uin, host: "")
+            Task { await MessageService.shared.sendCIAck(uin: uin, host: "", act: "unblock", at: at) }
         }
         refreshBlockedFlags()
         // Only a roster row can carry the island's flag; a stranger 404s.

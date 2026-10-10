@@ -26,6 +26,14 @@ struct ChatView: View {
         return nil
     }
 
+    /// The 1:1 peer when they live on another island, else nil. The address the
+    /// chat was opened with: the number alone is somebody else on our island.
+    private var crossIslandPeer: (uin: Int, host: String)? {
+        guard case .peer(let c) = vm.target, let h = c.host, !h.isEmpty,
+              !Multihome.isOwnHost(h) else { return nil }
+        return (c.uin, h)
+    }
+
     /// The island of the open room when that is not ours, else nil. A name in
     /// such a room names a member THERE; the same number on our island is
     /// somebody else, so every card opened from this chat carries the host
@@ -873,6 +881,20 @@ struct ChatView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
 
+            // A contact on another island whose island says the account is gone,
+            // or serves the address under another key (report 1067). Where the
+            // pin floats in a room; a 1:1 chat has no pin, so they never meet.
+            if let peer = crossIslandPeer {
+                CrossIslandPeerBanner(uin: peer.uin, host: peer.host) {
+                    ContactService.shared.removeCrossIsland(uin: peer.uin, host: peer.host)
+                    dismiss()
+                }
+                // A confirmation asked for one chat never carries to another.
+                .id("\(peer.uin)@\(peer.host.lowercased())")
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+            }
+
             if showInChatSearch {
                 InChatSearchOverlay(
                     messages: vm.messages,
@@ -1073,6 +1095,16 @@ struct ChatView: View {
             // without it the screen shows bare uins where names belong. A no-op
             // when it is already here or the group lives on another island.
             if let gid = activeGroupID { await groupSvc.ensureRoster(gid) }
+        }
+        .task(id: crossIslandPeer.map { "\($0.uin)@\($0.host.lowercased())" }) {
+            // Is this contact on another island still there (report 1067)? Asked
+            // when the chat opens, at most once a day per address, so a burned
+            // account says so before anybody types into the void. A failed send
+            // asks again (`MessageService.sendEnvelope`). Keyed by the address,
+            // so it is always about the chat on screen.
+            if let peer = crossIslandPeer {
+                await PeerLivenessProbe.probe(uin: peer.uin, host: peer.host, trigger: .open)
+            }
         }
         .onAppear {
             // The unread-below badge counter is seeded in ChatViewModel.init
@@ -3884,6 +3916,75 @@ enum ChatPinRouting {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else {
             throw APIError.http(code, String(data: data, encoding: .utf8))
+        }
+    }
+}
+
+/// A contact on another island whose island says the account no longer
+/// exists, or now serves the address under another key (report 1067), with the
+/// one action that helps: removing the contact. Draws nothing otherwise.
+///
+/// Its own view, observing the marks, so a mark changing redraws this panel
+/// and not the whole chat. The pin's floating-panel treatment: opaque, over
+/// the list, under the long-press overlay.
+///
+/// The removal asks first. The pinned keys live on this device only and
+/// cannot be fetched back from an island that no longer has the account.
+private struct CrossIslandPeerBanner: View {
+    let uin: Int
+    let host: String
+    let onRemove: () -> Void
+    @ObservedObject private var liveness = PeerLivenessStore.shared
+    @State private var confirming = false
+
+    var body: some View {
+        let gone = liveness.isGone(uin: uin, host: host)
+        if gone || liveness.keyChanged(uin: uin, host: host) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: gone ? "person.crop.circle.badge.xmark" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(gone ? Theme.Color.statusBusy : Theme.Color.warning)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text((gone ? "ci.gone.banner" : "ci.key_changed.banner").localized)
+                        .font(.footnote)
+                        .foregroundColor(Theme.Color.textPrimary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        confirming = true
+                    } label: {
+                        Text("ci.gone.remove".localized)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.Color.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Theme.Color.bgPrimary))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Theme.Color.bgSecondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Theme.Color.divider.opacity(0.3), lineWidth: 0.5)
+            )
+            .confirmationDialog(
+                "ci.gone.remove.confirm.title".localized,
+                isPresented: $confirming,
+                titleVisibility: .visible
+            ) {
+                Button("ci.gone.remove".localized, role: .destructive) { onRemove() }
+                Button("common.cancel".localized, role: .cancel) {}
+            } message: {
+                Text("ci.gone.remove.confirm.body".localized)
+            }
         }
     }
 }

@@ -127,10 +127,11 @@
 "multihome.title" = "Yedeğin";
 "multihome.body" = "Otomatik yedek, ikinci bir giriş değil. Oraya hiç geçmez, orada oturum açmazsın. Ana adan çalışırken gelen her mesajın bir kopyası yedeğe de düşer. Ana adan engellenir ya da çökerse uygulama yedekten almayı kendiliğinden sürdürür. Yedek adadaki numaran başka olabilir (her ada numarayı kendi verir); ana numaran hiç değişmez.";
 "multihome.row_uin" = "oradaki numaran: #%@";
-"multihome.auto.title" = "Başka bir adada yedek tut";
-"multihome.auto.sub" = "Ada, herkese açık katalogdan kendiliğinden seçilir";
+"multihome.row_uin_diff" = "bu adadaki posta kutusu: #%1$@ (adalar numaraları bağımsız verir, bu yüzden #%2$@ numaranla aynı değil)";
+"multihome.auto.title" = "Otomatik seçilen adada yedek";
+"multihome.auto.sub" = "Uygulama herkese açık katalogdan bir ada seçer. Elle eklediğin adalar bu anahtardan etkilenmez.";
 "multihome.auto.busy" = "Ada seçiliyor…";
-"multihome.advanced" = "Gelişmiş: adayı elle ekle";
+"multihome.manual.title" = "Adayı elle ekle";
 "multihome.err.none" = "Şu anda erişilebilir bir yedek ada yok. Sonra tekrar dene ya da elle ekle.";
 "multihome.host_hint" = "Ada adresi, örn. is2.rcq.app";
 "multihome.add" = "Yedek ada ekle";
@@ -936,6 +937,12 @@
 "ci.request_not_sent" = "Eklendi, ama adası kişi isteğini almadı. Henüz görmeyecek.";
 "ci.add_row.subtitle" = "Adalar arası kişi (başka bir RCQ adası)";
 "ci.add_self" = "Bu sensin, bu adadaki hesabın";
+"ci.gone.banner" = "Bu hesap artık yok: karşı tarafın adası böyle bir numara olmadığını söylüyor. Mesajlar teslim edilmeyecek.";
+"ci.key_changed.banner" = "Karşı tarafın adası bu adresi artık farklı bir anahtarla gösteriyor. Mesajların eklediğin anahtarla mühürlenmeye devam ediyor, yani başka kimse okuyamaz, ama bu kişiye ulaşmayabilir. Hesabını sıfırladıysa kişiyi kaldır ve yeniden ekle.";
+"ci.gone.remove" = "Kişiyi kaldır";
+"ci.gone.remove.confirm.title" = "Bu kişi kaldırılsın mı?";
+"ci.gone.remove.confirm.body" = "Sohbet geçmişi bu cihazda kalır.";
+"ci.gone.row" = "Hesap silindi";
 "contact_list.section.cross_island" = "Diğer adalar";
 "pending.cta.decline" = "Reddet";
 "settings.privacy.relay_calls" = "Aramaları hep röleden geçir";

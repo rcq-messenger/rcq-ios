@@ -535,6 +535,11 @@ struct UserInfoView: View {
         crossIslandHost = h
         var dict: [String: Any]
         if let c = pinnedForeignRow(uin, host: h) {
+            // A contact we hold there: is the account still there (report
+            // 1067)? Once a day per address, shared with opening their chat;
+            // the answer lands on the chat's banner and the contact list row.
+            // Not awaited: the card renders from the pinned row either way.
+            Task { await PeerLivenessProbe.probe(uin: uin, host: h, trigger: .open) }
             dict = [
                 "uin": c.uin, "nickname": c.nickname, "status": "offline", "interests": [],
                 "identity_key": c.identityKey, "signing_key": c.signingKey,

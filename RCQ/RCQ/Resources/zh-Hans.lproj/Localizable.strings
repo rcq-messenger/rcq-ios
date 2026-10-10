@@ -118,10 +118,11 @@
 "multihome.title" = "你的备份";
 "multihome.body" = "这是自动备份，不是第二个登录。你不需要切换，也不会在那里登录。主岛正常工作时，每条收到的消息也会在备份岛上放一份。如果主岛被封锁或者宕机，应用会自己继续从备份岛接收。你在备份岛上的号码可能是另一个（各岛独立编号），你的主号码永远不变。";
 "multihome.row_uin" = "你在那里的号码：#%@";
-"multihome.auto.title" = "在另一个岛上保留备份";
-"multihome.auto.sub" = "岛会从公开目录中自动挑选";
+"multihome.row_uin_diff" = "这个岛上的信箱：#%1$@（各个岛独立编号，所以和你的 #%2$@ 不一样）";
+"multihome.auto.title" = "在自动挑选的岛上保留备份";
+"multihome.auto.sub" = "应用会从公开目录里挑选一个岛。你手动添加的岛不受这个开关影响。";
 "multihome.auto.busy" = "正在挑选岛…";
-"multihome.advanced" = "高级：手动添加岛";
+"multihome.manual.title" = "手动添加岛";
 "multihome.err.none" = "现在没有可用的备份岛。请稍后再试，或者手动添加一个。";
 "multihome.host_hint" = "岛的地址，例如 is2.rcq.app";
 "multihome.add" = "添加备份岛";
@@ -927,6 +928,12 @@
 "ci.request_not_sent" = "已添加，但他所在的岛没有接收这条联系人请求。他暂时看不到。";
 "ci.add_row.subtitle" = "跨岛联系人（另一个 RCQ 岛）";
 "ci.add_self" = "这是你，你在本岛的账号";
+"ci.gone.banner" = "这个账号已不存在：对方的岛表示没有这个号码。消息将无法送达。";
+"ci.key_changed.banner" = "对方的岛现在用另一个密钥显示这个地址。你的消息仍然用你添加时的密钥加密，别人读不到，但可能到不了这个人那里。如果对方重置了账号，请移除这个联系人后重新添加。";
+"ci.gone.remove" = "移除联系人";
+"ci.gone.remove.confirm.title" = "移除这个联系人？";
+"ci.gone.remove.confirm.body" = "聊天记录会保留在这台设备上。";
+"ci.gone.row" = "账号已删除";
 "contact_list.section.cross_island" = "其他岛";
 "pending.cta.decline" = "拒绝";
 "settings.privacy.relay_calls" = "通话始终走中继";

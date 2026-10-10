@@ -996,8 +996,29 @@ struct PendingRequestsView: View {
     }
 
     private func blockCI(_ r: CrossIslandRequestsStore.Request) {
-        CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
         let srv = r.serverRequestID.map { CISrv(host: r.host, id: $0) }
+        // ⚠⚠ A row under the address of a contact we hold, written under
+        // another key: somebody using their address. Blocking the address
+        // (here, and through the `ciack` on every device) silenced the REAL
+        // contact, in 1:1 and in rooms. The row is only cleared, as Android
+        // does, and the other devices hear that it was answered. This build
+        // keeps no key-only blocks.
+        if Self.writesUnderContactAddress(r) {
+            CrossIslandRequestsStore.shared.clear(uin: r.uin, host: r.host)
+            Task {
+                if let id = r.serverRequestID {
+                    await CrossIslandPendingPoll.settleAnswered(host: r.host, id: id)
+                }
+                await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "decline", srv: srv)
+            }
+            ciRequests = CrossIslandRequestsStore.shared.list()
+            return
+        }
+        let at = CrossIslandRequestsStore.shared.block(uin: r.uin, host: r.host)
+        // Every key that sealed a row of this request is the person's: the
+        // other devices block them by it too.
+        var keys: [String] = []
+        for k in r.msgs.compactMap(\.spub) where !k.isEmpty && !keys.contains(k) { keys.append(k) }
         Task {
             // F1: a blocked sender's row is withdrawn from the island (or only
             // hidden, on an island that cannot), never declined: a decline
@@ -1005,7 +1026,9 @@ struct PendingRequestsView: View {
             if let id = r.serverRequestID {
                 await CrossIslandPendingPoll.settleAnswered(host: r.host, id: id)
             }
-            await MessageService.shared.sendCIAck(uin: r.uin, host: r.host, act: "block", srv: srv)
+            await MessageService.shared.sendCIAck(
+                uin: r.uin, host: r.host, act: "block", srv: srv, at: at, keys: keys
+            )
         }
         // A same-island stranger (host "") also joins the native block list:
         // that is the set the ingest drop and the Blocked screen (with its
@@ -1018,6 +1041,20 @@ struct PendingRequestsView: View {
         // The block is listed in Settings -> Blocked users, where it lifts.
         ContactService.shared.refreshBlockedFlags()
         ciRequests = CrossIslandRequestsStore.shared.list()
+    }
+
+    /// Does this request come under the address of a contact we already hold
+    /// on another island, from somebody signing with a key that is not theirs?
+    /// The gate holds only what failed the pinned key, so a row there is that,
+    /// unless one of its messages is under the pinned key after all.
+    private static func writesUnderContactAddress(_ r: CrossIslandRequestsStore.Request) -> Bool {
+        guard !r.host.isEmpty, !Multihome.isOwnHost(r.host),
+              let pinned = CrossIslandStore.shared.row(uin: r.uin, host: r.host),
+              let pinnedKey = Data(base64Encoded: pinned.signingKey), !pinnedKey.isEmpty else { return false }
+        return !r.msgs.contains { m in
+            guard let k = m.spub.flatMap({ Data(base64Encoded: $0) }) else { return false }
+            return k == pinnedKey
+        }
     }
 
     private func requestRow(_ req: ContactService.PendingRequest) -> some View {

@@ -1,6 +1,8 @@
 #!/bin/sh
 # Drives BlockRule at the bottom of Services/CrossIslandLogic.swift: whom a
 # block names, and whether a row's sender is one of them (reports 1064, 1065).
+# And CIAckRule beside it: when a block or an unblock from another device was
+# decided, which one wins, and whether it names the address or only a key.
 # Compiled from the REAL source the app builds. Outside the app target on
 # purpose, like CrossIslandRosterCheck: this project has no test target.
 #
