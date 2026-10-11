@@ -527,6 +527,9 @@ struct RootView: View {
             // ones — the connection-staleness check below needs to know
             // how long we were suspended regardless of PIN state.
             backgroundedAt = Date()
+            // Pushes are what comes next: the extension gets the stranger
+            // quarantine with every peer written to this session.
+            StrangerQuarantine.shared.syncExtensionMirror()
             return
         }
         guard phase == .active else { return }

@@ -279,9 +279,15 @@ final class SoundService: ObservableObject {
         // mention from sealed content). Only call when it actually changed.
         let nowMuted = (mode == .none)
         if nowMuted != wasMuted {
-            switch thread {
-            case .peer(let uin):  Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted) }
-            case .group(let gid): Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted) }
+            // The account the tap was made in, read now: the task may start
+            // after a switch, and the change belongs to this one's island.
+            if let account = AccountManager.shared.activeAccountID {
+                switch thread {
+                case .peer(let uin):
+                    Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted, account: account) }
+                case .group(let gid):
+                    Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted, account: account) }
+                }
             }
         }
         // Mirror the mentions-only GROUP ids to the App Group for the NSE.
@@ -304,26 +310,14 @@ final class SoundService: ObservableObject {
         UserDefaults.standard.set(Array(mutedThreads), forKey: "sound.muted_threads")
         // Mirror to backend so the push fan-out can suppress APNs
         // alerts for muted threads. 1:1 → `muted_uins`; groups →
-        // `muted_group_ids`.
+        // `muted_group_ids`. For the account the tap was made in.
+        guard let account = AccountManager.shared.activeAccountID else { return }
         switch thread {
         case .peer(let uin):
-            Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted) }
+            Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted, account: account) }
         case .group(let gid):
-            Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted) }
+            Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted, account: account) }
         }
-    }
-
-    /// The group ids the UI currently holds fully muted (mode == .none).
-    /// Backed by UserDefaults, so this survives relaunches even when the
-    /// optimistic server PUT failed (offline, expired token) —
-    /// NotificationPrefsService re-asserts these after its next successful
-    /// sync instead of letting the server's stale (empty) list win.
-    func mutedGroupIDsSnapshot() -> [Int] {
-        mutedThreads.compactMap { $0.hasPrefix("group:") ? Int($0.dropFirst("group:".count)) : nil }
-    }
-
-    func mutedUINsSnapshot() -> [Int] {
-        mutedThreads.compactMap { $0.hasPrefix("peer:") ? Int($0.dropFirst("peer:".count)) : nil }
     }
 
     private static func key(for thread: ThreadID) -> String {

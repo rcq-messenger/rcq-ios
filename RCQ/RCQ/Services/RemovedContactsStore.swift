@@ -297,7 +297,13 @@ final class MutedStore {
     // such field) still decodes. None-mode groups live in `groupIDs` (the
     // server-backed mute), mentions-only groups live here (client-only —
     // the server can't read sealed content to know about a mention).
-    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int]; var mentionGroupIDs: [Int]? }
+    //
+    // `account` names the account whose island the two server-backed lists
+    // came from (absent in a file written by an older build). The file holds
+    // one account's lists, the active one's, and an account switch empties it;
+    // the owner is what lets a write made for one account refuse to start
+    // from another account's lists in the moment before that happens.
+    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int]; var mentionGroupIDs: [Int]?; var account: String? }
     private static let mentionGroupKey = "rcq.mention_only_group_ids"
     private var fileURL: URL { AppGroup.containerURL.appendingPathComponent("muted.json") }
 
@@ -311,13 +317,20 @@ final class MutedStore {
             uins: (defaults.array(forKey: Self.uinKey) as? [Int]) ?? [],
             groupIDs: (defaults.array(forKey: Self.groupKey) as? [Int]) ?? [],
             mentionGroupIDs: (defaults.array(forKey: Self.mentionGroupKey) as? [Int]) ?? [],
+            account: nil
         )
     }
 
     func isMuted(_ uin: Int) -> Bool { read().uins.contains(uin) }
-    /// The server-backed lists as last mirrored, for a change made while the
-    /// island cannot be reached (`NotificationPrefsService.update`).
-    func lists() -> (uins: [Int], groupIDs: [Int]) { let l = read(); return (l.uins, l.groupIDs) }
+    /// The server-backed lists as last mirrored for `account`, for a change
+    /// made while its island cannot be reached (`NotificationPrefsService`).
+    /// Nil when they are another account's. A file from an older build names
+    /// nobody and is taken as the active account's, whose it was.
+    func lists(for account: UUID) -> (uins: [Int], groupIDs: [Int])? {
+        let l = read()
+        if let owner = l.account, owner != account.uuidString { return nil }
+        return (l.uins, l.groupIDs)
+    }
     func isGroupMuted(_ groupID: Int) -> Bool { read().groupIDs.contains(groupID) }
     /// Group set to "mentions only" — the NSE drops a group push that
     /// doesn't mention the user (and, for an undecryptable sender-keys
@@ -325,22 +338,25 @@ final class MutedStore {
     /// out-of-process; the in-app path catches mentions when online).
     func isGroupMentionsOnly(_ groupID: Int) -> Bool { (read().mentionGroupIDs ?? []).contains(groupID) }
 
-    /// Mirror the authoritative muted lists from NotificationPrefsService.
-    /// Preserves the client-only mentions-only set (not server-backed).
-    func setMuted(uins: [Int], groupIDs: [Int]) {
+    /// Mirror the authoritative muted lists from NotificationPrefsService,
+    /// as `account`'s. Preserves the client-only mentions-only set (not
+    /// server-backed).
+    func setMuted(uins: [Int], groupIDs: [Int], account: UUID) {
         let mentions = read().mentionGroupIDs ?? []
         defaults.set(uins, forKey: Self.uinKey)
         defaults.set(groupIDs, forKey: Self.groupKey)
-        if let data = try? JSONEncoder().encode(Lists(uins: uins, groupIDs: groupIDs, mentionGroupIDs: mentions)) {
+        let lists = Lists(uins: uins, groupIDs: groupIDs, mentionGroupIDs: mentions, account: account.uuidString)
+        if let data = try? JSONEncoder().encode(lists) {
             try? data.write(to: fileURL, options: .atomic)
         }
     }
 
     /// Mirror the mentions-only group set (client-only) for the NSE.
     func setMentionsOnlyGroups(_ groupIDs: [Int]) {
-        let cur = read()
+        var cur = read()
         defaults.set(groupIDs, forKey: Self.mentionGroupKey)
-        if let data = try? JSONEncoder().encode(Lists(uins: cur.uins, groupIDs: cur.groupIDs, mentionGroupIDs: groupIDs)) {
+        cur.mentionGroupIDs = groupIDs
+        if let data = try? JSONEncoder().encode(cur) {
             try? data.write(to: fileURL, options: .atomic)
         }
     }

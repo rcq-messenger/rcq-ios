@@ -370,6 +370,25 @@ actor APIClient {
 
     func setToken(_ token: String?) { self.token = token }
     func currentToken() -> String? { token }
+
+    /// Where a request goes and as whom: the base, the bearer and the
+    /// closed-island token, read together in one step on this actor.
+    ///
+    /// For a caller that must speak for ONE account on that account's island
+    /// however long it waits (`NotificationPrefsService`). Read field by field
+    /// at send time, an account switch in between paired the island just
+    /// switched to with the bearer of the account just left (the active
+    /// pointer moves first, the token only when the next boot sets it), and a
+    /// request that started for one account reached the other one's island.
+    struct Route: Sendable {
+        let base: URL
+        let bearer: String?
+        let serverToken: String?
+    }
+
+    func currentRoute() -> Route {
+        Route(base: baseURL, bearer: token, serverToken: serverToken)
+    }
     /// The masquerade token of the ACTIVE island (see `serverToken`), for a
     /// caller that has to reach that island outside `rawRequest`: the deposit
     /// token mint for an anonymous key lookup goes through `IslandHTTP`, which
@@ -441,6 +460,9 @@ actor APIClient {
     /// `headers` rides on top of the ones set here, never instead of them: it
     /// is for a header the call itself owns (the single-use `X-Deposit-Token`
     /// an anonymous bundle fetch spends), not for overriding the auth pair.
+    ///
+    /// `route`: a `currentRoute()` the caller captured, sent as it was read
+    /// instead of whatever this client points at by the time the call runs.
     func request<T: Decodable>(
         _ method: String,
         _ path: String,
@@ -448,10 +470,12 @@ actor APIClient {
         query: [String: String] = [:],
         authenticated: Bool = true,
         retries: Int = 0,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        route: Route? = nil
     ) async throws -> T {
         let data = try await rawRequest(
-            method, path, body: body, query: query, authenticated: authenticated, retries: retries, headers: headers
+            method, path, body: body, query: query, authenticated: authenticated, retries: retries, headers: headers,
+            route: route
         )
         if T.self == EmptyResponse.self {
             return EmptyResponse() as! T
@@ -522,7 +546,8 @@ actor APIClient {
         query: [String: String] = [:],
         authenticated: Bool = true,
         retries: Int = 0,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        route: Route? = nil
     ) async throws -> Data {
         // ⚠ The single chokepoint for every REST call this app makes. A decoy
         // session inherits the real account's warm bearer token, so without
@@ -531,17 +556,20 @@ actor APIClient {
         // answer with, or WRITE to, the real account. Refusal presents as the
         // offline state every one of these paths already handles.
         try DuressGate.check()
-        var comp = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        let base = route?.base ?? baseURL
+        let bearer = route.map(\.bearer) ?? token
+        let gate = route.map(\.serverToken) ?? serverToken
+        var comp = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             comp.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         var req = URLRequest(url: comp.url!)
         req.httpMethod = method
-        if authenticated, let token {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if authenticated, let bearer {
+            req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
-        if let serverToken {
-            req.setValue(serverToken, forHTTPHeaderField: "X-RCQ-Auth")
+        if let gate {
+            req.setValue(gate, forHTTPHeaderField: "X-RCQ-Auth")
         }
         for (name, value) in headers {
             req.setValue(value, forHTTPHeaderField: name)

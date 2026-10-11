@@ -21,10 +21,13 @@ final class StrangerQuarantine {
     private var settingKey: String
     private var allowedKey: String
     private var allowed: Set<Int>
+    /// The namespace the keys above are under: an account, or the decoy's.
+    private var boundID: UUID?
 
     private init() {
         defaults = UserDefaults(suiteName: Self.appGroup) ?? .standard
         let id = AppGroup.readActiveAccountID()
+        boundID = id
         settingKey = Self.settingPrefix + (id?.uuidString ?? "none")
         allowedKey = Self.allowedPrefix + (id?.uuidString ?? "none")
         allowed = Set((defaults.array(forKey: allowedKey) as? [Int]) ?? [])
@@ -35,6 +38,7 @@ final class StrangerQuarantine {
     /// CrossIslandRequestsStore.bind - the two stores must move together, or
     /// an allowance granted on one account would leak into another.
     func bind(accountID: UUID?) {
+        boundID = accountID
         settingKey = Self.settingPrefix + (accountID?.uuidString ?? "none")
         allowedKey = Self.allowedPrefix + (accountID?.uuidString ?? "none")
         allowed = Set((defaults.array(forKey: allowedKey) as? [Int]) ?? [])
@@ -50,6 +54,11 @@ final class StrangerQuarantine {
     func wipe() {
         defaults.removeObject(forKey: allowedKey)
         allowed = []
+        // The extension's copy forgets them too, and whom the old identity
+        // knew: until the new one has a roster, it holds nobody.
+        if let id = boundID, AppGroup.strangerQuarantine(accountID: id) != nil {
+            AppGroup.setStrangerQuarantine(.init(allowed: [], known: nil), accountID: id)
+        }
     }
 
     /// The Privacy toggle. Default OFF - `bool(forKey:)` reads false for a
@@ -59,10 +68,43 @@ final class StrangerQuarantine {
         set { defaults.set(newValue, forKey: settingKey) }
     }
 
-    /// Accepting a stranger's request means their FUTURE messages flow too.
+    /// Accepting a stranger's request means their FUTURE messages flow too,
+    /// onto the lock screen as well (`syncExtensionMirror`). Only an account's
+    /// entry is touched there; the decoy namespace never has one.
     func allow(_ uin: Int) {
         guard allowed.insert(uin).inserted else { return }
         defaults.set(Array(allowed), forKey: allowedKey)
+        if let id = boundID, var mirror = AppGroup.strangerQuarantine(accountID: id) {
+            mirror.allowed = allowed.sorted()
+            AppGroup.setStrangerQuarantine(mirror, accountID: id)
+        }
+    }
+
+    /// Hand the notification extension this rule for the active account
+    /// (`AppGroup.strangerQuarantine`), so a message the app files under
+    /// Requests is announced as a request there too and never with its words.
+    /// Called when the switch moves, after each roster read, and when the app
+    /// goes to the background (by then every peer written to this session is
+    /// in the store). Whom the account lets through is taken only from a live
+    /// roster and a readable history; without them the last copy stands.
+    ///
+    /// Never from a decoy session, and never for an account that is not the
+    /// active one: the roster and the history in memory are the active
+    /// account's.
+    @MainActor
+    func syncExtensionMirror() {
+        guard let id = boundID, id == AccountManager.shared.activeAccountID,
+              !PanicPINService.shared.isDecoy, !PanicPINService.shared.isLocked
+        else { return }
+        guard enabled else {
+            AppGroup.setStrangerQuarantine(nil, accountID: id)
+            return
+        }
+        var known = AppGroup.strangerQuarantine(accountID: id)?.known
+        if ContactService.shared.rosterLoaded, let wroteTo = MessageDB.shared.peersWrittenTo() {
+            known = Set(ContactService.shared.contacts.map(\.uin)).union(wroteTo).sorted()
+        }
+        AppGroup.setStrangerQuarantine(.init(allowed: allowed.sorted(), known: known), accountID: id)
     }
 
     func isAllowed(_ uin: Int) -> Bool { allowed.contains(uin) }
@@ -70,7 +112,9 @@ final class StrangerQuarantine {
     /// Envelope kinds the quarantine holds. Control traffic (reactions,
     /// receipts, edits, visits and the rest) from an unknown sender is never
     /// held - there is no message for it to belong to; it follows the normal
-    /// path, where it no-ops against messages that do not exist.
+    /// path, where it no-ops against messages that do not exist. ⚠ The
+    /// notification extension keeps a copy (`isQuarantinedKind`);
+    /// `Tools/StrangerQuarantineCheck` holds the two together.
     static func isContentKind(_ env: Envelope) -> Bool {
         switch env {
         case .text, .photo, .video, .voice, .file, .location: return true

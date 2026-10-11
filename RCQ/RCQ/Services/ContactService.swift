@@ -231,6 +231,7 @@ final class ContactService: ObservableObject {
                 // rows with a non-null host, and presence for those is not served
                 // by this island at all.
                 syncCrossIslandContacts()
+                StrangerQuarantine.shared.syncExtensionMirror()
                 return
             } else {
                 list = try await APIClient.shared.request("GET", "/contacts")
@@ -318,6 +319,8 @@ final class ContactService: ObservableObject {
                 nickMap[c.uin] = ContactAliasStore.shared.displayName(for: c.uin, fallback: c.nickname)
             }
             NicknameCache.setAll(nickMap)
+            // Whom the stranger quarantine lets through, for the extension.
+            StrangerQuarantine.shared.syncExtensionMirror()
             // Stage 4, mirror phase: the list the island just served is sealed
             // into the account's vault slot so a reinstall has a roster once
             // the island stops serving one. Behind the paint, never throwing;

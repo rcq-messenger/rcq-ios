@@ -412,6 +412,29 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // ⚠⚠ THE SAME-ISLAND QUARANTINE, AS THE APP RUNS IT.
+            //
+            // With Privacy -> "Strangers go to requests" on, the app files a
+            // content message from a number of our own island that is not a
+            // contact, was never let in and was never written to under
+            // Requests (`StrangerQuarantine.shouldQuarantine`), and holds it
+            // there without a word in any chat. This process knew nothing of
+            // the switch and printed the stranger's words on the lock screen,
+            // the one thing the switch is for. Said as a request instead, like
+            // one from another island above: the number and not a name, none
+            // of the words, and a tap opens Requests. Whom the app lets
+            // through comes from the app (`AppGroup.strangerQuarantine`), for
+            // the account this push is for; with no live roster there it holds
+            // nobody, as the app does.
+            let me = toUIN ?? KeychainStore.string(KeychainStore.Keys.uin).flatMap { Int($0) }
+            if groupID == nil, ourNumber, decrypted.senderUIN != me,
+               Self.isQuarantinedKind(decrypted.envelope),
+               AppGroup.strangerQuarantine(accountID: routedAccountID)?.holds(decrypted.senderUIN) == true {
+                os_log("#%d is a stranger the app holds under Requests - request banner",
+                       log: Self.log, type: .default, decrypted.senderUIN)
+                contentHandler(Self.requestContent(uin: decrypted.senderUIN, host: nil, from: content))
+                return
+            }
             // Mentions-only group: alert only when THIS message mentions us
             // (#<our uin>). Cached above so it still threads in-app; just no
             // banner for an ordinary message in a group set to "mentions only".
@@ -615,16 +638,17 @@ class NotificationService: UNNotificationServiceExtension {
 
     /// The banner for a message the app files under Requests (report 1071):
     /// the sender's address and not a name, none of the words, no badge on a
-    /// chat it will not be in, and `pending` so a tap opens Requests.
+    /// chat it will not be in, and `pending` so a tap opens Requests. A
+    /// stranger on our own island (`host` nil) is addressed by the number.
     ///
     /// Keeps the router's "for account B" subtitle and `to_uin`: without the
     /// number the tap stayed on the active account and opened ITS Requests,
     /// where the row is not. Only `to_uin` from the payload: with `env` the
     /// app's `willPresent` takes the banner for a message push and drops it in
     /// the foreground.
-    private static func requestContent(uin: Int, host: String, from content: UNMutableNotificationContent) -> UNNotificationContent {
+    private static func requestContent(uin: Int, host: String?, from content: UNMutableNotificationContent) -> UNNotificationContent {
         let out = UNMutableNotificationContent()
-        out.title = "\(uin)@\(host)"
+        out.title = host.map { "\(uin)@\($0)" } ?? "\(uin)"
         out.subtitle = content.subtitle
         let body = pushLocalized("push.message_request.body")
         out.body = (body.isEmpty || body == "push.message_request.body") ? "New message request" : body
@@ -1039,6 +1063,17 @@ class NotificationService: UNNotificationServiceExtension {
     private static func isHeldAsRequest(_ envelope: Envelope) -> Bool {
         switch envelope {
         case .text, .photo, .video, .voice, .file, .location, .poll: return true
+        default: return false
+        }
+    }
+
+    /// What the same-island quarantine holds from a stranger. ⚠ The same set
+    /// as `StrangerQuarantine.isContentKind` (no poll, unlike the cross-island
+    /// set above); every other kind from them reaches the chat as before.
+    /// `Tools/StrangerQuarantineCheck` holds the two together.
+    private static func isQuarantinedKind(_ envelope: Envelope) -> Bool {
+        switch envelope {
+        case .text, .photo, .video, .voice, .file, .location: return true
         default: return false
         }
     }

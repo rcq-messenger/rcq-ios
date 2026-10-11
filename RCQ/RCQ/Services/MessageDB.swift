@@ -927,6 +927,23 @@ final class MessageDB {
         return ((try? ctx.count(for: req)) ?? 0) > 0
     }
 
+    /// Every peer this account ever SENT something to, `hasOutgoing` for all
+    /// of them at once: the extension's copy of the stranger quarantine
+    /// (`StrangerQuarantine.syncExtensionMirror`). Nil with no readable real
+    /// store, where an empty answer would read as "wrote to nobody".
+    func peersWrittenTo() -> Set<Int>? {
+        guard isStoreAvailable, !decoyMode, UIApplication.shared.isProtectedDataAvailable else { return nil }
+        let req = NSFetchRequest<NSDictionary>(entityName: "MessageRecord")
+        req.resultType = .dictionaryResultType
+        req.returnsDistinctResults = true
+        req.propertiesToFetch = ["threadKey"]
+        req.predicate = NSPredicate(
+            format: "threadKind == %@ AND isFromMe == YES AND deletedLocally == NO", "peer"
+        )
+        guard let rows = try? ctx.fetch(req) else { return nil }
+        return Set(rows.compactMap { ($0["threadKey"] as? NSNumber).map { Int($0.int64Value) } })
+    }
+
     /// Whether at least one row exists for the thread older than `before`.
     /// Drives the "show load-more hint at the top" affordance.
     func hasOlder(thread: ThreadID, before: Date) -> Bool {

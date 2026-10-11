@@ -2208,6 +2208,9 @@ final class AppState: ObservableObject {
         SilenceProbe.shared.reset()
         // Same reason as the probe: the device lists key on bare peer uins.
         await PeerDeviceCache.shared.invalidateAll()
+        // The burned identity's unsent mute changes go with it: kept, the
+        // next sync would put them on the replacement identity's lists.
+        NotificationPrefsService.shared.forgetPending(account: AccountManager.shared.activeAccountID)
         NotificationPrefsService.shared.wipe()
         MessageStore.shared.clearAll()
         VisitStore.shared.wipe()

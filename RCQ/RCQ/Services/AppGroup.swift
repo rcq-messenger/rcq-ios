@@ -321,6 +321,72 @@ enum AppGroup {
         try? data.write(to: url, options: .atomic)
     }
 
+    /// The same-island stranger quarantine (Privacy -> "Strangers go to
+    /// requests"), for the notification extension: a JSON object from account
+    /// id (`uuidString`) to that account's `QuarantineMirror`, present only for
+    /// an account whose switch is on.
+    ///
+    /// The app files a content message from a number of our island that is
+    /// not a contact, not let in and never written to under Requests
+    /// (`StrangerQuarantine.shouldQuarantine`), and the extension, which saw
+    /// none of that, printed the stranger's words on the lock screen anyway.
+    /// Written by `StrangerQuarantine`; same flat-file reasoning as
+    /// `pushQuietFileURL`.
+    static var strangerQuarantineFileURL: URL {
+        containerURL.appendingPathComponent("stranger-quarantine.json")
+    }
+
+    struct QuarantineMirror: Codable, Equatable {
+        /// Strangers whose request was accepted (`StrangerQuarantine.allow`).
+        var allowed: [Int]
+        /// Whom the app lets through anyway: every contact, and every peer
+        /// this account ever wrote to. Nil while the app has not had a live
+        /// roster for this account: the app holds nobody without one (it fails
+        /// open rather than eat messages blind), and so does the extension.
+        var known: [Int]?
+
+        /// Would the app hold a content message from `uin`, a number of our
+        /// own island, under Requests?
+        func holds(_ uin: Int) -> Bool {
+            guard let known else { return false }
+            return !allowed.contains(uin) && !known.contains(uin)
+        }
+    }
+
+    /// Nil when the switch is off for `accountID`, or the app has not said.
+    static func strangerQuarantine(accountID: UUID?) -> QuarantineMirror? {
+        guard let accountID else { return nil }
+        return readStrangerQuarantine()[accountID.uuidString]
+    }
+
+    /// `mirror` nil: the switch is off for this account. Entries of accounts
+    /// no longer on the device are dropped on the way.
+    static func setStrangerQuarantine(_ mirror: QuarantineMirror?, accountID: UUID) {
+        var map = readStrangerQuarantine()
+        map[accountID.uuidString] = mirror
+        let onDevice = Set(readAccountIDs().map(\.uuidString))
+        if !onDevice.isEmpty {
+            map = map.filter { onDevice.contains($0.key) || $0.key == accountID.uuidString }
+        }
+        let url = strangerQuarantineFileURL
+        if map.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(map) else { return }
+        if (try? Data(contentsOf: url)) == data { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private static func readStrangerQuarantine() -> [String: QuarantineMirror] {
+        guard let data = try? Data(contentsOf: strangerQuarantineFileURL),
+              let map = try? JSONDecoder().decode([String: QuarantineMirror].self, from: data)
+        else { return [:] }
+        return map
+    }
+
     /// Atomically writes the account ID list to the App Group file.
     /// AccountManager calls this from save() so the on-disk file
     /// always matches the in-memory roster.

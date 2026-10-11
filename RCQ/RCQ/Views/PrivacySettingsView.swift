@@ -274,6 +274,8 @@ struct PrivacySettingsView: View {
                             .tint(Theme.Color.accent)
                             .onChange(of: strangersToRequests) { newValue in
                                 StrangerQuarantine.shared.enabled = newValue
+                                // The lock screen follows the same rule.
+                                StrangerQuarantine.shared.syncExtensionMirror()
                             }
                             .settingsSearchRow(.strangers, highlight: activeHighlight)
                         }

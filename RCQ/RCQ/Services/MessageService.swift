@@ -3820,6 +3820,21 @@ final class MessageService {
                     title = "\(decrypted.senderUIN)@\(host)"
                     body = "chat.banner.message_request".localized
                 }
+            } else if ws.groupID == nil, island == nil, let me,
+                      StrangerQuarantine.shared.shouldQuarantine(
+                          myUIN: me, senderUIN: decrypted.senderUIN, envelope: decrypted.envelope
+                      ) {
+                // The same-island quarantine `ingest` runs (Privacy ->
+                // strangers to requests): held under Requests, so announced
+                // as a request, by number and without the words, as the
+                // extension does. A muted number stays quiet here too.
+                guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
+                threadKey = "pending"
+                bumpsBadge = false
+                if !pinUp {
+                    title = "\(decrypted.senderUIN)"
+                    body = "chat.banner.message_request".localized
+                }
             } else {
                 let thread: ThreadID
                 if let gid = ws.groupID {
