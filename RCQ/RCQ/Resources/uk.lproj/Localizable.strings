@@ -651,6 +651,7 @@
 "chat.preview.group_invite" = "Запрошення в групу";
 "chat.preview.generic" = "Повідомлення";
 "chat.banner.new_message" = "Нове повідомлення";
+"chat.banner.message_request" = "Нова заявка на листування";
 /* ── Call screen ──────────────────────────────────────────── */
 "call.outgoing.calling" = "Дзвонимо…";
 "call.incoming.video" = "Вхідний відеодзвінок…";

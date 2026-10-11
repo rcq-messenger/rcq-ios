@@ -651,6 +651,7 @@
 "chat.preview.group_invite" = "Invitación a un grupo";
 "chat.preview.generic" = "Mensaje";
 "chat.banner.new_message" = "Mensaje nuevo";
+"chat.banner.message_request" = "Nueva solicitud de mensaje";
 /* ── Call screen ──────────────────────────────────────────── */
 "call.outgoing.calling" = "Llamando…";
 "call.incoming.video" = "Videollamada entrante…";

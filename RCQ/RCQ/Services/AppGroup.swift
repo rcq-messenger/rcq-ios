@@ -247,6 +247,80 @@ enum AppGroup {
         }
     }
 
+    /// The names of each account's own island, for the notification extension:
+    /// a JSON object from account id (`uuidString`) to the hosts
+    /// `Multihome.isOwnHost` takes as that island (lower case, the port only
+    /// when it is not 443).
+    ///
+    /// Report 1071: the extension could not tell a sender on our island from
+    /// one on another, so it could not run the cross-island gate the app runs.
+    /// A message the app files under Requests (or drops) went up as a message
+    /// from a contact, titled with whoever holds that number HERE, and opening
+    /// the app showed nothing. Written by AccountManager with the roster.
+    static var ownHostsFileURL: URL {
+        containerURL.appendingPathComponent("own-hosts.json")
+    }
+
+    /// Nil when the app has not written the names of this account's island
+    /// yet (or no account was named): the caller cannot tell, and keeps the
+    /// rules it had before it could.
+    static func ownHosts(accountID: UUID?) -> Set<String>? {
+        guard let accountID,
+              let data = try? Data(contentsOf: ownHostsFileURL),
+              let map = try? JSONDecoder().decode([String: [String]].self, from: data),
+              let names = map[accountID.uuidString], !names.isEmpty
+        else { return nil }
+        return Set(names)
+    }
+
+    /// `Multihome.normalizeHost` (IslandTrust's address rule), copied here
+    /// because IslandTrust is not in the extension's target: the fragment off,
+    /// the scheme and path ignored, the host in lower case and ASCII, an IPv6
+    /// literal bracketed, the port only when it is not 443.
+    /// `HTTPS://Is2.RCQ.app:443/` and `is2.rcq.app` are one island. Nil when
+    /// there is no host in it. `Tools/OwnHostCheck` holds the two to the same
+    /// answers.
+    static func canonicalHost(_ raw: String) -> String? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let hash = s.firstIndex(of: "#") {
+            s = String(s[..<hash]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard !s.isEmpty else { return nil }
+        let withScheme = s.contains("://") ? s : "https://\(s)"
+        var host: String
+        let port: Int
+        if let url = URL(string: withScheme), let h = url.host, !h.isEmpty {
+            host = h
+            port = url.port ?? 443
+        } else if let comps = URLComponents(string: withScheme),
+                  let h = comps.encodedHost ?? comps.host, !h.isEmpty {
+            host = h
+            port = comps.port ?? 443
+        } else {
+            return nil
+        }
+        host = host.lowercased()
+        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        let bracketed = host.contains(":") ? "[\(host)]" : host
+        return port == 443 ? bracketed : "\(bracketed):\(port)"
+    }
+
+    static func setOwnHosts(_ byAccount: [String: [String]]) {
+        let url = ownHostsFileURL
+        let nonEmpty = byAccount.filter { !$0.value.isEmpty }
+        if nonEmpty.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(nonEmpty) else { return }
+        // Written on every roster save; the file is read on every push, so an
+        // unchanged one is left alone.
+        if (try? Data(contentsOf: url)) == data { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
     /// Atomically writes the account ID list to the App Group file.
     /// AccountManager calls this from save() so the on-disk file
     /// always matches the in-memory roster.

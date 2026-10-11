@@ -642,6 +642,7 @@
 "chat.preview.group_invite" = "群组邀请";
 "chat.preview.generic" = "消息";
 "chat.banner.new_message" = "新消息";
+"chat.banner.message_request" = "新的消息请求";
 /* ── Call screen ──────────────────────────────────────────── */
 "call.outgoing.calling" = "正在呼叫…";
 "call.incoming.video" = "视频通话来电…";

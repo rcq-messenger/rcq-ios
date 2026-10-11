@@ -211,6 +211,22 @@ final class AccountManager: ObservableObject {
         // routing a push to the right libsignal store. Active ID
         // is written separately by `mirrorActiveToLegacy`.
         AppGroup.writeAccountIDs(accounts.map { $0.id })
+        syncExtensionOwnHosts()
+    }
+
+    /// Hand the notification extension the names of each account's island,
+    /// the list `Multihome.isOwnHost` decides "our island" by (report 1071).
+    /// Without it the extension cannot run the cross-island gate, and printed
+    /// a message the app files under Requests as one from a contact.
+    ///
+    /// Also called at boot: the Cloudflare front comes from the signed config,
+    /// which lands after this object is built.
+    func syncExtensionOwnHosts() {
+        var byAccount: [String: [String]] = [:]
+        for account in accounts {
+            byAccount[account.id.uuidString] = Multihome.ownHostNames(serverURL: account.serverURL).sorted()
+        }
+        AppGroup.setOwnHosts(byAccount)
     }
 
     /// Two-way sync of the active account ID + URL with legacy

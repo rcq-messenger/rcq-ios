@@ -703,6 +703,7 @@
 "chat.preview.group_invite" = "Group invite";
 "chat.preview.generic" = "Message";
 "chat.banner.new_message" = "New message";
+"chat.banner.message_request" = "New message request";
 
 /* ── Call screen ──────────────────────────────────────────── */
 

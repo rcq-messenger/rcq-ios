@@ -790,6 +790,9 @@ final class AppState: ObservableObject {
             return
         }
         bootedAsDecoy = false
+        // The extension's copy of our island's names, now that the signed
+        // config (and its front) is loaded (report 1071).
+        AccountManager.shared.syncExtensionOwnHosts()
 
         // See `wipeGeneration`: checked after each network stage below.
         let generation = wipeGeneration

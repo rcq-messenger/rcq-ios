@@ -651,6 +651,7 @@
 "chat.preview.group_invite" = "Grup daveti";
 "chat.preview.generic" = "Mesaj";
 "chat.banner.new_message" = "Yeni mesaj";
+"chat.banner.message_request" = "Yeni mesaj isteği";
 /* ── Call screen ──────────────────────────────────────────── */
 "call.outgoing.calling" = "Aranıyor…";
 "call.incoming.video" = "Gelen görüntülü arama…";

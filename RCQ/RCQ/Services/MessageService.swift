@@ -2104,7 +2104,7 @@ final class MessageService {
     /// key rotated since we pinned it. Either way callers treat it as not
     /// accepted and never merge it into the contact silently.
     static func verifiedCrossIslandContact(uin: Int, host: String, spub: String?, exactAddress: Bool = false) -> Contact? {
-        guard let row = CrossIslandStore.shared.all().first(where: { $0.uin == uin && $0.host == host })
+        guard let row = CrossIslandStore.shared.all().first(where: { $0.uin == uin && sameHost($0.host, host) })
         else {
             if exactAddress { return nil }
             // The same person writing from another of their islands: a row
@@ -2130,6 +2130,27 @@ final class MessageService {
             return nil
         }
         return row
+    }
+
+    /// One island under two spellings (`Multihome.normalizeHost`): a row filed
+    /// as `Is2.rcq.app` and a sender stamping `is2.rcq.app:443` are the same
+    /// address. A host that does not parse is only equal to itself.
+    static func sameHost(_ a: String?, _ b: String) -> Bool {
+        guard let a else { return false }
+        if a == b { return true }
+        guard let na = Multihome.normalizeHost(a), let nb = Multihome.normalizeHost(b) else { return false }
+        return na == nb
+    }
+
+    /// `decrypted` with its `from_host` normalized, or unchanged when there is
+    /// none or it does not parse as a host.
+    static func withCanonicalHost(_ decrypted: DecryptedEnvelope) -> DecryptedEnvelope {
+        guard let host = decrypted.senderHost, let canonical = Multihome.normalizeHost(host),
+              canonical != host
+        else { return decrypted }
+        var out = decrypted
+        out.senderHost = canonical
+        return out
     }
 
     /// The island a row's sender number belongs to, nil for our own. A room
@@ -2331,14 +2352,14 @@ final class MessageService {
         do {
             // Hand off NSE-decrypted plaintext if present — decrypting v=2
             // twice would advance the Double Ratchet twice and fail.
-            let decrypted: DecryptedEnvelope
+            let opened: DecryptedEnvelope
             let fromNSE: Bool
             if ws.type == "gmsg" {
                 // Sender-keys broadcast: not a sealed envelope, decoded via the chain.
                 guard let gid = ws.groupID else { return nil }
                 switch openIncomingGmsg(ws.payload, gid: gid) {
-                case .opened(let opened):
-                    decrypted = opened
+                case .opened(let gmsg):
+                    opened = gmsg
                 case .keyMissing(let kid, let epoch, let index):
                     // Named so the room-log drain can hold the row and ack
                     // it; every other caller reads nil as it always did.
@@ -2355,16 +2376,24 @@ final class MessageService {
                 let key = ws.payload
                 let owner = AccountManager.shared.activeAccountID
                 MessageDB.shared.whenPersisted { PushDecryptCache.remove(ciphertextB64: key, accountID: owner) }
-                decrypted = cached
+                opened = cached
                 fromNSE = true
             } else {
                 // A process nobody has set up yet (a VoIP wake before any
                 // boot) has no crypto at all: the unwrap trapped inside the
                 // PushKit handler. Not a decrypt failure, so nothing acks it.
                 guard let crypto else { throw MessageServiceNotReady() }
-                decrypted = try crypto.decrypt(envelopeB64: ws.payload)
+                opened = try crypto.decrypt(envelopeB64: ws.payload)
                 fromNSE = false
             }
+            // The sender's island in the one spelling every check below
+            // compares (report 1071). `from_host` is whatever the sender's
+            // client calls its island, and an exact string never matched the
+            // address the contact is filed under when the two spelled it
+            // differently (case, a scheme, an explicit :443). Messages still
+            // passed on the pinned key, but calls, profiles, answers to
+            // requests and blocks by address did not.
+            let decrypted = Self.withCanonicalHost(opened)
             let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
 
             // ⚠ A GUEST CARD the sender handed us, kept BEFORE anything is
@@ -2609,7 +2638,7 @@ final class MessageService {
                 // shown as a request, its accept retires nothing and pushes no
                 // profile, its decline clears nothing.
                 let pinnedRow = CrossIslandStore.shared.all()
-                    .first { $0.uin == uin && $0.host == fromHost }
+                    .first { $0.uin == uin && Self.sameHost($0.host, fromHost) }
                 let alreadyAccepted = Self.verifiedCrossIslandContact(
                     uin: uin, host: fromHost, spub: decrypted.senderSigningKey
                 ) != nil
@@ -2633,7 +2662,7 @@ final class MessageService {
                         // instead of leaving them with the card snapshot their
                         // add took.
                         if let row = CrossIslandStore.shared.all()
-                            .first(where: { $0.uin == uin && $0.host == fromHost }) {
+                            .first(where: { $0.uin == uin && Self.sameHost($0.host, fromHost) }) {
                             Task { await CrossIslandSender.sendProfile(to: row) }
                         }
                         return outcome
@@ -2706,15 +2735,17 @@ final class MessageService {
                 // contact's uin@host and reads our open key card could rename
                 // that contact in our list. A mismatch is a stranger, and a
                 // stranger's profile applies nothing.
-                guard Self.verifiedCrossIslandContact(
+                guard let pinned = Self.verifiedCrossIslandContact(
                     uin: uin, host: fromHost, spub: decrypted.senderSigningKey
-                ) != nil else { return outcome }
+                ), let pinnedHost = pinned.host else { return outcome }
                 // Drops (returns nil) for a sender we do not hold as an accepted
                 // cross-island contact, and for a `ts` older than the last one we
                 // applied. Persists to the App Group container, which is what the
-                // push path reads without a live session.
+                // push path reads without a live session. Filed on the row the
+                // key proved, which is not always under the spelling the sender
+                // stamped.
                 guard let updated = CrossIslandStore.shared.applyProfile(
-                    uin: uin, host: fromHost, ts: ts,
+                    uin: uin, host: pinnedHost, ts: ts,
                     nickname: nickname, avatarMediaID: avatarID, avatarMediaKey: avatarKey
                 ) else { return outcome }
                 ContactService.shared.applyCrossIslandProfile(updated)
@@ -2823,13 +2854,20 @@ final class MessageService {
             // Dropped, not quarantined: the promise is that it ends when it
             // ends. Somebody who became a real contact during the chat is not
             // caught by this; see `isFinishedStranger`.
-            if ws.groupID == nil,
+            //
+            // ⚠ A stranger met here is a number of OUR island (report 1071).
+            // The same number on another island is somebody else, and an
+            // accepted contact there went through the gate above: their
+            // message was dropped and acked for a day after any random chat
+            // with our island's holder of the number. Same for the live peer.
+            let randomCanReach = ws.groupID == nil && Multihome.isOwnHost(decrypted.senderHost)
+            if randomCanReach,
                RandomChatService.shared.isFinishedStranger(decrypted.senderUIN) {
                 return nil
             }
 
             // Route to ephemeral random buffer when sender is the active anonymous peer.
-            if ws.groupID == nil,
+            if randomCanReach,
                let peer = RandomChatService.shared.activePeer,
                decrypted.senderUIN == peer.uin {
                 switch decrypted.envelope {
@@ -3730,8 +3768,10 @@ final class MessageService {
             let owner = AccountManager.shared.activeAccountID
             guard !PushDecryptCache.contains(ciphertextB64: ws.payload, accountID: owner),
                   let crypto = crypto ?? SignalCryptoService.loadFromKeychain(ownUIN: 0),
-                  let decrypted = try? crypto.decrypt(envelopeB64: ws.payload)
+                  let opened = try? crypto.decrypt(envelopeB64: ws.payload)
             else { return }
+            // Read the way `ingest` reads it.
+            let decrypted = Self.withCanonicalHost(opened)
             if case .callSignal = decrypted.envelope {
                 // Stale offers are left to the drain that can file them.
                 _ = routeCrossIslandCallSignal(decrypted, groupID: ws.groupID, mayRing: !pinUp, mayFileMissed: false)
@@ -3741,43 +3781,67 @@ final class MessageService {
             guard notify else { return }
             let me = ownUIN != 0 ? ownUIN : KeychainStore.string(KeychainStore.Keys.uin).flatMap(Int.init)
             let island = senderIsland(decrypted, groupID: ws.groupID)
+            // Our own number is us on our own island, and anywhere under our
+            // own key: the one exemption `ingest`'s gate makes. The same number
+            // on another island under another key is somebody else.
+            let ownKey = (try? crypto.bootstrapIdentity())?.signingKey
+            let isUs = decrypted.senderUIN == me
+                && (island == nil || Self.sameSigningKey(decrypted.senderSigningKey, ownKey))
             guard Self.isSomethingSaid(decrypted.envelope),
-                  decrypted.senderUIN != me,
+                  !isUs,
                   // The drop `ingest` will make, by the same rules: removed
                   // (our own island's numbers only) and blocked (by person).
                   !droppedAsRemoved(uin: decrypted.senderUIN, island: island),
                   !isBlockedSender(uin: decrypted.senderUIN, island: island, spub: decrypted.senderSigningKey),
                   // The extension's rules, the same ones for the same banner:
-                  // an ended random chat never shows the stranger's number,
-                  // and an envelope naming a pinned cross-island contact under
-                  // another key never shows that contact's name over the
-                  // forger's words (`from`/`from_host` sit outside the v=1
-                  // signature).
-                  !RandomChatService.shared.isFinishedStranger(decrypted.senderUIN),
+                  // an ended random chat never shows the stranger's number
+                  // (a number of our island), and an envelope naming a pinned
+                  // cross-island contact under another key never shows that
+                  // contact's name over the forger's words (`from`/`from_host`
+                  // sit outside the v=1 signature).
+                  !(island == nil && RandomChatService.shared.isFinishedStranger(decrypted.senderUIN)),
                   !Self.claimsPinnedContactUnderAnotherKey(decrypted)
             else { return }
-            let thread: ThreadID
-            if let gid = ws.groupID {
-                guard !MutedStore.shared.isGroupMuted(gid) else { return }
-                if MutedStore.shared.isGroupMentionsOnly(gid) {
-                    guard case .text(_, let text, _, _, _, _) = decrypted.envelope, bodyMentionsMe(text) else { return }
+            // ⚠ The cross-island gate (report 1071): somebody on another island
+            // who is not an accepted contact under the key they signed with is
+            // filed under Requests by `ingest`, never in a chat. Announced as
+            // what it is: their address and not a name (the bare number may
+            // name somebody else here), nothing they wrote, and a tap opens
+            // Requests.
+            if ws.groupID == nil, let host = island,
+               Self.verifiedCrossIslandContact(
+                   uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey
+               ) == nil {
+                threadKey = "pending"
+                bumpsBadge = false
+                if !pinUp {
+                    title = "\(decrypted.senderUIN)@\(host)"
+                    body = "chat.banner.message_request".localized
                 }
-                threadKey = BadgeCounter.threadKey(groupID: gid)
-                thread = .group(id: gid)
             } else {
-                guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
-                threadKey = BadgeCounter.threadKey(peerUIN: decrypted.senderUIN)
-                thread = .peer(uin: decrypted.senderUIN)
-            }
-            if !pinUp, !LockedChatsStore.shared.holds(thread) {
-                let sender = NicknameCache.nickname(for: decrypted.senderUIN) ?? "\(decrypted.senderUIN)"
+                let thread: ThreadID
                 if let gid = ws.groupID {
-                    title = GroupNameCache.name(for: gid) ?? sender
+                    guard !MutedStore.shared.isGroupMuted(gid) else { return }
+                    if MutedStore.shared.isGroupMentionsOnly(gid) {
+                        guard case .text(_, let text, _, _, _, _) = decrypted.envelope, bodyMentionsMe(text) else { return }
+                    }
+                    threadKey = BadgeCounter.threadKey(groupID: gid)
+                    thread = .group(id: gid)
                 } else {
-                    title = sender
+                    guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
+                    threadKey = BadgeCounter.threadKey(peerUIN: decrypted.senderUIN)
+                    thread = .peer(uin: decrypted.senderUIN)
                 }
-                if case .text(_, let text, _, _, _, _) = decrypted.envelope, !text.isEmpty {
-                    body = ws.groupID == nil ? text : "\(sender): \(text)"
+                if !pinUp, !LockedChatsStore.shared.holds(thread) {
+                    let sender = NicknameCache.nickname(for: decrypted.senderUIN) ?? "\(decrypted.senderUIN)"
+                    if let gid = ws.groupID {
+                        title = GroupNameCache.name(for: gid) ?? sender
+                    } else {
+                        title = sender
+                    }
+                    if case .text(_, let text, _, _, _, _) = decrypted.envelope, !text.isEmpty {
+                        body = ws.groupID == nil ? text : "\(sender): \(text)"
+                    }
                 }
             }
         }
@@ -3794,11 +3858,21 @@ final class MessageService {
         ) { _ in }
     }
 
+    /// Two base64 Ed25519 keys, compared as bytes so two spellings agree. A
+    /// nil or undecodable one matches nothing.
+    static func sameSigningKey(_ a: String?, _ b: String?) -> Bool {
+        guard let a, let b,
+              let x = Data(base64Encoded: a), !x.isEmpty,
+              let y = Data(base64Encoded: b)
+        else { return false }
+        return x == y
+    }
+
     /// A sender naming a cross-island contact we pinned, signed by another
     /// key. The extension gives such a push no banner; so does this path.
     private static func claimsPinnedContactUnderAnotherKey(_ decrypted: DecryptedEnvelope) -> Bool {
         guard let host = decrypted.senderHost, !Multihome.isOwnHost(host),
-              CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && $0.host == host })
+              CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && sameHost($0.host, host) })
         else { return false }
         return verifiedCrossIslandContact(uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey) == nil
     }

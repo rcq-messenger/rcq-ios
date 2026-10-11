@@ -210,17 +210,32 @@ class NotificationService: UNNotificationServiceExtension {
             os_log("decrypted OK: from=%d kind=%{public}@",
                    log: Self.log, type: .default,
                    decrypted.senderUIN, envelopeKind(decrypted.envelope))
+            let groupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
+            // Where the sender's number lives, decided the way the app decides
+            // it (report 1071): our island or another one, by the names of our
+            // island the app hands over (`AppGroup.ownHosts`). Every number
+            // rule below is a rule about OUR island's numbers, and the
+            // cross-island gate further down only runs for another island.
+            let island = Self.senderIsland(decrypted.senderHost, accountID: routedAccountID)
+            let ourNumber: Bool = {
+                switch island {
+                case .ours: return true
+                case .foreign: return false
+                // The app has not said yet: as before, any address without a
+                // pinned row counts as ours.
+                case .unknown:
+                    return !Self.isPinnedForeign(uin: decrypted.senderUIN, host: decrypted.senderHost, accountID: routedAccountID)
+                }
+            }()
             // ICQ-style mutual remove: if the user previously dropped this
             // contact, silently suppress the push. PushDecryptCache stays
             // un-touched so the main app's MessageService.ingest can also
             // re-evaluate (and double-drop) when it sees the envelope.
             //
-            // ⚠ The list is our own island's numbers (report 1064): a pinned
-            // contact on another island who holds the same number is somebody
-            // else, and the app files what they write. This process cannot
-            // name our island, so "ours" is any address without such a row.
-            if RemovedContactsStore.shared.contains(decrypted.senderUIN),
-               !Self.isPinnedForeign(uin: decrypted.senderUIN, host: decrypted.senderHost, accountID: routedAccountID) {
+            // ⚠ The list is our own island's numbers (report 1064): a contact
+            // on another island who holds the same number is somebody else,
+            // and the app files what they write.
+            if ourNumber, RemovedContactsStore.shared.contains(decrypted.senderUIN) {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -235,8 +250,9 @@ class NotificationService: UNNotificationServiceExtension {
             //
             // The app drops the message itself, but this is a SEPARATE PROCESS
             // and can only be told through the shared container, so the leak
-            // happened before the app was ever opened.
-            if FinishedStrangers.contains(decrypted.senderUIN) {
+            // happened before the app was ever opened. A random stranger is a
+            // number of our island, like the app's own check.
+            if ourNumber, FinishedStrangers.contains(decrypted.senderUIN) {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -244,6 +260,28 @@ class NotificationService: UNNotificationServiceExtension {
             // that account's only decoder until the account is next drained,
             // and a switch to another account must not take it (#1045 review).
             PushDecryptCache.store(ciphertextB64: envB64, decrypted: decrypted, accountID: routedAccountID)
+            // ⚠⚠ NOTHING IS ANNOUNCED THAT THE APP WILL NOT SHOW (report 1071).
+            //
+            // The island pushes every content-class deposit, and that class
+            // holds far more than messages: a reaction, an edit, a delete, a
+            // home record, a call's ICE. Android 0.213 sends reactions, edits,
+            // deletes and its home record to a contact on another island under
+            // their own types, the island pushes each one, and each one woke
+            // the phone with the contact's name over "Message". The app files
+            // none of them as anything a person said, so opening it showed
+            // nothing, every time. Only what the app shows as said gets a
+            // banner (`MessageService.isSomethingSaid`), plus a call offer.
+            // The secure-mode toggle, a §5f contact request (the pending badge
+            // surfaces it) and a §5e profile refresh were already kept quiet
+            // one by one; they are covered here. Cached above either way, so
+            // the app still applies them.
+            //
+            // Before the duress check on purpose: nothing for these in every
+            // state, so locked and unlocked do not differ by them.
+            guard Self.isAnnounced(decrypted.envelope) else {
+                contentHandler(UNNotificationContent())
+                return
+            }
             // ⚠ THE DURESS / LOCKED CASE. This process cannot see
             // `PanicPINService` — it is a separate binary in a separate
             // process — so until now it rendered the real sender's name, their
@@ -269,8 +307,11 @@ class NotificationService: UNNotificationServiceExtension {
             // decrypted sender is also us. Cached above so the main app
             // still threads it, but we do NOT buzz the user about their
             // own message. (iOS group sends already skip self; this also
-            // covers other clients that don't.)
-            if let toUIN, decrypted.senderUIN == toUIN {
+            // covers other clients that don't.) Our number on another island
+            // is us only under our own key; under any other it is somebody
+            // else, and the gate below decides about them like the app does.
+            let signedByUs = Self.sameKey(decrypted.senderSigningKey, (try? crypto.bootstrapIdentity())?.signingKey)
+            if let toUIN, decrypted.senderUIN == toUIN, ourNumber || signedByUs {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -281,31 +322,9 @@ class NotificationService: UNNotificationServiceExtension {
             // reached the lock screen before the app ever ran.
             if Self.senderBlocked(
                 uin: decrypted.senderUIN, host: decrypted.senderHost,
-                spub: decrypted.senderSigningKey, accountID: routedAccountID
+                spub: decrypted.senderSigningKey, ourNumber: ourNumber, accountID: routedAccountID
             ) {
                 os_log("sender #%d is blocked - no banner", log: Self.log, type: .default, decrypted.senderUIN)
-                contentHandler(UNNotificationContent())
-                return
-            }
-            // secureScreen is the SILENT secure-mode toggle (same "secscreen"
-            // push type as a screenshot notice, which we DO want to surface).
-            // Cached above so the main app applies the flag, but never buzz the
-            // user — only the screenshot-taken notice should alert.
-            if case .secureScreen = decrypted.envelope {
-                contentHandler(UNNotificationContent())
-                return
-            }
-            // §5f cross-island contact request: not a message, and it must never
-            // banner as one. Cached above, so the main app's ingest files it as a
-            // pending request (and the pending badge surfaces it) on next launch.
-            if case .contactRequest = decrypted.envelope {
-                contentHandler(UNNotificationContent())
-                return
-            }
-            // §5e cross-island profile refresh: a name/picture change, not a
-            // message, and it must never banner as one. Cached above so the main
-            // app's ingest applies it to the stored row on next launch.
-            if case .profile = decrypted.envelope {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -316,8 +335,8 @@ class NotificationService: UNNotificationServiceExtension {
             // a message as a request, but this process titled the banner with
             // the contact's name and printed the forger's text on the lock
             // screen first. Cached above, so the app still files the request.
-            // Only a pinned row is checked: this target cannot tell our own
-            // island from a foreign one, and a row exists only for foreign.
+            // Only a pinned row is checked: a row exists only for another
+            // island.
             if let host = decrypted.senderHost,
                let pinned = Self.pinnedSigningKey(
                    uin: decrypted.senderUIN, host: host, accountID: routedAccountID
@@ -328,8 +347,53 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
+            // A call offer rings in the app only from an accepted contact on
+            // another island, at exactly the address they are filed under
+            // (`MessageService.routeCrossIslandCallSignal`): the answer goes
+            // back there. Any other offer the app drops without a trace, so
+            // it gets no banner either, and never a request one (report 1071).
+            if case .callSignal = decrypted.envelope {
+                let rings: Bool = {
+                    guard groupID == nil else { return false }
+                    switch island {
+                    case .foreign(let host):
+                        return Self.verifiedPinned(
+                            uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey,
+                            accountID: routedAccountID, exactAddress: true
+                        )
+                    case .ours: return false
+                    case .unknown: return true
+                    }
+                }()
+                if !rings {
+                    contentHandler(UNNotificationContent())
+                    return
+                }
+            }
+            // ⚠⚠ THE CROSS-ISLAND GATE, AS THE APP RUNS IT (report 1071).
+            //
+            // A 1:1 message from another island is a chat message only from an
+            // accepted contact proven by the key we pinned: at that address,
+            // or (with no row there) a row for this number under that key.
+            // Anything else the app files under Requests. This process knew
+            // nothing of it and announced it as a message, titled with the
+            // name the bare number has in our list (somebody else's, when our
+            // island has a holder of it) and counted on that chat; opening the
+            // app showed an empty chat and nothing said where the message
+            // went. Said as a request instead: the address, not a name, none
+            // of the words, and a tap opens Requests (`pending`).
+            if groupID == nil, case .foreign(let host) = island,
+               !Self.verifiedPinned(
+                   uin: decrypted.senderUIN, host: host,
+                   spub: decrypted.senderSigningKey, accountID: routedAccountID
+               ) {
+                os_log("#%d@%{public}@ is not an accepted contact - request banner",
+                       log: Self.log, type: .default, decrypted.senderUIN, host)
+                contentHandler(Self.requestContent(uin: decrypted.senderUIN, host: host, from: content))
+                return
+            }
             // Muted: cached above so it still lands in the thread; just no alert.
-            let mutedGroupID = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue
+            let mutedGroupID = groupID
             let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
                 ?? MutedStore.shared.isMuted(decrypted.senderUIN)
             if suppressedByMute {
@@ -399,81 +463,155 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
 
-    /// The signing key pinned for uin@host among this account's cross-island
-    /// contacts, or nil when we hold no row for that address.
-    ///
-    /// Read RAW from the App Group slot `CrossIslandStore` persists (a map
-    /// "uin@lowercased host" -> Contact JSON under
-    /// `rcq.crossisland.contacts.v1.<account>`), because that store is not in
-    /// this target and would drag the federation layer in with it. Keep the
-    /// two in step; CrossIslandStore says so beside its key.
-    private static func pinnedSigningKey(uin: Int, host: String, accountID: UUID?) -> String? {
+    /// One cross-island contact of this account as `CrossIslandStore` keeps it.
+    private struct PinnedRow {
+        let uin: Int
+        /// `AppGroup.canonicalHost` of the row's island.
+        let host: String
+        let signingKey: String
+    }
+
+    /// This account's cross-island contacts, read RAW from the App Group slot
+    /// `CrossIslandStore` persists (a map "uin@lowercased host" -> Contact JSON
+    /// under `rcq.crossisland.contacts.v1.<account>`), because that store is
+    /// not in this target and would drag the federation layer in with it. Keep
+    /// the two in step; CrossIslandStore says so beside its key. The rows are
+    /// read for their own `uin` and `host`, so a map key in another spelling of
+    /// the island still finds its row.
+    private static func pinnedRows(accountID: UUID?) -> [PinnedRow] {
         guard let defaults = UserDefaults(suiteName: AppGroup.identifier),
               let data = defaults.data(
                   forKey: "rcq.crossisland.contacts.v1." + (accountID?.uuidString ?? "none")
               ),
-              let map = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let row = map["\(uin)@\(host.lowercased())"] as? [String: Any],
-              let key = row["signing_key"] as? String, !key.isEmpty
-        else { return nil }
-        return key
+              let map = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [] }
+        return map.compactMap { key, value in
+            guard let row = value as? [String: Any],
+                  let sk = row["signing_key"] as? String, !sk.isEmpty
+            else { return nil }
+            // The row's own fields; the map key ("uin@host") only when one is
+            // missing.
+            let parts = key.split(separator: "@", maxSplits: 1).map(String.init)
+            guard let uin = (row["uin"] as? Int) ?? parts.first.flatMap({ Int($0) }),
+                  let host = AppGroup.canonicalHost((row["host"] as? String) ?? (parts.count == 2 ? parts[1] : ""))
+            else { return nil }
+            return PinnedRow(uin: uin, host: host, signingKey: sk)
+        }
     }
 
-    /// Does this account hold a pinned cross-island contact at `uin@host`? The
-    /// one way this process can tell a number from another island apart from
-    /// ours: it has no list of our island's names, and a row exists only for
-    /// a foreign address.
+    /// The signing key pinned for uin@host among this account's cross-island
+    /// contacts, or nil when we hold no row for that address.
+    private static func pinnedSigningKey(uin: Int, host: String, accountID: UUID?) -> String? {
+        guard let want = AppGroup.canonicalHost(host) else { return nil }
+        return pinnedRows(accountID: accountID).first { $0.uin == uin && $0.host == want }?.signingKey
+    }
+
+    /// Does this account hold a pinned cross-island contact at `uin@host`? How
+    /// this process told a number from another island apart from ours before
+    /// the app handed it our island's names (`senderIsland`): a row exists
+    /// only for a foreign address.
     private static func isPinnedForeign(uin: Int, host: String?, accountID: UUID?) -> Bool {
         guard let host else { return false }
         return pinnedSigningKey(uin: uin, host: host, accountID: accountID) != nil
     }
 
+    /// The app's cross-island gate (`MessageService.verifiedCrossIslandContact`):
+    /// an accepted contact proven by the key that signed the envelope. The row
+    /// at exactly `uin@host` must carry that key; with no row there, a row for
+    /// this number under that key is the same person writing from another of
+    /// their islands (not with `exactAddress`, the rule for calls). A nil
+    /// `spub` (v=2) proves nobody.
+    private static func verifiedPinned(
+        uin: Int, host: String, spub: String?, accountID: UUID?, exactAddress: Bool = false
+    ) -> Bool {
+        let rows = pinnedRows(accountID: accountID)
+        if let want = AppGroup.canonicalHost(host), let exact = rows.first(where: { $0.uin == uin && $0.host == want }) {
+            return sameKey(spub, exact.signingKey)
+        }
+        if exactAddress { return false }
+        return rows.contains { $0.uin == uin && sameKey(spub, $0.signingKey) }
+    }
+
+    /// Where a sender's number lives (report 1071). `ours` for no `from_host`
+    /// (v=2, or a sender from before it) and for a name of our own island;
+    /// `foreign` with the island's canonical name; `unknown` while the app has
+    /// not handed this account's island names over (`AppGroup.ownHosts`).
+    private enum SenderIsland {
+        case ours
+        case foreign(String)
+        case unknown
+    }
+
+    private static func senderIsland(_ host: String?, accountID: UUID?) -> SenderIsland {
+        guard let host, let canonical = AppGroup.canonicalHost(host) else { return .ours }
+        guard let own = AppGroup.ownHosts(accountID: accountID) else { return .unknown }
+        return own.contains(canonical) ? .ours : .foreign(canonical)
+    }
+
     /// Did the account this push belongs to block its sender (reports 1064,
     /// 1065)? The app's rules (`BlockRule`) as far as this process can follow
-    /// them, read raw from the App Group like `pinnedSigningKey`:
+    /// them, read raw from the App Group like `pinnedRows`:
     ///
-    /// - a number of our own island (`BlockedContactsStore`), for any sender
-    ///   not at a pinned foreign address (see `isPinnedForeign`);
+    /// - a number of our own island (`BlockedContactsStore`), when
+    ///   `ourNumber` says the sender's number is ours (see `senderIsland`);
     /// - an older build's block of the number, which covers every island;
     /// - uin@host blocked on another island (`CrossIslandRequestsStore`, the
     ///   set under `rcq.ci-blocked.v1.<account>`, "uin@lowercased host");
     /// - the key pinned for a blocked address, from wherever it writes now.
     ///
-    /// Wrong only toward silence for a stranger on another island who holds a
-    /// number blocked on ours: no banner, and the app still files the row.
-    private static func senderBlocked(uin: Int, host: String?, spub: String?, accountID: UUID?) -> Bool {
-        if !isPinnedForeign(uin: uin, host: host, accountID: accountID),
-           BlockedContactsStore.storedOwnIsland(accountID: accountID).contains(uin) {
+    /// Before the app handed over our island's names, wrong only toward
+    /// silence for a stranger on another island who holds a number blocked on
+    /// ours: no banner, and the app still files the row.
+    private static func senderBlocked(uin: Int, host: String?, spub: String?, ourNumber: Bool, accountID: UUID?) -> Bool {
+        if ourNumber, BlockedContactsStore.storedOwnIsland(accountID: accountID).contains(uin) {
             return true
         }
         if BlockedContactsStore.storedEveryIsland(accountID: accountID).contains(uin) { return true }
         guard let defaults = UserDefaults(suiteName: AppGroup.identifier) else { return false }
         let id = accountID?.uuidString ?? "none"
         guard let data = defaults.data(forKey: "rcq.ci-blocked.v1." + id),
-              let blocked = (try? JSONSerialization.jsonObject(with: data)) as? [String],
-              !blocked.isEmpty
+              let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String],
+              !raw.isEmpty
         else { return false }
-        if let host, blocked.contains("\(uin)@\(host.lowercased())") { return true }
-        guard let spub, let got = Data(base64Encoded: spub), !got.isEmpty,
-              let rows = defaults.data(forKey: "rcq.crossisland.contacts.v1." + id),
-              let map = (try? JSONSerialization.jsonObject(with: rows)) as? [String: Any]
-        else { return false }
+        // "uin@host" in the spelling `AppGroup.canonicalHost` gives, so a
+        // block filed under another spelling of the island still names it.
+        let blocked: [(uin: Int, host: String)] = raw.compactMap { address in
+            let parts = address.split(separator: "@", maxSplits: 1)
+            guard parts.count == 2, let u = Int(parts[0]), let h = AppGroup.canonicalHost(String(parts[1])) else { return nil }
+            return (u, h)
+        }
+        if let host, let want = AppGroup.canonicalHost(host),
+           blocked.contains(where: { $0.uin == uin && $0.host == want }) {
+            return true
+        }
+        guard spub != nil else { return false }
+        let rows = pinnedRows(accountID: accountID)
         return blocked.contains { address in
-            guard let row = map[address] as? [String: Any],
-                  let key = row["signing_key"] as? String,
-                  let pinned = Data(base64Encoded: key) else { return false }
-            return pinned == got
+            rows.contains { $0.uin == address.uin && $0.host == address.host && sameKey(spub, $0.signingKey) }
         }
     }
 
     /// Same Ed25519 key, compared as bytes so two base64 spellings agree. A
     /// nil `spub` (v=2) never matches, the same rule the app applies.
-    private static func sameKey(_ spub: String?, _ pinned: String) -> Bool {
-        guard let spub,
+    private static func sameKey(_ spub: String?, _ pinned: String?) -> Bool {
+        guard let spub, let pinned,
               let got = Data(base64Encoded: spub), !got.isEmpty,
               let want = Data(base64Encoded: pinned)
         else { return false }
         return got == want
+    }
+
+    /// The banner for a message the app files under Requests (report 1071):
+    /// the sender's address and not a name, none of the words, no badge on a
+    /// chat it will not be in, and `pending` so a tap opens Requests.
+    private static func requestContent(uin: Int, host: String, from content: UNMutableNotificationContent) -> UNNotificationContent {
+        let out = UNMutableNotificationContent()
+        out.title = "\(uin)@\(host)"
+        let body = pushLocalized("push.message_request.body")
+        out.body = (body.isEmpty || body == "push.message_request.body") ? "New message request" : body
+        out.sound = content.sound
+        out.threadIdentifier = "pending"
+        return out
     }
 
     /// Walk the local account roster and return the ID of whichever
@@ -855,6 +993,16 @@ class NotificationService: UNNotificationServiceExtension {
         case .unknown:
             return false
         }
+    }
+
+    /// Does this envelope get a banner at all (report 1071)? What the app shows
+    /// as something said, and a call offer: the one signal a person waits for,
+    /// which rings as "Incoming call" while fresh and is filed as a missed call
+    /// when stale. Every other kind is applied by the app without a row in any
+    /// chat, so a banner for it announced a message nobody could find.
+    private static func isAnnounced(_ envelope: Envelope) -> Bool {
+        if case .callSignal(_, let sig, _, _, _) = envelope { return sig == "call_offer" }
+        return envelopeIsUserVisible(envelope)
     }
 
     /// True if a decryptable message mentions us by `#<uin>`. Used by the

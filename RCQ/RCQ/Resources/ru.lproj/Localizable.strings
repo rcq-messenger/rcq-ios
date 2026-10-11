@@ -690,6 +690,7 @@
 "chat.preview.group_invite" = "Приглашение в группу";
 "chat.preview.generic" = "Сообщение";
 "chat.banner.new_message" = "Новое сообщение";
+"chat.banner.message_request" = "Новая заявка на переписку";
 
 /* ── Экран звонка ─────────────────────────────────────────── */
 

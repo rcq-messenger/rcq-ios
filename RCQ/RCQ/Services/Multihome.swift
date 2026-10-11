@@ -272,11 +272,28 @@ enum Multihome {
     /// is only right when minting a link.
     static func isOwnHost(_ host: String?) -> Bool {
         guard let host = normalizeHost(host ?? "") else { return true }  // nil host = local
-        var names: Set<String> = [ownHost().lowercased()]
+        var names = ownHostNames(serverURL: nil)
         if let transport = APIClient.shared.baseURL.host { names.insert(transport.lowercased()) }
+        return names.contains(host)
+    }
+
+    /// The names `isOwnHost` takes for the island at `serverURL` (nil: the
+    /// active account's), without the transport of the moment. One function so
+    /// the notification extension's copy (`AppGroup.ownHosts`, written by
+    /// AccountManager) is the same list the app decides by (report 1071).
+    ///
+    /// Touches no singleton: AccountManager calls it while it is still being
+    /// built.
+    static func ownHostNames(serverURL: String?) -> Set<String> {
+        var names: Set<String> = []
+        if let serverURL {
+            if let own = normalizeHost(serverURL) { names.insert(own) }
+        } else {
+            names.insert(ownHost().lowercased())
+        }
         if let front = RelayConfigStore.frontHost, let n = normalizeHost(front) { names.insert(n) }
         if let builtIn = normalizeHost(APIClient.builtInProxyURL) { names.insert(builtIn) }
-        return names.contains(host)
+        return names
     }
 
     /// `is2.rcq.app`, `https://is2.rcq.app/x` → `is2.rcq.app`;
