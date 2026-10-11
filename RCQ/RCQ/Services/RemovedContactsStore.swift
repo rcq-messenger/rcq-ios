@@ -273,14 +273,90 @@ final class BlockedContactsStore {
     }
 }
 
-/// App-group mirror of the mute lists so the NSE + foreground presentation can
-/// suppress a muted sender/group locally (sealed sender hides 1:1 senders from
-/// the server). Reads hit UserDefaults directly so a reused NSE process stays current.
+/// App-group mirror of every account's mute lists, so the NSE + foreground
+/// presentation can suppress a muted sender/group locally (sealed sender hides
+/// 1:1 senders from the server). Reads hit the file directly so a reused NSE
+/// process stays current.
+///
+/// ⚠ PER ACCOUNT, written by `SoundService` (the only writer). It used to hold
+/// the ACTIVE account's island lists and nothing else, and an account switch
+/// emptied it, so a push for any other account on the phone was judged by
+/// another account's mutes or by none: two people can hold the same number on
+/// two islands, and the same group id is another group on another island.
+/// The extension reads the lists of the account a push is addressed to
+/// (`mutes(for:)`).
 final class MutedStore {
     static let shared = MutedStore()
 
+    /// One account's mutes, in the form the extension reads them.
+    struct Lists: Codable, Equatable {
+        /// Numbers of the account's own island set to silent (the island's
+        /// `muted_uins`).
+        var uins: [Int] = []
+        /// Groups set to silent: the island's `muted_group_ids`, and a room on
+        /// another island by this account's local alias (negative).
+        var groupIDs: [Int] = []
+        /// People on other islands set to silent, "uin@host" in
+        /// `AppGroup.canonicalHost`'s spelling. The number alone is somebody
+        /// else on our island.
+        var addresses: [String] = []
+        /// Groups set to "mentions only": quiet for ordinary messages, still
+        /// surfaced when @mentioned. Client-only (the island cannot read
+        /// sealed content to know about a mention).
+        var mentionGroupIDs: [Int] = []
+
+        var isEmpty: Bool { uins.isEmpty && groupIDs.isEmpty && addresses.isEmpty && mentionGroupIDs.isEmpty }
+    }
+
+    /// What one push is judged by: the lists of the account(s) it may be for.
+    struct Mutes {
+        var uins: Set<Int> = []
+        var groupIDs: Set<Int> = []
+        var addresses: Set<String> = []
+        var mentionGroupIDs: Set<Int> = []
+        /// The file an older build wrote: one list for the whole phone, by
+        /// bare number, which silenced that number on every island. Read the
+        /// way it was written until the app has handed it out per account.
+        var olderBuild = false
+
+        /// A number of the account's own island.
+        func silences(uin: Int) -> Bool { uins.contains(uin) }
+
+        /// Somebody on another island, by their address.
+        func silences(uin: Int, host: String) -> Bool {
+            if olderBuild, uins.contains(uin) { return true }
+            guard let h = AppGroup.canonicalHost(host) else { return false }
+            return addresses.contains("\(uin)@\(h)")
+        }
+
+        func silencesGroup(_ id: Int) -> Bool { groupIDs.contains(id) }
+        func mentionsOnly(_ groupID: Int) -> Bool { mentionGroupIDs.contains(groupID) }
+    }
+
+    /// What the file holds.
+    enum Stored {
+        /// Account id (`uuidString`) -> that account's lists.
+        case perAccount([String: Lists])
+        /// An older build's file: one account's island lists (`owner`, absent
+        /// in the oldest files) beside the phone-wide "mentions only" set, in
+        /// force for every push.
+        case olderBuild(Lists, owner: String?)
+    }
+
+    private struct File: Codable { var accounts: [String: Lists] }
+    private struct OlderFile: Decodable {
+        var uins: [Int]
+        var groupIDs: [Int]
+        var mentionGroupIDs: [Int]?
+        var account: String?
+    }
+
+    // Keys of the App Group UserDefaults copy the oldest builds kept, before
+    // the file existed. Read only while there is no file; dropped once the
+    // per-account file is written.
     private static let uinKey = "rcq.muted_uins"
     private static let groupKey = "rcq.muted_group_ids"
+    private static let mentionGroupKey = "rcq.mention_only_group_ids"
     private static let appGroup = "group.app.rcq.shared"
 
     private let defaults: UserDefaults
@@ -290,81 +366,248 @@ final class MutedStore {
     // NSE in a separate process, where cfprefsd "detaches" routinely and serves
     // a STALE snapshot — so a freshly-muted group/user still pushed (the exact
     // bug). The file dodges that layer (same fix as AppGroup.languageFileURL).
-    // UserDefaults is kept written for back-compat with in-flight installs.
-    // `mentionGroupIDs` is the "mentions only" set: groups the user wants
-    // QUIET for ordinary messages but still surfaced when @mentioned. It is
-    // OPTIONAL in the Codable so a muted.json written by an older build (no
-    // such field) still decodes. None-mode groups live in `groupIDs` (the
-    // server-backed mute), mentions-only groups live here (client-only —
-    // the server can't read sealed content to know about a mention).
-    //
-    // `account` names the account whose island the two server-backed lists
-    // came from (absent in a file written by an older build). The file holds
-    // one account's lists, the active one's, and an account switch empties it;
-    // the owner is what lets a write made for one account refuse to start
-    // from another account's lists in the moment before that happens.
-    private struct Lists: Codable { var uins: [Int]; var groupIDs: [Int]; var mentionGroupIDs: [Int]?; var account: String? }
-    private static let mentionGroupKey = "rcq.mention_only_group_ids"
     private var fileURL: URL { AppGroup.containerURL.appendingPathComponent("muted.json") }
 
-    private func read() -> Lists {
-        if let data = try? Data(contentsOf: fileURL),
-           let l = try? JSONDecoder().decode(Lists.self, from: data) {
-            return l
+    /// The file as written, either form. Nil for bytes that are neither.
+    static func decode(_ data: Data) -> Stored? {
+        if let file = try? JSONDecoder().decode(File.self, from: data) { return .perAccount(file.accounts) }
+        if let old = try? JSONDecoder().decode(OlderFile.self, from: data) {
+            return .olderBuild(
+                Lists(uins: old.uins, groupIDs: old.groupIDs, mentionGroupIDs: old.mentionGroupIDs ?? []),
+                owner: old.account
+            )
         }
+        return nil
+    }
+
+    /// The lists for a push to any of `accounts`: several when one number is
+    /// held by more than one account here (one key restored onto two islands),
+    /// and the push cannot say which of them it is for. Those are all one
+    /// person's accounts, and a mute any of them set is kept rather than a
+    /// muted chat ringing. An older build's file judges every push, as it did.
+    static func mutes(in stored: Stored?, for accounts: [String]) -> Mutes {
+        switch stored {
+        case .perAccount(let map)?:
+            var out = Mutes()
+            for id in accounts {
+                guard let l = map[id] else { continue }
+                out.uins.formUnion(l.uins)
+                out.groupIDs.formUnion(l.groupIDs)
+                out.addresses.formUnion(l.addresses)
+                out.mentionGroupIDs.formUnion(l.mentionGroupIDs)
+            }
+            return out
+        case .olderBuild(let l, _)?:
+            return Mutes(
+                uins: Set(l.uins), groupIDs: Set(l.groupIDs),
+                mentionGroupIDs: Set(l.mentionGroupIDs), olderBuild: true
+            )
+        case nil:
+            return Mutes()
+        }
+    }
+
+    private func read() -> Stored? {
+        if let data = try? Data(contentsOf: fileURL) { return Self.decode(data) }
         // Fallback for installs that muted before the file existed.
-        return Lists(
+        guard defaults.object(forKey: Self.uinKey) != nil || defaults.object(forKey: Self.groupKey) != nil
+                || defaults.object(forKey: Self.mentionGroupKey) != nil else { return nil }
+        return .olderBuild(Lists(
             uins: (defaults.array(forKey: Self.uinKey) as? [Int]) ?? [],
             groupIDs: (defaults.array(forKey: Self.groupKey) as? [Int]) ?? [],
-            mentionGroupIDs: (defaults.array(forKey: Self.mentionGroupKey) as? [Int]) ?? [],
-            account: nil
-        )
+            mentionGroupIDs: (defaults.array(forKey: Self.mentionGroupKey) as? [Int]) ?? []
+        ), owner: nil)
     }
 
-    func isMuted(_ uin: Int) -> Bool { read().uins.contains(uin) }
-    /// The server-backed lists as last mirrored for `account`, for a change
-    /// made while its island cannot be reached (`NotificationPrefsService`).
-    /// Nil when they are another account's. A file from an older build names
-    /// nobody and is taken as the active account's, whose it was.
-    func lists(for account: UUID) -> (uins: [Int], groupIDs: [Int])? {
-        let l = read()
-        if let owner = l.account, owner != account.uuidString { return nil }
-        return (l.uins, l.groupIDs)
-    }
-    func isGroupMuted(_ groupID: Int) -> Bool { read().groupIDs.contains(groupID) }
-    /// Group set to "mentions only" — the NSE drops a group push that
-    /// doesn't mention the user (and, for an undecryptable sender-keys
-    /// `gmsg`, drops it outright since a mention can't be verified
-    /// out-of-process; the in-app path catches mentions when online).
-    func isGroupMentionsOnly(_ groupID: Int) -> Bool { (read().mentionGroupIDs ?? []).contains(groupID) }
-
-    /// Mirror the authoritative muted lists from NotificationPrefsService,
-    /// as `account`'s. Preserves the client-only mentions-only set (not
-    /// server-backed).
-    func setMuted(uins: [Int], groupIDs: [Int], account: UUID) {
-        let mentions = read().mentionGroupIDs ?? []
-        defaults.set(uins, forKey: Self.uinKey)
-        defaults.set(groupIDs, forKey: Self.groupKey)
-        let lists = Lists(uins: uins, groupIDs: groupIDs, mentionGroupIDs: mentions, account: account.uuidString)
-        if let data = try? JSONEncoder().encode(lists) {
-            try? data.write(to: fileURL, options: .atomic)
-        }
+    /// For the extension: the mutes of the account(s) a push is for (see the
+    /// static `mutes`). An empty list reads nothing and silences nothing.
+    func mutes(for accounts: [UUID]) -> Mutes {
+        Self.mutes(in: read(), for: accounts.map(\.uuidString))
     }
 
-    /// Mirror the mentions-only group set (client-only) for the NSE.
-    func setMentionsOnlyGroups(_ groupIDs: [Int]) {
-        var cur = read()
-        defaults.set(groupIDs, forKey: Self.mentionGroupKey)
-        cur.mentionGroupIDs = groupIDs
-        if let data = try? JSONEncoder().encode(cur) {
-            try? data.write(to: fileURL, options: .atomic)
-        }
+    /// The island lists an older build's file kept, and whose they were (nil:
+    /// a file too old to say, written for the account active then). For the
+    /// app's one-time hand-out (`SoundService.migrateLegacyIfNeeded`).
+    func olderBuildIslandLists() -> (owner: String?, uins: [Int], groupIDs: [Int])? {
+        guard case .olderBuild(let l, let owner)? = read() else { return nil }
+        return (owner, l.uins, l.groupIDs)
     }
 
-    func wipe() {
+    /// The file for `byAccount`, accounts with nothing muted left out. Nil
+    /// when nobody has anything muted.
+    static func encode(_ byAccount: [String: Lists]) -> Data? {
+        let nonEmpty = byAccount.filter { !$0.value.isEmpty }
+        guard !nonEmpty.isEmpty else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(File(accounts: nonEmpty))
+    }
+
+    /// Every account's lists at once, from `SoundService`. An unchanged file
+    /// is left alone: the extension reads it on every push.
+    func setAll(_ byAccount: [String: Lists]) {
         defaults.removeObject(forKey: Self.uinKey)
         defaults.removeObject(forKey: Self.groupKey)
         defaults.removeObject(forKey: Self.mentionGroupKey)
-        try? FileManager.default.removeItem(at: fileURL)
+        guard let data = Self.encode(byAccount) else {
+            try? FileManager.default.removeItem(at: fileURL)
+            return
+        }
+        if (try? Data(contentsOf: fileURL)) == data { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
+/// How the mute lists name a chat, and the rules over those names that need no
+/// singleton (`Tools/MuteScopeCheck` drives them).
+///
+/// "peer:<uin>" is a number of the account's own island, "peer:<uin>@<host>"
+/// somebody on another island (the host in `AppGroup.canonicalHost`'s
+/// spelling, like `rcq.ci-blocked.v1`), "group:<id>" a group: one of the
+/// island's own (positive id), or a room on another island by this account's
+/// local alias (negative, `VisitedIslandsStore`). A number alone does not name
+/// a person: islands number on their own, and #134 is somebody else on each.
+enum MuteKeys {
+    static func peer(_ uin: Int, host: String? = nil) -> String {
+        guard let host, let h = AppGroup.canonicalHost(host) else { return "peer:\(uin)" }
+        return "peer:\(uin)@\(h)"
+    }
+
+    static func group(_ id: Int) -> String { "group:\(id)" }
+
+    /// The number, when the key is a peer of the account's own island.
+    static func ownPeer(_ key: String) -> Int? {
+        key.hasPrefix("peer:") ? Int(key.dropFirst("peer:".count)) : nil
+    }
+
+    /// "uin@host", when the key is somebody on another island.
+    static func address(_ key: String) -> String? {
+        guard key.hasPrefix("peer:"), key.contains("@") else { return nil }
+        return String(key.dropFirst("peer:".count))
+    }
+
+    static func groupID(_ key: String) -> Int? {
+        key.hasPrefix("group:") ? Int(key.dropFirst("group:".count)) : nil
+    }
+
+    /// Kept by the account's island as well (`muted_uins`, `muted_group_ids`):
+    /// its own numbers and its own groups. Anybody on another island and any
+    /// room there is muted on this phone alone, because the island's lists
+    /// name ITS numbers and groups, and the same ones there are others.
+    static func isIslandKept(_ key: String) -> Bool {
+        if ownPeer(key) != nil { return true }
+        if let id = groupID(key) { return id > 0 }
+        return false
+    }
+
+    /// The extension's copy of one account's lists.
+    static func lists(muted: Set<String>, mentions: Set<String>) -> MutedStore.Lists {
+        MutedStore.Lists(
+            uins: muted.compactMap(ownPeer).sorted(),
+            groupIDs: muted.compactMap(groupID).sorted(),
+            addresses: muted.compactMap(address).sorted(),
+            mentionGroupIDs: mentions.compactMap(groupID).sorted()
+        )
+    }
+
+    /// An account's muted set once its island has answered: what the island
+    /// keeps is what the island says (`uins`/`groups` already carry the
+    /// changes made here it has not confirmed yet), and everything it does not
+    /// keep stays as it was. A negative group id on the island's list was put
+    /// there by an older build and names nothing there.
+    static func adopt(muted: Set<String>, islandUINs: Set<Int>, islandGroups: Set<Int>) -> Set<String> {
+        var out = muted.filter { !isIslandKept($0) }
+        out.formUnion(islandUINs.map { peer($0) })
+        out.formUnion(islandGroups.filter { $0 > 0 }.map(group))
+        return out
+    }
+
+    /// What an account on this phone is shown to hold, for the hand-out of the
+    /// lists older builds kept for the whole phone.
+    struct Holdings {
+        /// Numbers of its own island it has a contact, a request or a pending
+        /// mute change with, or wrote to.
+        var peers: Set<Int> = []
+        /// People on other islands it holds, "uin@host".
+        var addresses: Set<String> = []
+        /// Groups it is in, and its aliases of rooms on other islands.
+        var groups: Set<Int> = []
+        /// Chats this account unmuted itself since mutes were per account
+        /// (an unmute its island has not confirmed): its own last word.
+        var unmuted: Set<String> = []
+        /// False when nothing on disk says what the account holds (no roster
+        /// was ever saved for it).
+        var known = true
+    }
+
+    struct Handout: Equatable {
+        var muted: [String: Set<String>] = [:]
+        var mentions: [String: Set<String>] = [:]
+        /// Mutes each account's island must hear (see `handOut`).
+        var pending: [String: Set<String>] = [:]
+    }
+
+    /// Hand the phone-wide lists to the accounts (by `uuidString`) that hold
+    /// those chats, losing none.
+    ///
+    /// - A peer goes to every account holding the number on its own island,
+    ///   and as "uin@host" to every account holding somebody of that number on
+    ///   another island (older builds named both by the number alone). A group
+    ///   goes to every account in it.
+    /// - Also to every account nothing on disk speaks for: it may hold it too.
+    /// - Held by nobody that can be shown: to every account, which is where
+    ///   the list was in force.
+    /// - Never as a mute to an account whose own last word on that chat was
+    ///   an unmute.
+    ///
+    /// `pending`: the island-kept mutes each holder's island must have, sent
+    /// on its next sync if it lacks them (a failed write of an older build
+    /// would otherwise be undone by the island's answer). A mute nobody is
+    /// shown to hold goes only to the active account's island, as an older
+    /// build would have re-sent it there; never to an island not shown to
+    /// hold the chat, where the number is somebody else.
+    static func handOut(
+        muted: Set<String>, mentions: Set<String>,
+        holdings: [String: Holdings], active: String?
+    ) -> Handout {
+        let accounts = holdings.keys.sorted()
+        // (account, key in that account's spelling, shown to hold it)
+        func targets(_ key: String) -> [(String, String, Bool)] {
+            var hits: [(String, String, Bool)] = []
+            if let uin = ownPeer(key) {
+                for a in accounts {
+                    guard let h = holdings[a] else { continue }
+                    if h.peers.contains(uin) { hits.append((a, key, true)) }
+                    for addr in h.addresses.sorted() where addr.hasPrefix("\(uin)@") {
+                        hits.append((a, "peer:\(addr)", true))
+                    }
+                }
+            } else if let id = groupID(key) {
+                for a in accounts where holdings[a]?.groups.contains(id) == true { hits.append((a, key, true)) }
+            }
+            guard !hits.isEmpty else { return accounts.map { ($0, key, false) } }
+            let holders = Set(hits.map(\.0))
+            let unknown = accounts.filter { !holders.contains($0) && holdings[$0]?.known == false }
+            return hits + unknown.map { ($0, key, false) }
+        }
+        var out = Handout()
+        for key in muted.sorted() {
+            let t = targets(key)
+            let nobody = !t.contains { $0.2 }
+            for (a, k, holds) in t where holdings[a]?.unmuted.contains(key) != true && holdings[a]?.unmuted.contains(k) != true {
+                out.muted[a, default: []].insert(k)
+                if isIslandKept(k), holds || (nobody && a == active) {
+                    out.pending[a, default: []].insert(k)
+                }
+            }
+        }
+        for key in mentions.sorted() {
+            // An unmute here may be the switch from "None" to "mentions
+            // only" itself, so it does not keep this one away.
+            for (a, k, _) in targets(key) {
+                out.mentions[a, default: []].insert(k)
+            }
+        }
+        return out
     }
 }

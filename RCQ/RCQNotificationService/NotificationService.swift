@@ -101,6 +101,20 @@ class NotificationService: UNNotificationServiceExtension {
         os_log("env present (len=%d), envType=%{public}@",
                log: Self.log, type: .default, envB64.count, envType)
 
+        // The local accounts that hold the recipient's number. Usually one;
+        // two when one key was restored onto two islands that both gave it the
+        // same number, and then the push cannot say which of them it is for.
+        let owners = toUIN.map { accountsOwning(uin: $0) } ?? []
+        let activeBeforeRoute = AppGroup.readActiveAccountID()
+
+        // ⚠ THE MUTES OF THE ACCOUNT THIS PUSH IS FOR. They are per account
+        // (`MutedStore`): a chat muted in one account says nothing about the
+        // same number or group id in another, where it is somebody else. This
+        // process used to read ONE list, the active account's, for every push
+        // on the phone. With no `to_uin` (an older backend) or no owner the
+        // roster can name: the active account's, as before.
+        let mutes = MutedStore.shared.mutes(for: owners.isEmpty ? [activeBeforeRoute].compactMap { $0 } : owners)
+
         // Group mute, checked BEFORE the decrypt: group_id rides in userInfo,
         // so we don't need the plaintext to know the thread. Doing it here
         // means a muted group stays silent even when the decrypt fails (the
@@ -108,7 +122,7 @@ class NotificationService: UNNotificationServiceExtension {
         // the post-decrypt mute check used to be skipped by the catch-block
         // fallthrough, leaking muted-group pushes as the generic banner.
         if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue,
-           MutedStore.shared.isGroupMuted(gid) {
+           mutes.silencesGroup(gid) {
             os_log("group %d muted — suppressing", log: Self.log, type: .default, gid)
             contentHandler(UNNotificationContent())
             return
@@ -130,11 +144,11 @@ class NotificationService: UNNotificationServiceExtension {
         // behaviour for any push the lookup can't route. A recipient the
         // roster proves absent never gets here (report 1066, top of this
         // method).
-        // Capture active before we (possibly) install a per-account
-        // override below — comparing target vs original active is
-        // what tells us whether this push is for the foreground
-        // account or a different one in the local roster.
-        let activeBeforeRoute = AppGroup.readActiveAccountID()
+        // `activeBeforeRoute` (above) is read before we (possibly) install a
+        // per-account override below — comparing target vs original active
+        // is what tells us whether this push is for the foreground account
+        // or a different one in the local roster.
+        //
         // Whose stores this push is read against, for the pinned-key check
         // further down: the routed account when there is one, else active.
         var routedAccountID = activeBeforeRoute
@@ -143,13 +157,13 @@ class NotificationService: UNNotificationServiceExtension {
         // another account's chat by the wrong locks, so without an owner the
         // lock check takes every account's (see `AppGroup.lockedChats`).
         var lockOwnerID: UUID?
-        if let toUIN, let targetID = findAccountOwning(uin: toUIN) {
+        if let toUIN, let targetID = owners.first {
             routedAccountID = targetID
             // Only an owner that is the ONLY one: numbers are per island, and
             // one key restored onto two islands makes two accounts with the
             // same number here. Judged by the wrong one's locks, a locked
             // chat's words would print; by all of them, one line too few.
-            lockOwnerID = accountsOwning(uin: toUIN) == 1 ? targetID : nil
+            lockOwnerID = owners.count == 1 ? targetID : nil
             // Push for a non-foreground account: mark the banner so
             // the user can tell at a glance that this message went
             // to one of their OTHER accounts, not the one they're
@@ -405,9 +419,17 @@ class NotificationService: UNNotificationServiceExtension {
                 return
             }
             // Muted: cached above so it still lands in the thread; just no alert.
+            // A number of our island by the number, anybody else by the
+            // address the app keeps them under (`foreignMuted`).
             let mutedGroupID = groupID
-            let suppressedByMute = mutedGroupID.map { MutedStore.shared.isGroupMuted($0) }
-                ?? MutedStore.shared.isMuted(decrypted.senderUIN)
+            let suppressedByMute: Bool = {
+                if let gid = mutedGroupID { return mutes.silencesGroup(gid) }
+                if ourNumber { return mutes.silences(uin: decrypted.senderUIN) }
+                return Self.foreignMuted(
+                    mutes, uin: decrypted.senderUIN, host: decrypted.senderHost,
+                    spub: decrypted.senderSigningKey, accountID: routedAccountID
+                )
+            }()
             if suppressedByMute {
                 contentHandler(UNNotificationContent())
                 return
@@ -438,7 +460,7 @@ class NotificationService: UNNotificationServiceExtension {
             // Mentions-only group: alert only when THIS message mentions us
             // (#<our uin>). Cached above so it still threads in-app; just no
             // banner for an ordinary message in a group set to "mentions only".
-            if let gid = mutedGroupID, MutedStore.shared.isGroupMentionsOnly(gid),
+            if let gid = mutedGroupID, mutes.mentionsOnly(gid),
                !Self.envelopeMentions(decrypted.envelope, uin: toUIN ?? 0) {
                 contentHandler(UNNotificationContent())
                 return
@@ -466,7 +488,7 @@ class NotificationService: UNNotificationServiceExtension {
             // essentials here for the group fallback.
             if let gid = (userInfo["group_id"] as? Int) ?? (userInfo["group_id"] as? NSNumber)?.intValue {
                 // Muted group → no alert (the in-do mute gate isn't reached here).
-                if MutedStore.shared.isGroupMuted(gid) {
+                if mutes.silencesGroup(gid) {
                     contentHandler(UNNotificationContent())
                     return
                 }
@@ -474,7 +496,7 @@ class NotificationService: UNNotificationServiceExtension {
                 // verified out-of-process, so stay quiet. The in-app path and
                 // the home-row @ indicator still surface mentions when the app
                 // runs; an offline @mention won't push (sender-keys limit).
-                if MutedStore.shared.isGroupMentionsOnly(gid) {
+                if mutes.mentionsOnly(gid) {
                     contentHandler(UNNotificationContent())
                     return
                 }
@@ -658,26 +680,32 @@ class NotificationService: UNNotificationServiceExtension {
         return out
     }
 
-    /// Walk the local account roster and return the ID of whichever
-    /// account owns the given UIN. Used by the multi-account push
-    /// router above. Returns nil if no account matches (push for an
-    /// account that's been removed from the device, or for a fresh
-    /// install that hasn't run AccountManager yet).
-    private func accountsOwning(uin: Int) -> Int {
+    /// Walk the local account roster and return the IDs of the accounts
+    /// that own the given UIN, in roster order. Used by the multi-account
+    /// push router above (the first one) and the mute and lock gates (all
+    /// of them). Empty if no account matches (push for an account that's
+    /// been removed from the device, or for a fresh install that hasn't run
+    /// AccountManager yet).
+    private func accountsOwning(uin: Int) -> [UUID] {
         let target = String(uin)
         return AppGroup.readAccountIDs().filter {
             KeychainStore.string(KeychainStore.Keys.uin, forAccount: $0) == target
-        }.count
+        }
     }
 
-    private func findAccountOwning(uin: Int) -> UUID? {
-        let target = String(uin)
-        for accountID in AppGroup.readAccountIDs() {
-            if KeychainStore.string(KeychainStore.Keys.uin, forAccount: accountID) == target {
-                return accountID
-            }
+    /// A sender who is not a number of our island: muted at their address, or
+    /// at the address of the contact their key proves them to be (the same
+    /// person writing from another of their islands, whom the app files under
+    /// that row and mutes there). Before the app handed its lists out per
+    /// account, an older build's list silenced the number anywhere.
+    private static func foreignMuted(
+        _ mutes: MutedStore.Mutes, uin: Int, host: String?, spub: String?, accountID: UUID?
+    ) -> Bool {
+        if let host, mutes.silences(uin: uin, host: host) { return true }
+        if mutes.olderBuild, mutes.silences(uin: uin) { return true }
+        return pinnedRows(accountID: accountID).contains {
+            $0.uin == uin && sameKey(spub, $0.signingKey) && mutes.silences(uin: uin, host: $0.host)
         }
-        return nil
     }
 
     /// Sender's name → title; envelope type → body. Falls back to a

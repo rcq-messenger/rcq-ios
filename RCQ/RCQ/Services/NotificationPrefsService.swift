@@ -111,8 +111,9 @@ final class NotificationPrefsService: ObservableObject {
     }
 
     /// Mute changes made here that the island has not confirmed yet ("peer:N",
-    /// "group:N"), per account and on disk. They are all the sync ever sends
-    /// on its own, and only to the island of the account they were made in.
+    /// "group:N", `MuteKeys` spelling), per account and on disk. They are all
+    /// the sync ever sends on its own, and only to the island of the account
+    /// they were made in.
     ///
     /// It used to re-send whatever SoundService held muted. That list is one
     /// for the whole phone, so every account's sync put the other accounts'
@@ -162,6 +163,25 @@ final class NotificationPrefsService: ObservableObject {
         Self.storePending(unmutes, .unmutes, account)
     }
 
+    /// Every chat `account` has a change waiting for its island on, and the
+    /// unmutes among them: what the hand-out of the old phone-wide lists takes
+    /// as evidence that the account holds a chat (`SoundService`).
+    static func pendingKeys(account: UUID) -> (all: Set<String>, unmutes: Set<String>) {
+        let unmutes = pending(.unmutes, account)
+        return (pending(.mutes, account).union(unmutes), unmutes)
+    }
+
+    /// Mutes the island of `account` must have, from the hand-out of the old
+    /// phone-wide lists: sent on its next sync if it lacks them. Never over
+    /// an unmute made here since.
+    func notePendingMutes(_ keys: Set<String>, account: UUID) {
+        guard !PanicPINService.shared.isDecoy else { return }
+        let unmutes = Self.pending(.unmutes, account)
+        let add = keys.filter { MuteKeys.isIslandKept($0) && !unmutes.contains($0) }
+        guard !add.isEmpty else { return }
+        Self.storePending(Self.pending(.mutes, account).union(add), .mutes, account)
+    }
+
     /// Drop the changes the island's lists already agree with.
     private static func settlePending(against server: Prefs, account: UUID) {
         func mutedThere(_ key: String) -> Bool? {
@@ -198,7 +218,6 @@ final class NotificationPrefsService: ObservableObject {
             guard holds(bound) else { return }
             self.prefs = out
             self.syncedFor = bound.account
-            mirrorMuteToAppGroup(account: bound.account)
             Self.settlePending(against: out, account: bound.account)
             // Self-heal lost changes. A mute or an unmute whose PUT failed
             // (offline, and until 2026-07 an expired token 401ing every call)
@@ -208,6 +227,15 @@ final class NotificationPrefsService: ObservableObject {
             // to this account's island and nowhere else.
             let mutes = Self.pending(.mutes, bound.account)
             let unmutes = Self.pending(.unmutes, bound.account)
+            // The chat list and the extension say what the island says, with
+            // what this account changed here and the island has yet to hear
+            // on top: a mute or an unmute made on another device shows here,
+            // and a tap made here is never undone by this answer.
+            SoundService.shared.adoptIslandMutes(
+                uins: Set(out.mutedUINs).union(Self.ids(mutes, "peer:")).subtracting(Self.ids(unmutes, "peer:")),
+                groupIDs: Set(out.mutedGroupIDs).union(Self.ids(mutes, "group:")).subtracting(Self.ids(unmutes, "group:")),
+                account: bound.account
+            )
             let muteGroups = Self.ids(mutes, "group:").subtracting(out.mutedGroupIDs)
             let muteUINs = Self.ids(mutes, "peer:").subtracting(out.mutedUINs)
             let unmuteGroups = Self.ids(unmutes, "group:").intersection(out.mutedGroupIDs)
@@ -219,52 +247,32 @@ final class NotificationPrefsService: ObservableObject {
                 }
             }
         } catch {
-            // Nothing mirrored: before the first sync `prefs` is the
-            // defaults, and writing those would empty the extension's mute
-            // lists kept from the last launch.
+            // Nothing adopted: before the first sync `prefs` is the defaults,
+            // and taking those would unmute every chat of this account.
         }
         if holds(bound) { self.loaded = true }
-    }
-
-    private func mirrorMuteToAppGroup(account: UUID) {
-        MutedStore.shared.setMuted(uins: prefs.mutedUINs, groupIDs: prefs.mutedGroupIDs, account: account)
     }
 
     /// Optimistic PUT of the fields the patch changed, for `account` (the
     /// account the change was made in, read when it was made) and only while
     /// it is the active one. UI flips first, server catches up async. Before
     /// this account's first successful GET the patch waits for one and lands
-    /// on the island's values. With no answer nothing is sent (`prefs` is
-    /// not this account's), but a mute change goes onto the lists the
-    /// extension kept from this account's last sync, so the chat rings or
-    /// stays quiet now; the island hears it on the next sync, through
+    /// on the island's values. With no answer, or no route that speaks for
+    /// this account right now (its token is being swapped), nothing is sent
+    /// (`prefs` is not this account's). A mute change is already on this
+    /// account's lists in SoundService and the extension, so the chat rings
+    /// or stays quiet now; the island hears it on the next sync, through
     /// `Pending`.
     func update(account: UUID?, _ patch: (inout Prefs) -> Void) async {
         guard let account, account == AccountManager.shared.activeAccountID else { return }
         let gen = generation
         if syncedFor != account {
             await refresh()
-            guard gen == generation, account == AccountManager.shared.activeAccountID else { return }
-            guard syncedFor == account else { return keepLocally(account, patch) }
+            guard gen == generation, account == AccountManager.shared.activeAccountID,
+                  syncedFor == account else { return }
         }
-        // No route that speaks for this account right now (its token is being
-        // swapped): nothing is sent, and the change is kept like an offline one.
-        guard let bound = await bind(account), bound.generation == gen else {
-            guard gen == generation else { return }
-            return keepLocally(account, patch)
-        }
+        guard let bound = await bind(account), bound.generation == gen else { return }
         await put(bound, patch)
-    }
-
-    /// A change the island cannot hear now: onto the extension's lists of
-    /// THIS account, never another's, so the chat rings or stays quiet at
-    /// once. The island gets it on the next sync, through `Pending`.
-    private func keepLocally(_ account: UUID, _ patch: (inout Prefs) -> Void) {
-        guard !PanicPINService.shared.isDecoy, account == AccountManager.shared.activeAccountID else { return }
-        let kept = MutedStore.shared.lists(for: account) ?? (uins: [], groupIDs: [])
-        var local = Prefs(contactRequests: prefs.contactRequests, mutedUINs: kept.uins, mutedGroupIDs: kept.groupIDs)
-        patch(&local)
-        MutedStore.shared.setMuted(uins: local.mutedUINs, groupIDs: local.mutedGroupIDs, account: account)
     }
 
     /// The write itself, onto the prefs `bound`'s account read from its own
@@ -276,7 +284,6 @@ final class NotificationPrefsService: ObservableObject {
         guard next != prefs else { return }
         let before = prefs
         prefs = next
-        mirrorMuteToAppGroup(account: bound.account)
         do {
             struct Body: Encodable {
                 let contact_requests: Bool?
@@ -306,29 +313,40 @@ final class NotificationPrefsService: ObservableObject {
         await update(account: AccountManager.shared.activeAccountID) { $0.contactRequests = on }
     }
 
-    /// Per-contact mute also flips server-side push gating. `account` is the
-    /// account the tap was made in (SoundService reads it at the tap); nil
-    /// means the active one now, for a caller already on the main actor.
-    func setMuted(_ uin: Int, muted: Bool, account: UUID? = nil) async {
-        guard let account = account ?? AccountManager.shared.activeAccountID else { return }
-        notePending("peer:\(uin)", muted: muted, account: account)
-        await update(account: account) { current in
-            var set = Set(current.mutedUINs)
-            if muted { set.insert(uin) } else { set.remove(uin) }
-            current.mutedUINs = Array(set).sorted()
-        }
+    /// A chat whose mute the island keeps: one of its own numbers
+    /// (`muted_uins`, which also gates the non-sealed pushes from that number)
+    /// or one of its own groups (`muted_group_ids`, read by the server's
+    /// `is_group_muted` to drop APNs alerts for offline group recipients;
+    /// messages still queue). Somebody on another island and a room there are
+    /// muted on the phone alone (`MuteKeys.isIslandKept`).
+    enum IslandChat {
+        case peer(Int)
+        case group(Int)
     }
 
-    /// Per-group mute. Server's `is_group_muted` reads this list and
-    /// suppresses APNs alerts for offline group recipients; messages
-    /// still queue, so the user sees them on next /queue fetch.
-    func setGroupMuted(_ groupID: Int, muted: Bool, account: UUID? = nil) async {
-        guard let account = account ?? AccountManager.shared.activeAccountID else { return }
-        notePending("group:\(groupID)", muted: muted, account: account)
-        await update(account: account) { current in
-            var set = Set(current.mutedGroupIDs)
-            if muted { set.insert(groupID) } else { set.remove(groupID) }
-            current.mutedGroupIDs = Array(set).sorted()
+    /// A mute or an unmute made in `account` (SoundService reads it at the
+    /// tap, the only caller). Filed as pending at once, before anything is
+    /// awaited, so a sync answered in between keeps it (`pull`), then sent.
+    func setMuted(_ chat: IslandChat, muted: Bool, account: UUID) {
+        switch chat {
+        case .peer(let uin):
+            notePending(MuteKeys.peer(uin), muted: muted, account: account)
+            Task {
+                await update(account: account) { current in
+                    var set = Set(current.mutedUINs)
+                    if muted { set.insert(uin) } else { set.remove(uin) }
+                    current.mutedUINs = Array(set).sorted()
+                }
+            }
+        case .group(let id):
+            notePending(MuteKeys.group(id), muted: muted, account: account)
+            Task {
+                await update(account: account) { current in
+                    var set = Set(current.mutedGroupIDs)
+                    if muted { set.insert(id) } else { set.remove(id) }
+                    current.mutedGroupIDs = Array(set).sorted()
+                }
+            }
         }
     }
 
@@ -340,12 +358,14 @@ final class NotificationPrefsService: ObservableObject {
         Self.storePending([], .unmutes, account)
     }
 
+    /// Memory only. The lists the extension reads are per account and stay
+    /// (SoundService owns them): emptied on every switch, they left every
+    /// other account's pushes judged by nobody's mutes.
     func wipe() {
         prefs = .defaults
         loaded = false
         syncedFor = nil
         generation += 1
         pulling = nil
-        MutedStore.shared.wipe()
     }
 }

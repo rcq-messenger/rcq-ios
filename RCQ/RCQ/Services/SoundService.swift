@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioToolbox
 import Foundation
+import UIKit
 
 /// Plays the classic-style cue sounds. Uses `.ambient` so the hardware silent switch silences playback.
 @MainActor
@@ -46,15 +47,34 @@ final class SoundService: ObservableObject {
         didSet { UserDefaults.standard.set(contactOfflineSoundEnabled, forKey: "sound.contact_offline_enabled") }
     }
 
-    @Published private(set) var mutedThreads: Set<String> = Set(
-        (UserDefaults.standard.array(forKey: "sound.muted_threads") as? [String]) ?? []
-    )
+    /// Every account's silent chats ("None"), by account id (`uuidString`), in
+    /// `MuteKeys` spelling. Read through the account pointer at every call, so
+    /// no switch path can leave one account's list in front of another's chats.
+    ///
+    /// ⚠ PER ACCOUNT. This used to be one list for the whole phone, so a chat
+    /// muted in one account showed as muted in every other, where the same
+    /// number is somebody else (each island numbers on its own) and the same
+    /// group id is another group. Somebody on another island is filed by
+    /// uin@host for the same reason.
+    @Published private var mutedByAccount: [String: Set<String>] = SoundService.loadMap(SoundService.mutedKey)
 
-    /// Per-thread "mentions only" set (group threads). Disjoint from
-    /// `mutedThreads`: a thread is at most one of all/mentions/none.
-    @Published private(set) var mentionsOnlyThreads: Set<String> = Set(
-        (UserDefaults.standard.array(forKey: "sound.mentions_only_threads") as? [String]) ?? []
-    )
+    /// Per-account "mentions only" groups, same shape. A setting of "None"
+    /// clears it; a long-press mute leaves it under the mute.
+    @Published private var mentionsByAccount: [String: Set<String>] = SoundService.loadMap(SoundService.mentionsKey)
+
+    /// The phone-wide lists older builds kept, until `migrateLegacyIfNeeded`
+    /// has handed them to the accounts that hold those chats. Read beside every
+    /// real account's own lists until then, which is where they were in force.
+    private var legacy: (muted: Set<String>, mentions: Set<String>)? = SoundService.loadLegacy()
+    private var migrating = false
+
+    nonisolated private static let mutedKey = "sound.muted_threads.v2"
+    nonisolated private static let mentionsKey = "sound.mentions_only_threads.v2"
+    nonisolated private static let legacyMutedKey = "sound.muted_threads"
+    nonisolated private static let legacyMentionsKey = "sound.mentions_only_threads"
+    /// Set once the hand-out has run, empty lists or not: it also turns the
+    /// extension's file into the per-account form.
+    nonisolated private static let handedOutKey = "sound.mutes_per_account"
 
     /// Per-thread notification preference. `.none` = silent everywhere
     /// (server-backed mute). `.mentions` = quiet except when @mentioned
@@ -249,78 +269,341 @@ final class SoundService: ObservableObject {
 
     // MARK: - mute
 
-    func isMuted(thread: ThreadID) -> Bool {
-        mutedThreads.contains(Self.key(for: thread))
+    /// A chat as the mute lists know it. A peer carries the island they live
+    /// on (nil: ours), because the number alone is somebody else on every
+    /// other island.
+    enum Chat: Hashable {
+        case peer(uin: Int, host: String?)
+        case group(id: Int)
     }
 
+    /// Whose lists a read or a tap means: the active account's, or in a decoy
+    /// session the decoy's own slot, which lives in memory only (the active
+    /// account id stays the REAL one during duress, like `LockedChatsStore`).
+    /// Nil before there is any account.
+    private var slot: String? {
+        if PanicPINService.shared.isDecoy { return Self.decoySlot }
+        return AccountManager.shared.activeAccountID?.uuidString
+    }
+
+    private static var decoySlot: String { PanicPINService.decoyNamespace.uuidString }
+
+    func isMuted(thread: ThreadID) -> Bool { isMuted(chat(for: thread)) }
+
+    func isMuted(_ chat: Chat) -> Bool { has(chat, in: mutedByAccount, legacy: legacy?.muted) }
+
     /// Current 3-way notification mode for a thread.
-    func notifyMode(thread: ThreadID) -> NotifyMode {
-        let k = Self.key(for: thread)
-        if mutedThreads.contains(k) { return .none }
-        if mentionsOnlyThreads.contains(k) { return .mentions }
+    func notifyMode(thread: ThreadID) -> NotifyMode { notifyMode(chat(for: thread)) }
+
+    func notifyMode(_ chat: Chat) -> NotifyMode {
+        if isMuted(chat) { return .none }
+        if has(chat, in: mentionsByAccount, legacy: legacy?.mentions) { return .mentions }
         return .all
+    }
+
+    /// The active account's silent peers, ours by number first, then the
+    /// people on other islands: Settings -> Notifications lists them.
+    var mutedPeers: [Chat] {
+        guard let s = slot else { return [] }
+        var keys = mutedByAccount[s] ?? []
+        if let legacy, s != Self.decoySlot { keys.formUnion(legacy.muted) }
+        let own = keys.compactMap(MuteKeys.ownPeer).sorted().map { Chat.peer(uin: $0, host: nil) }
+        let elsewhere: [Chat] = keys.compactMap(MuteKeys.address).sorted().compactMap { address in
+            let parts = address.split(separator: "@", maxSplits: 1)
+            guard parts.count == 2, let uin = Int(parts[0]) else { return nil }
+            return .peer(uin: uin, host: String(parts[1]))
+        }
+        return own + elsewhere
     }
 
     /// Set the 3-way notification mode. `.none` flips the server-backed mute
     /// on (so the fan-out skips the push entirely); `.mentions`/`.all` clear
-    /// it (the client filters instead). The mentions-only group set is
-    /// mirrored to the App Group so the NSE can drop non-mention pushes.
-    func setNotifyMode(_ mode: NotifyMode, thread: ThreadID) {
-        let k = Self.key(for: thread)
-        let wasMuted = mutedThreads.contains(k)
+    /// it (the client filters instead). The mentions-only groups reach the
+    /// extension with the rest of this account's lists, so it can drop
+    /// non-mention pushes.
+    func setNotifyMode(_ mode: NotifyMode, thread: ThreadID) { setNotifyMode(mode, chat(for: thread)) }
+
+    func setNotifyMode(_ mode: NotifyMode, _ chat: Chat) {
         switch mode {
-        case .none:     mutedThreads.insert(k);  mentionsOnlyThreads.remove(k)
-        case .mentions: mutedThreads.remove(k);  mentionsOnlyThreads.insert(k)
-        case .all:      mutedThreads.remove(k);  mentionsOnlyThreads.remove(k)
+        case .none:     change(chat, muted: true, mentions: false)
+        case .mentions: change(chat, muted: false, mentions: true)
+        case .all:      change(chat, muted: false, mentions: false)
         }
-        UserDefaults.standard.set(Array(mutedThreads), forKey: "sound.muted_threads")
-        UserDefaults.standard.set(Array(mentionsOnlyThreads), forKey: "sound.mentions_only_threads")
-        // Server push-mute reflects ONLY the none-state (server can't tell a
-        // mention from sealed content). Only call when it actually changed.
-        let nowMuted = (mode == .none)
-        if nowMuted != wasMuted {
-            // The account the tap was made in, read now: the task may start
-            // after a switch, and the change belongs to this one's island.
-            if let account = AccountManager.shared.activeAccountID {
-                switch thread {
-                case .peer(let uin):
-                    Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted, account: account) }
-                case .group(let gid):
-                    Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted, account: account) }
-                }
+    }
+
+    func toggleMute(thread: ThreadID) { toggleMute(chat(for: thread)) }
+
+    /// Mute or unmute and nothing else: a "mentions only" group keeps that
+    /// setting under a mute, and gets it back on the unmute.
+    func toggleMute(_ chat: Chat) { change(chat, muted: !isMuted(chat), mentions: nil) }
+
+    /// The one write. Into the active account's lists, and from there to its
+    /// island (only what that island keeps, see `MuteKeys.isIslandKept`) and to
+    /// the extension. In a decoy session nothing leaves memory: the account on
+    /// file is the real one, and nothing done there may reach it.
+    private func change(_ chat: Chat, muted: Bool, mentions: Bool?) {
+        guard let s = slot else { return }
+        let k = Self.key(chat)
+        let wasMuted = isMuted(chat)
+        var m = mutedByAccount[s] ?? []
+        var t = mentionsByAccount[s] ?? []
+        if muted { m.insert(k) } else { m.remove(k) }
+        if let mentions {
+            if mentions { t.insert(k) } else { t.remove(k) }
+        }
+        mutedByAccount[s] = m.isEmpty ? nil : m
+        mentionsByAccount[s] = t.isEmpty ? nil : t
+        guard s != Self.decoySlot, let account = UUID(uuidString: s) else { return }
+        // Before the hand-out the phone-wide lists still say it, by the number
+        // alone too, and they are read beside this account's: taken off there
+        // as well, or they would keep saying it.
+        if legacy != nil {
+            let bare = Self.legacyKey(chat)
+            if !muted {
+                legacy?.muted.remove(k)
+                legacy?.muted.remove(bare)
+            }
+            if mentions == false {
+                legacy?.mentions.remove(k)
+                legacy?.mentions.remove(bare)
             }
         }
-        // Mirror the mentions-only GROUP ids to the App Group for the NSE.
-        let mentionGroupIDs: [Int] = mentionsOnlyThreads.compactMap { key in
-            key.hasPrefix("group:") ? Int(key.dropFirst("group:".count)) : nil
+        save()
+        // Server push-mute reflects ONLY the none-state (server can't tell a
+        // mention from sealed content). Only sent when it actually changed,
+        // for the account the tap was made in, read now.
+        if muted != wasMuted {
+            if let uin = MuteKeys.ownPeer(k) {
+                NotificationPrefsService.shared.setMuted(.peer(uin), muted: muted, account: account)
+            } else if let id = MuteKeys.groupID(k), MuteKeys.isIslandKept(k) {
+                NotificationPrefsService.shared.setMuted(.group(id), muted: muted, account: account)
+            }
         }
-        MutedStore.shared.setMentionsOnlyGroups(mentionGroupIDs)
+        syncExtensionMirror()
     }
 
-    func toggleMute(thread: ThreadID) {
-        let k = Self.key(for: thread)
-        let nowMuted: Bool
-        if mutedThreads.contains(k) {
-            mutedThreads.remove(k)
-            nowMuted = false
-        } else {
-            mutedThreads.insert(k)
-            nowMuted = true
+    /// What `account`'s island answered it holds muted becomes what this phone
+    /// shows for that account: the chats the island keeps follow it (a mute or
+    /// an unmute made on another device), everybody on other islands and every
+    /// room there stays as it was. `uins`/`groupIDs` already carry the changes
+    /// made here that the island has not confirmed (`NotificationPrefsService`),
+    /// so an answer to an older read never undoes a tap.
+    func adoptIslandMutes(uins: Set<Int>, groupIDs: Set<Int>, account: UUID) {
+        guard !PanicPINService.shared.isDecoy else { return }
+        let s = account.uuidString
+        let current = mutedByAccount[s] ?? []
+        let next = MuteKeys.adopt(muted: current, islandUINs: uins, islandGroups: groupIDs)
+        guard next != current else { return }
+        mutedByAccount[s] = next.isEmpty ? nil : next
+        save()
+        syncExtensionMirror()
+    }
+
+    /// An account that left the device takes its lists with it.
+    func forget(accountID: UUID) {
+        let s = accountID.uuidString
+        let a = mutedByAccount.removeValue(forKey: s) != nil
+        let b = mentionsByAccount.removeValue(forKey: s) != nil
+        if a || b, !PanicPINService.shared.isDecoy { save() }
+        syncExtensionMirror()
+    }
+
+    /// Burn hook: the active account's lists and nobody else's. A burn mints a
+    /// fresh identity under the same account id, and the chats these named are
+    /// gone with the burned one.
+    func wipeActiveAccount() {
+        guard let s = slot else { return }
+        if s == Self.decoySlot { return forgetDecoy() }
+        if let id = UUID(uuidString: s) { forget(accountID: id) }
+    }
+
+    /// The decoy's lists, when the decoy PIN is removed or a new decoy is
+    /// made: kept, a muted chat would say that a decoy session once existed.
+    func forgetDecoy() {
+        mutedByAccount[Self.decoySlot] = nil
+        mentionsByAccount[Self.decoySlot] = nil
+    }
+
+    /// Hand the notification extension every account's lists (`MutedStore`),
+    /// so a push for an account that is not the active one is judged by that
+    /// account's own mutes. Not before the hand-out: until then the file an
+    /// older build wrote stands, and the extension reads it the way it was
+    /// written. Never the decoy's.
+    func syncExtensionMirror() {
+        guard legacy == nil, !PanicPINService.shared.isDecoy else { return }
+        var map: [String: MutedStore.Lists] = [:]
+        for account in AccountManager.shared.accounts {
+            let id = account.id.uuidString
+            map[id] = MuteKeys.lists(muted: mutedByAccount[id] ?? [], mentions: mentionsByAccount[id] ?? [])
         }
-        UserDefaults.standard.set(Array(mutedThreads), forKey: "sound.muted_threads")
-        // Mirror to backend so the push fan-out can suppress APNs
-        // alerts for muted threads. 1:1 → `muted_uins`; groups →
-        // `muted_group_ids`. For the account the tap was made in.
-        guard let account = AccountManager.shared.activeAccountID else { return }
+        MutedStore.shared.setAll(map)
+    }
+
+    /// Hand the phone-wide lists older builds kept to the accounts that hold
+    /// those chats (`MuteKeys.handOut`), once. Called from every real boot and
+    /// unlock: it needs the rosters on disk of every account here, so it waits
+    /// for a real session with the data key open (a sealed roster cannot be
+    /// read), and until it has run the old lists stay in force everywhere.
+    func migrateLegacyIfNeeded() async {
+        guard legacy != nil, !migrating, Self.mayHandOut else { return }
+        migrating = true
+        defer { migrating = false }
+        let ids = AccountManager.shared.accounts.map(\.id)
+        let dataKey = PanicPINService.shared.dataKey
+        // The roster files off the main thread: they can be large (see
+        // `AppState.hydrateRosterFromDisk`). Numbers and ids only.
+        let rosters = await Task.detached(priority: .utility) { () -> [UUID: (peers: Set<Int>?, groups: Set<Int>?)] in
+            var out: [UUID: (peers: Set<Int>?, groups: Set<Int>?)] = [:]
+            for id in ids {
+                let peers = RosterSnapshot.loadOffMain(.contacts, as: RosterNumbers.self, dataKey: dataKey, accountID: id)
+                let groups = RosterSnapshot.loadOffMain(.groups, as: [GroupNumber].self, dataKey: dataKey, accountID: id)
+                out[id] = (peers?.all, groups.map { Set($0.map(\.id)) })
+            }
+            return out
+        }.value
+        // The phone may have moved on while the files were read, and a tap
+        // in the meantime may have taken a chat off the old lists.
+        guard let pending = legacy, Self.mayHandOut, AccountManager.shared.accounts.map(\.id) == ids else { return }
+        var holdings: [String: MuteKeys.Holdings] = [:]
+        for id in ids {
+            var h = MuteKeys.Holdings()
+            let roster = rosters[id]
+            h.known = roster?.peers != nil || roster?.groups != nil
+            h.peers = roster?.peers ?? []
+            h.groups = roster?.groups ?? []
+            h.addresses = Set(CrossIslandStore.storedAddresses(accountID: id))
+            h.groups.formUnion(VisitedIslandsStore.aliasIDs(accountID: id))
+            if let known = AppGroup.strangerQuarantine(accountID: id)?.known { h.peers.formUnion(known) }
+            let touched = NotificationPrefsService.pendingKeys(account: id)
+            h.peers.formUnion(touched.all.compactMap(MuteKeys.ownPeer))
+            h.groups.formUnion(touched.all.compactMap(MuteKeys.groupID))
+            h.unmuted = touched.unmutes
+            holdings[id.uuidString] = h
+        }
+        let active = AccountManager.shared.activeAccountID?.uuidString
+        let out = MuteKeys.handOut(
+            muted: pending.muted, mentions: pending.mentions, holdings: holdings, active: active
+        )
+        for (a, keys) in out.muted { mutedByAccount[a, default: []].formUnion(keys) }
+        for (a, keys) in out.mentions { mentionsByAccount[a, default: []].formUnion(keys) }
+        // The island lists the older build's extension file kept, for the
+        // account they were read for: what its island said, as its next sync
+        // would say again.
+        if let older = MutedStore.shared.olderBuildIslandLists(),
+           let owner = older.owner ?? active, holdings[owner] != nil {
+            let island = older.uins.map { MuteKeys.peer($0) } + older.groupIDs.filter { $0 > 0 }.map(MuteKeys.group)
+            mutedByAccount[owner, default: []].formUnion(island)
+        }
+        for (a, keys) in out.pending {
+            if let id = UUID(uuidString: a) { NotificationPrefsService.shared.notePendingMutes(keys, account: id) }
+        }
+        legacy = nil
+        UserDefaults.standard.removeObject(forKey: Self.legacyMutedKey)
+        UserDefaults.standard.removeObject(forKey: Self.legacyMentionsKey)
+        UserDefaults.standard.set(true, forKey: Self.handedOutKey)
+        save()
+        syncExtensionMirror()
+        // What the active account's island must hear goes now, not on the next
+        // launch.
+        if let active, out.pending[active]?.isEmpty == false {
+            Task { await NotificationPrefsService.shared.refresh() }
+        }
+    }
+
+    /// A real session whose rosters can be read: not a decoy, an account to
+    /// hand to, the phone unlocked (the files are `.complete`), and the data
+    /// key open when a PIN seals them.
+    private static var mayHandOut: Bool {
+        let pin = PanicPINService.shared
+        return !pin.isDecoy
+            && !AccountManager.shared.accounts.isEmpty
+            && UIApplication.shared.isProtectedDataAvailable
+            && (!pin.isConfigured || pin.dataKey != nil)
+    }
+
+    /// The numbers in a contacts roster file (`ContactService.Snapshot`):
+    /// contacts, and requests either way.
+    private struct RosterNumbers: Decodable {
+        struct Peer: Decodable { let uin: Int }
+        struct In: Decodable { let from_uin: Int }
+        struct Out: Decodable { let to_uin: Int }
+        let contacts: [Peer]
+        let pending: [In]?
+        let outgoing: [Out]?
+
+        var all: Set<Int> {
+            Set(contacts.map(\.uin) + (pending ?? []).map(\.from_uin) + (outgoing ?? []).map(\.to_uin))
+        }
+    }
+
+    private struct GroupNumber: Decodable { let id: Int }
+
+    /// The chat a thread is in this account. One number is one thread here
+    /// (`CrossIslandLogic.fold`): the roster row that holds it says which
+    /// island it is on, our own first.
+    private func chat(for thread: ThreadID) -> Chat {
         switch thread {
+        case .group(let id):
+            return .group(id: id)
         case .peer(let uin):
-            Task { await NotificationPrefsService.shared.setMuted(uin, muted: nowMuted, account: account) }
-        case .group(let gid):
-            Task { await NotificationPrefsService.shared.setGroupMuted(gid, muted: nowMuted, account: account) }
+            let rows = ContactService.shared.contacts.filter { $0.uin == uin }
+            if rows.contains(where: { $0.host == nil }) { return .peer(uin: uin, host: nil) }
+            return .peer(uin: uin, host: rows.first?.host)
         }
     }
 
-    private static func key(for thread: ThreadID) -> String {
-        "\(thread.kindString):\(thread.rawKey)"
+    /// `MuteKeys` spelling. Our own island by any of its names is the number
+    /// alone.
+    private static func key(_ chat: Chat) -> String {
+        switch chat {
+        case .group(let id):
+            return MuteKeys.group(id)
+        case .peer(let uin, let host):
+            return MuteKeys.peer(uin, host: Multihome.isOwnHost(host) ? nil : host)
+        }
+    }
+
+    /// How the phone-wide lists named the chat: the number alone.
+    private static func legacyKey(_ chat: Chat) -> String {
+        switch chat {
+        case .group(let id): return MuteKeys.group(id)
+        case .peer(let uin, _): return MuteKeys.peer(uin)
+        }
+    }
+
+    private func has(_ chat: Chat, in map: [String: Set<String>], legacy: Set<String>?) -> Bool {
+        guard let s = slot else { return false }
+        let k = Self.key(chat)
+        if map[s]?.contains(k) == true { return true }
+        guard let legacy, s != Self.decoySlot else { return false }
+        return legacy.contains(k) || legacy.contains(Self.legacyKey(chat))
+    }
+
+    /// Every real account's lists, and the phone-wide ones while they wait for
+    /// the hand-out. Never the decoy's slot: on disk it would say that a decoy
+    /// session existed and what it muted.
+    private func save() {
+        let decoy = Self.decoySlot
+        let d = UserDefaults.standard
+        d.set(mutedByAccount.filter { $0.key != decoy }.mapValues { $0.sorted() }, forKey: Self.mutedKey)
+        d.set(mentionsByAccount.filter { $0.key != decoy }.mapValues { $0.sorted() }, forKey: Self.mentionsKey)
+        if let legacy {
+            d.set(legacy.muted.sorted(), forKey: Self.legacyMutedKey)
+            d.set(legacy.mentions.sorted(), forKey: Self.legacyMentionsKey)
+        }
+    }
+
+    nonisolated private static func loadMap(_ key: String) -> [String: Set<String>] {
+        let raw = UserDefaults.standard.dictionary(forKey: key) as? [String: [String]] ?? [:]
+        return raw.mapValues(Set.init).filter { !$0.value.isEmpty }
+    }
+
+    nonisolated private static func loadLegacy() -> (muted: Set<String>, mentions: Set<String>)? {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: handedOutKey) else { return nil }
+        return (
+            Set(d.stringArray(forKey: legacyMutedKey) ?? []),
+            Set(d.stringArray(forKey: legacyMentionsKey) ?? [])
+        )
     }
 }

@@ -679,8 +679,11 @@ final class PanicPINService: ObservableObject {
         guard !biometricEnabled else { throw PINError.biometricConflict }
         let realSlot = layout.realSlot
         try await ensureNotInUse(pin, ignoringSlot: layout.decoySlot)
-        // A new decoy starts without the old one's chat locks.
-        if layout.decoySlot == nil { LockedChatsStore.shared.forgetDecoy() }
+        // A new decoy starts without the old one's chat locks, or mutes.
+        if layout.decoySlot == nil {
+            LockedChatsStore.shared.forgetDecoy()
+            SoundService.shared.forgetDecoy()
+        }
 
         let decoyKeyData = layout.decoyDataKey ?? randomKeyData()
         let decoyUIN = layout.decoyUIN ?? Self.randomDecoyUIN()
@@ -719,6 +722,7 @@ final class PanicPINService: ObservableObject {
         MessageDB.destroyDecoyStore()
         DecoySeedStore.destroy()
         LockedChatsStore.shared.forgetDecoy()
+        SoundService.shared.forgetDecoy()
     }
 
     // MARK: - decoy seeding (real session only)

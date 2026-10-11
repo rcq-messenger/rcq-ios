@@ -140,6 +140,17 @@ final class VisitedIslandsStore {
 
     func refByAlias(_ aliasId: Int) -> AliasRef? { aliases().first { $0.aliasId == aliasId } }
 
+    /// Another account's local ids of rooms on other islands, read without
+    /// binding to it: the hand-out of the mute lists older builds kept for the
+    /// whole phone (`SoundService`), where the same alias is another room in
+    /// another account.
+    static func aliasIDs(accountID: UUID) -> Set<Int> {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        guard let data = d.data(forKey: aliasPrefix + accountID.uuidString),
+              let a = try? JSONDecoder().decode([AliasRef].self, from: data) else { return [] }
+        return Set(a.map(\.aliasId))
+    }
+
     func wipe() {
         defaults.removeObject(forKey: visitedKey)
         defaults.removeObject(forKey: aliasKey)

@@ -3755,9 +3755,11 @@ final class MessageService {
         // parked for the drain to recognise, so counting it here as well
         // counted it twice (#1045 review, round 4).
         var bumpsBadge = true
+        // Mutes are this account's (SoundService), as the extension reads
+        // them for the account a push is for.
+        let sound = SoundService.shared
         if ws.type == "gmsg" {
-            guard notify, let gid = ws.groupID, !MutedStore.shared.isGroupMuted(gid),
-                  !MutedStore.shared.isGroupMentionsOnly(gid) else { return }
+            guard notify, let gid = ws.groupID, sound.notifyMode(thread: .group(id: gid)) == .all else { return }
             threadKey = BadgeCounter.threadKey(groupID: gid)
             bumpsBadge = false
             if !pinUp, !LockedChatsStore.shared.holds(.group(id: gid)),
@@ -3831,7 +3833,7 @@ final class MessageService {
                 // ⚠ Asked through `holdsUnkept`, not `shouldQuarantine`: with
                 // the phone locked the history cannot be read, and a person
                 // this account wrote to came out a stranger.
-                guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
+                guard !sound.isMuted(.peer(uin: decrypted.senderUIN, host: nil)) else { return }
                 threadKey = "pending"
                 bumpsBadge = false
                 if !pinUp {
@@ -3841,14 +3843,23 @@ final class MessageService {
             } else {
                 let thread: ThreadID
                 if let gid = ws.groupID {
-                    guard !MutedStore.shared.isGroupMuted(gid) else { return }
-                    if MutedStore.shared.isGroupMentionsOnly(gid) {
+                    let mode = sound.notifyMode(thread: .group(id: gid))
+                    guard mode != .none else { return }
+                    if mode == .mentions {
                         guard case .text(_, let text, _, _, _, _) = decrypted.envelope, bodyMentionsMe(text) else { return }
                     }
                     threadKey = BadgeCounter.threadKey(groupID: gid)
                     thread = .group(id: gid)
                 } else {
-                    guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
+                    // Muted as the person the drain files it under: a number
+                    // of our island, or the contact on another island the
+                    // key proved them to be (at whichever address it is kept).
+                    let host = island.flatMap {
+                        Self.verifiedCrossIslandContact(
+                            uin: decrypted.senderUIN, host: $0, spub: decrypted.senderSigningKey
+                        )?.host
+                    }
+                    guard !sound.isMuted(.peer(uin: decrypted.senderUIN, host: host)) else { return }
                     threadKey = BadgeCounter.threadKey(peerUIN: decrypted.senderUIN)
                     thread = .peer(uin: decrypted.senderUIN)
                 }

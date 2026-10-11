@@ -793,6 +793,9 @@ final class AppState: ObservableObject {
         // The extension's copy of our island's names, now that the signed
         // config (and its front) is loaded (report 1071).
         AccountManager.shared.syncExtensionOwnHosts()
+        // The phone-wide mute lists of older builds, handed to the accounts
+        // that hold those chats once a real session can read every roster.
+        Task { await SoundService.shared.migrateLegacyIfNeeded() }
 
         // See `wipeGeneration`: checked after each network stage below.
         let generation = wipeGeneration
@@ -2212,6 +2215,9 @@ final class AppState: ObservableObject {
         // next sync would put them on the replacement identity's lists.
         NotificationPrefsService.shared.forgetPending(account: AccountManager.shared.activeAccountID)
         NotificationPrefsService.shared.wipe()
+        // And its mutes, ONLY its own: they are per account, and the chats
+        // they named went with the burned identity.
+        SoundService.shared.wipeActiveAccount()
         MessageStore.shared.clearAll()
         VisitStore.shared.wipe()
         RandomChatService.shared.wipe()
@@ -2840,6 +2846,9 @@ final class AppState: ObservableObject {
 
     func resumeAfterUnlock() async {
         guard booted, !PanicPINService.shared.isDecoy else { return }
+        // A boot that ran before this unlock could not read the rosters the
+        // mute hand-out needs (see doBoot).
+        Task { await SoundService.shared.migrateLegacyIfNeeded() }
         // Set up for another number than the one now signed in: a boot, not a
         // redial (see `forgetDecoyBoot`, which normally gets here first).
         if !MessageService.shared.servesSignedInAccount {

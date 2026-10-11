@@ -2314,7 +2314,7 @@ struct ContactListView: View {
 
     /// Action list for a contact row's long-press preview overlay.
     /// Same items as `contactContextMenu`, packaged for the overlay.
-    private func contactActions(contact: Contact, thread: ThreadID, muted: Bool) -> [ContextAction] {
+    private func contactActions(contact: Contact, chat: SoundService.Chat, muted: Bool) -> [ContextAction] {
         var out: [ContextAction] = []
         out.append(ContextAction(
             title: "contact_list.ctx.send_message".localized,
@@ -2342,7 +2342,7 @@ struct ContactListView: View {
         out.append(ContextAction(
             title: (muted ? "contact_list.ctx.unmute" : "contact_list.ctx.mute").localized,
             systemImage: muted ? "bell" : "bell.slash"
-        ) { sound.toggleMute(thread: thread) })
+        ) { sound.toggleMute(chat) })
         if !filedInOwnSection {
             out.append(ContextAction(
                 title: (archive.contains(peer: contact.uin)
@@ -2398,8 +2398,12 @@ struct ContactListView: View {
         switch target {
         case .peer(let snapshot):
             let live = vm.contacts.first(where: { $0.uin == snapshot.uin }) ?? snapshot
-            let thread = ThreadID.peer(uin: live.uin)
-            return contactActions(contact: live, thread: thread, muted: sound.isMuted(thread: thread))
+            // Muted as the person on the row that was pressed, island and
+            // all: by the number alone, the same number on another island
+            // (somebody else) would be muted with them. One from "Other
+            // islands" whose number a contact of ours holds is not that one.
+            let chat = SoundService.Chat.peer(uin: snapshot.uin, host: snapshot.host)
+            return contactActions(contact: live, chat: chat, muted: sound.isMuted(chat))
         case .group(let snapshot):
             let live = groups.find(snapshot.id) ?? snapshot
             let thread = ThreadID.group(id: live.id)
@@ -2483,7 +2487,7 @@ struct ContactListView: View {
     }
 
     @ViewBuilder
-    private func contactContextMenu(contact: Contact, thread: ThreadID, muted: Bool) -> some View {
+    private func contactContextMenu(contact: Contact, muted: Bool) -> some View {
         Button { path.append(contact) } label: {
             Label("contact_list.ctx.send_message".localized, systemImage: "bubble.left")
         }
@@ -2499,7 +2503,7 @@ struct ContactListView: View {
                   systemImage: favorites.contains(peer: contact.uin) ? "star.slash" : "star")
         }
         Button {
-            sound.toggleMute(thread: thread)
+            sound.toggleMute(.peer(uin: contact.uin, host: contact.host))
         } label: {
             Label((muted
                     ? "contact_list.ctx.unmute"
@@ -2584,8 +2588,9 @@ private struct ContactRow: View {
     @ObservedObject private var aliasStore = ContactAliasStore.shared
     @ObservedObject private var liveness = PeerLivenessStore.shared
 
+    /// By the person's island too: the same number elsewhere is somebody else.
     private var isMuted: Bool {
-        sound.isMuted(thread: .peer(uin: contact.uin))
+        sound.isMuted(.peer(uin: contact.uin, host: contact.host))
     }
 
     /// Their island says this account no longer exists (report 1067). Only a

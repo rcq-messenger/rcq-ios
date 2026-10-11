@@ -162,6 +162,11 @@ final class AccountManager: ObservableObject {
         // Its chat locks are filed under its id (#1045) and mean nothing once
         // it has left the device.
         LockedChatsStore.shared.forget(accountID: id)
+        // Its mutes too, and the changes it never got to its island. After
+        // the roster change above: the extension's copy lists the accounts
+        // still here.
+        SoundService.shared.forget(accountID: id)
+        NotificationPrefsService.shared.forgetPending(account: id)
         if activeAccountID == id {
             activeAccountID = accounts.first?.id
         }

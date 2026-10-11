@@ -264,6 +264,17 @@ final class CrossIslandStore: ObservableObject {
     /// All stored cross-island contacts (each has `host` set).
     func all() -> [Contact] { Array(cache.values) }
 
+    /// Another account's contacts here as "uin@host" (`AppGroup.canonicalHost`
+    /// spelling), read without binding to it: the hand-out of the mute lists
+    /// older builds kept for the whole phone (`SoundService`).
+    static func storedAddresses(accountID: UUID) -> [String] {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        return load(d, keyFor(accountID)).values.compactMap { c in
+            guard let raw = c.host, let host = AppGroup.canonicalHost(raw) else { return nil }
+            return "\(c.uin)@\(host)"
+        }
+    }
+
     /// The row pinned at exactly `uin@host`, or nil. A dictionary read, for
     /// the callers that ask per row while a list draws (report 1067).
     func row(uin: Int, host: String) -> Contact? { cache[ciKey(uin, host)] }
