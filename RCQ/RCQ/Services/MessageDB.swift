@@ -191,6 +191,7 @@ final class MessageDB {
         }
         lastSaveFailed = false
         container = next
+        forgetWrittenTo()
     }
 
     private init() {
@@ -927,21 +928,120 @@ final class MessageDB {
         return ((try? ctx.count(for: req)) ?? 0) > 0
     }
 
+    /// The history can be READ right now: a store is attached and the phone
+    /// is unlocked. With the phone locked the file (complete protection)
+    /// refuses every read, and a question such as `hasOutgoing` comes back
+    /// "no" for a peer this account did write to.
+    var isReadable: Bool {
+        isStoreAvailable && UIApplication.shared.isProtectedDataAvailable
+    }
+
+    // MARK: - peers written to
+
+    /// `peersWrittenTo`'s answer for the store open now, kept current as rows
+    /// are written (`noteWritten`). Nil until it has been read, and again
+    /// after anything that can take a peer OUT of it (`forgetWrittenTo`).
+    private var writtenTo: Set<Int>?
+    /// Moves with every `forgetWrittenTo`: an answer read before the move may
+    /// name a peer who is no longer written to, and is read again.
+    private var writtenToEpoch = 0
+    /// The read in flight, if any, and the epoch it started in.
+    private var writtenToRead: (id: Int, epoch: Int, task: Task<Set<Int>?, Never>)?
+    private var writtenToReadSeq = 0
+    /// Peers written to while that read was running: the file it reads may
+    /// predate them.
+    private var writtenToSinceRead: Set<Int> = []
+
+    /// An outgoing row in a 1:1 thread names a peer written to.
+    private func noteWritten(_ row: MessageRecord) {
+        guard row.isFromMe, row.threadKind == "peer", !row.deletedLocally else { return }
+        let uin = Int(row.threadKey)
+        writtenTo?.insert(uin)
+        if writtenToRead != nil { writtenToSinceRead.insert(uin) }
+    }
+
+    /// Something may have taken a peer out (an outgoing row deleted, a thread
+    /// cleared, the store swapped): the kept answer goes, and the next ask
+    /// reads the file again.
+    private func forgetWrittenTo() {
+        writtenTo = nil
+        writtenToEpoch &+= 1
+    }
+
+    /// Whether removing `row` can take its peer out of `peersWrittenTo`.
+    private func countsAsWrittenTo(_ row: MessageRecord) -> Bool {
+        row.isFromMe && row.threadKind == "peer" && !row.deletedLocally
+    }
+
+    /// `peersWrittenTo` when it is already known, reading nothing; nil when
+    /// it is not (or there is no readable real store).
+    var peersWrittenToIfKnown: Set<Int>? {
+        guard isReadable, !decoyMode else { return nil }
+        return writtenTo
+    }
+
     /// Every peer this account ever SENT something to, `hasOutgoing` for all
     /// of them at once: the extension's copy of the stranger quarantine
     /// (`StrangerQuarantine.syncExtensionMirror`). Nil with no readable real
     /// store, where an empty answer would read as "wrote to nobody".
-    func peersWrittenTo() -> Set<Int>? {
-        guard isStoreAvailable, !decoyMode, UIApplication.shared.isProtectedDataAvailable else { return nil }
-        let req = NSFetchRequest<NSDictionary>(entityName: "MessageRecord")
-        req.resultType = .dictionaryResultType
-        req.returnsDistinctResults = true
-        req.propertiesToFetch = ["threadKey"]
-        req.predicate = NSPredicate(
-            format: "threadKind == %@ AND isFromMe == YES AND deletedLocally == NO", "peer"
-        )
-        guard let rows = try? ctx.fetch(req) else { return nil }
-        return Set(rows.compactMap { ($0["threadKey"] as? NSNumber).map { Int($0.int64Value) } })
+    ///
+    /// ⚠ Read off the main thread, and once per store. It is a distinct over
+    /// every message the account has (nothing indexes `isFromMe`), and it is
+    /// asked after every roster read, on every trip to the background and at
+    /// every flip of the switch: on a long history that froze the screen each
+    /// time. The first ask reads the file on a background context; after that
+    /// the answer is kept here, a written row adding its peer and anything
+    /// that can take one out throwing it away to be read again.
+    func peersWrittenTo() async -> Set<Int>? {
+        let generationAtStart = generation
+        // A delete landing during every read in a row is not worth chasing:
+        // nil, and the caller keeps what it had.
+        for _ in 0..<3 {
+            guard isReadable, !decoyMode, generation == generationAtStart else { return nil }
+            if let writtenTo { return writtenTo }
+            let read: (id: Int, epoch: Int, task: Task<Set<Int>?, Never>)
+            if let running = writtenToRead, running.epoch == writtenToEpoch {
+                read = running
+            } else {
+                // The background context reads the FILE. What the coalescing
+                // window still holds is written first, and when it cannot be
+                // (an open batch, a failing save) there is no answer to give.
+                if batchDepth == 0 { flushNow() }
+                guard !ctx.hasChanges else { return nil }
+                let bg = container.newBackgroundContext()
+                writtenToReadSeq &+= 1
+                writtenToSinceRead = []
+                read = (writtenToReadSeq, writtenToEpoch, Task.detached(priority: .utility) {
+                    await MessageDB.readPeersWrittenTo(in: bg)
+                })
+                writtenToRead = read
+            }
+            let answer = await read.task.value
+            if writtenToRead?.id == read.id { writtenToRead = nil }
+            guard read.epoch == writtenToEpoch, generation == generationAtStart else { continue }
+            // Another ask that waited on the same read got here first, and
+            // rows written since are already in what it kept.
+            if let writtenTo { return writtenTo }
+            guard let answer else { return nil }
+            let kept = answer.union(writtenToSinceRead)
+            writtenTo = kept
+            return kept
+        }
+        return nil
+    }
+
+    nonisolated private static func readPeersWrittenTo(in bg: NSManagedObjectContext) async -> Set<Int>? {
+        await bg.perform {
+            let req = NSFetchRequest<NSDictionary>(entityName: "MessageRecord")
+            req.resultType = .dictionaryResultType
+            req.returnsDistinctResults = true
+            req.propertiesToFetch = ["threadKey"]
+            req.predicate = NSPredicate(
+                format: "threadKind == %@ AND isFromMe == YES AND deletedLocally == NO", "peer"
+            )
+            guard let rows = try? bg.fetch(req) else { return nil }
+            return Set(rows.compactMap { ($0["threadKey"] as? NSNumber).map { Int($0.int64Value) } })
+        }
     }
 
     /// Whether at least one row exists for the thread older than `before`.
@@ -982,6 +1082,7 @@ final class MessageDB {
         let row = MessageRecord(context: ctx)
         apply(msg, to: row)
         if batchDepth > 0 { batchInserted[msg.id] = row }
+        noteWritten(row)
         save()
     }
 
@@ -995,6 +1096,7 @@ final class MessageDB {
         let row = MessageRecord(context: ctx)
         apply(msg, to: row)
         if batchDepth > 0 { batchInserted[msg.id] = row }
+        noteWritten(row)
         save()
         return true
     }
@@ -1087,6 +1189,7 @@ final class MessageDB {
 
     func markDeletedLocally(id: UUID) {
         guard let row = find(id: id) else { return }
+        if countsAsWrittenTo(row) { forgetWrittenTo() }
         row.deletedLocally = true
         row.text = ""
         row.mediaID = nil
@@ -1099,6 +1202,7 @@ final class MessageDB {
     /// the table by every disappearing message the account ever received.
     func deleteRow(id: UUID) {
         guard let row = find(id: id) else { return }
+        if countsAsWrittenTo(row) { forgetWrittenTo() }
         ctx.delete(row)
         save()
     }
@@ -1108,6 +1212,7 @@ final class MessageDB {
         // still pending in the context, so a batch left open by a drain would
         // re-save them right after the delete. Land them first.
         guard isStoreAvailable else { return }
+        if case .peer = thread { forgetWrittenTo() }
         flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         req.predicate = NSPredicate(
@@ -1121,6 +1226,7 @@ final class MessageDB {
 
     func deleteAll() {
         guard isStoreAvailable else { return }
+        forgetWrittenTo()
         flushForBatchDelete()
         let req = NSFetchRequest<NSFetchRequestResult>(entityName: "MessageRecord")
         let delete = NSBatchDeleteRequest(fetchRequest: req)
@@ -1196,6 +1302,7 @@ final class MessageDB {
             guard deadline < now else { continue }
             let thread = ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey))
             removed[thread, default: []].append(row.id)
+            if countsAsWrittenTo(row) { forgetWrittenTo() }
             ctx.delete(row)
         }
         if !removed.isEmpty { save() }

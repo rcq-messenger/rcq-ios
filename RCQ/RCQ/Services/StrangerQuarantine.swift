@@ -38,6 +38,7 @@ final class StrangerQuarantine {
     /// CrossIslandRequestsStore.bind - the two stores must move together, or
     /// an allowance granted on one account would leak into another.
     func bind(accountID: UUID?) {
+        mirrorTicket &+= 1
         boundID = accountID
         settingKey = Self.settingPrefix + (accountID?.uuidString ?? "none")
         allowedKey = Self.allowedPrefix + (accountID?.uuidString ?? "none")
@@ -52,6 +53,7 @@ final class StrangerQuarantine {
     /// clearing it would quietly turn the quarantine OFF for someone who had
     /// switched it on and would never be told. Erase the data, keep the guard.
     func wipe() {
+        mirrorTicket &+= 1
         defaults.removeObject(forKey: allowedKey)
         allowed = []
         // The extension's copy forgets them too, and whom the old identity
@@ -91,17 +93,49 @@ final class StrangerQuarantine {
     /// Never from a decoy session, and never for an account that is not the
     /// active one: the roster and the history in memory are the active
     /// account's.
+    ///
+    /// The peers written to are read off the main thread the first time for a
+    /// store (`MessageDB.peersWrittenTo`) and kept after that. Until that
+    /// first read is in, the last copy stands with the current allowances,
+    /// and the read writes the rest unless a later call, a switch of account
+    /// or the switch going off overtook it.
     @MainActor
     func syncExtensionMirror() {
-        guard let id = boundID, id == AccountManager.shared.activeAccountID,
-              !PanicPINService.shared.isDecoy, !PanicPINService.shared.isLocked
-        else { return }
+        mirrorTicket &+= 1
+        let ticket = mirrorTicket
+        guard let id = mirrorAccountID() else { return }
         guard enabled else {
             AppGroup.setStrangerQuarantine(nil, accountID: id)
             return
         }
+        let wroteTo = MessageDB.shared.peersWrittenToIfKnown
+        writeMirror(accountID: id, wroteTo: wroteTo)
+        guard wroteTo == nil, ContactService.shared.rosterLoaded, MessageDB.shared.isReadable else { return }
+        Task { @MainActor in
+            let read = await MessageDB.shared.peersWrittenTo()
+            guard let read, ticket == self.mirrorTicket, self.mirrorAccountID() == id, self.enabled
+            else { return }
+            self.writeMirror(accountID: id, wroteTo: read)
+        }
+    }
+
+    /// Moves with every sync and every wipe: a read that finishes after
+    /// either writes nothing.
+    private var mirrorTicket = 0
+
+    /// The account whose mirror this process may write now, if any.
+    @MainActor
+    private func mirrorAccountID() -> UUID? {
+        guard let id = boundID, id == AccountManager.shared.activeAccountID,
+              !PanicPINService.shared.isDecoy, !PanicPINService.shared.isLocked
+        else { return nil }
+        return id
+    }
+
+    @MainActor
+    private func writeMirror(accountID id: UUID, wroteTo: Set<Int>?) {
         var known = AppGroup.strangerQuarantine(accountID: id)?.known
-        if ContactService.shared.rosterLoaded, let wroteTo = MessageDB.shared.peersWrittenTo() {
+        if ContactService.shared.rosterLoaded, let wroteTo {
             known = Set(ContactService.shared.contacts.map(\.uin)).union(wroteTo).sorted()
         }
         AppGroup.setStrangerQuarantine(.init(allowed: allowed.sorted(), known: known), accountID: id)
@@ -141,5 +175,35 @@ final class StrangerQuarantine {
         if ContactService.shared.contacts.contains(where: { $0.uin == senderUIN }) { return false }
         if MessageDB.shared.hasOutgoing(thread: .peer(uin: senderUIN)) { return false }
         return true
+    }
+
+    /// `shouldQuarantine` for a message announced before it can be kept
+    /// (`MessageService.announceWithoutKeeping`, mostly with the phone
+    /// locked): will `ingest` file it under Requests once it can?
+    ///
+    /// With the history readable this IS `shouldQuarantine`. With the phone
+    /// locked it is not readable (complete file protection), so "wrote to
+    /// them" read as no, and a person this account had written to was
+    /// announced as a "New message request" whose tap opened an empty
+    /// Requests list. Then the rule the notification extension uses is the
+    /// one asked (`AppGroup.strangerQuarantine`, written by
+    /// `syncExtensionMirror` with every contact and every peer written to),
+    /// and without it nobody is held, as the extension does.
+    @MainActor
+    func holdsUnkept(myUIN: Int, senderUIN: Int, envelope: Envelope) -> Bool {
+        if MessageDB.shared.isReadable {
+            return shouldQuarantine(myUIN: myUIN, senderUIN: senderUIN, envelope: envelope)
+        }
+        guard enabled else { return false }
+        guard senderUIN != myUIN else { return false }
+        guard Self.isContentKind(envelope) else { return false }
+        guard !isAllowed(senderUIN) else { return false }
+        // The copy is the real account's, and only the active one's.
+        guard let id = boundID, id == AccountManager.shared.activeAccountID,
+              !PanicPINService.shared.isDecoy
+        else { return false }
+        // A contact in memory is let through whatever the copy says.
+        if ContactService.shared.contacts.contains(where: { $0.uin == senderUIN }) { return false }
+        return AppGroup.strangerQuarantine(accountID: id)?.holds(senderUIN) == true
     }
 }

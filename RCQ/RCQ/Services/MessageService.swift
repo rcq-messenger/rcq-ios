@@ -3821,13 +3821,16 @@ final class MessageService {
                     body = "chat.banner.message_request".localized
                 }
             } else if ws.groupID == nil, island == nil, let me,
-                      StrangerQuarantine.shared.shouldQuarantine(
+                      StrangerQuarantine.shared.holdsUnkept(
                           myUIN: me, senderUIN: decrypted.senderUIN, envelope: decrypted.envelope
                       ) {
                 // The same-island quarantine `ingest` runs (Privacy ->
                 // strangers to requests): held under Requests, so announced
                 // as a request, by number and without the words, as the
                 // extension does. A muted number stays quiet here too.
+                // ⚠ Asked through `holdsUnkept`, not `shouldQuarantine`: with
+                // the phone locked the history cannot be read, and a person
+                // this account wrote to came out a stranger.
                 guard !MutedStore.shared.isMuted(decrypted.senderUIN) else { return }
                 threadKey = "pending"
                 bumpsBadge = false
