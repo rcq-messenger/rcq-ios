@@ -97,7 +97,7 @@ hb.groups = [7, -1000]
 var hc = MuteKeys.Holdings()
 hc.known = false
 let legacy: Set<String> = ["peer:10", "peer:20", "peer:99", "group:7", "group:-1000", "group:8"]
-let out = MuteKeys.handOut(muted: legacy, mentions: ["group:7"], holdings: [a: ha, b: hb], active: a)
+let out = MuteKeys.handOut(muted: legacy, mentions: ["group:7"], holdings: [a: ha, b: hb])
 check("a number goes to the account holding it on its own island", out.muted[a]?.contains("peer:10") == true)
 check("and as uin@host to one holding somebody of that number elsewhere",
       out.muted[b]?.contains("peer:10@is2.rcq.app") == true && out.muted[b]?.contains("peer:10") == false)
@@ -109,25 +109,27 @@ check("held by nobody shown: everywhere, nothing lost",
       out.muted[a]?.contains("peer:99") == true && out.muted[b]?.contains("peer:99") == true
         && out.muted[a]?.contains("group:8") == true && out.muted[b]?.contains("group:8") == true)
 check("holders' islands hear their own mutes",
-      out.pending[a] == ["peer:10", "group:7", "peer:99", "group:8"] && out.pending[b] == ["peer:20", "group:7"])
+      out.pending[a] == ["peer:10", "group:7"] && out.pending[b] == ["peer:20", "group:7"])
+check("a chat nobody is shown to hold (a burned or removed account's) reaches no island",
+      out.pending.values.allSatisfy { !$0.contains("peer:99") && !$0.contains("group:8") })
 check("never an island not shown to hold the chat, nor anything it does not keep",
       out.pending[b]?.contains("peer:99") == false && out.pending[b]?.contains("peer:10@is2.rcq.app") == false
         && out.pending[b]?.contains("group:-1000") == false)
 check("mentions-only to the group's accounts", out.mentions[a] == ["group:7"] && out.mentions[b] == ["group:7"])
 
-let withUnknown = MuteKeys.handOut(muted: ["peer:10"], mentions: [], holdings: [a: ha, b: hb, c: hc], active: a)
+let withUnknown = MuteKeys.handOut(muted: ["peer:10"], mentions: [], holdings: [a: ha, b: hb, c: hc])
 check("an account nothing on disk speaks for gets it too, by the number, and its island is not told",
       withUnknown.muted[c] == ["peer:10"] && withUnknown.pending[c] == nil)
 
 var unmutedA = ha
 unmutedA.unmuted = ["peer:10", "group:7"]
-let afterUnmute = MuteKeys.handOut(muted: ["peer:10"], mentions: ["group:7"], holdings: [a: unmutedA, b: hb], active: a)
+let afterUnmute = MuteKeys.handOut(muted: ["peer:10"], mentions: ["group:7"], holdings: [a: unmutedA, b: hb])
 check("not as a mute where this account's own last word was an unmute",
       afterUnmute.muted[a] == nil && afterUnmute.pending[a] == nil)
 check("an unmute may be the switch to mentions only, which still goes", afterUnmute.mentions[a] == ["group:7"])
 
-let noActive = MuteKeys.handOut(muted: ["peer:99"], mentions: [], holdings: [a: ha, b: hb], active: nil)
-check("with no active account nobody's island is told about a chat nobody holds", noActive.pending.isEmpty)
+let unheld = MuteKeys.handOut(muted: ["peer:99"], mentions: [], holdings: [a: ha, b: hb])
+check("a chat nobody holds tells no island, even alone on the list", unheld.pending.isEmpty)
 
 // The extension may not read one list for every push again.
 let args = CommandLine.arguments

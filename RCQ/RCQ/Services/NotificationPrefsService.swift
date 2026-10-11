@@ -65,6 +65,11 @@ final class NotificationPrefsService: ObservableObject {
     /// The GET in flight. A second one answered after the first one's PUT
     /// would put the pre-PUT lists back, so callers share it.
     private var pulling: Task<Void, Never>?
+    /// Bumped each time a PUT's answer lands. A GET answered after one may
+    /// have been read on the island before that write. Its lists would undo
+    /// the write, and the write already removed the pending entry that would
+    /// have kept them out.
+    private var writesLanded = 0
 
     /// One account and the route to its own island, captured when a read or
     /// a write starts. Everything after answers to it: the request goes out
@@ -211,11 +216,17 @@ final class NotificationPrefsService: ObservableObject {
 
     private func pull() async {
         guard let bound = await bind(AccountManager.shared.activeAccountID) else { return }
+        let landed = writesLanded
         do {
             let out: Prefs = try await APIClient.shared.request(
                 "GET", "/users/me/push-preferences", route: bound.route
             )
             guard holds(bound) else { return }
+            // A write landed while this was out. This answer may predate it,
+            // and the write already settled its pending entry. Ask again
+            // instead of putting the old lists back. A write only lands once
+            // this account has synced, so `prefs` already holds it.
+            if writesLanded != landed { return await pull() }
             self.prefs = out
             self.syncedFor = bound.account
             Self.settlePending(against: out, account: bound.account)
@@ -302,6 +313,7 @@ final class NotificationPrefsService: ObservableObject {
                 ),
                 route: bound.route
             )
+            writesLanded += 1
             Self.settlePending(against: saved, account: bound.account)
         } catch {
             // Server keeps its old value; the next refresh() reconciles

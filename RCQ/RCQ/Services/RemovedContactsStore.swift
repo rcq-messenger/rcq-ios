@@ -562,13 +562,15 @@ enum MuteKeys {
     ///
     /// `pending`: the island-kept mutes each holder's island must have, sent
     /// on its next sync if it lacks them (a failed write of an older build
-    /// would otherwise be undone by the island's answer). A mute nobody is
-    /// shown to hold goes only to the active account's island, as an older
-    /// build would have re-sent it there; never to an island not shown to
-    /// hold the chat, where the number is somebody else.
+    /// would otherwise be undone by the island's answer). Never to an island
+    /// not shown to hold the chat, where the number is somebody else. A mute
+    /// nobody is shown to hold (a burned or removed account's, which older
+    /// builds left on the list) stays on the phone only: no island is told
+    /// about it, and the first sync's `adopt` drops it where that island
+    /// does not keep it.
     static func handOut(
         muted: Set<String>, mentions: Set<String>,
-        holdings: [String: Holdings], active: String?
+        holdings: [String: Holdings]
     ) -> Handout {
         let accounts = holdings.keys.sorted()
         // (account, key in that account's spelling, shown to hold it)
@@ -592,11 +594,9 @@ enum MuteKeys {
         }
         var out = Handout()
         for key in muted.sorted() {
-            let t = targets(key)
-            let nobody = !t.contains { $0.2 }
-            for (a, k, holds) in t where holdings[a]?.unmuted.contains(key) != true && holdings[a]?.unmuted.contains(k) != true {
+            for (a, k, holds) in targets(key) where holdings[a]?.unmuted.contains(key) != true && holdings[a]?.unmuted.contains(k) != true {
                 out.muted[a, default: []].insert(k)
-                if isIslandKept(k), holds || (nobody && a == active) {
+                if isIslandKept(k), holds {
                     out.pending[a, default: []].insert(k)
                 }
             }

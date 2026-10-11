@@ -481,9 +481,7 @@ final class SoundService: ObservableObject {
             holdings[id.uuidString] = h
         }
         let active = AccountManager.shared.activeAccountID?.uuidString
-        let out = MuteKeys.handOut(
-            muted: pending.muted, mentions: pending.mentions, holdings: holdings, active: active
-        )
+        let out = MuteKeys.handOut(muted: pending.muted, mentions: pending.mentions, holdings: holdings)
         for (a, keys) in out.muted { mutedByAccount[a, default: []].formUnion(keys) }
         for (a, keys) in out.mentions { mentionsByAccount[a, default: []].formUnion(keys) }
         // The island lists the older build's extension file kept, for the
