@@ -284,6 +284,90 @@ extension SignalProtocolStores {
     }
 }
 
+// MARK: - Sender pins (SenderTrust)
+
+extension SignalProtocolStores {
+    /// The Ed25519 key (base64) this device pinned for [uin] of our own
+    /// island, or nil when it never saw one.
+    func senderPin(uin: Int) -> String? {
+        let blob: Data? = db.sync {
+            db.selectBlob(
+                sql: "SELECT signing_key FROM sender_pins WHERE uin = ?;",
+                bind: { stmt in sqlite3_bind_int64(stmt, 1, Int64(uin)) }
+            )
+        }
+        guard let blob, !blob.isEmpty else { return nil }
+        return blob.base64EncodedString()
+    }
+
+    /// First sight: pins [keyB64] for [uin] unless something is pinned
+    /// already. Never moves a pin; `repinSender` is the one way to.
+    func pinSenderIfAbsent(uin: Int, keyB64: String) {
+        guard let raw = Data(base64Encoded: keyB64), !raw.isEmpty else { return }
+        db.sync {
+            _ = db.execute(
+                sql: "INSERT OR IGNORE INTO sender_pins (uin, signing_key) VALUES (?, ?);",
+                bind: { stmt in
+                    sqlite3_bind_int64(stmt, 1, Int64(uin))
+                    self.db.bindBlob(stmt, 2, raw)
+                }
+            )
+        }
+    }
+
+    /// Moves [uin]'s pin to [keyB64]. Only for a key the island serves now
+    /// (`SenderTrust.repinned`) or one the user accepted from a request marked
+    /// "key changed", and always with the user told.
+    func repinSender(uin: Int, keyB64: String) {
+        guard let raw = Data(base64Encoded: keyB64), !raw.isEmpty else { return }
+        db.sync {
+            _ = db.execute(
+                sql: """
+                INSERT INTO sender_pins (uin, signing_key) VALUES (?, ?)
+                ON CONFLICT(uin) DO UPDATE SET signing_key = excluded.signing_key;
+                """,
+                bind: { stmt in
+                    sqlite3_bind_int64(stmt, 1, Int64(uin))
+                    self.db.bindBlob(stmt, 2, raw)
+                }
+            )
+        }
+    }
+}
+
+// MARK: - Published identities (v=2 first contact)
+
+extension SignalProtocolStores {
+    /// What the island publishes as [uin]'s device [deviceId] libsignal
+    /// identity, serialized, as this device last read it.
+    func publishedIdentity(uin: Int, deviceId: Int) -> Data? {
+        let key = "\(uin):\(deviceId)"
+        return db.sync {
+            db.selectBlob(
+                sql: "SELECT identity_key FROM published_identities WHERE address = ?;",
+                bind: { stmt in self.db.bindText(stmt, 1, key) }
+            )
+        }
+    }
+
+    func storePublishedIdentity(_ identity: Data, uin: Int, deviceId: Int) {
+        guard !identity.isEmpty else { return }
+        let key = "\(uin):\(deviceId)"
+        db.sync {
+            _ = db.execute(
+                sql: """
+                INSERT INTO published_identities (address, identity_key) VALUES (?, ?)
+                ON CONFLICT(address) DO UPDATE SET identity_key = excluded.identity_key;
+                """,
+                bind: { stmt in
+                    self.db.bindText(stmt, 1, key)
+                    self.db.bindBlob(stmt, 2, identity)
+                }
+            )
+        }
+    }
+}
+
 // MARK: - PreKeyStore
 
 extension SignalProtocolStores: PreKeyStore {

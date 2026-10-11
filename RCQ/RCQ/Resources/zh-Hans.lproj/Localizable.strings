@@ -1158,6 +1158,10 @@
 "secscreen.you_screenshotted" = "你截了屏";
 "secscreen.peer_screenshotted" = "%@ 截了屏";
 "secscreen.preview" = "截屏";
+"chat.key_changed.notice" = "%@ 现在使用了另一个安全密钥。如果你没有预料到，请通过其他方式向对方确认。";
+"chat.key_changed.preview" = "安全密钥已更改";
+"chat.unverified.notice" = "来自这个号码的一条消息无法验证，因此没有显示。";
+"chat.unverified.preview" = "消息未验证";
 "chat.preview.relay" = "分享了一个连接";
 "secscreen.peer_fallback" = "你的联系人";
 "reactions.who_title" = "回应";
@@ -1667,6 +1671,7 @@
 "ci.server.not_in_groups" = "不在你在这个岛上的群组里";
 "ci.server.accept_hint" = "如果接受，对方会看到你的主号码。对方是谁，只有岛 %@ 作保。";
 "ci.server.key_changed" = "此人在岛 %@ 上的密钥与你在群组里看到的不同。接受前请先向对方确认。";
+"ci.request.key_changed" = "签名所用的密钥与你所知道的这个号码的密钥不同。只有在你知道对方更换了密钥时才接受。";
 "ci.server.retrying" = "无法连接岛 %@。我们会再试。";
 "ci.server.gave_up" = "岛 %@ 没有接收这个回复。请稍后再试。";
 "burn.islands.body.one" = "这个账号在另外 %1$d 个岛上还有副本，那里有你加入的群组或备用地址：%2$@。先删除这些副本，再删除你岛上的账号。";

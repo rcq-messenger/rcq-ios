@@ -341,6 +341,25 @@ final class MessageStore: ObservableObject {
         MessageDB.shared.updateText(id: messageID, text: newText, editedAt: editedAt)
     }
 
+    /// An edit that came in over the wire, applied only when its sender may
+    /// make it (`ControlAuthority.mayEdit`): the author of the row, in the
+    /// thread the edit belongs to, on a row of theirs, or our own carbon on
+    /// a row of ours. `applyEdit` itself trusts its caller, which is right
+    /// for the user's own edit and was wrong for everything else: a peer
+    /// could rewrite OUR messages in our chat with them, and a room member
+    /// anybody's in the room.
+    func applyInboundEdit(
+        messageID: UUID, thread: ThreadID, newText: String, editedAt: Date,
+        author: Int, ownCarbon: Bool = false
+    ) {
+        ensureLoaded(thread)
+        let held = threads[thread]?.first(where: { $0.id == messageID })
+        let target = held.map { ControlAuthority.Target(thread: $0.thread, senderUIN: $0.senderUIN, isFromMe: $0.isFromMe) }
+            ?? MessageDB.shared.controlTarget(id: messageID)
+        guard ControlAuthority.mayEdit(target, in: thread, by: author, ownCarbon: ownCarbon) else { return }
+        applyEdit(messageID: messageID, thread: thread, newText: newText, editedAt: editedAt)
+    }
+
     /// Patch in the canonical thumbnail + durationSec once VideoProcessor
     /// finishes. Used by the optimistic-send path: bubble appears
     /// instantly with the picker's quick first-frame thumb, then the
@@ -379,11 +398,18 @@ final class MessageStore: ObservableObject {
     /// `MessageDB.insert` recognises a copy only by an id it still has. Removing
     /// the row was report #415 — the message came back after a restart, unread,
     /// and in its pre-edit wording, because edits are never carboned.
+    ///
+    /// ⚠ Only inside `thread`. A row this thread does not hold in memory was
+    /// tombstoned by its id wherever it lived, so a delete that named another
+    /// chat's message (a 1:1 envelope naming a room's row, a moderator of one
+    /// room naming a row of another) reached it.
     func deleteLocal(messageID: UUID, thread: ThreadID) {
         ensureLoaded(thread)
         let exists = threads[thread]?.contains(where: { $0.id == messageID }) ?? false
         guard exists else {
-            MessageDB.shared.markDeletedLocally(id: messageID)
+            if MessageDB.shared.threadOf(id: messageID) == thread {
+                MessageDB.shared.markDeletedLocally(id: messageID)
+            }
             return
         }
         fadingOutIDs.insert(messageID)
@@ -493,6 +519,25 @@ final class MessageStore: ObservableObject {
         // scrolled up. The row is in the database; put it there and let the
         // next load of that window pick it up. No thread is returned: the
         // indicator points at a message the user cannot be scrolled to yet.
+        MessageDB.shared.mergeReaction(id: targetID, uin: uin, asset: asset)
+        return nil
+    }
+
+    /// A reaction from somebody else, applied only to a row of the thread the
+    /// envelope belongs to (`ControlAuthority.reactionThread`). Looking the id
+    /// up across every chat is right for our own echo alone; for anybody else
+    /// it let a 1:1 envelope hang a reaction under a room's message. Returns
+    /// the thread when the reaction was new on a row in memory, like
+    /// `applyReactionAnywhere`.
+    @discardableResult
+    func applyReactionInThread(targetID: UUID, thread: ThreadID, uin: Int, asset: String?) -> ThreadID? {
+        ensureLoaded(thread)
+        if threads[thread]?.contains(where: { $0.id == targetID }) == true {
+            return applyReaction(targetID: targetID, thread: thread, uin: uin, asset: asset) ? thread : nil
+        }
+        guard ControlAuthority.reactionThread(
+            targetThread: MessageDB.shared.threadOf(id: targetID), envelopeThread: thread, ownEcho: false
+        ) != nil else { return nil }
         MessageDB.shared.mergeReaction(id: targetID, uin: uin, asset: asset)
         return nil
     }

@@ -196,15 +196,18 @@ final class CrossIslandRequestsStore: ObservableObject {
     /// Quarantine one sealed payload from an un-accepted cross-island sender
     /// (or, with `host: ""` + `sentAt`, one decrypted same-island envelope
     /// from the opt-in stranger quarantine).
-    /// Returns false (caller drops it) when the sender is blocked.
+    /// `keyChanged`: signed by another key than the one held for this number
+    /// (`SenderTrust.forged`); the row says so, and accepting it is what moves
+    /// the pin. Returns false (caller drops it) when the sender is blocked.
     @discardableResult
     func hold(
         uin: Int, host: String, payload: String, preview: String, sentAt: Date? = nil,
-        id: String? = nil, spub: String? = nil
+        id: String? = nil, spub: String? = nil, keyChanged: Bool = false
     ) -> Bool {
         if isBlocked(uin: uin, host: host) { return false }
         let k = reqKey(uin, host)
         var r = cache[k] ?? Request(uin: uin, host: host, firstAt: Date(), msgs: [])
+        if keyChanged { r.keyChanged = true }
         r.msgs.append(Held(payload: payload, preview: preview, sentAt: sentAt, id: id, spub: spub))
         if r.msgs.count > Self.maxHeld { r.msgs = Array(r.msgs.suffix(Self.maxHeld)) }
         cache[k] = r

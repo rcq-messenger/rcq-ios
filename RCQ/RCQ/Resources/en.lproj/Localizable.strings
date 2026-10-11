@@ -1296,6 +1296,10 @@
 "secscreen.you_screenshotted" = "You took a screenshot";
 "secscreen.peer_screenshotted" = "%@ took a screenshot";
 "secscreen.preview" = "Screenshot";
+"chat.key_changed.notice" = "%@ now has a different security key. If you did not expect this, check with them another way.";
+"chat.key_changed.preview" = "Security key changed";
+"chat.unverified.notice" = "A message from this number could not be verified and was not shown.";
+"chat.unverified.preview" = "Message not verified";
 "chat.preview.relay" = "Shared a connection";
 "secscreen.peer_fallback" = "Your contact";
 "reactions.who_title" = "Reactions";
@@ -1884,6 +1888,7 @@
 "ci.server.not_in_groups" = "Not in your groups on this island";
 "ci.server.accept_hint" = "If you accept, they will see your home number. Only island %@ vouches for who they are.";
 "ci.server.key_changed" = "This person's key on island %@ differs from the one you saw in a group. Check with them before accepting.";
+"ci.request.key_changed" = "Signed with a different key than the one you know for this number. Accept only if you know they changed it.";
 "ci.server.retrying" = "Couldn't reach island %@. We'll try again.";
 "ci.server.gave_up" = "Island %@ didn't take the answer. Try again later.";
 "burn.islands.body.one" = "This account also has a copy on %1$d other island, where you joined groups or keep a backup address: %2$@. It is deleted first, then the account on your island.";

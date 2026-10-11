@@ -83,6 +83,7 @@ final class ContactService: ObservableObject {
             BlockedContactsStore.storeServerBlocked(serverBlocked, accountID: AccountManager.shared.activeAccountID)
         }
         contacts = withBlockFlags(list + cross)
+        SenderTrustLedger.seedPins(list.filter { $0.host == nil }.map { (uin: $0.uin, key: $0.signingKey) })
         pendingRequests = snap.pending
         outgoingRequests = snap.outgoing
         hydratedFromSnapshot = !contacts.isEmpty
@@ -281,6 +282,11 @@ final class ContactService: ObservableObject {
             // The extension drops whoever the app drops (`storeServerBlocked`).
             BlockedContactsStore.storeServerBlocked(serverBlocked, accountID: account)
             self.contacts = withBlockFlags(CrossIslandRoster.fold(list, store: CrossIslandStore.shared.all()) ?? list)
+            // First sight of each contact's key (`SenderTrust`): pinned unless
+            // pinned already, so a later roster that serves another key for
+            // the same number is a change the user is told about, never a
+            // silent swap. The extension judges pushes by the same pins.
+            SenderTrustLedger.seedPins(list.filter { $0.host == nil }.map { (uin: $0.uin, key: $0.signingKey) })
             // The foreign rows that actually landed, for the nickname map below.
             let cross = self.contacts.filter { $0.host != nil }
             self.rosterLoaded = true
@@ -746,6 +752,7 @@ final class ContactService: ObservableObject {
             )
             await MainActor.run {
                 guard !self.contacts.contains(where: { $0.uin == uin }) else { return }
+                SenderTrustLedger.seedPins([(uin: p.uin, key: p.signingKey)])
                 let contact = Contact(
                     uin: p.uin,
                     nickname: p.nickname,

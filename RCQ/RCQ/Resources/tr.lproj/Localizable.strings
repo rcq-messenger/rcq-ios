@@ -1167,6 +1167,10 @@
 "secscreen.you_screenshotted" = "Ekran görüntüsü aldın";
 "secscreen.peer_screenshotted" = "%@ ekran görüntüsü aldı";
 "secscreen.preview" = "Ekran görüntüsü";
+"chat.key_changed.notice" = "%@ artık farklı bir güvenlik anahtarı kullanıyor. Bunu beklemiyorsan kendisine başka bir yoldan sor.";
+"chat.key_changed.preview" = "Güvenlik anahtarı değişti";
+"chat.unverified.notice" = "Bu numaradan gelen bir mesaj doğrulanamadı ve gösterilmedi.";
+"chat.unverified.preview" = "Mesaj doğrulanmadı";
 "chat.preview.relay" = "Bir bağlantı paylaştı";
 "secscreen.peer_fallback" = "Kişin";
 "reactions.who_title" = "Tepkiler";
@@ -1676,6 +1680,7 @@
 "ci.server.not_in_groups" = "Bu adadaki gruplarından değil";
 "ci.server.accept_hint" = "Kabul edersen ana numaranı görecek. Kim olduğuna yalnızca %@ adası kefil.";
 "ci.server.key_changed" = "Bu kişinin %@ adasındaki anahtarı bir grupta gördüğünden farklı. Kabul etmeden önce kendisine sor.";
+"ci.request.key_changed" = "Bu numara için bildiğin anahtardan farklı bir anahtarla imzalanmış. Yalnızca değiştirdiğini biliyorsan kabul et.";
 "ci.server.retrying" = "%@ adasına ulaşılamadı. Tekrar deneyeceğiz.";
 "ci.server.gave_up" = "%@ adası yanıtı almadı. Daha sonra tekrar dene.";
 "burn.islands.body.one" = "Bu hesabın, gruplara katıldığın ya da yedek adres tuttuğun %1$d adada daha bir kopyası var: %2$@. Önce o silinir, sonra kendi adandaki hesap.";

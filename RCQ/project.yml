@@ -368,6 +368,10 @@ targets:
       # push, the main app resets per thread on chat open and syncs
       # the total to `applicationIconBadgeNumber`.
       - path: RCQ/Services/BadgeCounter.swift
+      # Who sent an envelope (sender-auth). The extension judges a push by
+      # the same rule the app files the message by, so a banner never names
+      # somebody the app would not.
+      - path: RCQ/Services/SenderTrust.swift
     resources:
       # Apple-required privacy manifest for the NSE bundle. Distinct
       # file from the main app's because Apple validates each binary

@@ -346,23 +346,31 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(UNNotificationContent())
                 return
             }
-            // ⚠⚠ A sender who names a pinned cross-island contact but signed
-            // with another key gets no banner. `from` and `from_host` sit
+            // ⚠⚠ WHO SENT IT, decided the way the app decides (`SenderTrust`)
+            // before a name or a word is printed. `from` and `from_host` sit
             // outside the v=1 signature, so anyone who reads our open key card
-            // can claim uin@host of a contact we accepted. The app holds such
-            // a message as a request, but this process titled the banner with
-            // the contact's name and printed the forger's text on the lock
-            // screen first. Cached above, so the app still files the request.
-            // Only a pinned row is checked: a row exists only for another
-            // island.
-            if let host = decrypted.senderHost,
-               let pinned = Self.pinnedSigningKey(
-                   uin: decrypted.senderUIN, host: host, accountID: routedAccountID
-               ),
-               !Self.sameKey(decrypted.senderSigningKey, pinned) {
-                os_log("sender claims pinned #%d@%{public}@ under another key - no banner",
-                       log: Self.log, type: .error, decrypted.senderUIN, host)
-                contentHandler(UNNotificationContent())
+            // can seal "from" any contact, of our island or another. A number
+            // whose key we hold, signed by another key, is filed by the app
+            // under Requests marked "key changed": announced as a request, by
+            // number, with none of the words, never under the contact's name.
+            // This process holds the pins the app keeps for our island's
+            // numbers and the accepted contacts on other islands; no roster
+            // and no card, so a number the app has not pinned yet reads as a
+            // stranger, as before.
+            let trust = Self.senderTrust(
+                decrypted, island: island, ourNumber: ourNumber, groupID: groupID,
+                me: toUIN, myKey: (try? crypto.bootstrapIdentity())?.signingKey, accountID: routedAccountID
+            )
+            if trust == .forged {
+                let host: String? = { if case .foreign(let h) = island { return h } else { return nil } }()
+                os_log("#%d is signed by another key than the one held for it - request banner at most",
+                       log: Self.log, type: .error, decrypted.senderUIN)
+                // Our own number under another key is nobody; the app drops it.
+                guard decrypted.senderUIN != toUIN, Self.isHeldAsRequest(decrypted.envelope) else {
+                    contentHandler(UNNotificationContent())
+                    return
+                }
+                contentHandler(Self.requestContent(uin: decrypted.senderUIN, host: host, from: content))
                 return
             }
             // A call offer rings in the app only from an accepted contact on
@@ -518,6 +526,29 @@ class NotificationService: UNNotificationServiceExtension {
             }
             contentHandler(content)
         }
+    }
+
+    /// `SenderTrust.decide` on what this process holds: the pins the app keeps
+    /// for our island's numbers (in the account's protocol store, which the
+    /// router above already pointed at the right account), the accepted
+    /// contacts on other islands, and our own key. No roster and no card.
+    /// A room push is a room of our island (only our island pushes), its
+    /// members numbers of our island.
+    private static func senderTrust(
+        _ decrypted: DecryptedEnvelope, island: SenderIsland, ourNumber: Bool, groupID: Int?,
+        me: Int?, myKey: String?, accountID: UUID?
+    ) -> SenderTrust {
+        let me = me ?? KeychainStore.string(KeychainStore.Keys.uin).flatMap { Int($0) } ?? 0
+        var f = SenderTrustFacts(from: decrypted.senderUIN, spub: decrypted.senderSigningKey, me: me, myKey: myKey)
+        f.viaSession = decrypted.senderSigningKey == nil && decrypted.senderDeviceID != nil
+        if groupID == nil, !ourNumber, case .foreign(let host) = island {
+            f.claimedHost = host
+        }
+        f.pin = SignalProtocolStores.shared.senderPin(uin: decrypted.senderUIN)
+        f.crossIsland = pinnedRows(accountID: accountID)
+            .filter { $0.uin == decrypted.senderUIN }
+            .map { SenderKeyRow(uin: $0.uin, host: $0.host, key: $0.signingKey) }
+        return SenderTrust.decide(f)
     }
 
     /// One cross-island contact of this account as `CrossIslandStore` keeps it.

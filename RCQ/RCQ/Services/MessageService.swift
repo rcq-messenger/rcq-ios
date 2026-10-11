@@ -36,6 +36,8 @@ final class MessageService {
 
     func configure(ownUIN: Int) {
         self.ownUIN = ownUIN
+        // What was read about senders was read on the island we are leaving.
+        SenderTrustLedger.shared.reset()
         // The room-log marks are per account and per island: an account
         // switch starts from what the next drain's `cursors` say.
         groupLogAcked = [:]
@@ -1770,6 +1772,15 @@ final class MessageService {
     private func openIncomingGmsg(_ payloadB64: String, gid: Int) -> GmsgOpen {
         guard let hdr = SenderKeys.parseGmsgHeader(payloadB64) else { return .dropped }
         if GroupSenderKeyStore.shared.ownsKid(ownUin: ownUIN, hdr.kid) { return .dropped } // my own echoed broadcast
+        // A chain belongs to the room it was handed out for. Its id travels
+        // only inside the AEAD data and the signature, both of which whoever
+        // holds the chain can produce, so a chain from one room used to open
+        // broadcasts in any other. Asked before a position is spent.
+        if let chainGid = GroupSenderKeyStore.shared.inboundGid(ownUin: ownUIN, hdr.kid),
+           !Self.innerRoomMatches(innerGid: chainGid, frameGid: gid) {
+            os_log("gmsg: chain of room %d used in room %d - dropped", log: Self.log, type: .error, chainGid, gid)
+            return .dropped
+        }
         guard let key = GroupSenderKeyStore.shared.deriveInbound(ownUin: ownUIN, kid: hdr.kid, epoch: hdr.epoch, index: hdr.index) else {
             if !GroupSenderKeyStore.shared.knowsKid(ownUin: ownUIN, hdr.kid) {
                 sendSknack(gid: gid, kid: hdr.kid)
@@ -1782,7 +1793,9 @@ final class MessageService {
             print("[MessageService] gmsg sig did not verify; dropping gid=\(gid) kid=\(hdr.kid)")
             return .dropped
         }
-        return .opened(DecryptedEnvelope(senderUIN: key.senderUin, envelope: opened.envelope))
+        // The key the chain was bound to when its SKDM was taken from a
+        // pinned member: what `SenderTrust` checks the room's roster against.
+        return .opened(DecryptedEnvelope(senderUIN: key.senderUin, senderSigningKey: key.spub, envelope: opened.envelope))
     }
 
     /// Replay the broadcasts the room-log drain held for `kid` now that its
@@ -2329,6 +2342,234 @@ final class MessageService {
     /// interleaved with another.
     private var wantedRequeue = false
 
+    /// What `admitSender` made of an opened envelope.
+    private enum SenderAdmission {
+        /// Go on, with the decision and the envelope as the rest of ingest
+        /// reads it (its host is the proving row's, not `from_host`).
+        case admit(SenderTrust, DecryptedEnvelope)
+        /// Dealt with here: held as a request, dropped (acked), or held in
+        /// the queue while the island's word is read again (nil).
+        case finish(IngestOutcome?)
+    }
+
+    /// Kinds whose sender does not need deciding before they are dealt with:
+    /// asks answered only to the roster's own key for that number, and the
+    /// cross-island kinds that run their own pinned-row checks (`contactreq`,
+    /// `profile`, calls). Never held for a re-read.
+    private static func needsSenderDecision(_ env: Envelope) -> Bool {
+        switch env {
+        case .sknack, .gsKnack, .pkeyAsk, .callSignal, .contactRequest, .profile, .unknown:
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// `SenderTrust` for one opened envelope, and everything that follows from
+    /// it before any branch of `ingest` runs. See `SenderTrust` for the why.
+    ///
+    /// Holds the row (nil outcome, `SenderTrustPending`) only while a re-read
+    /// of the island's word is in flight, and only for a row the island will
+    /// hand out again: a room whose roster we do not hold, a number of our
+    /// island signed by another key than the one we hold (a reissue shows on
+    /// its card), a stranger of our island whose key we never saw, a room
+    /// member under another key or nobody in the room's roster (it may have
+    /// moved). The read is one per window; the row that comes back after it
+    /// is decided for good.
+    private func admitSender(
+        _ opened: DecryptedEnvelope, ws: WebSocketService.EnvelopePacket, thread: ThreadID,
+        fromNSE: Bool, decryptError: inout Error?
+    ) -> SenderAdmission {
+        var decrypted = opened
+        let ack = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+        let env = decrypted.envelope
+        let from = decrypted.senderUIN
+
+        // ⚠ Spec 2026-09-15, section 7: a frame that came in as part of a
+        // ROOM (`ws.groupID` set by the queue row, the socket packet or the
+        // room log) never carries a kind that only means something between
+        // two people. The island cannot tell a room post from a payload a
+        // member deposited for exactly one other member, and a guest copy
+        // exists to take part in rooms, so this is where a room stops being
+        // a 1:1 channel into it. Acked and applied nowhere. The contact
+        // request, call and profile branches below already gated on
+        // `ws.groupID == nil`; the carbon, the profile-key ask and the visit
+        // ping did not.
+        if ws.groupID != nil, let kind = Self.oneToOneOnlyKind(env),
+           GroupFrameRule.dropsInGroupFrame(kind: kind) {
+            return .finish(ack)
+        }
+
+        let isGmsg = ws.type == "gmsg"
+        let (facts, rosterKnown) = senderTrustFacts(decrypted, groupID: ws.groupID, payload: ws.payload, isGmsg: isGmsg)
+        let decided = SenderTrust.decide(facts)
+        var trust = decided
+        let group = ws.groupID.flatMap { GroupService.shared.find($0) }
+        let ledger = SenderTrustLedger.shared
+        // Only a v=1 seal is held: it opens again with the identity key alone.
+        // A v=2 one steps its ratchet on every open, and its sender is the
+        // session's anyway, never a key to read again.
+        let mayHold = ws.redeliverable && !isGmsg && Self.needsSenderDecision(env) && Self.isStatelessSeal(ws.payload)
+
+        if isGmsg, decided != .forged, from != facts.me {
+            // A broadcast opens only under a chain an SKDM bound to a member
+            // we verified, in this room; that binding is the proof, with the
+            // roster in hand or not. A member who left since still wrote what
+            // the chain opened (the island refuses their broadcasts from the
+            // moment they are out). Under another key than the one we hold
+            // for them it is a forgery all the same: a chain taken before
+            // chains were bound to members.
+            trust = .pinned(host: Self.trustHost(group?.host))
+        } else if let gid = ws.groupID, !rosterKnown {
+            if mayHold, gid > 0, group?.host == nil, ledger.askRoster(gid: gid) {
+                return holdForTrust(ws, decrypted, &decryptError, why: "room roster")
+            }
+            // Otherwise decided on what we hold: the pins of our island, or
+            // another island's accepted contacts for a room there.
+        } else if mayHold, from != facts.me {
+            if let gid = ws.groupID, gid > 0, group?.host == nil, trust == .forged || trust == .unpinned {
+                // Somebody the roster does not have under this key: it may
+                // be older than a member's reissue or join. A member whose
+                // row carries no key: the island's card for the number.
+                if ledger.askRoster(gid: gid) { return holdForTrust(ws, decrypted, &decryptError, why: "room roster") }
+                if trust == .unpinned, group?.contains(from) == true, ledger.askCard(uin: from) {
+                    return holdForTrust(ws, decrypted, &decryptError, why: "card")
+                }
+            } else if ws.groupID == nil, facts.claimedHost == nil,
+                      trust == .forged
+                        || (trust == .unpinned && decrypted.senderSigningKey != nil
+                            && StrangerQuarantine.isContentKind(env)
+                            && !RandomChatService.shared.isFinishedStranger(from)) {
+                // Our island's card for the number: a reissue shows there, and
+                // a stranger's first message is checked against the key the
+                // island holds for the number it names. A stranger's guest
+                // card is what a closed island asks for to serve theirs; with
+                // no key held for the number it stands in for nobody's.
+                if trust == .unpinned, let card = decrypted.guestCard {
+                    GuestCardStore.shared.remember(uin: from, host: nil, card: card)
+                }
+                if ledger.askCard(uin: from) { return holdForTrust(ws, decrypted, &decryptError, why: "card") }
+            }
+        }
+
+        let spub = decrypted.senderSigningKey
+        switch trust {
+        case .pinned(let host):
+            // First sight of a key of our island, from the island's own list.
+            // Not a random chat's stranger: nothing of them is kept.
+            if host == nil, decided == trust, facts.pin == nil, facts.claimedHost == nil, let spub,
+               RandomChatService.shared.activePeer?.uin != from {
+                SignalProtocolStores.shared.pinSenderIfAbsent(uin: from, keyB64: spub)
+            }
+            // A contact on another island who left `from_host` off: the row
+            // their key proved says where they are, and the cross-island
+            // branches below go by it. A stamped host stays as stamped (the
+            // checks there match it against the row themselves), and a room
+            // frame keeps the room's island.
+            if ws.groupID == nil, facts.claimedHost == nil, let host { decrypted.senderHost = host }
+        case .repinned:
+            // The island serves the key that signed this, and our pin is
+            // older: a reissue, or an island swapping keys. Taken, and said.
+            if let spub {
+                os_log("ingest: #%d now signs with the key the island serves, not the pinned one - moving the pin, telling the user", log: Self.log, type: .error, from)
+                SignalProtocolStores.shared.repinSender(uin: from, keyB64: spub)
+                _ = MessageStore.shared.append(Message(
+                    id: UUID(), thread: thread, senderUIN: from, isFromMe: false,
+                    kind: .systemNotice, text: Message.keyChangedSentinel,
+                    sentAt: ws.serverTime, deliveryState: .delivered
+                ))
+            }
+        default:
+            break
+        }
+
+        // ⚠⚠ Signed by another key than the one we hold for this number, on
+        // our island or in a room: never filed as them. What they wrote waits
+        // under Requests marked "key changed" (accepting it is what moves the
+        // pin); nothing else they send is applied. A number of another island
+        // claimed 1:1 goes through the cross-island gate below, which does
+        // the same at that address.
+        if trust == .forged, ws.groupID != nil || facts.claimedHost == nil || from == facts.me {
+            os_log(
+                "ingest: #%d is signed by another key than the one held for it (%{public}@) - not filed as them",
+                log: Self.log, type: .error, from, ws.groupID == nil ? "1:1" : "room"
+            )
+            // Our own number under another key is never anybody; a random
+            // chat's stranger is never shown by number.
+            if from == facts.me { return .finish(ack) }
+            if RandomChatService.shared.activePeer?.uin == from || RandomChatService.shared.isFinishedStranger(from) {
+                return .finish(ack)
+            }
+            let host = facts.claimedHost ?? ""
+            if isBlockedSender(uin: from, island: facts.claimedHost, spub: spub) { return .finish(ack) }
+            if !isGmsg, Self.isCrossIslandHeldKind(env) {
+                // Same-island rows keep the opened envelope (a v=2 ratchet
+                // cannot be opened twice); another island's keep the seal, and
+                // an accept feeds it back through here.
+                let payload = host.isEmpty
+                    ? (try? JSONEncoder().encode(env)).map { String(decoding: $0, as: UTF8.self) }
+                    : ws.payload
+                if let payload {
+                    CrossIslandRequestsStore.shared.hold(
+                        uin: from, host: host, payload: payload, preview: Self.requestPreview(for: env),
+                        sentAt: host.isEmpty ? ws.serverTime : nil,
+                        id: Self.heldMessageID(env), spub: spub ?? "", keyChanged: true
+                    )
+                }
+            } else if case .deleteForEveryone(let target) = env {
+                CrossIslandRequestsStore.shared.retract(uin: from, host: host, targetID: target, spub: spub ?? "")
+            }
+            return .finish(ack)
+        }
+
+        // In a room whose roster we hold, somebody it does not count among
+        // its members (after the re-read above) posts nothing there. A member
+        // whose row carries no key, and whose key the island would not show
+        // either, goes on as a stranger would: what they wrote, none of what
+        // they would change.
+        if ws.groupID != nil, rosterKnown, trust == .unpinned, group?.contains(from) != true {
+            os_log("ingest: #%d is not a member of room %d - dropped", log: Self.log, type: .error, from, ws.groupID ?? 0)
+            return .finish(ack)
+        }
+        return .admit(trust, decrypted)
+    }
+
+    /// Keep the row queued while the island's word on its sender is read
+    /// again; the drain that follows the read brings it back.
+    private func holdForTrust(
+        _ ws: WebSocketService.EnvelopePacket, _ decrypted: DecryptedEnvelope,
+        _ decryptError: inout Error?, why: String
+    ) -> SenderAdmission {
+        .finish(requeueForTrust(ws, decrypted, &decryptError, why: why))
+    }
+
+    private func requeueForTrust(
+        _ ws: WebSocketService.EnvelopePacket, _ decrypted: DecryptedEnvelope,
+        _ decryptError: inout Error?, why: String
+    ) -> IngestOutcome? {
+        os_log(
+            "ingest: %{public}@ from #%d held until the island's %{public}@ is read again",
+            log: Self.log, type: .info, ws.type, decrypted.senderUIN, why
+        )
+        decryptError = SenderTrustPending()
+        return nil
+    }
+
+    /// A v=2 message whose sender identity the island does not publish was
+    /// let go for good (`SenderTrustRefused`). Where we have a chat with that
+    /// number, a line in it says so, once a day.
+    private func noteUnverified(uin: Int, at: Date) {
+        guard uin != ownUIN,
+              ContactService.shared.contacts.contains(where: { $0.uin == uin && $0.host == nil }),
+              SenderTrustLedger.shared.mayNoteUnverified(uin)
+        else { return }
+        _ = MessageStore.shared.append(Message(
+            id: UUID(), thread: .peer(uin: uin), senderUIN: uin, isFromMe: false,
+            kind: .systemNotice, text: Message.unverifiedSentinel,
+            sentAt: at, deliveryState: .delivered
+        ))
+    }
+
     /// `nil` = drop silently (decrypt failed, blocked sender, random-routed, or visit).
     @discardableResult
     func ingest(envelope ws: WebSocketService.EnvelopePacket) -> IngestOutcome? {
@@ -2393,8 +2634,26 @@ final class MessageService {
             // differently (case, a scheme, an explicit :443). Messages still
             // passed on the pinned key, but calls, profiles, answers to
             // requests and blocks by address did not.
-            let decrypted = Self.withCanonicalHost(opened)
-            let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: decrypted.senderUIN)
+            let thread: ThreadID = ws.groupID.map { .group(id: $0) } ?? .peer(uin: opened.senderUIN)
+
+            // ⚠⚠ WHO SENT THIS, decided once, before anything below reads
+            // `from` (`SenderTrust`). The key hand-offs, the sender-key
+            // plumbing, carbons, receipts, edits, deletes: every branch used
+            // to take the unsigned `from` at its word unless the sender had
+            // honestly stamped another island. The decision may hold the row
+            // while the island's word on the sender is read again, file it
+            // under Requests as signed by another key, or drop it.
+            let trust: SenderTrust
+            let decrypted: DecryptedEnvelope
+            switch admitSender(
+                Self.withCanonicalHost(opened), ws: ws, thread: thread, fromNSE: fromNSE, decryptError: &decryptError
+            ) {
+            case .finish(let outcome):
+                return outcome
+            case .admit(let t, let d):
+                trust = t
+                decrypted = d
+            }
 
             // ⚠ A GUEST CARD the sender handed us, kept BEFORE anything is
             // decided about the message. It is what makes "they wrote to me"
@@ -2402,7 +2661,9 @@ final class MessageService {
             // handler. Kept even for a message we go on to treat as a
             // stranger's: the card costs nothing to hold, and the alternative
             // is somebody who accepts an hour later and then cannot reply.
-            // Never from our own carbon, where the card is ours coming back.
+            // Never from our own carbon, where the card is ours coming back,
+            // and never from a forgery (dropped above), whose card would stand
+            // in for the real holder's and break our replies to them.
             if let card = decrypted.guestCard, decrypted.senderUIN != ownUIN {
                 GuestCardStore.shared.remember(
                     uin: decrypted.senderUIN, host: decrypted.senderHost, card: card,
@@ -2424,46 +2685,73 @@ final class MessageService {
                 Task { await SignalCryptoService.noteInboundDevice(forPeerUIN: from, deviceId: dev) }
             }
 
-            // ⚠ Spec 2026-09-15, section 7: a frame that came in as part of a
-            // ROOM (`ws.groupID` set by the queue row, the socket packet or the
-            // room log) never carries a kind that only means something between
-            // two people. The island cannot tell a room post from a payload a
-            // member deposited for exactly one other member, and a guest copy
-            // exists to take part in rooms, so this is where a room stops being
-            // a 1:1 channel into it. Acked and applied nowhere. The contact
-            // request, call and profile branches below already gated on
-            // `ws.groupID == nil`; the carbon, the profile-key ask and the visit
-            // ping did not.
-            if ws.groupID != nil, let kind = Self.oneToOneOnlyKind(decrypted.envelope),
-               GroupFrameRule.dropsInGroupFrame(kind: kind) {
-                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
-            }
-
             // Room state key hand-off / ask-back (stage 6 phase 2): the same
             // outer types as the sender-key plumbing, split by inner kind.
             if case .gsKey(let gid, let ver, let key) = decrypted.envelope {
-                // Roster gate: only a fellow member's key is worth holding.
-                let g = GroupService.shared.groups.first(where: { $0.id == gid })
-                let fromMember = g?.members.contains(where: { $0.uin == decrypted.senderUIN }) ?? false
-                if fromMember || decrypted.senderUIN == ownUIN {
-                    if RoomKeyStore.shared.put(gid, ver: ver, keyB64: key, replaceEqual: true) {
-                        Task { await GroupService.shared.refresh() }
+                let outcome = IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                // Roster gate: only a fellow member's key is worth holding,
+                // and a member is the number AND the key THAT room's roster
+                // holds for it. By the number alone (and by our own number
+                // under any key) anybody could replace a room's key, and with
+                // a large enough version wedge it for good.
+                guard trust != .forged, trust != .ownSession,
+                      let g = GroupService.shared.find(gid), g.host == nil else { return outcome }
+                let fromUs = trust == .ownKey && decrypted.senderUIN == ownUIN
+                if !fromUs {
+                    switch roomMembership(gid: gid, decrypted) {
+                    case .member:
+                        break
+                    case .rosterUnknown:
+                        // A key is worth a re-read: the roster comes, the row
+                        // comes back, and the room opens.
+                        if ws.redeliverable, Self.isStatelessSeal(ws.payload),
+                           SenderTrustLedger.shared.askRoster(gid: gid) {
+                            return requeueForTrust(ws, decrypted, &decryptError, why: "room roster")
+                        }
+                        return outcome
+                    case .notMember:
+                        return outcome
                     }
                 }
-                return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                guard RoomKeyRule.acceptsVersion(
+                    ver, held: RoomKeyStore.shared.key(gid)?.ver,
+                    sealed: g.stateBlob.flatMap(GroupStateSeal.sealedKeyVer)
+                ) else {
+                    os_log("ingest: room key v%lld for %d jumps past what is held or sealed - refused", log: Self.log, type: .error, ver, gid)
+                    return outcome
+                }
+                if RoomKeyStore.shared.put(gid, ver: ver, keyB64: key, replaceEqual: true) {
+                    Task { await GroupService.shared.refresh() }
+                }
+                return outcome
             }
             // Profile key hand-off / ask-back. Same carriers as the room keys
             // above, split by the inner kind.
             if case .pkey(let key) = decrypted.envelope {
-                // Filed against the SEALED sender, never against anything the
-                // wire claimed - otherwise one account could publish a face as
-                // another. Refreshing the roster repaints the avatars.
-                if ProfileKeyStore.shared.put(decrypted.senderUIN, keyB64: key) {
+                // Filed against the sender the KEY proved, never against
+                // anything the wire claimed - otherwise one account could
+                // publish a face as another (or break one). A number of our
+                // island only, or a contact on another island whose number
+                // nobody here holds: the store is keyed by number. Refreshing
+                // the roster repaints the avatars.
+                let ours: Bool
+                switch trust {
+                case .ownKey, .repinned: ours = true
+                case .pinned(let host):
+                    ours = host == nil || !ContactService.shared.contacts.contains {
+                        $0.uin == decrypted.senderUIN && $0.host == nil
+                    }
+                default: ours = false
+                }
+                if ours, ProfileKeyStore.shared.put(decrypted.senderUIN, keyB64: key) {
                     Task { await ContactService.shared.refresh() }
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             if case .pkeyAsk = decrypted.envelope {
+                guard trust != .forged else {
+                    return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                }
                 // Only the owner can answer this one; [answerProfileKeyAsk]
                 // carries the roster gate, so a stranger gets nothing.
                 // ⚠ Vault-backed, read only: an install that never PICKED a
@@ -2481,7 +2769,7 @@ final class MessageService {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             if case .gsKnack(let gid) = decrypted.envelope {
-                if let g = GroupService.shared.groups.first(where: { $0.id == gid }),
+                if trust != .forged, let g = GroupService.shared.groups.first(where: { $0.id == gid }),
                    let asker = g.members.first(where: { $0.uin == decrypted.senderUIN }),
                    !asker.identityKey.isEmpty,
                    let held = RoomKeyStore.shared.key(gid) {
@@ -2496,8 +2784,20 @@ final class MessageService {
             // the chain to its authenticated sender; SKNACK asks the kid owner to
             // re-distribute. Both ride the per-member sealed path.
             if case .skdm(let gid, let kid, let epoch, let index, let ck) = decrypted.envelope {
-                if let sk = decrypted.senderSigningKey,
-                   GroupSenderKeyStore.shared.acceptSkdm(ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk, epoch: epoch, index: index, ck: ck) {
+                // A chain is taken only in the room it names, from a member
+                // that room's roster holds under the key that signed it
+                // (`admitSender` decided that for this frame), and never
+                // re-keys a chain we hold (`SkdmRule`). A 1:1 copy names no
+                // room to check against and is not taken.
+                if let frameGid = ws.groupID,
+                   let sk = decrypted.senderSigningKey,
+                   decrypted.senderUIN != ownUIN,
+                   GroupSenderKeyStore.shared.acceptSkdm(
+                       ownUin: ownUIN, kid: kid, gid: gid, senderUIN: decrypted.senderUIN, spub: sk,
+                       epoch: epoch, index: index, ck: ck,
+                       frameRoom: Self.innerRoomMatches(innerGid: gid, frameGid: frameGid),
+                       senderAuthentic: trust.isAuthentic
+                   ) {
                     // The key the held broadcasts were waiting for.
                     sknackAnswered(kid)
                     replayHeldGmsg(kid: kid)
@@ -2505,7 +2805,11 @@ final class MessageService {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             if case .sknack(let gid, let kid) = decrypted.envelope {
-                answerSknack(gid: ws.groupID ?? gid, requesterUIN: decrypted.senderUIN, kid: kid)
+                // Answered only to the roster's key for the asker, so a forged
+                // ask hands nothing to the forger; still, nobody else's.
+                if trust != .forged {
+                    answerSknack(gid: ws.groupID ?? gid, requesterUIN: decrypted.senderUIN, kid: kid)
+                }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
 
@@ -2538,9 +2842,15 @@ final class MessageService {
                 // rows through it. Android 0.194 seals every carbon v=1; once it
                 // has spread, require signedByMe for every kind, together with
                 // web (crossisland-gate.ts) and Android (CrossIslandGate.kt).
-                let signedByMe = isSignedByMe(decrypted)
+                //
+                // The keyless v=2 carbon now opens only over a session whose
+                // identity the island publishes for that install of ours
+                // (`CryptoError.identityUnverified`), and it may file a row of
+                // ours and nothing more: an edit, a delete or a ciAck changes
+                // what is already here and takes our key (`SenderTrust`).
+                let signedByMe = trust == .ownKey
                 let refused = IngestOutcome(thread: .peer(uin: ownUIN), isNewContent: false, wasInNSECache: fromNSE)
-                guard signedByMe || (decrypted.senderSigningKey == nil && decrypted.senderDeviceID != nil) else {
+                guard signedByMe || trust == .ownSession else {
                     os_log(
                         "ingest: carbon claims our uin but is not signed by our key - dropped",
                         log: Self.log, type: .error
@@ -2565,17 +2875,21 @@ final class MessageService {
                 switch inner {
                 // Control carbons APPLY to the referenced row instead of being
                 // filed as one. An edit made on another of my devices mutates
-                // the row here, including an OUTGOING row that device authored;
-                // a delete-for-everyone tombstones it. Both are quiet no-ops
+                // an OUTGOING row that device authored, in the thread the
+                // carbon names and nowhere else; a delete-for-everyone
+                // tombstones the row in that thread. Both are quiet no-ops
                 // when the row is unknown, and deleteLocal still records the
                 // hidden tombstone so a late redelivery of the deleted message
                 // stays dead.
                 case .edit(let targetID, let newText):
-                    MessageStore.shared.applyEdit(
+                    guard signedByMe else { return refused }
+                    MessageStore.shared.applyInboundEdit(
                         messageID: targetID, thread: dest,
-                        newText: newText, editedAt: ws.serverTime
+                        newText: newText, editedAt: ws.serverTime,
+                        author: ownUIN, ownCarbon: true
                     )
                 case .deleteForEveryone(let targetID):
+                    guard signedByMe else { return refused }
                     MessageStore.shared.deleteLocal(messageID: targetID, thread: dest)
                 case .readMark(let at):
                     // I read this thread on another device (A2): drop the
@@ -2753,12 +3067,14 @@ final class MessageService {
             }
 
             // Federation gossip B1 self-push: a contact handed us their fresh
-            // signed home-island record. Verify it's signed by the SAME key that
-            // signed this envelope (binds it to the real sender), reject a ts
-            // rollback, cache their homes. Never reaches the store/quarantine.
+            // signed home-island record. Verify it's signed by the key we
+            // PINNED for them (which `SenderTrust` matched against the key
+            // that signed this envelope), reject a ts rollback, cache their
+            // homes under that key. From anybody else it names nobody's
+            // homes. Never reaches the store/quarantine.
             if case .homeRecord(let rec) = decrypted.envelope {
-                if let sk = decrypted.senderSigningKey {
-                    Multihome.applyPushedRecord(senderUIN: decrypted.senderUIN, senderSigningKey: sk, rec: rec)
+                if trust.isAuthentic, trust != .ownKey, let pinned = decrypted.senderSigningKey {
+                    Multihome.applyPushedRecord(senderUIN: decrypted.senderUIN, pinnedSigningKey: pinned, rec: rec)
                 }
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
@@ -2808,10 +3124,13 @@ final class MessageService {
                     return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
                 }
                 if Self.isCrossIslandHeldKind(decrypted.envelope) {
+                    // Marked when the address is a contact's and the key is
+                    // not theirs: a reissue there, or somebody using it.
                     CrossIslandRequestsStore.shared.hold(
                         uin: decrypted.senderUIN, host: fromHost,
                         payload: ws.payload, preview: Self.requestPreview(for: decrypted.envelope),
-                        id: Self.heldMessageID(decrypted.envelope), spub: decrypted.senderSigningKey ?? ""
+                        id: Self.heldMessageID(decrypted.envelope), spub: decrypted.senderSigningKey ?? "",
+                        keyChanged: trust == .forged
                     )
                 } else if case .deleteForEveryone(let target) = decrypted.envelope {
                     // Dropped, except for what it says about a message we hold
@@ -2870,6 +3189,11 @@ final class MessageService {
             if randomCanReach,
                let peer = RandomChatService.shared.activePeer,
                decrypted.senderUIN == peer.uin {
+                // Under the key the match handed us for them, or not at all:
+                // the ordinary path below would open a thread by number.
+                guard trust.isAuthentic else {
+                    return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
+                }
                 switch decrypted.envelope {
                 case .text(let id, let text, _, _, _, let reply):
                     let m = Message(
@@ -3064,20 +3388,26 @@ final class MessageService {
                    myUIN: ownUIN, senderUIN: decrypted.senderUIN, envelope: decrypted.envelope
                ),
                let plain = try? JSONEncoder().encode(decrypted.envelope) {
+                // The key that signed it is kept with it, so only that key
+                // can take it back (a delete names the message by id, and an
+                // id is no secret).
                 CrossIslandRequestsStore.shared.hold(
                     uin: decrypted.senderUIN, host: "",
                     payload: String(decoding: plain, as: UTF8.self),
                     preview: Self.requestPreview(for: decrypted.envelope),
                     sentAt: ws.serverTime,
-                    id: Self.heldMessageID(decrypted.envelope), spub: ""
+                    id: Self.heldMessageID(decrypted.envelope), spub: decrypted.senderSigningKey ?? ""
                 )
                 // Held and persisted - ACK the queue row; no badge, no banner.
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
-            // A stranger deleting for everyone a message we still hold.
+            // A stranger deleting for everyone a message we still hold, under
+            // the key that sealed it.
             if ws.groupID == nil, Multihome.isOwnHost(decrypted.senderHost),
                case .deleteForEveryone(let target) = decrypted.envelope,
-               CrossIslandRequestsStore.shared.retract(uin: decrypted.senderUIN, host: "", targetID: target, spub: "") {
+               CrossIslandRequestsStore.shared.retract(
+                   uin: decrypted.senderUIN, host: "", targetID: target, spub: decrypted.senderSigningKey ?? ""
+               ) {
                 return IngestOutcome(thread: thread, isNewContent: false, wasInNSECache: fromNSE)
             }
             // Sealed sender lets anyone-message-anyone. If the sender
@@ -3100,13 +3430,21 @@ final class MessageService {
             // TTL precedence: envelope ttl wins, else local thread setting.
             let localTTL = ChatSettingsStore.shared.ttl(for: thread)
             var inserted = false
+            // Ours only under our key (or, for a row of ours, over our own
+            // checked v=2 session). Our number under any other key never got
+            // this far (`admitSender`), and it used to land as "sent by me".
+            let fromMe = decrypted.senderUIN == ownUIN && (trust == .ownKey || trust == .ownSession)
+            // A control changes what is already here, so only a sender proven
+            // to be who `from` says may make one (`SenderTrust.isAuthentic`):
+            // a stranger's or an unverified room frame's is dropped.
+            let mayControl = trust.isAuthentic
             switch decrypted.envelope {
             case .text(let id, let text, let envTTL, let ts, let fwd, let reply):
                 inserted = MessageStore.shared.append(Message(
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .text, text: text,
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
@@ -3132,7 +3470,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .photo, text: caption ?? "",
                     mediaID: mediaID + "|" + mediaKey,
                     sentAt: ws.serverTime,
@@ -3152,7 +3490,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .video, text: caption ?? "",
                     mediaID: mediaID + "|" + mediaKey,
                     sentAt: ws.serverTime,
@@ -3174,7 +3512,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .voice, text: "",
                     mediaID: mediaID + "|" + mediaKey,
                     sentAt: ws.serverTime,
@@ -3193,7 +3531,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .file, text: caption ?? "",
                     mediaID: mediaID + "|" + mediaKey,
                     sentAt: ws.serverTime,
@@ -3214,7 +3552,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .location, text: caption ?? "",
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
@@ -3239,20 +3577,28 @@ final class MessageService {
                 // sender still reveals the decrypted deleter. An OLDER client
                 // ignores a foreign delete and keeps the message — nothing
                 // breaks, it just stays there. 1:1 deletes remain author-only.
+                //
+                // ⚠ Only from a sender proven to be the deleter, and only on a
+                // row of THIS thread (`ControlAuthority.mayDelete`): the
+                // moderator power, and the author's, end at the thread the
+                // envelope belongs to.
+                guard mayControl else { break }
                 let deleter = decrypted.senderUIN
                 // The window is read on demand; a retraction can land in a
                 // chat nobody has opened this session, and the authorisation
                 // check below needs the target row.
                 MessageStore.shared.ensureLoaded(thread)
-                let target = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
-                var authorized = target?.senderUIN == deleter
-                if !authorized, case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
+                let held = MessageStore.shared.messages(for: thread).first { $0.id == targetID }
+                let target = held.map { ControlAuthority.Target(thread: $0.thread, senderUIN: $0.senderUIN, isFromMe: $0.isFromMe) }
+                    ?? MessageDB.shared.controlTarget(id: targetID)
+                var moderates = false
+                if case .group(let gid) = thread, let g = GroupService.shared.find(gid) {
                     if g.moderator(deleter) {
                         // The owner is named on the group row itself and needs
                         // no roster to be recognised; an admin / delete-cap
                         // member is found in the roster when one is cached.
-                        authorized = true
-                    } else if g.members.isEmpty {
+                        moderates = true
+                    } else if g.members.isEmpty, target?.thread == thread {
                         // Everyone else's role lives in the roster, which the
                         // list fetch no longer carries. The web ignores an
                         // admin's delete here (same as an old client would);
@@ -3265,6 +3611,10 @@ final class MessageService {
                         }
                     }
                 }
+                let authorized = ControlAuthority.mayDelete(
+                    target, in: thread, by: deleter, senderModerates: moderates,
+                    ownCarbon: trust == .ownKey && deleter == ownUIN
+                )
                 if authorized {
                     // The message disappears, with no "deleted" placeholder left
                     // behind — a deliberate product choice, not an oversight.
@@ -3274,19 +3624,27 @@ final class MessageService {
                     MessageStore.shared.deleteLocal(messageID: targetID, thread: thread)
                 }
             case .readReceipt(let ids):
+                guard mayControl else { break }
                 MessageStore.shared.markRead(messageIDs: ids, thread: thread)
             case .deliveredReceipt(let ids):
+                guard mayControl else { break }
                 MessageStore.shared.markDelivered(messageIDs: ids, thread: thread)
             case .reaction(let targetID, let asset):
-                // Locate the target by id across ALL threads (not the sender-
-                // derived `thread`), so a SELF-echo (a reaction made on your
-                // other device, sealed to your own identity → sender == you →
-                // thread would wrongly resolve to your own peer thread) lands on
-                // the right message. Normal peer reactions still resolve to their
-                // own thread (unique UUID).
-                let reactThread = MessageStore.shared.applyReactionAnywhere(
-                    targetID: targetID, uin: decrypted.senderUIN, asset: asset
-                )
+                // A SELF-echo (a reaction made on your other device, sealed to
+                // your own identity → sender == you → thread would wrongly
+                // resolve to your own peer thread) is located by id across ALL
+                // threads. Anybody else's lands only on a row of the thread
+                // their envelope belongs to: by id alone, a 1:1 envelope hung
+                // reactions under a room's messages.
+                let ownEcho = decrypted.senderUIN == ownUIN && (trust == .ownKey || trust == .ownSession)
+                guard mayControl || ownEcho else { break }
+                let reactThread = ownEcho
+                    ? MessageStore.shared.applyReactionAnywhere(
+                        targetID: targetID, uin: decrypted.senderUIN, asset: asset
+                    )
+                    : MessageStore.shared.applyReactionInThread(
+                        targetID: targetID, thread: thread, uin: decrypted.senderUIN, asset: asset
+                    )
                 if asset != nil, decrypted.senderUIN != ownUIN, let reactThread,
                    !MessageBannerService.shared.isViewing(reactThread),
                    MessageStore.shared.messages(for: reactThread)
@@ -3297,14 +3655,22 @@ final class MessageService {
                     ReactionInboxStore.shared.markMsg(reactThread, id: targetID)
                 }
             case .bounce(let targetID):
+                guard mayControl else { break }
                 MessageStore.shared.updateState(messageID: targetID, thread: thread, state: .failed)
             case .visit(let at):
+                guard mayControl else { break }
                 VisitStore.shared.record(viewer: decrypted.senderUIN, at: at)
                 return nil
             case .edit(let targetID, let newText):
-                MessageStore.shared.applyEdit(
+                // The author, on their own row, in this thread: a peer used to
+                // be able to rewrite OUR messages in our chat with them, and a
+                // member anybody's in a room.
+                guard mayControl else { break }
+                MessageStore.shared.applyInboundEdit(
                     messageID: targetID, thread: thread,
-                    newText: newText, editedAt: ws.serverTime
+                    newText: newText, editedAt: ws.serverTime,
+                    author: decrypted.senderUIN,
+                    ownCarbon: trust == .ownKey && decrypted.senderUIN == ownUIN
                 )
             case .systemNotice(let id, let text):
                 inserted = MessageStore.shared.append(Message(
@@ -3332,7 +3698,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .poll, text: "",
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
@@ -3357,7 +3723,7 @@ final class MessageService {
                     id: id,
                     thread: thread,
                     senderUIN: decrypted.senderUIN,
-                    isFromMe: decrypted.senderUIN == ownUIN,
+                    isFromMe: fromMe,
                     kind: .relay, text: token,
                     sentAt: ws.serverTime,
                     deliveryState: .delivered,
@@ -3366,11 +3732,14 @@ final class MessageService {
             case .secureScreen(let on):
                 // Peer toggled per-conversation screen-secure mode — mirror it
                 // locally so OUR side also blanks this chat (1:1 only for now).
-                if case .peer = thread {
+                if mayControl, case .peer = thread {
                     ChatSettingsStore.shared.setSecure(on, for: thread)
                 }
                 return nil
             case .screenshotTaken(let id):
+                // "<name> took a screenshot" says something about a person, so
+                // only the person proven to be them can make us say it.
+                guard mayControl else { break }
                 // Peer took a screenshot in a secure chat — show a line with
                 // their name (resolved on our side, in our locale).
                 // Store a sentinel and resolve the screenshotter's name at
@@ -3452,7 +3821,7 @@ final class MessageService {
             // 1:1 only, real content only, and never for our own carbon coming
             // back. A group message has as many recipients as members and one
             // tick cannot stand for all of them.
-            if inserted, case .peer(let peerUIN) = thread, peerUIN != ownUIN,
+            if inserted, mayControl, case .peer(let peerUIN) = thread, peerUIN != ownUIN,
                decrypted.senderUIN != ownUIN,
                let insertedID = MessageStore.shared.messages(for: thread).last?.id {
                 if drainBatch != nil {
@@ -3499,6 +3868,23 @@ final class MessageService {
                 return IngestOutcome(thread: dupThread, isNewContent: false, wasInNSECache: false)
             }
             decryptError = error
+            // A v=2 session the island does not vouch for (`identityUnverified`):
+            // nothing moved, so the row is tried again once the device's
+            // published identity is read. Read and still not what the island
+            // publishes: let go for good, with a line in the chat when we
+            // have one with that number.
+            if case CryptoError.identityUnverified(let uin, let dev)? = error as? CryptoError {
+                if SenderTrustLedger.shared.identityRefuted(uin: uin, deviceId: dev) {
+                    os_log(
+                        "ingest: #%d/%d opens a session under an identity the island does not publish - refused",
+                        log: Self.log, type: .error, uin, dev
+                    )
+                    noteUnverified(uin: uin, at: ws.serverTime)
+                    decryptError = SenderTrustRefused()
+                } else {
+                    SenderTrustLedger.shared.askIdentity(uin: uin, deviceId: dev)
+                }
+            }
             // Common: stale identity_key after peer reinstall/re-register.
             os_log(
                 "ingest decrypt failed: %{public}@ — payload=%{public}@... type=%{public}@ offline=%{public}d groupID=%{public}@",
@@ -3567,6 +3953,9 @@ final class MessageService {
     /// replay before the generic failure path.
     private static func isPermanentlyUnreadable(_ error: Error) -> Bool {
         if error is DecodingError { return true }
+        // Asked the island, and it does not publish the identity the row
+        // opens a session under (`SenderTrustRefused`).
+        if error is SenderTrustRefused { return true }
         if let storeError = error as? SignalProtocolStoreError {
             switch storeError {
             case .missingPreKey, .missingSignedPreKey, .missingKyberPreKey:
@@ -3789,6 +4178,11 @@ final class MessageService {
             let ownKey = (try? crypto.bootstrapIdentity())?.signingKey
             let isUs = decrypted.senderUIN == me
                 && (island == nil || Self.sameSigningKey(decrypted.senderSigningKey, ownKey))
+            // The decision `ingest` will make (`SenderTrust`), on what this
+            // process holds; nothing is read again from here.
+            let trust = SenderTrust.decide(
+                senderTrustFacts(decrypted, groupID: ws.groupID, payload: ws.payload, isGmsg: false).facts
+            )
             guard Self.isSomethingSaid(decrypted.envelope),
                   !isUs,
                   // The drop `ingest` will make, by the same rules: removed
@@ -3797,20 +4191,32 @@ final class MessageService {
                   !isBlockedSender(uin: decrypted.senderUIN, island: island, spub: decrypted.senderSigningKey),
                   // The extension's rules, the same ones for the same banner:
                   // an ended random chat never shows the stranger's number
-                  // (a number of our island), and an envelope naming a pinned
-                  // cross-island contact under another key never shows that
-                  // contact's name over the forger's words (`from`/`from_host`
-                  // sit outside the v=1 signature).
-                  !(island == nil && RandomChatService.shared.isFinishedStranger(decrypted.senderUIN)),
-                  !Self.claimsPinnedContactUnderAnotherKey(decrypted)
+                  // (a number of our island).
+                  !(island == nil && RandomChatService.shared.isFinishedStranger(decrypted.senderUIN))
             else { return }
+            // ⚠⚠ Signed by another key than the one we hold for that number
+            // (`from` and `from_host` sit outside the v=1 signature): `ingest`
+            // files it under Requests as "key changed", so it is announced as
+            // a request, by number, with none of the forger's words under the
+            // contact's name. The live stranger of a random chat is never
+            // announced by number.
+            if trust == .forged {
+                guard Self.isCrossIslandHeldKind(decrypted.envelope),
+                      RandomChatService.shared.activePeer?.uin != decrypted.senderUIN
+                else { return }
+                threadKey = "pending"
+                bumpsBadge = false
+                if !pinUp {
+                    title = island.map { "\(decrypted.senderUIN)@\($0)" } ?? "\(decrypted.senderUIN)"
+                    body = "chat.banner.message_request".localized
+                }
             // ⚠ The cross-island gate (report 1071): somebody on another island
             // who is not an accepted contact under the key they signed with is
             // filed under Requests by `ingest`, never in a chat. Announced as
             // what it is: their address and not a name (the bare number may
             // name somebody else here), nothing they wrote, and a tap opens
             // Requests.
-            if ws.groupID == nil, let host = island,
+            } else if ws.groupID == nil, let host = island,
                Self.verifiedCrossIslandContact(
                    uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey
                ) == nil {
@@ -3897,15 +4303,6 @@ final class MessageService {
               let y = Data(base64Encoded: b)
         else { return false }
         return x == y
-    }
-
-    /// A sender naming a cross-island contact we pinned, signed by another
-    /// key. The extension gives such a push no banner; so does this path.
-    private static func claimsPinnedContactUnderAnotherKey(_ decrypted: DecryptedEnvelope) -> Bool {
-        guard let host = decrypted.senderHost, !Multihome.isOwnHost(host),
-              CrossIslandStore.shared.all().contains(where: { $0.uin == decrypted.senderUIN && sameHost($0.host, host) })
-        else { return false }
-        return verifiedCrossIslandContact(uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey) == nil
     }
 
     /// A v=1 seal: opens with the identity key alone and steps nothing, so it
@@ -4165,7 +4562,8 @@ final class MessageService {
                         serverTime: r.received_at,
                         offline: true,
                         groupID: r.group_id,
-                        toDeviceID: r.to_device_id
+                        toDeviceID: r.to_device_id,
+                        redeliverable: true
                     )
                     var decryptError: Error?
                     guard let outcome = ingest(envelope: env, decryptError: &decryptError) else {
@@ -4569,7 +4967,7 @@ final class MessageService {
                 seen[r.gid] = gid
                 let env = WebSocketService.EnvelopePacket(
                     type: r.envelope_type, payload: r.payload, serverTime: r.received_at,
-                    offline: true, groupID: gid
+                    offline: true, groupID: gid, redeliverable: true
                 )
                 var decryptError: Error?
                 let outcome = ingest(envelope: env, decryptError: &decryptError)

@@ -233,12 +233,40 @@ extension SignalCryptoService {
         for d in resp.devices {
             if let ik = d.signal_identity_key, !ik.isEmpty {
                 SilenceProbe.shared.notePublishedIdentity(ik, uin: uin, deviceId: d.device_id)
+                notePublishedIdentity(ik, uin: uin, deviceId: d.device_id)
             }
         }
         let ids = resp.devices.map { $0.device_id }.sorted()
         guard !ids.isEmpty else { return nil }
         await PeerDeviceCache.shared.store(uin, devices: ids)
         return ids
+    }
+
+    /// Keep what the island publishes as a device's libsignal identity where
+    /// the v=2 decrypt (app and extension) can check a new session against it
+    /// (`CryptoError.identityUnverified`).
+    static func notePublishedIdentity(_ identityB64: String, uin: Int, deviceId: Int) {
+        guard let bytes = Data(base64Encoded: identityB64),
+              let identity = try? IdentityKey(bytes: bytes)
+        else { return }
+        SignalProtocolStores.shared.storePublishedIdentity(identity.serialize(), uin: uin, deviceId: deviceId)
+    }
+
+    /// Read again what the island publishes for [uin]'s device [deviceId],
+    /// for a PreKeySignalMessage the decrypt refused (`identityUnverified`).
+    /// The device list first, which is free; a bundle only when the list does
+    /// not carry identities (an older island), because a bundle costs that
+    /// device a one-time prekey. True when a published identity is now on
+    /// record for the device, whatever it says.
+    static func refreshPublishedIdentity(uin: Int, deviceId: Int) async -> Bool {
+        await PeerDeviceCache.shared.invalidate(uin)
+        _ = await peerDeviceIDs(forPeerUIN: uin)
+        if SignalProtocolStores.shared.publishedIdentity(uin: uin, deviceId: deviceId) != nil { return true }
+        guard (1...127).contains(deviceId),
+              let resp = try? await fetchBundle(uin: uin, deviceId: UInt32(deviceId))
+        else { return false }
+        notePublishedIdentity(resp.signal_identity_key, uin: uin, deviceId: deviceId)
+        return SignalProtocolStores.shared.publishedIdentity(uin: uin, deviceId: deviceId) != nil
     }
 
     /// Drop the cached device list for [uin] — a send that 404s (device
@@ -415,6 +443,7 @@ extension SignalCryptoService {
         uin: Int, deviceId: UInt32
     ) async -> (identityKey: String, registrationId: UInt32)? {
         guard let resp = try? await fetchBundle(uin: uin, deviceId: deviceId) else { return nil }
+        notePublishedIdentity(resp.signal_identity_key, uin: uin, deviceId: Int(deviceId))
         return (resp.signal_identity_key, resp.registration_id)
     }
 
@@ -453,6 +482,9 @@ extension SignalCryptoService {
         if !force && hasSession && !needsOuterKey { return }
 
         let resp = try await fetchBundle(uin: uin, deviceId: deviceId)
+        // The island's word for this device, which is what a session the
+        // device opens towards us later is checked against.
+        notePublishedIdentity(resp.signal_identity_key, uin: uin, deviceId: Int(deviceId))
         if deviceId != 1,
            let outerB64 = resp.sealed_sender_pub,
            let outerBytes = Data(base64Encoded: outerB64), !outerBytes.isEmpty {

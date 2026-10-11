@@ -1167,6 +1167,10 @@
 "secscreen.you_screenshotted" = "Hiciste una captura";
 "secscreen.peer_screenshotted" = "%@ hizo una captura";
 "secscreen.preview" = "Captura";
+"chat.key_changed.notice" = "%@ ahora tiene otra clave de seguridad. Si no lo esperabas, confírmalo con esa persona por otra vía.";
+"chat.key_changed.preview" = "La clave de seguridad cambió";
+"chat.unverified.notice" = "Un mensaje de este número no se pudo verificar y no se mostró.";
+"chat.unverified.preview" = "Mensaje no verificado";
 "chat.preview.relay" = "Compartió una conexión";
 "secscreen.peer_fallback" = "Tu contacto";
 "reactions.who_title" = "Reacciones";
@@ -1676,6 +1680,7 @@
 "ci.server.not_in_groups" = "No está en tus grupos de esta isla";
 "ci.server.accept_hint" = "Si aceptas, verá tu número de casa. Solo la isla %@ responde de quién es.";
 "ci.server.key_changed" = "La clave de esta persona en la isla %@ no coincide con la que viste en un grupo. Confírmalo con ella antes de aceptar.";
+"ci.request.key_changed" = "Firmado con una clave distinta de la que conoces para este número. Acéptalo solo si sabes que la cambió.";
 "ci.server.retrying" = "No se pudo contactar con la isla %@. Lo intentaremos de nuevo.";
 "ci.server.gave_up" = "La isla %@ no aceptó la respuesta. Inténtalo más tarde.";
 "burn.islands.body.one" = "Esta cuenta también tiene una copia en %1$d isla más, donde te uniste a grupos o tienes una dirección de respaldo: %2$@. Primero se borra esa copia y después la cuenta en tu isla.";

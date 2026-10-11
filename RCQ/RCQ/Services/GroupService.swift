@@ -377,6 +377,9 @@ final class GroupService: ObservableObject {
         // for a group still here: one this user left while the GET was in
         // flight has had its names forgotten, and they must stay forgotten.
         GroupMemberNameStore.shared.record(full.group)
+        // First sight of each member's key, numbers of our island all
+        // (`SenderTrust`): a later roster serving another key is a change.
+        SenderTrustLedger.seedPins(full.group.members.map { (uin: $0.uin, key: $0.signingKey) })
         // Only the roster is taken: everything else on the row is already live
         // and may have been patched locally while this was in flight.
         groups[idx].members = full.group.members
@@ -1210,6 +1213,9 @@ final class GroupService: ObservableObject {
             return
         }
         GroupMemberNameStore.shared.record(g)
+        if g.host == nil {
+            SenderTrustLedger.seedPins(g.members.map { (uin: $0.uin, key: $0.signingKey) })
+        }
         if let idx = groups.firstIndex(where: { $0.id == g.id }) {
             var next = g
             // Keep a roster we already paid for rather than dropping it for a

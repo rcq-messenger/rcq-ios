@@ -5,17 +5,36 @@ extension Message {
     /// Stored as the `text` of a received "peer took a screenshot" notice so
     /// the screenshotter's name resolves at DISPLAY time, not at ingest.
     static let screenshotSentinel = "\u{1}rcq.secscreen\u{1}"
+    /// Stored as the `text` of the line the app writes itself when a number's
+    /// pin moves to the key the island now serves (`SenderTrust.repinned`).
+    static let keyChangedSentinel = "\u{1}rcq.keychanged\u{1}"
+    /// Stored as the `text` of the line the app writes itself when a message
+    /// from this number could not be verified and was not shown
+    /// (`SenderTrustRefused`).
+    static let unverifiedSentinel = "\u{1}rcq.unverified\u{1}"
 
     /// Localized display text for a system notice. A screenshot notice
     /// resolves the screenshotter's CURRENT nickname (the 1:1 peer is always a
     /// contact; resolving live avoids the stale "#911" that got baked when
-    /// contacts weren't loaded yet during a reconnect-queue drain). All other
-    /// system notices return their stored text unchanged.
+    /// contacts weren't loaded yet during a reconnect-queue drain), and so
+    /// does a key-changed line. All other system notices return their stored
+    /// text unchanged.
     @MainActor var systemNoticeText: String {
-        guard text == Message.screenshotSentinel else { return text }
+        switch text {
+        case Message.screenshotSentinel:
+            return String(format: "secscreen.peer_screenshotted".localized, noticeName)
+        case Message.keyChangedSentinel:
+            return String(format: "chat.key_changed.notice".localized, noticeName)
+        case Message.unverifiedSentinel:
+            return "chat.unverified.notice".localized
+        default:
+            return text
+        }
+    }
+
+    @MainActor private var noticeName: String {
         let nick = ContactService.shared.contacts.first { $0.uin == senderUIN }?.nickname
-        let name = (nick?.isEmpty == false) ? nick! : "secscreen.peer_fallback".localized
-        return String(format: "secscreen.peer_screenshotted".localized, name)
+        return (nick?.isEmpty == false) ? nick! : "secscreen.peer_fallback".localized
     }
 }
 

@@ -1275,6 +1275,17 @@ final class MessageDB {
         return ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey))
     }
 
+    /// Where a row lives and who wrote it, for judging an edit, a delete or a
+    /// reaction that names it by id (`ControlAuthority`). nil when unknown.
+    func controlTarget(id: UUID) -> ControlAuthority.Target<ThreadID>? {
+        guard let row = find(id: id) else { return nil }
+        return ControlAuthority.Target(
+            thread: ThreadID.decode(kindString: row.threadKind, rawKey: Int(row.threadKey)),
+            senderUIN: Int(row.senderUIN),
+            isFromMe: row.isFromMe
+        )
+    }
+
     /// Hard-delete every disappearing row whose deadline has passed, in every
     /// thread, opened this launch or not.
     ///

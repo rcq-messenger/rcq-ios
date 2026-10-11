@@ -88,6 +88,12 @@ final class WebSocketService: ObservableObject {
         /// nil on a live frame the island did not log and on every queue
         /// row. Read only to ack a live row behind the log drain's cursor.
         let seq: Int?
+        /// The island hands this row out again until it is acked: the live
+        /// socket (every live frame is queued too), our queue and a room's
+        /// log. Only such a row may be held while its sender's key is read
+        /// again (`SenderTrustPending`); a visited island's or a backup's
+        /// mailbox forgets what it handed out, so its rows are decided at once.
+        let redeliverable: Bool
 
         init(
             type: String,
@@ -96,7 +102,8 @@ final class WebSocketService: ObservableObject {
             offline: Bool,
             groupID: Int?,
             toDeviceID: Int? = nil,
-            seq: Int? = nil
+            seq: Int? = nil,
+            redeliverable: Bool = false
         ) {
             self.type = type
             self.payload = payload
@@ -105,6 +112,7 @@ final class WebSocketService: ObservableObject {
             self.groupID = groupID
             self.toDeviceID = toDeviceID
             self.seq = seq
+            self.redeliverable = redeliverable
         }
     }
 
@@ -950,7 +958,7 @@ final class WebSocketService: ObservableObject {
             let seq = dict["seq"] as? Int
             events.send(.envelope(envelope: EnvelopePacket(
                 type: type, payload: payload, serverTime: serverTime, offline: offline,
-                groupID: groupID, toDeviceID: toDeviceID, seq: seq
+                groupID: groupID, toDeviceID: toDeviceID, seq: seq, redeliverable: true
             )))
 
         default:

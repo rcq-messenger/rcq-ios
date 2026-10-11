@@ -267,6 +267,29 @@ final class SignalProtocolDB: @unchecked Sendable {
                 outer_key BLOB NOT NULL
             );
             """,
+            // The Ed25519 key this device first saw for a number of the
+            // account's OWN island (`SenderTrust`): uin -> raw key. Kept
+            // here, per account and in the App Group, because the
+            // notification extension has to judge a push by the same pin
+            // the app files the message by. Moved only by the app, when the
+            // island serves the new key and the user is told.
+            """
+            CREATE TABLE IF NOT EXISTS sender_pins (
+                uin INTEGER PRIMARY KEY,
+                signing_key BLOB NOT NULL
+            );
+            """,
+            // The libsignal identity the island publishes for a peer device,
+            // `<uin>:<deviceId>` -> serialized identity key, as last read off
+            // its device list or a bundle. A PreKeySignalMessage that would
+            // seat an identity we do not hold yet, or replace one we do, is
+            // opened only when it matches this (`CryptoError.identityUnverified`).
+            """
+            CREATE TABLE IF NOT EXISTS published_identities (
+                address TEXT PRIMARY KEY,
+                identity_key BLOB NOT NULL
+            );
+            """,
         ]
         for sql in stmts {
             _ = sqlite3_exec(db, sql, nil, nil, nil)
@@ -348,7 +371,8 @@ final class SignalProtocolDB: @unchecked Sendable {
             for table in ["local_identity", "prekeys", "signed_prekeys",
                           "kyber_prekeys", "sessions", "identities",
                           "sender_keys", "identity_changes", "local_device",
-                          "device_outer_keys", "missing_device_strikes"] {
+                          "device_outer_keys", "missing_device_strikes",
+                          "sender_pins", "published_identities"] {
                 _ = sqlite3_exec(db, "DELETE FROM \(table);", nil, nil, nil)
             }
         }

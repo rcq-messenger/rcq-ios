@@ -740,6 +740,12 @@ struct PendingRequestsView: View {
             }
             if r.serverRequestID != nil {
                 serverLines(r)
+            } else if r.keyChanged == true {
+                // Held as signed by another key than the one this device
+                // knows for the number (`SenderTrust.forged`).
+                Text("ci.request.key_changed".localized)
+                    .font(.caption)
+                    .foregroundColor(Theme.Color.statusBusy)
             }
             if let note = r.reqNote, !note.isEmpty {
                 Text(note)
@@ -827,6 +833,14 @@ struct PendingRequestsView: View {
         // surface them in the contact-driven chat list, open the chat.
         if r.host.isEmpty {
             ciBusy = r.id
+            // A row held as "key changed": accepting it is the user saying
+            // the new key is this person's. The pin moves to the key their
+            // latest message was signed with, and what they send under it
+            // from now on lands in their chat.
+            if r.keyChanged == true,
+               let key = r.msgs.last(where: { !($0.spub ?? "").isEmpty })?.spub {
+                SignalProtocolStores.shared.repinSender(uin: r.uin, keyB64: key)
+            }
             StrangerQuarantine.shared.allow(r.uin)
             if let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: "") {
                 MessageService.shared.releaseHeldStranger(held)
@@ -1047,10 +1061,20 @@ struct PendingRequestsView: View {
     /// on another island, from somebody signing with a key that is not theirs?
     /// The gate holds only what failed the pinned key, so a row there is that,
     /// unless one of its messages is under the pinned key after all.
+    ///
+    /// Our own island the same way: a row held as "key changed" for a number
+    /// whose key this device pinned (`SenderTrust.forged`). Blocking the
+    /// number there would block the person the forger is posing as.
     private static func writesUnderContactAddress(_ r: CrossIslandRequestsStore.Request) -> Bool {
-        guard !r.host.isEmpty, !Multihome.isOwnHost(r.host),
-              let pinned = CrossIslandStore.shared.row(uin: r.uin, host: r.host),
-              let pinnedKey = Data(base64Encoded: pinned.signingKey), !pinnedKey.isEmpty else { return false }
+        let pinnedB64: String?
+        if r.host.isEmpty {
+            pinnedB64 = r.keyChanged == true ? SignalProtocolStores.shared.senderPin(uin: r.uin) : nil
+        } else if !Multihome.isOwnHost(r.host) {
+            pinnedB64 = CrossIslandStore.shared.row(uin: r.uin, host: r.host)?.signingKey
+        } else {
+            pinnedB64 = nil
+        }
+        guard let pinnedB64, let pinnedKey = Data(base64Encoded: pinnedB64), !pinnedKey.isEmpty else { return false }
         return !r.msgs.contains { m in
             guard let k = m.spub.flatMap({ Data(base64Encoded: $0) }) else { return false }
             return k == pinnedKey

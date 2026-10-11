@@ -1022,6 +1022,12 @@ enum CryptoError: Error, LocalizedError {
     case decryptFailed
     case signatureVerifyFailed
     case missingSenderInfo
+    /// A v=2 PreKeySignalMessage that would seat a libsignal identity for
+    /// [uin]'s device [deviceId] which this device does not hold and which is
+    /// not what the island publishes for that device (as last read). Nothing
+    /// was opened and no state moved: the app reads the device's published
+    /// identity again and the row is tried once more.
+    case identityUnverified(uin: Int, deviceId: Int)
 
     var errorDescription: String? {
         switch self {
@@ -1031,6 +1037,7 @@ enum CryptoError: Error, LocalizedError {
         case .decryptFailed:            return "AEAD decrypt failed"
         case .signatureVerifyFailed:    return "sender signature did not verify"
         case .missingSenderInfo:        return "envelope missing sender info"
+        case .identityUnverified(let uin, let dev): return "identity of \(uin)/\(dev) not published by the island"
         }
     }
 }
@@ -1472,6 +1479,24 @@ final class SignalCryptoService: CryptoService, @unchecked Sendable {
             switch kind {
             case "prekey":
                 let preMsg = try PreKeySignalMessage(bytes: msgBytes)
+                // ⚠⚠ The identity this message would seat. `from` and `dev`
+                // above are unsigned, and the identity store trusts on first
+                // use and accepts any replacement, so anybody holding our
+                // prekey bundle could open a session as any number, our own
+                // included, and a contact's existing session was replaced
+                // under them. An identity we already hold for this address
+                // opens as before. A new one, or a changed one, must be what
+                // the island publishes for that device: the reinstall a
+                // contact really did is published there, a forger's is not.
+                // Checked before libsignal touches anything, so a refusal
+                // costs no prekey and leaves the ratchet where it was.
+                let incoming = preMsg.identityKey.serialize()
+                let held = (try? stores.identity(for: senderAddr, context: ctx))?.serialize()
+                if held != incoming {
+                    guard stores.publishedIdentity(uin: from, deviceId: senderDeviceId) == incoming else {
+                        throw CryptoError.identityUnverified(uin: from, deviceId: senderDeviceId)
+                    }
+                }
                 plainEnvelope = try signalDecryptPreKey(
                     message: preMsg,
                     from: senderAddr,

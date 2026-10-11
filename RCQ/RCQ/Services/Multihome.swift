@@ -147,24 +147,34 @@ final class MultihomeStore {
 
     // MARK: peer-homes cache (deposit-to-all + send failover)
 
-    func cachedPeerHomes(_ peerUin: Int) -> PeerHomes? {
+    /// The homes cached for [peerUin] under the key [signingKey].
+    ///
+    /// ⚠ By the key as well as the number (sender-auth, finding 9): homes
+    /// cached for a number say where THE PERSON WITH THAT KEY lives. An entry
+    /// written under another key, or before entries carried one, is nobody's
+    /// answer for this contact and is not served.
+    func cachedPeerHomes(_ peerUin: Int, signingKey: String) -> PeerHomes? {
         guard let data = defaults.data(forKey: Self.peerCacheKey),
               let map = try? JSONDecoder().decode([String: StoredPeer].self, from: data),
-              let s = map[String(peerUin)] else { return nil }
+              let s = map[String(peerUin)],
+              SenderTrust.sameKey(s.sk, signingKey)
+        else { return nil }
         return PeerHomes(homes: s.homes.map { RcqFederation.Home(host: $0.host, uin: $0.uin) }, ts: s.ts, recTs: s.recTs ?? 0)
     }
 
-    func cachePeerHomes(_ peerUin: Int, homes: [RcqFederation.Home], recTs: Int = 0) {
+    func cachePeerHomes(_ peerUin: Int, signingKey: String, homes: [RcqFederation.Home], recTs: Int = 0) {
         var map: [String: StoredPeer] = [:]
         if let data = defaults.data(forKey: Self.peerCacheKey),
            let m = try? JSONDecoder().decode([String: StoredPeer].self, from: data) {
             map = m
         }
-        map[String(peerUin)] = StoredPeer(homes: homes.map { CodableHome(host: $0.host, uin: $0.uin) }, ts: Date(), recTs: recTs)
+        map[String(peerUin)] = StoredPeer(
+            homes: homes.map { CodableHome(host: $0.host, uin: $0.uin) }, ts: Date(), recTs: recTs, sk: signingKey
+        )
         if let data = try? JSONEncoder().encode(map) { defaults.set(data, forKey: Self.peerCacheKey) }
     }
 
-    private struct StoredPeer: Codable { let homes: [CodableHome]; let ts: Date; let recTs: Int? }
+    private struct StoredPeer: Codable { let homes: [CodableHome]; let ts: Date; let recTs: Int?; var sk: String? = nil }
 }
 
 enum Multihome {
@@ -1058,18 +1068,24 @@ enum Multihome {
     }
 
     /// Apply a contact's SELF-PUSHED home-island record (gossip B1): verify it
-    /// is signed by `senderSigningKey` (the same Ed25519 key that signed the
-    /// envelope it arrived in — binds the record to its real sender), reject a
-    /// ts rollback against what we've cached, and cache the homes for future
-    /// sends. Returns true when the cache was updated. Never throws.
+    /// is signed by `pinnedSigningKey`, reject a ts rollback against what we've
+    /// cached, and cache the homes for future sends. Returns true when the
+    /// cache was updated. Never throws.
+    ///
+    /// ⚠ The key is the one we PINNED for the sender, which the caller has
+    /// already matched against the key that signed the envelope
+    /// (`SenderTrust`). The envelope's own key proved nothing about who the
+    /// sender is (`from` is unsigned): anybody could push a record signed by
+    /// themselves under a contact's number, and every message to that contact
+    /// then went out a second time to islands of their choosing.
     @discardableResult
-    static func applyPushedRecord(senderUIN: Int, senderSigningKey: String, rec: Envelope.IslandRecordWire) -> Bool {
+    static func applyPushedRecord(senderUIN: Int, pinnedSigningKey: String, rec: Envelope.IslandRecordWire) -> Bool {
         guard let data = try? JSONEncoder().encode(rec),
               let doc = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
-        let prevTs = MultihomeStore.shared.cachedPeerHomes(senderUIN)?.recTs ?? 0
-        let opts = RcqFederation.VerifyOpts(expectedSk: senderSigningKey, minTs: prevTs > 0 ? prevTs : nil)
+        let prevTs = MultihomeStore.shared.cachedPeerHomes(senderUIN, signingKey: pinnedSigningKey)?.recTs ?? 0
+        let opts = RcqFederation.VerifyOpts(expectedSk: pinnedSigningKey, minTs: prevTs > 0 ? prevTs : nil)
         guard case .success(let v) = RcqFederation.verifyRecord(doc, opts: opts) else { return false }
-        MultihomeStore.shared.cachePeerHomes(senderUIN, homes: homesOf(v), recTs: tsOf(v))
+        MultihomeStore.shared.cachePeerHomes(senderUIN, signingKey: pinnedSigningKey, homes: homesOf(v), recTs: tsOf(v))
         return true
     }
 
@@ -1079,7 +1095,7 @@ enum Multihome {
     /// peer's own island being blocked/gone). Verified against the peer's
     /// locally-pinned signing key. TTL cached; a total miss serves the stale cache.
     private static func resolvePeerHomesCached(peerUin: Int, peerSigningKey: String) async -> [RcqFederation.Home] {
-        if let cached = MultihomeStore.shared.cachedPeerHomes(peerUin),
+        if let cached = MultihomeStore.shared.cachedPeerHomes(peerUin, signingKey: peerSigningKey),
            Date().timeIntervalSince(cached.ts) < peerCacheTTL {
             return cached.homes
         }
@@ -1095,7 +1111,7 @@ enum Multihome {
                       case .success(let rec) = RcqFederation.verifyRecord(doc, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
                 await mirrorRecord(host: own, body: data)  // seed gossip for other islands
                 let homes = homesOf(rec)
-                MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes, recTs: tsOf(rec))
+                MultihomeStore.shared.cachePeerHomes(peerUin, signingKey: peerSigningKey, homes: homes, recTs: tsOf(rec))
                 return homes
             }
         }
@@ -1103,12 +1119,12 @@ enum Multihome {
         if let rec = await fetchGossipRecord(host: own, signingKey: peerSigningKey),
            case .success(let v) = RcqFederation.verifyRecord(rec, opts: .init(expectedIk: nil, expectedSk: peerSigningKey)) {
             let homes = homesOf(v)
-            MultihomeStore.shared.cachePeerHomes(peerUin, homes: homes, recTs: tsOf(v))
+            MultihomeStore.shared.cachePeerHomes(peerUin, signingKey: peerSigningKey, homes: homes, recTs: tsOf(v))
             return homes
         }
         // Nothing reachable: serve stale cache, else cache empty (single-homed).
-        if let stale = MultihomeStore.shared.cachedPeerHomes(peerUin)?.homes { return stale }
-        MultihomeStore.shared.cachePeerHomes(peerUin, homes: [])
+        if let stale = MultihomeStore.shared.cachedPeerHomes(peerUin, signingKey: peerSigningKey)?.homes { return stale }
+        MultihomeStore.shared.cachePeerHomes(peerUin, signingKey: peerSigningKey, homes: [])
         return []
     }
 
@@ -1467,16 +1483,39 @@ final class GroupSenderKeyStore {
     }
 
     /// Store / refresh an inbound chain from an SKDM, bound to its
-    /// authenticated sender. Returns false if a known kid is claimed by a
-    /// DIFFERENT sender (rejected).
+    /// authenticated sender, its key and its room (`SkdmRule`). The caller
+    /// says whether the SKDM came in on the room it names (`frameRoom`) and
+    /// whether its sender is a pinned member there (`senderAuthentic`).
+    /// Returns false when refused: not from a pinned member of that room, or
+    /// a known kid claimed by a DIFFERENT sender, under a different key, or
+    /// for a different room.
+    ///
+    /// ⚠⚠ A held chain's key is never replaced. A re-send at an index we had
+    /// passed used to overwrite `spub`, so a member who holds another
+    /// member's chain (every member does) could re-send it under their own
+    /// key and sign posts as that member from then on, while the real ones
+    /// failed the signature here.
     @discardableResult
-    func acceptSkdm(ownUin: Int, kid: String, gid: Int, senderUIN: Int, spub: String, epoch: Int, index: Int, ck: String) -> Bool {
+    func acceptSkdm(
+        ownUin: Int, kid: String, gid: Int, senderUIN: Int, spub: String, epoch: Int, index: Int, ck: String,
+        frameRoom: Bool, senderAuthentic: Bool
+    ) -> Bool {
         lock.lock(); defer { lock.unlock() }
         let k = inK(ownUin, kid)
         var inn = loadIn()
-        if let ex = inn[k], ex.senderUin != senderUIN { return false }
-        if var ex = inn[k], ex.epoch == epoch, ex.index >= index {
-            ex.spub = spub; inn[k] = ex; saveIn(inn); return true
+        let held = inn[k].map { SkdmRule.Held(gid: $0.gid, senderUIN: $0.senderUin, spub: $0.spub) }
+        switch SkdmRule.verdict(
+            held: held, gid: gid, senderUIN: senderUIN, spub: spub,
+            frameRoom: frameRoom, senderAuthentic: senderAuthentic
+        ) {
+        case .refuse:
+            return false
+        case .known:
+            // The same member's chain under the same key: a re-send, or a
+            // later position of it. Only the position may move.
+            if let ex = inn[k], ex.epoch == epoch, ex.index >= index { return true }
+        case .store:
+            break
         }
         inn[k] = InChain(gid: gid, senderUin: senderUIN, spub: spub, epoch: epoch, index: index, ck: ck, skipped: [:])
         saveIn(inn)
@@ -1496,7 +1535,9 @@ final class GroupSenderKeyStore {
             .filter { !$0.isEmpty }
     }
 
-    struct InboundKey { let mk: Data; let spub: String; let senderUin: Int }
+    /// `gid`: the room the chain was handed out for, which a broadcast has
+    /// to arrive on (`MessageService.innerRoomMatches`).
+    struct InboundKey { let mk: Data; let spub: String; let senderUin: Int; let gid: Int }
 
     /// Derive the message key for (kid, epoch, index), ratcheting forward and
     /// caching skipped keys. nil when the kid is unknown (caller should NACK),
@@ -1509,7 +1550,7 @@ final class GroupSenderKeyStore {
         guard var c = inn[k], c.epoch == epoch else { return nil }
         if let cached = c.skipped[index], let mk = Data(base64Encoded: cached) {
             c.skipped[index] = nil; inn[k] = c; saveIn(inn)
-            return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
+            return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin, gid: c.gid)
         }
         if index < c.index { return nil }
         if index - c.index > SenderKeys.MAX_SKIP { return nil }
@@ -1525,7 +1566,7 @@ final class GroupSenderKeyStore {
         c.index = index + 1
         inn[k] = c
         saveIn(inn)
-        return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin)
+        return InboundKey(mk: mk, spub: c.spub, senderUin: c.senderUin, gid: c.gid)
     }
 
     // These four were lock-free while every read went straight to UserDefaults.
@@ -1534,6 +1575,12 @@ final class GroupSenderKeyStore {
     func knowsKid(ownUin: Int, _ kid: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         return loadIn()[inK(ownUin, kid)] != nil
+    }
+    /// The room a held chain was handed out for, asked before a broadcast
+    /// spends a position of it.
+    func inboundGid(ownUin: Int, _ kid: String) -> Int? {
+        lock.lock(); defer { lock.unlock() }
+        return loadIn()[inK(ownUin, kid)]?.gid
     }
     /// Only THIS account's kids count as own: another local account's
     /// broadcast must be decoded like anybody else's, not eaten as an echo.

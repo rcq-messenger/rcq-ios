@@ -42,9 +42,12 @@ extension Message {
             // This became reachable when the live socket started accepting
             // "secscreen": before that the notice only arrived on the silent
             // queue drain, which never banners.
-            raw = text == Message.screenshotSentinel
-                ? "📸 \("secscreen.preview".localized)"
-                : (text.isEmpty ? "chat.preview.generic".localized : text)
+            switch text {
+            case Message.screenshotSentinel: raw = "📸 \("secscreen.preview".localized)"
+            case Message.keyChangedSentinel: raw = "chat.key_changed.preview".localized
+            case Message.unverifiedSentinel: raw = "chat.unverified.preview".localized
+            default: raw = text.isEmpty ? "chat.preview.generic".localized : text
+            }
         case .relay:
             raw = "🛡️ \("chat.preview.relay".localized)"
         default:            raw = text.isEmpty ? "chat.preview.generic".localized : text
