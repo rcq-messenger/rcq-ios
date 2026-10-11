@@ -50,15 +50,39 @@ final class NotificationPrefsService: ObservableObject {
 
     @Published private(set) var prefs: Prefs = .defaults
     @Published private(set) var loaded: Bool = false
+    /// True once a GET for this account has come back. Until then `prefs`
+    /// is `.defaults`, not the island's values, and nothing may be written
+    /// from it: a mute tapped before the first sync used to PUT
+    /// `contact_requests: true` and the empty lists, turning the request
+    /// switch back on and dropping mutes set on other devices (report 1072).
+    private var synced = false
+    /// Bumped by `wipe()`, so an answer meant for the account we just left
+    /// is dropped instead of landing in the next one.
+    private var generation = 0
+    /// The GET in flight. A second one answered after the first one's PUT
+    /// would put the pre-PUT lists back, so callers share it.
+    private var pulling: Task<Void, Never>?
 
     private init() {}
 
     /// Pull from server. Soft-fail keeps current state — don't reset
     /// to defaults on a network blip mid-session.
     func refresh() async {
+        if let pulling { return await pulling.value }
+        let task = Task { await pull() }
+        pulling = task
+        await task.value
+        if pulling == task { pulling = nil }
+    }
+
+    private func pull() async {
+        let gen = generation
         do {
             let out: Prefs = try await APIClient.shared.request("GET", "/users/me/push-preferences")
+            guard gen == generation else { return }
             self.prefs = out
+            self.synced = true
+            mirrorMuteToAppGroup()
             // Self-heal lost mutes. Mute toggles PUT optimistically; a failed
             // PUT (offline, and until 2026-07 an expired token 401ing every
             // call) left the server behind the UI — and this refresh then
@@ -76,20 +100,32 @@ final class NotificationPrefsService: ObservableObject {
                 }
             }
         } catch {
+            // Nothing mirrored: before the first sync `prefs` is the
+            // defaults, and writing those would empty the extension's mute
+            // lists kept from the last launch.
         }
         self.loaded = true
-        mirrorMuteToAppGroup()
     }
 
     private func mirrorMuteToAppGroup() {
         MutedStore.shared.setMuted(uins: prefs.mutedUINs, groupIDs: prefs.mutedGroupIDs)
     }
 
-    /// Optimistic full-map PUT. UI flips first, server catches up async.
+    /// Optimistic PUT of the fields the patch changed. UI flips first,
+    /// server catches up async. Before the first successful GET the patch
+    /// waits for one and lands on the island's values; with no answer it is
+    /// dropped (SoundService still holds a mute, and the next sync
+    /// re-asserts it).
     func update(_ patch: (inout Prefs) -> Void) async {
+        let gen = generation
+        if !synced {
+            await refresh()
+            guard synced, gen == generation else { return }
+        }
         var next = prefs
         patch(&next)
         guard next != prefs else { return }
+        let before = prefs
         prefs = next
         mirrorMuteToAppGroup()
         do {
@@ -98,12 +134,15 @@ final class NotificationPrefsService: ObservableObject {
                 let muted_uins: [Int]?
                 let muted_group_ids: [Int]?
             }
+            // The island merges field by field (nil = keep), so a field
+            // this change did not touch stays out: sent along unchanged it
+            // would undo what another device set since our GET.
             let _: Prefs = try await APIClient.shared.request(
                 "PUT", "/users/me/push-preferences",
                 body: Body(
-                    contact_requests: next.contactRequests,
-                    muted_uins: next.mutedUINs,
-                    muted_group_ids: next.mutedGroupIDs
+                    contact_requests: next.contactRequests != before.contactRequests ? next.contactRequests : nil,
+                    muted_uins: next.mutedUINs != before.mutedUINs ? next.mutedUINs : nil,
+                    muted_group_ids: next.mutedGroupIDs != before.mutedGroupIDs ? next.mutedGroupIDs : nil
                 )
             )
         } catch {
@@ -138,6 +177,9 @@ final class NotificationPrefsService: ObservableObject {
     func wipe() {
         prefs = .defaults
         loaded = false
+        synced = false
+        generation += 1
+        pulling = nil
         MutedStore.shared.wipe()
     }
 }
