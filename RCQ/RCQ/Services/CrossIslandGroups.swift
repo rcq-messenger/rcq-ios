@@ -1034,13 +1034,15 @@ enum CrossIslandGroups {
     /// `MessageService.drainOwnGroupLogIfAdvertised` on our own island: rows
     /// go through the one ingest path filed under the local alias, the ack
     /// is keyed by the island's own room id, and the loop only continues
-    /// while an ack moved a cursor and landed (the fetch reads from the
+    /// while the next page is not this one (the fetch reads from the
     /// island's cursor, so a pass that acked nothing, or whose ack failed,
-    /// would read the same rows again). Called right after the host's
-    /// legacy queue was read, never beside it.
+    /// would read the same rows again). A room a row is holding is read
+    /// ahead after the rest and never acked (`GroupLogWalk`): this island
+    /// may well be one that fills a page room by room, and nobody here can
+    /// update it. Called right after the host's legacy queue was read,
+    /// never beside it.
     @MainActor
     static func drainGroupLog(host: String, jwt: String) async {
-        struct FetchIn: Encodable { let limit: Int }
         struct FetchOut: Decodable {
             let rows: [MessageService.GroupLogRow]
             // Keyed by the room id as a string; see the own-island drain.
@@ -1054,11 +1056,13 @@ enum CrossIslandGroups {
         // sender-key chains moving for good) with nowhere to keep the text.
         guard MessageDB.shared.isWritable else { return }
         let drain = MessageService.shared.beginGroupLogDrain()
-        var passes = 0
-        repeat {
-            passes += 1
+        var walk = GroupLogWalk()
+        var again = true
+        while again {
+            let readingAhead = walk.readingAhead
             guard let out: FetchOut = try? await postJSON(
-                "https://\(host)/messages/group-log/fetch", body: FetchIn(limit: 500), jwt: jwt
+                "https://\(host)/messages/group-log/fetch",
+                body: MessageService.GroupLogFetchIn(rooms: walk.request, limit: 500), jwt: jwt
             ) else { return }
             // On the one drain chain, not beside it. This walk runs off
             // `Multihome`'s 30 s poll, so it lands in the middle of the queue
@@ -1071,18 +1075,26 @@ enum CrossIslandGroups {
             // the ack above stay off it, so a slow island cannot hold the
             // queue drain up.
             let got = await MessageService.shared.serialisedDrain {
-                await MessageService.shared.ingestGroupLogRows(out.rows, drain: drain) {
+                await MessageService.shared.ingestGroupLogRows(out.rows, drain: drain, readAhead: readingAhead) {
                     VisitedIslandsStore.shared.aliasFor(host: host, remoteId: $0)
                 }
             }
-            let acks = got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
-            guard !acks.isEmpty else { return }
-            let acked: AckOut? = try? await postJSON(
-                "https://\(host)/messages/group-log/ack",
-                body: AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) }), jwt: jwt
+            guard !got.failed else { return }
+            // Nothing read ahead is acked: it sits behind the row its room's
+            // cursor has to stay in front of.
+            let acks = readingAhead ? [:] : got.upto.filter { $0.value > (out.cursors[String($0.key)] ?? 0) }
+            if !acks.isEmpty {
+                let acked: AckOut? = try? await postJSON(
+                    "https://\(host)/messages/group-log/ack",
+                    body: AckIn(rooms: acks.map { AckRoom(gid: $0.key, upto: $0.value) }), jwt: jwt
+                )
+                guard acked != nil else { return }
+            }
+            again = walk.took(
+                served: got.served, named: out.cursors.keys.compactMap { Int($0) },
+                more: out.more, blocked: got.blocked, moved: !acks.isEmpty
             )
-            guard acked != nil, out.more, passes < 20 else { return }
-        } while true
+        }
     }
 
     // MARK: raw HTTP

@@ -300,6 +300,12 @@ final class SignalProtocolDB: @unchecked Sendable {
         return try queue.sync(execute: block)
     }
 
+    /// Whether a handle is open. A closed one answers every read with
+    /// nothing, which the stores report as a missing session or prekey:
+    /// the room-log drain asks before it counts such a failure against
+    /// the row (report 981).
+    var isOpen: Bool { queue.sync { db != nil } }
+
     // MARK: - low-level prepared-statement helpers
 
     func selectBlob(sql: String, bind: (OpaquePointer) -> Void) -> Data? {

@@ -167,6 +167,8 @@ final class AccountManager: ObservableObject {
         // still here.
         SoundService.shared.forget(accountID: id)
         NotificationPrefsService.shared.forgetPending(account: id)
+        // The room-log rows it was counting as unreadable (report 981).
+        MessageService.shared.forgetGroupLogStalls(accountID: id)
         if activeAccountID == id {
             activeAccountID = accounts.first?.id
         }
