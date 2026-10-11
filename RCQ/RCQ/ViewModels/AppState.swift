@@ -2116,6 +2116,8 @@ final class AppState: ObservableObject {
         let am = AccountManager.shared
         for s in siblings where s.id != am.activeAccountID && am.accounts.contains(where: { $0.id == s.id }) {
             CrossIslandRequestsStore.wipeStored(accountID: s.id)
+            RemovedContactsStore.wipeStored(accountID: s.id)
+            BlockedContactsStore.wipeServerBlocked(accountID: s.id)
             PeerLivenessStore.wipeStored(accountID: s.id)
             VisitedIslandsStore.wipeStored(accountID: s.id)
             // Same trap as `eraseLocalAccount`: the backup store is filed by
@@ -2176,6 +2178,9 @@ final class AppState: ObservableObject {
         CrossIslandRequestsStore.shared.wipe()
         StrangerQuarantine.shared.wipe()
         VisitedIslandsStore.shared.wipe()
+        // The island's block flags on the burned identity's roster (the
+        // extension's copy of them); the fresh identity's roster writes its own.
+        BlockedContactsStore.wipeServerBlocked(accountID: AccountManager.shared.activeAccountID)
         // The burned identity's verdict says nothing about the fresh one that
         // registers under this same account slot a moment from now.
         GuestSession.shared.clear()
@@ -2719,6 +2724,9 @@ final class AppState: ObservableObject {
         // Blocks of our own island are per account too (report 1065): one
         // account's block used to block the number in every account here.
         BlockedContactsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
+        // Removed contacts too: the list used to be one set for the phone,
+        // wiped on every switch, so switching back forgot every removal.
+        RemovedContactsStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         // "Account deleted" marks name contacts of one account (report 1067).
         PeerLivenessStore.shared.bind(accountID: AccountManager.shared.activeAccountID)
         StrangerQuarantine.shared.bind(accountID: AccountManager.shared.activeAccountID)
@@ -2766,7 +2774,6 @@ final class AppState: ObservableObject {
         NicknameCache.wipe()
         AvatarThumbCache.wipe()
         GroupNameCache.wipe()
-        RemovedContactsStore.shared.wipe()
         ReactionInboxStore.shared.wipe()
         MentionInboxStore.shared.wipe()
         EncryptedBlobDiskCache.shared.clear()

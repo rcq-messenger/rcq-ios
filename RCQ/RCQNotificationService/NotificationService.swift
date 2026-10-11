@@ -235,7 +235,11 @@ class NotificationService: UNNotificationServiceExtension {
             // ⚠ The list is our own island's numbers (report 1064): a contact
             // on another island who holds the same number is somebody else,
             // and the app files what they write.
-            if ourNumber, RemovedContactsStore.shared.contains(decrypted.senderUIN) {
+            //
+            // ⚠ Read for the account the push is for, from disk: the list is
+            // per account, and one account's removal silenced the same
+            // number in another (where it may be another person).
+            if ourNumber, RemovedContactsStore.stored(accountID: routedAccountID).contains(decrypted.senderUIN) {
                 contentHandler(UNNotificationContent())
                 return
             }
@@ -387,6 +391,14 @@ class NotificationService: UNNotificationServiceExtension {
                    uin: decrypted.senderUIN, host: host,
                    spub: decrypted.senderSigningKey, accountID: routedAccountID
                ) {
+                // The app holds only content and polls from them and drops the
+                // rest (`MessageService.isCrossIslandHeldKind`): a screenshot
+                // note or a system notice from a stranger left a request
+                // banner over a Requests list with nothing new in it.
+                guard Self.isHeldAsRequest(decrypted.envelope) else {
+                    contentHandler(UNNotificationContent())
+                    return
+                }
                 os_log("#%d@%{public}@ is not an accepted contact - request banner",
                        log: Self.log, type: .default, decrypted.senderUIN, host)
                 contentHandler(Self.requestContent(uin: decrypted.senderUIN, host: host, from: content))
@@ -604,13 +616,21 @@ class NotificationService: UNNotificationServiceExtension {
     /// The banner for a message the app files under Requests (report 1071):
     /// the sender's address and not a name, none of the words, no badge on a
     /// chat it will not be in, and `pending` so a tap opens Requests.
+    ///
+    /// Keeps the router's "for account B" subtitle and `to_uin`: without the
+    /// number the tap stayed on the active account and opened ITS Requests,
+    /// where the row is not. Only `to_uin` from the payload: with `env` the
+    /// app's `willPresent` takes the banner for a message push and drops it in
+    /// the foreground.
     private static func requestContent(uin: Int, host: String, from content: UNMutableNotificationContent) -> UNNotificationContent {
         let out = UNMutableNotificationContent()
         out.title = "\(uin)@\(host)"
+        out.subtitle = content.subtitle
         let body = pushLocalized("push.message_request.body")
         out.body = (body.isEmpty || body == "push.message_request.body") ? "New message request" : body
         out.sound = content.sound
         out.threadIdentifier = "pending"
+        if let to = content.userInfo["to_uin"] { out.userInfo = ["to_uin": to] }
         return out
     }
 
@@ -910,12 +930,19 @@ class NotificationService: UNNotificationServiceExtension {
         let candidates: [String] = {
             var seen = Set<String>()
             var ordered: [String] = []
+            // Longest first ("zh-Hans-CN", "zh-Hans", "zh"): a folder named
+            // with its script (zh-Hans.lproj) is found as well as a bare one.
             func add(_ raw: String?) {
                 guard let raw, !raw.isEmpty else { return }
-                let stripped = String(raw.split(separator: "-").first ?? "")
-                guard !stripped.isEmpty, !seen.contains(stripped) else { return }
-                seen.insert(stripped)
-                ordered.append(stripped)
+                var parts = raw.split(separator: "-").map(String.init)
+                while !parts.isEmpty {
+                    let code = parts.joined(separator: "-")
+                    if !seen.contains(code) {
+                        seen.insert(code)
+                        ordered.append(code)
+                    }
+                    parts.removeLast()
+                }
             }
             add(stored)
             for lang in preferred { add(lang) }
@@ -1003,6 +1030,17 @@ class NotificationService: UNNotificationServiceExtension {
     private static func isAnnounced(_ envelope: Envelope) -> Bool {
         if case .callSignal(_, let sig, _, _, _) = envelope { return sig == "call_offer" }
         return envelopeIsUserVisible(envelope)
+    }
+
+    /// What the app keeps under Requests from somebody on another island who
+    /// is not an accepted contact. ⚠ The same set as
+    /// `MessageService.isCrossIslandHeldKind` (content kinds and a poll); the
+    /// app drops every other kind from them.
+    private static func isHeldAsRequest(_ envelope: Envelope) -> Bool {
+        switch envelope {
+        case .text, .photo, .video, .voice, .file, .location, .poll: return true
+        default: return false
+        }
     }
 
     /// True if a decryptable message mentions us by `#<uin>`. Used by the

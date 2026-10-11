@@ -79,6 +79,9 @@ final class ContactService: ObservableObject {
         list.removeAll { RemovedContactsStore.shared.contains($0.uin) }
         let cross = CrossIslandStore.shared.all().filter { ci in !list.contains { $0.uin == ci.uin } }
         serverBlocked = Set(list.filter { $0.blocked }.map(\.uin))
+        if !PanicPINService.shared.isDecoy {
+            BlockedContactsStore.storeServerBlocked(serverBlocked, accountID: AccountManager.shared.activeAccountID)
+        }
         contacts = withBlockFlags(list + cross)
         pendingRequests = snap.pending
         outgoingRequests = snap.outgoing
@@ -274,6 +277,8 @@ final class ContactService: ObservableObject {
             // function on purpose: two spellings of "equalise the foreign half"
             // is how the two branches drift apart, which is the shape of #1024.
             self.serverBlocked = Set(list.filter { $0.blocked }.map(\.uin))
+            // The extension drops whoever the app drops (`storeServerBlocked`).
+            BlockedContactsStore.storeServerBlocked(serverBlocked, accountID: account)
             self.contacts = withBlockFlags(CrossIslandRoster.fold(list, store: CrossIslandStore.shared.all()) ?? list)
             // The foreign rows that actually landed, for the nickname map below.
             let cross = self.contacts.filter { $0.host != nil }
@@ -838,6 +843,7 @@ final class ContactService: ObservableObject {
         else { return }
         struct Body: Encodable { let blocked: Bool }
         struct Out: Decodable { let blocked: Bool }
+        let account = AccountManager.shared.activeAccountID
         do {
             var out: Out = try await APIClient.shared.request(
                 "POST", "/contacts/\(uin)/block", body: Body(blocked: on)
@@ -855,6 +861,9 @@ final class ContactService: ObservableObject {
             // Offline: the local set already says it, and the label shows the
             // island's flag too, so an unblock that did not reach it shows as
             // not done rather than pretending.
+        }
+        if !PanicPINService.shared.isDecoy, account == AccountManager.shared.activeAccountID {
+            BlockedContactsStore.storeServerBlocked(serverBlocked, accountID: account)
         }
         refreshBlockedFlags()
     }

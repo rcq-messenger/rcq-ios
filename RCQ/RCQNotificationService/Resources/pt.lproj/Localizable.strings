@@ -1,0 +1,23 @@
+/* Textos das notificações push que a extensão (NSE) monta pelo campo
+   `notif_kind` que o servidor coloca em cada push não selado. */
+
+"push.contact_request.body" = "quer te adicionar aos contatos";
+"push.contact_response_accepted.body" = "aceitou seu pedido de contato";
+/* Mensagem de alguém de outra ilha que não é um contato aceito: o app guarda em
+   Solicitações, então o push diz isso e o toque abre a lista.
+   Sem o texto e sem nome (o número dele aqui pode ser de outra pessoa). */
+"push.message_request.body" = "Nova solicitação de mensagem";
+"push.trade_received.gift.body" = "te enviou um presente";
+"push.trade_received.offer.body" = "te enviou uma oferta de troca";
+"push.uin_auction_outbid.title" = "Leilão de UIN";
+"push.uin_auction_outbid.body" = "Seu lance foi superado. Veja o leilão.";
+/* Quando a NSE não consegue decifrar um push de grupo (o título será o nome do
+   grupo). */
+"push.group_message.body" = "Mensagem nova";
+/* Mostrado no lugar do remetente e do texto quando o app está bloqueado por PIN
+   ou numa sessão de fachada. Não diz quem escreveu nem o quê. */
+"push.quiet.title" = "RCQ";
+"push.quiet.body" = "Mensagem nova";
+/* Push de um chat trancado com o PIN do app. O título ainda diz quem escreveu;
+   o texto fica atrás do PIN. */
+"push.locked_chat.body" = "Mensagem nova";

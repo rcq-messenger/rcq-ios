@@ -1,0 +1,22 @@
+/* 通知扩展（NSE）根据服务器在每条未密封推送里写入的 `notif_kind`
+   字段生成的推送文字。 */
+
+"push.contact_request.body" = "想添加你为联系人";
+"push.contact_response_accepted.body" = "接受了你的联系人请求";
+/* 来自其他岛屿、尚未接受为联系人的人的消息：应用把它放进“请求”，
+   所以推送这样说明，点按即打开请求列表。
+   不显示内容，也不显示名字（这个号码在这里可能属于另一个人）。 */
+"push.message_request.body" = "新的消息请求";
+"push.trade_received.gift.body" = "给你送了一份礼物";
+"push.trade_received.offer.body" = "给你发来了交易请求";
+"push.uin_auction_outbid.title" = "UIN 拍卖";
+"push.uin_auction_outbid.body" = "你的出价已被超过。去看看拍卖吧。";
+/* NSE 无法解密群组推送时的文字（标题是群组名称）。 */
+"push.group_message.body" = "新消息";
+/* 应用被 PIN 锁定或处于诱饵会话时，代替发送者和内容显示。
+   不透露是谁写的、写了什么。 */
+"push.quiet.title" = "RCQ";
+"push.quiet.body" = "新消息";
+/* 来自用应用 PIN 锁定的聊天的推送。标题仍显示是谁写的；
+   内容留在 PIN 之后。 */
+"push.locked_chat.body" = "新消息";

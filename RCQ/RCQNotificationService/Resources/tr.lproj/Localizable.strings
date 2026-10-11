@@ -1,0 +1,22 @@
+/* Uzantının (NSE) sunucunun mühürsüz her push'a koyduğu `notif_kind` alanına
+   göre yazdığı bildirim metinleri. */
+
+"push.contact_request.body" = "seni kişilerine eklemek istiyor";
+"push.contact_response_accepted.body" = "kişi isteğini kabul etti";
+/* Başka bir adadan, kabul edilmiş kişi olmayan birinin mesajı: uygulama onu
+   İsteklere koyar, push bunu söyler ve dokununca İstekler açılır.
+   Yazdığı yok, isim yok (numarası burada başka birine ait olabilir). */
+"push.message_request.body" = "Yeni mesaj isteği";
+"push.trade_received.gift.body" = "sana bir hediye gönderdi";
+"push.trade_received.offer.body" = "sana bir takas teklifi gönderdi";
+"push.uin_auction_outbid.title" = "UIN açık artırması";
+"push.uin_auction_outbid.body" = "Teklifin geçildi. Açık artırmaya göz at.";
+/* NSE bir grup push'unu çözemediğinde (başlık grubun adı olur). */
+"push.group_message.body" = "Yeni mesaj";
+/* Uygulama PIN ile kilitliyken ya da sahte oturumdayken gönderen ve metin yerine
+   gösterilir. Kimin ne yazdığını söylemez. */
+"push.quiet.title" = "RCQ";
+"push.quiet.body" = "Yeni mesaj";
+/* Uygulama PIN'i ile kilitlenmiş bir sohbetten gelen push. Başlık kimin yazdığını
+   söyler; metin PIN'in arkasında kalır. */
+"push.locked_chat.body" = "Yeni mesaj";

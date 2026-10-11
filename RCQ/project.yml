@@ -382,6 +382,11 @@ targets:
       # NSE can't resolve the picked language to a bundled lproj.
       - RCQNotificationService/Resources/en.lproj
       - RCQNotificationService/Resources/ru.lproj
+      - RCQNotificationService/Resources/zh-Hans.lproj
+      - RCQNotificationService/Resources/es.lproj
+      - RCQNotificationService/Resources/pt.lproj
+      - RCQNotificationService/Resources/tr.lproj
+      - RCQNotificationService/Resources/uk.lproj
     info:
       path: RCQNotificationService/Info.plist
       properties:

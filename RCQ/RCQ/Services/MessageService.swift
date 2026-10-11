@@ -3812,6 +3812,8 @@ final class MessageService {
                Self.verifiedCrossIslandContact(
                    uin: decrypted.senderUIN, host: host, spub: decrypted.senderSigningKey
                ) == nil {
+                // `ingest` holds only these from them and drops the rest.
+                guard Self.isCrossIslandHeldKind(decrypted.envelope) else { return }
                 threadKey = "pending"
                 bumpsBadge = false
                 if !pinUp {

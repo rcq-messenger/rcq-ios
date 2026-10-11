@@ -63,6 +63,56 @@ final class NotificationPrefsService: ObservableObject {
     /// would put the pre-PUT lists back, so callers share it.
     private var pulling: Task<Void, Never>?
 
+    /// Unmutes made here that the island has not confirmed yet ("peer:N",
+    /// "group:N"), per account and on disk. A mute whose PUT never landed has
+    /// SoundService to re-assert it on the next sync; an unmute had nothing,
+    /// so that sync put the island's old mute back into the extension's lists
+    /// while the chat showed unmuted, and its pushes stayed silent for good.
+    private static let pendingPrefix = "notif.pending_unmutes."
+
+    private static func pendingKey(_ account: UUID?) -> String {
+        pendingPrefix + (account?.uuidString ?? "none")
+    }
+
+    private static func pendingUnmutes(_ account: UUID?) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: pendingKey(account)) ?? [])
+    }
+
+    private static func storePendingUnmutes(_ keys: Set<String>, _ account: UUID?) {
+        if keys.isEmpty {
+            UserDefaults.standard.removeObject(forKey: pendingKey(account))
+        } else {
+            UserDefaults.standard.set(Array(keys).sorted(), forKey: pendingKey(account))
+        }
+    }
+
+    private static func ids(_ keys: Set<String>, _ prefix: String) -> Set<Int> {
+        Set(keys.compactMap { $0.hasPrefix(prefix) ? Int($0.dropFirst(prefix.count)) : nil })
+    }
+
+    /// An unmute waits here until the island confirms it; a mute of the same
+    /// chat cancels it (the later tap wins). Never from a decoy session: the
+    /// account on file is the real one, and nothing done there may reach it.
+    private func notePending(_ key: String, unmuted: Bool) {
+        guard !PanicPINService.shared.isDecoy else { return }
+        let account = AccountManager.shared.activeAccountID
+        var keys = Self.pendingUnmutes(account)
+        if unmuted { keys.insert(key) } else { keys.remove(key) }
+        Self.storePendingUnmutes(keys, account)
+    }
+
+    /// Drop the unmutes the island's lists already agree with.
+    private static func settlePending(against server: Prefs, account: UUID?) {
+        let keys = pendingUnmutes(account)
+        guard !keys.isEmpty else { return }
+        let left = keys.filter { key in
+            if let uin = ids([key], "peer:").first { return server.mutedUINs.contains(uin) }
+            if let gid = ids([key], "group:").first { return server.mutedGroupIDs.contains(gid) }
+            return false
+        }
+        if left != keys { storePendingUnmutes(left, account) }
+    }
+
     private init() {}
 
     /// Pull from server. Soft-fail keeps current state — don't reset
@@ -77,26 +127,31 @@ final class NotificationPrefsService: ObservableObject {
 
     private func pull() async {
         let gen = generation
+        let account = AccountManager.shared.activeAccountID
         do {
             let out: Prefs = try await APIClient.shared.request("GET", "/users/me/push-preferences")
             guard gen == generation else { return }
             self.prefs = out
             self.synced = true
             mirrorMuteToAppGroup()
+            Self.settlePending(against: out, account: account)
             // Self-heal lost mutes. Mute toggles PUT optimistically; a failed
             // PUT (offline, and until 2026-07 an expired token 401ing every
             // call) left the server behind the UI — and this refresh then
             // OVERWROTE the local mirror with the server's stale empty list,
             // so muted groups pushed again after every relaunch. The UI's
             // mute state persists in SoundService: re-assert anything it
-            // holds muted that the server list is missing. Union-only —
-            // unmutes still travel exclusively through their own PUT.
+            // holds muted that the server list is missing. Unmutes come from
+            // `pendingUnmutes`: the ones made here that never reached it.
             let missingGroups = Set(SoundService.shared.mutedGroupIDsSnapshot()).subtracting(out.mutedGroupIDs)
             let missingUINs = Set(SoundService.shared.mutedUINsSnapshot()).subtracting(out.mutedUINs)
-            if !missingGroups.isEmpty || !missingUINs.isEmpty {
+            let pending = PanicPINService.shared.isDecoy ? Set<String>() : Self.pendingUnmutes(account)
+            let unmutedGroups = Self.ids(pending, "group:").intersection(out.mutedGroupIDs)
+            let unmutedUINs = Self.ids(pending, "peer:").intersection(out.mutedUINs)
+            if !missingGroups.isEmpty || !missingUINs.isEmpty || !unmutedGroups.isEmpty || !unmutedUINs.isEmpty {
                 await update { current in
-                    current.mutedGroupIDs = Array(Set(current.mutedGroupIDs).union(missingGroups)).sorted()
-                    current.mutedUINs = Array(Set(current.mutedUINs).union(missingUINs)).sorted()
+                    current.mutedGroupIDs = Array(Set(current.mutedGroupIDs).union(missingGroups).subtracting(unmutedGroups)).sorted()
+                    current.mutedUINs = Array(Set(current.mutedUINs).union(missingUINs).subtracting(unmutedUINs)).sorted()
                 }
             }
         } catch {
@@ -113,14 +168,25 @@ final class NotificationPrefsService: ObservableObject {
 
     /// Optimistic PUT of the fields the patch changed. UI flips first,
     /// server catches up async. Before the first successful GET the patch
-    /// waits for one and lands on the island's values; with no answer it is
-    /// dropped (SoundService still holds a mute, and the next sync
-    /// re-asserts it).
+    /// waits for one and lands on the island's values. With no answer
+    /// nothing is sent (`prefs` is still the defaults), but a mute change
+    /// goes onto the lists the extension kept from the last sync, so the
+    /// chat rings or stays quiet now; the island hears it on the next sync
+    /// (a mute through SoundService, an unmute through `pendingUnmutes`).
     func update(_ patch: (inout Prefs) -> Void) async {
         let gen = generation
+        let account = AccountManager.shared.activeAccountID
         if !synced {
             await refresh()
-            guard synced, gen == generation else { return }
+            guard gen == generation else { return }
+            guard synced else {
+                guard !PanicPINService.shared.isDecoy else { return }
+                let kept = MutedStore.shared.lists()
+                var local = Prefs(contactRequests: prefs.contactRequests, mutedUINs: kept.uins, mutedGroupIDs: kept.groupIDs)
+                patch(&local)
+                MutedStore.shared.setMuted(uins: local.mutedUINs, groupIDs: local.mutedGroupIDs)
+                return
+            }
         }
         var next = prefs
         patch(&next)
@@ -137,7 +203,7 @@ final class NotificationPrefsService: ObservableObject {
             // The island merges field by field (nil = keep), so a field
             // this change did not touch stays out: sent along unchanged it
             // would undo what another device set since our GET.
-            let _: Prefs = try await APIClient.shared.request(
+            let saved: Prefs = try await APIClient.shared.request(
                 "PUT", "/users/me/push-preferences",
                 body: Body(
                     contact_requests: next.contactRequests != before.contactRequests ? next.contactRequests : nil,
@@ -145,8 +211,10 @@ final class NotificationPrefsService: ObservableObject {
                     muted_group_ids: next.mutedGroupIDs != before.mutedGroupIDs ? next.mutedGroupIDs : nil
                 )
             )
+            Self.settlePending(against: saved, account: account)
         } catch {
-            // Server keeps its old value — next refresh() reconciles.
+            // Server keeps its old value — next refresh() reconciles (a mute
+            // through SoundService, an unmute through `pendingUnmutes`).
         }
     }
 
@@ -156,6 +224,7 @@ final class NotificationPrefsService: ObservableObject {
 
     /// Per-contact mute also flips server-side push gating.
     func setMuted(_ uin: Int, muted: Bool) async {
+        notePending("peer:\(uin)", unmuted: !muted)
         await update { current in
             var set = Set(current.mutedUINs)
             if muted { set.insert(uin) } else { set.remove(uin) }
@@ -167,6 +236,7 @@ final class NotificationPrefsService: ObservableObject {
     /// suppresses APNs alerts for offline group recipients; messages
     /// still queue, so the user sees them on next /queue fetch.
     func setGroupMuted(_ groupID: Int, muted: Bool) async {
+        notePending("group:\(groupID)", unmuted: !muted)
         await update { current in
             var set = Set(current.mutedGroupIDs)
             if muted { set.insert(groupID) } else { set.remove(groupID) }

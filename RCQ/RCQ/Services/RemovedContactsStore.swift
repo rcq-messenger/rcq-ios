@@ -13,23 +13,41 @@ import Foundation
 /// A removed contact from another island goes through the cross-island
 /// gate like any stranger (their messages wait in Requests).
 ///
+/// ⚠ Per account, like `BlockedContactsStore`. It used to be one device-wide
+/// set: a removal in account A dropped the pushes of a different person who
+/// holds that number in account B, and every account switch wiped the set,
+/// so switching away and back brought every removed contact's messages back.
+///
 /// Persisted in UserDefaults so the filter survives app relaunch /
 /// background unload. App-group-scoped (`group.app.rcq.shared`) so
-/// the NSE shares the same view of the set.
+/// the NSE shares the same view of the set (`stored(accountID:)`).
 final class RemovedContactsStore {
     static let shared = RemovedContactsStore()
 
-    private static let key = "rcq.removed_contacts"
+    /// The device-wide set older builds kept. Read until migrated.
+    private static let legacyKey = "rcq.removed_contacts"
+    private static let prefix = "rcq.removed_contacts.v2."
     private static let appGroup = "group.app.rcq.shared"
 
     private let defaults: UserDefaults
+    private var key: String
     private var cache: Set<Int>
 
     private init() {
         let suite = UserDefaults(suiteName: Self.appGroup) ?? .standard
         self.defaults = suite
-        let raw = (suite.array(forKey: Self.key) as? [Int]) ?? []
-        self.cache = Set(raw)
+        // The extension only reads (`stored` below), like BlockedContactsStore.
+        if !Bundle.main.bundlePath.hasSuffix(".appex") { Self.migrateLegacyIfNeeded() }
+        key = Self.prefix + (AppGroup.readActiveAccountID()?.uuidString ?? "none")
+        cache = Self.load(suite, key)
+    }
+
+    /// Re-point at the active account on every account switch and on entering
+    /// or leaving a decoy session, like `BlockedContactsStore.bind`.
+    func bind(accountID: UUID?) {
+        Self.migrateLegacyIfNeeded()
+        key = Self.prefix + (accountID?.uuidString ?? "none")
+        cache = Self.load(defaults, key)
     }
 
     func contains(_ uin: Int) -> Bool {
@@ -38,19 +56,57 @@ final class RemovedContactsStore {
 
     func add(_ uin: Int) {
         guard cache.insert(uin).inserted else { return }
-        defaults.set(Array(cache), forKey: Self.key)
+        defaults.set(Array(cache), forKey: key)
     }
 
     /// Used when the user re-adds a previously removed contact —
     /// they explicitly want messages from this UIN again.
     func remove(_ uin: Int) {
         guard cache.remove(uin) != nil else { return }
-        defaults.set(Array(cache), forKey: Self.key)
+        defaults.set(Array(cache), forKey: key)
     }
 
+    /// The bound account's set only (burn, UIN move).
     func wipe() {
         cache.removeAll()
-        defaults.removeObject(forKey: Self.key)
+        defaults.removeObject(forKey: key)
+    }
+
+    /// Another account's set, for an account erased from this phone.
+    static func wipeStored(accountID: UUID) {
+        (UserDefaults(suiteName: appGroup) ?? .standard).removeObject(forKey: prefix + accountID.uuidString)
+    }
+
+    private static func load(_ d: UserDefaults, _ key: String) -> Set<Int> {
+        Set((d.array(forKey: key) as? [Int]) ?? [])
+    }
+
+    /// Older builds wiped the device-wide set on every switch, so it only ever
+    /// held the ACTIVE account's removals: it moves there and nowhere else.
+    /// Waits while no account is active, so a removal cannot land under none.
+    static func migrateLegacyIfNeeded() {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        guard let legacy = d.array(forKey: legacyKey) as? [Int] else { return }
+        if legacy.isEmpty { d.removeObject(forKey: legacyKey); return }
+        guard let active = AppGroup.readActiveAccountID() else { return }
+        let k = prefix + active.uuidString
+        d.set(Array(load(d, k).union(legacy)), forKey: k)
+        d.removeObject(forKey: legacyKey)
+    }
+
+    // MARK: read-only, for the notification extension
+
+    /// The account's removals, read from disk (another process wrote them, and
+    /// a reused extension process must not answer from an old cache). An older
+    /// build's set counts only for the account that was active when it was
+    /// written, until the app has migrated it.
+    static func stored(accountID: UUID?) -> Set<Int> {
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        var out = load(d, prefix + (accountID?.uuidString ?? "none"))
+        if let accountID, accountID == AppGroup.readActiveAccountID() {
+            out.formUnion(load(d, legacyKey))
+        }
+        return out
     }
 }
 
@@ -80,11 +136,15 @@ final class BlockedContactsStore {
     private static let legacyKey = "rcq.blocked_contacts"
     private static let ownPrefix = "rcq.blocked_contacts.own.v2."
     private static let everyIslandPrefix = "rcq.blocked_contacts.any.v2."
+    /// The island's own flags (see `storeServerBlocked`), kept apart because
+    /// every roster fetch rewrites them whole.
+    private static let serverPrefix = "rcq.blocked_contacts.server.v1."
     private static let appGroup = "group.app.rcq.shared"
 
     private let defaults: UserDefaults
     private var ownKey: String
     private var everyIslandKey: String
+    private var serverKey: String
     private var own: Set<Int>
     private var everyIsland: Set<Int>
 
@@ -97,6 +157,7 @@ final class BlockedContactsStore {
         let id = AppGroup.readActiveAccountID()
         ownKey = Self.ownPrefix + (id?.uuidString ?? "none")
         everyIslandKey = Self.everyIslandPrefix + (id?.uuidString ?? "none")
+        serverKey = Self.serverPrefix + (id?.uuidString ?? "none")
         own = Self.load(suite, ownKey)
         everyIsland = Self.load(suite, everyIslandKey).union(Self.load(suite, Self.legacyKey))
     }
@@ -107,6 +168,7 @@ final class BlockedContactsStore {
         Self.migrateLegacyIfNeeded()
         ownKey = Self.ownPrefix + (accountID?.uuidString ?? "none")
         everyIslandKey = Self.everyIslandPrefix + (accountID?.uuidString ?? "none")
+        serverKey = Self.serverPrefix + (accountID?.uuidString ?? "none")
         own = Self.load(defaults, ownKey)
         everyIsland = Self.load(defaults, everyIslandKey).union(Self.load(defaults, Self.legacyKey))
     }
@@ -146,6 +208,24 @@ final class BlockedContactsStore {
         everyIsland.removeAll()
         defaults.removeObject(forKey: ownKey)
         defaults.removeObject(forKey: everyIslandKey)
+        defaults.removeObject(forKey: serverKey)
+    }
+
+    /// Own-island numbers whose roster row the island served with `blocked`
+    /// (a block made on web or another device: web sends no `ciack`, so this
+    /// device never files it here), i.e. `ContactService.serverBlocked`. The
+    /// app drops these senders; mirrored so the extension keeps them off the
+    /// lock screen too. Written only from an answer of the island.
+    static func storeServerBlocked(_ uins: Set<Int>, accountID: UUID?) {
+        guard let accountID else { return }
+        let d = UserDefaults(suiteName: appGroup) ?? .standard
+        d.set(Array(uins), forKey: serverPrefix + accountID.uuidString)
+    }
+
+    /// The mirror above, for an identity that is gone (burn, an erased account).
+    static func wipeServerBlocked(accountID: UUID?) {
+        guard let accountID else { return }
+        (UserDefaults(suiteName: appGroup) ?? .standard).removeObject(forKey: serverPrefix + accountID.uuidString)
     }
 
     private static var inExtension: Bool { Bundle.main.bundlePath.hasSuffix(".appex") }
@@ -175,11 +255,14 @@ final class BlockedContactsStore {
     // MARK: read-only, for the notification extension
 
     /// The account's own-island blocks, read from disk (another process wrote
-    /// them). Includes an older build's set until the app has migrated it.
+    /// them): made here, flagged by the island, and an older build's set
+    /// until the app has migrated it.
     static func storedOwnIsland(accountID: UUID?) -> Set<Int> {
         let d = UserDefaults(suiteName: appGroup) ?? .standard
         let id = accountID?.uuidString ?? "none"
-        return load(d, ownPrefix + id).union(storedEveryIsland(accountID: accountID))
+        return load(d, ownPrefix + id)
+            .union(load(d, serverPrefix + id))
+            .union(storedEveryIsland(accountID: accountID))
     }
 
     /// The account's any-island blocks (an older build's), read from disk.
@@ -232,6 +315,9 @@ final class MutedStore {
     }
 
     func isMuted(_ uin: Int) -> Bool { read().uins.contains(uin) }
+    /// The server-backed lists as last mirrored, for a change made while the
+    /// island cannot be reached (`NotificationPrefsService.update`).
+    func lists() -> (uins: [Int], groupIDs: [Int]) { let l = read(); return (l.uins, l.groupIDs) }
     func isGroupMuted(_ groupID: Int) -> Bool { read().groupIDs.contains(groupID) }
     /// Group set to "mentions only" — the NSE drops a group push that
     /// doesn't mention the user (and, for an undecryptable sender-keys
