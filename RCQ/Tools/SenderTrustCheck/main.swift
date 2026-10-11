@@ -83,6 +83,12 @@ check("a member under the roster's key", decide { $0.room = roster } == .pinned(
 check("a member under another key is forged", decide { $0.spub = mallory; $0.room = roster } == .forged)
 check("the owner forged by a member is forged", decide { $0.from = bobUIN; $0.spub = alice; $0.room = roster } == .forged)
 check("a non-member is nobody in the room", decide { $0.from = 999; $0.spub = mallory; $0.room = roster } == .unpinned)
+check("a non-member under another key than their pin is forged",
+      decide { $0.from = 999; $0.spub = mallory; $0.pin = bob; $0.room = roster } == .forged)
+check("a non-member under their own pin is still nobody in the room",
+      decide { $0.from = 999; $0.spub = bob; $0.pin = bob; $0.room = roster } == .unpinned)
+check("another island's room ignores our island's pin",
+      decide { $0.from = 999; $0.spub = mallory; $0.pin = bob; $0.room = roster; $0.roomHost = "b.example" } == .unpinned)
 check("a member's pin wins over a stale roster row",
       decide { $0.pin = alice; $0.room = [SenderKeyRow(uin: aliceUIN, host: nil, key: mallory)] } == .pinned(host: nil))
 check("a member who reissued: the roster serves the new key", decide { $0.spub = aliceNew; $0.pin = alice; $0.room = [SenderKeyRow(uin: aliceUIN, host: nil, key: aliceNew)] } == .repinned)
@@ -154,12 +160,27 @@ check("a chain with no key: refused",
       SkdmRule.verdict(held: nil, gid: 7, senderUIN: aliceUIN, spub: "", frameRoom: true, senderAuthentic: true) == .refuse)
 
 print("room keys:")
-check("the first key of a room sealed at 3 may be 4", RoomKeyRule.acceptsVersion(4, held: nil, sealed: 3))
-check("a held key may be repaired at its own version", RoomKeyRule.acceptsVersion(2, held: 2, sealed: nil))
-check("the next generation is taken", RoomKeyRule.acceptsVersion(3, held: 2, sealed: 2))
-check("a jump that would wedge the room is refused", !RoomKeyRule.acceptsVersion(1 << 53, held: 2, sealed: 2))
-check("a key for a room we know nothing about starts at 1", RoomKeyRule.acceptsVersion(1, held: nil, sealed: nil))
-check("a negative version is refused", !RoomKeyRule.acceptsVersion(-1, held: nil, sealed: nil))
+// A minter: our own key, the owner, an admin, or a member with the info or members cap.
+check("a minter's first key of a room sealed at 3 may be 4",
+      RoomKeyRule.accepts(4, held: nil, sealed: 3, opensBlob: false, mayMint: true))
+check("a held key may be repaired at its own version by a minter",
+      RoomKeyRule.accepts(2, held: 2, sealed: nil, opensBlob: false, mayMint: true))
+check("a minter's next generation is taken before the new blob arrives",
+      RoomKeyRule.accepts(3, held: 2, sealed: 2, opensBlob: false, mayMint: true))
+check("a jump that would wedge the room is refused, even from a minter",
+      !RoomKeyRule.accepts(1 << 53, held: 2, sealed: 2, opensBlob: false, mayMint: true))
+check("a minter's key for a room we know nothing about starts at 1",
+      RoomKeyRule.accepts(1, held: nil, sealed: nil, opensBlob: false, mayMint: true))
+check("a negative version is refused",
+      !RoomKeyRule.accepts(-1, held: nil, sealed: nil, opensBlob: true, mayMint: true))
+check("a plain member at sealed+1 with a key that opens nothing is refused",
+      !RoomKeyRule.accepts(3, held: 2, sealed: 2, opensBlob: false, mayMint: false))
+check("a plain member's key at the sealed version that opens the blob is taken",
+      RoomKeyRule.accepts(2, held: nil, sealed: 2, opensBlob: true, mayMint: false))
+check("a key that opens the blob under another version than the blob's is refused",
+      !RoomKeyRule.accepts(9, held: nil, sealed: 2, opensBlob: true, mayMint: false))
+check("a plain member's key for a room with no blob is refused",
+      !RoomKeyRule.accepts(1, held: nil, sealed: nil, opensBlob: false, mayMint: false))
 
 if failures > 0 {
     print("\n\(failures) FAILED")

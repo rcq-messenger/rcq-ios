@@ -2444,8 +2444,11 @@ final class MessageService {
                 // a stranger's first message is checked against the key the
                 // island holds for the number it names. A stranger's guest
                 // card is what a closed island asks for to serve theirs; with
-                // no key held for the number it stands in for nobody's.
-                if trust == .unpinned, let card = decrypted.guestCard {
+                // no key held for the number it stands in for nobody's. Never
+                // over a card already held: a stranger's would replace the
+                // holder's and break our replies to them.
+                if trust == .unpinned, let card = decrypted.guestCard,
+                   GuestCardStore.shared.card(for: from) == nil {
                     GuestCardStore.shared.remember(uin: from, host: nil, card: card)
                 }
                 if ledger.askCard(uin: from) { return holdForTrust(ws, decrypted, &decryptError, why: "card") }
@@ -2470,7 +2473,12 @@ final class MessageService {
         case .repinned:
             // The island serves the key that signed this, and our pin is
             // older: a reissue, or an island swapping keys. Taken, and said.
-            if let spub {
+            // Not for a random chat's stranger: nothing of them is kept, and
+            // a notice would file a row under their number.
+            let randomStranger = ws.groupID == nil
+                && (RandomChatService.shared.activePeer?.uin == from
+                    || RandomChatService.shared.isFinishedStranger(from))
+            if let spub, !randomStranger {
                 os_log("ingest: #%d now signs with the key the island serves, not the pinned one - moving the pin, telling the user", log: Self.log, type: .error, from)
                 SignalProtocolStores.shared.repinSender(uin: from, keyB64: spub)
                 _ = MessageStore.shared.append(Message(
@@ -2661,13 +2669,22 @@ final class MessageService {
             // handler. Kept even for a message we go on to treat as a
             // stranger's: the card costs nothing to hold, and the alternative
             // is somebody who accepts an hour later and then cannot reply.
-            // Never from our own carbon, where the card is ours coming back,
-            // and never from a forgery (dropped above), whose card would stand
-            // in for the real holder's and break our replies to them.
+            // Never from our own carbon, where the card is ours coming back.
+            // A forged card is never kept (a forgery of another island's
+            // contact is admitted this far and filed by the gate below), and
+            // a stranger's only where none is held: either would stand in for
+            // the real holder's and break our replies to them.
             if let card = decrypted.guestCard, decrypted.senderUIN != ownUIN {
-                GuestCardStore.shared.remember(
-                    uin: decrypted.senderUIN, host: decrypted.senderHost, card: card,
-                )
+                let store = GuestCardStore.shared
+                let uin = decrypted.senderUIN, host = decrypted.senderHost
+                switch trust {
+                case .pinned, .repinned:
+                    store.remember(uin: uin, host: host, card: card)
+                case .unpinned where store.card(for: uin, host: host) == nil:
+                    store.remember(uin: uin, host: host, card: card)
+                default:
+                    break   // .forged, .ownKey, .ownSession: never
+                }
             }
 
             // Any decrypted envelope naming its device — a message, a receipt,
@@ -2713,11 +2730,21 @@ final class MessageService {
                         return outcome
                     }
                 }
-                guard RoomKeyRule.acceptsVersion(
+                // A key that opens the room's blob is taken from any member;
+                // a mint or a rotation only from those who may make one.
+                let blob = g.stateBlob
+                let opens = blob.map { GroupStateSeal.open($0, keyB64: key) != nil } ?? false
+                let row = g.members.first { $0.uin == decrypted.senderUIN }
+                let mayMint = fromUs || decrypted.senderUIN == g.ownerUIN
+                    || row.map {
+                        $0.role == "admin" || $0.permissions.contains("info") || $0.permissions.contains("members")
+                    } == true
+                guard RoomKeyRule.accepts(
                     ver, held: RoomKeyStore.shared.key(gid)?.ver,
-                    sealed: g.stateBlob.flatMap(GroupStateSeal.sealedKeyVer)
+                    sealed: blob.flatMap(GroupStateSeal.sealedKeyVer),
+                    opensBlob: opens, mayMint: mayMint
                 ) else {
-                    os_log("ingest: room key v%lld for %d jumps past what is held or sealed - refused", log: Self.log, type: .error, ver, gid)
+                    os_log("ingest: room key v%lld for %d from #%d neither opens the sealed blob nor comes from a minter within one version - refused", log: Self.log, type: .error, ver, gid, decrypted.senderUIN)
                     return outcome
                 }
                 if RoomKeyStore.shared.put(gid, ver: ver, keyB64: key, replaceEqual: true) {

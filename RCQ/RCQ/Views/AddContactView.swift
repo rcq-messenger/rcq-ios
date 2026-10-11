@@ -833,18 +833,46 @@ struct PendingRequestsView: View {
         // surface them in the contact-driven chat list, open the chat.
         if r.host.isEmpty {
             ciBusy = r.id
-            // A row held as "key changed": accepting it is the user saying
-            // the new key is this person's. The pin moves to the key their
-            // latest message was signed with, and what they send under it
-            // from now on lands in their chat.
-            if r.keyChanged == true,
-               let key = r.msgs.last(where: { !($0.spub ?? "").isEmpty })?.spub {
-                SignalProtocolStores.shared.repinSender(uin: r.uin, keyB64: key)
+            let store = CrossIslandRequestsStore.shared
+            var release = store.clear(uin: r.uin, host: "")
+            var keep: [CrossIslandRequestsStore.Held] = []
+            // A row held as "key changed" may hold more than one signer: the
+            // flag is the row's, the keys are each message's. It is split by
+            // key, never re-pinned to whichever wrote last with the rest
+            // released under the person's name.
+            if var held = release, held.keyChanged == true {
+                let pin = SignalProtocolStores.shared.senderPin(uin: r.uin)
+                // "" / nil: a v=2 session the island vouched for, or a row held before keys were kept.
+                let underPin: (CrossIslandRequestsStore.Held) -> Bool = {
+                    ($0.spub ?? "").isEmpty || SenderTrust.sameKey($0.spub, pin)
+                }
+                let other = held.msgs.filter { !underPin($0) }
+                let newKeys = Set(other.compactMap { $0.spub.flatMap(SenderTrust.rawKey) })
+                if other.count < held.msgs.count {
+                    // The person under the pinned key wrote here too: accept THEM, pin unchanged;
+                    // what another key signed stays in Requests, still marked.
+                    held.msgs = held.msgs.filter(underPin)
+                    keep = other
+                } else if newKeys.count == 1, let key = other.first?.spub {
+                    // Only one new key in the row: that is the key the warning was
+                    // about. Accepting it is the user saying it is this person's
+                    // now; what they send under it lands in their chat.
+                    SignalProtocolStores.shared.repinSender(uin: r.uin, keyB64: key)
+                } else {
+                    // Several keys, none pinned: nobody to accept as this number.
+                    held.msgs = []
+                    keep = other
+                }
+                release = held
+            }
+            for h in keep {
+                store.hold(
+                    uin: r.uin, host: "", payload: h.payload, preview: h.preview,
+                    sentAt: h.sentAt, id: h.id, spub: h.spub, keyChanged: true
+                )
             }
             StrangerQuarantine.shared.allow(r.uin)
-            if let held = CrossIslandRequestsStore.shared.clear(uin: r.uin, host: "") {
-                MessageService.shared.releaseHeldStranger(held)
-            }
+            if let release { MessageService.shared.releaseHeldStranger(release) }
             // My other devices hold their own copy of this row (it arrives
             // without a device id) and would offer to accept it again.
             Task { await MessageService.shared.sendCIAck(uin: r.uin, host: "", act: "accept") }

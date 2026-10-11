@@ -333,6 +333,15 @@ extension SignalProtocolStores {
             )
         }
     }
+
+    /// Pins and published identities name numbers of the account's OWN island.
+    /// After a promote the same numbers are other people.
+    func forgetOwnIslandPins() {
+        db.sync {
+            _ = db.execute(sql: "DELETE FROM sender_pins;", bind: { _ in })
+            _ = db.execute(sql: "DELETE FROM published_identities;", bind: { _ in })
+        }
+    }
 }
 
 // MARK: - Published identities (v=2 first contact)

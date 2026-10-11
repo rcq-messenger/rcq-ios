@@ -218,6 +218,20 @@ extension SignalCryptoService {
     /// label, so the decoder has none.
     static func peerDeviceIDs(forPeerUIN uin: Int) async -> [Int]? {
         if let cached = await PeerDeviceCache.shared.cached(uin) { return cached }
+        guard let list = await readDeviceList(forPeerUIN: uin) else { return nil }
+        let ids = list.map(\.id).sorted()
+        guard !ids.isEmpty else { return nil }
+        await PeerDeviceCache.shared.store(uin, devices: ids)
+        return ids
+    }
+
+    /// One device of a peer's list as the island answered it: the id, and
+    /// the published identity when the island carries one.
+    private struct ListedDevice { let id: Int; let identity: String? }
+
+    /// The island's device list for [uin], read now (no cache), each listed
+    /// identity recorded on the way. nil when the read failed.
+    private static func readDeviceList(forPeerUIN uin: Int) async -> [ListedDevice]? {
         struct DeviceResp: Decodable { let device_id: Int; let signal_identity_key: String? }
         struct DevicesResp: Decodable { let uin: Int; let devices: [DeviceResp] }
         let own = await MainActor.run { AuthService.shared.ownUIN }
@@ -236,37 +250,41 @@ extension SignalCryptoService {
                 notePublishedIdentity(ik, uin: uin, deviceId: d.device_id)
             }
         }
-        let ids = resp.devices.map { $0.device_id }.sorted()
-        guard !ids.isEmpty else { return nil }
-        await PeerDeviceCache.shared.store(uin, devices: ids)
-        return ids
+        return resp.devices.map { ListedDevice(id: $0.device_id, identity: $0.signal_identity_key) }
     }
 
     /// Keep what the island publishes as a device's libsignal identity where
     /// the v=2 decrypt (app and extension) can check a new session against it
-    /// (`CryptoError.identityUnverified`).
-    static func notePublishedIdentity(_ identityB64: String, uin: Int, deviceId: Int) {
+    /// (`CryptoError.identityUnverified`). False when it was not an identity
+    /// and nothing was stored.
+    @discardableResult
+    static func notePublishedIdentity(_ identityB64: String, uin: Int, deviceId: Int) -> Bool {
         guard let bytes = Data(base64Encoded: identityB64),
               let identity = try? IdentityKey(bytes: bytes)
-        else { return }
+        else { return false }
         SignalProtocolStores.shared.storePublishedIdentity(identity.serialize(), uin: uin, deviceId: deviceId)
+        return true
     }
 
     /// Read again what the island publishes for [uin]'s device [deviceId],
     /// for a PreKeySignalMessage the decrypt refused (`identityUnverified`).
     /// The device list first, which is free; a bundle only when the list does
-    /// not carry identities (an older island), because a bundle costs that
-    /// device a one-time prekey. True when a published identity is now on
-    /// record for the device, whatever it says.
+    /// not carry the device's identity (an older island), because a bundle
+    /// costs that device a one-time prekey. True when THIS read brought back
+    /// a published identity for the device, whatever it says.
     static func refreshPublishedIdentity(uin: Int, deviceId: Int) async -> Bool {
         await PeerDeviceCache.shared.invalidate(uin)
-        _ = await peerDeviceIDs(forPeerUIN: uin)
-        if SignalProtocolStores.shared.publishedIdentity(uin: uin, deviceId: deviceId) != nil { return true }
+        // Only what THIS read brought counts: a row kept from an earlier read is
+        // exactly what a reinstall makes stale (an older island's list carries no
+        // identities, and a failed list read carries nothing).
+        if let ik = await readDeviceList(forPeerUIN: uin)?.first(where: { $0.id == deviceId })?.identity,
+           !ik.isEmpty, notePublishedIdentity(ik, uin: uin, deviceId: deviceId) {
+            return true
+        }
         guard (1...127).contains(deviceId),
               let resp = try? await fetchBundle(uin: uin, deviceId: UInt32(deviceId))
         else { return false }
-        notePublishedIdentity(resp.signal_identity_key, uin: uin, deviceId: deviceId)
-        return SignalProtocolStores.shared.publishedIdentity(uin: uin, deviceId: deviceId) != nil
+        return notePublishedIdentity(resp.signal_identity_key, uin: uin, deviceId: deviceId)
     }
 
     /// Drop the cached device list for [uin] — a send that 404s (device

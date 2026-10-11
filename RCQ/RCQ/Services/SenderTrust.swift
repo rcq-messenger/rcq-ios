@@ -106,7 +106,21 @@ extension SenderTrust {
         }
         if let room = f.room {
             // A room frame comes from a member of THIS room or from nobody.
-            guard let row = room.first(where: { $0.uin == f.from }) else { return .unpinned }
+            guard let row = room.first(where: { $0.uin == f.from }) else {
+                // Not on the roster (left, or never in) is nobody in the room, but
+                // never under another key than the one we hold for the number: a
+                // chain bound before chains were bound to members would otherwise
+                // be promoted to them (admitSender, gmsg). In a room of our island
+                // the pin decides that. It can only make this .forged, never
+                // .pinned: a non-member stays nobody here (roomMembership, gskey,
+                // the non-member drop).
+                if f.roomHost == nil {
+                    var own = f
+                    own.crossIsland = []
+                    if ownIsland(own, key: key) == .forged { return .forged }
+                }
+                return .unpinned
+            }
             if let roomHost = f.roomHost {
                 // Another island's room: its roster is the only list we hold.
                 guard let key, let rowKey = rawKey(row.key) else { return .unpinned }
@@ -263,17 +277,28 @@ enum SkdmRule {
     }
 }
 
-/// How far a room key (`gskey`) may move the version this device holds
-/// (sender-auth, finding 7).
+/// How far a room key (`gskey`) may move the version this device holds, and
+/// from whom (sender-auth, finding 7).
 ///
 /// The store is monotonic, so one envelope naming an enormous version used to
 /// wedge a room for good: every later, honest key had a lower number and was
-/// refused. A key is taken at most one generation past the newest of what we
-/// hold and what the island's sealed blob says it was sealed under.
+/// refused. A key that opens the room's sealed blob proves itself, whoever
+/// hands it over. Anything else is a mint or a rotation: only those who may
+/// mint send one, and at most one generation past the newest of what we hold
+/// and what the island's sealed blob says it was sealed under. A plain member
+/// at +1 with a key that opens nothing used to be taken, and the owner's
+/// honest answer, one version lower, was then refused until the next rotation.
 enum RoomKeyRule {
-    static func acceptsVersion(_ ver: Int64, held: Int64?, sealed: Int64?) -> Bool {
+    /// opensBlob: the key opens the room's current sealed blob.
+    /// mayMint: our own key, the owner, an admin, or a member with the
+    /// `info` cap (first seal) or the `members` cap (rotation on a kick).
+    static func accepts(_ ver: Int64, held: Int64?, sealed: Int64?, opensBlob: Bool, mayMint: Bool) -> Bool {
         guard ver >= 0 else { return false }
-        let ceiling = max(held ?? 0, sealed ?? 0) + 1
-        return ver <= ceiling
+        // The room's own blob is the proof, whoever handed the key over.
+        if opensBlob { return sealed.map { ver == $0 } ?? true }
+        // Anything else is a mint or a rotation. Only those who mint may send
+        // one, and only one generation ahead.
+        guard mayMint else { return false }
+        return ver <= max(held ?? 0, sealed ?? 0) + 1
     }
 }

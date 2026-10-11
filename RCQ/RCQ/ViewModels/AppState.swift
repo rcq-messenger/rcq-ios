@@ -2369,7 +2369,7 @@ final class AppState: ObservableObject {
                 addedAt: Date(), auto: nil
             )
         )
-        await rebootForActiveAccount()
+        await rebootForActiveAccount(ownIslandChanged: true)
         // Self-push the new home order to contacts (gossip B1) once the new
         // session has booted (its contact roster is loaded by boot()).
         await MessageService.shared.pushHomeRecordToContacts()
@@ -2670,7 +2670,7 @@ final class AppState: ObservableObject {
     /// Not private: the boot error screen's "choose another island" lands on
     /// the same path once it has dropped the account that never registered and
     /// `AccountManager.remove` has moved the active pointer to the survivor.
-    func rebootForActiveAccount() async {
+    func rebootForActiveAccount(ownIslandChanged: Bool = false) async {
         // The chat list is interactive while the boot chain still runs, so
         // a switch can now land mid-chain; boot() drops a concurrent boot,
         // which would leave the new account half-booted under the old one's
@@ -2802,6 +2802,12 @@ final class AppState: ObservableObject {
         MessageService.shared.cancelLiveAcks()
         MessageDB.shared.reload()
         SignalProtocolDB.shared.reload()
+        // A promote keeps the account and so this file, but its pins named
+        // numbers of the island we left: the same numbers here are other
+        // people. Cleared after the outgoing session has settled and the
+        // store is repointed, so no seed from the old island lands after it,
+        // and before boot() seeds the new island's contacts and rooms.
+        if ownIslandChanged { SignalProtocolStores.shared.forgetOwnIslandPins() }
         // Re-point the in-memory store at the NEW account's SQLite file. The
         // windows themselves were dropped by `resetInMemory` above, so this is
         // now the cheap half of what it used to be: nothing is read back here,
